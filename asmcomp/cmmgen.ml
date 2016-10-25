@@ -1341,11 +1341,12 @@ struct
       Printf.eprintf "%s\n" (Format.flush_str_formatter ()) ;
 *)
       i,
-      (fun body -> match body with
+(* XXX this cannot be done with recursive cases *)
+      (fun body -> (*match body with
       | Cexit (j,_) ->
           if i=j then handler
           else body
-      | _ ->  ccatch (i,[],body,handler))
+      | _ -> *) ccatch (i,[],body,handler))
 
   let make_exit i = Cexit (i,[])
 
@@ -2503,12 +2504,17 @@ and transl_let env str kind id exp body =
            transl (add_unboxed_id id unboxed_id boxed_number env) body)
 
 and make_catch ncatch body handler = match body with
+(* XXX same as above *)
+(*
 | Cexit (nexit,[]) when nexit=ncatch -> handler
+*)
 | _ ->  ccatch (ncatch, [], body, handler)
 
 and make_catch2 mk_body handler = match handler with
+(*
 | Cexit (_,[])|Ctuple []|Cconst_int _|Cconst_pointer _ ->
     mk_body handler
+*)
 | _ ->
     let nfail = next_raise_count () in
     make_catch
