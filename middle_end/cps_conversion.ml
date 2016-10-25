@@ -165,10 +165,11 @@ let rec cps (lam : L.lambda) ~is_tail k =
   | Lfor (ident, start, stop, dir, body) ->
     let loc = Location.none in
     let cont = L.next_raise_count () in
+    let stop_ident = Ident.create "stop" in
     let test =
       match dir with
-      | Upto -> L.Lprim (Pintcomp Cle, [L.Lvar ident; stop], loc)
-      | Downto -> L.Lprim (Pintcomp Cge, [L.Lvar ident; stop], loc)
+      | Upto -> L.Lprim (Pintcomp Cle, [L.Lvar ident; L.Lvar stop_ident], loc)
+      | Downto -> L.Lprim (Pintcomp Cge, [L.Lvar ident; L.Lvar stop_ident], loc)
     in
     let one : L.lambda = Lconst (Const_base (Const_int 1)) in
     let next_value_of_counter =
@@ -177,14 +178,16 @@ let rec cps (lam : L.lambda) ~is_tail k =
       | Downto -> L.Lprim (Psubint, [L.Lvar ident; one], loc)
     in
     let lam : L.lambda =
-      Lstaticcatch (
-        Lstaticraise (cont, [start]),
-        (cont, [ident]),
-        Lifthenelse (test,
-          Lsequence (
-            body,
-            Lstaticraise (cont, [next_value_of_counter])),
-          Lconst (Const_base (Const_int 0))))
+      (* CR mshinwell: check evaluation order of start vs. end *)
+      Llet (Strict, Pgenval, stop_ident, stop,
+        Lstaticcatch (
+          Lstaticraise (cont, [start]),
+          (cont, [ident]),
+          Lifthenelse (test,
+            Lsequence (
+              body,
+              Lstaticraise (cont, [next_value_of_counter])),
+            Lconst (Const_base (Const_int 0)))))
     in
     cps lam k ~is_tail
   | Lassign _ ->
