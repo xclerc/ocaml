@@ -56,7 +56,7 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
   | Pignore -> begin
       match args, A.descrs approxs with
       | [arg], [(Value_int 0 | Value_constptr 0)] ->
-        S.const_ptr_expr (Flambda.Expr (Var arg)) 0
+        S.const_ptr_expr (Flambda.Var arg) 0
       | _ -> S.const_ptr_expr expr 0
     end
   | Pmakearray (Pfloatarray, Mutable) ->

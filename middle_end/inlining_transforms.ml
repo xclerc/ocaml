@@ -141,7 +141,7 @@ let inline_by_copying_function_body ~env ~r
   in
   let bindings_for_params_to_args =
     (* Bind the function's parameters to the arguments from the call site. *)
-    let args = List.map (fun arg -> Flambda.Expr (Var arg)) args in
+    let args = List.map (fun arg -> Flambda.Var arg) args in
     Flambda_utils.bind ~body ~bindings:(List.combine freshened_params args)
   in
   (* Add bindings for the variables bound by the closure. *)

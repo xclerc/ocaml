@@ -264,7 +264,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     to_clambda_direct_apply t func args direct_func dbg env
   | Apply { func; args; kind = Indirect; dbg = dbg } ->
     let callee = subst_var env func in
-    Ugeneric_apply (check_closure callee (Flambda.Expr (Var func)),
+    Ugeneric_apply (check_closure callee (Flambda.Var func),
       subst_vars env args, dbg)
   | Switch (arg, sw) ->
     let aux () : Clambda.ulambda =
@@ -376,13 +376,13 @@ and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
     check_closure (
       build_uoffset
         (check_closure (subst_var env set_of_closures)
-           (Flambda.Expr (Var set_of_closures)))
+           (Flambda.Var set_of_closures))
         (get_fun_offset t closure_id))
       named
   | Move_within_set_of_closures { closure; start_from; move_to } ->
     check_closure (build_uoffset
       (check_closure (subst_var env closure)
-         (Flambda.Expr (Var closure)))
+         (Flambda.Var closure))
       ((get_fun_offset t move_to) - (get_fun_offset t start_from)))
       named
   | Project_var { closure; var; closure_id } ->
@@ -391,7 +391,7 @@ and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
     let var_offset = get_fv_offset t var in
     let pos = var_offset - fun_offset in
     Uprim (Pfield pos,
-      [check_field (check_closure ulam (Expr (Var closure))) pos (Some named)],
+      [check_field (check_closure ulam (Var closure)) pos (Some named)],
       Debuginfo.none)
   | Prim (Pfield index, [block], dbg) ->
     Uprim (Pfield index, [check_field (subst_var env block) index None], dbg)
