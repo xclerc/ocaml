@@ -103,8 +103,8 @@ let lambda_smaller' lam ~than:threshold =
           lambda_size lam)
         sw;
       Misc.may lambda_size def
-    | Static_raise _ -> ()
-    | Static_catch (_, _, body, handler) ->
+    | Apply_cont _ -> ()
+    | Let_cont (_, _, body, handler) ->
       incr size; lambda_size body; lambda_size handler
     | Try_with (body, _, handler) ->
       size := !size + 8; lambda_size body; lambda_size handler
@@ -252,11 +252,11 @@ module Benefit = struct
   let remove_code_helper b (flam : Flambda.t) =
     match flam with
     | Assign _ -> b := remove_prim !b
-    | Switch _ | String_switch _ | Static_raise _ | Try_with _
+    | Switch _ | String_switch _ | Apply_cont _ | Try_with _
     | If_then_else _ | While _ | For _ -> b := remove_branch !b
     | Apply _ | Send _ -> b := remove_call !b
     | Let _ | Let_mutable _ | Let_rec _ | Proved_unreachable | Var _
-    | Static_catch _ -> ()
+    | Let_cont _ -> ()
 
   let remove_code_helper_named b (named : Flambda.named) =
     match named with

@@ -61,14 +61,14 @@ type t =
   | Let of let_expr
   | Let_mutable of let_mutable
   | Let_rec of (Variable.t * named) list * t
+  | Let_cont of Cont_variable.t * Variable.t list * t * t
   | Apply of apply
+  | Apply_cont of Cont_variable.t * Variable.t list
   | Send of send
   | Assign of assign
   | If_then_else of Variable.t * t * t
   | Switch of Variable.t * switch
   | String_switch of Variable.t * (string * t) list * t option
-  | Static_raise of Static_exception.t * Variable.t list
-  | Static_catch of Static_exception.t * Variable.t list * t * t
   | Try_with of t * Variable.t * t
   | While of t * t
   | For of for_loop
@@ -298,13 +298,13 @@ let rec lam ppf (flam : t) =
         end in
       fprintf ppf
        "@[<1>(stringswitch %a@ @[<v 0>%a@])@]" Variable.print arg switch cases
-  | Static_raise (i, ls)  ->
+  | Apply_cont (i, ls)  ->
       let lams ppf largs =
         List.iter (fun l -> fprintf ppf "@ %a" Variable.print l) largs in
-      fprintf ppf "@[<2>(exit@ %a%a)@]" Static_exception.print i lams ls;
-  | Static_catch(i, vars, lbody, lhandler) ->
-      fprintf ppf "@[<2>(catch@ %a@;<1 -1>with (%a%a)@ %a)@]"
-        lam lbody Static_exception.print i
+      fprintf ppf "@[<2>(apply_cont@ %a%a)@]" Cont_variable.print i lams ls;
+  | Let_cont(i, vars, lbody, lhandler) ->
+      fprintf ppf "@[<2>(let_cont@ %a@;<1 -1>where (%a%a)@ %a)@]"
+        lam lbody Cont_variable.print i
         (fun ppf vars -> match vars with
            | [] -> ()
            | _ ->
@@ -567,9 +567,9 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         free_variable scrutinee;
         List.iter (fun (_, e) -> aux e) cases;
         Misc.may aux failaction
-      | Static_raise (_, es) ->
+      | Apply_cont (_, es) ->
         List.iter free_variable es
-      | Static_catch (_, vars, e1, e2) ->
+      | Let_cont (_, vars, e1, e2) ->
         List.iter bound_variable vars;
         aux e1;
         aux e2
@@ -769,7 +769,7 @@ let iter_general ~toplevel f f_named maybe_named =
       f t;
       match t with
       | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-      | Static_raise _ -> ()
+      | Apply_cont _ -> ()
       | Let _ -> assert false
       | Let_mutable { body; _ } ->
         aux body
@@ -778,7 +778,7 @@ let iter_general ~toplevel f f_named maybe_named =
         aux body
       | Try_with (f1,_,f2)
       | While (f1,f2)
-      | Static_catch (_,_,f1,f2) ->
+      | Let_cont (_,_,f1,f2) ->
         aux f1; aux f2
       | For { body; _ } -> aux body
       | If_then_else (_, f1, f2) ->

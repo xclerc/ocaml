@@ -70,7 +70,7 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
       set := Variable.Set.add cond !set;
       List.iter (fun (_, branch) -> loop branch) branches;
       Misc.may loop default
-    | Static_catch (_, _, body, handler) ->
+    | Let_cont (_, _, body, handler) ->
       loop body;
       loop handler
     | Try_with (body, _, handler) ->
@@ -83,7 +83,7 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
       set := Variable.Set.add from_value !set;
       set := Variable.Set.add to_value !set;
       loop body
-    | Static_raise (_, args) ->
+    | Apply_cont (_, args) ->
       set := Variable.Set.union (Variable.Set.of_list args) !set
     | Proved_unreachable | Apply _ | Send _ | Assign _ ->
       set := Variable.Set.union !set (Flambda.free_variables flam)
@@ -154,7 +154,7 @@ let eliminate_ref_of_expr flam =
       | Let _ | Let_mutable _
       | Assign _ | Var _ | Apply _
       | Let_rec _ | Switch _ | String_switch _
-      | Static_raise _ | Static_catch _
+      | Apply_cont _ | Let_cont _
       | Try_with _ | If_then_else _
       | While _ | For _ | Send _ | Proved_unreachable ->
         flam

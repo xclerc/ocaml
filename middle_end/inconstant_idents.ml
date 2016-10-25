@@ -251,7 +251,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_curr curr;
       mark_loop ~toplevel [] f1;
       mark_loop ~toplevel [] f2
-    | Static_catch (_,ids,f1,f2) ->
+    | Let_cont (_,ids,f1,f2) ->
       List.iter (fun id -> mark_curr [Var id]) ids;
       mark_curr curr;
       mark_loop ~toplevel [] f1;
@@ -273,7 +273,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_curr [Var f1];
       mark_loop ~toplevel [] f2;
       mark_loop ~toplevel [] f3
-    | Static_raise (_,l) ->
+    | Apply_cont (_,l) ->
       mark_curr curr;
       List.iter (fun v -> mark_var v curr) l
     | Apply ({func; args; _ }) ->

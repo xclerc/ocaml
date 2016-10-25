@@ -475,12 +475,12 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
       ~name:"staticraise_arg"
       ~create_body:(fun args ->
         let static_exn = Env.find_static_exception env i in
-        Static_raise (static_exn, args))
+        Apply_cont (static_exn, args))
   | Lstaticcatch (body, (i, ids), handler) ->
-    let st_exn = Static_exception.create () in
+    let st_exn = Cont_variable.create () in
     let env = Env.add_static_exception env i st_exn in
     let vars = List.map (Variable.create_with_same_name_as_ident) ids in
-    Static_catch (st_exn, vars, close t env body,
+    Let_cont (st_exn, vars, close t env body,
       close t (Env.add_vars env ids vars) handler)
   | Ltrywith (body, id, handler) ->
     let var = Variable.create_with_same_name_as_ident id in

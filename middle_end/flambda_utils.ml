@@ -63,8 +63,8 @@ let description_of_toplevel_node (expr : Flambda.t) =
   | If_then_else _ -> "if"
   | Switch _ -> "switch"
   | String_switch _ -> "stringswitch"
-  | Static_raise  _ -> "staticraise"
-  | Static_catch  _ -> "catch"
+  | Apply_cont  _ -> "staticraise"
+  | Let_cont  _ -> "catch"
   | Try_with _ -> "trywith"
   | While _ -> "while"
   | For _ -> "for"
@@ -115,15 +115,15 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
         (fun (s1, e1) (s2, e2) -> s1 = s2 && same e1 e2) s1 s2
       && Misc.Stdlib.Option.equal same d1 d2
   | String_switch _, _ | _, String_switch _ -> false
-  | Static_raise (e1, a1), Static_raise (e2, a2) ->
-    Static_exception.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
-  | Static_raise _, _ | _, Static_raise _ -> false
-  | Static_catch (s1, v1, a1, b1), Static_catch (s2, v2, a2, b2) ->
-    Static_exception.equal s1 s2
+  | Apply_cont (e1, a1), Apply_cont (e2, a2) ->
+    Cont_variable.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
+  | Apply_cont _, _ | _, Apply_cont _ -> false
+  | Let_cont (s1, v1, a1, b1), Let_cont (s2, v2, a2, b2) ->
+    Cont_variable.equal s1 s2
       && Misc.Stdlib.List.equal Variable.equal v1 v2
       && same a1 a2
       && same b1 b2
-  | Static_catch _, _ | _, Static_catch _ -> false
+  | Let_cont _, _ | _, Let_cont _ -> false
   | Try_with (a1, v1, b1), Try_with (a2, v2, b2) ->
     same a1 a2 && Variable.equal v1 v2 && same b1 b2
   | Try_with _, _ | _, Try_with _ -> false
@@ -263,10 +263,10 @@ let toplevel_substitution sb tree =
       let from_value = sb from_value in
       let to_value = sb to_value in
       For { bound_var; from_value; to_value; direction; body }
-    | Static_raise (static_exn, args) ->
+    | Apply_cont (static_exn, args) ->
       let args = List.map sb args in
-      Static_raise (static_exn, args)
-    | Static_catch _ | Try_with _ | While _
+      Apply_cont (static_exn, args)
+    | Let_cont _ | Try_with _ | While _
     | Let _ | Let_rec _ | Proved_unreachable -> flam
   in
   let aux_named (named : Flambda.named) : Flambda.named =
@@ -451,7 +451,7 @@ let might_raise_static_exn flam stexn =
   try
     Flambda_iterators.iter_on_named
       (function
-        | Flambda.Static_raise (ex, _) when Static_exception.equal ex stexn ->
+        | Flambda.Apply_cont (ex, _) when Cont_variable.equal ex stexn ->
           raise Exit
         | _ -> ())
       (fun _ -> ())
@@ -694,12 +694,12 @@ let substitute_read_symbol_field_for_variables
       bind new_value fresh (Assign { being_assigned; new_value = fresh })
     | Assign _ ->
       expr
-    | Static_raise (exn, args) ->
+    | Apply_cont (exn, args) ->
       let args, bind_args =
         List.split (List.map make_var_subst args)
       in
       List.fold_right (fun f expr -> f expr) bind_args @@
-        Flambda.Static_raise (exn, args)
+        Flambda.Apply_cont (exn, args)
     | For { bound_var; from_value; to_value; direction; body } ->
       let from_value, bind_from_value = make_var_subst from_value in
       let to_value, bind_to_value = make_var_subst to_value in
@@ -727,7 +727,7 @@ let substitute_read_symbol_field_for_variables
     | Proved_unreachable
     | While _
     | Try_with _
-    | Static_catch _ ->
+    | Let_cont _ ->
       (* No variables directly used in those expressions *)
       expr
   in

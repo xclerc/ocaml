@@ -100,12 +100,12 @@ let rec analyse_expr ~which_variables expr =
     | Switch (var, _)
     | String_switch (var, _, _) ->
       check_free_variable var
-    | Static_raise (_, args) ->
+    | Apply_cont (_, args) ->
       List.iter check_free_variable args
     | For { from_value; to_value; _ } ->
       check_free_variable from_value;
       check_free_variable to_value
-    | Let _ | Let_rec _ | Static_catch _ | While _ | Try_with _
+    | Let _ | Let_rec _ | Let_cont _ | While _ | Try_with _
     | Proved_unreachable -> ()
   in
   let for_named (named : Flambda.named) =

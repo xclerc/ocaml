@@ -19,7 +19,7 @@
 let apply_on_subexpressions f f_named (flam : Flambda.t) =
   match flam with
   | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-  | Static_raise _ -> ()
+  | Apply_cont _ -> ()
   | Let { defining_expr; body; _ } ->
     f_named defining_expr;
     f body
@@ -35,7 +35,7 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
   | String_switch (_, sw, def) ->
     List.iter (fun (_,l) -> f l) sw;
     Misc.may f def
-  | Static_catch (_,_,f1,f2) ->
+  | Let_cont (_,_,f1,f2) ->
     f f1; f f2;
   | Try_with (f1,_,f2) ->
     f f1; f f2
@@ -76,7 +76,7 @@ let map_snd_sharing f ((a, b) as cpl) =
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
   | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-  | Static_raise _ -> tree
+  | Apply_cont _ -> tree
   | Let { var; defining_expr; body; _ } ->
     let new_named = f_named var defining_expr in
     let new_body = f body in
@@ -124,13 +124,13 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       String_switch(arg, new_sw, new_def)
-  | Static_catch (i, vars, body, handler) ->
+  | Let_cont (i, vars, body, handler) ->
     let new_body = f body in
     let new_handler = f handler in
     if new_body == body && new_handler == handler then
       tree
     else
-      Static_catch (i, vars, new_body, new_handler)
+      Let_cont (i, vars, new_body, new_handler)
   | Try_with(body, id, handler) ->
     let new_body = f body in
     let new_handler = f handler in
@@ -290,7 +290,7 @@ let map_general ~toplevel f f_named tree =
       let exp : Flambda.t =
         match tree with
         | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-        | Static_raise _ -> tree
+        | Apply_cont _ -> tree
         | Let _ -> assert false
         | Let_mutable mutable_let ->
           let new_body = aux mutable_let.body in
@@ -348,13 +348,13 @@ let map_general ~toplevel f f_named tree =
             tree
           else
             String_switch(arg, sw, def)
-        | Static_catch (i, vars, body, handler) ->
+        | Let_cont (i, vars, body, handler) ->
           let new_body = aux body in
           let new_handler = aux handler in
           if new_body == body && new_handler == handler then
             tree
           else
-            Static_catch (i, vars, new_body, new_handler)
+            Let_cont (i, vars, new_body, new_handler)
         | Try_with(body, id, handler) ->
           let new_body = aux body in
           let new_handler = aux handler in

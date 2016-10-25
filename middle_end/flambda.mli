@@ -98,16 +98,16 @@ type t =
   | Let of let_expr
   | Let_mutable of let_mutable
   | Let_rec of (Variable.t * named) list * t
+  | Let_cont of Cont_variable.t * Variable.t list * t * t
   (** CR-someday lwhite: give Let_rec the same fields as Let. *)
   | Apply of apply
+  | Apply_cont of Cont_variable.t * Variable.t list
   | Send of send
   | Assign of assign
   | If_then_else of Variable.t * t * t
   | Switch of Variable.t * switch
   | String_switch of Variable.t * (string * t) list * t option
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
-  | Static_raise of Static_exception.t * Variable.t list
-  | Static_catch of Static_exception.t * Variable.t list * t * t
   | Try_with of t * Variable.t * t
   | While of t * t
   | For of for_loop

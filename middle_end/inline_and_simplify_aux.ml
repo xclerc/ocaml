@@ -434,7 +434,7 @@ let initial_inlining_toplevel_threshold ~round : Inlining_cost.Threshold.t =
 module Result = struct
   type t =
     { approx : Simple_value_approx.t;
-      used_static_exceptions : Static_exception.Set.t;
+      used_static_exceptions : Cont_variable.Set.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
       num_direct_applications : int;
@@ -442,7 +442,7 @@ module Result = struct
 
   let create () =
     { approx = Simple_value_approx.value_unknown Other;
-      used_static_exceptions = Static_exception.Set.empty;
+      used_static_exceptions = Cont_variable.Set.empty;
       inlining_threshold = None;
       benefit = Inlining_cost.Benefit.zero;
       num_direct_applications = 0;
@@ -461,7 +461,7 @@ module Result = struct
   let use_static_exception t i =
     { t with
       used_static_exceptions =
-        Static_exception.Set.add i t.used_static_exceptions;
+        Cont_variable.Set.add i t.used_static_exceptions;
     }
 
   let used_static_exceptions t = t.used_static_exceptions
@@ -469,7 +469,7 @@ module Result = struct
   let exit_scope_catch t i =
     { t with
       used_static_exceptions =
-        Static_exception.Set.remove i t.used_static_exceptions;
+        Cont_variable.Set.remove i t.used_static_exceptions;
     }
 
   let map_benefit t f =

@@ -22,7 +22,7 @@ module Env = struct
   type t = {
     variables : Variable.t Ident.tbl;
     mutable_variables : Mutable_variable.t Ident.tbl;
-    static_exceptions : Static_exception.t Numbers.Int.Map.t;
+    static_exceptions : Cont_variable.t Numbers.Int.Map.t;
     globals : Symbol.t Numbers.Int.Map.t;
     at_toplevel : bool;
   }

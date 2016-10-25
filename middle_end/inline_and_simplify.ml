@@ -1148,31 +1148,31 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     in
     let body, r = simplify body_env r body in
     Let_rec (defs, body), r
-  | Static_raise (i, args) ->
+  | Apply_cont (i, args) ->
     let i = Freshening.apply_static_exception (E.freshening env) i in
     simplify_free_variables env args ~f:(fun _env args _args_approxs ->
       let r = R.use_static_exception r i in
-      Static_raise (i, args), ret r A.value_bottom)
-  | Static_catch (i, vars, body, handler) ->
+      Apply_cont (i, args), ret r A.value_bottom)
+  | Let_cont (i, vars, body, handler) ->
     begin
       match body with
       | Let { var; defining_expr = def; body; _ }
           when not (Flambda_utils.might_raise_static_exn def i) ->
         simplify env r
-          (Flambda.create_let var def (Static_catch (i, vars, body, handler)))
+          (Flambda.create_let var def (Let_cont (i, vars, body, handler)))
       | _ ->
         let i, sb = Freshening.add_static_exception (E.freshening env) i in
         let env = E.set_freshening env sb in
         let body, r = simplify env r body in
         (* CR-soon mshinwell: for robustness, R.used_static_exceptions should
            maybe be removed. *)
-        if not (Static_exception.Set.mem i (R.used_static_exceptions r)) then
+        if not (Cont_variable.Set.mem i (R.used_static_exceptions r)) then
           (* If the static exception is not used, we can drop the declaration *)
           body, r
         else begin
           match (body : Flambda.t) with
-          | Static_raise (j, args) ->
-            assert (Static_exception.equal i j);
+          | Apply_cont (j, args) ->
+            assert (Cont_variable.equal i j);
             let handler =
               List.fold_left2 (fun body var arg ->
                   Flambda.create_let var (Expr (Var arg)) body)
@@ -1191,7 +1191,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             let env = E.inside_branch env in
             let handler, r = simplify env r handler in
             let r = R.exit_scope_catch r i in
-            Static_catch (i, vars, body, handler),
+            Let_cont (i, vars, body, handler),
               R.meet_approx r env approx
         end
     end
@@ -1653,13 +1653,13 @@ let run ~never_inline ~backend ~prefixname ~round program =
   in
   let result, r = simplify_program initial_env r program in
   let result = Flambda_utils.introduce_needed_import_symbols result in
-  if not (Static_exception.Set.is_empty (R.used_static_exceptions r))
+  if not (Cont_variable.Set.is_empty (R.used_static_exceptions r))
   then begin
-    Misc.fatal_error (Format.asprintf "Remaining static exceptions: %a@.%a@."
-      Static_exception.Set.print (R.used_static_exceptions r)
+    Misc.fatal_error (Format.asprintf "Remaining continuation vars: %a@.%a@."
+      Cont_variable.Set.print (R.used_static_exceptions r)
       Flambda.print_program result)
   end;
-  assert (Static_exception.Set.is_empty (R.used_static_exceptions r));
+  assert (Cont_variable.Set.is_empty (R.used_static_exceptions r));
   if !Clflags.inlining_report then begin
     let output_prefix = Printf.sprintf "%s.%d" prefixname round in
     Inlining_stats.save_then_forget_decisions ~output_prefix
