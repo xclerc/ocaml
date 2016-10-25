@@ -66,8 +66,6 @@ let description_of_toplevel_node (expr : Flambda.t) =
   | Apply_cont  _ -> "staticraise"
   | Let_cont  _ -> "catch"
   | Try_with _ -> "trywith"
-  | While _ -> "while"
-  | For _ -> "for"
 
 let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
   match c1, c2 with
@@ -130,19 +128,6 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
   | If_then_else (a1, b1, c1), If_then_else (a2, b2, c2) ->
     Variable.equal a1 a2 && same b1 b2 && same c1 c2
   | If_then_else _, _ | _, If_then_else _ -> false
-  | While (a1, b1), While (a2, b2) ->
-    same a1 a2 && same b1 b2
-  | While _, _ | _, While _ -> false
-  | For { bound_var = bound_var1; from_value = from_value1;
-          to_value = to_value1; direction = direction1; body = body1; },
-    For { bound_var = bound_var2; from_value = from_value2;
-          to_value = to_value2; direction = direction2; body = body2; } ->
-    Variable.equal bound_var1 bound_var2
-      && Variable.equal from_value1 from_value2
-      && Variable.equal to_value1 to_value2
-      && direction1 = direction2
-      && same body1 body2
-  | For _, _ | _, For _ -> false
   | Assign { being_assigned = being_assigned1; new_value = new_value1; },
     Assign { being_assigned = being_assigned2; new_value = new_value2; } ->
     Mutable_variable.equal being_assigned1 being_assigned2
@@ -261,14 +246,10 @@ let toplevel_substitution sb tree =
       let obj = sb obj in
       let args = List.map sb args in
       Send { kind; meth; obj; args; dbg }
-    | For { bound_var; from_value; to_value; direction; body } ->
-      let from_value = sb from_value in
-      let to_value = sb to_value in
-      For { bound_var; from_value; to_value; direction; body }
     | Apply_cont (static_exn, args) ->
       let args = List.map sb args in
       Apply_cont (static_exn, args)
-    | Let_cont _ | Try_with _ | While _
+    | Let_cont _ | Try_with _
     | Let _ | Let_rec _ | Proved_unreachable -> flam
   in
   let aux_named (named : Flambda.named) : Flambda.named =
@@ -709,12 +690,6 @@ let substitute_read_symbol_field_for_variables
       in
       List.fold_right (fun f expr -> f expr) bind_args @@
         Flambda.Apply_cont (exn, args)
-    | For { bound_var; from_value; to_value; direction; body } ->
-      let from_value, bind_from_value = make_var_subst from_value in
-      let to_value, bind_to_value = make_var_subst to_value in
-      bind_from_value @@
-      bind_to_value @@
-      Flambda.For { bound_var; from_value; to_value; direction; body }
     | Apply { func; args; kind; dbg; inline; specialise } ->
       let func, bind_func = make_var_subst func in
       let args, bind_args =
@@ -734,7 +709,6 @@ let substitute_read_symbol_field_for_variables
       List.fold_right (fun f expr -> f expr) bind_args @@
       Flambda.Send { kind; meth; obj; args; dbg }
     | Proved_unreachable
-    | While _
     | Try_with _
     | Let_cont _ ->
       (* No variables directly used in those expressions *)

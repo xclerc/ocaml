@@ -111,10 +111,6 @@ let lambda_smaller' lam ~than:threshold =
     | If_then_else (_, ifso, ifnot) ->
       size := !size + 2;
       lambda_size ifso; lambda_size ifnot
-    | While (cond, body) ->
-      size := !size + 2; lambda_size cond; lambda_size body
-    | For { body; _ } ->
-      size := !size + 4; lambda_size body
   and lambda_named_size (named : Flambda.named) =
     if !size > threshold then raise Exit;
     match named with
@@ -253,7 +249,7 @@ module Benefit = struct
     match flam with
     | Assign _ -> b := remove_prim !b
     | Switch _ | String_switch _ | Apply_cont _ | Try_with _
-    | If_then_else _ | While _ | For _ -> b := remove_branch !b
+    | If_then_else _ -> b := remove_branch !b
     | Apply _ | Send _ -> b := remove_call !b
     | Let _ | Let_mutable _ | Let_rec _ | Proved_unreachable | Var _
     | Let_cont _ -> ()

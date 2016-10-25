@@ -14,9 +14,12 @@
 (*                                                                        *)
 (**************************************************************************)
 
-module I = Ilambda
+[@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let rec cps lam ~is_tail k =
+module I = Ilambda
+module L = Lambda
+
+let rec cps (lam : L.lambda) ~is_tail k =
   match lam with
   | Lvar id -> k (I.Var id)
   | Lconst const -> k (I.Const const)
@@ -26,10 +29,10 @@ let rec cps lam ~is_tail k =
         k (I.Apply {
           func;
           args;
-          loc = apply.loc;
-          should_be_tailcall = apply.should_be_tailcall;
-          inlined = apply.inlined;
-          specialised = apply.specialised;
+          loc = apply.ap_loc;
+          should_be_tailcall = apply.ap_should_be_tailcall;
+          inlined = apply.ap_inlined;
+          specialised = apply.ap_specialised;
         })))
   | Lfunction func ->
     cps func.body ~is_tail (fun body ->
@@ -56,7 +59,7 @@ let rec cps lam ~is_tail k =
   | Lswitch (scrutinee, switch) ->
     cps scrutinee ~is_tail:false (fun scrutinee ->
       let const_nums, consts = List.split switch.sw_consts in
-      let blocks_nums, blocks = List.split switch.sw_blocks in
+      let block_nums, blocks = List.split switch.sw_blocks in
       cps_option switch.sw_failaction ~is_tail (fun failaction ->
         cps_list consts ~is_tail (fun consts ->
           cps_list blocks ~is_tail (fun blocks ->
@@ -76,10 +79,10 @@ let rec cps lam ~is_tail k =
         let cases = List.combine patterns cases in
         cps_option default ~is_tail (fun default ->
           k (I.String_switch (scrutinee, cases, default, loc)))))
-  | Lstaticraise (static_exn, args) ->
+  | Lstaticraise (cont, args) ->
     cps_list args ~is_tail:false (fun args ->
-      k (I.Apply_cont (static_exn, args)))
-  | Lstaticcatch (body, (static_exn, args), handler) ->
+      k (I.Apply_cont (cont, args)))
+  | Lstaticcatch (body, (cont, args), handler) ->
     cps body ~is_tail (fun body ->
       cps handler ~is_tail (fun handler ->
         k (I.Let_cont (body, cont, args, handler))))
@@ -94,46 +97,44 @@ let rec cps lam ~is_tail k =
           k (I.If_then_else (cond, ifso, ifnot)))))
   | Lsequence (lam1, lam2) ->
     let ident = Ident.create "sequence" in
-    cps (Llet (Immutable, Pgenval, ident, lam1, lam2)) ~is_tail k
+    cps (L.Llet (Strict, Pgenval, ident, lam1, lam2)) ~is_tail k
   | Lwhile (cond, body) ->
-    let static_exn = Lambda.next_raise_count () in
+    let cont = L.next_raise_count () in
     let cond_result = Ident.create "cond_result" in
-    let lam =
+    let lam : L.lambda =
       Lstaticcatch (
-        Lstaticraise (static_exn, []),
-        static_exn,
-        [],
-        Llet (Immutable, Pgenval, cond_result, cond,
+        Lstaticraise (cont, []),
+        (cont, []),
+        Llet (Strict, Pgenval, cond_result, cond,
           Lifthenelse (Lvar cond_result,
             Lsequence (
               body,
-              Lstaticraise (static_exn, [])),
+              Lstaticraise (cont, [])),
             Lconst (Const_base (Const_int 0)))))
     in
     cps lam k ~is_tail
   | Lfor (ident, start, stop, dir, body) ->
-    let dbg = Debuginfo.none () in
-    let static_exn = Lambda.next_raise_count () in
+    let loc = Location.none in
+    let cont = L.next_raise_count () in
     let test =
       match dir with
-      | Upto -> Lprim (Pintcomp Cle, [Lvar ident; stop], dbg)
-      | Downto -> Lprim (Pintcomp Cge, [Lvar ident; stop], dbg)
+      | Upto -> L.Lprim (Pintcomp Cle, [L.Lvar ident; stop], loc)
+      | Downto -> L.Lprim (Pintcomp Cge, [L.Lvar ident; stop], loc)
     in
-    let one : Lambda.lambda = Lconst (Const_base (Const_int 1)) in
+    let one : L.lambda = Lconst (Const_base (Const_int 1)) in
     let next_value_of_counter =
       match dir with
-      | Upto -> Lprim (Paddint, [Lvar ident; one], dbg)
-      | Downto -> Lprim (Psubint, [Lvar ident; one], dbg)
-   in
-    let lam =
+      | Upto -> L.Lprim (Paddint, [L.Lvar ident; one], loc)
+      | Downto -> L.Lprim (Psubint, [L.Lvar ident; one], loc)
+    in
+    let lam : L.lambda =
       Lstaticcatch (
-        Lstaticraise (static_exn, [start]),
-        static_exn,
-        [],
+        Lstaticraise (cont, [start]),
+        (cont, []),
         Lifthenelse (test,
           Lsequence (
             body,
-            Lstaticraise (static_exn, [next_value_of_counter])),
+            Lstaticraise (cont, [next_value_of_counter])),
           Lconst (Const_base (Const_int 0))))
     in
     cps lam k ~is_tail
@@ -159,12 +160,13 @@ and cps_list lams ~is_tail k =
   match lams with
   | [] -> k []
   | lam::lams ->
-    cps lam ~is_tail (fun lam -> cps_list lams (fun lams -> k (lam::lams)))
+    cps lam ~is_tail (fun lam ->
+      cps_list lams ~is_tail (fun lams -> k (lam::lams)))
 
-and cps_option lam_opt k =
+and cps_option lam_opt ~is_tail k =
   match lam_opt with
   | None -> k None
   | Some lam -> cps lam ~is_tail (fun lam -> k (Some lam))
 
-let run lam =
+let lambda_to_ilambda lam =
   cps lam ~is_tail:true (fun ilam -> ilam)

@@ -41,9 +41,6 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
     f f1; f f2
   | If_then_else (_,f1, f2) ->
     f f1;f f2
-  | While (f1,f2) ->
-    f f1; f f2
-  | For { body; _ } -> f body
 
 let rec list_map_sharing f l =
   match l with
@@ -145,19 +142,6 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       If_then_else(arg, new_ifso, new_ifnot)
-  | While(cond, body) ->
-    let new_cond = f cond in
-    let new_body = f body in
-    if new_cond == cond && new_body == body then
-      tree
-    else
-      While(new_cond, new_body)
-  | For { bound_var; from_value; to_value; direction; body; } ->
-    let new_body = f body in
-    if new_body == body then
-      tree
-    else
-      For { bound_var; from_value; to_value; direction; body = new_body; }
 
 let iter_general = Flambda.iter_general
 
@@ -369,20 +353,6 @@ let map_general ~toplevel f f_named tree =
             tree
           else
             If_then_else (arg, new_ifso, new_ifnot)
-        | While (cond, body) ->
-          let new_cond = aux cond in
-          let new_body = aux body in
-          if new_cond == cond && new_body == body then
-            tree
-          else
-            While (new_cond, new_body)
-        | For { bound_var; from_value; to_value; direction; body; } ->
-          let new_body = aux body in
-          if new_body == body then
-            tree
-          else
-            For { bound_var; from_value; to_value; direction;
-              body = new_body; }
       in
       f exp
   and aux_done_something expr done_something =

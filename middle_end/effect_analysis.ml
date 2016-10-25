@@ -46,7 +46,7 @@ let rec no_effects (flam : Flambda.t) =
     (* If there is a [raise] in [body], the whole [Try_with] may have an
        effect, so there is no need to test the handler. *)
     no_effects body
-  | While _ | For _ | Apply _ | Send _ | Assign _ | Apply_cont _ -> false
+  | Apply _ | Send _ | Assign _ | Apply_cont _ -> false
   | Proved_unreachable -> true
 
 and no_effects_named (named : Flambda.named) =
