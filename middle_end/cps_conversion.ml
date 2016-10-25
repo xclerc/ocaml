@@ -30,7 +30,7 @@ let rec cps lam ~is_tail k =
           should_be_tailcall = apply.should_be_tailcall;
           inlined = apply.inlined;
           specialised = apply.specialised;
-        })
+        })))
   | Lfunction func ->
     cps func.body ~is_tail (fun body ->
       k (I.Function {
@@ -39,7 +39,7 @@ let rec cps lam ~is_tail k =
         body;
         attr = func.attr;
         loc = func.loc;
-      })
+      }))
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
     cps defining_expr ~is_tail:false (fun defining_expr ->
       cps body ~is_tail (fun body ->

@@ -335,15 +335,6 @@ and switch = {
   failaction : t option; (** Action to take if none matched *)
 }
 
-(** Equivalent to the similar type in [Lambda]. *)
-and for_loop = {
-  bound_var : Variable.t;
-  from_value : Variable.t;
-  to_value : Variable.t;
-  direction : Asttypes.direction_flag;
-  body : t
-}
-
 (** Like a subset of [Flambda.named], except that instead of [Variable.t]s we
     have [Symbol.t]s, and everything is a constant (i.e. with a fixed value
     known at compile time).  Values of this type describe constants that will

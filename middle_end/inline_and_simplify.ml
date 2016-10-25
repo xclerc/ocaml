@@ -1226,10 +1226,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         If_then_else (arg, ifso, ifnot),
           R.meet_approx r env ifso_approx
       end)
-  | While (cond, body) ->
-    let cond, r = simplify env r cond in
-    let body, r = simplify env r body in
-    While (cond, body), ret r (A.value_unknown Other)
   | Send { kind; meth; obj; args; dbg; } ->
     let dbg = E.add_inlined_debuginfo env ~dbg in
     simplify_free_variable env meth ~f:(fun env meth _meth_approx ->
@@ -1237,19 +1233,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         simplify_free_variables env args ~f:(fun _env args _args_approx ->
           Send { kind; meth; obj; args; dbg; },
             ret r (A.value_unknown Other))))
-  | For { bound_var; from_value; to_value; direction; body; } ->
-    simplify_free_variable env from_value ~f:(fun env from_value _approx ->
-      simplify_free_variable env to_value ~f:(fun env to_value _approx ->
-        let bound_var, sb =
-          Freshening.add_variable (E.freshening env) bound_var
-        in
-        let env =
-          E.add (E.set_freshening env sb) bound_var
-            (A.value_unknown Other)
-        in
-        let body, r = simplify env r body in
-        For { bound_var; from_value; to_value; direction; body; },
-          ret r (A.value_unknown Other)))
   | Assign { being_assigned; new_value; } ->
     (* No need to use something like [simplify_free_variable]: the
        approximation of [being_assigned] is always unknown. *)

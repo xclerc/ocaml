@@ -70,8 +70,6 @@ type t =
   | Switch of Variable.t * switch
   | String_switch of Variable.t * (string * t) list * t option
   | Try_with of t * Variable.t * t
-  | While of t * t
-  | For of for_loop
   | Proved_unreachable
 
 and named =
@@ -134,14 +132,6 @@ and switch = {
   numblocks : Numbers.Int.Set.t;
   blocks : (int * t) list;
   failaction : t option;
-}
-
-and for_loop = {
-  bound_var : Variable.t;
-  from_value : Variable.t;
-  to_value : Variable.t;
-  direction : Asttypes.direction_flag;
-  body : t
 }
 
 and constant_defining_value =
@@ -321,14 +311,6 @@ let rec lam ppf (flam : t) =
       fprintf ppf "@[<2>(if@ %a@ then begin@ %a@ end else begin@ %a@ end)@]"
         Variable.print lcond
         lam lif lam lelse
-  | While(lcond, lbody) ->
-      fprintf ppf "@[<2>(while@ %a@ %a)@]" lam lcond lam lbody
-  | For { bound_var; from_value; to_value; direction; body; } ->
-    fprintf ppf "@[<2>(for %a@ %a@ %s@ %a@ %a)@]"
-      Variable.print bound_var Variable.print from_value
-      (match direction with
-        Asttypes.Upto -> "to" | Asttypes.Downto -> "downto")
-      Variable.print to_value lam body
 and print_named ppf (named : named) =
   match named with
   | Var var -> Variable.print ppf var
@@ -583,14 +565,6 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         free_variable var;
         aux e1;
         aux e2
-      | While (e1, e2) ->
-        aux e1;
-        aux e2
-      | For { bound_var; from_value; to_value; direction = _; body; } ->
-        bound_variable bound_var;
-        free_variable from_value;
-        free_variable to_value;
-        aux body
       | Assign { being_assigned = _; new_value; } ->
         free_variable new_value
       | Send { kind = _; meth; obj; args; dbg = _ } ->
@@ -780,10 +754,8 @@ let iter_general ~toplevel f f_named maybe_named =
         List.iter (fun (_,l) -> aux_named l) defs;
         aux body
       | Try_with (f1,_,f2)
-      | While (f1,f2)
       | Let_cont (_,_,f1,f2) ->
         aux f1; aux f2
-      | For { body; _ } -> aux body
       | If_then_else (_, f1, f2) ->
         aux f1; aux f2
       | Switch (_, sw) ->
