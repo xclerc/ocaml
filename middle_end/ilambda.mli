@@ -66,3 +66,5 @@ and switch =
     blocks : (int * t) list;
     failaction : t option;
   }
+
+val print : Format.formatter -> t -> unit

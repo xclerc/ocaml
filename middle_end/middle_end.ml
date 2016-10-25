@@ -62,15 +62,24 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     end;
     flam
   in
+  let print_ilambda ilam =
+    if not !Clflags.dump_rawflambda then begin
+      ilam
+    end else begin
+      Format.fprintf ppf "After CPS conversion:@ %a@." Ilambda.print ilam;
+      ilam
+    end
+  in
   Timings.accumulate_time
     (Flambda_pass ("middle_end", source_provenance)) (fun () ->
     let flam =
       let timing_pass =
-        Timings.Flambda_pass ("CPS/closure_conversion", source_provenance)
+        Timings.Flambda_pass ("cps_and_closure_conversion", source_provenance)
       in
       Timings.accumulate_time timing_pass (fun () ->
           module_initializer
           |> Cps_conversion.lambda_to_ilambda
+          |> print_ilambda
           |> Closure_conversion.ilambda_to_flambda ~backend ~module_ident
                 ~size ~filename)
         ()

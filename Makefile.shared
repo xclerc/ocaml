@@ -167,6 +167,7 @@ MIDDLE_END=\
   middle_end/freshening.cmo \
   middle_end/simple_value_approx.cmo \
   middle_end/lift_code.cmo \
+  middle_end/ilambda.cmo \
   middle_end/closure_conversion_aux.cmo \
   middle_end/cps_conversion.cmo \
   middle_end/closure_conversion.cmo \

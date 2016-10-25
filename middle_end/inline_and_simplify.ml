@@ -1167,13 +1167,12 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         let i, sb = Freshening.add_static_exception (E.freshening env) i in
         let env = E.set_freshening env sb in
         let body, r = simplify env r body in
-        (* CR-soon mshinwell: for robustness, R.used_static_exceptions should
-           maybe be removed. *)
         if not (Cont_variable.Set.mem i (R.used_static_exceptions r)) then
           (* If the static exception is not used, we can drop the declaration *)
           body, r
         else begin
           match (body : Flambda.t) with
+(* This cannot be used in the recursive case
           | Apply_cont (j, args) ->
             assert (Cont_variable.equal i j);
             let handler =
@@ -1182,7 +1181,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                 handler vars args
             in
             let r = R.exit_scope_catch r i in
-            simplify env r handler
+            simplify env r handlera
+*)
           | _ ->
             let vars, sb = Freshening.add_variables' (E.freshening env) vars in
             let approx = R.approx r in
@@ -1193,7 +1193,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             in
             let env = E.inside_branch env in
             let handler, r = simplify env r handler in
-            let r = R.exit_scope_catch r i in
+            let r = R.exit_scope_catch r i in 
             Let_cont (i, vars, body, handler),
               R.meet_approx r env approx
         end

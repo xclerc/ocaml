@@ -95,13 +95,13 @@ let rec cps (lam : L.lambda) ~is_tail k =
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
     cps defining_expr ~is_tail:false (fun defining_expr ->
       cps body ~is_tail (fun body ->
-        I.Let (let_kind, value_kind, id, defining_expr, body)))
+        k (I.Let (let_kind, value_kind, id, defining_expr, body))))
   | Lletrec (bindings, body) ->
     let idents, bindings = List.split bindings in
     cps_list bindings ~is_tail:false (fun bindings ->
       let bindings = List.combine idents bindings in
       cps body ~is_tail (fun body ->
-        I.Let_rec (bindings, body)))
+        k (I.Let_rec (bindings, body))))
   | Lprim (prim, args, loc) ->
     cps_list args ~is_tail:false (fun args ->
       k (I.Prim (prim, args, loc)))
@@ -179,7 +179,7 @@ let rec cps (lam : L.lambda) ~is_tail k =
     let lam : L.lambda =
       Lstaticcatch (
         Lstaticraise (cont, [start]),
-        (cont, []),
+        (cont, [ident]),
         Lifthenelse (test,
           Lsequence (
             body,

@@ -1217,7 +1217,7 @@ middle_end/closure_conversion.cmx : middle_end/base_types/variable.cmx \
     bytecomp/printlambda.cmx typing/predef.cmx utils/numbers.cmx \
     middle_end/base_types/mutable_variable.cmx utils/misc.cmx \
     parsing/location.cmx middle_end/base_types/linkage_name.cmx \
-    middle_end/lift_code.cmx bytecomp/lambda.cmx middle_end/ilambda.cmi \
+    middle_end/lift_code.cmx bytecomp/lambda.cmx middle_end/ilambda.cmx \
     typing/ident.cmx middle_end/flambda_utils.cmx middle_end/flambda.cmx \
     middle_end/debuginfo.cmx middle_end/base_types/cont_variable.cmx \
     utils/config.cmx middle_end/base_types/compilation_unit.cmx \
@@ -1236,7 +1236,7 @@ middle_end/closure_conversion_aux.cmo : middle_end/base_types/variable.cmi \
 middle_end/closure_conversion_aux.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/symbol.cmx typing/primitive.cmx utils/numbers.cmx \
     middle_end/base_types/mutable_variable.cmx utils/misc.cmx \
-    parsing/location.cmx bytecomp/lambda.cmx middle_end/ilambda.cmi \
+    parsing/location.cmx bytecomp/lambda.cmx middle_end/ilambda.cmx \
     typing/ident.cmx middle_end/base_types/cont_variable.cmx \
     middle_end/closure_conversion_aux.cmi
 middle_end/closure_conversion_aux.cmi : middle_end/base_types/variable.cmi \
@@ -1250,7 +1250,7 @@ middle_end/cps_conversion.cmo : bytecomp/simplif.cmi typing/primitive.cmi \
     middle_end/closure_conversion_aux.cmi middle_end/cps_conversion.cmi
 middle_end/cps_conversion.cmx : bytecomp/simplif.cmx typing/primitive.cmx \
     utils/misc.cmx parsing/location.cmx bytecomp/lambda.cmx \
-    middle_end/ilambda.cmi typing/ident.cmx \
+    middle_end/ilambda.cmx typing/ident.cmx \
     middle_end/closure_conversion_aux.cmx middle_end/cps_conversion.cmi
 middle_end/cps_conversion.cmi : bytecomp/lambda.cmi middle_end/ilambda.cmi
 middle_end/debuginfo.cmo : parsing/location.cmi middle_end/debuginfo.cmi
@@ -1400,6 +1400,10 @@ middle_end/freshening.cmi : middle_end/base_types/variable.cmi \
     middle_end/base_types/mutable_variable.cmi middle_end/flambda.cmi \
     middle_end/base_types/cont_variable.cmi \
     middle_end/base_types/closure_id.cmi
+middle_end/ilambda.cmo : bytecomp/printlambda.cmi parsing/location.cmi \
+    bytecomp/lambda.cmi typing/ident.cmi middle_end/ilambda.cmi
+middle_end/ilambda.cmx : bytecomp/printlambda.cmx parsing/location.cmx \
+    bytecomp/lambda.cmx typing/ident.cmx middle_end/ilambda.cmi
 middle_end/ilambda.cmi : parsing/location.cmi bytecomp/lambda.cmi \
     typing/ident.cmi
 middle_end/inconstant_idents.cmo : middle_end/base_types/variable.cmi \
@@ -1639,7 +1643,7 @@ middle_end/middle_end.cmo : utils/warnings.cmi \
     middle_end/lift_let_to_initialize_symbol.cmi \
     middle_end/lift_constants.cmi middle_end/lift_code.cmi \
     middle_end/inlining_cost.cmi middle_end/inline_and_simplify.cmi \
-    middle_end/initialize_symbol_to_let_symbol.cmi \
+    middle_end/initialize_symbol_to_let_symbol.cmi middle_end/ilambda.cmi \
     middle_end/flambda_iterators.cmi middle_end/flambda_invariants.cmi \
     middle_end/flambda.cmi middle_end/debuginfo.cmi \
     middle_end/cps_conversion.cmi middle_end/base_types/closure_id.cmi \
@@ -1654,7 +1658,7 @@ middle_end/middle_end.cmx : utils/warnings.cmx \
     middle_end/lift_let_to_initialize_symbol.cmx \
     middle_end/lift_constants.cmx middle_end/lift_code.cmx \
     middle_end/inlining_cost.cmx middle_end/inline_and_simplify.cmx \
-    middle_end/initialize_symbol_to_let_symbol.cmx \
+    middle_end/initialize_symbol_to_let_symbol.cmx middle_end/ilambda.cmx \
     middle_end/flambda_iterators.cmx middle_end/flambda_invariants.cmx \
     middle_end/flambda.cmx middle_end/debuginfo.cmx \
     middle_end/cps_conversion.cmx middle_end/base_types/closure_id.cmx \
