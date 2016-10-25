@@ -22,7 +22,7 @@ module Env = struct
   type t = {
     variables : Variable.t Ident.tbl;
     mutable_variables : Mutable_variable.t Ident.tbl;
-    static_exceptions : Cont_variable.t Numbers.Int.Map.t;
+    continuations : Cont_variable.t Numbers.Int.Map.t;
     globals : Symbol.t Numbers.Int.Map.t;
     at_toplevel : bool;
   }
@@ -30,7 +30,7 @@ module Env = struct
   let empty = {
     variables = Ident.empty;
     mutable_variables = Ident.empty;
-    static_exceptions = Numbers.Int.Map.empty;
+    continuations = Numbers.Int.Map.empty;
     globals = Numbers.Int.Map.empty;
     at_toplevel = true;
   }
@@ -57,16 +57,16 @@ module Env = struct
   let find_mutable_var_exn t id =
     Ident.find_same id t.mutable_variables
 
-  let add_static_exception t st_exn fresh_st_exn =
+  let add_continuation t cont fresh_cont =
     { t with
-      static_exceptions =
-        Numbers.Int.Map.add st_exn fresh_st_exn t.static_exceptions }
+      continuations =
+        Numbers.Int.Map.add cont fresh_cont t.continuations }
 
-  let find_static_exception t st_exn =
-    try Numbers.Int.Map.find st_exn t.static_exceptions
+  let find_continuation t cont =
+    try Numbers.Int.Map.find cont t.continuations
     with Not_found ->
-      Misc.fatal_error ("Closure_conversion.Env.find_static_exception: exn "
-        ^ string_of_int st_exn)
+      Misc.fatal_error ("Closure_conversion.Env.find_continuation: cont "
+        ^ string_of_int cont)
 
   let add_global t pos symbol =
     { t with globals = Numbers.Int.Map.add pos symbol t.globals }

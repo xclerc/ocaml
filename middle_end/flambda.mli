@@ -109,8 +109,6 @@ type t =
   | String_switch of Variable.t * (string * t) list * t option
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
   | Try_with of t * Variable.t * t
-  | While of t * t
-  | For of for_loop
   | Proved_unreachable
 
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)

@@ -40,7 +40,7 @@ let add_default_argument_wrappers lam =
       Primitive.simple ~name:Closure_conversion_aux.stub_hack_prim_name
         ~arity:1 ~alloc:false
     in
-    Lprim (Pccall stub_prim, [body], Location.none)
+    Prim (Pccall stub_prim, [body], Location.none)
   in
   let defs_are_all_functions (defs : (_ * Lambda.lambda) list) =
     List.for_all (function (_, Lambda.Lfunction _) -> true | _ -> false) defs
@@ -115,7 +115,7 @@ let rec eliminate_const_block (const : Lambda.structured_constant)
   match const with
   | Const_block (tag, consts) ->
     (* CR-soon mshinwell for lwhite: fix location *)
-    Lprim (Pmakeblock (tag, Asttypes.Immutable, None),
+    Prim (Pmakeblock (tag, Asttypes.Immutable, None),
       List.map eliminate_const_block consts, Location.none)
   | Const_base _
   | Const_pointer _
@@ -144,9 +144,9 @@ let rec close_const t env (const : Lambda.structured_constant)
   | Const_block _ ->
     Expr (close t env (eliminate_const_block const)), "const_block"
 
-and close t env (lam : Lambda.lambda) : Flambda.t =
+and close t env (lam : Ilambda.t) : Flambda.t =
   match lam with
-  | Lvar id ->
+  | Var id ->
     begin match Env.find_var_exn env id with
     | var -> Var var
     | exception Not_found ->
@@ -156,10 +156,10 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
         Misc.fatal_errorf "Closure_conversion.close: unbound identifier %a"
           Ident.print id
     end
-  | Lconst cst ->
+  | Const cst ->
     let cst, name = close_const t env cst in
     name_expr cst ~name:("const_" ^ name)
-  | Llet ((Strict | Alias | StrictOpt), _value_kind, id, defining_expr, body) ->
+  | Let ((Strict | Alias | StrictOpt), _value_kind, id, defining_expr, body) ->
     (* TODO: keep value_kind in flambda *)
     let var = Variable.create_with_same_name_as_ident id in
     let defining_expr =
@@ -167,7 +167,7 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
     in
     let body = close t (Env.add_var env id var) body in
     Flambda.create_let var defining_expr body
-  | Llet (Variable, block_kind, id, defining_expr, body) ->
+  | Let (Variable, block_kind, id, defining_expr, body) ->
     let mut_var = Mutable_variable.of_ident id in
     let var = Variable.create_with_same_name_as_ident id in
     let defining_expr =
@@ -180,7 +180,7 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
            initial_value = var;
            body;
            contents_kind = block_kind })
-  | Lfunction { kind; params; body; attr; loc; } ->
+  | Function { kind; params; body; attr; loc; } ->
     let name =
       (* Name anonymous functions by their source location, if known. *)
       if loc = Location.none then "anon-fn"
@@ -206,24 +206,9 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
     Flambda.create_let set_of_closures_var set_of_closures
       (name_expr (Project_closure (project_closure))
         ~name:("project_closure_" ^ name))
-  | Lapply { ap_func; ap_args; ap_loc; ap_should_be_tailcall = _;
-        ap_inlined; ap_specialised; } ->
-    Lift_code.lifting_helper (close_list t env ap_args)
-      ~evaluation_order:`Right_to_left
-      ~name:"apply_arg"
-      ~create_body:(fun args ->
-        let func = close t env ap_func in
-        let func_var = Variable.create "apply_funct" in
-        Flambda.create_let func_var (Expr func)
-          (Apply ({
-              func = func_var;
-              args;
-              kind = Indirect;
-              dbg = Debuginfo.from_location ap_loc;
-              inline = ap_inlined;
-              specialise = ap_specialised;
-            })))
-  | Lletrec (defs, body) ->
+  | Apply apply ->
+    close_apply t env apply
+  | Let_rec (defs, body) ->
     let env =
       List.fold_right (fun (id,  _) env ->
           Env.add_var env id (Variable.create_with_same_name_as_ident id))
@@ -234,7 +219,7 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
          will be named after the corresponding identifier in the [let rec]. *)
       List.map (function
           | (let_rec_ident,
-             Lambda.Lfunction { kind; params; body; attr; loc }) ->
+             Ilambda.Function { kind; params; body; attr; loc }) ->
             let closure_bound_var =
               Variable.create_with_same_name_as_ident let_rec_ident
             in
@@ -304,7 +289,7 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
       in
       Let_rec (defs, close t env body)
     end
-  | Lsend (kind, meth, obj, args, loc) ->
+  | Send (kind, meth, obj, args, loc) ->
     let meth_var = Variable.create "meth" in
     let obj_var = Variable.create "obj" in
     let dbg = Debuginfo.from_location loc in
@@ -315,7 +300,7 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
           ~name:"send_arg"
           ~create_body:(fun args ->
               Send { kind; meth = meth_var; obj = obj_var; args; dbg; })))
-  | Lprim ((Pdivint Safe | Pmodint Safe
+  | Prim ((Pdivint Safe | Pmodint Safe
            | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }) as prim,
            [arg1; arg2], loc)
       when not !Clflags.fast -> (* not -unsafe *)
@@ -375,11 +360,11 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
                      mshinwell: deferred CR *)
                   name_expr ~name:"result"
                     (Prim (prim, [numerator; denominator], dbg))))))))
-  | Lprim ((Pdivint Safe | Pmodint Safe
+  | Prim ((Pdivint Safe | Pmodint Safe
            | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _, _)
       when not !Clflags.fast ->
     Misc.fatal_error "Pdivint / Pmodint must have exactly two arguments"
-  | Lprim (Psequor, [arg1; arg2], _) ->
+  | Prim (Psequor, [arg1; arg2], _) ->
     let arg1 = close t env arg1 in
     let arg2 = close t env arg2 in
     let const_true = Variable.create "const_true" in
@@ -387,7 +372,7 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
     Flambda.create_let const_true (Const (Int 1))
       (Flambda.create_let cond (Expr arg1)
         (If_then_else (cond, Var const_true, arg2)))
-  | Lprim (Psequand, [arg1; arg2], _) ->
+  | Prim (Psequand, [arg1; arg2], _) ->
     let arg1 = close t env arg1 in
     let arg2 = close t env arg2 in
     let const_false = Variable.create "const_false" in
@@ -395,12 +380,12 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
     Flambda.create_let const_false (Const (Int 0))
       (Flambda.create_let cond (Expr arg1)
         (If_then_else (cond, arg2, Var const_false)))
-  | Lprim ((Psequand | Psequor), _, _) ->
+  | Prim ((Psequand | Psequor), _, _) ->
     Misc.fatal_error "Psequand / Psequor must have exactly two arguments"
-  | Lprim (Pidentity, [arg], _) -> close t env arg
-  | Lprim (Pdirapply, [funct; arg], loc)
-  | Lprim (Prevapply, [arg; funct], loc) ->
-    let apply : Lambda.lambda_apply =
+  | Prim (Pidentity, [arg], _) -> close t env arg
+  | Prim (Pdirapply, [funct; arg], loc)
+  | Prim (Prevapply, [arg; funct], loc) ->
+    let apply : Ilambda.apply =
       { ap_func = funct;
         ap_args = [arg];
         ap_loc = loc;
@@ -412,31 +397,31 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
         ap_specialised = Default_specialise;
       }
     in
-    close t env (Lambda.Lapply apply)
-  | Lprim (Praise kind, [arg], loc) ->
+    close_apply t env apply
+  | Prim (Praise kind, [arg], loc) ->
     let arg_var = Variable.create "raise_arg" in
     let dbg = Debuginfo.from_location loc in
     Flambda.create_let arg_var (Expr (close t env arg))
       (name_expr
         (Prim (Praise kind, [arg_var], dbg))
         ~name:"raise")
-  | Lprim (Pfield _, [Lprim (Pgetglobal id, [],_)], _)
+  | Prim (Pfield _, [Prim (Pgetglobal id, [],_)], _)
       when Ident.same id t.current_unit_id ->
     Misc.fatal_errorf "[Pfield (Pgetglobal ...)] for the current compilation \
         unit is forbidden upon entry to the middle end"
-  | Lprim (Psetfield (_, _, _), [Lprim (Pgetglobal _, [], _); _], _) ->
+  | Prim (Psetfield (_, _, _), [Prim (Pgetglobal _, [], _); _], _) ->
     Misc.fatal_errorf "[Psetfield (Pgetglobal ...)] is \
         forbidden upon entry to the middle end"
-  | Lprim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
+  | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
     name_expr (Symbol symbol) ~name:"predef_exn"
-  | Lprim (Pgetglobal id, [], _) ->
+  | Prim (Pgetglobal id, [], _) ->
     assert (not (Ident.same id t.current_unit_id));
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
     name_expr (Symbol symbol) ~name:"Pgetglobal"
-  | Lprim (p, args, loc) ->
+  | Prim (p, args, loc) ->
     (* One of the important consequences of the ANF-like representation
        here is that we obtain names corresponding to the components of
        blocks being made (with [Pmakeblock]).  This information can be used
@@ -451,7 +436,7 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
       ~create_body:(fun args ->
         name_expr (Prim (p, args, dbg))
           ~name)
-  | Lswitch (arg, sw) ->
+  | Switch (arg, sw) ->
     let scrutinee = Variable.create "switch" in
     let aux (i, lam) = i, close t env lam in
     let zero_to_n = Numbers.Int.zero_to_n in
@@ -463,67 +448,52 @@ and close t env (lam : Lambda.lambda) : Flambda.t =
           blocks = List.map aux sw.sw_blocks;
           failaction = Misc.may_map (close t env) sw.sw_failaction;
         }))
-  | Lstringswitch (arg, sw, def, _) ->
+  | String_switch (arg, sw, def, _) ->
     let scrutinee = Variable.create "string_switch" in
     Flambda.create_let scrutinee (Expr (close t env arg))
       (String_switch (scrutinee,
         List.map (fun (s, e) -> s, close t env e) sw,
         Misc.may_map (close t env) def))
-  | Lstaticraise (i, args) ->
+  | Apply_cont (cont, args) ->
     Lift_code.lifting_helper (close_list t env args)
       ~evaluation_order:`Right_to_left
-      ~name:"staticraise_arg"
+      ~name:"apply_cont_arg"
       ~create_body:(fun args ->
-        let static_exn = Env.find_static_exception env i in
-        Apply_cont (static_exn, args))
-  | Lstaticcatch (body, (i, ids), handler) ->
-    let st_exn = Cont_variable.create () in
-    let env = Env.add_static_exception env i st_exn in
+        let cont = Env.find_continuation env cont in
+        Apply_cont (cont, args))
+  | Let_cont (body, (i, ids), handler) ->
+    let cont = Cont_variable.create () in
+    let env = Env.add_continuation env i cont in
     let vars = List.map (Variable.create_with_same_name_as_ident) ids in
-    Let_cont (st_exn, vars, close t env body,
+    Let_cont (cont, vars, close t env body,
       close t (Env.add_vars env ids vars) handler)
-  | Ltrywith (body, id, handler) ->
+  | Try_with (body, id, handler) ->
     let var = Variable.create_with_same_name_as_ident id in
     Try_with (close t env body, var, close t (Env.add_var env id var) handler)
-  | Lifthenelse (cond, ifso, ifnot) ->
+  | If_then_else (cond, ifso, ifnot) ->
     let cond = close t env cond in
     let cond_var = Variable.create "cond" in
     Flambda.create_let cond_var (Expr cond)
       (If_then_else (cond_var, close t env ifso, close t env ifnot))
-  | Lsequence (lam1, lam2) ->
-    let var = Variable.create "sequence" in
-    let lam1 = Flambda.Expr (close t env lam1) in
-    let lam2 = close t env lam2 in
-    Flambda.create_let var lam1 lam2
-  | Lwhile (cond, body) -> While (close t env cond, close t env body)
-  | Lfor (id, lo, hi, direction, body) ->
-    let bound_var = Variable.create_with_same_name_as_ident id in
-    let from_value = Variable.create "for_from" in
-    let to_value = Variable.create "for_to" in
-    let body = close t (Env.add_var env id bound_var) body in
-    Flambda.create_let from_value (Expr (close t env lo))
-      (Flambda.create_let to_value (Expr (close t env hi))
-        (For { bound_var; from_value; to_value; direction; body; }))
-  | Lassign (id, new_value) ->
-    let being_assigned =
-      match Env.find_mutable_var_exn env id with
-      | being_assigned -> being_assigned
-      | exception Not_found ->
-        Misc.fatal_errorf "Closure_conversion.close: unbound mutable \
-            variable %s in assignment"
-          (Ident.unique_name id)
-    in
-    let new_value_var = Variable.create "new_value" in
-    Flambda.create_let new_value_var (Expr (close t env new_value))
-      (Assign { being_assigned; new_value = new_value_var; })
-  | Levent (lam, _) -> close t env lam
-  | Lifused _ ->
-    (* [Lifused] is used to mark that this expression should be alive only if
-       an identifier is.  Every use should have been removed by
-       [Simplif.simplify_lets], either by replacing by the inner expression,
-       or by completely removing it (replacing by unit). *)
-    Misc.fatal_error "[Lifused] should have been removed by \
-        [Simplif.simplify_lets]"
+  | Event (lam, _) -> close t env lam
+
+and close_apply t env { ap_func; ap_args; ap_loc; ap_should_be_tailcall = _;
+      ap_inlined; ap_specialised; } =
+  Lift_code.lifting_helper (close_list t env ap_args)
+    ~evaluation_order:`Right_to_left
+    ~name:"apply_arg"
+    ~create_body:(fun args ->
+      let func = close t env ap_func in
+      let func_var = Variable.create "apply_funct" in
+      Flambda.create_let func_var (Expr func)
+        (Apply ({
+            func = func_var;
+            args;
+            kind = Indirect;
+            dbg = Debuginfo.from_location ap_loc;
+            inline = ap_inlined;
+            specialise = ap_specialised;
+          })))
 
 (** Perform closure conversion on a set of function declarations, returning a
     set of closures.  (The set will often only contain a single function;
