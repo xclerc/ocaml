@@ -239,6 +239,7 @@ let rec approx_of_expr (env : Env.t) (flam : Flambda.t) : Export_info.approx =
 and descr_of_named (env : Env.t) (named : Flambda.named)
       : Export_info.approx =
   match named with
+  | Var var -> Env.find_approx env var
   | Expr expr -> approx_of_expr env expr
   | Symbol sym -> Value_symbol sym
   | Read_mutable _ -> Value_unknown

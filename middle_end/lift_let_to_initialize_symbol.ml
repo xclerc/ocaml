@@ -57,8 +57,8 @@ let rec accumulate ~substitution ~copied_lets ~extracted_lets
     { copied_lets; extracted_lets;
       terminator = Flambda_utils.toplevel_substitution substitution expr;
     }
-  | Let { var; defining_expr = Expr (Var alias); body; _ }
-  | Let_rec ([var, Expr (Var alias)], body) ->
+  | Let { var; defining_expr = Var alias; body; _ }
+  | Let_rec ([var, Var alias], body) ->
     let alias =
       match Variable.Map.find alias substitution with
       | exception Not_found -> alias

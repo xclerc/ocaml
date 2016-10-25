@@ -200,7 +200,7 @@ let reference_recursive_function_directly env closure_id =
   let closure_id = Closure_id.unwrap closure_id in
   match E.find_opt env closure_id with
   | None -> None
-  | Some approx -> Some (Flambda.Expr (Var closure_id), approx)
+  | Some approx -> Some (Flambda.Var closure_id, approx)
 
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)
@@ -255,7 +255,7 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
       | Some (var, projection) ->
         simplify_free_variable_named env var ~f:(fun _env var var_approx ->
           let r = R.map_benefit r (B.remove_projection projection) in
-          Expr (Var var), ret r var_approx)
+          Var var, ret r var_approx)
       | None ->
         match reference_recursive_function_directly env closure_id with
         | Some (flam, approx) -> flam, ret r approx
@@ -329,7 +329,7 @@ let simplify_move_within_set_of_closures env r
       | Some var ->
         simplify_free_variable_named env var ~f:(fun _env var var_approx ->
           let r = R.map_benefit r (B.remove_projection projection) in
-          Expr (Var var), ret r var_approx)
+          Var var, ret r var_approx)
       | None ->
         match reference_recursive_function_directly env move_to with
         | Some (flam, approx) -> flam, ret r approx
@@ -337,7 +337,7 @@ let simplify_move_within_set_of_closures env r
           if Closure_id.equal start_from move_to then
             (* Moving from one closure to itself is a no-op.  We can return an
                [Var] since we already have a variable bound to the closure. *)
-            Expr (Var closure), ret r closure_approx
+            Var closure, ret r closure_approx
           else
             match set_of_closures_var with
             | Some set_of_closures_var when E.mem env set_of_closures_var ->
@@ -468,14 +468,14 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var)
       | Some var ->
         simplify_free_variable_named env var ~f:(fun _env var var_approx ->
           let r = R.map_benefit r (B.remove_projection projection) in
-          Expr (Var var), ret r var_approx)
+          Var var, ret r var_approx)
       | None ->
         let approx = A.approx_for_bound_var value_set_of_closures var in
         let expr : Flambda.named = Project_var { closure; closure_id; var; } in
         let unwrapped = Var_within_closure.unwrap var in
         let expr =
           if E.mem env unwrapped then
-            Flambda.Expr (Var unwrapped)
+            Flambda.Var unwrapped
           else
             expr
         in
@@ -837,7 +837,7 @@ and simplify_partial_application env r ~lhs_of_application
   let with_known_args =
     Flambda_utils.bind
       ~bindings:(List.map (fun (var, arg) ->
-          var, Flambda.Expr (Var arg)) applied_args)
+          var, Flambda.Var arg) applied_args)
       ~body:wrapper_accepting_remaining_args
   in
   simplify env r with_known_args
@@ -871,6 +871,14 @@ and simplify_over_application env r ~args ~args_approxs ~function_decls
 
 and simplify_named env r (tree : Flambda.named) : Flambda.named * R.t =
   match tree with
+  | Var var ->
+    let var = Freshening.apply_variable (E.freshening env) var in
+    (* If from the approximations we can simplify [var], then we will be
+       forced to insert [let]-expressions (done using [name_expr], in
+       [Simple_value_approx]) to bind a [named].  This has an important
+       consequence: it brings bindings of constants closer to their use
+       points. *)
+    simplify_named_using_approx_and_env env r (Var var) (E.find_exn env var)
   | Symbol sym ->
     (* New Symbol construction could have been introduced during
        transformation (by simplify_named_using_approx_and_env).
@@ -995,7 +1003,7 @@ and simplify_named env r (tree : Flambda.named) : Flambda.named * R.t =
         | Some var ->
           simplify_free_variable_named env var ~f:(fun _env var var_approx ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            Expr (Var var), ret r var_approx)
+            Var var, ret r var_approx)
         | None ->
           begin match A.get_field arg_approx ~field_index with
           | Unreachable -> (Flambda.Expr Proved_unreachable, r)
@@ -1081,11 +1089,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
   | Var var ->
     let var = Freshening.apply_variable (E.freshening env) var in
-    (* If from the approximations we can simplify [var], then we will be
-       forced to insert [let]-expressions (done using [name_expr], in
-       [Simple_value_approx]) to bind a [named].  This has an important
-       consequence: it brings bindings of constants closer to their use
-       points. *)
     simplify_using_approx_and_env env r (Var var) (E.find_exn env var)
   | Apply apply ->
     simplify_apply env r ~apply
@@ -1175,7 +1178,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             assert (Cont_variable.equal i j);
             let handler =
               List.fold_left2 (fun body var arg ->
-                  Flambda.create_let var (Expr (Var arg)) body)
+                  Flambda.create_let var (Var arg) body)
                 handler vars args
             in
             let r = R.exit_scope_catch r i in

@@ -498,7 +498,7 @@ module Make (T : S) = struct
             let named : Flambda.named =
               match definition with
               | Existing_inner_free_var existing_inner_var ->
-                Expr (Var existing_inner_var)
+                Var existing_inner_var
               | Projection_from_existing_specialised_arg projection ->
                 Flambda_utils.projection_to_named projection
             in

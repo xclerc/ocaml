@@ -110,6 +110,7 @@ let rec analyse_expr ~which_variables expr =
   in
   let for_named (named : Flambda.named) =
     match named with
+    | Var var -> check_free_variable var
     | Project_var project_var
         when Variable.Map.mem project_var.closure which_variables ->
       projections :=

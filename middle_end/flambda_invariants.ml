@@ -233,6 +233,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Proved_unreachable -> ()
   and loop_named env (named : Flambda.named) =
     match named with
+    | Var var -> check_variable_is_bound env var
     | Symbol symbol -> check_symbol_is_bound env symbol
     | Const const -> ignore_const const
     | Allocated_const const -> ignore_allocated_const const
@@ -560,7 +561,7 @@ let used_closure_ids (program:Flambda.program) =
       used := Closure_id.Set.add move_to !used
     | Project_var { closure = _; closure_id; var = _ } ->
       used := Closure_id.Set.add closure_id !used
-    | Set_of_closures _ | Symbol _ | Const _ | Allocated_const _
+    | Set_of_closures _ | Var _ | Symbol _ | Const _ | Allocated_const _
     | Prim _ | Expr _ | Read_mutable _ | Read_symbol_field _ -> ()
   in
   (* CR-someday pchambart: check closure_ids of constant_defining_values'

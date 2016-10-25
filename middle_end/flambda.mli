@@ -115,6 +115,7 @@ type t =
 
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)
 and named =
+  | Var of Variable.t
   | Symbol of Symbol.t
   | Const of const
   | Allocated_const of Allocated_const.t

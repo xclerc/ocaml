@@ -26,6 +26,8 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
   let set = ref Variable.Set.empty in
   let rec loop_named (flam : Flambda.named) =
     match flam with
+    | Var var ->
+      set := Variable.Set.add var !set
     (* Directly used block: does not prevent use as a variable *)
     | Prim(Pfield _, [_], _)
     | Prim(Poffsetref _, [_], _) -> ()
@@ -190,7 +192,7 @@ let eliminate_ref_of_expr flam =
          | None -> Expr Proved_unreachable
          | Some (being_assigned,_) ->
            Expr (Assign { being_assigned; new_value }))
-      | Prim _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+      | Prim _ | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _ | Set_of_closures _ | Project_closure _
       | Move_within_set_of_closures _ | Project_var _ | Expr _ ->
         named
