@@ -301,6 +301,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
 
   and mark_named ~toplevel curr (named : Flambda.named) =
     match named with
+    | Var var -> mark_var var curr
     | Set_of_closures (set_of_closures) ->
       mark_loop_set_of_closures ~toplevel curr set_of_closures
     | Const _ | Allocated_const _ -> ()

@@ -159,6 +159,8 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
 
 and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   match named1, named2 with
+  | Var var1, Var var2 -> Variable.equal var1 var2
+  | Var _, _ | _, Var _ -> false
   | Symbol s1 , Symbol s2  -> Symbol.equal s1 s2
   | Symbol _, _ | _, Symbol _ -> false
   | Const c1, Const c2 -> compare_const c1 c2 = 0
@@ -271,6 +273,9 @@ let toplevel_substitution sb tree =
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
+    | Var var ->
+      let var = sb var in
+      Var var
     | Symbol _ | Const _ | Expr _ -> named
     | Allocated_const _ | Read_mutable _ -> named
     | Read_symbol_field _ -> named
@@ -565,6 +570,10 @@ let substitute_read_symbol_field_for_variables
         to_substitute
     in
     match named with
+    | Var v when Variable.Map.mem v substitution ->
+      let fresh = Variable.rename v in
+      Expr (bind v fresh (Var fresh))
+    | Var _ -> named
     | Symbol _ | Const _ | Expr _ -> named
     | Allocated_const _ | Read_mutable _ -> named
     | Read_symbol_field _ -> named

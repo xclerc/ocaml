@@ -75,6 +75,7 @@ type t =
   | Proved_unreachable
 
 and named =
+  | Var of Variable.t
   | Symbol of Symbol.t
   | Const of const
   | Allocated_const of Allocated_const.t
@@ -330,6 +331,7 @@ let rec lam ppf (flam : t) =
       Variable.print to_value lam body
 and print_named ppf (named : named) =
   match named with
+  | Var var -> Variable.print ppf var
   | Symbol (symbol) -> Symbol.print ppf symbol
   | Const (cst) -> fprintf ppf "Const(%a)" print_const cst
   | Allocated_const (cst) -> fprintf ppf "Aconst(%a)" Allocated_const.print cst
@@ -605,10 +607,11 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
 
 and variables_usage_named ?ignore_uses_in_project_var
     ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ~all_used_variables named =
+    ~all_used_variables (named : named) =
   let free = ref Variable.Set.empty in
   let free_variable fv = free := Variable.Set.add fv !free in
   begin match named with
+  | Var var -> free_variable var
   | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
   | Read_symbol_field _ -> ()
   | Set_of_closures { free_vars; specialised_args; _ } ->
@@ -793,7 +796,7 @@ let iter_general ~toplevel f f_named maybe_named =
   and aux_named (named : named) =
     f_named named;
     match named with
-    | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+    | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
     | Read_symbol_field _
     | Project_closure _ | Project_var _ | Move_within_set_of_closures _
     | Prim _ -> ()

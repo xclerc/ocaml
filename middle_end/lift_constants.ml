@@ -52,6 +52,7 @@ let assign_symbols_and_collect_constant_definitions
       let assign_existing_symbol = Variable.Tbl.add var_to_symbol_tbl var in
       let record_definition = Variable.Tbl.add var_to_definition_tbl var in
       match named with
+      | Var var -> record_definition (AA.Variable var)
       | Symbol symbol ->
         assign_existing_symbol symbol;
         record_definition (AA.Symbol symbol)
@@ -986,7 +987,7 @@ let lift_constants (program : Flambda.program) ~backend =
             Set_of_closures new_set_of_closures
         | (Project_var project_var) as original ->
           rewrite_project_var var_to_block_field_tbl project_var ~original
-        | (Symbol _ | Const _ | Allocated_const _ | Project_closure _
+        | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
         | Move_within_set_of_closures _ | Prim _ | Expr _
         | Read_mutable _ | Read_symbol_field _) as named -> named)
       expr

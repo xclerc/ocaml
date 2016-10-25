@@ -347,6 +347,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
 
 and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
   match named with
+  | Var var -> subst_var env var
   | Symbol sym -> to_clambda_symbol env sym
   | Const (Const_pointer n) -> Uconst (Uconst_ptr n)
   | Const (Int n) -> Uconst (Uconst_int n)

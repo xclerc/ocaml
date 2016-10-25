@@ -871,6 +871,14 @@ and simplify_over_application env r ~args ~args_approxs ~function_decls
 
 and simplify_named env r (tree : Flambda.named) : Flambda.named * R.t =
   match tree with
+  | Var var ->
+    let var = Freshening.apply_variable (E.freshening env) var in
+    (* If from the approximations we can simplify [var], then we will be
+       forced to insert [let]-expressions (done using [name_expr], in
+       [Simple_value_approx]) to bind a [named].  This has an important
+       consequence: it brings bindings of constants closer to their use
+       points. *)
+    simplify_named_using_approx_and_env env r (Var var) (E.find_exn env var)
   | Symbol sym ->
     (* New Symbol construction could have been introduced during
        transformation (by simplify_named_using_approx_and_env).
@@ -1081,11 +1089,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
   | Var var ->
     let var = Freshening.apply_variable (E.freshening env) var in
-    (* If from the approximations we can simplify [var], then we will be
-       forced to insert [let]-expressions (done using [name_expr], in
-       [Simple_value_approx]) to bind a [named].  This has an important
-       consequence: it brings bindings of constants closer to their use
-       points. *)
     simplify_using_approx_and_env env r (Var var) (E.find_exn env var)
   | Apply apply ->
     simplify_apply env r ~apply
