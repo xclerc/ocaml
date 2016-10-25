@@ -19,6 +19,53 @@
 module I = Ilambda
 module L = Lambda
 
+let add_default_argument_wrappers lam =
+  (* CR-someday mshinwell: Temporary hack to mark default argument wrappers
+     as stubs.  Other possibilities:
+     1. Change L.inline_attribute to add another ("stub") case;
+     2. Add a "stub" field to the Lfunction record. *)
+  let stubify body : L.lambda =
+    let stub_prim =
+      Primitive.simple ~name:Closure_conversion_aux.stub_hack_prim_name
+        ~arity:1 ~alloc:false
+    in
+    Prim (Pccall stub_prim, [body], Location.none)
+  in
+  let defs_are_all_functions (defs : (_ * L.lambda) list) =
+    List.for_all (function (_, L.Lfunction _) -> true | _ -> false) defs
+  in
+  let f (lam : L.lambda) : L.lambda =
+    match lam with
+    | Llet (( Strict | Alias | StrictOpt), _k, id,
+        Lfunction {kind; params; body = fbody; attr; loc}, body) ->
+      begin match
+        Simplif.split_default_wrapper id kind params fbody attr loc
+          ~create_wrapper_body:stubify
+      with
+      | [fun_id, def] -> Llet (Alias, Pgenval, fun_id, def, body)
+      | [fun_id, def; inner_fun_id, def_inner] ->
+        Llet (Alias, Pgenval, inner_fun_id, def_inner,
+              Llet (Alias, Pgenval, fun_id, def, body))
+      | _ -> assert false
+      end
+    | Lletrec (defs, body) as lam ->
+      if defs_are_all_functions defs then
+        let defs =
+          List.flatten
+            (List.map
+               (function
+                 | (id, L.Lfunction {kind; params; body; attr; loc}) ->
+                   Simplif.split_default_wrapper id kind params body attr loc
+                     ~create_wrapper_body:stubify
+                 | _ -> assert false)
+               defs)
+        in
+        Lletrec (defs, body)
+      else lam
+    | lam -> lam
+  in
+  L.map f lam
+
 let rec cps (lam : L.lambda) ~is_tail k =
   match lam with
   | Lvar id -> k (I.Var id)
@@ -169,4 +216,5 @@ and cps_option lam_opt ~is_tail k =
   | Some lam -> cps lam ~is_tail (fun lam -> k (Some lam))
 
 let lambda_to_ilambda lam =
+  let lam = add_default_argument_wrappers lam in
   cps lam ~is_tail:true (fun ilam -> ilam)
