@@ -64,7 +64,7 @@ let tupled_function_call_stub original_params unboxed_version
     ~specialise:Default_specialise ~is_a_functor:false
 
 let rec eliminate_const_block (const : Lambda.structured_constant)
-      : Lambda.lambda =
+      : Ilambda.t =
   match const with
   | Const_block (tag, consts) ->
     (* CR-soon mshinwell for lwhite: fix location *)
@@ -73,7 +73,7 @@ let rec eliminate_const_block (const : Lambda.structured_constant)
   | Const_base _
   | Const_pointer _
   | Const_immstring _
-  | Const_float_array _ -> Lconst const
+  | Const_float_array _ -> Const const
 
 let rec close_const t env (const : Lambda.structured_constant)
       : Flambda.named * string =
@@ -133,7 +133,7 @@ and close t env (lam : Ilambda.t) : Flambda.t =
            initial_value = var;
            body;
            contents_kind = block_kind })
-  | Function { kind; params; body; attr; loc; } ->
+  | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
     let name =
       (* Name anonymous functions by their source location, if known. *)
       if loc = Location.none then "anon-fn"
@@ -148,6 +148,7 @@ and close t env (lam : Ilambda.t) : Flambda.t =
         Function_decl.create ~let_rec_ident:None ~closure_bound_var ~kind
           ~params ~body ~inline:attr.inline ~specialise:attr.specialise
           ~is_a_functor:attr.is_a_functor ~loc
+          ~free_idents_of_body
       in
       close_functions t env (Function_decls.create [decl])
     in
@@ -172,7 +173,8 @@ and close t env (lam : Ilambda.t) : Flambda.t =
          will be named after the corresponding identifier in the [let rec]. *)
       List.map (function
           | (let_rec_ident,
-             Ilambda.Function { kind; params; body; attr; loc }) ->
+             Ilambda.Function { kind; params; body; attr; loc;
+               free_idents_of_body; }) ->
             let closure_bound_var =
               Variable.create_with_same_name_as_ident let_rec_ident
             in
@@ -180,7 +182,7 @@ and close t env (lam : Ilambda.t) : Flambda.t =
               Function_decl.create ~let_rec_ident:(Some let_rec_ident)
                 ~closure_bound_var ~kind ~params ~body
                 ~inline:attr.inline ~specialise:attr.specialise
-                ~is_a_functor:attr.is_a_functor ~loc
+                ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
             in
             Some function_declaration
           | _ -> None)
@@ -339,15 +341,15 @@ and close t env (lam : Ilambda.t) : Flambda.t =
   | Prim (Pdirapply, [funct; arg], loc)
   | Prim (Prevapply, [arg; funct], loc) ->
     let apply : Ilambda.apply =
-      { ap_func = funct;
-        ap_args = [arg];
-        ap_loc = loc;
-        ap_should_be_tailcall = false;
+      { func = funct;
+        args = [arg];
+        loc = loc;
+        should_be_tailcall = false;
         (* CR-someday lwhite: it would be nice to be able to give
            inlined attributes to functions applied with the application
            operators. *)
-        ap_inlined = Default_inline;
-        ap_specialised = Default_specialise;
+        inlined = Default_inline;
+        specialised = Default_specialise;
       }
     in
     close_apply t env apply
@@ -395,11 +397,11 @@ and close t env (lam : Ilambda.t) : Flambda.t =
     let zero_to_n = Numbers.Int.zero_to_n in
     Flambda.create_let scrutinee (Expr (close t env arg))
       (Switch (scrutinee,
-        { numconsts = zero_to_n (sw.sw_numconsts - 1);
-          consts = List.map aux sw.sw_consts;
-          numblocks = zero_to_n (sw.sw_numblocks - 1);
-          blocks = List.map aux sw.sw_blocks;
-          failaction = Misc.may_map (close t env) sw.sw_failaction;
+        { numconsts = zero_to_n (sw.numconsts - 1);
+          consts = List.map aux sw.consts;
+          numblocks = zero_to_n (sw.numblocks - 1);
+          blocks = List.map aux sw.blocks;
+          failaction = Misc.may_map (close t env) sw.failaction;
         }))
   | String_switch (arg, sw, def, _) ->
     let scrutinee = Variable.create "string_switch" in
@@ -414,7 +416,7 @@ and close t env (lam : Ilambda.t) : Flambda.t =
       ~create_body:(fun args ->
         let cont = Env.find_continuation env cont in
         Apply_cont (cont, args))
-  | Let_cont (body, (i, ids), handler) ->
+  | Let_cont (body, i, ids, handler) ->
     let cont = Cont_variable.create () in
     let env = Env.add_continuation env i cont in
     let vars = List.map (Variable.create_with_same_name_as_ident) ids in
@@ -430,22 +432,22 @@ and close t env (lam : Ilambda.t) : Flambda.t =
       (If_then_else (cond_var, close t env ifso, close t env ifnot))
   | Event (lam, _) -> close t env lam
 
-and close_apply t env { ap_func; ap_args; ap_loc; ap_should_be_tailcall = _;
-      ap_inlined; ap_specialised; } =
-  Lift_code.lifting_helper (close_list t env ap_args)
+and close_apply t env ({ func; args; loc; should_be_tailcall = _;
+      inlined; specialised; } : Ilambda.apply) =
+  Lift_code.lifting_helper (close_list t env args)
     ~evaluation_order:`Right_to_left
     ~name:"apply_arg"
     ~create_body:(fun args ->
-      let func = close t env ap_func in
+      let func = close t env func in
       let func_var = Variable.create "apply_funct" in
       Flambda.create_let func_var (Expr func)
         (Apply ({
             func = func_var;
             args;
             kind = Indirect;
-            dbg = Debuginfo.from_location ap_loc;
-            inline = ap_inlined;
-            specialise = ap_specialised;
+            dbg = Debuginfo.from_location loc;
+            inline = inlined;
+            specialise = specialised;
           })))
 
 (** Perform closure conversion on a set of function declarations, returning a
@@ -531,16 +533,16 @@ and close_functions t external_env function_declarations : Flambda.named =
 and close_list t sb l = List.map (close t sb) l
 
 and close_let_bound_expression t ?let_rec_ident let_bound_var env
-      (lam : Lambda.lambda) : Flambda.named =
+      (lam : Ilambda.t) : Flambda.named =
   match lam with
-  | Lfunction { kind; params; body; attr; loc; } ->
+  | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
     (* Ensure that [let] and [let rec]-bound functions have appropriate
        names. *)
     let closure_bound_var = Variable.rename let_bound_var in
     let decl =
       Function_decl.create ~let_rec_ident ~closure_bound_var ~kind ~params
         ~body ~inline:attr.inline ~specialise:attr.specialise
-        ~is_a_functor:attr.is_a_functor ~loc
+        ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
     in
     let set_of_closures_var =
       Variable.rename let_bound_var ~append:"_set_of_closures"
@@ -558,7 +560,7 @@ and close_let_bound_expression t ?let_rec_ident let_bound_var env
         ~name:(Variable.unique_name let_bound_var)))
   | lam -> Expr (close t env lam)
 
-let lambda_to_flambda ~backend ~module_ident ~size ~filename lam
+let ilambda_to_flambda ~backend ~module_ident ~size ~filename lam
       : Flambda.program =
   let module Backend = (val backend : Backend_intf.S) in
   let compilation_unit = Compilation_unit.get_current_exn () in

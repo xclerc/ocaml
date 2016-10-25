@@ -91,7 +91,7 @@ module Function_decls = struct
       closure_bound_var : Variable.t;
       kind : Lambda.function_kind;
       params : Ident.t list;
-      body : Lambda.lambda;
+      body : Ilambda.t;
       free_idents_of_body : IdentSet.t;
       inline : Lambda.inline_attribute;
       specialise : Lambda.specialise_attribute;
@@ -100,7 +100,7 @@ module Function_decls = struct
     }
 
     let create ~let_rec_ident ~closure_bound_var ~kind ~params ~body ~inline
-        ~specialise ~is_a_functor ~loc =
+        ~specialise ~is_a_functor ~loc ~free_idents_of_body =
       let let_rec_ident =
         match let_rec_ident with
         | None -> Ident.create "unnamed_function"
@@ -111,7 +111,7 @@ module Function_decls = struct
         kind;
         params;
         body;
-        free_idents_of_body = Lambda.free_variables body;
+        free_idents_of_body;
         inline;
         specialise;
         is_a_functor;
@@ -131,7 +131,7 @@ module Function_decls = struct
 
     let primitive_wrapper t =
       match t.body with
-      | Lprim (Pccall { Primitive. prim_name; }, [body], _)
+      | Prim (Pccall { Primitive. prim_name; }, [body], _)
         when prim_name = stub_hack_prim_name -> Some body
       | _ -> None
   end

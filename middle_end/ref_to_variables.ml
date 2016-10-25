@@ -78,13 +78,6 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
     | Try_with (body, _, handler) ->
       loop body;
       loop handler
-    | While (cond, body) ->
-      loop cond;
-      loop body
-    | For { bound_var = _; from_value; to_value; direction = _; body; } ->
-      set := Variable.Set.add from_value !set;
-      set := Variable.Set.add to_value !set;
-      loop body
     | Apply_cont (_, args) ->
       set := Variable.Set.union (Variable.Set.of_list args) !set
     | Proved_unreachable | Apply _ | Send _ | Assign _ ->
@@ -158,7 +151,7 @@ let eliminate_ref_of_expr flam =
       | Let_rec _ | Switch _ | String_switch _
       | Apply_cont _ | Let_cont _
       | Try_with _ | If_then_else _
-      | While _ | For _ | Send _ | Proved_unreachable ->
+      | Send _ | Proved_unreachable ->
         flam
     and aux_named (named : Flambda.named) : Flambda.named =
       match named with

@@ -57,18 +57,19 @@ module Function_decls : sig
       -> closure_bound_var:Variable.t
       -> kind:Lambda.function_kind
       -> params:Ident.t list
-      -> body:Lambda.lambda
+      -> body:Ilambda.t
       -> inline:Lambda.inline_attribute
       -> specialise:Lambda.specialise_attribute
       -> is_a_functor:bool
       -> loc:Location.t
+      -> free_idents_of_body:Lambda.IdentSet.t
       -> t
 
     val let_rec_ident : t -> Ident.t
     val closure_bound_var : t -> Variable.t
     val kind : t -> Lambda.function_kind
     val params : t -> Ident.t list
-    val body : t -> Lambda.lambda
+    val body : t -> Ilambda.t
     val inline : t -> Lambda.inline_attribute
     val specialise : t -> Lambda.specialise_attribute
     val is_a_functor : t -> bool
@@ -77,7 +78,7 @@ module Function_decls : sig
     (* [primitive_wrapper t] is [None] iff [t] is not a wrapper for a function
        with default optional arguments. Otherwise it is [Some body], where
        [body] is the body of the wrapper. *)
-    val primitive_wrapper : t -> Lambda.lambda option
+    val primitive_wrapper : t -> Ilambda.t option
 
     (* Like [all_free_idents], but for just one function. *)
     val free_idents : t -> Lambda.IdentSet.t

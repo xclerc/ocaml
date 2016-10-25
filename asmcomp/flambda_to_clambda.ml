@@ -325,12 +325,6 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
   | If_then_else (arg, ifso, ifnot) ->
     Uifthenelse (subst_var env arg, to_clambda t env ifso,
       to_clambda t env ifnot)
-  | While (cond, body) ->
-    Uwhile (to_clambda t env cond, to_clambda t env body)
-  | For { bound_var; from_value; to_value; direction; body } ->
-    let id, env_body = Env.add_fresh_ident env bound_var in
-    Ufor (id, subst_var env from_value, subst_var env to_value,
-      direction, to_clambda t env_body body)
   | Assign { being_assigned; new_value } ->
     let id =
       try Env.ident_for_mutable_var_exn env being_assigned

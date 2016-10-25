@@ -39,7 +39,6 @@ let ignore_int_set (_ : Numbers.Int.Set.t) = ()
 let ignore_bool (_ : bool) = ()
 let ignore_string (_ : string) = ()
 let ignore_static_exception (_ : Cont_variable.t) = ()
-let ignore_direction_flag (_ : Asttypes.direction_flag) = ()
 let ignore_primitive ( _ : Lambda.primitive) = ()
 let ignore_const (_ : Flambda.const) = ()
 let ignore_allocated_const (_ : Allocated_const.t) = ()
@@ -174,11 +173,6 @@ let variable_and_symbol_invariants (program : Flambda.program) =
         already_added_bound_variable_to_env var;
         loop_named env def) defs;
       loop env body
-    | For { bound_var; from_value; to_value; direction; body; } ->
-      ignore_direction_flag direction;
-      check_variable_is_bound env from_value;
-      check_variable_is_bound env to_value;
-      loop (add_binding_occurrence env bound_var) body
     | Let_cont (static_exn, vars, body, handler) ->
       ignore_static_exception static_exn;
       loop env body;
@@ -227,9 +221,6 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Apply_cont (static_exn, es) ->
       ignore_static_exception static_exn;
       List.iter (check_variable_is_bound env) es
-    | While (e1, e2) ->
-      loop env e1;
-      loop env e2
     | Proved_unreachable -> ()
   and loop_named env (named : Flambda.named) =
     match named with

@@ -255,19 +255,10 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       List.iter (fun id -> mark_curr [Var id]) ids;
       mark_curr curr;
       mark_loop ~toplevel [] f1;
-      mark_loop ~toplevel [] f2
+      mark_loop ~toplevel:false [] f2
       (* CR-someday pchambart: If recursive staticcatch is introduced:
-         this becomes ~toplevel:false *)
-    | For { bound_var; from_value; to_value; direction = _; body; } ->
-      mark_curr [Var bound_var];
-      mark_var from_value curr;
-      mark_var to_value curr;
-      mark_curr curr;
-      mark_loop ~toplevel:false [] body
-    | While (f1,body) ->
-      mark_curr curr;
-      mark_loop ~toplevel [] f1;
-      mark_loop ~toplevel:false [] body
+         this becomes ~toplevel:false
+         mshinwell: This has been set to the conservative value *)
     | If_then_else (f1,f2,f3) ->
       mark_curr curr;
       mark_curr [Var f1];

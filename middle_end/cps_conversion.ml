@@ -29,7 +29,7 @@ let add_default_argument_wrappers lam =
       Primitive.simple ~name:Closure_conversion_aux.stub_hack_prim_name
         ~arity:1 ~alloc:false
     in
-    Prim (Pccall stub_prim, [body], Location.none)
+    Lprim (Pccall stub_prim, [body], Location.none)
   in
   let defs_are_all_functions (defs : (_ * L.lambda) list) =
     List.for_all (function (_, L.Lfunction _) -> true | _ -> false) defs
@@ -82,6 +82,7 @@ let rec cps (lam : L.lambda) ~is_tail k =
           specialised = apply.ap_specialised;
         })))
   | Lfunction func ->
+    let free_idents_of_body = Lambda.free_variables func.body in
     cps func.body ~is_tail (fun body ->
       k (I.Function {
         kind = func.kind;
@@ -89,6 +90,7 @@ let rec cps (lam : L.lambda) ~is_tail k =
         body;
         attr = func.attr;
         loc = func.loc;
+        free_idents_of_body;
       }))
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
     cps defining_expr ~is_tail:false (fun defining_expr ->
