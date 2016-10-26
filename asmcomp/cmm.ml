@@ -200,7 +200,8 @@ type phrase =
   | Cdata of data_item list
 
 let ccatch (i, ids, e1, e2)=
-  Ccatch(Nonrecursive, [i, ids, e2], e1)
+  (* CR mshinwell: should set the recursive flag more precisely *)
+  Ccatch(Recursive, [i, ids, e2], e1)
 
 let reset () =
   label_counter := 99
