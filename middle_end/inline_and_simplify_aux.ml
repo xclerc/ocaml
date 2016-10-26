@@ -434,7 +434,8 @@ let initial_inlining_toplevel_threshold ~round : Inlining_cost.Threshold.t =
 module Result = struct
   type t =
     { approx : Simple_value_approx.t;
-      used_static_exceptions : Cont_variable.Set.t;
+      used_continuations :
+        Simple_value_approx.t list Cont_variable.Map.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
       num_direct_applications : int;
@@ -442,7 +443,7 @@ module Result = struct
 
   let create () =
     { approx = Simple_value_approx.value_unknown Other;
-      used_static_exceptions = Cont_variable.Set.empty;
+      used_continuations = Cont_variable.Map.empty;
       inlining_threshold = None;
       benefit = Inlining_cost.Benefit.zero;
       num_direct_applications = 0;
@@ -458,19 +459,36 @@ module Result = struct
     in
     set_approx t meet
 
-  let use_static_exception t i =
+  let use_continuation t env i approxs =
+    let approxs =
+      match Cont_variable.Map.find i t.used_continuations with
+      | exception Not_found ->
+        approxs
+      | previous_approxs ->
+        let really_import_approx = Env.really_import_approx env in
+        List.map2 (Simple_value_approx.meet ~really_import_approx)
+          previous_approxs approxs
+    in
     { t with
-      used_static_exceptions =
-        Cont_variable.Set.add i t.used_static_exceptions;
+      used_continuations =
+        Cont_variable.Map.add i approxs t.used_continuations;
     }
 
-  let used_static_exceptions t = t.used_static_exceptions
+  let is_used_continuation t i =
+    Cont_variable.Map.mem i t.used_continuations
+
+  let used_continuations t =
+    Cont_variable.Map.keys t.used_continuations
+
+  let no_defined_continuations t =
+    Cont_variable.Map.is_empty t.used_continuations
 
   let exit_scope_catch t i =
+    let approxs = Cont_variable.Map.find i t.used_continuations in
     { t with
-      used_static_exceptions =
-        Cont_variable.Set.remove i t.used_static_exceptions;
-    }
+      used_continuations =
+        Cont_variable.Map.remove i t.used_continuations;
+    }, approxs
 
   let map_benefit t f =
     { t with benefit = f t.benefit }

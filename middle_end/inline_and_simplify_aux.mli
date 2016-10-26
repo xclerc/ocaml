@@ -291,17 +291,31 @@ module Result : sig
       simplification algorithm. *)
   val meet_approx : t -> Env.t -> Simple_value_approx.t -> t
 
-  (** All static exceptions for which [use_staticfail] has been called on
-      the given result structure. *)
-  val used_static_exceptions : t -> Cont_variable.Set.t
+  (** Check that [use_continuation] has been called on the given
+      result structure. *)
+  val is_used_continuation : t -> Cont_variable.t -> bool
 
-  (** Mark that the given static exception has been used. *)
-  val use_static_exception : t -> Cont_variable.t -> t
+  (** All continuations for which [use_continuation] has been
+      called on the given result structure. O(n*log(n)) Used only for
+      debugging purpose. *)
+  val used_continuations : t -> Cont_variable.Set.t
+
+  (** Check that there is no static catch in scope *)
+  val no_defined_continuations : t -> bool
+
+  (** Mark that the given continuation has been used and provide
+      an approximation for the arguments. *)
+  val use_continuation
+    : t
+    -> Env.t
+    -> Cont_variable.t
+    -> Simple_value_approx.t list
+    -> t
 
   (** Mark that we are moving up out of the scope of a static-catch block
-      that catches the given static exception identifier.  This has the effect
+      that catches the given continuation identifier.  This has the effect
       of removing the identifier from the [used_staticfail] set. *)
-  val exit_scope_catch : t -> Cont_variable.t -> t
+  val exit_scope_catch : t -> Cont_variable.t -> t * Simple_value_approx.t list
 
   (** The benefit to be gained by inlining the subexpression whose
       simplification yielded the given result structure. *)

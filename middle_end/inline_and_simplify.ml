@@ -1153,8 +1153,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     Let_rec (defs, body), r
   | Apply_cont (i, args) ->
     let i = Freshening.apply_static_exception (E.freshening env) i in
-    simplify_free_variables env args ~f:(fun _env args _args_approxs ->
-      let r = R.use_static_exception r i in
+    simplify_free_variables env args ~f:(fun _env args args_approxs ->
+      let r = R.use_continuation r env i args_approxs in
       Apply_cont (i, args), ret r A.value_bottom)
   | Let_cont (i, vars, body, handler) ->
     begin
@@ -1167,8 +1167,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         let i, sb = Freshening.add_static_exception (E.freshening env) i in
         let env = E.set_freshening env sb in
         let body, r = simplify env r body in
-        if not (Cont_variable.Set.mem i (R.used_static_exceptions r)) then
-          (* If the static exception is not used, we can drop the declaration *)
+        if not (R.is_used_continuation r i) then
+          (* If the continuation is not used, we can drop the declaration *)
           body, r
         else begin
           match (body : Flambda.t) with
@@ -1180,20 +1180,22 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                   Flambda.create_let var (Var arg) body)
                 handler vars args
             in
-            let r = R.exit_scope_catch r i in
+            let r, _args_approxs = R.exit_scope_catch r i in
             simplify env r handlera
 *)
           | _ ->
             let vars, sb = Freshening.add_variables' (E.freshening env) vars in
             let approx = R.approx r in
+            let r, vars_approxs = R.exit_scope_catch r i in
+            let vars_and_approx =
+              List.combine vars vars_approxs
+            in
             let env =
-              List.fold_left (fun env id ->
-                  E.add env id (A.value_unknown Other))
-                (E.set_freshening env sb) vars
+              List.fold_left (fun env (id, approx) -> E.add env id approx)
+                (E.set_freshening env sb) vars_and_approx
             in
             let env = E.inside_branch env in
             let handler, r = simplify env r handler in
-            let r = R.exit_scope_catch r i in 
             Let_cont (i, vars, body, handler),
               R.meet_approx r env approx
         end
@@ -1639,13 +1641,13 @@ let run ~never_inline ~backend ~prefixname ~round program =
   in
   let result, r = simplify_program initial_env r program in
   let result = Flambda_utils.introduce_needed_import_symbols result in
-  if not (Cont_variable.Set.is_empty (R.used_static_exceptions r))
+  if not (R.no_defined_continuations r)
   then begin
     Misc.fatal_error (Format.asprintf "Remaining continuation vars: %a@.%a@."
-      Cont_variable.Set.print (R.used_static_exceptions r)
+      Cont_variable.Set.print (R.used_continuations r)
       Flambda.print_program result)
   end;
-  assert (Cont_variable.Set.is_empty (R.used_static_exceptions r));
+  assert (R.no_defined_continuations r);
   if !Clflags.inlining_report then begin
     let output_prefix = Printf.sprintf "%s.%d" prefixname round in
     Inlining_stats.save_then_forget_decisions ~output_prefix
