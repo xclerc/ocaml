@@ -29,9 +29,9 @@ type t =
   | Let_rec of (Ident.t * function_declaration) list * t
   | Let_cont of Continuation.t * Ident.t list * t (* <-- code of cont'n *) * t
   | Apply of apply
-  | Apply_cont of Continuation.t * t list
-  | Switch of t * switch
-  | String_switch of t * (string * t) list * t option * Location.t
+  | Apply_cont of Continuation.t * Ident.t list
+  | Switch of Ident.t * switch
+  | String_switch of Ident.t * (string * t) list * t option * Location.t
   | Try_with of t * Ident.t * t
   | Send of Lambda.meth_kind * t * t * t list * Location.t
   | Event of t * Lambda.lambda_event

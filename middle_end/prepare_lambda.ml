@@ -212,7 +212,15 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
     prepare cond (fun cond ->
       prepare ifso (fun ifso ->
         prepare ifnot (fun ifnot ->
-          k (L.Lifthenelse (cond, ifso, ifnot)))))
+          let switch : Lambda.lambda_switch =
+            { sw_numconsts = 1;
+              sw_consts = [0, ifnot];
+              sw_numblocks = 0;
+              sw_blocks = [];
+              sw_failaction = Some ifso;
+            }
+          in
+          Lswitch (cond, switch))))
   | Lsequence (lam1, lam2) ->
     let ident = Ident.create "sequence" in
     prepare (L.Llet (Strict, Pgenval, ident, lam1, lam2)) k
