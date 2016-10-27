@@ -14,15 +14,15 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Ilambda: halfway between Lambda and Flambda.  Used only as an internal
-    language for communication between the CPS and closure conversion
-    passes. *)
+(** Ilambda: halfway between Lambda and Flambda.  In CPS but without closures.
+    Used only as an internal language for communication between the CPS and
+    closure conversion passes. *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42-49"]
 
-(* Once everything is finished, Ilambda will be in CPS form but not
-   closure converted, whereas Flambda is CPS with closures.
-*)
+type switch_block_pattern =
+  | Tag of int
+  | String of string
 
 type t =
   | Let of Lambda.let_kind * Lambda.value_kind * Ident.t * named * t
@@ -31,9 +31,7 @@ type t =
   | Apply of apply
   | Apply_cont of Continuation.t * Ident.t list
   | Switch of Ident.t * switch
-  | String_switch of Ident.t * (string * t) list * t option * Location.t
-  | Try_with of t * Ident.t * t
-  | Send of Lambda.meth_kind * t * t * t list * Location.t
+  | Send of Lambda.meth_kind * Ident.t * Ident.t * Ident.t list * Location.t
   | Event of t * Lambda.lambda_event
 
 and named =
@@ -66,7 +64,7 @@ and switch =
   { numconsts : int;
     consts : (int * t) list;
     numblocks : int;
-    blocks : (int * t) list;
+    blocks : (switch_block_pattern * t) list;
     failaction : t option;
   }
 

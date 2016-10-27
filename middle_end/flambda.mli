@@ -39,6 +39,7 @@ type apply = {
   (* CR-soon mshinwell: rename func -> callee, and
      lhs_of_application -> callee *)
   func : Variable.t;
+  continuation : Continuation.t;
   args : Variable.t list;
   kind : call_kind;
   dbg : Debuginfo.t;
@@ -107,7 +108,6 @@ type t =
   | String_switch of Variable.t * (string * Continuation.t) list
       * Continuation.t option
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
-  | Try_with of t * Variable.t * t
   | Proved_unreachable
 
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)
@@ -315,6 +315,7 @@ and function_declarations = private {
 }
 
 and function_declaration = private {
+  continuation_param : Continuation.t;
   params : Variable.t list;
   body : t;
   (* CR-soon mshinwell: inconsistent naming free_variables/free_vars here and

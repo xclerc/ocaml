@@ -18,25 +18,29 @@
 
 module L = Lambda
 
+type switch_block_pattern =
+  | Tag of int
+  | String of string
+
 type t =
-  | Var of Ident.t
-  | Const of L.structured_constant
-  | Function of function_declaration
-  | Let of L.let_kind * L.value_kind * Ident.t * t * t
-  | Let_rec of (Ident.t * t) list * t
-  | Let_cont of t * int * Ident.t list * t
+  | Let of L.let_kind * L.value_kind * Ident.t * named * t
+  | Let_rec of (Ident.t * function_declaration) list * t
+  | Let_cont of Continuation.t * Ident.t list * t (* <-- code of cont'n *) * t
   | Apply of apply
-  | Apply_cont of int * t list
-  | Prim of L.primitive * t list * Location.t
-  | Switch of t * switch
-  | String_switch of t * (string * t) list * t option * Location.t
-  | Try_with of t * Ident.t * t
-  | If_then_else of t * t * t
+  | Apply_cont of Continuation.t * Ident.t list
+  | Switch of Ident.t * switch
   | Send of L.meth_kind * t * t * t list * Location.t
   | Event of t * L.lambda_event
 
+and named =
+  | Var of Ident.t
+  | Const of L.structured_constant
+  | Function of function_declaration
+  | Prim of L.primitive * Ident.t list * Location.t
+
 and function_declaration =
   { kind : L.function_kind;
+    continuation_param : Continuation.t;
     params : Ident.t list;
     body : t;
     attr : L.function_attribute;
@@ -45,8 +49,9 @@ and function_declaration =
   }
 
 and apply =
-  { func : t;
-    args : t list;
+  { func : Ident.t;
+    args : Ident.t list;
+    continuation : Continuation.t;
     loc : Location.t;
     should_be_tailcall : bool;
     inlined : L.inline_attribute;
@@ -57,7 +62,7 @@ and switch =
   { numconsts : int;
     consts : (int * t) list;
     numblocks : int;
-    blocks : (int * t) list;
+    blocks : (switch_block_pattern * t) list;
     failaction : t option;
   }
 

@@ -44,26 +44,26 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
           inlined = apply.ap_inlined;
           specialised = apply.ap_specialised;
         } in
-        I.Let_cont (continuation, [result_var], after, Apply apply)))
+        Let_cont (continuation, [result_var], after, Apply apply)))
   | Lfunction func -> cps_function func
   (* The following specialised Llet cases help to avoid administrative
      redexes. *)
   | Llet (let_kind, value_kind, id, (Lvar id) as defining_expr, body) ->
-    I.Let (let_kind, value_kind, id, I.Var id, cps_non_tail body k)
+    Let (let_kind, value_kind, id, Var id, cps_non_tail body k)
   | Llet (let_kind, value_kind, id, (Lconst const) as defining_expr, body) ->
-    I.Let (let_kind, value_kind, id, I.Const const, cps_non_tail body k)
+    Let (let_kind, value_kind, id, Const const, cps_non_tail body k)
   | Llet (let_kind, value_kind, id, Lfunction func, body) ->
     let func = cps_function func in
-    I.Let (let_kind, value_kind, id, func, body)
+    Let (let_kind, value_kind, id, func, body)
   | Llet (let_kind, value_kind, id, Lprim (prim, args, loc), body) ->
     let body = cps_non_tail body k in
     cps_non_tail_list args (fun args ->
-      I.Let (Strict, Pgenval, id, I.Prim (prim, args, loc), body))
+      Let (Strict, Pgenval, id, Prim (prim, args, loc), body))
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
     let body = cps_non_tail body k in
     let after_body = Continuation.create () in
     let defining_expr = cps_tail defining_expr after_body in
-    I.Let_cont (after_body, [id], body, defining_expr)
+    Let_cont (after_body, [id], body, defining_expr)
   | Lletrec (bindings, body) ->
     let idents, bindings = List.split bindings in
     let bindings =
@@ -76,18 +76,18 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
               binding)
         bindings
     in
-    I.Let_rec (List.combine idents bindings)
+    Let_rec (List.combine idents bindings)
   | Lprim (prim, args, loc) ->
     let result_var = Ident.create "prim_result" in
     cps_non_tail_list args (fun args ->
-      I.Let (Strict, Pgenval, result_var, I.Prim (prim, args, loc), result))
+      Let (Strict, Pgenval, result_var, Prim (prim, args, loc), result))
   | Lswitch (scrutinee, switch) ->
     let continuation = Continuation.create () in
     let result_var = Ident.create "switch_result" in
     let after = k result_var in
     cps_non_tail scrutinee (fun scrutinee ->
       let const_nums, consts = List.split switch.sw_consts in
-      let block_nums, blocks = List.split switch.sw_blocks in
+      let block_pats, blocks = List.split switch.sw_blocks in
       let failaction = cps_tail_option switch.sw_failaction continuation in
       let consts = cps_tail_list consts continuation in
       let blocks = cps_tail_list blocks continuation in
@@ -95,41 +95,24 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
         { numconsts = switch.sw_numconsts;
           consts = List.combine const_nums consts;
           numblocks = switch.sw_numblocks;
-          blocks = List.combine block_nums blocks;
+          blocks = List.combine block_pats blocks;
           failaction;
         }
       in
-      I.Switch (scrutinee, switch))
-  | Lstringswitch (scrutinee, cases, default, loc) ->
-    let continuation = Continuation.create () in
-    let result_var = Ident.create "switch_result" in
-    let after = k result_var in
-    cps_non_tail scrutinee (fun scrutinee ->
-      let patterns, cases = List.split cases in
-      let cases = cps_tail_list cases continuation in
-      let cases = List.combine patterns cases in
-      I.String_switch (scrutinee, cases, default, loc))
+      Switch (scrutinee, switch))
   | Lstaticraise (static_exn, args) ->
     let continuation = Continuation.unsafe_of_static_exn static_exn in
-    cps_non_tail_list args (fun args ->
-      I.Apply_cont (continuation, args))
+    cps_tail_list args continuation
   | Lstaticcatch (body, (static_exn, args), handler) ->
     let continuation = Continuation.unsafe_of_static_exn static_exn in
     let after_continuation = Continuation.create () in
     let result_var = Ident.create "staticcatch_result" in
-    let body =
-      cps_non_tail body (fun body_result ->
-        I.Apply_cont (after_continuation, [body_result]))
-    in
-    let handler =
-      cps_non_tail handler (fun handler_result ->
-        I.Apply_cont (after_continuation, [handler_result]))
-    in
-    I.Let_cont (after_continuation, [], k result_var,
-      I.Let_cont (continuation, args, handler, body))
-  | Ltrywith (body, id, handler) ->
-    ...
-  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _ ->
+    let body = cps_tail body after_continuation in
+    let handler = cps_tail handler after_continuation in
+    Let_cont (after_continuation, [], k result_var,
+      Let_cont (continuation, args, handler, body))
+  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _
+  | Ltrywith _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
       Printlambda.lambda lam
 
@@ -145,10 +128,12 @@ and cps_option lam_opt ~is_tail k =
   | None -> k None
   | Some lam -> cps lam ~is_tail (fun lam -> k (Some lam))
 
-and cps_tail (lam : L.lambda) (k : Continuation.t) =
+and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
   match lam with
-  | Lvar _ ->  (* Apply_cont case *)
-  | Lconst _ ->
+  | Lvar id -> Apply_cont (k, [id])
+  | Lconst const ->
+    let ident = Ident.create "const" in
+    Let (Strict, Pgenval, ident, Const const, Apply_cont (k, [ident]))
   | Lapply apply ->
   | Lfunction func ->
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
@@ -158,8 +143,8 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) =
   | Lstringswitch (scrutinee, cases, default, loc) ->
   | Lstaticraise (cont, args) ->
   | Lstaticcatch (body, (cont, args), handler) ->
-  | Ltrywith (body, id, handler) ->
-  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _ ->
+  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _
+  | Ltrywith _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
       Printlambda.lambda lam
 
