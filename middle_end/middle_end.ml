@@ -78,6 +78,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       in
       Timings.accumulate_time timing_pass (fun () ->
           module_initializer
+          |> Prepare_lambda.run
           |> Cps_conversion.lambda_to_ilambda
           |> print_ilambda
           |> Closure_conversion.ilambda_to_flambda ~backend ~module_ident

@@ -291,7 +291,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     | None -> aux ()
     | Some (Apply_cont _) -> aux ()
     | Some failaction ->
-      let exn = Cont_variable.create () in
+      let exn = Continuation.create () in
       let sw =
         { sw with
           failaction = Some (Flambda.Apply_cont (exn, []));
@@ -308,7 +308,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     let def = Misc.may_map (to_clambda t env) def in
     Ustringswitch (arg, sw, def)
   | Apply_cont (static_exn, args) ->
-    Ustaticfail (Cont_variable.to_int static_exn,
+    Ustaticfail (Continuation.to_int static_exn,
       List.map (subst_var env) args)
   | Let_cont (static_exn, vars, body, handler) ->
     let env_handler, ids =
@@ -317,11 +317,15 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
           env, id :: ids)
         vars (env, [])
     in
-    Ucatch (Cont_variable.to_int static_exn, ids,
+    Ucatch (Continuation.to_int static_exn, ids,
       to_clambda t env body, to_clambda t env_handler handler)
   | Try_with (body, var, handler) ->
     let id, env_handler = Env.add_fresh_ident env var in
     Utrywith (to_clambda t env body, id, to_clambda t env_handler handler)
+  (* CR mshinwell: We need to turn Switch back into Uifthenelse when we can,
+     by the look of it, to satisfy patterns in Cmmgen.  This seems a bit odd
+     because bytecomp/switch.ml (which Cmmgen uses for Uswitch) does appear
+     to be able to just generate if-then-else. *)
   | If_then_else (arg, ifso, ifnot) ->
     Uifthenelse (subst_var env arg, to_clambda t env ifso,
       to_clambda t env ifnot)

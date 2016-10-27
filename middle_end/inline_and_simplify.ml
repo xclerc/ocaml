@@ -1174,7 +1174,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           match (body : Flambda.t) with
 (* This cannot be used in the recursive case
           | Apply_cont (j, args) ->
-            assert (Cont_variable.equal i j);
+            assert (Continuation.equal i j);
             let handler =
               List.fold_left2 (fun body var arg ->
                   Flambda.create_let var (Var arg) body)
@@ -1644,7 +1644,7 @@ let run ~never_inline ~backend ~prefixname ~round program =
   if not (R.no_defined_continuations r)
   then begin
     Misc.fatal_error (Format.asprintf "Remaining continuation vars: %a@.%a@."
-      Cont_variable.Set.print (R.used_continuations r)
+      Continuation.Set.print (R.used_continuations r)
       Flambda.print_program result)
   end;
   assert (R.no_defined_continuations r);

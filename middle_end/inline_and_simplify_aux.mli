@@ -293,12 +293,12 @@ module Result : sig
 
   (** Check that [use_continuation] has been called on the given
       result structure. *)
-  val is_used_continuation : t -> Cont_variable.t -> bool
+  val is_used_continuation : t -> Continuation.t -> bool
 
   (** All continuations for which [use_continuation] has been
       called on the given result structure. O(n*log(n)) Used only for
       debugging purpose. *)
-  val used_continuations : t -> Cont_variable.Set.t
+  val used_continuations : t -> Continuation.Set.t
 
   (** Check that there is no static catch in scope *)
   val no_defined_continuations : t -> bool
@@ -308,14 +308,14 @@ module Result : sig
   val use_continuation
     : t
     -> Env.t
-    -> Cont_variable.t
+    -> Continuation.t
     -> Simple_value_approx.t list
     -> t
 
   (** Mark that we are moving up out of the scope of a static-catch block
       that catches the given continuation identifier.  This has the effect
       of removing the identifier from the [used_staticfail] set. *)
-  val exit_scope_catch : t -> Cont_variable.t -> t * Simple_value_approx.t list
+  val exit_scope_catch : t -> Continuation.t -> t * Simple_value_approx.t list
 
   (** The benefit to be gained by inlining the subexpression whose
       simplification yielded the given result structure. *)

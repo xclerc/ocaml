@@ -61,9 +61,9 @@ type t =
   | Let of let_expr
   | Let_mutable of let_mutable
   | Let_rec of (Variable.t * named) list * t
-  | Let_cont of Cont_variable.t * Variable.t list * t * t
+  | Let_cont of Continuation.t * Variable.t list * t * t
   | Apply of apply
-  | Apply_cont of Cont_variable.t * Variable.t list
+  | Apply_cont of Continuation.t * Variable.t list
   | Send of send
   | Assign of assign
   | If_then_else of Variable.t * t * t
@@ -292,10 +292,10 @@ let rec lam ppf (flam : t) =
   | Apply_cont (i, ls)  ->
       let lams ppf largs =
         List.iter (fun l -> fprintf ppf "@ %a" Variable.print l) largs in
-      fprintf ppf "@[<2>(apply_cont@ %a%a)@]" Cont_variable.print i lams ls;
+      fprintf ppf "@[<2>(apply_cont@ %a%a)@]" Continuation.print i lams ls;
   | Let_cont(i, vars, lbody, lhandler) ->
       fprintf ppf "@[<2>(let_cont@ %a@;<1 -1>where (%a%a)@ %a)@]"
-        lam lbody Cont_variable.print i
+        lam lbody Continuation.print i
         (fun ppf vars -> match vars with
            | [] -> ()
            | _ ->

@@ -87,26 +87,25 @@ type specialised_to = {
       either the [free_vars] or the [specialised_args]. *)
 }
 
-(** Flambda terms are partitioned in a pseudo-ANF manner; many terms are
-    required to be [let]-bound.  This in particular ensures there is always
+(** Flambda terms are in CPS form with an "ANF like" partitioning: many terms
+    are required to be [let]-bound.  This in particular ensures there is always
     a variable name for an expression that may be lifted out (for example
     if it is found to be constant).
     Note: All bound variables in Flambda terms must be distinct.
     [Flambda_invariants] verifies this. *)
 type t =
-  | Var of Variable.t
   | Let of let_expr
   | Let_mutable of let_mutable
   | Let_rec of (Variable.t * named) list * t
-  | Let_cont of Cont_variable.t * Variable.t list * t * t
   (** CR-someday lwhite: give Let_rec the same fields as Let. *)
+  | Let_cont of let_cont
+  | Apply_cont of Continuation.t * Variable.t list
   | Apply of apply
-  | Apply_cont of Cont_variable.t * Variable.t list
   | Send of send
   | Assign of assign
-  | If_then_else of Variable.t * t * t
   | Switch of Variable.t * switch
-  | String_switch of Variable.t * (string * t) list * t option
+  | String_switch of Variable.t * (string * Continuation.t) list
+      * Continuation.t option
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
   | Try_with of t * Variable.t * t
   | Proved_unreachable
@@ -151,7 +150,6 @@ and named =
   | Move_within_set_of_closures of move_within_set_of_closures
   | Project_var of project_var
   | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
-  | Expr of t  (** ANF escape hatch. *)
 
 (* CR-someday mshinwell: use [letcont]-style construct to remove e.g.
    [While] and [For]. *)
@@ -182,6 +180,24 @@ and let_mutable = {
   var : Mutable_variable.t;
   initial_value : Variable.t;
   contents_kind : Lambda.value_kind;
+  body : t;
+}
+
+(** Values of type [let_cont] represent the definitions of continuations:
+      let_cont [name] [args] = [defining_expr] in [body]
+    or in other words:
+      [body]
+      where [name] [args] = [defining_expr]
+
+    - Continuations are second-class.
+    - Continuations do not capture variables.
+    - Continuations may be recursive.
+*)
+and let_cont = {
+  name : Continuation.t;
+  args : Variable.t list;
+  recursive : Asttypes.rec_flag;
+  defining_expr : t;
   body : t;
 }
 

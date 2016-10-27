@@ -38,7 +38,7 @@ let ignore_int (_ : int) = ()
 let ignore_int_set (_ : Numbers.Int.Set.t) = ()
 let ignore_bool (_ : bool) = ()
 let ignore_string (_ : string) = ()
-let ignore_static_exception (_ : Cont_variable.t) = ()
+let ignore_static_exception (_ : Continuation.t) = ()
 let ignore_primitive ( _ : Lambda.primitive) = ()
 let ignore_const (_ : Flambda.const) = ()
 let ignore_allocated_const (_ : Allocated_const.t) = ()
@@ -70,8 +70,8 @@ exception Projection_must_be_a_specialised_arg of Projection.t
 exception Free_variables_set_is_lying of
   Variable.t * Variable.Set.t * Variable.Set.t * Flambda.function_declaration
 exception Set_of_closures_free_vars_map_has_wrong_range of Variable.Set.t
-exception Cont_variable_not_caught of Cont_variable.t
-exception Cont_variable_caught_in_multiple_places of Cont_variable.t
+exception Continuation_not_caught of Continuation.t
+exception Continuation_caught_in_multiple_places of Continuation.t
 exception Access_to_global_module_identifier of Lambda.primitive
 exception Pidentity_should_not_occur
 exception Pdirapply_should_be_expanded
@@ -608,14 +608,14 @@ let every_static_exception_is_caught flam =
   let check env (flam : Flambda.t) =
     match flam with
     | Apply_cont (exn, _) ->
-      if not (Cont_variable.Set.mem exn env)
-      then raise (Cont_variable_not_caught exn)
+      if not (Continuation.Set.mem exn env)
+      then raise (Continuation_not_caught exn)
     | _ -> ()
   in
   let rec loop env (flam : Flambda.t) =
     match flam with
     | Let_cont (i, _, body, handler) ->
-      let env = Cont_variable.Set.add i env in
+      let env = Continuation.Set.add i env in
       loop env handler;
       loop env body
     | exp ->
@@ -623,16 +623,16 @@ let every_static_exception_is_caught flam =
       Flambda_iterators.apply_on_subexpressions (loop env)
         (fun (_ : Flambda.named) -> ()) exp
   in
-  loop Cont_variable.Set.empty flam
+  loop Continuation.Set.empty flam
 
 let every_static_exception_is_caught_at_a_single_position flam =
-  let caught = ref Cont_variable.Set.empty in
+  let caught = ref Continuation.Set.empty in
   let f (flam : Flambda.t) =
     match flam with
     | Let_cont (i, _, _body, _handler) ->
-      if Cont_variable.Set.mem i !caught then
-        raise (Cont_variable_caught_in_multiple_places i);
-      caught := Cont_variable.Set.add i !caught
+      if Continuation.Set.mem i !caught then
+        raise (Continuation_caught_in_multiple_places i);
+      caught := Continuation.Set.add i !caught
     | _ -> ()
   in
   Flambda_iterators.iter f (fun (_ : Flambda.named) -> ()) flam
@@ -784,12 +784,12 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
       Format.eprintf ">> Unbound variable(s) within closure(s) from the \
           current compilation_unit: %a"
         Var_within_closure.Set.print vars_within_closures
-    | Cont_variable_not_caught static_exn ->
+    | Continuation_not_caught static_exn ->
       Format.eprintf ">> Uncaught continuation variable: %a"
-        Cont_variable.print static_exn
-    | Cont_variable_caught_in_multiple_places static_exn ->
+        Continuation.print static_exn
+    | Continuation_caught_in_multiple_places static_exn ->
       Format.eprintf ">> Continuation variable caught in multiple places: %a"
-        Cont_variable.print static_exn
+        Continuation.print static_exn
     | Access_to_global_module_identifier prim ->
       (* CR-someday mshinwell: backend-specific checks should move to another
          module, in the asmcomp/ directory. *)

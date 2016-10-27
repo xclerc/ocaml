@@ -435,7 +435,7 @@ module Result = struct
   type t =
     { approx : Simple_value_approx.t;
       used_continuations :
-        Simple_value_approx.t list Cont_variable.Map.t;
+        Simple_value_approx.t list Continuation.Map.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
       num_direct_applications : int;
@@ -443,7 +443,7 @@ module Result = struct
 
   let create () =
     { approx = Simple_value_approx.value_unknown Other;
-      used_continuations = Cont_variable.Map.empty;
+      used_continuations = Continuation.Map.empty;
       inlining_threshold = None;
       benefit = Inlining_cost.Benefit.zero;
       num_direct_applications = 0;
@@ -461,7 +461,7 @@ module Result = struct
 
   let use_continuation t env i approxs =
     let approxs =
-      match Cont_variable.Map.find i t.used_continuations with
+      match Continuation.Map.find i t.used_continuations with
       | exception Not_found ->
         approxs
       | previous_approxs ->
@@ -471,23 +471,23 @@ module Result = struct
     in
     { t with
       used_continuations =
-        Cont_variable.Map.add i approxs t.used_continuations;
+        Continuation.Map.add i approxs t.used_continuations;
     }
 
   let is_used_continuation t i =
-    Cont_variable.Map.mem i t.used_continuations
+    Continuation.Map.mem i t.used_continuations
 
   let used_continuations t =
-    Cont_variable.Map.keys t.used_continuations
+    Continuation.Map.keys t.used_continuations
 
   let no_defined_continuations t =
-    Cont_variable.Map.is_empty t.used_continuations
+    Continuation.Map.is_empty t.used_continuations
 
   let exit_scope_catch t i =
-    let approxs = Cont_variable.Map.find i t.used_continuations in
+    let approxs = Continuation.Map.find i t.used_continuations in
     { t with
       used_continuations =
-        Cont_variable.Map.remove i t.used_continuations;
+        Continuation.Map.remove i t.used_continuations;
     }, approxs
 
   let map_benefit t f =

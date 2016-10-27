@@ -19,7 +19,7 @@
 type tbl = {
   sb_var : Variable.t Variable.Map.t;
   sb_mutable_var : Mutable_variable.t Mutable_variable.Map.t;
-  sb_exn : Cont_variable.t Cont_variable.Map.t;
+  sb_exn : Continuation.t Continuation.Map.t;
   (* Used to handle substitution sequences: we cannot call the substitution
      recursively because there can be name clashes. *)
   back_var : Variable.t list Variable.Map.t;
@@ -35,7 +35,7 @@ type subst = t
 let empty_tbl = {
   sb_var = Variable.Map.empty;
   sb_mutable_var = Mutable_variable.Map.empty;
-  sb_exn = Cont_variable.Map.empty;
+  sb_exn = Continuation.Map.empty;
   back_var = Variable.Map.empty;
   back_mutable_var = Mutable_variable.Map.empty;
 }
@@ -112,16 +112,16 @@ let apply_static_exception t i =
   | Inactive ->
     i
   | Active t ->
-    try Cont_variable.Map.find i t.sb_exn
+    try Continuation.Map.find i t.sb_exn
     with Not_found -> i
 
 let add_static_exception t i =
   match t with
   | Inactive -> i, t
   | Active t ->
-    let i' = Cont_variable.create () in
+    let i' = Continuation.create () in
     let sb_exn =
-      Cont_variable.Map.add i i' t.sb_exn
+      Continuation.Map.add i i' t.sb_exn
     in
     i', Active { t with sb_exn; }
 

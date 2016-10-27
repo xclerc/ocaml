@@ -35,8 +35,8 @@ module Env : sig
   val add_mutable_var : t -> Ident.t -> Mutable_variable.t -> t
   val find_mutable_var_exn : t -> Ident.t -> Mutable_variable.t
 
-  val add_continuation : t -> int -> Cont_variable.t -> t
-  val find_continuation : t -> int -> Cont_variable.t
+  val add_continuation : t -> int -> Continuation.t -> t
+  val find_continuation : t -> int -> Continuation.t
 
   val add_global : t -> int -> Symbol.t -> t
   val find_global : t -> int -> Symbol.t

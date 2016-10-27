@@ -114,10 +114,10 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
       && Misc.Stdlib.Option.equal same d1 d2
   | String_switch _, _ | _, String_switch _ -> false
   | Apply_cont (e1, a1), Apply_cont (e2, a2) ->
-    Cont_variable.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
+    Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
   | Apply_cont _, _ | _, Apply_cont _ -> false
   | Let_cont (s1, v1, a1, b1), Let_cont (s2, v2, a2, b2) ->
-    Cont_variable.equal s1 s2
+    Continuation.equal s1 s2
       && Misc.Stdlib.List.equal Variable.equal v1 v2
       && same a1 a2
       && same b1 b2
@@ -437,7 +437,7 @@ let might_raise_static_exn flam stexn =
   try
     Flambda_iterators.iter_on_named
       (function
-        | Flambda.Apply_cont (ex, _) when Cont_variable.equal ex stexn ->
+        | Flambda.Apply_cont (ex, _) when Continuation.equal ex stexn ->
           raise Exit
         | _ -> ())
       (fun _ -> ())

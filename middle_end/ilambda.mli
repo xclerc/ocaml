@@ -25,24 +25,26 @@
 *)
 
 type t =
-  | Var of Ident.t
-  | Const of Lambda.structured_constant
-  | Function of function_declaration
-  | Let of Lambda.let_kind * Lambda.value_kind * Ident.t * t * t
-  | Let_rec of (Ident.t * t) list * t
-  | Let_cont of t * int * Ident.t list * t
+  | Let of Lambda.let_kind * Lambda.value_kind * Ident.t * named * t
+  | Let_rec of (Ident.t * function_declaration) list * t
+  | Let_cont of Continuation.t * Ident.t list * t (* <-- code of cont'n *) * t
   | Apply of apply
-  | Apply_cont of int * t list
-  | Prim of Lambda.primitive * t list * Location.t
+  | Apply_cont of Continuation.t * t list
   | Switch of t * switch
   | String_switch of t * (string * t) list * t option * Location.t
   | Try_with of t * Ident.t * t
-  | If_then_else of t * t * t
   | Send of Lambda.meth_kind * t * t * t list * Location.t
   | Event of t * Lambda.lambda_event
 
+and named =
+  | Var of Ident.t
+  | Const of Lambda.structured_constant
+  | Function of function_declaration
+  | Prim of Lambda.primitive * Ident.t list * Location.t
+
 and function_declaration =
   { kind : Lambda.function_kind;
+    continuation_param : Continuation.t;
     params : Ident.t list;
     body : t;
     attr : Lambda.function_attribute;
@@ -51,8 +53,9 @@ and function_declaration =
   }
 
 and apply =
-  { func : t;
-    args : t list;
+  { func : Ident.t;
+    args : Ident.t list;
+    continuation : Continuation.t;
     loc : Location.t;
     should_be_tailcall : bool;
     inlined : Lambda.inline_attribute;

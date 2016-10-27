@@ -416,8 +416,8 @@ and close t env (lam : Ilambda.t) : Flambda.t =
       ~create_body:(fun args ->
         let cont = Env.find_continuation env cont in
         Apply_cont (cont, args))
-  | Let_cont (body, i, ids, handler) ->
-    let cont = Cont_variable.create () in
+  | Let_cont (i, ids, handler, body) ->
+    let cont = Continuation.create () in
     let env = Env.add_continuation env i cont in
     let vars = List.map (Variable.create_with_same_name_as_ident) ids in
     Let_cont (cont, vars, close t env body,
