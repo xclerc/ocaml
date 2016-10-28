@@ -14,13 +14,6 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Preparation of [Lambda] code before CPS and closure conversion:
-    - Compilation of Lsequence to Llet
-    - Compilation of Lfor and Lwhile to Lstaticcatch / Lstaticraise
-    - Compilation of Lifthenelse to Lswitch
-    - Splitting of Lletrec into three parts (block initialisation, closure
-      creation, block patching-up)
-    - Marking of default argument wrappers as stubs
-*)
+(** Preparation of [Lambda] code before CPS and closure conversion. *)
 
 val run : Lambda.lambda -> Lambda.lambda

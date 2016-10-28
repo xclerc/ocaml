@@ -154,6 +154,9 @@ type primitive =
   | Pint_as_pointer
   (* Inhibition of optimisation *)
   | Popaque
+  (* Installation and removal of exception trap frames *)
+  | Ppushtrap
+  | Ppoptrap
 
 and comparison =
     Ceq | Cneq | Clt | Cgt | Cle | Cge
@@ -353,5 +356,13 @@ val patch_guarded : lambda -> lambda -> lambda
 
 val raise_kind: raise_kind -> string
 val lam_of_loc : loc_kind -> Location.t -> lambda
+
+type rhs_kind =
+  | RHS_block of int
+  | RHS_floatblock of int
+  | RHS_nonrec
+  | RHS_function of int * int * lfunction
+
+val size_of_lambda : lambda -> rhs_kind
 
 val reset: unit -> unit

@@ -65,76 +65,53 @@ let add_default_argument_wrappers lam =
   in
   L.map f lam
 
-type rhs_kind =
-  | Block of int
-  | Floatblock of int
-  | Nonrec
-
-let rec expr_size env = function
-  | Uvar id ->
-      begin try Ident.find_same id env with Not_found -> Nonrec end
-  | Uclosure(fundecls, clos_vars) ->
-      Block (fundecls_size fundecls + List.length clos_vars)
-  | Ulet(_str, _kind, id, exp, body) ->
-      expr_size (Ident.add id (expr_size env exp) env) body
-  | Uletrec(_bindings, body) ->
-      expr_size env body
-  | Uprim(Pmakeblock _, args, _) ->
-      Block (List.length args)
-  | Uprim(Pmakearray((Paddrarray | Pintarray), _), args, _) ->
-      Block (List.length args)
-  | Uprim(Pmakearray(Pfloatarray, _), args, _) ->
-      Floatblock (List.length args)
-  | Uprim (Pduprecord ((Record_regular | Record_inlined _), sz), _, _) ->
-      Block sz
-  | Uprim (Pduprecord (Record_unboxed _, _), _, _) ->
-      assert false
-  | Uprim (Pduprecord (Record_extension, sz), _, _) ->
-      Block (sz + 1)
-  | Uprim (Pduprecord (Record_float, sz), _, _) ->
-      Floatblock sz
-  | Uprim (Pccall { prim_name; _ }, closure::_, _)
-        when prim_name = "caml_check_value_is_closure" ->
-      (* Used for "-clambda-checks". *)
-      expr_size env closure
-  | Usequence(_exp, exp') ->
-      expr_size env exp'
-  | _ -> Nonrec
+type block_type = Normal | Float
 
 let dissect_letrec ~bindings ~body =
-  let dbg = Debuginfo.none in
-  let bsz =
-    List.map (fun (id, exp) -> (id, exp, expr_size Ident.empty exp))
+  let bindings_with_sizes =
+    List.map (fun (id, binding) -> id, binding, L.size_of_lambda binding)
       bindings
   in
-  let op_alloc prim sz =
-    Cop(Cextcall(prim, typ_val, true, None), [int_const sz], dbg) in
-  let rec init_blocks = function
-    | [] -> fill_nonrec bsz
-    | (id, _exp, RHS_block sz) :: rem ->
-        Clet(id, op_alloc "caml_alloc_dummy" sz,
-          init_blocks rem)
-    | (id, _exp, RHS_floatblock sz) :: rem ->
-        Clet(id, op_alloc "caml_alloc_dummy_float" sz,
-          init_blocks rem)
-    | (id, _exp, RHS_nonrec) :: rem ->
-        Clet (id, Cconst_int 0, init_blocks rem)
-  and fill_nonrec = function
-    | [] -> fill_blocks bsz
-    | (_id, _exp, (RHS_block _ | RHS_floatblock _)) :: rem ->
-        fill_nonrec rem
-    | (id, exp, RHS_nonrec) :: rem ->
-        Clet(id, transl env exp, fill_nonrec rem)
-  and fill_blocks = function
-    | [] -> cont
-    | (id, exp, (RHS_block _ | RHS_floatblock _)) :: rem ->
-        let op =
-          Cop(Cextcall("caml_update_dummy", typ_void, false, None),
-              [Cvar id; transl env exp], dbg) in
-        Csequence(op, fill_blocks rem)
-    | (_id, _exp, RHS_nonrec) :: rem ->
-        fill_blocks rem
-  in init_blocks bsz
+  let recursive_blocks, nonrecursives, functions =
+    List.fold_left (fun (recursive_blocks, nonrecursives, functions)
+              (id, binding, (kind : L.rhs_kind)) ->
+        match kind with
+        | RHS_function (_, _, funct) ->
+          recursive_blocks, nonrecursive_blocks,
+            (id, Lfunction funct)::functions
+        | RHS_block size ->
+          (id, Normal, size, binding) :: recursive_blocks, nonrecursive_blocks,
+            functions
+        | RHS_floatblock size ->
+          (id, Float, size, binding) :: recursive_blocks, nonrecursive_blocks,
+            functions
+        | RHS_nonrec ->
+          recursive_blocks, (id, binding) :: nonrecursives, functions
+      ([], [], [])
+      bindings
+  in
+  let loc = Location.none in
+  let preallocations =
+    List.map (fun (id, block_type, size) ->
+        let fn =
+          match block_type with
+          | Normal -> "caml_alloc_dummy"
+          | Float -> "caml_alloc_dummy_float"
+        in
+        let size : L.lambda = Lconst (Const_base (Const_int size)) in
+        id, Lprim (Pccall fn, [size], loc))
+      recursive_blocks
+  in
+  let fillings =
+    List.map (fun (id, _block_type, _size, binding) ->
+        let seq = Ident.create "sequence" in
+        seq, Lprim (Pccall "caml_update_dummy", [Lvar id; binding], loc))
+      recursive_blocks
+  in
+  List.fold_left (fun (id, binding) body ->
+      Llet (Strict, Pgenval, id, binding, body))
+    (Lletrec (functions, body))
+    (preallocations @ nonrecursives @ fillings)
 
 let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
   match lam with
@@ -205,9 +182,19 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
       prepare handler (fun handler ->
         k (L.Lstaticcatch (body, cont, args, handler))))
   | Ltrywith (body, id, handler) ->
-    prepare body (fun body ->
-      prepare handler (fun handler ->
-        k (L.Ltrywith (body, id, handler))))
+    let cont = L.next_raise_count () in
+    let loc = Location.none in
+    let lam =
+      Lstaticcatch (
+        Lsequence (
+          Lprim (Ppushtrap, [], loc),
+          Lsequence (
+            body,
+            Lprim (Ppoptrap, [], loc))),
+        (cont, [id]),
+        handler)
+    in
+    prepare lam k
   | Lifthenelse (cond, ifso, ifnot) ->
     prepare cond (fun cond ->
       prepare ifso (fun ifso ->

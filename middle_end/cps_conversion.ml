@@ -80,14 +80,15 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
   | Lprim (prim, args, loc) ->
     let result_var = Ident.create "prim_result" in
     cps_non_tail_list args (fun args ->
-      Let (Strict, Pgenval, result_var, Prim (prim, args, loc), result))
+      Let (Strict, Pgenval, result_var, Prim (prim, args, loc), k result_var))
   | Lswitch (scrutinee, switch) ->
     let continuation = Continuation.create () in
     let result_var = Ident.create "switch_result" in
     let after = k result_var in
     cps_non_tail scrutinee (fun scrutinee ->
       let const_nums, consts = List.split switch.sw_consts in
-      let block_pats, blocks = List.split switch.sw_blocks in
+      let block_nums, blocks = List.split switch.sw_blocks in
+      let block_pats = List.map (fun tag -> I.Tag tag) block_nums in
       let failaction = cps_tail_option switch.sw_failaction continuation in
       let consts = cps_tail_list consts continuation in
       let blocks = cps_tail_list blocks continuation in
@@ -97,6 +98,24 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
           numblocks = switch.sw_numblocks;
           blocks = List.combine block_pats blocks;
           failaction;
+        }
+      in
+      Switch (scrutinee, switch))
+  | Lstringswitch (scrutinee, cases, default, loc) ->
+    let continuation = Continuation.create () in
+    let result_var = Ident.create "stringswitch_result" in
+    let after = k result_var in
+    cps_non_tail scrutinee (fun scrutinee ->
+      let default = cps_tail_option default continuation in
+      let strs, cases = List.split cases in
+      let pats = List.map (fun str -> I.String str) strs in
+      let cases = cps_tail_list cases continuation in
+      let switch : Ilambda.switch =
+        { numconsts = 0;
+          consts = [];
+          numblocks;
+          blocks = List.combine pats cases;
+          failaction = default;
         }
       in
       Switch (scrutinee, switch))
@@ -139,6 +158,10 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
   | Lletrec (bindings, body) ->
   | Lprim (prim, args, loc) ->
+    let result_var = Ident.create "prim_result" in
+    cps_non_tail_list args (fun args ->
+      Let (Strict, Pgenval, result_var, Prim (prim, args, loc),
+        Apply_cont (k, [result_var])))
   | Lswitch (scrutinee, switch) ->
   | Lstringswitch (scrutinee, cases, default, loc) ->
   | Lstaticraise (cont, args) ->

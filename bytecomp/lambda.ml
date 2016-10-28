@@ -148,6 +148,9 @@ type primitive =
   | Pint_as_pointer
   (* Inhibition of optimisation *)
   | Popaque
+  (* Installation and removal of exception trap frames *)
+  | Ppushtrap
+  | Ppoptrap
 
 and comparison =
     Ceq | Cneq | Clt | Cgt | Cle | Cge
@@ -691,6 +694,54 @@ let lam_of_loc kind loc =
         file lnum cnum enum in
     Lconst (Const_immstring loc)
   | Loc_LINE -> Lconst (Const_base (Const_int lnum))
+
+(**** Auxiliary for compiling "let rec" ****)
+
+type rhs_kind =
+  | RHS_block of int
+  | RHS_floatblock of int
+  | RHS_nonrec
+  | RHS_function of int * int * lfunction
+;;
+
+let rec check_recordwith_updates id e =
+  match e with
+  | Lsequence (Lprim ((Psetfield _ | Psetfloatfield _), [Lvar id2; _], _), cont)
+      -> id2 = id && check_recordwith_updates id cont
+  | Lvar id2 -> id2 = id
+  | _ -> false
+;;
+
+let rec size_of_lambda = function
+  | Lfunction{params} as funct ->
+      RHS_function (1 + IdentSet.cardinal(free_variables funct),
+                    List.length params, funct)
+  | Llet (Strict, _k, id, Lprim (Pduprecord (kind, size), _, _), body)
+    when check_recordwith_updates id body ->
+      begin match kind with
+      | Record_regular | Record_inlined _ -> RHS_block size
+      | Record_unboxed _ -> assert false
+      | Record_float -> RHS_floatblock size
+      | Record_extension -> RHS_block (size + 1)
+      end
+  | Llet(_str, _k, _id, _arg, body) -> size_of_lambda body
+  | Lletrec(_bindings, body) -> size_of_lambda body
+  | Lprim(Pmakeblock _, args, _) -> RHS_block (List.length args)
+  | Lprim (Pmakearray ((Paddrarray|Pintarray), _), args, _) ->
+      RHS_block (List.length args)
+  | Lprim (Pmakearray (Pfloatarray, _), args, _) ->
+      RHS_floatblock (List.length args)
+  | Lprim (Pmakearray (Pgenarray, _), _, _) -> assert false
+  | Lprim (Pduprecord ((Record_regular | Record_inlined _), size), _, _) ->
+      RHS_block size
+  | Lprim (Pduprecord (Record_unboxed _, _), _, _) ->
+      assert false
+  | Lprim (Pduprecord (Record_extension, size), _, _) ->
+      RHS_block (size + 1)
+  | Lprim (Pduprecord (Record_float, size), _, _) -> RHS_floatblock size
+  | Levent (lam, _) -> size_of_lambda lam
+  | Lsequence (_lam, lam') -> size_of_lambda lam'
+  | _ -> RHS_nonrec
 
 let reset () =
   raise_count := 0
