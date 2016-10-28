@@ -31,7 +31,6 @@ type t =
   | Apply of apply
   | Apply_cont of Continuation.t * Ident.t list
   | Switch of Ident.t * switch
-  | Send of Lambda.meth_kind * Ident.t * Ident.t * Ident.t list * Location.t
   | Event of t * Lambda.lambda_event
 
 and named =
@@ -51,7 +50,8 @@ and function_declaration =
   }
 
 and apply =
-  { func : Ident.t;
+  { kind : apply_kind;
+    func : Ident.t;
     args : Ident.t list;
     continuation : Continuation.t;
     loc : Location.t;
@@ -60,12 +60,16 @@ and apply =
     specialised : Lambda.specialise_attribute;
   }
 
+and function_or_method =
+  | Function
+  | Method of { kind : Lambda.meth_kind; obj : IdentSet.t; }
+
 and switch =
   { numconsts : int;
-    consts : (int * t) list;
+    consts : (int * Continuation.t) list;
     numblocks : int;
-    blocks : (switch_block_pattern * t) list;
-    failaction : t option;
+    blocks : (switch_block_pattern * Continuation.t) list;
+    failaction : Continuation.t option;
   }
 
 val print : Format.formatter -> t -> unit
