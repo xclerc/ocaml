@@ -60,7 +60,7 @@ and apply =
     specialised : Lambda.specialise_attribute;
   }
 
-and function_or_method =
+and apply_kind =
   | Function
   | Method of { kind : Lambda.meth_kind; obj : IdentSet.t; }
 

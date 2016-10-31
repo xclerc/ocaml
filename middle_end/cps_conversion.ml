@@ -42,6 +42,11 @@ let check_let_rec_bindings bindings =
           binding)
     bindings
 
+let name_for_function (func : Lambda.lfunction) =
+  (* Name anonymous functions by their source location, if known. *)
+  if loc = Location.none then "anon-fn"
+  else Format.asprintf "anon-fn[%a]" Location.print_compact loc
+
 let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
   match lam with
   | Lvar id -> k id
@@ -63,7 +68,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
           specialised = apply.ap_specialised;
         } in
         Let_cont (continuation, [result_var], after, Apply apply)))
-  | Lfunction _ -> name_then_cps_non_tail "function" lam k
+  | Lfunction func -> name_then_cps_non_tail (name_for_function func) lam k
   (* The following specialised Llet cases help to avoid administrative
      redexes. *)
   | Llet (let_kind, value_kind, id, (Lvar id) as defining_expr, body) ->
@@ -176,7 +181,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
           specialised = apply.ap_specialised;
         } in
         Apply apply))
-  | Lfunction _ -> name_then_cps_tail "function" lam k
+  | Lfunction func -> name_then_cps_tail (name_for_function func) lam k
   | Llet (let_kind, value_kind, id, (Lvar id) as defining_expr, body) ->
     Let (let_kind, value_kind, id, Var id, cps_tail body k)
   | Llet (let_kind, value_kind, id, (Lconst const) as defining_expr, body) ->
@@ -196,6 +201,16 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
     let body = cps_tail body k in
     Let_rec (List.combine idents bindings, body)
   | Lprim (prim, args, loc) ->
+(* Old CC code.  Use the naming stuff
+    let name = Printlambda.name_of_primitive p in
+    let dbg = Debuginfo.from_location loc in
+    Lift_code.lifting_helper (close_list t env args)
+      ~evaluation_order:`Right_to_left
+      ~name:(name ^ "_arg")
+      ~create_body:(fun args ->
+        name_expr (Prim (p, args, dbg))
+          ~name)
+*)
     let result_var = Ident.create "prim_result" in
     cps_non_tail_list args (fun args ->
       I.Let (Strict, Pgenval, result_var, Prim (prim, args, loc),

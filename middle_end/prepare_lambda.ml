@@ -113,6 +113,130 @@ let dissect_letrec ~bindings ~body =
     (Lletrec (functions, body))
     (preallocations @ nonrecursives @ fillings)
 
+let simplify_primitive prim args loc =
+  match prim, args with
+  | Prim ((Pdivint Safe | Pmodint Safe
+           | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }) as prim,
+           [arg1; arg2], loc)
+      when not !Clflags.fast -> (* not -unsafe *)
+    let arg2 = close t env arg2 in
+    let arg1 = close t env arg1 in
+    let numerator = Variable.create "numerator" in
+    let denominator = Variable.create "denominator" in
+    let zero = Variable.create "zero" in
+    let is_zero = Variable.create "is_zero" in
+    let exn = Variable.create "division_by_zero" in
+    let exn_symbol =
+      t.symbol_for_global' Predef.ident_division_by_zero
+    in
+    let dbg = Debuginfo.from_location loc in
+    let zero_const : Flambda.named =
+      match prim with
+      | Pdivint _ | Pmodint _ ->
+        Const (Int 0)
+      | Pdivbint { size = Pint32 } | Pmodbint { size = Pint32 } ->
+        Allocated_const (Int32 0l)
+      | Pdivbint { size = Pint64 } | Pmodbint { size = Pint64 } ->
+        Allocated_const (Int64 0L)
+      | Pdivbint { size = Pnativeint } | Pmodbint { size = Pnativeint } ->
+        Allocated_const (Nativeint 0n)
+      | _ -> assert false
+    in
+    let prim : Lambda.primitive =
+      match prim with
+      | Pdivint _ -> Pdivint Unsafe
+      | Pmodint _ -> Pmodint Unsafe
+      | Pdivbint { size } -> Pdivbint { size; is_safe = Unsafe }
+      | Pmodbint { size } -> Pmodbint { size; is_safe = Unsafe }
+      | _ -> assert false
+    in
+    let comparison : Lambda.primitive =
+      match prim with
+      | Pdivint _ | Pmodint _ -> Pintcomp Ceq
+      | Pdivbint { size } | Pmodbint { size } -> Pbintcomp (size, Ceq)
+      | _ -> assert false
+    in
+    t.imported_symbols <- Symbol.Set.add exn_symbol t.imported_symbols;
+    Flambda.create_let zero zero_const
+      (Flambda.create_let exn (Symbol exn_symbol)
+        (Flambda.create_let denominator (Expr arg2)
+          (Flambda.create_let numerator (Expr arg1)
+            (Flambda.create_let is_zero
+              (Prim (comparison, [zero; denominator], dbg))
+                (If_then_else (is_zero,
+                  name_expr (Prim (Praise Raise_regular, [exn], dbg))
+                    ~name:"dummy",
+                  (* CR-someday pchambart: find the right event.
+                     mshinwell: I briefly looked at this, and couldn't
+                     figure it out.
+                     lwhite: I don't think any of the existing events
+                     are suitable. I had to add a new one for a similar
+                     case in the array data types work.
+                     mshinwell: deferred CR *)
+                  name_expr ~name:"result"
+                    (Prim (prim, [numerator; denominator], dbg))))))))
+  | Prim ((Pdivint Safe | Pmodint Safe
+           | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _, _)
+      when not !Clflags.fast ->
+    Misc.fatal_error "Pdivint / Pmodint must have exactly two arguments"
+  | Prim (Psequor, [arg1; arg2], _) ->
+    let arg1 = close t env arg1 in
+    let arg2 = close t env arg2 in
+    let const_true = Variable.create "const_true" in
+    let cond = Variable.create "cond_sequor" in
+    Flambda.create_let const_true (Const (Int 1))
+      (Flambda.create_let cond (Expr arg1)
+        (If_then_else (cond, Var const_true, arg2)))
+  | Prim (Psequand, [arg1; arg2], _) ->
+    let arg1 = close t env arg1 in
+    let arg2 = close t env arg2 in
+    let const_false = Variable.create "const_false" in
+    let cond = Variable.create "cond_sequand" in
+    Flambda.create_let const_false (Const (Int 0))
+      (Flambda.create_let cond (Expr arg1)
+        (If_then_else (cond, arg2, Var const_false)))
+  | Prim ((Psequand | Psequor), _, _) ->
+    Misc.fatal_error "Psequand / Psequor must have exactly two arguments"
+  | Prim (Pidentity, [arg], _) -> close t env arg
+  | Prim (Pdirapply, [funct; arg], loc)
+  | Prim (Prevapply, [arg; funct], loc) ->
+    let apply : Ilambda.apply =
+      { func = funct;
+        args = [arg];
+        loc = loc;
+        should_be_tailcall = false;
+        (* CR-someday lwhite: it would be nice to be able to give
+           inlined attributes to functions applied with the application
+           operators. *)
+        inlined = Default_inline;
+        specialised = Default_specialise;
+      }
+    in
+    close_apply t env apply
+  | Prim (Praise kind, [arg], loc) ->
+    let arg_var = Variable.create "raise_arg" in
+    let dbg = Debuginfo.from_location loc in
+    Flambda.create_let arg_var (Expr (close t env arg))
+      (name_expr
+        (Prim (Praise kind, [arg_var], dbg))
+        ~name:"raise")
+  | Prim (Pfield _, [Prim (Pgetglobal id, [],_)], _)
+      when Ident.same id t.current_unit_id ->
+    Misc.fatal_errorf "[Pfield (Pgetglobal ...)] for the current compilation \
+        unit is forbidden upon entry to the middle end"
+  | Prim (Psetfield (_, _, _), [Prim (Pgetglobal _, [], _); _], _) ->
+    Misc.fatal_errorf "[Psetfield (Pgetglobal ...)] is \
+        forbidden upon entry to the middle end"
+  | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
+    let symbol = t.symbol_for_global' id in
+    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+    name_expr (Symbol symbol) ~name:"predef_exn"
+  | Prim (Pgetglobal id, [], _) ->
+    assert (not (Ident.same id t.current_unit_id));
+    let symbol = t.symbol_for_global' id in
+    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+    name_expr (Symbol symbol) ~name:"Pgetglobal"
+
 let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
   match lam with
   | Lvar _
@@ -150,7 +274,7 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
         k (dissect_letrec ~bindings ~body)))
   | Lprim (prim, args, loc) ->
     prepare_list args (fun args ->
-      k (L.Lprim (prim, args, loc)))
+      k (simplify_primitive prim args loc))
   | Lswitch (scrutinee, switch) ->
     prepare scrutinee (fun scrutinee ->
       let const_nums, sw_consts = List.split switch.sw_consts in

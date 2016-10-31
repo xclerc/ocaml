@@ -75,43 +75,28 @@ let rec eliminate_const_block (const : Lambda.structured_constant)
   | Const_immstring _
   | Const_float_array _ -> Const const
 
-let rec close_const t env (const : Lambda.structured_constant)
-      : Flambda.named * string =
+let rec close_const t env (const : Lambda.structured_constant) : Flambda.named =
   match const with
-  | Const_base (Const_int c) -> Const (Int c), "int"
-  | Const_base (Const_char c) -> Const (Char c), "char"
+  | Const_base (Const_int c) -> Const (Int c)
+  | Const_base (Const_char c) -> Const (Char c)
   | Const_base (Const_string (s, _)) ->
-    if Config.safe_string then Allocated_const (Immutable_string s), "immstring"
-    else Allocated_const (String s), "string"
+    if Config.safe_string then Allocated_const (Immutable_string s)
+    else Allocated_const (String s)
   | Const_base (Const_float c) ->
-    Allocated_const (Float (float_of_string c)), "float"
-  | Const_base (Const_int32 c) -> Allocated_const (Int32 c), "int32"
-  | Const_base (Const_int64 c) -> Allocated_const (Int64 c), "int64"
+    Allocated_const (Float (float_of_string c))
+  | Const_base (Const_int32 c) -> Allocated_const (Int32 c)
+  | Const_base (Const_int64 c) -> Allocated_const (Int64 c)
   | Const_base (Const_nativeint c) ->
-    Allocated_const (Nativeint c), "nativeint"
-  | Const_pointer c -> Const (Const_pointer c), "pointer"
-  | Const_immstring c -> Allocated_const (Immutable_string c), "immstring"
+    Allocated_const (Nativeint c)
+  | Const_pointer c -> Const (Const_pointer c)
+  | Const_immstring c -> Allocated_const (Immutable_string c)
   | Const_float_array c ->
-    Allocated_const (Immutable_float_array (List.map float_of_string c)),
-      "float_array"
+    Allocated_const (Immutable_float_array (List.map float_of_string c))
   | Const_block _ ->
-    Expr (close t env (eliminate_const_block const)), "const_block"
+    Expr (close t env (eliminate_const_block const))
 
 and close t env (lam : Ilambda.t) : Flambda.t =
   match lam with
-  | Var id ->
-    begin match Env.find_var_exn env id with
-    | var -> Var var
-    | exception Not_found ->
-      match Env.find_mutable_var_exn env id with
-      | mut_var -> name_expr (Read_mutable mut_var) ~name:"read_mutable"
-      | exception Not_found ->
-        Misc.fatal_errorf "Closure_conversion.close: unbound identifier %a"
-          Ident.print id
-    end
-  | Const cst ->
-    let cst, name = close_const t env cst in
-    name_expr cst ~name:("const_" ^ name)
   | Let ((Strict | Alias | StrictOpt), _value_kind, id, defining_expr, body) ->
     (* TODO: keep value_kind in flambda *)
     let var = Variable.create_with_same_name_as_ident id in
@@ -133,6 +118,113 @@ and close t env (lam : Ilambda.t) : Flambda.t =
            initial_value = var;
            body;
            contents_kind = block_kind })
+  | Apply apply ->
+    close_apply t env apply
+  | Let_rec (defs, body) ->
+    let env =
+      List.fold_right (fun (id,  _) env ->
+          Env.add_var env id (Variable.create_with_same_name_as_ident id))
+        defs env
+    in
+    let function_declarations =
+      (* Identify any bindings in the [let rec] that are functions.  These
+         will be named after the corresponding identifier in the [let rec]. *)
+      List.map (function
+          | (let_rec_ident,
+              { kind; params; body; attr; loc; free_idents_of_body; }) ->
+            let closure_bound_var =
+              Variable.create_with_same_name_as_ident let_rec_ident
+            in
+            let function_declaration =
+              Function_decl.create ~let_rec_ident:(Some let_rec_ident)
+                ~closure_bound_var ~kind ~params ~body
+                ~inline:attr.inline ~specialise:attr.specialise
+                ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
+            in
+            function_declaration)
+        defs
+    in
+    (* We eliminate the [let rec] construction, instead producing a normal
+       [Let] that binds a set of closures containing all of the functions.
+       ([let rec] on non-functions was removed in [Prepare_lambda].)
+    *)
+    (* XCR-someday lwhite: This is a very syntactic criteria. Adding an
+       unused value to a set of recursive bindings changes how
+       functions are represented at runtime.
+       mshinwell: not any more! *)
+    let name =
+      (* The Microsoft assembler has a 247-character limit on symbol
+          names, so we keep them shorter to try not to hit this. *)
+      if Sys.win32 then begin
+        match defs with
+        | (id, _)::_ -> (Ident.unique_name id) ^ "_let_rec"
+        | _ -> "let_rec"
+      end else begin
+        String.concat "_and_"
+          (List.map (fun (id, _) -> Ident.unique_name id) defs)
+      end
+    in
+    let set_of_closures_var = Variable.create name in
+    let set_of_closures =
+      close_functions t env (Function_decls.create function_declarations)
+    in
+    let body =
+      List.fold_left (fun body decl ->
+          let let_rec_ident = Function_decl.let_rec_ident decl in
+          let closure_bound_var = Function_decl.closure_bound_var decl in
+          let let_bound_var = Env.find_var env let_rec_ident in
+          (* Inside the body of the [let], each function is referred to by
+              a [Project_closure] expression, which projects from the set of
+              closures. *)
+          (Flambda.create_let let_bound_var
+            (Project_closure {
+              set_of_closures = set_of_closures_var;
+              closure_id = Closure_id.wrap closure_bound_var;
+            })
+            body))
+        (close t env body) function_declarations
+    in
+    Flambda.create_let set_of_closures_var set_of_closures body
+  | Let_cont (i, ids, handler, body) ->
+    let cont = Continuation.create () in
+    let env = Env.add_continuation env i cont in
+    let vars = List.map (Variable.create_with_same_name_as_ident) ids in
+    Let_cont (cont, vars, close t env body,
+      close t (Env.add_vars env ids vars) handler)
+  | Apply_cont (cont, args) ->
+    Lift_code.lifting_helper (close_list t env args)
+      ~evaluation_order:`Right_to_left
+      ~name:"apply_cont_arg"
+      ~create_body:(fun args ->
+        let cont = Env.find_continuation env cont in
+        Apply_cont (cont, args))
+  | Switch (arg, sw) ->
+    let scrutinee = Variable.create "switch" in
+    let aux (i, lam) = i, close t env lam in
+    let zero_to_n = Numbers.Int.zero_to_n in
+    Flambda.create_let scrutinee (Expr (close t env arg))
+      (Switch (scrutinee,
+        { numconsts = zero_to_n (sw.numconsts - 1);
+          consts = List.map aux sw.consts;
+          numblocks = zero_to_n (sw.numblocks - 1);
+          blocks = List.map aux sw.blocks;
+          failaction = Misc.may_map (close t env) sw.failaction;
+        }))
+  | Event (lam, _) -> close t env lam
+
+and close_named t env (named : Ilambda.named) : Flambda.named =
+  match named with
+  | Var id ->
+    begin match Env.find_var_exn env id with
+    | var -> Var var
+    | exception Not_found ->
+      match Env.find_mutable_var_exn env id with
+      | mut_var -> name_expr (Read_mutable mut_var) ~name:"read_mutable"
+      | exception Not_found ->
+        Misc.fatal_errorf "Closure_conversion.close: unbound identifier %a"
+          Ident.print id
+    end
+  | Const cst -> close_const t env cst
   | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
     let name =
       (* Name anonymous functions by their source location, if known. *)
@@ -160,277 +252,7 @@ and close t env (lam : Ilambda.t) : Flambda.t =
     Flambda.create_let set_of_closures_var set_of_closures
       (name_expr (Project_closure (project_closure))
         ~name:("project_closure_" ^ name))
-  | Apply apply ->
-    close_apply t env apply
-  | Let_rec (defs, body) ->
-    let env =
-      List.fold_right (fun (id,  _) env ->
-          Env.add_var env id (Variable.create_with_same_name_as_ident id))
-        defs env
-    in
-    let function_declarations =
-      (* Identify any bindings in the [let rec] that are functions.  These
-         will be named after the corresponding identifier in the [let rec]. *)
-      List.map (function
-          | (let_rec_ident,
-             Ilambda.Function { kind; params; body; attr; loc;
-               free_idents_of_body; }) ->
-            let closure_bound_var =
-              Variable.create_with_same_name_as_ident let_rec_ident
-            in
-            let function_declaration =
-              Function_decl.create ~let_rec_ident:(Some let_rec_ident)
-                ~closure_bound_var ~kind ~params ~body
-                ~inline:attr.inline ~specialise:attr.specialise
-                ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
-            in
-            Some function_declaration
-          | _ -> None)
-        defs
-    in
-    begin match
-      Misc.Stdlib.List.some_if_all_elements_are_some function_declarations
-    with
-    | Some function_declarations ->
-      (* When all the bindings are (syntactically) functions, we can
-         eliminate the [let rec] construction, instead producing a normal
-         [Let] that binds a set of closures containing all of the functions.
-      *)
-      (* CR-someday lwhite: This is a very syntactic criteria. Adding an
-         unused value to a set of recursive bindings changes how
-         functions are represented at runtime. *)
-      let name =
-        (* The Microsoft assembler has a 247-character limit on symbol
-           names, so we keep them shorter to try not to hit this. *)
-        if Sys.win32 then begin
-          match defs with
-          | (id, _)::_ -> (Ident.unique_name id) ^ "_let_rec"
-          | _ -> "let_rec"
-        end else begin
-          String.concat "_and_"
-            (List.map (fun (id, _) -> Ident.unique_name id) defs)
-        end
-      in
-      let set_of_closures_var = Variable.create name in
-      let set_of_closures =
-        close_functions t env (Function_decls.create function_declarations)
-      in
-      let body =
-        List.fold_left (fun body decl ->
-            let let_rec_ident = Function_decl.let_rec_ident decl in
-            let closure_bound_var = Function_decl.closure_bound_var decl in
-            let let_bound_var = Env.find_var env let_rec_ident in
-            (* Inside the body of the [let], each function is referred to by
-               a [Project_closure] expression, which projects from the set of
-               closures. *)
-            (Flambda.create_let let_bound_var
-              (Project_closure {
-                set_of_closures = set_of_closures_var;
-                closure_id = Closure_id.wrap closure_bound_var;
-              })
-              body))
-          (close t env body) function_declarations
-      in
-      Flambda.create_let set_of_closures_var set_of_closures body
-    | None ->
-      (* If the condition above is not satisfied, we build a [Let_rec]
-         expression; any functions bound by it will have their own
-         individual closures. *)
-      let defs =
-        List.map (fun (id, def) ->
-            let var = Env.find_var env id in
-            var, close_let_bound_expression t ~let_rec_ident:id var env def)
-          defs
-      in
-      Let_rec (defs, close t env body)
-    end
-  | Send (kind, meth, obj, args, loc) ->
-    let meth_var = Variable.create "meth" in
-    let obj_var = Variable.create "obj" in
-    let dbg = Debuginfo.from_location loc in
-    Flambda.create_let meth_var (Expr (close t env meth))
-      (Flambda.create_let obj_var (Expr (close t env obj))
-        (Lift_code.lifting_helper (close_list t env args)
-          ~evaluation_order:`Right_to_left
-          ~name:"send_arg"
-          ~create_body:(fun args ->
-              Send { kind; meth = meth_var; obj = obj_var; args; dbg; })))
-  | Prim ((Pdivint Safe | Pmodint Safe
-           | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }) as prim,
-           [arg1; arg2], loc)
-      when not !Clflags.fast -> (* not -unsafe *)
-    let arg2 = close t env arg2 in
-    let arg1 = close t env arg1 in
-    let numerator = Variable.create "numerator" in
-    let denominator = Variable.create "denominator" in
-    let zero = Variable.create "zero" in
-    let is_zero = Variable.create "is_zero" in
-    let exn = Variable.create "division_by_zero" in
-    let exn_symbol =
-      t.symbol_for_global' Predef.ident_division_by_zero
-    in
-    let dbg = Debuginfo.from_location loc in
-    let zero_const : Flambda.named =
-      match prim with
-      | Pdivint _ | Pmodint _ ->
-        Const (Int 0)
-      | Pdivbint { size = Pint32 } | Pmodbint { size = Pint32 } ->
-        Allocated_const (Int32 0l)
-      | Pdivbint { size = Pint64 } | Pmodbint { size = Pint64 } ->
-        Allocated_const (Int64 0L)
-      | Pdivbint { size = Pnativeint } | Pmodbint { size = Pnativeint } ->
-        Allocated_const (Nativeint 0n)
-      | _ -> assert false
-    in
-    let prim : Lambda.primitive =
-      match prim with
-      | Pdivint _ -> Pdivint Unsafe
-      | Pmodint _ -> Pmodint Unsafe
-      | Pdivbint { size } -> Pdivbint { size; is_safe = Unsafe }
-      | Pmodbint { size } -> Pmodbint { size; is_safe = Unsafe }
-      | _ -> assert false
-    in
-    let comparison : Lambda.primitive =
-      match prim with
-      | Pdivint _ | Pmodint _ -> Pintcomp Ceq
-      | Pdivbint { size } | Pmodbint { size } -> Pbintcomp (size,Ceq)
-      | _ -> assert false
-    in
-    t.imported_symbols <- Symbol.Set.add exn_symbol t.imported_symbols;
-    Flambda.create_let zero zero_const
-      (Flambda.create_let exn (Symbol exn_symbol)
-        (Flambda.create_let denominator (Expr arg2)
-          (Flambda.create_let numerator (Expr arg1)
-            (Flambda.create_let is_zero
-              (Prim (comparison, [zero; denominator], dbg))
-                (If_then_else (is_zero,
-                  name_expr (Prim (Praise Raise_regular, [exn], dbg))
-                    ~name:"dummy",
-                  (* CR-someday pchambart: find the right event.
-                     mshinwell: I briefly looked at this, and couldn't
-                     figure it out.
-                     lwhite: I don't think any of the existing events
-                     are suitable. I had to add a new one for a similar
-                     case in the array data types work.
-                     mshinwell: deferred CR *)
-                  name_expr ~name:"result"
-                    (Prim (prim, [numerator; denominator], dbg))))))))
-  | Prim ((Pdivint Safe | Pmodint Safe
-           | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _, _)
-      when not !Clflags.fast ->
-    Misc.fatal_error "Pdivint / Pmodint must have exactly two arguments"
-  | Prim (Psequor, [arg1; arg2], _) ->
-    let arg1 = close t env arg1 in
-    let arg2 = close t env arg2 in
-    let const_true = Variable.create "const_true" in
-    let cond = Variable.create "cond_sequor" in
-    Flambda.create_let const_true (Const (Int 1))
-      (Flambda.create_let cond (Expr arg1)
-        (If_then_else (cond, Var const_true, arg2)))
-  | Prim (Psequand, [arg1; arg2], _) ->
-    let arg1 = close t env arg1 in
-    let arg2 = close t env arg2 in
-    let const_false = Variable.create "const_false" in
-    let cond = Variable.create "cond_sequand" in
-    Flambda.create_let const_false (Const (Int 0))
-      (Flambda.create_let cond (Expr arg1)
-        (If_then_else (cond, arg2, Var const_false)))
-  | Prim ((Psequand | Psequor), _, _) ->
-    Misc.fatal_error "Psequand / Psequor must have exactly two arguments"
-  | Prim (Pidentity, [arg], _) -> close t env arg
-  | Prim (Pdirapply, [funct; arg], loc)
-  | Prim (Prevapply, [arg; funct], loc) ->
-    let apply : Ilambda.apply =
-      { func = funct;
-        args = [arg];
-        loc = loc;
-        should_be_tailcall = false;
-        (* CR-someday lwhite: it would be nice to be able to give
-           inlined attributes to functions applied with the application
-           operators. *)
-        inlined = Default_inline;
-        specialised = Default_specialise;
-      }
-    in
-    close_apply t env apply
-  | Prim (Praise kind, [arg], loc) ->
-    let arg_var = Variable.create "raise_arg" in
-    let dbg = Debuginfo.from_location loc in
-    Flambda.create_let arg_var (Expr (close t env arg))
-      (name_expr
-        (Prim (Praise kind, [arg_var], dbg))
-        ~name:"raise")
-  | Prim (Pfield _, [Prim (Pgetglobal id, [],_)], _)
-      when Ident.same id t.current_unit_id ->
-    Misc.fatal_errorf "[Pfield (Pgetglobal ...)] for the current compilation \
-        unit is forbidden upon entry to the middle end"
-  | Prim (Psetfield (_, _, _), [Prim (Pgetglobal _, [], _); _], _) ->
-    Misc.fatal_errorf "[Psetfield (Pgetglobal ...)] is \
-        forbidden upon entry to the middle end"
-  | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
-    let symbol = t.symbol_for_global' id in
-    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    name_expr (Symbol symbol) ~name:"predef_exn"
-  | Prim (Pgetglobal id, [], _) ->
-    assert (not (Ident.same id t.current_unit_id));
-    let symbol = t.symbol_for_global' id in
-    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    name_expr (Symbol symbol) ~name:"Pgetglobal"
-  | Prim (p, args, loc) ->
-    (* One of the important consequences of the ANF-like representation
-       here is that we obtain names corresponding to the components of
-       blocks being made (with [Pmakeblock]).  This information can be used
-       by the simplification pass to increase the likelihood of eliminating
-       the allocation, since some field accesses can be tracked back to known
-       field values. *)
-    let name = Printlambda.name_of_primitive p in
-    let dbg = Debuginfo.from_location loc in
-    Lift_code.lifting_helper (close_list t env args)
-      ~evaluation_order:`Right_to_left
-      ~name:(name ^ "_arg")
-      ~create_body:(fun args ->
-        name_expr (Prim (p, args, dbg))
-          ~name)
-  | Switch (arg, sw) ->
-    let scrutinee = Variable.create "switch" in
-    let aux (i, lam) = i, close t env lam in
-    let zero_to_n = Numbers.Int.zero_to_n in
-    Flambda.create_let scrutinee (Expr (close t env arg))
-      (Switch (scrutinee,
-        { numconsts = zero_to_n (sw.numconsts - 1);
-          consts = List.map aux sw.consts;
-          numblocks = zero_to_n (sw.numblocks - 1);
-          blocks = List.map aux sw.blocks;
-          failaction = Misc.may_map (close t env) sw.failaction;
-        }))
-  | String_switch (arg, sw, def, _) ->
-    let scrutinee = Variable.create "string_switch" in
-    Flambda.create_let scrutinee (Expr (close t env arg))
-      (String_switch (scrutinee,
-        List.map (fun (s, e) -> s, close t env e) sw,
-        Misc.may_map (close t env) def))
-  | Apply_cont (cont, args) ->
-    Lift_code.lifting_helper (close_list t env args)
-      ~evaluation_order:`Right_to_left
-      ~name:"apply_cont_arg"
-      ~create_body:(fun args ->
-        let cont = Env.find_continuation env cont in
-        Apply_cont (cont, args))
-  | Let_cont (i, ids, handler, body) ->
-    let cont = Continuation.create () in
-    let env = Env.add_continuation env i cont in
-    let vars = List.map (Variable.create_with_same_name_as_ident) ids in
-    Let_cont (cont, vars, close t env body,
-      close t (Env.add_vars env ids vars) handler)
-  | Try_with (body, id, handler) ->
-    let var = Variable.create_with_same_name_as_ident id in
-    Try_with (close t env body, var, close t (Env.add_var env id var) handler)
-  | If_then_else (cond, ifso, ifnot) ->
-    let cond = close t env cond in
-    let cond_var = Variable.create "cond" in
-    Flambda.create_let cond_var (Expr cond)
-      (If_then_else (cond_var, close t env ifso, close t env ifnot))
-  | Event (lam, _) -> close t env lam
+  | Prim (p, args, loc) -> Prim (p, args, loc)
 
 and close_apply t env ({ func; args; loc; should_be_tailcall = _;
       inlined; specialised; } : Ilambda.apply) =
@@ -533,7 +355,7 @@ and close_functions t external_env function_declarations : Flambda.named =
 and close_list t sb l = List.map (close t sb) l
 
 and close_let_bound_expression t ?let_rec_ident let_bound_var env
-      (lam : Ilambda.t) : Flambda.named =
+      (lam : Ilambda.named) : Flambda.named =
   match lam with
   | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
     (* Ensure that [let] and [let rec]-bound functions have appropriate
