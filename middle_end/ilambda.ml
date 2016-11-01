@@ -3,13 +3,13 @@
 (*                                 OCaml                                  *)
 (*                                                                        *)
 (*                       Pierre Chambart, OCamlPro                        *)
-(*           Mark Shinwell and Eo White, Jane Street Europe              *)
+(*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
 (*   Copyright 2016 OCamlPro SAS                                          *)
 (*   Copyright 2016 Jane Street Group LLC                                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
-(*   the GNU Esser General Public Icense version 2.1, with the          *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
@@ -71,10 +71,11 @@ and switch =
   }
 
 let print_switch_block_pattern ppf = function
-  | Tag t -> Format.fprintf ppf "tag %i" tag
+  | Tag t -> Format.fprintf ppf "tag %i" t
   | String s -> Format.fprintf ppf "string \"%S\"" s
 
-let print_function ppf ({ kind; params; body; attr; } : function_declaration) =
+let rec print_function ppf
+      ({ kind; params; body; attr; } : function_declaration) =
   let fprintf = Format.fprintf in
   let pr_params ppf params =
     match kind with
@@ -92,7 +93,7 @@ let print_function ppf ({ kind; params; body; attr; } : function_declaration) =
   fprintf ppf "@[<2>(function%a@ %a%a)@]" pr_params params
     Printlambda.function_attribute attr lam body
 
-let print_named ppf (named : named) =
+and print_named ppf (named : named) =
   let fprintf = Format.fprintf in
   match named with
   | Var id -> Ident.print ppf id
@@ -102,7 +103,7 @@ let print_named ppf (named : named) =
     fprintf ppf "@[<2>(%a%a)@]" Printlambda.primitive prim
       (Format.pp_print_list Ident.print) largs
 
-let rec lam ppf (t : t) =
+and lam ppf (t : t) =
   let fprintf = Format.fprintf in
   match t with
   | Apply ap ->
@@ -111,7 +112,7 @@ let rec lam ppf (t : t) =
       | Function -> Ident.print ppf func
       | Method { kind; obj; } ->
         Format.fprintf ppf "send%a %a#%a"
-          L.print_meth_kind kind
+          Printlambda.meth_kind kind
           Ident.print obj
           Ident.print func
     in
@@ -155,8 +156,9 @@ let rec lam ppf (t : t) =
         sw.consts;
       List.iter (fun (n, l) ->
           if !spc then fprintf ppf "@ " else spc := true;
-          fprintf ppf "@[<hv 1>case %a:@ %a@]" n Continuation.print l
-            print_switch_block_pattern l)
+          fprintf ppf "@[<hv 1>case %a:@ %a@]"
+            print_switch_block_pattern n
+            Continuation.print l)
         sw.blocks;
       begin match sw.failaction with
       | None  -> ()
@@ -167,15 +169,15 @@ let rec lam ppf (t : t) =
     fprintf ppf
       "@[<1>(%s %a@ @[<v 0>%a@])@]"
       (match sw.failaction with None -> "switch*" | _ -> "switch")
-      Continuation.print larg switch sw
-  | Let_cont (lbody, i, vars, lhandler) ->
+      Ident.print larg switch sw
+  | Let_cont (i, vars, handler, body) ->
     fprintf ppf "@[<2>(let_cont@ %a@;<1 -1>where (%a%a)@ %a)@]"
-      lam lbody Continuation.print i
+      lam body Continuation.print i
       (Format.pp_print_list Ident.print) vars
-      lam lhandler
+      lam handler
   | Apply_cont (i, ls)  ->
-    fprintf ppf "@[<2>(apply_cont@ %d%a)@]"
-      Continuation.print i;
+    fprintf ppf "@[<2>(apply_cont@ %a%a)@]"
+      Continuation.print i
       (Format.pp_print_list Ident.print) ls;
   | Event(expr, ev) ->
     let kind =
