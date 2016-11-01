@@ -68,7 +68,7 @@ let add_default_argument_wrappers lam =
 type block_type = Normal | Float
 
 let dissect_letrec ~bindings ~body =
-  let bindings_with_sizes =
+  let bindings_with_kinds =
     List.map (fun (id, binding) -> id, binding, L.size_of_lambda binding)
       bindings
   in
@@ -77,44 +77,49 @@ let dissect_letrec ~bindings ~body =
               (id, binding, (kind : L.rhs_kind)) ->
         match kind with
         | RHS_function (_, _, funct) ->
-          recursive_blocks, nonrecursive_blocks,
-            (id, Lfunction funct)::functions
+          recursive_blocks, nonrecursives,
+            (id, L.Lfunction funct)::functions
         | RHS_block size ->
-          (id, Normal, size, binding) :: recursive_blocks, nonrecursive_blocks,
+          (id, Normal, size, binding) :: recursive_blocks, nonrecursives,
             functions
         | RHS_floatblock size ->
-          (id, Float, size, binding) :: recursive_blocks, nonrecursive_blocks,
+          (id, Float, size, binding) :: recursive_blocks, nonrecursives,
             functions
         | RHS_nonrec ->
-          recursive_blocks, (id, binding) :: nonrecursives, functions
+          recursive_blocks, (id, binding) :: nonrecursives, functions)
       ([], [], [])
-      bindings
+      bindings_with_kinds
   in
   let loc = Location.none in
   let preallocations =
-    List.map (fun (id, block_type, size) ->
+    List.map (fun (id, block_type, size, _binding) ->
         let fn =
           match block_type with
           | Normal -> "caml_alloc_dummy"
           | Float -> "caml_alloc_dummy_float"
         in
+        let desc = Primitive.simple ~name:fn ~arity:1 ~alloc:true in
         let size : L.lambda = Lconst (Const_base (Const_int size)) in
-        id, Lprim (Pccall fn, [size], loc))
+        id, L.Lprim (Pccall desc, [size], loc))
       recursive_blocks
   in
   let fillings =
     List.map (fun (id, _block_type, _size, binding) ->
         let seq = Ident.create "sequence" in
-        seq, Lprim (Pccall "caml_update_dummy", [Lvar id; binding], loc))
+        let desc =
+          Primitive.simple ~name:"caml_update_dummy" ~arity:2 ~alloc:true
+        in
+        seq, L.Lprim (Pccall desc, [L.Lvar id; binding], loc))
       recursive_blocks
   in
-  List.fold_left (fun (id, binding) body ->
-      Llet (Strict, Pgenval, id, binding, body))
-    (Lletrec (functions, body))
+  List.fold_left (fun body (id, binding) ->
+      L.Llet (Strict, Pgenval, id, binding, body))
+    (L.Lletrec (functions, body))
     (preallocations @ nonrecursives @ fillings)
 
-let simplify_primitive prim args loc =
+let simplify_primitive (prim : L.primitive) args loc =
   match prim, args with
+(*
   | Prim ((Pdivint Safe | Pmodint Safe
            | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }) as prim,
            [arg1; arg2], loc)
@@ -179,63 +184,38 @@ let simplify_primitive prim args loc =
            | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _, _)
       when not !Clflags.fast ->
     Misc.fatal_error "Pdivint / Pmodint must have exactly two arguments"
-  | Prim (Psequor, [arg1; arg2], _) ->
-    let arg1 = close t env arg1 in
-    let arg2 = close t env arg2 in
-    let const_true = Variable.create "const_true" in
-    let cond = Variable.create "cond_sequor" in
-    Flambda.create_let const_true (Const (Int 1))
-      (Flambda.create_let cond (Expr arg1)
-        (If_then_else (cond, Var const_true, arg2)))
-  | Prim (Psequand, [arg1; arg2], _) ->
-    let arg1 = close t env arg1 in
-    let arg2 = close t env arg2 in
-    let const_false = Variable.create "const_false" in
-    let cond = Variable.create "cond_sequand" in
-    Flambda.create_let const_false (Const (Int 0))
-      (Flambda.create_let cond (Expr arg1)
-        (If_then_else (cond, arg2, Var const_false)))
-  | Prim ((Psequand | Psequor), _, _) ->
+*)
+  | Psequor, [arg1; arg2] ->
+    let const_true = Ident.create "const_true" in
+    let cond = Ident.create "cond_sequor" in
+    L.Llet (Strict, Pgenval, const_true, Lconst (Const_base (Const_int 1)),
+      (L.Llet (Strict, Pgenval, cond, arg1,
+        (Lifthenelse (Lvar cond, Lvar const_true, arg2)))))
+  | Psequand, [arg1; arg2] ->
+    let const_false = Ident.create "const_false" in
+    let cond = Ident.create "cond_sequand" in
+    L.Llet (Strict, Pgenval, const_false, Lconst (Const_base (Const_int 0)),
+      (L.Llet (Strict, Pgenval, cond, arg1,
+        (Lifthenelse (Lvar cond, arg2, Lvar const_false)))))
+  | (Psequand | Psequor), _ ->
     Misc.fatal_error "Psequand / Psequor must have exactly two arguments"
-  | Prim (Pidentity, [arg], _) -> close t env arg
-  | Prim (Pdirapply, [funct; arg], loc)
-  | Prim (Prevapply, [arg; funct], loc) ->
-    let apply : Ilambda.apply =
-      { func = funct;
-        args = [arg];
-        loc = loc;
-        should_be_tailcall = false;
+  | Pidentity, [arg] -> arg
+  | Pdirapply, [funct; arg]
+  | Prevapply, [arg; funct] ->
+    let apply : L.lambda_apply =
+      { ap_func = funct;
+        ap_args = [arg];
+        ap_loc = loc;
+        ap_should_be_tailcall = false;
         (* CR-someday lwhite: it would be nice to be able to give
            inlined attributes to functions applied with the application
            operators. *)
-        inlined = Default_inline;
-        specialised = Default_specialise;
+        ap_inlined = Default_inline;
+        ap_specialised = Default_specialise;
       }
     in
-    close_apply t env apply
-  | Prim (Praise kind, [arg], loc) ->
-    let arg_var = Variable.create "raise_arg" in
-    let dbg = Debuginfo.from_location loc in
-    Flambda.create_let arg_var (Expr (close t env arg))
-      (name_expr
-        (Prim (Praise kind, [arg_var], dbg))
-        ~name:"raise")
-  | Prim (Pfield _, [Prim (Pgetglobal id, [],_)], _)
-      when Ident.same id t.current_unit_id ->
-    Misc.fatal_errorf "[Pfield (Pgetglobal ...)] for the current compilation \
-        unit is forbidden upon entry to the middle end"
-  | Prim (Psetfield (_, _, _), [Prim (Pgetglobal _, [], _); _], _) ->
-    Misc.fatal_errorf "[Psetfield (Pgetglobal ...)] is \
-        forbidden upon entry to the middle end"
-  | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
-    let symbol = t.symbol_for_global' id in
-    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    name_expr (Symbol symbol) ~name:"predef_exn"
-  | Prim (Pgetglobal id, [], _) ->
-    assert (not (Ident.same id t.current_unit_id));
-    let symbol = t.symbol_for_global' id in
-    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    name_expr (Symbol symbol) ~name:"Pgetglobal"
+    L.Lapply apply
+  | _, _ -> L.Lprim (prim, args, loc)
 
 let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
   match lam with
@@ -260,7 +240,6 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
         body;
         attr = func.attr;
         loc = func.loc;
-        free_idents_of_body;
       }))
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
     prepare defining_expr (fun defining_expr ->
@@ -304,11 +283,11 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
   | Lstaticcatch (body, (cont, args), handler) ->
     prepare body (fun body ->
       prepare handler (fun handler ->
-        k (L.Lstaticcatch (body, cont, args, handler))))
+        k (L.Lstaticcatch (body, (cont, args), handler))))
   | Ltrywith (body, id, handler) ->
     let cont = L.next_raise_count () in
     let loc = Location.none in
-    let lam =
+    let lam : L.lambda =
       Lstaticcatch (
         Lsequence (
           Lprim (Ppushtrap, [], loc),
@@ -331,7 +310,7 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
               sw_failaction = Some ifso;
             }
           in
-          Lswitch (cond, switch))))
+          L.Lswitch (cond, switch))))
   | Lsequence (lam1, lam2) ->
     let ident = Ident.create "sequence" in
     prepare (L.Llet (Strict, Pgenval, ident, lam1, lam2)) k

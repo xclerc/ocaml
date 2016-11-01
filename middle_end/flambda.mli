@@ -16,7 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Intermediate language used for tree-based analysis and optimization. *)
+(** Intermediate language used for tree-based analysis and optimization.
+    Flambda = Ilambda + closures and symbols. *)
 
 (** Whether the callee in a function application is known at compile time. *)
 type call_kind =
@@ -34,14 +35,20 @@ type const =
      boxed (typically a variant type with both constant and non-constant
      constructors). *)
 
-(** The application of a function to a list of arguments. *)
+type apply_kind =
+  | Function
+  | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
+
+(** The application of a function (or method on a given object) to a list of
+    arguments. *)
 type apply = {
+  kind : apply_kind;
   (* CR-soon mshinwell: rename func -> callee, and
      lhs_of_application -> callee *)
   func : Variable.t;
   continuation : Continuation.t;
   args : Variable.t list;
-  kind : call_kind;
+  call_kind : call_kind;
   dbg : Debuginfo.t;
   inline : Lambda.inline_attribute;
   (** Instructions from the source code as to whether the callee should
@@ -56,15 +63,6 @@ type apply = {
 type assign = {
   being_assigned : Mutable_variable.t;
   new_value : Variable.t;
-}
-
-(** The invocation of a method. *)
-type send = {
-  kind : Lambda.meth_kind;
-  meth : Variable.t;
-  obj : Variable.t;
-  args : Variable.t list;
-  dbg : Debuginfo.t;
 }
 
 (** For details on these types, see projection.mli. *)
@@ -88,10 +86,28 @@ type specialised_to = {
       either the [free_vars] or the [specialised_args]. *)
 }
 
-(** Flambda terms are in CPS form with an "ANF like" partitioning: many terms
-    are required to be [let]-bound.  This in particular ensures there is always
-    a variable name for an expression that may be lifted out (for example
-    if it is found to be constant).
+(** With the exception of applications of primitives ([Prim]), Flambda terms
+    are in CPS.
+
+    Primitives being in direct style combined with care during CPS conversion
+    should keep administrative redexes to a minimum.
+
+    The CPS representation ensures that:
+    - every intermediate value (and in particular every potential constant
+      that we may want to lift) has a name;
+    - there are no nested "let"s or complicated expressions as the defining
+      expression of a "let";
+    - every point to which we might wish to jump has a name;
+    - no re-normalisation of terms is required when substituting an
+      application for an inlined body (unlike in ANF form).  This is important
+      for compilation speed.
+
+    See comments on the [let_cont] type below for information about the form
+    of continuations used.
+
+    Exception flow is currently handled (for simplicity) using explicit push
+    and pop trap handler primitives rather than double-barrelled CPS.
+
     Note: All bound variables in Flambda terms must be distinct.
     [Flambda_invariants] verifies this. *)
 type t =
@@ -102,11 +118,8 @@ type t =
   | Let_cont of let_cont
   | Apply_cont of Continuation.t * Variable.t list
   | Apply of apply
-  | Send of send
   | Assign of assign
   | Switch of Variable.t * switch
-  | String_switch of Variable.t * (string * Continuation.t) list
-      * Continuation.t option
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
   | Proved_unreachable
 
@@ -151,13 +164,6 @@ and named =
   | Project_var of project_var
   | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
 
-(* CR-someday mshinwell: use [letcont]-style construct to remove e.g.
-   [While] and [For]. *)
-(* CR-someday mshinwell: try to produce a tighter definition of a "switch"
-   (and translate to that earlier) so that middle- and back-end code for
-   these can be reduced. *)
-(* CR-someday mshinwell: remove [Expr], but to do this easily would probably
-   require a continuation-binding construct. *)
 (* CR-someday mshinwell: Since we lack expression identifiers on every term,
    we should probably introduce [Mutable_var] into [named] if we introduce
    more complicated analyses on these in the future.  Alternatively, maybe
@@ -316,8 +322,12 @@ and function_declarations = private {
 
 and function_declaration = private {
   continuation_param : Continuation.t;
+  (** The continuation parameter of the function, i.e. to where we must jump
+      once the result of the function has been computed. *)
   params : Variable.t list;
+  (** The normal parameters of the function. *)
   body : t;
+  (** The code of the function's body. *)
   (* CR-soon mshinwell: inconsistent naming free_variables/free_vars here and
      above *)
   free_variables : Variable.Set.t;
@@ -343,12 +353,12 @@ and function_declaration = private {
   (** Whether the function is known definitively to be a functor. *)
 }
 
-(** Equivalent to the similar type in [Lambda]. *)
+(** Equivalent to the similar type in [Ilambda]. *)
 and switch = {
   numconsts : Numbers.Int.Set.t; (** Integer cases *)
   consts : (int * t) list; (** Integer cases *)
   numblocks : Numbers.Int.Set.t; (** Number of tag block cases *)
-  blocks : (int * t) list; (** Tag block cases *)
+  blocks : (Ilambda.switch_block_pattern * t) list; (** Tag block cases *)
   failaction : t option; (** Action to take if none matched *)
 }
 

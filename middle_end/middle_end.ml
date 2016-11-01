@@ -62,6 +62,14 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     end;
     flam
   in
+  let print_prepared_lambda lam =
+    if not !Clflags.dump_rawflambda then begin
+      lam
+    end else begin
+      Format.fprintf ppf "After Prepare_lambda:@ %a@." Printlambda.lam lam;
+      lam
+    end
+  in
   let print_ilambda ilam =
     if not !Clflags.dump_rawflambda then begin
       ilam
@@ -79,10 +87,14 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       Timings.accumulate_time timing_pass (fun () ->
           module_initializer
           |> Prepare_lambda.run
+          |> print_prepared_lambda
           |> Cps_conversion.lambda_to_ilambda
           |> print_ilambda
+          |> (fun _ -> assert false))
+(*
           |> Closure_conversion.ilambda_to_flambda ~backend ~module_ident
                 ~size ~filename)
+*)
         ()
     in
     if !Clflags.dump_rawflambda
@@ -90,6 +102,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       Format.fprintf ppf "After closure conversion:@ %a@."
         Flambda.print_program flam;
     check flam;
+(*
     let fast_mode flam =
       pass_number := 0;
       let round = 0 in
@@ -191,4 +204,4 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     check flam;
     (* CR-someday mshinwell: add -d... option for this *)
     (* dump_function_sizes flam ~backend; *)
-    flam) ();
+    flam *) assert false) ();

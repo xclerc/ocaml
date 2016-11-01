@@ -24,6 +24,7 @@ val program: formatter -> program -> unit
 val primitive: formatter -> primitive -> unit
 val name_of_primitive : primitive -> string
 val value_kind : value_kind -> string
+val meth_kind : formatter -> meth_kind -> unit
 val function_attribute : formatter -> function_attribute -> unit
 val apply_tailcall_attribute : formatter -> bool -> unit
 val apply_inlined_attribute : formatter -> inline_attribute -> unit

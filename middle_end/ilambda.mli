@@ -62,7 +62,7 @@ and apply =
 
 and apply_kind =
   | Function
-  | Method of { kind : Lambda.meth_kind; obj : IdentSet.t; }
+  | Method of { kind : Lambda.meth_kind; obj : Ident.t; }
 
 and switch =
   { numconsts : int;

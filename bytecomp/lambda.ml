@@ -712,17 +712,19 @@ let rec check_recordwith_updates id e =
   | _ -> false
 ;;
 
-let rec size_of_lambda = function
-  | Lfunction{params} as funct ->
-      RHS_function (1 + IdentSet.cardinal(free_variables funct),
+let rec size_of_lambda lam =
+  let module T = Types in
+  match lam with
+  | Lfunction ({params} as funct) ->
+      RHS_function (1 + IdentSet.cardinal(free_variables lam),
                     List.length params, funct)
   | Llet (Strict, _k, id, Lprim (Pduprecord (kind, size), _, _), body)
     when check_recordwith_updates id body ->
       begin match kind with
-      | Record_regular | Record_inlined _ -> RHS_block size
-      | Record_unboxed _ -> assert false
-      | Record_float -> RHS_floatblock size
-      | Record_extension -> RHS_block (size + 1)
+      | T.Record_regular | T.Record_inlined _ -> RHS_block size
+      | T.Record_unboxed _ -> assert false
+      | T.Record_float -> RHS_floatblock size
+      | T.Record_extension -> RHS_block (size + 1)
       end
   | Llet(_str, _k, _id, _arg, body) -> size_of_lambda body
   | Lletrec(_bindings, body) -> size_of_lambda body
@@ -732,13 +734,13 @@ let rec size_of_lambda = function
   | Lprim (Pmakearray (Pfloatarray, _), args, _) ->
       RHS_floatblock (List.length args)
   | Lprim (Pmakearray (Pgenarray, _), _, _) -> assert false
-  | Lprim (Pduprecord ((Record_regular | Record_inlined _), size), _, _) ->
+  | Lprim (Pduprecord ((T.Record_regular | T.Record_inlined _), size), _, _) ->
       RHS_block size
-  | Lprim (Pduprecord (Record_unboxed _, _), _, _) ->
+  | Lprim (Pduprecord (T.Record_unboxed _, _), _, _) ->
       assert false
-  | Lprim (Pduprecord (Record_extension, size), _, _) ->
+  | Lprim (Pduprecord (T.Record_extension, size), _, _) ->
       RHS_block (size + 1)
-  | Lprim (Pduprecord (Record_float, size), _, _) -> RHS_floatblock size
+  | Lprim (Pduprecord (T.Record_float, size), _, _) -> RHS_floatblock size
   | Levent (lam, _) -> size_of_lambda lam
   | Lsequence (_lam, lam') -> size_of_lambda lam'
   | _ -> RHS_nonrec

@@ -14,6 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type for_one_or_more_units = {
@@ -689,3 +690,15 @@ let convert (program, exported) : result =
       ~constant_sets_of_closures:current_unit.constant_sets_of_closures
   in
   { expr; preallocated_blocks; structured_constants; exported; }
+
+*)
+
+type result = {
+  expr : Clambda.ulambda;
+  preallocated_blocks : Clambda.preallocated_block list;
+  structured_constants : Clambda.ustructured_constant Symbol.Map.t;
+  exported : Export_info.t;
+}
+
+let convert (_program, _exported) : result =
+  assert false

@@ -310,6 +310,8 @@ let primitive ppf = function
   | Pbbswap(bi) -> print_boxed_integer "bswap" ppf bi
   | Pint_as_pointer -> fprintf ppf "int_as_pointer"
   | Popaque -> fprintf ppf "opaque"
+  | Ppushtrap -> fprintf ppf "pushtrap"
+  | Ppoptrap -> fprintf ppf "poptrap"
 
 let name_of_primitive = function
   | Pidentity -> "Pidentity"
@@ -411,6 +413,8 @@ let name_of_primitive = function
   | Pbbswap _ -> "Pbbswap"
   | Pint_as_pointer -> "Pint_as_pointer"
   | Popaque -> "Popaque"
+  | Ppushtrap -> "Ppushtrap"
+  | Ppoptrap -> "Ppoptrap"
 
 let function_attribute ppf { inline; specialise; is_a_functor } =
   if is_a_functor then
@@ -441,6 +445,11 @@ let apply_specialised_attribute ppf = function
   | Default_specialise -> ()
   | Always_specialise -> fprintf ppf " always_specialise"
   | Never_specialise -> fprintf ppf " never_specialise"
+
+let meth_kind ppf = function
+  | Self -> fprintf ppf "self"
+  | Cached -> fprintf ppf "cache"
+  | Public -> fprintf ppf "public"
 
 let rec lam ppf = function
   | Lvar id ->
@@ -571,9 +580,8 @@ let rec lam ppf = function
   | Lsend (k, met, obj, largs, _) ->
       let args ppf largs =
         List.iter (fun l -> fprintf ppf "@ %a" lam l) largs in
-      let kind =
-        if k = Self then "self" else if k = Cached then "cache" else "" in
-      fprintf ppf "@[<2>(send%s@ %a@ %a%a)@]" kind lam obj lam met args largs
+      fprintf ppf "@[<2>(send%a@ %a@ %a%a)@]" meth_kind k lam obj lam met
+        args largs
   | Levent(expr, ev) ->
       let kind =
        match ev.lev_kind with

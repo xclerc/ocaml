@@ -118,8 +118,16 @@ and close t env (lam : Ilambda.t) : Flambda.t =
            initial_value = var;
            body;
            contents_kind = block_kind })
-  | Apply apply ->
-    close_apply t env apply
+  | Apply { func; args; loc; should_be_tailcall = _;
+      inlined; specialised; } ->
+    Apply ({
+      func = Env.find_var_or_mutable_var_exn env func;
+      args = Env.find_vars_or_mutable_vars_exn env args;
+      kind = Indirect;
+      dbg = Debuginfo.from_location loc;
+      inline = inlined;
+      specialise = specialised;
+    })
   | Let_rec (defs, body) ->
     let env =
       List.fold_right (fun (id,  _) env ->
@@ -252,25 +260,25 @@ and close_named t env (named : Ilambda.named) : Flambda.named =
     Flambda.create_let set_of_closures_var set_of_closures
       (name_expr (Project_closure (project_closure))
         ~name:("project_closure_" ^ name))
-  | Prim (p, args, loc) -> Prim (p, args, loc)
-
-and close_apply t env ({ func; args; loc; should_be_tailcall = _;
-      inlined; specialised; } : Ilambda.apply) =
-  Lift_code.lifting_helper (close_list t env args)
-    ~evaluation_order:`Right_to_left
-    ~name:"apply_arg"
-    ~create_body:(fun args ->
-      let func = close t env func in
-      let func_var = Variable.create "apply_funct" in
-      Flambda.create_let func_var (Expr func)
-        (Apply ({
-            func = func_var;
-            args;
-            kind = Indirect;
-            dbg = Debuginfo.from_location loc;
-            inline = inlined;
-            specialise = specialised;
-          })))
+  | Prim (Pfield _, [Prim (Pgetglobal id, [],_)], _)
+      when Ident.same id t.current_unit_id ->
+    Misc.fatal_errorf "[Pfield (Pgetglobal ...)] for the current compilation \
+        unit is forbidden upon entry to the middle end"
+  | Prim (Psetfield (_, _, _), [Prim (Pgetglobal _, [], _); _], _) ->
+    Misc.fatal_errorf "[Psetfield (Pgetglobal ...)] is \
+        forbidden upon entry to the middle end"
+  | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
+    let symbol = t.symbol_for_global' id in
+    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+    name_expr (Symbol symbol) ~name:"predef_exn"
+  | Prim (Pgetglobal id, [], _) ->
+    assert (not (Ident.same id t.current_unit_id));
+    let symbol = t.symbol_for_global' id in
+    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+    name_expr (Symbol symbol) ~name:"Pgetglobal"
+  | Prim (p, args, loc) ->
+    let args = Env.find_vars_or_mutable_vars env args in
+    Prim (p, args, loc)
 
 (** Perform closure conversion on a set of function declarations, returning a
     set of closures.  (The set will often only contain a single function;

@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-
+(*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 let rename_id_state = Export_id.Tbl.create 100
@@ -136,3 +136,12 @@ let import_for_pack ~pack_units ~pack (exp : Export_info.t) =
     ~invariant_params:exp.invariant_params
 
 let clear_import_state () = Export_id.Tbl.clear rename_id_state
+
+*)
+let import_for_pack ~pack_units ~pack (exp : Export_info.t) =
+  ignore pack_units;
+  ignore pack;
+  ignore exp;
+  assert false
+
+let clear_import_state () = ()

@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-
+(*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Env : sig
@@ -548,3 +548,9 @@ let build_export_info ~(backend : (module Backend_intf.S))
       ~sets_of_closures ~closures
       ~constant_sets_of_closures:Set_of_closures_id.Set.empty
       ~invariant_params
+*)
+let build_export_info ~(backend : (module Backend_intf.S))
+      (program : Flambda.program) : Export_info.t =
+  ignore backend;
+  ignore program;
+  assert false
