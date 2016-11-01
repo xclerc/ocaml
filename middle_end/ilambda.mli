@@ -25,7 +25,8 @@ type switch_block_pattern =
   | String of string
 
 type t =
-  | Let of Lambda.let_kind * Lambda.value_kind * Ident.t * named * t
+  | Let of Ident.t * named * t
+  | Let_mutable of let_mutable
   | Let_rec of (Ident.t * function_declaration) list * t
   | Let_cont of Continuation.t * Ident.t list * t (* <-- code of cont'n *) * t
   | Apply of apply
@@ -38,6 +39,13 @@ and named =
   | Const of Lambda.structured_constant
   | Function of function_declaration
   | Prim of Lambda.primitive * Ident.t list * Location.t
+
+and let_mutable = {
+  id : Ident.t;
+  initial_value : Ident.t;
+  contents_kind : Lambda.value_kind;
+  body : t;
+}
 
 and function_declaration =
   { kind : Lambda.function_kind;

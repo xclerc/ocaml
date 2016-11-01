@@ -322,21 +322,22 @@ EMPTY =
 CCOUT = -o $(EMPTY)
 endif
 
-objinfo_helper$(EXE): objinfo_helper.c ../config/s.h
-	$(BYTECC) $(CCOUT)objinfo_helper$(EXE) $(BYTECCCOMPOPTS) \
-          $(DEF_SYMBOL_PREFIX) $(LIBBFD_INCLUDE) objinfo_helper.c $(LIBBFD_LINK)
-
-OBJINFO=../compilerlibs/ocamlcommon.cma \
-        ../compilerlibs/ocamlbytecomp.cma \
-        ../compilerlibs/ocamlmiddleend.cma \
-        ../asmcomp/printclambda.cmo \
-        ../asmcomp/export_info.cmo \
-        objinfo.cmo
-
-$(call byte_and_opt,ocamlobjinfo,$(OBJINFO),objinfo_helper$(EXE))
-
-install::
-	cp objinfo_helper$(EXE) "$(INSTALL_LIBDIR)/objinfo_helper$(EXE)"
+## XXX mshinwell
+##objinfo_helper$(EXE): objinfo_helper.c ../config/s.h
+##	$(BYTECC) $(CCOUT)objinfo_helper$(EXE) $(BYTECCCOMPOPTS) \
+##          $(DEF_SYMBOL_PREFIX) $(LIBBFD_INCLUDE) objinfo_helper.c $(LIBBFD_LINK)
+##
+##OBJINFO=../compilerlibs/ocamlcommon.cma \
+##        ../compilerlibs/ocamlbytecomp.cma \
+##        ../compilerlibs/ocamlmiddleend.cma \
+##        ../asmcomp/printclambda.cmo \
+##        ../asmcomp/export_info.cmo \
+##        objinfo.cmo
+##
+##$(call byte_and_opt,ocamlobjinfo,$(OBJINFO),objinfo_helper$(EXE))
+##
+##install::
+##	cp objinfo_helper$(EXE) "$(INSTALL_LIBDIR)/objinfo_helper$(EXE)"
 
 # Scan object files for required primitives
 $(call byte_and_opt,primreq,config.cmo primreq.cmo,)

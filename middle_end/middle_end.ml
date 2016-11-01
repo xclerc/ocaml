@@ -16,6 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* XXX this is temporary *)
+[@@@ocaml.warning "-27-26"]
+(*
 let _dump_function_sizes flam ~backend =
   let module Backend = (val backend : Backend_intf.S) in
   let than = max_int in
@@ -29,7 +32,7 @@ let _dump_function_sizes flam ~backend =
           | Some size -> Format.eprintf "%a %d\n" Symbol.print symbol size
           | None -> assert false)
         set_of_closures.function_decls.funs)
-
+*)
 let middle_end ppf ~source_provenance ~prefixname ~backend
     ~size
     ~filename
@@ -37,6 +40,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     ~module_initializer =
   let pass_number = ref 0 in
   let round_number = ref 0 in
+(*
   let check flam =
     if !Clflags.flambda_invariant_checks then begin
       try Flambda_invariants.check_exn flam
@@ -62,11 +66,12 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     end;
     flam
   in
+*)
   let print_prepared_lambda lam =
     if not !Clflags.dump_rawflambda then begin
       lam
     end else begin
-      Format.fprintf ppf "After Prepare_lambda:@ %a@." Printlambda.lam lam;
+      Format.fprintf ppf "After Prepare_lambda:@ %a@." Printlambda.lambda lam;
       lam
     end
   in
@@ -97,12 +102,12 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
 *)
         ()
     in
+(*
     if !Clflags.dump_rawflambda
     then
       Format.fprintf ppf "After closure conversion:@ %a@."
         Flambda.print_program flam;
     check flam;
-(*
     let fast_mode flam =
       pass_number := 0;
       let round = 0 in

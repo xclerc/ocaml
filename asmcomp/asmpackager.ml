@@ -132,6 +132,8 @@ let make_package_object ppf members targetobj targetname coercion
 
 (* Make the .cmx file for the package *)
 
+[@@@ocaml.warning "-a"]
+
 let get_export_info ui =
   assert(Config.flambda);
   match ui.ui_export_info with
@@ -166,6 +168,8 @@ let build_package_cmx members cmxfile =
          Compilation_unit.Set.add
            (Compilenv.unit_for_global unit_id) set)
       Compilation_unit.Set.empty units in
+assert false
+(*
   let units =
     if Config.flambda then
       List.map (fun info ->
@@ -217,6 +221,7 @@ let build_package_cmx members cmxfile =
       ui_export_info;
     } in
   Compilenv.write_unit_info pkg_infos cmxfile
+*)
 
 (* Make the .cmx and the .o for the package *)
 

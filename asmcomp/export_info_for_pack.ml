@@ -138,10 +138,3 @@ let import_for_pack ~pack_units ~pack (exp : Export_info.t) =
 let clear_import_state () = Export_id.Tbl.clear rename_id_state
 
 *)
-let import_for_pack ~pack_units ~pack (exp : Export_info.t) =
-  ignore pack_units;
-  ignore pack;
-  ignore exp;
-  assert false
-
-let clear_import_state () = ()

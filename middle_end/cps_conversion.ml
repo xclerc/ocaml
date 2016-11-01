@@ -37,15 +37,18 @@ let check_let_rec_bindings bindings =
       match binding with
       | Lfunction func -> func
       | _ ->
-        Misc.fatal_error "Only [Lfunction] expressions are permitted in \
+        Misc.fatal_errorf "Only [Lfunction] expressions are permitted in \
             [Lletrec] bindings upon entry to CPS conversion: %a"
-          Printlambda.lam binding)
+          Printlambda.lambda binding)
     bindings
 
 let name_for_function (func : Lambda.lfunction) =
   (* Name anonymous functions by their source location, if known. *)
-  if loc = Location.none then "anon-fn"
-  else Format.asprintf "anon-fn[%a]" Location.print_compact loc
+  if func.loc = Location.none then "anon-fn"
+  else Format.asprintf "anon-fn[%a]" Location.print_compact func.loc
+
+(* CR-soon mshinwell: Remove mutable state. *)
+let static_exn_env = ref Numbers.Int.Map.empty
 
 let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
   match lam with
@@ -67,27 +70,42 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
           inlined = apply.ap_inlined;
           specialised = apply.ap_specialised;
         } in
-        Let_cont (continuation, [result_var], after, Apply apply)))
+        I.Let_cont (continuation, [result_var], after, Apply apply)))
   | Lfunction func -> name_then_cps_non_tail (name_for_function func) lam k
+  | Llet (Variable, value_kind, id, defining_expr, body) ->
+    let temp_id = Ident.create "let_mutable" in
+    let body = cps_non_tail body k in
+    let after_defining_expr = Continuation.create () in
+    let defining_expr = cps_tail defining_expr after_defining_expr in
+    let let_mutable : I.let_mutable =
+      { id;
+        initial_value = temp_id;
+        contents_kind = value_kind;
+        body;
+      }
+    in
+    Let_cont (after_defining_expr, [temp_id], Let_mutable let_mutable,
+      defining_expr)
   (* The following specialised Llet cases help to avoid administrative
      redexes. *)
-  | Llet (let_kind, value_kind, id, (Lvar id) as defining_expr, body) ->
-    Let (let_kind, value_kind, id, Var id, cps_non_tail body k)
-  | Llet (let_kind, value_kind, id, (Lconst const) as defining_expr, body) ->
-    Let (let_kind, value_kind, id, Const const, cps_non_tail body k)
-  | Llet (let_kind, value_kind, id, Lfunction func, body) ->
+  | Llet (_let_kind, _value_kind, id, Lvar id', body) ->
+    Let (id, Var id', cps_non_tail body k)
+  | Llet (_let_kind, _value_kind, id, Lconst const, body) ->
+    Let (id, Const const, cps_non_tail body k)
+  | Llet (_let_kind, _value_kind, id, Lfunction func, body) ->
     let func = cps_function func in
     let body = cps_non_tail body k in
-    Let (let_kind, value_kind, id, func, body)
-  | Llet (let_kind, value_kind, id, Lprim (prim, args, loc), body) ->
+    Let (id, Function func, body)
+  | Llet (_let_kind, _value_kind, id, Lprim (prim, args, loc), body) ->
     let body = cps_non_tail body k in
     cps_non_tail_list args (fun args ->
-      Let (Strict, Pgenval, id, Prim (prim, args, loc), body))
-  | Llet (let_kind, value_kind, id, defining_expr, body) ->
+      I.Let (id, Prim (prim, args, loc), body))
+  | Llet (_let_kind, _value_kind, id, defining_expr, body) ->
+    (* CR-soon mshinwell / pchambart: keep value_kind in Ilambda and Flambda *)
     let body = cps_non_tail body k in
-    let after_body = Continuation.create () in
-    let defining_expr = cps_tail defining_expr after_body in
-    Let_cont (after_body, [id], body, defining_expr)
+    let after_defining_expr = Continuation.create () in
+    let defining_expr = cps_tail defining_expr after_defining_expr in
+    Let_cont (after_defining_expr, [id], body, defining_expr)
   | Lletrec (bindings, body) ->
     let idents, bindings = List.split bindings in
     let bindings = List.map cps_function (check_let_rec_bindings bindings) in
@@ -96,7 +114,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
   | Lprim (prim, args, loc) ->
     let result_var = Ident.create "prim_result" in
     cps_non_tail_list args (fun args ->
-      Let (Strict, Pgenval, result_var, Prim (prim, args, loc), k result_var))
+      I.Let (result_var, Prim (prim, args, loc), k result_var))
   | Lswitch (scrutinee, switch) ->
     let after_switch = Continuation.create () in
     let result_var = Ident.create "switch_result" in
@@ -105,16 +123,17 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let block_pats = List.map (fun tag -> I.Tag tag) block_nums in
     let proto_switch : proto_switch =
       { numconsts = switch.sw_numconsts;
-        consts = switch.sw_numconsts;
+        consts = switch.sw_consts;
         numblocks = switch.sw_numblocks;
         block_pats;
         blocks;
-        failaction;
+        failaction = switch.sw_failaction;
       }
     in
     Let_cont (after_switch, [result_var], after,
       cps_switch proto_switch ~scrutinee after_switch)
-  | Lstringswitch (scrutinee, cases, default, loc) ->
+  | Lstringswitch (scrutinee, cases, default, _loc) ->
+    (* CR mshinwell: don't discard [loc] *)
     let after_switch = Continuation.create () in
     let result_var = Ident.create "stringswitch_result" in
     let after = k result_var in
@@ -132,10 +151,17 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     Let_cont (after_switch, [result_var], after,
       cps_switch proto_switch ~scrutinee after_switch)
   | Lstaticraise (static_exn, args) ->
-    let continuation = Continuation.unsafe_of_static_exn static_exn in
+    let continuation =
+      match Numbers.Int.Map.find static_exn !static_exn_env with
+      | exception Not_found ->
+        Misc.fatal_errorf "Unbound static exception %d" static_exn
+      | continuation -> continuation
+    in
     cps_non_tail_list args (fun args -> I.Apply_cont (continuation, args))
   | Lstaticcatch (body, (static_exn, args), handler) ->
-    let continuation = Continuation.unsafe_of_static_exn static_exn in
+    let continuation = Continuation.create () in
+    static_exn_env := Numbers.Int.Map.add static_exn continuation
+      !static_exn_env;
     let after_continuation = Continuation.create () in
     let result_var = Ident.create "staticcatch_result" in
     let body = cps_tail body after_continuation in
@@ -143,22 +169,24 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     Let_cont (after_continuation, [], k result_var,
       Let_cont (continuation, args, handler, body))
   | Lsend (meth_kind, meth, obj, args, loc) ->
-    cps_non_tail obj (fun func ->
-      cps_non_tail_list args (fun args ->
-        let continuation = Continuation.create () in
-        let result_var = Ident.create "send_result" in
-        let after = k result_var in
-        let apply : Ilambda.apply = {
-          kind = Method { kind = meth_kind; obj; };
-          func = meth;
-          continuation;
-          args;
-          loc;
-          should_be_tailcall = false;
-          inlined = Default_inline;
-          specialised = Default_specialise;
-        } in
-        Let_cont (continuation, [result_var], after, Apply apply)))
+    cps_non_tail obj (fun obj ->
+      cps_non_tail meth (fun meth ->
+        cps_non_tail_list args (fun args ->
+          let continuation = Continuation.create () in
+          let result_var = Ident.create "send_result" in
+          let after = k result_var in
+          let apply : Ilambda.apply = {
+            kind = Method { kind = meth_kind; obj; };
+            func = meth;
+            continuation;
+            args;
+            loc;
+            should_be_tailcall = false;
+            inlined = Default_inline;
+            specialised = Default_specialise;
+          } in
+          I.Let_cont (continuation, [result_var], after, Apply apply))))
+  | Levent (lam, event) -> Event (cps_non_tail lam k, event)
   | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _
   | Ltrywith _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
@@ -172,6 +200,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
     cps_non_tail apply.ap_func (fun func ->
       cps_non_tail_list apply.ap_args (fun args ->
         let apply : I.apply = {
+          kind = Function;
           func;
           continuation = k;
           args;
@@ -180,21 +209,41 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
           inlined = apply.ap_inlined;
           specialised = apply.ap_specialised;
         } in
-        Apply apply))
+        I.Apply apply))
   | Lfunction func -> name_then_cps_tail (name_for_function func) lam k
-  | Llet (let_kind, value_kind, id, (Lvar id) as defining_expr, body) ->
-    Let (let_kind, value_kind, id, Var id, cps_tail body k)
-  | Llet (let_kind, value_kind, id, (Lconst const) as defining_expr, body) ->
-    Let (let_kind, value_kind, id, Const const, cps_tail body k)
-  | Llet (let_kind, value_kind, id, Lfunction func, body) ->
+  | Llet (Variable, value_kind, id, defining_expr, body) ->
+    let temp_id = Ident.create "let_mutable" in
+    let body = cps_tail body k in
+    let after_defining_expr = Continuation.create () in
+    let defining_expr = cps_tail defining_expr after_defining_expr in
+    let let_mutable : I.let_mutable =
+      { id;
+        initial_value = temp_id;
+        contents_kind = value_kind;
+        body;
+      }
+    in
+    Let_cont (after_defining_expr, [temp_id], Let_mutable let_mutable,
+      defining_expr)
+  (* The following specialised Llet cases help to avoid administrative
+     redexes. *)
+  | Llet (_let_kind, _value_kind, id, Lvar id', body) ->
+    Let (id, Var id', cps_tail body k)
+  | Llet (_let_kind, _value_kind, id, Lconst const, body) ->
+    Let (id, Const const, cps_tail body k)
+  | Llet (_let_kind, _value_kind, id, Lfunction func, body) ->
     let func = cps_function func in
     let body = cps_tail body k in
-    Let (let_kind, value_kind, id, func, body)
-  | Llet (let_kind, value_kind, id, defining_expr, body) ->
+    Let (id, Function func, body)
+  | Llet (_let_kind, _value_kind, id, Lprim (prim, args, loc), body) ->
     let body = cps_tail body k in
-    let after_body = Continuation.create () in
-    let defining_expr = cps_tail defining_expr after_body in
-    Let_cont (after_body, [id], body, defining_expr)
+    cps_non_tail_list args (fun args ->
+      I.Let (id, Prim (prim, args, loc), body))
+  | Llet (_let_kind, _value_kind, id, defining_expr, body) ->
+    let body = cps_tail body k in
+    let after_defining_expr = Continuation.create () in
+    let defining_expr = cps_tail defining_expr after_defining_expr in
+    Let_cont (after_defining_expr, [id], body, defining_expr)
   | Lletrec (bindings, body) ->
     let idents, bindings = List.split bindings in
     let bindings = List.map cps_function (check_let_rec_bindings bindings) in
@@ -213,22 +262,21 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
 *)
     let result_var = Ident.create "prim_result" in
     cps_non_tail_list args (fun args ->
-      I.Let (Strict, Pgenval, result_var, Prim (prim, args, loc),
-        Apply_cont (k, [result_var])))
+      I.Let (result_var, Prim (prim, args, loc), Apply_cont (k, [result_var])))
   | Lswitch (scrutinee, switch) ->
     let block_nums, blocks = List.split switch.sw_blocks in
     let block_pats = List.map (fun tag -> I.Tag tag) block_nums in
     let proto_switch : proto_switch =
       { numconsts = switch.sw_numconsts;
-        consts = switch.sw_numconsts;
+        consts = switch.sw_consts;
         numblocks = switch.sw_numblocks;
         block_pats;
         blocks;
-        failaction;
+        failaction = switch.sw_failaction;
       }
     in
     cps_switch proto_switch ~scrutinee k
-  | Lstringswitch (scrutinee, cases, default, loc) ->
+  | Lstringswitch (scrutinee, cases, default, _loc) ->
     let strs, cases = List.split cases in
     let pats = List.map (fun str -> I.String str) strs in
     let proto_switch : proto_switch =
@@ -241,29 +289,37 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
       }
     in
     cps_switch proto_switch ~scrutinee k
-  | Lstaticraise (cont, args) ->
-    let continuation = Continuation.unsafe_of_static_exn static_exn in
-    cps_non_tail_list args (fun args -> I.Apply_cont (k, args))
-  | Lstaticcatch (body, (cont, args), handler) ->
-    let continuation = Continuation.unsafe_of_static_exn static_exn in
-    let result_var = Ident.create "staticcatch_result" in
+  | Lstaticraise (static_exn, args) ->
+    let continuation =
+      match Numbers.Int.Map.find static_exn !static_exn_env with
+      | exception Not_found ->
+        Misc.fatal_errorf "Unbound static exception %d" static_exn
+      | continuation -> continuation
+    in
+    cps_non_tail_list args (fun args -> I.Apply_cont (continuation, args))
+  | Lstaticcatch (body, (static_exn, args), handler) ->
+    let continuation = Continuation.create () in
+    static_exn_env := Numbers.Int.Map.add static_exn continuation
+      !static_exn_env;
     let body = cps_tail body k in
     let handler = cps_tail handler k in
     Let_cont (continuation, args, handler, body)
   | Lsend (meth_kind, meth, obj, args, loc) ->
-    cps_non_tail obj (fun func ->
-      cps_non_tail_list args (fun args ->
-        let apply : Ilambda.apply = {
-          kind = Method { kind = meth_kind; obj; };
-          func = meth;
-          continuation = k;
-          args;
-          loc;
-          should_be_tailcall = false;
-          inlined = Default_inline;
-          specialised = Default_specialise;
-        } in
-        Apply apply))
+    cps_non_tail obj (fun obj ->
+      cps_non_tail meth (fun meth ->
+        cps_non_tail_list args (fun args ->
+          let apply : Ilambda.apply = {
+            kind = Method { kind = meth_kind; obj; };
+            func = meth;
+            continuation = k;
+            args;
+            loc;
+            should_be_tailcall = false;
+            inlined = Default_inline;
+            specialised = Default_specialise;
+          } in
+          I.Apply apply)))
+  | Levent (lam, event) -> Event (cps_tail lam k, event)
   | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _
   | Ltrywith _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
@@ -271,45 +327,38 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
 
 and name_then_cps_non_tail name lam k =
   let var = Ident.create name in
-  cps_non_tail (Llet (Strict, Pgenval, var, lam, Lvar var)) k
+  cps_non_tail (L.Llet (Strict, Pgenval, var, lam, Lvar var)) k
 
 and name_then_cps_tail name lam k =
   let var = Ident.create name in
-  cps_tail (Llet (Strict, Pgenval, var, lam, Lvar var)) k
+  cps_tail (L.Llet (Strict, Pgenval, var, lam, Lvar var)) k
 
 and cps_non_tail_list (lams : L.lambda list) (k : Ident.t list -> Ilambda.t) =
   match lams with
   | [] -> k []
   | lam::lams ->
     cps_non_tail lam (fun id ->
-      cps_non_tail_list lams (fun lams -> k (lam::lams)))
+      cps_non_tail_list lams (fun ids -> k (id::ids)))
 
-and cps_function (func : Lambda.lfunction) : Ilambda.t =
+and cps_function (func : Lambda.lfunction) : Ilambda.function_declaration =
   let body_cont = Continuation.create () in
   let free_idents_of_body = Lambda.free_variables func.body in
   let body = cps_tail func.body body_cont in
-  let func : Ilambda.function_declaration =
-    { kind = func.kind;
-      continuation_param = body_cont;
-      params = func.params;
-      body;
-      attr = func.attr;
-      loc = func.loc;
-      free_idents_of_body;
-    }
-  in
-  Function func
+  { kind = func.kind;
+    continuation_param = body_cont;
+    params = func.params;
+    body;
+    attr = func.attr;
+    loc = func.loc;
+    free_idents_of_body;
+  }
 
 and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
   let const_nums, consts = List.split switch.consts in
   let const_conts = List.map (fun _ -> Continuation.create ()) consts in
   let block_conts = List.map (fun _ -> Continuation.create ()) switch.blocks in
-  let consts =
-    List.combine const_nums (List.combine consts const_conts)
-  in
-  let blocks =
-    List.combine switch.block_pats (List.combine switch.blocks block_conts)
-  in
+  let consts = List.combine consts const_conts in
+  let blocks = List.combine switch.blocks block_conts in
   let failaction_cont, failaction =
     match switch.failaction with
     | None -> None, None
@@ -319,18 +368,22 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
   in
   let switch : Ilambda.switch =
     { numconsts = switch.numconsts;
-      consts = const_conts;
+      consts = List.combine const_nums const_conts;
       numblocks = switch.numblocks;
-      blocks = block_conts;
-      failaction;
+      blocks = List.combine switch.block_pats block_conts;
+      failaction = failaction_cont;
     }
   in
   cps_non_tail scrutinee (fun scrutinee ->
-    let case_continuations =
+    let make_continuations desc ~init =
       List.fold_right (fun (case, cont) acc ->
           I.Let_cont (cont, [], cps_tail case k, acc))
-        (consts @ blocks)
-        (I.Switch (scrutinee, switch))
+        desc
+        init
+    in
+    let case_continuations =
+      make_continuations consts ~init:(make_continuations blocks
+        ~init:(I.Switch (scrutinee, switch)))
     in
     match failaction with
     | None -> case_continuations
@@ -338,4 +391,6 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
       I.Let_cont (cont, [], cps_tail failaction k, case_continuations))
 
 let lambda_to_ilambda lam =
-  cps_tail lam (fun id -> I.Var id)
+  static_exn_env := Numbers.Int.Map.empty;
+  let the_end = Continuation.create () in
+  cps_tail lam the_end

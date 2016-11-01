@@ -74,6 +74,9 @@ and approx =
   | Value_id of Export_id.t
   | Value_symbol of Symbol.t
 
+type t = unit
+
+(*
 (** A structure that describes what a single compilation unit exports. *)
 type t = private {
   sets_of_closures : Flambda.function_declarations Set_of_closures_id.Map.t;
@@ -147,3 +150,4 @@ val print_approx : Format.formatter -> t * Symbol.t list -> unit
 val print_functions : Format.formatter -> t -> unit
 val print_offsets : Format.formatter -> t -> unit
 val print_all : Format.formatter -> t * Symbol.t list -> unit
+*)

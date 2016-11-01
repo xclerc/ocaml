@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-
+(*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module A = Simple_value_approx
@@ -178,3 +178,8 @@ and really_import_symbol sym =
 
 let really_import_approx (approx : Simple_value_approx.t) =
   A.replace_description approx (really_import approx.descr)
+*)
+
+let really_import_approx _ = assert false
+let import_symbol _ = assert false
+let really_import _ = assert false

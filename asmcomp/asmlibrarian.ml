@@ -27,7 +27,7 @@ exception Error of error
 
 let default_ui_export_info =
   if Config.flambda then
-    Cmx_format.Flambda Export_info.empty
+    Cmx_format.Flambda (assert false) (* Export_info.empty *)
   else
     Cmx_format.Clambda Clambda.Value_unknown
 

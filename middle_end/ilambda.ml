@@ -23,7 +23,8 @@ type switch_block_pattern =
   | String of string
 
 type t =
-  | Let of L.let_kind * L.value_kind * Ident.t * named * t
+  | Let of Ident.t * named * t
+  | Let_mutable of let_mutable
   | Let_rec of (Ident.t * function_declaration) list * t
   | Let_cont of Continuation.t * Ident.t list * t (* <-- code of cont'n *) * t
   | Apply of apply
@@ -36,6 +37,13 @@ and named =
   | Const of L.structured_constant
   | Function of function_declaration
   | Prim of L.primitive * Ident.t list * Location.t
+
+and let_mutable = {
+  id : Ident.t;
+  initial_value : Ident.t;
+  contents_kind : L.value_kind;
+  body : t;
+}
 
 and function_declaration =
   { kind : L.function_kind;
@@ -122,22 +130,23 @@ and lam ppf (t : t) =
       Printlambda.apply_tailcall_attribute ap.should_be_tailcall
       Printlambda.apply_inlined_attribute ap.inlined
       Printlambda.apply_specialised_attribute ap.specialised
-  | Let(str, k, id, arg, body) ->
-    let kind (kind : L.let_kind) =
-      match kind with
-      | Alias -> "a" | Strict -> "" | StrictOpt -> "o" | Variable -> "v"
-    in
+  | Let(id, arg, body) ->
     let rec letbody = function
-      | Let(str, k, id, arg, body) ->
-        fprintf ppf "@ @[<2>%a =%s%s@ %a@]"
-          Ident.print id (kind str) (Printlambda.value_kind k) print_named arg;
+      | Let(id, arg, body) ->
+        fprintf ppf "@ @[<2>%a =@ %a@]" Ident.print id print_named arg;
         letbody body
       | expr -> expr
     in
-    fprintf ppf "@[<2>(let@ @[<hv 1>(@[<2>%a =%s%s@ %a@]"
-      Ident.print id (kind str) (Printlambda.value_kind k) print_named arg;
+    fprintf ppf "@[<2>(let@ @[<hv 1>(@[<2>%a =@ %a@]"
+      Ident.print id print_named arg;
     let expr = letbody body in
     fprintf ppf ")@]@ %a)@]" lam expr
+  | Let_mutable { id; initial_value; contents_kind; body; } ->
+    fprintf ppf "@[<2>(let_mutable@ @[<hv 1>(@[<2>%a =%s@ %a@]"
+      Ident.print id
+      (Printlambda.value_kind contents_kind)
+      Ident.print initial_value;
+    fprintf ppf ")@]@ %a)@]" lam body
   | Let_rec(id_arg_list, body) ->
     let bindings ppf id_arg_list =
       let spc = ref false in

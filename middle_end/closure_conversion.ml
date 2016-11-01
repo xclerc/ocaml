@@ -97,12 +97,9 @@ let rec close_const t env (const : Lambda.structured_constant) : Flambda.named =
 
 and close t env (lam : Ilambda.t) : Flambda.t =
   match lam with
-  | Let ((Strict | Alias | StrictOpt), _value_kind, id, defining_expr, body) ->
-    (* TODO: keep value_kind in flambda *)
+  | Let (id, defining_expr, body) ->
     let var = Variable.create_with_same_name_as_ident id in
-    let defining_expr =
-      close_let_bound_expression t var env defining_expr
-    in
+    let defining_expr = close_let_bound_expression t var env defining_expr in
     let body = close t (Env.add_var env id var) body in
     Flambda.create_let var defining_expr body
   | Let (Variable, block_kind, id, defining_expr, body) ->

@@ -24,8 +24,10 @@ let add_default_argument_wrappers lam =
      1. Change L.inline_attribute to add another ("stub") case;
      2. Add a "stub" field to the Lfunction record. *)
   let stubify body : L.lambda =
+    (* CR mshinwell: make this match elsewhere *)
+    let stub_hack_prim_name = "*stub*" in
     let stub_prim =
-      Primitive.simple ~name:Closure_conversion_aux.stub_hack_prim_name
+      Primitive.simple ~name:stub_hack_prim_name
         ~arity:1 ~alloc:false
     in
     Lprim (Pccall stub_prim, [body], Location.none)
