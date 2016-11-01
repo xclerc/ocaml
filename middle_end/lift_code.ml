@@ -33,11 +33,6 @@ let rec extract_lets
   Flambda.t Flambda.With_free_variables.t =
   let module W = Flambda.With_free_variables in
   match let_expr with
-  | { var = v1; defining_expr = Expr (Let let2); _ } ->
-    let acc, body2 = extract_lets acc let2 in
-    let acc = (v1, W.expr body2) :: acc in
-    let body = W.of_body_of_let let_expr in
-    extract acc body
   | { var = v; _ } ->
     let acc = (v, W.of_defining_expr_of_let let_expr) :: acc in
     let body = W.of_body_of_let let_expr in
@@ -72,8 +67,6 @@ and lift_lets_named_with_free_variables
       ~toplevel : Variable.t * Flambda.named Flambda.With_free_variables.t =
   let module W = Flambda.With_free_variables in
   match W.contents named with
-  | Expr e ->
-    var, W.expr (W.of_expr (lift_lets_expr e ~toplevel))
   | Set_of_closures set when not toplevel ->
     var,
     W.of_named
@@ -88,8 +81,6 @@ and lift_lets_named_with_free_variables
 and lift_lets_named _var (named:Flambda.named) ~toplevel : Flambda.named =
   let module W = Flambda.With_free_variables in
   match named with
-  | Expr e ->
-    Expr (lift_lets_expr e ~toplevel)
   | Set_of_closures set when not toplevel ->
     Set_of_closures
       (Flambda_iterators.map_function_bodies ~f:(lift_lets_expr ~toplevel) set)

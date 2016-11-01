@@ -988,7 +988,7 @@ let lift_constants (program : Flambda.program) ~backend =
         | (Project_var project_var) as original ->
           rewrite_project_var var_to_block_field_tbl project_var ~original
         | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
-        | Move_within_set_of_closures _ | Prim _ | Expr _
+        | Move_within_set_of_closures _ | Prim _
         | Read_mutable _ | Read_symbol_field _) as named -> named)
       expr
   in

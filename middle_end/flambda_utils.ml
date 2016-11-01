@@ -174,7 +174,6 @@ and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   | Prim (p1, al1, _), Prim (p2, al2, _) ->
     p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
   | Prim _, _ | _, Prim _ -> false
-  | Expr e1, Expr e2 -> same e1 e2
 
 and sameclosure (c1 : Flambda.function_declaration)
       (c2 : Flambda.function_declaration) =
@@ -257,7 +256,7 @@ let toplevel_substitution sb tree =
     | Var var ->
       let var = sb var in
       Var var
-    | Symbol _ | Const _ | Expr _ -> named
+    | Symbol _ | Const _ -> named
     | Allocated_const _ | Read_mutable _ -> named
     | Read_symbol_field _ -> named
     | Set_of_closures set_of_closures ->
@@ -555,7 +554,7 @@ let substitute_read_symbol_field_for_variables
       let fresh = Variable.rename v in
       Expr (bind v fresh (Var fresh))
     | Var _ -> named
-    | Symbol _ | Const _ | Expr _ -> named
+    | Symbol _ | Const _ -> named
     | Allocated_const _ | Read_mutable _ -> named
     | Read_symbol_field _ -> named
     | Set_of_closures set_of_closures ->
@@ -633,41 +632,6 @@ let substitute_read_symbol_field_for_variables
         (Let_mutable { let_mutable with initial_value = fresh })
     | Let_mutable _ ->
       expr
-    | Let_rec (defs, body) ->
-      let free_variables_of_defs =
-        List.fold_left (fun set (_, named) ->
-            Variable.Set.union set (Flambda.free_variables_named named))
-          Variable.Set.empty defs
-      in
-      let to_substitute =
-        Variable.Set.filter
-          (fun v -> Variable.Map.mem v substitution)
-          free_variables_of_defs
-      in
-      if Variable.Set.is_empty to_substitute then
-        expr
-      else begin
-        let bindings =
-          Variable.Map.of_set (fun var -> Variable.rename var) to_substitute
-        in
-        let defs =
-          List.map (fun (var, named) ->
-              var, substitute_named bindings named)
-            defs
-        in
-        let expr =
-          Flambda.Let_rec (defs, body)
-        in
-        Variable.Map.fold (fun to_substitute fresh expr ->
-            bind to_substitute fresh expr)
-          bindings expr
-      end
-    | If_then_else (cond, ifso, ifnot)
-        when Variable.Map.mem cond substitution ->
-      let fresh = Variable.rename cond in
-      bind cond fresh (If_then_else (fresh, ifso, ifnot))
-    | If_then_else _ ->
-      expr
     | Switch (cond, sw) when Variable.Map.mem cond substitution ->
       let fresh = Variable.rename cond in
       bind cond fresh (Switch (fresh, sw))
@@ -676,8 +640,6 @@ let substitute_read_symbol_field_for_variables
     | String_switch (cond, sw, def) when Variable.Map.mem cond substitution ->
       let fresh = Variable.rename cond in
       bind cond fresh (String_switch (fresh, sw, def))
-    | String_switch _ ->
-      expr
     | Assign { being_assigned; new_value }
         when Variable.Map.mem new_value substitution ->
       let fresh = Variable.rename new_value in
@@ -698,18 +660,7 @@ let substitute_read_symbol_field_for_variables
       bind_func @@
       List.fold_right (fun f expr -> f expr) bind_args @@
       Flambda.Apply { func; args; kind; dbg; inline; specialise }
-    | Send { kind; meth; obj; args; dbg } ->
-      let meth, bind_meth = make_var_subst meth in
-      let obj, bind_obj = make_var_subst obj in
-      let args, bind_args =
-        List.split (List.map make_var_subst args)
-      in
-      bind_meth @@
-      bind_obj @@
-      List.fold_right (fun f expr -> f expr) bind_args @@
-      Flambda.Send { kind; meth; obj; args; dbg }
     | Proved_unreachable
-    | Try_with _
     | Let_cont _ ->
       (* No variables directly used in those expressions *)
       expr

@@ -234,23 +234,10 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Let_mutable { initial_value = var; body } ->
       mark_var var curr;
       mark_loop ~toplevel curr body
-    | Let_rec(defs, body) ->
-      List.iter (fun (var, def) ->
-          mark_named ~toplevel [Var var] def;
-          (* adds 'var in NC => curr in NC' same remark as let case *)
-          mark_var var curr)
-        defs;
-      mark_loop ~toplevel curr body
-    | Var var -> mark_var var curr
     (* Not constant cases: we mark directly 'curr in NC' and mark
        bound variables as in NC also *)
     | Assign _ ->
       mark_curr curr
-    | Try_with (f1,id,f2) ->
-      mark_curr [Var id];
-      mark_curr curr;
-      mark_loop ~toplevel [] f1;
-      mark_loop ~toplevel [] f2
     | Let_cont (_,ids,f1,f2) ->
       List.iter (fun id -> mark_curr [Var id]) ids;
       mark_curr curr;
@@ -259,11 +246,6 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       (* CR-someday pchambart: If recursive staticcatch is introduced:
          this becomes ~toplevel:false
          mshinwell: This has been set to the conservative value *)
-    | If_then_else (f1,f2,f3) ->
-      mark_curr curr;
-      mark_curr [Var f1];
-      mark_loop ~toplevel [] f2;
-      mark_loop ~toplevel [] f3
     | Apply_cont (_,l) ->
       mark_curr curr;
       List.iter (fun v -> mark_var v curr) l
@@ -277,16 +259,6 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       List.iter (fun (_,l) -> mark_loop ~toplevel [] l) sw.consts;
       List.iter (fun (_,l) -> mark_loop ~toplevel [] l) sw.blocks;
       Misc.may (fun l -> mark_loop ~toplevel [] l) sw.failaction
-    | String_switch (arg,sw,def) ->
-      mark_curr curr;
-      mark_var arg curr;
-      List.iter (fun (_,l) -> mark_loop ~toplevel [] l) sw;
-      Misc.may (fun l -> mark_loop ~toplevel [] l) def
-    | Send { kind = _; meth; obj; args; dbg = _; } ->
-      mark_curr curr;
-      mark_var meth curr;
-      mark_var obj curr;
-      List.iter (fun arg -> mark_var arg curr) args
     | Proved_unreachable ->
       mark_curr curr
 
@@ -378,8 +350,6 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Prim (_, args, _) ->
       mark_curr curr;
       mark_vars args curr
-    | Expr flam ->
-      mark_loop ~toplevel curr flam
 
   and mark_var var curr =
     (* adds 'id in NC => curr in NC' *)
