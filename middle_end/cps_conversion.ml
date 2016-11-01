@@ -381,14 +381,14 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
         desc
         init
     in
-    let case_continuations =
-      make_continuations consts ~init:(make_continuations blocks
-        ~init:(I.Switch (scrutinee, switch)))
+    let body = I.Switch (scrutinee, switch) in
+    let init =
+      match failaction with
+      | None -> body
+      | Some (cont, failaction) ->
+        I.Let_cont (cont, [], cps_tail failaction k, body)
     in
-    match failaction with
-    | None -> case_continuations
-    | Some (cont, failaction) ->
-      I.Let_cont (cont, [], cps_tail failaction k, case_continuations))
+    make_continuations consts ~init:(make_continuations blocks ~init))
 
 let lambda_to_ilambda lam =
   static_exn_env := Numbers.Int.Map.empty;

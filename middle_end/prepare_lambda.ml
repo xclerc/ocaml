@@ -312,7 +312,7 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
               sw_failaction = Some ifso;
             }
           in
-          L.Lswitch (cond, switch))))
+          k (L.Lswitch (cond, switch)))))
   | Lsequence (lam1, lam2) ->
     let ident = Ident.create "sequence" in
     prepare (L.Llet (Strict, Pgenval, ident, lam1, lam2)) k

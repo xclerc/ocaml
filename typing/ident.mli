@@ -55,6 +55,8 @@ val current_time: unit -> int
 val set_current_time: int -> unit
 val reinit: unit -> unit
 
+val print_list : Format.formatter -> t list -> unit
+
 type 'a tbl
         (* Association tables from identifiers to type 'a. *)
 
@@ -66,7 +68,6 @@ val find_all: string -> 'a tbl -> 'a list
 val fold_name: (t -> 'a -> 'b -> 'b) -> 'a tbl -> 'b -> 'b
 val fold_all: (t -> 'a -> 'b -> 'b) -> 'a tbl -> 'b -> 'b
 val iter: (t -> 'a -> unit) -> 'a tbl -> unit
-
 
 (* Idents for sharing keys *)
 

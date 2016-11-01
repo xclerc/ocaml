@@ -87,6 +87,9 @@ let print ppf i =
   | -1 -> fprintf ppf "%s#" i.name
   | n -> fprintf ppf "%s/%i%s" i.name n (if global i then "g" else "")
 
+let print_list ppf is =
+  Format.pp_print_list ~pp_sep:(fun ppf () -> fprintf ppf " ") print ppf is
+
 type 'a tbl =
     Empty
   | Node of 'a tbl * 'a data * 'a tbl * int

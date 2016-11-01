@@ -83,7 +83,8 @@ let print_switch_block_pattern ppf = function
   | String s -> Format.fprintf ppf "string \"%S\"" s
 
 let rec print_function ppf
-      ({ kind; params; body; attr; } : function_declaration) =
+      ({ continuation_param; kind; params; body; attr; }
+       : function_declaration) =
   let fprintf = Format.fprintf in
   let pr_params ppf params =
     match kind with
@@ -98,7 +99,9 @@ let rec print_function ppf
         params;
       fprintf ppf ")"
   in
-  fprintf ppf "@[<2>(function%a@ %a%a)@]" pr_params params
+  fprintf ppf "@[<2>(function<%a>%a@ %a%a)@]"
+    Continuation.print continuation_param
+    pr_params params
     Printlambda.function_attribute attr lam body
 
 and print_named ppf (named : named) =
@@ -108,8 +111,8 @@ and print_named ppf (named : named) =
   | Const cst -> Printlambda.structured_constant ppf cst
   | Function func -> print_function ppf func
   | Prim (prim, largs, _) ->
-    fprintf ppf "@[<2>(%a%a)@]" Printlambda.primitive prim
-      (Format.pp_print_list Ident.print) largs
+    fprintf ppf "@[<2>(%a %a)@]" Printlambda.primitive prim
+      Ident.print_list largs
 
 and lam ppf (t : t) =
   let fprintf = Format.fprintf in
@@ -124,9 +127,10 @@ and lam ppf (t : t) =
           Ident.print obj
           Ident.print func
     in
-    fprintf ppf "@[<2>(apply@ %a%a%a%a%a)@]"
+    fprintf ppf "@[<2>(apply@ %a<%a> %a%a%a%a)@]"
       print_func_and_kind ap.func
-      (Format.pp_print_list Ident.print) ap.args
+      Continuation.print ap.continuation
+      Ident.print_list ap.args
       Printlambda.apply_tailcall_attribute ap.should_be_tailcall
       Printlambda.apply_inlined_attribute ap.inlined
       Printlambda.apply_specialised_attribute ap.specialised
@@ -137,12 +141,12 @@ and lam ppf (t : t) =
         letbody body
       | expr -> expr
     in
-    fprintf ppf "@[<2>(let@ @[<hv 1>(@[<2>%a =@ %a@]"
+    fprintf ppf "@[<2>(let@ @[<v 1>(@[<2>%a =@ %a@]"
       Ident.print id print_named arg;
     let expr = letbody body in
     fprintf ppf ")@]@ %a)@]" lam expr
   | Let_mutable { id; initial_value; contents_kind; body; } ->
-    fprintf ppf "@[<2>(let_mutable@ @[<hv 1>(@[<2>%a =%s@ %a@]"
+    fprintf ppf "@[<2>(let_mutable@ @[<v 1>(@[<2>%a =%s@ %a@]"
       Ident.print id
       (Printlambda.value_kind contents_kind)
       Ident.print initial_value;
@@ -161,11 +165,12 @@ and lam ppf (t : t) =
       let spc = ref false in
       List.iter (fun (n, l) ->
           if !spc then fprintf ppf "@ " else spc := true;
-          fprintf ppf "@[<hv 1>case int %i:@ %a@]" n Continuation.print l)
+          fprintf ppf "@[<hv 1>case int %i:@ apply_cont %a@]"
+            n Continuation.print l)
         sw.consts;
       List.iter (fun (n, l) ->
           if !spc then fprintf ppf "@ " else spc := true;
-          fprintf ppf "@[<hv 1>case %a:@ %a@]"
+          fprintf ppf "@[<hv 1>case %a:@ apply_cont %a@]"
             print_switch_block_pattern n
             Continuation.print l)
         sw.blocks;
@@ -173,21 +178,36 @@ and lam ppf (t : t) =
       | None  -> ()
       | Some l ->
         if !spc then fprintf ppf "@ " else spc := true;
-        fprintf ppf "@[<hv 1>default:@ %a@]" Continuation.print l
+        fprintf ppf "@[<hv 1>default:@ apply_cont %a@]" Continuation.print l
       end in
     fprintf ppf
-      "@[<1>(%s %a@ @[<v 0>%a@])@]"
+      "@[<1>(@[<v 1>%s %a@ @[<v 0>%a@]@])@]"
       (match sw.failaction with None -> "switch*" | _ -> "switch")
       Ident.print larg switch sw
-  | Let_cont (i, vars, handler, body) ->
-    fprintf ppf "@[<2>(let_cont@ %a@;<1 -1>where (%a%a)@ %a)@]"
-      lam body Continuation.print i
-      (Format.pp_print_list Ident.print) vars
-      lam handler
+  | Let_cont _ ->
+    let rec gather_let_conts let_conts (t : t) =
+      match t with
+      | Let_cont (cont, vars, handler, body) ->
+        gather_let_conts ((cont, vars, handler) :: let_conts) body
+      | body -> List.rev let_conts, body
+    in
+    let let_conts, body = gather_let_conts [] t in
+    let print_let_cont ppf (cont, vars, handler) =
+      fprintf ppf "@[<v 2>where %a%s%a%s =@ %a@]"
+        Continuation.print cont
+        (match vars with [] -> "" | _ -> " (")
+        Ident.print_list vars
+        (match vars with [] -> "" | _ -> ")")
+        lam handler
+    in
+    let pp_sep ppf () = fprintf ppf "@ " in
+    fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
+      lam body
+      (Format.pp_print_list ~pp_sep print_let_cont) let_conts
   | Apply_cont (i, ls)  ->
-    fprintf ppf "@[<2>(apply_cont@ %a%a)@]"
+    fprintf ppf "@[<2>(apply_cont@ %a@ %a)@]"
       Continuation.print i
-      (Format.pp_print_list Ident.print) ls;
+      Ident.print_list ls;
   | Event(expr, ev) ->
     let kind =
       match ev.lev_kind with
