@@ -1087,9 +1087,6 @@ and simplify_named env r (tree : Flambda.named) : Flambda.named * R.t =
 
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
-  | Var var ->
-    let var = Freshening.apply_variable (E.freshening env) var in
-    simplify_using_approx_and_env env r (Var var) (E.find_exn env var)
   | Apply apply ->
     simplify_apply env r ~apply
   | Let _ ->
@@ -1133,24 +1130,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           body;
           contents_kind },
       r)
-  | Let_rec (defs, body) ->
-    let defs, sb = Freshening.add_variables (E.freshening env) defs in
-    let env = E.set_freshening env sb in
-    let def_env =
-      List.fold_left (fun env_acc (id, _lam) ->
-          E.add env_acc id (A.value_unknown Other))
-        env defs
-    in
-    let defs, body_env, r =
-      List.fold_right (fun (id, lam) (defs, env_acc, r) ->
-          let lam, r = simplify_named def_env r lam in
-          let defs = (id, lam) :: defs in
-          let env_acc = E.add env_acc id (R.approx r) in
-          defs, env_acc, r)
-        defs ([], env, r)
-    in
-    let body, r = simplify body_env r body in
-    Let_rec (defs, body), r
   | Apply_cont (i, args) ->
     let i = Freshening.apply_static_exception (E.freshening env) i in
     simplify_free_variables env args ~f:(fun _env args args_approxs ->
@@ -1200,41 +1179,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
               R.meet_approx r env approx
         end
     end
-  | Try_with (body, id, handler) ->
-    let body, r = simplify env r body in
-    let id, sb = Freshening.add_variable (E.freshening env) id in
-    let env = E.add (E.set_freshening env sb) id (A.value_unknown Other) in
-    let env = E.inside_branch env in
-    let handler, r = simplify env r handler in
-    Try_with (body, id, handler), ret r (A.value_unknown Other)
-  | If_then_else (arg, ifso, ifnot) ->
-    (* When arg is the constant false or true (or something considered
-       as true), we can drop the if and replace it by a sequence.
-       if arg is not effectful we can also drop it. *)
-    simplify_free_variable env arg ~f:(fun env arg arg_approx ->
-      begin match arg_approx.descr with
-      | Value_constptr 0 | Value_int 0 ->  (* Constant [false]: keep [ifnot] *)
-        let ifnot, r = simplify env r ifnot in
-        ifnot, R.map_benefit r B.remove_branch
-      | Value_constptr _ | Value_int _
-      | Value_block _ ->  (* Constant [true]: keep [ifso] *)
-        let ifso, r = simplify env r ifso in
-        ifso, R.map_benefit r B.remove_branch
-      | _ ->
-        let env = E.inside_branch env in
-        let ifso, r = simplify env r ifso in
-        let ifso_approx = R.approx r in
-        let ifnot, r = simplify env r ifnot in
-        If_then_else (arg, ifso, ifnot),
-          R.meet_approx r env ifso_approx
-      end)
-  | Send { kind; meth; obj; args; dbg; } ->
-    let dbg = E.add_inlined_debuginfo env ~dbg in
-    simplify_free_variable env meth ~f:(fun env meth _meth_approx ->
-      simplify_free_variable env obj ~f:(fun env obj _obj_approx ->
-        simplify_free_variables env args ~f:(fun _env args _args_approx ->
-          Send { kind; meth; obj; args; dbg; },
-            ret r (A.value_unknown Other))))
   | Assign { being_assigned; new_value; } ->
     (* No need to use something like [simplify_free_variable]: the
        approximation of [being_assigned] is always unknown. *)
@@ -1318,43 +1262,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           let sw = { sw with failaction; consts; blocks; } in
           Switch (arg, sw), r
       end)
-  | String_switch (arg, sw, def) ->
-    simplify_free_variable env arg ~f:(fun env arg arg_approx ->
-      match A.check_approx_for_string arg_approx with
-      | None ->
-        let env = E.inside_branch env in
-        let sw, r =
-          List.fold_right (fun (str, lam) (sw, r) ->
-              let approx = R.approx r in
-              let lam, r = simplify env r lam in
-              (str, lam)::sw,
-                R.meet_approx r env approx)
-            sw
-            ([], r)
-        in
-        let def, r =
-          match def with
-          | None -> def, r
-          | Some def ->
-            let approx = R.approx r in
-            let def, r = simplify env r def in
-            Some def,
-              R.meet_approx r env approx
-        in
-        String_switch (arg, sw, def), ret r (A.value_unknown Other)
-      | Some arg_string ->
-        let branch =
-          match List.find (fun (str, _) -> str = arg_string) sw with
-          | (_, branch) -> branch
-          | exception Not_found ->
-            match def with
-            | None ->
-              Flambda.Proved_unreachable
-            | Some def ->
-              def
-        in
-        let branch, r = simplify env r branch in
-        branch, R.map_benefit r B.remove_branch)
   | Proved_unreachable -> tree, ret r A.value_bottom
 
 and simplify_list env r l =
