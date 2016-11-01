@@ -35,17 +35,19 @@ type t = {
     manner from the tuple. *)
 let tupled_function_call_stub original_params unboxed_version
       : Flambda.function_declaration =
+  let continuation_param = Continuation.create () in
   let tuple_param =
     Variable.rename ~append:"tupled_stub_param" unboxed_version
   in
   let params = List.map (fun p -> Variable.rename p) original_params in
   let call : Flambda.t =
     Apply ({
+        continuation = continuation_param;
         func = unboxed_version;
         args = params;
         (* CR-someday mshinwell for mshinwell: investigate if there is some
            redundancy here (func is also unboxed_version) *)
-        kind = Direct (Closure_id.wrap unboxed_version);
+        call_kind = Direct (Closure_id.wrap unboxed_version);
         dbg = Debuginfo.none;
         inline = Default_inline;
         specialise = Default_specialise;
@@ -59,7 +61,7 @@ let tupled_function_call_stub original_params unboxed_version
         pos + 1, Flambda.create_let param lam body)
       (0, call) params
   in
-  Flambda.create_function_declaration ~params:[tuple_param]
+  Flambda.create_function_declaration ~params:[tuple_param] ~continuation_param
     ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
     ~specialise:Default_specialise ~is_a_functor:false
 
@@ -102,25 +104,34 @@ and close t env (lam : Ilambda.t) : Flambda.t =
     let defining_expr = close_let_bound_expression t var env defining_expr in
     let body = close t (Env.add_var env id var) body in
     Flambda.create_let var defining_expr body
-  | Let (Variable, block_kind, id, defining_expr, body) ->
-    let mut_var = Mutable_variable.of_ident id in
-    let var = Variable.create_with_same_name_as_ident id in
-    let defining_expr =
-      close_let_bound_expression t var env defining_expr
+  | Let_mutable { id; initial_value; contents_kind; body; } ->
+    let var = Mutable_variable.of_ident id in
+    let initial_value = Env.find_var_exn env initial_value in
+    let body = close t (Env.add_mutable_var env id var) body in
+    Let_mutable {
+      var;
+      initial_value;
+      body;
+      contents_kind;
+    }
+  | Apply { func; args; continuation; loc; should_be_tailcall = _; inlined;
+      specialised; } ->
+    let kind : Flambda.apply_kind =
+      match func with
+      | Function -> Function
+      | Method { kind; obj; } ->
+        Method {
+          kind;
+          obj = Env.find_var_exn obj;
+        }
     in
-    let body = close t (Env.add_mutable_var env id mut_var) body in
-    Flambda.create_let var defining_expr
-      (Let_mutable
-         { var = mut_var;
-           initial_value = var;
-           body;
-           contents_kind = block_kind })
-  | Apply { func; args; loc; should_be_tailcall = _;
-      inlined; specialised; } ->
     Apply ({
+      kind;
+      (* XXX need to do the read_mutable thing... everywhere *)
       func = Env.find_var_or_mutable_var_exn env func;
       args = Env.find_vars_or_mutable_vars_exn env args;
-      kind = Indirect;
+      continuation;
+      call_kind = Indirect;
       dbg = Debuginfo.from_location loc;
       inline = inlined;
       specialise = specialised;
