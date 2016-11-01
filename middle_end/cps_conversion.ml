@@ -39,7 +39,7 @@ let check_let_rec_bindings bindings =
       | _ ->
         Misc.fatal_error "Only [Lfunction] expressions are permitted in \
             [Lletrec] bindings upon entry to CPS conversion: %a"
-          binding)
+          Printlambda.lam binding)
     bindings
 
 let name_for_function (func : Lambda.lfunction) =
