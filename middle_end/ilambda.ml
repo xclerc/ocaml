@@ -26,7 +26,7 @@ type t =
   | Let of Ident.t * named * t
   | Let_mutable of let_mutable
   | Let_rec of (Ident.t * function_declaration) list * t
-  | Let_cont of Continuation.t * Ident.t list * t (* <-- code of cont'n *) * t
+  | Let_cont of let_cont
   | Apply of apply
   | Apply_cont of Continuation.t * Ident.t list
   | Switch of Ident.t * switch
@@ -54,6 +54,14 @@ and function_declaration =
     loc : Location.t;
     free_idents_of_body : L.IdentSet.t;
   }
+
+and let_cont = {
+  name : Continuation.t;
+  params : Ident.t list;
+  recursive : Asttypes.rec_flag;
+  body : t;
+  handler : t;
+}
 
 and apply =
   { kind : apply_kind;
@@ -187,17 +195,18 @@ and lam ppf (t : t) =
   | Let_cont _ ->
     let rec gather_let_conts let_conts (t : t) =
       match t with
-      | Let_cont (cont, vars, handler, body) ->
-        gather_let_conts ((cont, vars, handler) :: let_conts) body
+      | Let_cont let_cont ->
+        gather_let_conts (let_cont :: let_conts) let_cont.body
       | body -> List.rev let_conts, body
     in
     let let_conts, body = gather_let_conts [] t in
-    let print_let_cont ppf (cont, vars, handler) =
-      fprintf ppf "@[<v 2>where %a%s%a%s =@ %a@]"
-        Continuation.print cont
-        (match vars with [] -> "" | _ -> " (")
-        Ident.print_list vars
-        (match vars with [] -> "" | _ -> ")")
+    let print_let_cont ppf { name; params; recursive; handler; body = _; } =
+      fprintf ppf "@[<v 2>where %a%s%s%a%s =@ %a@]"
+        Continuation.print name
+        (match recursive with Nonrecursive -> "" | Recursive -> "*")
+        (match params with [] -> "" | _ -> " (")
+        Ident.print_list params
+        (match params with [] -> "" | _ -> ")")
         lam handler
     in
     let pp_sep ppf () = fprintf ppf "@ " in

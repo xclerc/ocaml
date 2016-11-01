@@ -75,12 +75,14 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       lam
     end
   in
-  let print_ilambda ilam =
+  let print_ilambda (ilam, return_cont) =
     if not !Clflags.dump_rawflambda then begin
-      ilam
+      ilam, return_cont
     end else begin
-      Format.fprintf ppf "After CPS conversion:@ %a@." Ilambda.print ilam;
-      ilam
+      Format.fprintf ppf "After CPS conversion (return continuation %a):@ %a@."
+        Continuation.print return_cont
+        Ilambda.print ilam;
+      ilam, return_cont
     end
   in
   Timings.accumulate_time

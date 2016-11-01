@@ -28,7 +28,7 @@ type t =
   | Let of Ident.t * named * t
   | Let_mutable of let_mutable
   | Let_rec of (Ident.t * function_declaration) list * t
-  | Let_cont of Continuation.t * Ident.t list * t (* <-- code of cont'n *) * t
+  | Let_cont of let_cont
   | Apply of apply
   | Apply_cont of Continuation.t * Ident.t list
   | Switch of Ident.t * switch
@@ -56,6 +56,14 @@ and function_declaration =
     loc : Location.t;
     free_idents_of_body : Lambda.IdentSet.t;
   }
+
+and let_cont = {
+  name : Continuation.t;
+  params : Ident.t list;
+  recursive : Asttypes.rec_flag;
+  body : t;
+  handler : t;
+}
 
 and apply =
   { kind : apply_kind;
