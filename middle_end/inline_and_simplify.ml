@@ -1081,9 +1081,6 @@ and simplify_named env r (tree : Flambda.named) : Flambda.named * R.t =
         in
         expr, ret r approx
       end)
-  | Expr expr ->
-    let expr, r = simplify env r expr in
-    Expr expr, r
 
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with

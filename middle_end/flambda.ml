@@ -149,8 +149,9 @@ type expr = t
 type program_body =
   | Let_symbol of Symbol.t * constant_defining_value * program_body
   | Let_rec_symbol of (Symbol.t * constant_defining_value) list * program_body
-  | Initialize_symbol of Symbol.t * Tag.t * t list * program_body
-  | Effect of t * program_body
+  | Initialize_symbol of Symbol.t * Tag.t * (t * Continuation.t) list
+      * program_body
+  | Effect of t * Continuation.t * program_body
   | End of Symbol.t
 
 type program = {
@@ -446,14 +447,17 @@ let rec print_program_body ppf (program : program_body) =
       bindings defs;
     print_program_body ppf program
   | Initialize_symbol (symbol, tag, fields, program) ->
+    let lam_and_cont ppf (lam, cont) =
+      fprintf ppf "<%a>: %a" Continuation.print cont print lam
+    in
     fprintf ppf "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@ %a@])@]@]@."
       Symbol.print symbol
       Tag.print tag
-      (Format.pp_print_list lam) fields;
+      (Format.pp_print_list lam_and_cont) fields;
     print_program_body ppf program
-  | Effect (expr, program) ->
-    fprintf ppf "@[effect @[<hv 1>%a@]@]@."
-      lam expr;
+  | Effect (lam, cont, program) ->
+    fprintf ppf "@[effect @[<hv 1><%a>: %a@]@]@."
+      Continuation.print cont lam expr;
     print_program_body ppf program;
   | End root -> fprintf ppf "End %a" Symbol.print root
 

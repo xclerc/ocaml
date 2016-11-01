@@ -424,12 +424,13 @@ type program_body =
       approximation of the set of closures to be present in order to
       correctly simplify the [Project_closure] construction.  (See
       [Inline_and_simplify.simplify_project_closure] for that part.) *)
-  | Initialize_symbol of Symbol.t * Tag.t * t list * program_body
+  | Initialize_symbol of Symbol.t * Tag.t * (t * Continuation.t) list
+      * program_body
   (** Define the given symbol as a constant block of the given size and
       tag; but with a possibly non-constant initializer.  The initializer
       will be executed at most once (from the entry point of the compilation
       unit). *)
-  | Effect of t * program_body
+  | Effect of t * Continuation.t * program_body
   (** Cause the given expression, which may have a side effect, to be
       executed.  The resulting value is discarded.  [Effect] constructions
       are never re-ordered. *)

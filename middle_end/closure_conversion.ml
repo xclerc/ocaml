@@ -132,8 +132,8 @@ and close t env (lam : Ilambda.t) : Flambda.t =
         defs env
     in
     let function_declarations =
-      (* Identify any bindings in the [let rec] that are functions.  These
-         will be named after the corresponding identifier in the [let rec]. *)
+      (* Functions will be named after the corresponding identifier in the
+         [let rec]. *)
       List.map (function
           | (let_rec_ident,
               { kind; params; body; attr; loc; free_idents_of_body; }) ->
@@ -153,10 +153,6 @@ and close t env (lam : Ilambda.t) : Flambda.t =
        [Let] that binds a set of closures containing all of the functions.
        ([let rec] on non-functions was removed in [Prepare_lambda].)
     *)
-    (* XCR-someday lwhite: This is a very syntactic criteria. Adding an
-       unused value to a set of recursive bindings changes how
-       functions are represented at runtime.
-       mshinwell: not any more! *)
     let name =
       (* The Microsoft assembler has a 247-character limit on symbol
           names, so we keep them shorter to try not to hit this. *)
@@ -179,8 +175,8 @@ and close t env (lam : Ilambda.t) : Flambda.t =
           let closure_bound_var = Function_decl.closure_bound_var decl in
           let let_bound_var = Env.find_var env let_rec_ident in
           (* Inside the body of the [let], each function is referred to by
-              a [Project_closure] expression, which projects from the set of
-              closures. *)
+             a [Project_closure] expression, which projects from the set of
+             closures. *)
           (Flambda.create_let let_bound_var
             (Project_closure {
               set_of_closures = set_of_closures_var;
@@ -387,8 +383,8 @@ and close_let_bound_expression t ?let_rec_ident let_bound_var env
         ~name:(Variable.unique_name let_bound_var)))
   | lam -> Expr (close t env lam)
 
-let ilambda_to_flambda ~backend ~module_ident ~size ~filename lam
-      : Flambda.program =
+let ilambda_to_flambda ~backend ~module_ident ~size ~filename
+      (ilam, ilam_result_cont) : Flambda.program =
   let module Backend = (val backend : Backend_intf.S) in
   let compilation_unit = Compilation_unit.get_current_exn () in
   let t =
@@ -413,19 +409,23 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename lam
       let sym_v = Variable.create ("block_symbol_" ^ pos_str) in
       let result_v = Variable.create ("block_symbol_get_" ^ pos_str) in
       let value_v = Variable.create ("block_symbol_get_field_" ^ pos_str) in
-      Flambda.create_let
-        sym_v (Symbol block_symbol)
-         (Flambda.create_let result_v
-            (Prim (Pfield 0, [sym_v], Debuginfo.none))
-            (Flambda.create_let value_v
-              (Prim (Pfield pos, [result_v], Debuginfo.none))
-              (Var value_v))))
+      let continuation = Continuation.create () in
+      let flam =
+        Flambda.create_let
+          sym_v (Symbol block_symbol)
+          (Flambda.create_let result_v
+              (Prim (Pfield 0, [sym_v], Debuginfo.none))
+              (Flambda.create_let value_v
+                (Prim (Pfield pos, [result_v], Debuginfo.none))
+                (Apply_cont (continuation, [value_v]))))
+      in
+      flam, continuation)
   in
   let module_initializer : Flambda.program_body =
     Initialize_symbol (
       block_symbol,
       Tag.create_exn 0,
-      [close t Env.empty lam],
+      [close t Env.empty ilam, ilam_result_cont],
       Initialize_symbol (
         module_symbol,
         Tag.create_exn 0,
