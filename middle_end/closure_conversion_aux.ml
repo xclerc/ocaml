@@ -129,11 +129,13 @@ module Function_decls = struct
     let is_a_functor t = t.is_a_functor
     let loc t = t.loc
 
+(*
     let primitive_wrapper t =
       match t.body with
       | Prim (Pccall { Primitive. prim_name; }, [body], _)
         when prim_name = stub_hack_prim_name -> Some body
       | _ -> None
+*)
   end
 
   type t = {

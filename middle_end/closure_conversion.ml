@@ -296,6 +296,7 @@ and close_functions t external_env function_declarations : Flambda.named =
           Env.add_var env id (Variable.create_with_same_name_as_ident id))
         params closure_env_without_parameters
     in
+(* CR mshinwell: think about this
     (* If the function is the wrapper for a function with an optional
        argument with a default value, make sure it always gets inlined.
        CR-someday pchambart: eta-expansion wrapper for a primitive are
@@ -305,6 +306,8 @@ and close_functions t external_env function_declarations : Flambda.named =
       | None -> false, body
       | Some wrapper_body -> true, wrapper_body
     in
+*)
+    let stub = false in
     let params = List.map (Env.find_var closure_env) params in
     let closure_bound_var = Function_decl.closure_bound_var decl in
     let body = close t closure_env body in

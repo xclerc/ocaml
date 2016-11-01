@@ -457,7 +457,7 @@ let rec print_program_body ppf (program : program_body) =
     print_program_body ppf program
   | Effect (lam, cont, program) ->
     fprintf ppf "@[effect @[<hv 1><%a>: %a@]@]@."
-      Continuation.print cont lam expr;
+      Continuation.print cont print lam;
     print_program_body ppf program;
   | End root -> fprintf ppf "End %a" Symbol.print root
 
@@ -860,11 +860,11 @@ let free_symbols_program (program : program) =
         defs;
       loop program
     | Initialize_symbol (_, _, fields, program) ->
-      List.iter (fun field ->
+      List.iter (fun (field, _cont) ->
           symbols := Symbol.Set.union !symbols (free_symbols field))
         fields;
       loop program
-    | Effect (expr, program) ->
+    | Effect (expr, _cont, program) ->
       symbols := Symbol.Set.union !symbols (free_symbols expr);
       loop program
     | End symbol -> symbols := Symbol.Set.add symbol !symbols

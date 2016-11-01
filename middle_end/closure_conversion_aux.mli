@@ -74,11 +74,12 @@ module Function_decls : sig
     val specialise : t -> Lambda.specialise_attribute
     val is_a_functor : t -> bool
     val loc : t -> Location.t
-
+(*
     (* [primitive_wrapper t] is [None] iff [t] is not a wrapper for a function
        with default optional arguments. Otherwise it is [Some body], where
        [body] is the body of the wrapper. *)
     val primitive_wrapper : t -> Ilambda.t option
+*)
 
     (* Like [all_free_idents], but for just one function. *)
     val free_idents : t -> Lambda.IdentSet.t
