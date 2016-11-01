@@ -97,18 +97,15 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
           |> print_prepared_lambda
           |> Cps_conversion.lambda_to_ilambda
           |> print_ilambda
-          |> (fun _ -> assert false))
-(*
           |> Closure_conversion.ilambda_to_flambda ~backend ~module_ident
                 ~size ~filename)
-*)
         ()
     in
-(*
     if !Clflags.dump_rawflambda
     then
       Format.fprintf ppf "After closure conversion:@ %a@."
         Flambda.print_program flam;
+(*
     check flam;
     let fast_mode flam =
       pass_number := 0;

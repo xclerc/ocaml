@@ -37,6 +37,7 @@ and named =
   | Const of L.structured_constant
   | Function of function_declaration
   | Prim of L.primitive * Ident.t list * Location.t
+  | Assign of { being_assigned : Ident.t; new_value : Ident.t; }
 
 and let_mutable = {
   id : Ident.t;
@@ -121,6 +122,9 @@ and print_named ppf (named : named) =
   | Prim (prim, largs, _) ->
     fprintf ppf "@[<2>(%a %a)@]" Printlambda.primitive prim
       Ident.print_list largs
+  | Assign { being_assigned; new_value; } ->
+    fprintf ppf "@[<2>(assign@ %a@ %a)@]" Ident.print being_assigned
+      Ident.print new_value
 
 and lam ppf (t : t) =
   let fprintf = Format.fprintf in
@@ -167,7 +171,7 @@ and lam ppf (t : t) =
           fprintf ppf "@[<2>%a@ %a@]" Ident.print id print_function l)
         id_arg_list in
     fprintf ppf
-      "@[<2>(letrec@ (@[<hv 1>%a@])@ %a)@]" bindings id_arg_list lam body
+      "@[<2>(let_rec@ (@[<hv 1>%a@])@ %a)@]" bindings id_arg_list lam body
   | Switch(larg, sw) ->
     let switch ppf sw =
       let spc = ref false in

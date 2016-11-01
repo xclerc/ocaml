@@ -49,5 +49,5 @@ val ilambda_to_flambda
   -> module_ident:Ident.t
   -> size:int
   -> filename:string
-  -> Ilambda.t
+  -> Ilambda.t * Continuation.t
   -> Flambda.program

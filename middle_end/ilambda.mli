@@ -39,6 +39,7 @@ and named =
   | Const of Lambda.structured_constant
   | Function of function_declaration
   | Prim of Lambda.primitive * Ident.t list * Location.t
+  | Assign of { being_assigned : Ident.t; new_value : Ident.t; }
 
 and let_mutable = {
   id : Ident.t;
@@ -89,3 +90,8 @@ and switch =
   }
 
 val print : Format.formatter -> t -> unit
+
+val print_switch_block_pattern
+   : Format.formatter
+  -> switch_block_pattern
+  -> unit

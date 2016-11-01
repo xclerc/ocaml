@@ -25,10 +25,16 @@ type const =
   | Char of char
   | Const_pointer of int
 
+type apply_kind =
+  | Function
+  | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
+
 type apply = {
+  kind : apply_kind;
   func : Variable.t;
+  continuation : Continuation.t;
   args : Variable.t list;
-  kind : call_kind;
+  call_kind : call_kind;
   dbg : Debuginfo.t;
   inline : Lambda.inline_attribute;
   specialise : Lambda.specialise_attribute;
@@ -37,14 +43,6 @@ type apply = {
 type assign = {
   being_assigned : Mutable_variable.t;
   new_value : Variable.t;
-}
-
-type send = {
-  kind : Lambda.meth_kind;
-  meth : Variable.t;
-  obj : Variable.t;
-  args : Variable.t list;
-  dbg : Debuginfo.t;
 }
 
 type project_closure = Projection.project_closure
@@ -57,33 +55,27 @@ type specialised_to = {
 }
 
 type t =
-  | Var of Variable.t
   | Let of let_expr
   | Let_mutable of let_mutable
-  | Let_rec of (Variable.t * named) list * t
-  | Let_cont of Continuation.t * Variable.t list * t * t
+  | Let_cont of let_cont
   | Apply of apply
   | Apply_cont of Continuation.t * Variable.t list
-  | Send of send
-  | Assign of assign
-  | If_then_else of Variable.t * t * t
   | Switch of Variable.t * switch
-  | String_switch of Variable.t * (string * t) list * t option
   | Proved_unreachable
 
 and named =
   | Var of Variable.t
-  | Symbol of Symbol.t
   | Const of const
+  | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
+  | Symbol of Symbol.t
+  | Read_symbol_field of Symbol.t * int
   | Allocated_const of Allocated_const.t
   | Read_mutable of Mutable_variable.t
-  | Read_symbol_field of Symbol.t * int
+  | Assign of assign
   | Set_of_closures of set_of_closures
   | Project_closure of project_closure
   | Move_within_set_of_closures of move_within_set_of_closures
   | Project_var of project_var
-  | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
-  | Expr of t
 
 and let_expr = {
   var : Variable.t;
@@ -100,6 +92,14 @@ and let_mutable = {
   body : t;
 }
 
+and let_cont = {
+  name : Continuation.t;
+  params : Variable.t list;
+  recursive : Asttypes.rec_flag;
+  body : t;
+  handler : t;
+}
+
 and set_of_closures = {
   function_decls : function_declarations;
   free_vars : specialised_to Variable.Map.t;
@@ -114,6 +114,7 @@ and function_declarations = {
 }
 
 and function_declaration = {
+  continuation_param : Continuation.t;
   params : Variable.t list;
   body : t;
   free_variables : Variable.Set.t;
@@ -127,10 +128,10 @@ and function_declaration = {
 
 and switch = {
   numconsts : Numbers.Int.Set.t;
-  consts : (int * t) list;
+  consts : (int * Continuation.t) list;
   numblocks : Numbers.Int.Set.t;
-  blocks : (int * t) list;
-  failaction : t option;
+  blocks : (Ilambda.switch_block_pattern * Continuation.t) list;
+  failaction : Continuation.t option;
 }
 
 and constant_defining_value =
@@ -177,11 +178,18 @@ let print_project_closure = Projection.print_project_closure
 (** CR-someday lwhite: use better name than this *)
 let rec lam ppf (flam : t) =
   match flam with
-  | Var (id) ->
-      Variable.print ppf id
-  | Apply({func; args; kind; inline; dbg}) ->
-    let direct ppf () =
+  | Apply({kind; func; continuation; args; call_kind; inline; dbg}) ->
+    let print_func_and_kind ppf func =
       match kind with
+      | Function -> Variable.print ppf func
+      | Method { kind; obj; } ->
+        Format.fprintf ppf "send%a %a#%a"
+          Printlambda.meth_kind kind
+          Variable.print obj
+          Variable.print func
+    in
+    let direct ppf () =
+      match call_kind with
       | Indirect -> ()
       | Direct closure_id -> fprintf ppf "*[%a]" Closure_id.print closure_id
     in
@@ -192,26 +200,11 @@ let rec lam ppf (flam : t) =
       | Unroll i -> fprintf ppf "<unroll %i>" i
       | Default_inline -> ()
     in
-    fprintf ppf "@[<2>(apply%a%a<%s>@ %a%a)@]" direct () inline ()
+    fprintf ppf "@[<2>(apply%a%a<%s>@ %a<%a>%a)@]" direct () inline ()
       (Debuginfo.to_string dbg)
-      Variable.print func Variable.print_list args
-  | Assign { being_assigned; new_value; } ->
-    fprintf ppf "@[<2>(assign@ %a@ %a)@]"
-      Mutable_variable.print being_assigned
-      Variable.print new_value
-  | Send { kind; meth; obj; args; dbg = _; } ->
-    let print_args ppf args =
-      List.iter (fun l -> fprintf ppf "@ %a" Variable.print l) args
-    in
-    let kind =
-      match kind with
-      | Self -> "self"
-      | Public -> "public"
-      | Cached -> "cached"
-    in
-    fprintf ppf "@[<2>(send%s@ %a@ %a%a)@]" kind
-      Variable.print obj Variable.print meth
-      print_args args
+      print_func_and_kind func
+      Continuation.print continuation
+      Variable.print_list args
   | Proved_unreachable ->
       fprintf ppf "unreachable"
   | Let { var = id; defining_expr = arg; body; _ } ->
@@ -237,34 +230,27 @@ let rec lam ppf (flam : t) =
       Mutable_variable.print mut_var
       Variable.print var
       lam body
-  | Let_rec(id_arg_list, body) ->
-      let bindings ppf id_arg_list =
-        let spc = ref false in
-        List.iter
-          (fun (id, l) ->
-             if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<2>%a@ %a@]" Variable.print id print_named l)
-          id_arg_list in
-      fprintf ppf
-        "@[<2>(letrec@ (@[<hv 1>%a@])@ %a)@]" bindings id_arg_list lam body
   | Switch(larg, sw) ->
       let switch ppf (sw : switch) =
         let spc = ref false in
         List.iter
           (fun (n, l) ->
              if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<hv 1>case int %i:@ %a@]" n lam l)
+             fprintf ppf "@[<hv 1>case int %i:@ apply_cont %a@]"
+               n Continuation.print l)
           sw.consts;
         List.iter
           (fun (n, l) ->
              if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<hv 1>case tag %i:@ %a@]" n lam l)
-          sw.blocks ;
+             fprintf ppf "@[<hv 1>case %a:@ apply_cont %a@]"
+               Ilambda.print_switch_block_pattern n Continuation.print l)
+          sw.blocks;
         begin match sw.failaction with
         | None  -> ()
         | Some l ->
             if !spc then fprintf ppf "@ " else spc := true;
-            fprintf ppf "@[<hv 1>default:@ %a@]" lam l
+            fprintf ppf "@[<hv 1>default:@ apply_cont %a@]"
+              Continuation.print l
         end in
       fprintf ppf
         "@[<1>(%s(%i,%i) %a@ @[<v 0>%a@])@]"
@@ -272,61 +258,57 @@ let rec lam ppf (flam : t) =
         (Int.Set.cardinal sw.numconsts)
         (Int.Set.cardinal sw.numblocks)
         Variable.print larg switch sw
-  | String_switch(arg, cases, default) ->
-      let switch ppf cases =
-        let spc = ref false in
-        List.iter
-         (fun (s, l) ->
-           if !spc then fprintf ppf "@ " else spc := true;
-           fprintf ppf "@[<hv 1>case \"%s\":@ %a@]" (String.escaped s) lam l)
-          cases;
-        begin match default with
-        | Some default ->
-            if !spc then fprintf ppf "@ " else spc := true;
-            fprintf ppf "@[<hv 1>default:@ %a@]" lam default
-        | None -> ()
-        end in
-      fprintf ppf
-       "@[<1>(stringswitch %a@ @[<v 0>%a@])@]" Variable.print arg switch cases
-  | Apply_cont (i, ls)  ->
-      let lams ppf largs =
-        List.iter (fun l -> fprintf ppf "@ %a" Variable.print l) largs in
-      fprintf ppf "@[<2>(apply_cont@ %a%a)@]" Continuation.print i lams ls;
-  | Let_cont(i, vars, lbody, lhandler) ->
-      fprintf ppf "@[<2>(let_cont@ %a@;<1 -1>where (%a%a)@ %a)@]"
-        lam lbody Continuation.print i
-        (fun ppf vars -> match vars with
-           | [] -> ()
-           | _ ->
-               List.iter
-                 (fun x -> fprintf ppf " %a" Variable.print x)
-                 vars)
-        vars
-        lam lhandler
+  | Apply_cont (i, ls) ->
+    fprintf ppf "@[<2>(apply_cont@ %a@ %a)@]"
+      Continuation.print i
+      Variable.print_list ls
+  | Let_cont _ ->
+    (* CR mshinwell: Share code with ilambda.ml *)
+    let rec gather_let_conts let_conts (t : t) =
+      match t with
+      | Let_cont let_cont ->
+        gather_let_conts (let_cont :: let_conts) let_cont.body
+      | body -> List.rev let_conts, body
+    in
+    let let_conts, body = gather_let_conts [] flam in
+    let print_let_cont ppf { name; params; recursive; handler; body = _; } =
+      fprintf ppf "@[<v 2>where %a%s%s%a%s =@ %a@]"
+        Continuation.print name
+        (match recursive with Nonrecursive -> "" | Recursive -> "*")
+        (match params with [] -> "" | _ -> " (")
+        Variable.print_list params
+        (match params with [] -> "" | _ -> ")")
+        lam handler
+    in
+    let pp_sep ppf () = fprintf ppf "@ " in
+    fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
+      lam body
+      (Format.pp_print_list ~pp_sep print_let_cont) let_conts
 and print_named ppf (named : named) =
   match named with
   | Var var -> Variable.print ppf var
-  | Symbol (symbol) -> Symbol.print ppf symbol
-  | Const (cst) -> fprintf ppf "Const(%a)" print_const cst
-  | Allocated_const (cst) -> fprintf ppf "Aconst(%a)" Allocated_const.print cst
+  | Symbol symbol -> Symbol.print ppf symbol
+  | Const cst -> fprintf ppf "Const(%a)" print_const cst
+  | Allocated_const cst -> fprintf ppf "Aconst(%a)" Allocated_const.print cst
   | Read_mutable mut_var ->
     fprintf ppf "Read_mut(%a)" Mutable_variable.print mut_var
+  | Assign { being_assigned; new_value; } ->
+    fprintf ppf "@[<2>(assign@ %a@ %a)@]"
+      Mutable_variable.print being_assigned
+      Variable.print new_value
   | Read_symbol_field (symbol, field) ->
     fprintf ppf "%a.(%d)" Symbol.print symbol field
-  | Project_closure (project_closure) ->
+  | Project_closure project_closure ->
     print_project_closure ppf project_closure
-  | Project_var (project_var) -> print_project_var ppf project_var
-  | Move_within_set_of_closures (move_within_set_of_closures) ->
+  | Project_var project_var -> print_project_var ppf project_var
+  | Move_within_set_of_closures move_within_set_of_closures ->
     print_move_within_set_of_closures ppf move_within_set_of_closures
-  | Set_of_closures (set_of_closures) ->
+  | Set_of_closures set_of_closures ->
     print_set_of_closures ppf set_of_closures
-  | Prim(prim, args, dbg) ->
+  | Prim (prim, args, dbg) ->
     fprintf ppf "@[<2>(%a<%s>%a)@]" Printlambda.primitive prim
       (Debuginfo.to_string dbg)
       Variable.print_list args
-  | Expr expr ->
-    fprintf ppf "*%a" lam expr
-    (* lam ppf expr *)
 
 and print_function_declaration ppf var (f : function_declaration) =
   let idents ppf =
@@ -483,131 +465,97 @@ let print_program ppf program =
 
 let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
     ?ignore_uses_in_project_var ~all_used_variables tree =
-  match tree with
+  let free = ref Variable.Set.empty in
+  let bound = ref Variable.Set.empty in
+  let free_variables ids = free := Variable.Set.union ids !free in
+  let free_variable fv = free := Variable.Set.add fv !free in
+  let bound_variable id = bound := Variable.Set.add id !bound in
+  (* N.B. This function assumes that all bound identifiers are distinct. *)
+  let rec aux (flam : t) : unit =
+    match flam with
+    | Apply { func; args; kind = _; dbg = _} ->
+      begin match ignore_uses_as_callee with
+      | None -> free_variable func
+      | Some () -> ()
+      end;
+      begin match ignore_uses_as_argument with
+      | None -> List.iter free_variable args
+      | Some () -> ()
+      end
+    | Let { var; free_vars_of_defining_expr; free_vars_of_body;
+            defining_expr; body; _ } ->
+      bound_variable var;
+      if all_used_variables
+          || ignore_uses_as_callee <> None
+          || ignore_uses_as_argument <> None
+          || ignore_uses_in_project_var <> None
+      then begin
+        (* In these cases we can't benefit from the pre-computed free
+            variable sets. *)
+        free_variables
+          (variables_usage_named ?ignore_uses_in_project_var defining_expr);
+        aux body
+      end else begin
+        free_variables free_vars_of_defining_expr;
+        free_variables free_vars_of_body
+      end
+    | Let_mutable { initial_value = var; body; _ } ->
+      free_variable var;
+      aux body
+    | Apply_cont (_, es) ->
+      List.iter free_variable es
+    | Let_cont { params; handler; body; _ } ->
+      List.iter bound_variable params;
+      aux handler;
+      aux body
+    | Switch _ | Proved_unreachable -> ()
+  in
+  aux tree;
+  if all_used_variables then
+    !free
+  else
+    Variable.Set.diff !free !bound
+
+and variables_usage_named ?ignore_uses_in_project_var (named : named) =
+  match named with
   | Var var -> Variable.Set.singleton var
   | _ ->
     let free = ref Variable.Set.empty in
-    let bound = ref Variable.Set.empty in
-    let free_variables ids = free := Variable.Set.union ids !free in
     let free_variable fv = free := Variable.Set.add fv !free in
-    let bound_variable id = bound := Variable.Set.add id !bound in
-    (* N.B. This function assumes that all bound identifiers are distinct. *)
-    let rec aux (flam : t) : unit =
-      match flam with
-      | Var var -> free_variable var
-      | Apply { func; args; kind = _; dbg = _} ->
-        begin match ignore_uses_as_callee with
-        | None -> free_variable func
-        | Some () -> ()
-        end;
-        begin match ignore_uses_as_argument with
-        | None -> List.iter free_variable args
-        | Some () -> ()
-        end
-      | Let { var; free_vars_of_defining_expr; free_vars_of_body;
-              defining_expr; body; _ } ->
-        bound_variable var;
-        if all_used_variables
-           || ignore_uses_as_callee <> None
-           || ignore_uses_as_argument <> None
-           || ignore_uses_in_project_var <> None
-        then begin
-          (* In these cases we can't benefit from the pre-computed free
-             variable sets. *)
-          free_variables
-            (variables_usage_named ?ignore_uses_in_project_var
-                ?ignore_uses_as_callee ?ignore_uses_as_argument
-                ~all_used_variables defining_expr);
-          aux body
-        end else begin
-          free_variables free_vars_of_defining_expr;
-          free_variables free_vars_of_body
-        end
-      | Let_mutable { initial_value = var; body; _ } ->
-        free_variable var;
-        aux body
-      | Let_rec (bindings, body) ->
-        List.iter (fun (var, defining_expr) ->
-            bound_variable var;
-            free_variables
-              (variables_usage_named ?ignore_uses_in_project_var
-                 ~all_used_variables defining_expr))
-          bindings;
-        aux body
-      | Switch (scrutinee, switch) ->
-        free_variable scrutinee;
-        List.iter (fun (_, e) -> aux e) switch.consts;
-        List.iter (fun (_, e) -> aux e) switch.blocks;
-        Misc.may aux switch.failaction
-      | String_switch (scrutinee, cases, failaction) ->
-        free_variable scrutinee;
-        List.iter (fun (_, e) -> aux e) cases;
-        Misc.may aux failaction
-      | Apply_cont (_, es) ->
-        List.iter free_variable es
-      | Let_cont (_, vars, e1, e2) ->
-        List.iter bound_variable vars;
-        aux e1;
-        aux e2
-      | If_then_else (var, e1, e2) ->
-        free_variable var;
-        aux e1;
-        aux e2
-      | Assign { being_assigned = _; new_value; } ->
-        free_variable new_value
-      | Send { kind = _; meth; obj; args; dbg = _ } ->
-        free_variable meth;
-        free_variable obj;
-        List.iter free_variable args;
-      | Proved_unreachable -> ()
-    in
-    aux tree;
-    if all_used_variables then
-      !free
-    else
-      Variable.Set.diff !free !bound
-
-and variables_usage_named ?ignore_uses_in_project_var
-    ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ~all_used_variables (named : named) =
-  let free = ref Variable.Set.empty in
-  let free_variable fv = free := Variable.Set.add fv !free in
-  begin match named with
-  | Var var -> free_variable var
-  | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-  | Read_symbol_field _ -> ()
-  | Set_of_closures { free_vars; specialised_args; _ } ->
-    (* Sets of closures are, well, closed---except for the free variable and
-       specialised argument lists, which may identify variables currently in
-       scope outside of the closure. *)
-    Variable.Map.iter (fun _ (renamed_to : specialised_to) ->
-        (* We don't need to do anything with [renamed_to.projectee.var], if
-           it is present, since it would only be another free variable
-           in the same set of closures. *)
-        free_variable renamed_to.var)
-      free_vars;
-    Variable.Map.iter (fun _ (spec_to : specialised_to) ->
-        (* We don't need to do anything with [spec_to.projectee.var], if
-           it is present, since it would only be another specialised arg
-           in the same set of closures. *)
-        free_variable spec_to.var)
-      specialised_args
-  | Project_closure { set_of_closures; closure_id = _ } ->
-    free_variable set_of_closures
-  | Project_var { closure; closure_id = _; var = _ } ->
-    begin match ignore_uses_in_project_var with
-    | None -> free_variable closure
-    | Some () -> ()
-    end
-  | Move_within_set_of_closures { closure; start_from = _; move_to = _ } ->
-    free_variable closure
-  | Prim (_, args, _) -> List.iter free_variable args
-  | Expr flam ->
-    free := Variable.Set.union
-        (variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
-           ~all_used_variables flam) !free
-  end;
-  !free
+    begin match named with
+    | Var var -> free_variable var
+    | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+    | Read_symbol_field _ -> ()
+    | Assign { being_assigned = _; new_value; } ->
+      free_variable new_value
+    | Set_of_closures { free_vars; specialised_args; _ } ->
+      (* Sets of closures are, well, closed---except for the free variable and
+        specialised argument lists, which may identify variables currently in
+        scope outside of the closure. *)
+      Variable.Map.iter (fun _ (renamed_to : specialised_to) ->
+          (* We don't need to do anything with [renamed_to.projectee.var], if
+            it is present, since it would only be another free variable
+            in the same set of closures. *)
+          free_variable renamed_to.var)
+        free_vars;
+      Variable.Map.iter (fun _ (spec_to : specialised_to) ->
+          (* We don't need to do anything with [spec_to.projectee.var], if
+            it is present, since it would only be another specialised arg
+            in the same set of closures. *)
+          free_variable spec_to.var)
+        specialised_args
+    | Project_closure { set_of_closures; closure_id = _ } ->
+      free_variable set_of_closures
+    | Project_var { closure; closure_id = _; var = _ } ->
+      begin match ignore_uses_in_project_var with
+      | None -> free_variable closure
+      | Some () -> ()
+      end
+    | Move_within_set_of_closures { closure; start_from = _; move_to = _ } ->
+      free_variable closure
+    | Prim (_, args, _) -> List.iter free_variable args
+    end;
+    !free
 
 let free_variables ?ignore_uses_as_callee ?ignore_uses_as_argument
     ?ignore_uses_in_project_var tree =
@@ -615,8 +563,7 @@ let free_variables ?ignore_uses_as_callee ?ignore_uses_as_argument
     ?ignore_uses_in_project_var ~all_used_variables:false tree
 
 let free_variables_named ?ignore_uses_in_project_var named =
-  variables_usage_named ?ignore_uses_in_project_var
-    ~all_used_variables:false named
+  variables_usage_named ?ignore_uses_in_project_var named
 
 let used_variables ?ignore_uses_as_callee ?ignore_uses_as_argument
     ?ignore_uses_in_project_var tree =
@@ -624,8 +571,7 @@ let used_variables ?ignore_uses_as_callee ?ignore_uses_as_argument
     ?ignore_uses_in_project_var ~all_used_variables:true tree
 
 let used_variables_named ?ignore_uses_in_project_var named =
-  variables_usage_named ?ignore_uses_in_project_var
-    ~all_used_variables:true named
+  variables_usage_named ?ignore_uses_in_project_var named
 
 let create_let var defining_expr body : t =
   begin match !Clflags.dump_flambda_let with
@@ -636,13 +582,7 @@ let create_let var defining_expr body : t =
         stamp
         (Printexc.raw_backtrace_to_string (Printexc.get_callstack max_int)))
   end;
-  let defining_expr, free_vars_of_defining_expr =
-    match defining_expr with
-    | Expr (Let { var = var1; defining_expr; body = Var var2;
-          free_vars_of_defining_expr; _ }) when Variable.equal var1 var2 ->
-      defining_expr, free_vars_of_defining_expr
-    | _ -> defining_expr, free_variables_named defining_expr
-  in
+  let free_vars_of_defining_expr = free_variables_named defining_expr in
   Let {
     var;
     defining_expr;
@@ -730,35 +670,22 @@ let iter_general ~toplevel f f_named maybe_named =
         ~for_defining_expr:(fun _var named -> aux_named named)
         ~for_last_body:aux
         ~for_each_let:f
+    (* CR mshinwell: add tail recursive case for Let_cont *)
     | _ ->
       f t;
       match t with
-      | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-      | Apply_cont _ -> ()
+      | Apply _ | Proved_unreachable | Apply_cont _ | Switch _ -> ()
       | Let _ -> assert false
-      | Let_mutable { body; _ } ->
-        aux body
-      | Let_rec (defs, body) ->
-        List.iter (fun (_,l) -> aux_named l) defs;
-        aux body
-      | Let_cont (_,_,f1,f2) ->
-        aux f1; aux f2
-      | If_then_else (_, f1, f2) ->
-        aux f1; aux f2
-      | Switch (_, sw) ->
-        List.iter (fun (_,l) -> aux l) sw.consts;
-        List.iter (fun (_,l) -> aux l) sw.blocks;
-        Misc.may aux sw.failaction
-      | String_switch (_, sw, def) ->
-        List.iter (fun (_,l) -> aux l) sw;
-        Misc.may aux def
+      | Let_mutable { body; _ } -> aux body
+      | Let_cont { body; handler; _ } ->
+        aux body;
+        aux handler
   and aux_named (named : named) =
     f_named named;
     match named with
     | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-    | Read_symbol_field _
-    | Project_closure _ | Project_var _ | Move_within_set_of_closures _
-    | Prim _ -> ()
+    | Read_symbol_field _ | Project_closure _ | Project_var _
+    | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
     | Set_of_closures ({ function_decls = funcs; free_vars = _;
           specialised_args = _}) ->
       if not toplevel then begin
@@ -766,7 +693,6 @@ let iter_general ~toplevel f f_named maybe_named =
             aux decl.body)
           funcs.funs
       end
-    | Expr flam -> aux flam
   in
   match maybe_named with
   | Is_expr expr -> aux expr
@@ -822,10 +748,6 @@ module With_free_variables = struct
         free_vars_of_defining_expr;
         free_vars_of_body;
       }
-
-  let expr (t : expr t) =
-    match t with
-    | Expr (expr, free_vars) -> Named (Expr expr, free_vars)
 
   let contents (type a) (t : a t) : a =
     match t with
@@ -947,7 +869,7 @@ let free_symbols_program (program : program) =
   loop program.program_body;
   !symbols
 
-let create_function_declaration ~params ~body ~stub ~dbg
+let create_function_declaration ~params ~continuation_param ~body ~stub ~dbg
       ~(inline : Lambda.inline_attribute)
       ~(specialise : Lambda.specialise_attribute) ~is_a_functor
       : function_declaration =
@@ -968,6 +890,7 @@ let create_function_declaration ~params ~body ~stub ~dbg
       print body
   end;
   { params;
+    continuation_param;
     body;
     free_variables = free_variables body;
     free_symbols = free_symbols body;
@@ -1003,7 +926,8 @@ let create_set_of_closures ~function_decls ~free_vars ~specialised_args
   if !Clflags.flambda_invariant_checks then begin
     let all_fun_vars = Variable.Map.keys function_decls.funs in
     let expected_free_vars =
-      Variable.Map.fold (fun _fun_var function_decl expected_free_vars ->
+      Variable.Map.fold (fun _fun_var (function_decl : function_declaration)
+                expected_free_vars ->
           let free_vars =
             Variable.Set.diff function_decl.free_variables
               (Variable.Set.union (Variable.Set.of_list function_decl.params)
@@ -1038,7 +962,8 @@ let create_set_of_closures ~function_decls ~free_vars ~specialised_args
         print_function_declarations function_decls
     end;
     let all_params =
-      Variable.Map.fold (fun _fun_var function_decl all_params ->
+      Variable.Map.fold (fun _fun_var (function_decl : function_declaration)
+                all_params ->
           Variable.Set.union (Variable.Set.of_list function_decl.params)
             all_params)
         function_decls.funs
@@ -1061,7 +986,7 @@ let create_set_of_closures ~function_decls ~free_vars ~specialised_args
     direct_call_surrogates;
   }
 
-let used_params function_decl =
+let used_params (function_decl : function_declaration) =
   Variable.Set.filter
     (fun param -> Variable.Set.mem param function_decl.free_variables)
     (Variable.Set.of_list function_decl.params)

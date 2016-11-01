@@ -359,8 +359,7 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
             Lconst (Const_base (Const_int 0)))))
     in
     prepare lam k
-  | Lassign _ ->
-    Misc.fatal_error "Lassign is never expected in the Flambda middle end"
+  | Lassign (ident, lam) -> prepare lam (fun lam -> k (L.Lassign (ident, lam)))
   | Lsend (meth_kind, meth, obj, args, loc) ->
     prepare meth (fun meth ->
       prepare obj (fun obj ->

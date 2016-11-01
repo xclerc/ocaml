@@ -17,7 +17,14 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** Intermediate language used for tree-based analysis and optimization.
-    Flambda = Ilambda + closures and symbols. *)
+
+    Flambda expressions augment Ilambda expressions by adding constructs for:
+    - the construction and manipulation of closures; and
+    - accessing constants that have been lifted to static data.
+
+    The Flambda "program" type, described below, wraps Flambda expressions to
+    describe the overall structure of a compilation unit.
+*)
 
 (** Whether the callee in a function application is known at compile time. *)
 type call_kind =
@@ -113,12 +120,9 @@ type specialised_to = {
 type t =
   | Let of let_expr
   | Let_mutable of let_mutable
-  | Let_rec of (Variable.t * named) list * t
-  (** CR-someday lwhite: give Let_rec the same fields as Let. *)
   | Let_cont of let_cont
-  | Apply_cont of Continuation.t * Variable.t list
   | Apply of apply
-  | Assign of assign
+  | Apply_cont of Continuation.t * Variable.t list
   | Switch of Variable.t * switch
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
   | Proved_unreachable
@@ -126,10 +130,9 @@ type t =
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)
 and named =
   | Var of Variable.t
-  | Symbol of Symbol.t
   | Const of const
-  | Allocated_const of Allocated_const.t
-  | Read_mutable of Mutable_variable.t
+  | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
+  | Symbol of Symbol.t
   | Read_symbol_field of Symbol.t * int
   (** During the lifting of [let] bindings to [program] constructions after
       closure conversion, we generate symbols and their corresponding
@@ -158,11 +161,13 @@ and named =
       is in scope in the [program].  For external unresolved symbols, [Pfield]
       may still be used; it will be changed to [Read_symbol_field] by
       [Inline_and_simplify] when (and if) the symbol is imported. *)
+  | Allocated_const of Allocated_const.t
+  | Read_mutable of Mutable_variable.t
+  | Assign of assign
   | Set_of_closures of set_of_closures
   | Project_closure of project_closure
   | Move_within_set_of_closures of move_within_set_of_closures
   | Project_var of project_var
-  | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
 
 (* CR-someday mshinwell: Since we lack expression identifiers on every term,
    we should probably introduce [Mutable_var] into [named] if we introduce
@@ -190,21 +195,24 @@ and let_mutable = {
 }
 
 (** Values of type [let_cont] represent the definitions of continuations:
-      let_cont [name] [args] = [defining_expr] in [body]
+      let_cont [name] [args] = [handler] in [body]
     or in other words:
       [body]
-      where [name] [args] = [defining_expr]
+      where [name] [args] = [handler]
 
     - Continuations are second-class.
     - Continuations do not capture variables.
     - Continuations may be recursive.
+
+    It is an error to mark a continuation that might be recursive as
+    non-recursive.  The converse is safe.
 *)
 and let_cont = {
   name : Continuation.t;
-  args : Variable.t list;
+  params : Variable.t list;
   recursive : Asttypes.rec_flag;
-  defining_expr : t;
   body : t;
+  handler : t;
 }
 
 (** The representation of a set of function declarations (possibly mutually
@@ -356,10 +364,11 @@ and function_declaration = private {
 (** Equivalent to the similar type in [Ilambda]. *)
 and switch = {
   numconsts : Numbers.Int.Set.t; (** Integer cases *)
-  consts : (int * t) list; (** Integer cases *)
+  consts : (int * Continuation.t) list; (** Integer cases *)
   numblocks : Numbers.Int.Set.t; (** Number of tag block cases *)
-  blocks : (Ilambda.switch_block_pattern * t) list; (** Tag block cases *)
-  failaction : t option; (** Action to take if none matched *)
+  blocks :
+    (Ilambda.switch_block_pattern * Continuation.t) list; (** Tag block cases *)
+  failaction : Continuation.t option; (** Action to take if none matched *)
 }
 
 (** Like a subset of [Flambda.named], except that instead of [Variable.t]s we
@@ -551,9 +560,6 @@ module With_free_variables : sig
     -> expr t
     -> expr
 
-  (** The equivalent of the [Expr] constructor. *)
-  val expr : expr t -> named t
-
   val contents : 'a t -> 'a
 
   (** O(1) time. *)
@@ -564,6 +570,7 @@ end
     symbols occurring in the specified [body]. *)
 val create_function_declaration
    : params:Variable.t list
+  -> continuation_param:Continuation.t
   -> body:t
   -> stub:bool
   -> dbg:Debuginfo.t

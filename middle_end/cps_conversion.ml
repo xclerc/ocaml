@@ -96,7 +96,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
       recursive = Nonrecursive;
       body = defining_expr;
       handler = Let_mutable let_mutable;
-   }
+    }
   (* The following specialised Llet cases help to avoid administrative
      redexes. *)
   | Llet (_let_kind, _value_kind, id, Lvar id', body) ->
@@ -111,6 +111,11 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let body = cps_non_tail body k in
     cps_non_tail_list args (fun args ->
       I.Let (id, Prim (prim, args, loc), body))
+  | Llet (_let_kind, _value_kind, id, Lassign (being_assigned, new_value),
+      body) ->
+    let body = cps_non_tail body k in
+    cps_non_tail new_value (fun new_value ->
+      I.Let (id, Assign { being_assigned; new_value; }, body))
   | Llet (_let_kind, _value_kind, id, defining_expr, body) ->
     (* CR-soon mshinwell / pchambart: keep value_kind in Ilambda and Flambda *)
     let body = cps_non_tail body k in
@@ -234,8 +239,9 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
             body = after;
             handler = Apply apply;
           })))
+  | Lassign _ -> name_then_cps_non_tail "assign" lam k
   | Levent (lam, event) -> Event (cps_non_tail lam k, event)
-  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _
+  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _
   | Ltrywith _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
       Printlambda.lambda lam
@@ -292,6 +298,11 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
     let body = cps_tail body k in
     cps_non_tail_list args (fun args ->
       I.Let (id, Prim (prim, args, loc), body))
+  | Llet (_let_kind, _value_kind, id, Lassign (being_assigned, new_value),
+      body) ->
+    let body = cps_tail body k in
+    cps_non_tail new_value (fun new_value ->
+      I.Let (id, Assign { being_assigned; new_value; }, body))
   | Llet (_let_kind, _value_kind, id, defining_expr, body) ->
     let body = cps_tail body k in
     let after_defining_expr = Continuation.create () in
@@ -376,9 +387,9 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
             specialised = Default_specialise;
           } in
           I.Apply apply)))
+  | Lassign _ -> name_then_cps_tail "assign" lam k
   | Levent (lam, event) -> Event (cps_tail lam k, event)
-  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lassign _ | Lifused _
-  | Ltrywith _ ->
+  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _ | Ltrywith _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
       Printlambda.lambda lam
 
