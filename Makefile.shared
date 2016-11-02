@@ -167,6 +167,12 @@ MIDDLE_END=\
   middle_end/closure_conversion.cmo \
   middle_end/middle_end.cmo
 
+#  middle_end/flambda_iterators.cmo \
+#  middle_end/flambda_utils.cmo \
+#  middle_end/inconstant_idents.cmo \
+#  middle_end/alias_analysis.cmo \
+#  middle_end/lift_constants.cmo \
+
 #MIDDLE_END=\
 #  middle_end/debuginfo.cmo \
 #  middle_end/base_types/tag.cmo \
@@ -188,8 +194,6 @@ MIDDLE_END=\
 #  middle_end/allocated_const.cmo \
 #  middle_end/projection.cmo \
 #  middle_end/flambda.cmo \
-#  middle_end/flambda_iterators.cmo \
-#  middle_end/flambda_utils.cmo \
 #  middle_end/inlining_cost.cmo \
 #  middle_end/effect_analysis.cmo \
 #  middle_end/freshening.cmo \
@@ -204,9 +208,6 @@ MIDDLE_END=\
 #  middle_end/lift_let_to_initialize_symbol.cmo \
 #  middle_end/find_recursive_functions.cmo \
 #  middle_end/invariant_params.cmo \
-#  middle_end/inconstant_idents.cmo \
-#  middle_end/alias_analysis.cmo \
-#  middle_end/lift_constants.cmo \
 #  middle_end/share_constants.cmo \
 #  middle_end/simplify_common.cmo \
 #  middle_end/remove_unused_arguments.cmo \

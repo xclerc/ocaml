@@ -16,6 +16,10 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* CR mshinwell: update comment.
+   Also add that this pass deletes known-administrative redexes to help
+   not degrade the performance of Lift_constants against what we used to have
+   (e.g. in nested-let cases). *)
 (** Generation of [Flambda] intermediate language code from [Ilambda] code
     by performing a form of closure conversion.
 

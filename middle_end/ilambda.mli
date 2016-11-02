@@ -59,6 +59,7 @@ and function_declaration =
 
 and let_cont = {
   name : Continuation.t;
+  administrative : bool;
   params : Ident.t list;
   recursive : Asttypes.rec_flag;
   body : t;

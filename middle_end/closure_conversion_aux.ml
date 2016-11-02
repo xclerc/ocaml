@@ -24,6 +24,7 @@ module Env = struct
     mutable_variables : Mutable_variable.t Ident.tbl;
     globals : Symbol.t Numbers.Int.Map.t;
     at_toplevel : bool;
+    administrative_redexes : (Ident.t list * Ilambda.t) Continuation.Map.t;
   }
 
   let empty = {
@@ -31,6 +32,7 @@ module Env = struct
     mutable_variables = Ident.empty;
     globals = Numbers.Int.Map.empty;
     at_toplevel = true;
+    administrative_redexes = Continuation.Map.empty;
   }
 
   let clear_local_bindings env =
@@ -82,6 +84,19 @@ module Env = struct
   let at_toplevel t = t.at_toplevel
 
   let not_at_toplevel t = { t with at_toplevel = false; }
+
+  let add_administrative_redex t continuation ~params ~handler =
+    assert (not (Continuation.Map.mem continuation t.administrative_redexes));
+    { t with
+      administrative_redexes =
+        Continuation.Map.add continuation (params, handler)
+          t.administrative_redexes;
+    }
+
+  let find_administrative_redex t continuation =
+    match Continuation.Map.find continuation t.administrative_redexes with
+    | exception Not_found -> None
+    | handler -> Some handler
 end
 
 let stub_hack_prim_name = "*stub*"

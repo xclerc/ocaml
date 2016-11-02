@@ -18,29 +18,18 @@
 
 let apply_on_subexpressions f f_named (flam : Flambda.t) =
   match flam with
-  | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-  | Apply_cont _ -> ()
+  | Var _ | Apply _ | Apply_cont _ | Proved_unreachable -> ()
   | Let { defining_expr; body; _ } ->
     f_named defining_expr;
     f body
   | Let_mutable { body; _ } ->
     f body
-  | Let_rec (defs, body) ->
-    List.iter (fun (_,l) -> f_named l) defs;
-    f body
   | Switch (_, sw) ->
     List.iter (fun (_,l) -> f l) sw.consts;
     List.iter (fun (_,l) -> f l) sw.blocks;
     Misc.may f sw.failaction
-  | String_switch (_, sw, def) ->
-    List.iter (fun (_,l) -> f l) sw;
-    Misc.may f def
   | Let_cont (_,_,f1,f2) ->
     f f1; f f2;
-  | Try_with (f1,_,f2) ->
-    f f1; f f2
-  | If_then_else (_,f1, f2) ->
-    f f1;f f2
 
 let rec list_map_sharing f l =
   match l with
@@ -72,8 +61,7 @@ let map_snd_sharing f ((a, b) as cpl) =
 
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
-  | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-  | Apply_cont _ -> tree
+  | Var _ | Apply _ | Apply_cont _ | Proved_unreachable -> tree
   | Let { var; defining_expr; body; _ } ->
     let new_named = f_named var defining_expr in
     let new_body = f body in
@@ -81,15 +69,6 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       Flambda.create_let var new_named new_body
-  | Let_rec (defs, body) ->
-    let new_defs =
-      list_map_sharing (map_snd_sharing f_named) defs
-    in
-    let new_body = f body in
-    if new_defs == defs && new_body == body then
-      tree
-    else
-      Let_rec (new_defs, new_body)
   | Let_mutable mutable_let ->
     let new_body = f mutable_let.body in
     if new_body == mutable_let.body then
@@ -114,13 +93,6 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
         }
       in
       Switch (arg, sw)
-  | String_switch (arg, sw, def) ->
-    let new_sw = list_map_sharing (map_snd_sharing (fun _ v -> f v)) sw in
-    let new_def = may_map_sharing f def in
-    if sw == new_sw && def == new_def then
-      tree
-    else
-      String_switch(arg, new_sw, new_def)
   | Let_cont (i, vars, body, handler) ->
     let new_body = f body in
     let new_handler = f handler in
@@ -128,20 +100,6 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       Let_cont (i, vars, new_body, new_handler)
-  | Try_with(body, id, handler) ->
-    let new_body = f body in
-    let new_handler = f handler in
-    if body == new_body && handler == new_handler then
-      tree
-    else
-      Try_with(new_body, id, new_handler)
-  | If_then_else(arg, ifso, ifnot) ->
-    let new_ifso = f ifso in
-    let new_ifnot = f ifnot in
-    if new_ifso == ifso && new_ifnot == ifnot then
-      tree
-    else
-      If_then_else(arg, new_ifso, new_ifnot)
 
 let iter_general = Flambda.iter_general
 
@@ -159,10 +117,10 @@ let iter_toplevel f f_named t =
 let iter_named_toplevel f f_named named =
   iter_general ~toplevel:true f f_named (Is_named named)
 
+(* CR-soon mshinwell: Remove "let_rec" from these names *)
 let iter_all_immutable_let_and_let_rec_bindings t ~f =
   iter_expr (function
       | Let { var; defining_expr; _ } -> f var defining_expr
-      | Let_rec (defs, _) -> List.iter (fun (var, named) -> f var named) defs
       | _ -> ())
     t
 
@@ -170,7 +128,6 @@ let iter_all_toplevel_immutable_let_and_let_rec_bindings t ~f =
   iter_general ~toplevel:true
     (function
       | Let { var; defining_expr; _ } -> f var defining_expr
-      | Let_rec (defs, _) -> List.iter (fun (var, named) -> f var named) defs
       | _ -> ())
     (fun _ -> ())
     (Is_expr t)
@@ -179,9 +136,8 @@ let iter_on_sets_of_closures f t =
   iter_named (function
       | Set_of_closures clos -> f clos
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Read_symbol_field _
-      | Project_closure _ | Move_within_set_of_closures _ | Project_var _
-      | Prim _ | Expr _ -> ())
+      | Read_symbol_field _ | Project_closure _ | Move_within_set_of_closures _
+      | Project_var _ | Prim _ -> ())
     t
 
 let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
@@ -204,7 +160,7 @@ let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
     | Let_symbol (_, _, program) ->
       loop program
     | Initialize_symbol (_, _, fields, program) ->
-      List.iter f fields;
+      List.iter (fun (field, _cont) -> f field) fields;
       loop program
     | Effect (expr, program) ->
       f expr;

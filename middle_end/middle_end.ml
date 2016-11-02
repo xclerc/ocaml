@@ -50,6 +50,8 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
           Flambda.print_program flam
     end
   in
+*)
+  let check _flam = () in
   let (+-+) flam (name, pass) =
     incr pass_number;
     if !Clflags.dump_flambda_verbose then begin
@@ -66,7 +68,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     end;
     flam
   in
-*)
   let print_prepared_lambda lam =
     if not !Clflags.dump_rawflambda then begin
       lam
@@ -127,7 +128,8 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       +-+ ("Initialize_symbol_to_let_symbol",
            Initialize_symbol_to_let_symbol.run)
     in
-    let rec loop flam =
+*)
+    let loop flam =
       pass_number := 0;
       let round = !round_number in
       incr round_number;
@@ -136,8 +138,11 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         flam
         (* Beware: [Lift_constants] must be run before any pass that might
            duplicate strings. *)
+(*
         +-+ ("lift_lets 1", Lift_code.lift_lets)
         +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
+*)
+(*
         +-+ ("Share_constants", Share_constants.share_constants)
         +-+ ("Remove_unused_program_constructs",
              Remove_unused_program_constructs.remove_unused_program_constructs)
@@ -165,9 +170,11 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         +-+ ("Initialize_symbol_to_let_symbol",
              Initialize_symbol_to_let_symbol.run)
         |> loop
+*)
     in
-    let back_end flam =
+    let back_end _flam =
       flam
+(*
       +-+ ("Remove_unused_closure_vars",
            Remove_unused_closure_vars.remove_unused_closure_variables
              ~remove_direct_call_surrogates:true)
@@ -175,13 +182,15 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       +-+ ("Share_constants", Share_constants.share_constants)
       +-+ ("Remove_unused_program_constructs",
         Remove_unused_program_constructs.remove_unused_program_constructs)
+*)
     in
     let flam =
       if !Clflags.classic_inlining then
-        fast_mode flam
+        assert false (*fast_mode flam *)
       else
         loop flam
     in
+(*
     let flam = back_end flam in
     (* Check that there aren't any unused "always inline" attributes. *)
     Flambda_iterators.iter_apply_on_program flam ~f:(fun apply ->

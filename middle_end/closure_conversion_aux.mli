@@ -37,6 +37,18 @@ module Env : sig
 
   val find_vars : t -> Ident.t list -> Variable.t list
 
+  val add_administrative_redex
+     : t
+    -> Continuation.t
+    -> params:Ident.t list
+    -> handler:Ilambda.t
+    -> t
+
+  val find_administrative_redex
+     : t
+    -> Continuation.t
+    -> (Ident.t list * Ilambda.t) option
+
   val add_mutable_var : t -> Ident.t -> Mutable_variable.t -> t
   val find_mutable_var : t -> Ident.t -> Mutable_variable.t
 

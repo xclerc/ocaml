@@ -203,14 +203,24 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
     in
     Flambda.create_let set_of_closures_var set_of_closures body
   | Let_cont let_cont ->
-    let handler_env, params = Env.add_vars_like env let_cont.params in
-    Let_cont {
-      name = let_cont.name;
-      params;
-      recursive = let_cont.recursive;
-      body = close t env let_cont.body;
-      handler = close t handler_env let_cont.handler;
-    }
+    (* Inline out administrative redexes. *)
+    if let_cont.administrative then begin
+      assert (let_cont.recursive = Asttypes.Nonrecursive);
+      let body_env =
+        Env.add_administrative_redex env let_cont.name ~params:let_cont.params
+          ~handler:let_cont.handler
+      in
+      close t body_env let_cont.body
+    end else begin
+      let handler_env, params = Env.add_vars_like env let_cont.params in
+      Let_cont {
+        name = let_cont.name;
+        params;
+        recursive = let_cont.recursive;
+        body = close t env let_cont.body;
+        handler = close t handler_env let_cont.handler;
+      }
+    end
   | Apply { kind; func; args; continuation; loc; should_be_tailcall = _;
       inlined; specialised; } ->
     let kind : Flambda.apply_kind =
@@ -232,7 +242,14 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
       inline = inlined;
       specialise = specialised;
     })
-  | Apply_cont (cont, args) -> Apply_cont (cont, Env.find_vars env args)
+  | Apply_cont (cont, args) ->
+    let args = Env.find_vars env args in
+    begin match Env.find_administrative_redex env cont with
+    | None -> Apply_cont (cont, args)
+    | Some (params, handler) ->
+      let handler_env = Env.add_vars env params args in
+      close t handler_env handler
+    end
   | Switch (scrutinee, sw) ->
     let zero_to_n = Numbers.Int.zero_to_n in
     Switch (Env.find_var env scrutinee,

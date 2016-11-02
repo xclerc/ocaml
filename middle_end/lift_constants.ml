@@ -16,14 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(* CR-someday mshinwell: move to Flambda_utils *)
-let rec tail_variable : Flambda.t -> Variable.t option = function
-  | Var v -> Some v
-  | Let_rec (_, e)
-  | Let_mutable { body = e }
-  | Let { body = e; _ } -> tail_variable e
-  | _ -> None
-
 let closure_symbol ~(backend : (module Backend_intf.S)) closure_id =
   let module Backend = (val backend) in
   Backend.closure_symbol closure_id
@@ -111,10 +103,6 @@ let assign_symbols_and_collect_constant_definitions
           Flambda.print_named named
       | Project_var project_var ->
         record_definition (AA.Project_var project_var)
-      | Expr e ->
-        match tail_variable e with
-        | None -> assert false  (* See [Inconstant_idents]. *)
-        | Some v -> record_definition (AA.Variable v)
     end
   in
   let assign_symbol_program expr =
