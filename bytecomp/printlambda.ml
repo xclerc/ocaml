@@ -416,7 +416,7 @@ let name_of_primitive = function
   | Popaque -> "Popaque"
   | Ppushtrap -> "Ppushtrap"
   | Ppoptrap -> "Ppoptrap"
-  | Pread_mutable -> "Pread_mutable"
+  | Pread_mutable _ -> "Pread_mutable"
 
 let function_attribute ppf { inline; specialise; is_a_functor } =
   if is_a_functor then

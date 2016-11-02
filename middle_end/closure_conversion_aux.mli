@@ -29,14 +29,16 @@ module Env : sig
   val add_var : t -> Ident.t -> Variable.t -> t
   val add_vars : t -> Ident.t list -> Variable.t list -> t
 
+  val add_var_like : t -> Ident.t -> t * Variable.t
+  val add_vars_like : t -> Ident.t list -> t * Variable.t list
+
   val find_var : t -> Ident.t -> Variable.t
   val find_var_exn : t -> Ident.t -> Variable.t
 
-  val add_mutable_var : t -> Ident.t -> Mutable_variable.t -> t
-  val find_mutable_var_exn : t -> Ident.t -> Mutable_variable.t
+  val find_vars : t -> Ident.t list -> Variable.t list
 
-  val add_continuation : t -> int -> Continuation.t -> t
-  val find_continuation : t -> int -> Continuation.t
+  val add_mutable_var : t -> Ident.t -> Mutable_variable.t -> t
+  val find_mutable_var : t -> Ident.t -> Mutable_variable.t
 
   val add_global : t -> int -> Symbol.t -> t
   val find_global : t -> int -> Symbol.t
@@ -57,6 +59,7 @@ module Function_decls : sig
       -> closure_bound_var:Variable.t
       -> kind:Lambda.function_kind
       -> params:Ident.t list
+      -> continuation_param:Continuation.t
       -> body:Ilambda.t
       -> inline:Lambda.inline_attribute
       -> specialise:Lambda.specialise_attribute
@@ -69,6 +72,7 @@ module Function_decls : sig
     val closure_bound_var : t -> Variable.t
     val kind : t -> Lambda.function_kind
     val params : t -> Ident.t list
+    val continuation_param : t -> Continuation.t
     val body : t -> Ilambda.t
     val inline : t -> Lambda.inline_attribute
     val specialise : t -> Lambda.specialise_attribute

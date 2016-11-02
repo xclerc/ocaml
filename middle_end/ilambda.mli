@@ -37,7 +37,6 @@ type t =
 and named =
   | Var of Ident.t
   | Const of Lambda.structured_constant
-  | Function of function_declaration
   | Prim of Lambda.primitive * Ident.t list * Location.t
   | Assign of { being_assigned : Ident.t; new_value : Ident.t; }
 

@@ -222,21 +222,27 @@ let simplify_primitive (prim : L.primitive) args loc =
 module Env : sig
   type t
 
-  val empty : t
+  val create : current_unit_id:Ident.t -> t
+
+  val current_unit_id : t -> Ident.t
 
   val add_mutable : t -> Ident.t -> t
   val is_mutable : t -> Ident.t -> bool
 end = struct
   type t = {
+    current_unit_id : Ident.t;
     mutables : Ident.Set.t;
   }
 
-  let empty =
-    { mutables = Ident.Set.empty;
+  let create ~current_unit_id =
+    { current_unit_id;
+      mutables = Ident.Set.empty;
     }
 
+  let current_unit_id t = t.current_unit_id
+
   let add_mutable t id =
-    assert (not (Ident.Set.mem t.mutables id));
+    assert (not (Ident.Set.mem id t.mutables));
     { t with mutables = Ident.Set.add id t.mutables; }
 
   let is_mutable t id =
@@ -288,6 +294,13 @@ let rec prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
       let bindings = List.combine idents bindings in
       prepare env body (fun body ->
         k (dissect_letrec ~bindings ~body)))
+  | Lprim (Pfield _, [Lprim (Pgetglobal id, [],_)], _)
+      when Ident.same id (Env.current_unit_id env) ->
+    Misc.fatal_error "[Pfield (Pgetglobal ...)] for the current compilation \
+      unit is forbidden upon entry to the middle end"
+  | Lprim (Psetfield (_, _, _), [Lprim (Pgetglobal _, [], _); _], _) ->
+    Misc.fatal_error "[Psetfield (Pgetglobal ...)] is \
+      forbidden upon entry to the middle end"
   | Lprim (prim, args, loc) ->
     prepare_list env args (fun args ->
       k (simplify_primitive prim args loc))
@@ -429,5 +442,10 @@ and prepare_option env lam_opt k =
   | Some lam -> prepare env lam (fun lam -> k (Some lam))
 
 let run lam =
+  let current_unit_id =
+    Compilation_unit.get_persistent_ident
+      (Compilation_unit.get_current_exn ())
+  in
+  let env = Env.create ~current_unit_id in
   let lam = add_default_argument_wrappers lam in
-  prepare Env.empty lam (fun lam -> lam)
+  prepare env lam (fun lam -> lam)

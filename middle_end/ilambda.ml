@@ -35,7 +35,6 @@ type t =
 and named =
   | Var of Ident.t
   | Const of L.structured_constant
-  | Function of function_declaration
   | Prim of L.primitive * Ident.t list * Location.t
   | Assign of { being_assigned : Ident.t; new_value : Ident.t; }
 
@@ -118,7 +117,6 @@ and print_named ppf (named : named) =
   match named with
   | Var id -> Ident.print ppf id
   | Const cst -> Printlambda.structured_constant ppf cst
-  | Function func -> print_function ppf func
   | Prim (prim, largs, _) ->
     fprintf ppf "@[<2>(%a %a)@]" Printlambda.primitive prim
       Ident.print_list largs

@@ -95,7 +95,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
           module_initializer
           |> Prepare_lambda.run
           |> print_prepared_lambda
-          |> Cps_conversion.run
+          |> Cps_conversion.lambda_to_ilambda
           |> print_ilambda
           |> Closure_conversion.ilambda_to_flambda ~backend ~module_ident
                 ~size ~filename)

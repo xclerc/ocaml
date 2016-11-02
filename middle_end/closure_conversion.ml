@@ -21,13 +21,12 @@ module Function_decls = Closure_conversion_aux.Function_decls
 module Function_decl = Function_decls.Function_decl
 module IdentSet = Lambda.IdentSet
 
-let name_expr = Flambda_utils.name_expr
-
 type t = {
   current_unit_id : Ident.t;
   symbol_for_global' : (Ident.t -> Symbol.t);
   filename : string;
   mutable imported_symbols : Symbol.Set.t;
+  mutable declared_symbols : (Symbol.t * Flambda.constant_defining_value) list;
 }
 
 (** Generate a wrapper ("stub") function that accepts a tuple argument and
@@ -42,6 +41,7 @@ let tupled_function_call_stub original_params unboxed_version
   let params = List.map (fun p -> Variable.rename p) original_params in
   let call : Flambda.t =
     Apply ({
+        kind = Function;
         continuation = continuation_param;
         func = unboxed_version;
         args = params;
@@ -121,13 +121,15 @@ let close_const t (const : Lambda.structured_constant)
   | Symbol s, name ->
     Symbol s, name
 
-and close t env (lam : Ilambda.t) : Flambda.t =
+let rec close t env (lam : Ilambda.t) : Flambda.t =
   match lam with
   | Let (id, defining_expr, body) ->
-    let var = Variable.create_with_same_name_as_ident id in
-    let body = close t (Env.add_var env id var) body in
-    close_let_bound_expression t var env defining_expr ~body
+    let body_env, var = Env.add_var_like env id in
+    let defining_expr = close_named t env defining_expr in
+    let body = close t body_env body in
+    Flambda.create_let var defining_expr body
   | Let_mutable { id; initial_value; contents_kind; body; } ->
+    (* See comment on [Pread_mutable] below. *)
     let var = Mutable_variable.of_ident id in
     let initial_value = Env.find_var env initial_value in
     let body = close t (Env.add_mutable_var env id var) body in
@@ -137,36 +139,11 @@ and close t env (lam : Ilambda.t) : Flambda.t =
       body;
       contents_kind;
     }
-  | Prim (Pread_mutable id, args, _) ->
-    (* All occurrences of mutable variables bound by [Let_mutable] are
-       identified by [Prim (Pread_mutable, ...)] in Ilambda. *)
-    assert (args = []);
-    Read_mutable (Env.find_mutable_var id)
-  | Apply { func; args; continuation; loc; should_be_tailcall = _; inlined;
-      specialised; } ->
-    let kind : Flambda.apply_kind =
-      match func with
-      | Function -> Function
-      | Method { kind; obj; } ->
-        Method {
-          kind;
-          obj = Env.find_var obj;
-        }
-    in
-    Apply ({
-      kind;
-      func = Env.find_var env func;
-      args = Env.find_vars env args;
-      continuation;
-      call_kind = Indirect;
-      dbg = Debuginfo.from_location loc;
-      inline = inlined;
-      specialise = specialised;
-    })
   | Let_rec (defs, body) ->
     let env =
       List.fold_right (fun (id,  _) env ->
-          Env.add_var env id (Variable.create_with_same_name_as_ident id))
+          let env, _var = Env.add_var_like env id in
+          env)
         defs env
     in
     let function_declarations =
@@ -174,13 +151,14 @@ and close t env (lam : Ilambda.t) : Flambda.t =
          [let rec]. *)
       List.map (function
           | (let_rec_ident,
-              { kind; params; body; attr; loc; free_idents_of_body; }) ->
+              ({ kind; continuation_param; params; body; attr; loc;
+                free_idents_of_body; } : Ilambda.function_declaration)) ->
             let closure_bound_var =
               Variable.create_with_same_name_as_ident let_rec_ident
             in
             let function_declaration =
               Function_decl.create ~let_rec_ident:(Some let_rec_ident)
-                ~closure_bound_var ~kind ~params ~body
+                ~closure_bound_var ~kind ~params ~continuation_param ~body
                 ~inline:attr.inline ~specialise:attr.specialise
                 ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
             in
@@ -225,12 +203,7 @@ and close t env (lam : Ilambda.t) : Flambda.t =
     in
     Flambda.create_let set_of_closures_var set_of_closures body
   | Let_cont let_cont ->
-    let cont = Continuation.create () in
-    let env = Env.add_continuation env i cont in
-    let params =
-      List.map (Variable.create_with_same_name_as_ident) let_cont.params
-    in
-    let handler_env = Env.add_vars env ids params in
+    let handler_env, params = Env.add_vars_like env let_cont.params in
     Let_cont {
       name = let_cont.name;
       params;
@@ -238,13 +211,31 @@ and close t env (lam : Ilambda.t) : Flambda.t =
       body = close t env let_cont.body;
       handler = close t handler_env let_cont.handler;
     }
+  | Apply { kind; func; args; continuation; loc; should_be_tailcall = _;
+      inlined; specialised; } ->
+    let kind : Flambda.apply_kind =
+      match kind with
+      | Function -> Function
+      | Method { kind; obj; } ->
+        Method {
+          kind;
+          obj = Env.find_var env obj;
+        }
+    in
+    Apply ({
+      kind;
+      func = Env.find_var env func;
+      args = Env.find_vars env args;
+      continuation;
+      call_kind = Indirect;
+      dbg = Debuginfo.from_location loc;
+      inline = inlined;
+      specialise = specialised;
+    })
   | Apply_cont (cont, args) -> Apply_cont (cont, Env.find_vars env args)
   | Switch (scrutinee, sw) ->
-    (* CR mshinwell: Combine the next two calls into one function *)
-    let scrutinee = Variable.create_with_same_name_as_ident scrutinee in
-    let scrutinee = Env.add_var env id scrutinee in
     let zero_to_n = Numbers.Int.zero_to_n in
-    Switch (scrutinee,
+    Switch (Env.find_var env scrutinee,
       { numconsts = zero_to_n (sw.numconsts - 1);
         consts = sw.consts;
         numblocks = zero_to_n (sw.numblocks - 1);
@@ -255,54 +246,29 @@ and close t env (lam : Ilambda.t) : Flambda.t =
 
 and close_named t env (named : Ilambda.named) : Flambda.named =
   match named with
-  | Var id -> Env.find_var env id
-  | Const cst -> close_const t env cst
-  | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
-    let name =
-      (* Name anonymous functions by their source location, if known. *)
-      if loc = Location.none then "anon-fn"
-      else Format.asprintf "anon-fn[%a]" Location.print_compact loc
-    in
-    let closure_bound_var = Variable.create name in
-    (* CR-soon mshinwell: some of this is now very similar to the let rec case
-       below *)
-    let set_of_closures_var = Variable.create ("set_of_closures_" ^ name) in
-    let set_of_closures =
-      let decl =
-        Function_decl.create ~let_rec_ident:None ~closure_bound_var ~kind
-          ~params ~body ~inline:attr.inline ~specialise:attr.specialise
-          ~is_a_functor:attr.is_a_functor ~loc
-          ~free_idents_of_body
-      in
-      close_functions t env (Function_decls.create [decl])
-    in
-    let project_closure : Flambda.project_closure =
-      { set_of_closures = set_of_closures_var;
-        closure_id = Closure_id.wrap closure_bound_var;
-      }
-    in
-    Flambda.create_let set_of_closures_var set_of_closures
-      (name_expr (Project_closure (project_closure))
-        ~name:("project_closure_" ^ name))
-  | Prim (Pfield _, [Prim (Pgetglobal id, [],_)], _)
-      when Ident.same id t.current_unit_id ->
-    Misc.fatal_errorf "[Pfield (Pgetglobal ...)] for the current compilation \
-        unit is forbidden upon entry to the middle end"
-  | Prim (Psetfield (_, _, _), [Prim (Pgetglobal _, [], _); _], _) ->
-    Misc.fatal_errorf "[Psetfield (Pgetglobal ...)] is \
-        forbidden upon entry to the middle end"
+  | Var id -> Var (Env.find_var env id)
+  | Const cst -> fst (close_const t cst)
+  | Prim (Pread_mutable id, args, _) ->
+    (* All occurrences of mutable variables bound by [Let_mutable] are
+       identified by [Prim (Pread_mutable, ...)] in Ilambda. *)
+    assert (args = []);
+    Read_mutable (Env.find_mutable_var env id)
   | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    name_expr (Symbol symbol) ~name:"predef_exn"
+    Symbol symbol
   | Prim (Pgetglobal id, [], _) ->
     assert (not (Ident.same id t.current_unit_id));
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    name_expr (Symbol symbol) ~name:"Pgetglobal"
+    Symbol symbol
   | Prim (p, args, loc) ->
-    let args = Env.find_vars_or_mutable_vars env args in
-    Prim (p, args, loc)
+    Prim (p, Env.find_vars env args, Debuginfo.from_location loc)
+  | Assign { being_assigned; new_value; } ->
+    Assign {
+      being_assigned = Env.find_mutable_var env being_assigned;
+      new_value = Env.find_var env new_value;
+    }
 
 (** Perform closure conversion on a set of function declarations, returning a
     set of closures.  (The set will often only contain a single function;
@@ -324,7 +290,8 @@ and close_functions t external_env function_declarations : Flambda.named =
        that renaming are stored in [free_variables]. *)
     let closure_env =
       List.fold_right (fun id env ->
-          Env.add_var env id (Variable.create_with_same_name_as_ident id))
+          let env, _var = Env.add_var_like env id in
+          env)
         params closure_env_without_parameters
     in
 (* CR mshinwell: think about this
@@ -343,7 +310,9 @@ and close_functions t external_env function_declarations : Flambda.named =
     let closure_bound_var = Function_decl.closure_bound_var decl in
     let body = close t closure_env body in
     let fun_decl =
-      Flambda.create_function_declaration ~params ~body ~stub ~dbg
+      Flambda.create_function_declaration ~params
+        ~continuation_param:(Function_decl.continuation_param decl)
+        ~body ~stub ~dbg
         ~inline:(Function_decl.inline decl)
         ~specialise:(Function_decl.specialise decl)
         ~is_a_functor:(Function_decl.is_a_functor decl)
@@ -387,38 +356,6 @@ and close_functions t external_env function_declarations : Flambda.named =
   in
   Set_of_closures set_of_closures
 
-and close_list t sb l = List.map (close t sb) l
-
-and close_let_bound_expression t ?let_rec_ident let_bound_var env
-      (defining_expr : Ilambda.named) ~body : Flambda.expr =
-  match defining_expr with
-  | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
-    (* Ensure that [let] and [let rec]-bound functions have appropriate
-       names. *)
-    let closure_bound_var = Variable.rename let_bound_var in
-    let decl =
-      Function_decl.create ~let_rec_ident ~closure_bound_var ~kind ~params
-        ~body ~inline:attr.inline ~specialise:attr.specialise
-        ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
-    in
-    let set_of_closures_var =
-      Variable.rename let_bound_var ~append:"_set_of_closures"
-    in
-    let set_of_closures =
-      close_functions t env (Function_decls.create [decl])
-    in
-    let project_closure : Flambda.project_closure =
-      { set_of_closures = set_of_closures_var;
-        closure_id = Closure_id.wrap closure_bound_var;
-      }
-    in
-    let project_closure_var = Variable.rename let_bound_var in
-    Flambda.create_let set_of_closures_var set_of_closures
-      (Flambda.create_let project_closure_var (Project_closure project_closure)
-        body)
-  | defining_expr ->
-    Flambda.create_let var (close_named t env defining_expr) body
-
 let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       (ilam, ilam_result_cont) : Flambda.program =
   let module Backend = (val backend : Backend_intf.S) in
@@ -428,6 +365,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       symbol_for_global' = Backend.symbol_for_global';
       filename;
       imported_symbols = Symbol.Set.empty;
+      declared_symbols = [];
     }
   in
   let module_symbol = Backend.symbol_for_global' module_ident in
@@ -468,6 +406,13 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
         Array.to_list fields,
         End module_symbol))
   in
+  let program_body =
+    List.fold_left
+      (fun program_body (symbol, constant) : Flambda.program_body ->
+         Let_symbol (symbol, constant, program_body))
+      module_initializer
+      t.declared_symbols
+  in
   { imported_symbols = t.imported_symbols;
-    program_body = module_initializer;
+    program_body;
   }

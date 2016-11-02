@@ -132,8 +132,8 @@ and named =
   | Var of Variable.t
   | Const of const
   | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
-  | Read_mutable of Mutable_variable.t
   | Assign of assign
+  | Read_mutable of Mutable_variable.t
   | Symbol of Symbol.t
   | Read_symbol_field of Symbol.t * int
   (** During the lifting of [let] bindings to [program] constructions after

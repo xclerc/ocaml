@@ -106,7 +106,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
   | Llet (_let_kind, _value_kind, id, Lfunction func, body) ->
     let func = cps_function func in
     let body = cps_non_tail body k in
-    Let (id, Function func, body)
+    Let_rec ([id, func], body)
   | Llet (_let_kind, _value_kind, id, Lprim (prim, args, loc), body) ->
     let body = cps_non_tail body k in
     cps_non_tail_list args (fun args ->
@@ -293,7 +293,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t =
   | Llet (_let_kind, _value_kind, id, Lfunction func, body) ->
     let func = cps_function func in
     let body = cps_tail body k in
-    Let (id, Function func, body)
+    Let_rec ([id, func], body)
   | Llet (_let_kind, _value_kind, id, Lprim (prim, args, loc), body) ->
     let body = cps_tail body k in
     cps_non_tail_list args (fun args ->

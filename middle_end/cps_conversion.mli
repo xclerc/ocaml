@@ -16,4 +16,4 @@
 
 (** Conversion from Lambda to Ilambda: halfway to Flambda. *)
 
-val run : Lambda.lambda -> Ilambda.t * Continuation.t
+val lambda_to_ilambda : Lambda.lambda -> Ilambda.t * Continuation.t

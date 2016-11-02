@@ -22,7 +22,6 @@ module Env = struct
   type t = {
     variables : Variable.t Ident.tbl;
     mutable_variables : Mutable_variable.t Ident.tbl;
-    continuations : Continuation.t Numbers.Int.Map.t;
     globals : Symbol.t Numbers.Int.Map.t;
     at_toplevel : bool;
   }
@@ -30,7 +29,6 @@ module Env = struct
   let empty = {
     variables = Ident.empty;
     mutable_variables = Ident.empty;
-    continuations = Numbers.Int.Map.empty;
     globals = Numbers.Int.Map.empty;
     at_toplevel = true;
   }
@@ -40,6 +38,14 @@ module Env = struct
 
   let add_var t id var = { t with variables = Ident.add id var t.variables }
   let add_vars t ids vars = List.fold_left2 add_var t ids vars
+
+  let add_var_like t id =
+    let var = Variable.create_with_same_name_as_ident id in
+    add_var t id var, var
+
+  let add_vars_like t ids =
+    let vars = List.map Variable.create_with_same_name_as_ident ids in
+    add_vars t ids vars, vars
 
   let find_var t id =
     try Ident.find_same id t.variables
@@ -51,22 +57,18 @@ module Env = struct
   let find_var_exn t id =
     Ident.find_same id t.variables
 
+  let find_vars t ids =
+    List.map (fun id -> find_var t id) ids
+
   let add_mutable_var t id mutable_var =
     { t with mutable_variables = Ident.add id mutable_var t.mutable_variables }
 
-  let find_mutable_var_exn t id =
-    Ident.find_same id t.mutable_variables
-
-  let add_continuation t cont fresh_cont =
-    { t with
-      continuations =
-        Numbers.Int.Map.add cont fresh_cont t.continuations }
-
-  let find_continuation t cont =
-    try Numbers.Int.Map.find cont t.continuations
+  let find_mutable_var t id =
+    try Ident.find_same id t.mutable_variables
     with Not_found ->
-      Misc.fatal_error ("Closure_conversion.Env.find_continuation: cont "
-        ^ string_of_int cont)
+      Misc.fatal_errorf "Closure_conversion.Env.find_mutable_var: %s@ %s"
+        (Ident.unique_name id)
+        (Printexc.raw_backtrace_to_string (Printexc.get_callstack 42))
 
   let add_global t pos symbol =
     { t with globals = Numbers.Int.Map.add pos symbol t.globals }
@@ -91,6 +93,7 @@ module Function_decls = struct
       closure_bound_var : Variable.t;
       kind : Lambda.function_kind;
       params : Ident.t list;
+      continuation_param : Continuation.t;
       body : Ilambda.t;
       free_idents_of_body : IdentSet.t;
       inline : Lambda.inline_attribute;
@@ -99,7 +102,8 @@ module Function_decls = struct
       loc : Location.t;
     }
 
-    let create ~let_rec_ident ~closure_bound_var ~kind ~params ~body ~inline
+    let create ~let_rec_ident ~closure_bound_var ~kind ~params
+        ~continuation_param ~body ~inline
         ~specialise ~is_a_functor ~loc ~free_idents_of_body =
       let let_rec_ident =
         match let_rec_ident with
@@ -110,6 +114,7 @@ module Function_decls = struct
         closure_bound_var;
         kind;
         params;
+        continuation_param;
         body;
         free_idents_of_body;
         inline;
@@ -122,6 +127,7 @@ module Function_decls = struct
     let closure_bound_var t = t.closure_bound_var
     let kind t = t.kind
     let params t = t.params
+    let continuation_param t = t.continuation_param
     let body t = t.body
     let free_idents t = t.free_idents_of_body
     let inline t = t.inline

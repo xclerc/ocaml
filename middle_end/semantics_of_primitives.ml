@@ -148,6 +148,10 @@ let for_primitive (prim : Lambda.primitive) =
   | Psequand
   | Psequor ->
     Misc.fatal_errorf "The primitive %a should have been eliminated by the \
+        [Prepare_lambda] pass."
+      Printlambda.primitive prim
+  | Pread_mutable _ ->
+    Misc.fatal_errorf "The primitive %a should have been eliminated by the \
         [Closure_conversion] pass."
       Printlambda.primitive prim
 
