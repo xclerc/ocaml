@@ -254,7 +254,7 @@ let rec lam ppf (flam : t) =
               Continuation.print l
         end in
       fprintf ppf
-        "@[<1>(%s(%i,%i) %a@ @[<v 0>%a@])@]"
+        "@[<1>(%s (%i, %i) %a@ @[<v 0>%a@])@]"
         (match sw.failaction with None -> "switch*" | _ -> "switch")
         (Int.Set.cardinal sw.numconsts)
         (Int.Set.cardinal sw.numblocks)
@@ -307,7 +307,7 @@ and print_named ppf (named : named) =
   | Set_of_closures set_of_closures ->
     print_set_of_closures ppf set_of_closures
   | Prim (prim, args, dbg) ->
-    fprintf ppf "@[<2>(%a<%s>%a)@]" Printlambda.primitive prim
+    fprintf ppf "@[<2>(%a@ <%s>@ %a)@]" Printlambda.primitive prim
       (Debuginfo.to_string dbg)
       Variable.print_list args
 
