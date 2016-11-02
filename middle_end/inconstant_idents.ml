@@ -236,13 +236,11 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_loop ~toplevel curr body
     (* Not constant cases: we mark directly 'curr in NC' and mark
        bound variables as in NC also *)
-    | Assign _ ->
-      mark_curr curr
-    | Let_cont (_,ids,f1,f2) ->
-      List.iter (fun id -> mark_curr [Var id]) ids;
+    | Let_cont { params; body; handler; _ } ->
+      List.iter (fun id -> mark_curr [Var id]) params;
       mark_curr curr;
-      mark_loop ~toplevel [] f1;
-      mark_loop ~toplevel:false [] f2
+      mark_loop ~toplevel [] body;
+      mark_loop ~toplevel:false [] handler
       (* CR-someday pchambart: If recursive staticcatch is introduced:
          this becomes ~toplevel:false
          mshinwell: This has been set to the conservative value *)
@@ -253,12 +251,9 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_curr curr;
       mark_var func curr;
       mark_vars args curr;
-    | Switch (arg,sw) ->
+    | Switch (arg, _) ->
       mark_curr curr;
-      mark_var arg curr;
-      List.iter (fun (_,l) -> mark_loop ~toplevel [] l) sw.consts;
-      List.iter (fun (_,l) -> mark_loop ~toplevel [] l) sw.blocks;
-      Misc.may (fun l -> mark_loop ~toplevel [] l) sw.failaction
+      mark_var arg curr
     | Proved_unreachable ->
       mark_curr curr
 
@@ -289,6 +284,8 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Read_symbol_field (symbol, index) ->
       register_implication ~in_nc:(Symbol_field (symbol, index))
         ~implies_in_nc:curr
+    | Assign _ ->  (* Not constant *)
+      mark_curr curr
     (* Globals are symbols: handle like symbols *)
     | Prim (Lambda.Pgetglobal _id, [], _) -> ()
     (* Constant constructors: those expressions are constant if all their
@@ -410,12 +407,12 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       match program with
       | End _ -> ()
       | Initialize_symbol (symbol,_tag,fields,program) ->
-        List.iteri (fun i field ->
+        List.iteri (fun i (field, _cont) ->
             mark_loop ~toplevel:true
               [Symbol symbol; Symbol_field (symbol,i)] field)
           fields;
         loop program
-      | Effect (expr, program) ->
+      | Effect (expr, _, program) ->
         mark_loop ~toplevel:true [] expr;
         loop program
       | Let_symbol (_, def, program) ->
