@@ -66,22 +66,26 @@ val make_key : Flambda.t -> sharing_key option
 (* CR-soon mshinwell: consider improving name and names of arguments
    lwhite: the params restriction seems odd, perhaps give a reason
    in the comment. *)
+(*
 val make_closure_declaration
    : id:Variable.t
   -> body:Flambda.t
   -> params:Variable.t list
+  -> continuation_param:Continuation.t
   -> stub:bool
   -> Flambda.t
+*)
 
 val toplevel_substitution
    : Variable.t Variable.Map.t
   -> Flambda.expr
   -> Flambda.expr
-
+(*
 val toplevel_substitution_named
    : Variable.t Variable.Map.t
   -> Flambda.named
   -> Flambda.named
+*)
 
 (** [bind [var1, expr1; ...; varN, exprN] body] binds using
     [Immutable] [Let] expressions the given [(var, expr)] pairs around the
@@ -91,13 +95,11 @@ val bind
   -> body:Flambda.t
   -> Flambda.t
 
-val name_expr : Flambda.named -> name:string -> Flambda.t
-
 val compare_const : Flambda.const -> Flambda.const -> int
 
 val initialize_symbols
    : Flambda.program
-  -> (Symbol.t * Tag.t * Flambda.t list) list
+  -> (Symbol.t * Tag.t * (Flambda.t * Continuation.t) list) list
 
 val imported_symbols : Flambda.program -> Symbol.Set.t
 
@@ -162,10 +164,12 @@ val make_variables_symbol : Variable.t list -> Symbol.t
 (* CR-someday pchambart: A more general version of this function might
    take a [named] instead of a symbol and be called with
    [Read_symbol_field (symbol, 0)]. *)
+(*
 val substitute_read_symbol_field_for_variables
    : (Symbol.t * int list) Variable.Map.t
   -> Flambda.t
   -> Flambda.t
+*)
 
 (** For the compilation of switch statements. *)
 module Switch_storer : sig

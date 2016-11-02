@@ -16,14 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let name_expr (named : Flambda.named) ~name : Flambda.t =
-  let var =
-    Variable.create
-      ~current_compilation_unit:(Compilation_unit.get_current_exn ())
-      name
-  in
-  Flambda.create_let var named (Var var)
-
 let find_declaration cf ({ funs } : Flambda.function_declarations) =
   Variable.Map.find (Closure_id.unwrap cf) funs
 
@@ -52,20 +44,13 @@ let variables_bound_by_the_closure cf
 
 let description_of_toplevel_node (expr : Flambda.t) =
   match expr with
-  | Var id -> Format.asprintf "var %a" Variable.print id
-  | Apply _ -> "apply"
-  | Assign _ -> "assign"
-  | Send _ -> "send"
-  | Proved_unreachable -> "unreachable"
   | Let { var; _ } -> Format.asprintf "let %a" Variable.print var
   | Let_mutable _ -> "let_mutable"
-  | Let_rec _ -> "letrec"
-  | If_then_else _ -> "if"
-  | Switch _ -> "switch"
-  | String_switch _ -> "stringswitch"
-  | Apply_cont  _ -> "staticraise"
   | Let_cont  _ -> "catch"
-  | Try_with _ -> "trywith"
+  | Apply _ -> "apply"
+  | Apply_cont  _ -> "staticraise"
+  | Switch _ -> "switch"
+  | Proved_unreachable -> "unreachable"
 
 let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
   match c1, c2 with
@@ -81,8 +66,6 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
   l1 == l2 || (* it is ok for the string case: if they are physically the same,
                  it is the same original branch *)
   match (l1, l2) with
-  | Var v1 , Var v2  -> Variable.equal v1 v2
-  | Var _, _ | _, Var _ -> false
   | Apply a1 , Apply a2  ->
     a1.kind = a2.kind
       && Variable.equal a1.func a2.func
@@ -101,45 +84,22 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
       && ck1 = ck2
       && same b1 b2
   | Let_mutable _, _ | _, Let_mutable _ -> false
-  | Let_rec (bl1, a1), Let_rec (bl2, a2) ->
-    Misc.Stdlib.List.equal samebinding bl1 bl2 && same a1 a2
-  | Let_rec _, _ | _, Let_rec _ -> false
   | Switch (a1, s1), Switch (a2, s2) ->
     Variable.equal a1 a2 && sameswitch s1 s2
   | Switch _, _ | _, Switch _ -> false
-  | String_switch (a1, s1, d1), String_switch (a2, s2, d2) ->
-    Variable.equal a1 a2
-      && Misc.Stdlib.List.equal
-        (fun (s1, e1) (s2, e2) -> s1 = s2 && same e1 e2) s1 s2
-      && Misc.Stdlib.Option.equal same d1 d2
-  | String_switch _, _ | _, String_switch _ -> false
   | Apply_cont (e1, a1), Apply_cont (e2, a2) ->
     Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
   | Apply_cont _, _ | _, Apply_cont _ -> false
-  | Let_cont (s1, v1, a1, b1), Let_cont (s2, v2, a2, b2) ->
-    Continuation.equal s1 s2
-      && Misc.Stdlib.List.equal Variable.equal v1 v2
-      && same a1 a2
-      && same b1 b2
+  | Let_cont { name = name1; params = params1; recursive = recursive1;
+      body = body1; handler = handler1; },
+    Let_cont { name = name2; params = params2; recursive = recursive2;
+      body = body2; handler = handler2; } ->
+    Continuation.equal name1 name2
+      && Misc.Stdlib.List.equal Variable.equal params1 params2
+      && Pervasives.compare recursive1 recursive2 = 0
+      && same body1 body2
+      && same handler1 handler2
   | Let_cont _, _ | _, Let_cont _ -> false
-  | Try_with (a1, v1, b1), Try_with (a2, v2, b2) ->
-    same a1 a2 && Variable.equal v1 v2 && same b1 b2
-  | Try_with _, _ | _, Try_with _ -> false
-  | If_then_else (a1, b1, c1), If_then_else (a2, b2, c2) ->
-    Variable.equal a1 a2 && same b1 b2 && same c1 c2
-  | If_then_else _, _ | _, If_then_else _ -> false
-  | Assign { being_assigned = being_assigned1; new_value = new_value1; },
-    Assign { being_assigned = being_assigned2; new_value = new_value2; } ->
-    Mutable_variable.equal being_assigned1 being_assigned2
-      && Variable.equal new_value1 new_value2
-  | Assign _, _ | _, Assign _ -> false
-  | Send { kind = kind1; meth = meth1; obj = obj1; args = args1; dbg = _; },
-    Send { kind = kind2; meth = meth2; obj = obj2; args = args2; dbg = _; } ->
-    kind1 = kind2
-      && Variable.equal meth1 meth2
-      && Variable.equal obj1 obj2
-      && Misc.Stdlib.List.equal Variable.equal args1 args2
-  | Send _, _ | _, Send _ -> false
   | Proved_unreachable, Proved_unreachable -> true
 
 and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
@@ -155,6 +115,11 @@ and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   | Allocated_const _, _ | _, Allocated_const _ -> false
   | Read_mutable mv1, Read_mutable mv2 -> Mutable_variable.equal mv1 mv2
   | Read_mutable _, _ | _, Read_mutable _ -> false
+  | Assign { being_assigned = being_assigned1; new_value = new_value1; },
+    Assign { being_assigned = being_assigned2; new_value = new_value2; } ->
+    Mutable_variable.equal being_assigned1 being_assigned2
+      && Variable.equal new_value1 new_value2
+  | Assign _, _ | _, Assign _ -> false
   | Read_symbol_field (s1, i1), Read_symbol_field (s2, i2) ->
     Symbol.equal s1 s2 && i1 = i2
   | Read_symbol_field _, _ | _, Read_symbol_field _ -> false
@@ -173,7 +138,6 @@ and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
     false
   | Prim (p1, al1, _), Prim (p2, al2, _) ->
     p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
-  | Prim _, _ | _, Prim _ -> false
 
 and sameclosure (c1 : Flambda.function_declaration)
       (c2 : Flambda.function_declaration) =
@@ -199,16 +163,13 @@ and same_move_within_set_of_closures (m1 : Flambda.move_within_set_of_closures)
     && Closure_id.equal m1.start_from m2.start_from
     && Closure_id.equal m1.move_to m2.move_to
 
-and samebinding (v1, n1) (v2, n2) =
-  Variable.equal v1 v2 && same_named n1 n2
-
 and sameswitch (fs1 : Flambda.switch) (fs2 : Flambda.switch) =
-  let samecase (n1, a1) (n2, a2) = n1 = n2 && same a1 a2 in
+  let samecase (n1, a1) (n2, a2) = n1 = n2 && Continuation.equal a1 a2 in
   fs1.numconsts = fs2.numconsts
     && fs1.numblocks = fs2.numblocks
     && Misc.Stdlib.List.equal samecase fs1.consts fs2.consts
     && Misc.Stdlib.List.equal samecase fs1.blocks fs2.blocks
-    && Misc.Stdlib.Option.equal same fs1.failaction fs2.failaction
+    && Misc.Stdlib.Option.equal Continuation.equal fs1.failaction fs2.failaction
 
 let can_be_merged = same
 
@@ -218,38 +179,22 @@ let toplevel_substitution sb tree =
   let sb v = try Variable.Map.find v sb with Not_found -> v in
   let aux (flam : Flambda.t) : Flambda.t =
     match flam with
-    | Var var ->
-      let var = sb var in
-      Var var
     | Let_mutable mutable_let ->
       let initial_value = sb mutable_let.initial_value in
       Let_mutable { mutable_let with initial_value }
-    | Assign { being_assigned; new_value; } ->
-      let new_value = sb new_value in
-      Assign { being_assigned; new_value; }
-    | Apply { func; args; kind; dbg; inline; specialise; } ->
+    | Apply { kind; func; args; continuation; call_kind; dbg; inline;
+        specialise; } ->
       let func = sb func in
       let args = List.map sb args in
-      Apply { func; args; kind; dbg; inline; specialise; }
-    | If_then_else (cond, e1, e2) ->
-      let cond = sb cond in
-      If_then_else (cond, e1, e2)
+      Apply { kind; func; args; continuation; call_kind; dbg; inline;
+        specialise; }
     | Switch (cond, sw) ->
       let cond = sb cond in
       Switch (cond, sw)
-    | String_switch (cond, branches, def) ->
-      let cond = sb cond in
-      String_switch (cond, branches, def)
-    | Send { kind; meth; obj; args; dbg } ->
-      let meth = sb meth in
-      let obj = sb obj in
-      let args = List.map sb args in
-      Send { kind; meth; obj; args; dbg }
     | Apply_cont (static_exn, args) ->
       let args = List.map sb args in
       Apply_cont (static_exn, args)
-    | Let_cont _ | Try_with _
-    | Let _ | Let_rec _ | Proved_unreachable -> flam
+    | Let_cont _ | Let _ | Proved_unreachable -> flam
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
@@ -258,6 +203,9 @@ let toplevel_substitution sb tree =
       Var var
     | Symbol _ | Const _ -> named
     | Allocated_const _ | Read_mutable _ -> named
+    | Assign { being_assigned; new_value; } ->
+      let new_value = sb new_value in
+      Assign { being_assigned; new_value; }
     | Read_symbol_field _ -> named
     | Set_of_closures set_of_closures ->
       let set_of_closures =
@@ -294,7 +242,7 @@ let toplevel_substitution sb tree =
   in
   if Variable.Map.is_empty sb' then tree
   else Flambda_iterators.map_toplevel aux aux_named tree
-
+(*
 (* CR-someday mshinwell: Fix [Flambda_iterators] so this can be implemented
    properly. *)
 let toplevel_substitution_named sb named =
@@ -302,8 +250,10 @@ let toplevel_substitution_named sb named =
   match toplevel_substitution sb expr with
   | Let let_expr -> let_expr.defining_expr
   | _ -> assert false
-
-let make_closure_declaration ~id ~body ~params ~stub : Flambda.t =
+*)
+(* needs ~f
+let make_closure_declaration ~id ~body ~params ~continuation_param
+      ~stub : Flambda.t =
   let free_variables = Flambda.free_variables body in
   let param_set = Variable.Set.of_list params in
   if not (Variable.Set.subset param_set free_variables) then begin
@@ -321,6 +271,7 @@ let make_closure_declaration ~id ~body ~params ~stub : Flambda.t =
   let subst id = Variable.Map.find id sb in
   let function_declaration =
     Flambda.create_function_declaration ~params:(List.map subst params)
+      ~continuation_param
       ~body ~stub ~dbg:Debuginfo.none ~inline:Default_inline
       ~specialise:Default_specialise ~is_a_functor:false
   in
@@ -365,7 +316,8 @@ let make_closure_declaration ~id ~body ~params ~stub : Flambda.t =
   in
   Flambda.create_let set_of_closures_var (Set_of_closures set_of_closures)
     (Flambda.create_let project_closure_var project_closure
-      (Var (project_closure_var)))
+      (Var project_closure_var))
+*)
 
 let bind ~bindings ~body =
   List.fold_left (fun expr (var, var_def) ->
@@ -381,7 +333,7 @@ let all_lifted_constants (program : Flambda.program) =
         (loop program)
         decls
     | Initialize_symbol (_, _, _, program)
-    | Effect (_, program) -> loop program
+    | Effect (_, _, program) -> loop program
     | End _ -> []
   in
   loop program.program_body
@@ -394,7 +346,7 @@ let initialize_symbols (program : Flambda.program) =
     match program with
     | Initialize_symbol (symbol, tag, fields, program) ->
       (symbol, tag, fields) :: (loop program)
-    | Effect (_, program)
+    | Effect (_, _, program)
     | Let_symbol (_, _, program)
     | Let_rec_symbol (_, program) -> loop program
     | End _ -> []
@@ -423,7 +375,7 @@ let introduce_needed_import_symbols program : Flambda.program =
 let root_symbol (program : Flambda.program) =
   let rec loop (program : Flambda.program_body) =
     match program with
-    | Effect (_, program)
+    | Effect (_, _, program)
     | Let_symbol (_, _, program)
     | Let_rec_symbol (_, program)
     | Initialize_symbol (_, _, _, program) -> loop program
@@ -523,6 +475,7 @@ let make_variables_symbol vars =
   in
   Symbol.create (Compilation_unit.get_current_exn ()) (Linkage_name.create name)
 
+(* CR mshinwell: needs porting
 let substitute_read_symbol_field_for_variables
     (substitution : (Symbol.t * int list) Variable.Map.t)
     (expr : Flambda.t) =
@@ -556,6 +509,11 @@ let substitute_read_symbol_field_for_variables
     | Var _ -> named
     | Symbol _ | Const _ -> named
     | Allocated_const _ | Read_mutable _ -> named
+    | Assign { being_assigned; new_value }
+        when Variable.Map.mem new_value substitution ->
+      let fresh = Variable.rename new_value in
+      bind new_value fresh (Assign { being_assigned; new_value = fresh })
+    | Assign _ -> named
     | Read_symbol_field _ -> named
     | Set_of_closures set_of_closures ->
       let set_of_closures =
@@ -599,10 +557,6 @@ let substitute_read_symbol_field_for_variables
   in
   let f (expr:Flambda.t) : Flambda.t =
     match expr with
-    | Var v when Variable.Map.mem v substitution ->
-      let fresh = Variable.rename v in
-      bind v fresh (Var fresh)
-    | Var _ -> expr
     | Let ({ var = v; defining_expr = named; _ } as let_expr) ->
       let to_substitute =
         Variable.Set.filter
@@ -637,35 +591,28 @@ let substitute_read_symbol_field_for_variables
       bind cond fresh (Switch (fresh, sw))
     | Switch _ ->
       expr
-    | String_switch (cond, sw, def) when Variable.Map.mem cond substitution ->
-      let fresh = Variable.rename cond in
-      bind cond fresh (String_switch (fresh, sw, def))
-    | Assign { being_assigned; new_value }
-        when Variable.Map.mem new_value substitution ->
-      let fresh = Variable.rename new_value in
-      bind new_value fresh (Assign { being_assigned; new_value = fresh })
-    | Assign _ ->
-      expr
     | Apply_cont (exn, args) ->
       let args, bind_args =
         List.split (List.map make_var_subst args)
       in
       List.fold_right (fun f expr -> f expr) bind_args @@
         Flambda.Apply_cont (exn, args)
-    | Apply { func; args; kind; dbg; inline; specialise } ->
+    | Apply { func; args; continuation; kind; dbg; inline; specialise } ->
       let func, bind_func = make_var_subst func in
       let args, bind_args =
         List.split (List.map make_var_subst args)
       in
       bind_func @@
-      List.fold_right (fun f expr -> f expr) bind_args @@
-      Flambda.Apply { func; args; kind; dbg; inline; specialise }
+        List.fold_right (fun f expr -> f expr) bind_args @@
+        Flambda.Apply
+          { func; args; continuation; kind; dbg; inline; specialise }
     | Proved_unreachable
     | Let_cont _ ->
       (* No variables directly used in those expressions *)
       expr
   in
   Flambda_iterators.map_toplevel f (fun v -> v) expr
+*)
 
 (* CR-soon mshinwell: implement this so that sharing can occur in
    matches.  Should probably leave this for the first release. *)
