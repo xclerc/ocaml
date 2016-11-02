@@ -163,11 +163,11 @@ MIDDLE_END=\
   middle_end/ilambda.cmo \
   middle_end/cps_conversion.cmo \
   middle_end/flambda.cmo \
+  middle_end/flambda_iterators.cmo \
   middle_end/closure_conversion_aux.cmo \
   middle_end/closure_conversion.cmo \
   middle_end/middle_end.cmo
 
-#  middle_end/flambda_iterators.cmo \
 #  middle_end/flambda_utils.cmo \
 #  middle_end/inconstant_idents.cmo \
 #  middle_end/alias_analysis.cmo \

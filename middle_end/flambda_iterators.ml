@@ -18,50 +18,19 @@
 
 let apply_on_subexpressions f f_named (flam : Flambda.t) =
   match flam with
-  | Var _ | Apply _ | Apply_cont _ | Proved_unreachable -> ()
+  | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> ()
   | Let { defining_expr; body; _ } ->
     f_named defining_expr;
     f body
   | Let_mutable { body; _ } ->
     f body
-  | Switch (_, sw) ->
-    List.iter (fun (_,l) -> f l) sw.consts;
-    List.iter (fun (_,l) -> f l) sw.blocks;
-    Misc.may f sw.failaction
-  | Let_cont (_,_,f1,f2) ->
-    f f1; f f2;
-
-let rec list_map_sharing f l =
-  match l with
-  | [] -> l
-  | h :: t ->
-    let new_t = list_map_sharing f t in
-    let new_h = f h in
-    if h == new_h && t == new_t then
-      l
-    else
-      new_h :: new_t
-
-let may_map_sharing f v =
-  match v with
-  | None -> v
-  | Some s ->
-    let new_s = f s in
-    if s == new_s then
-      v
-    else
-      Some new_s
-
-let map_snd_sharing f ((a, b) as cpl) =
-  let new_b = f a b in
-  if b == new_b then
-    cpl
-  else
-    (a, new_b)
+  | Let_cont { body; handler; } ->
+    f body;
+    f handler
 
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
-  | Var _ | Apply _ | Apply_cont _ | Proved_unreachable -> tree
+  | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
   | Let { var; defining_expr; body; _ } ->
     let new_named = f_named var defining_expr in
     let new_body = f body in
@@ -75,31 +44,13 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       Let_mutable { mutable_let with body = new_body }
-  | Switch (arg, sw) ->
-    let aux = map_snd_sharing (fun _ v -> f v) in
-    let new_consts = list_map_sharing aux sw.consts in
-    let new_blocks = list_map_sharing aux sw.blocks in
-    let new_failaction = may_map_sharing f sw.failaction in
-    if sw.failaction == new_failaction &&
-       new_consts == sw.consts &&
-       new_blocks == sw.blocks then
-      tree
-    else
-      let sw =
-        { sw with
-          failaction = new_failaction;
-          consts = new_consts;
-          blocks = new_blocks;
-        }
-      in
-      Switch (arg, sw)
-  | Let_cont (i, vars, body, handler) ->
+  | Let_cont ({ body; handler; } as let_cont) ->
     let new_body = f body in
     let new_handler = f handler in
     if new_body == body && new_handler == handler then
       tree
     else
-      Let_cont (i, vars, new_body, new_handler)
+      Let_cont { let_cont with body = new_body; handler = new_handler; }
 
 let iter_general = Flambda.iter_general
 
@@ -136,8 +87,8 @@ let iter_on_sets_of_closures f t =
   iter_named (function
       | Set_of_closures clos -> f clos
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Read_symbol_field _ | Project_closure _ | Move_within_set_of_closures _
-      | Project_var _ | Prim _ -> ())
+      | Assign _ | Read_symbol_field _ | Project_closure _
+      | Move_within_set_of_closures _ | Project_var _ | Prim _ -> ())
     t
 
 let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
@@ -162,7 +113,7 @@ let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
     | Initialize_symbol (_, _, fields, program) ->
       List.iter (fun (field, _cont) -> f field) fields;
       loop program
-    | Effect (expr, program) ->
+    | Effect (expr, _cont, program) ->
       f expr;
       loop program
     | End _ -> ()
@@ -194,9 +145,11 @@ let iter_on_set_of_closures_of_program (program : Flambda.program) ~f =
     | Let_symbol (_, _, program) ->
       loop program
     | Initialize_symbol (_, _, fields, program) ->
-      List.iter (iter_on_sets_of_closures (f ~constant:false)) fields;
+      List.iter (fun (field, _cont) ->
+          iter_on_sets_of_closures (f ~constant:false) field)
+        fields;
       loop program
-    | Effect (expr, program) ->
+    | Effect (expr, _cont, program) ->
       iter_on_sets_of_closures (f ~constant:false) expr;
       loop program
     | End _ -> ()
@@ -214,7 +167,7 @@ let iter_constant_defining_values_on_program (program : Flambda.program) ~f =
       loop program
     | Initialize_symbol (_, _, _, program) ->
       loop program
-    | Effect (_, program) ->
+    | Effect (_, _, program) ->
       loop program
     | End _ -> ()
   in
@@ -229,8 +182,7 @@ let map_general ~toplevel f f_named tree =
     | _ ->
       let exp : Flambda.t =
         match tree with
-        | Var _ | Apply _ | Assign _ | Send _ | Proved_unreachable
-        | Apply_cont _ -> tree
+        | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
         | Let _ -> assert false
         | Let_mutable mutable_let ->
           let new_body = aux mutable_let.body in
@@ -238,91 +190,21 @@ let map_general ~toplevel f f_named tree =
             tree
           else
             Let_mutable { mutable_let with body = new_body }
-        | Let_rec (defs, body) ->
-          let done_something = ref false in
-          let defs =
-            List.map (fun (id, lam) ->
-                id, aux_named_done_something id lam done_something)
-              defs
-          in
-          let body = aux_done_something body done_something in
-          if not !done_something then
-            tree
-          else
-            Let_rec (defs, body)
-        | Switch (arg, sw) ->
-          let done_something = ref false in
-          let sw =
-            { sw with
-              failaction =
-                begin match sw.failaction with
-                | None -> None
-                | Some failaction ->
-                  Some (aux_done_something failaction done_something)
-                end;
-              consts =
-                List.map (fun (i, v) ->
-                    i, aux_done_something v done_something)
-                  sw.consts;
-              blocks =
-                List.map (fun (i, v) ->
-                    i, aux_done_something v done_something)
-                  sw.blocks;
-            }
-          in
-          if not !done_something then
-            tree
-          else
-            Switch (arg, sw)
-        | String_switch (arg, sw, def) ->
-          let done_something = ref false in
-          let sw =
-            List.map (fun (i, v) -> i, aux_done_something v done_something) sw
-          in
-          let def =
-            match def with
-            | None -> None
-            | Some def -> Some (aux_done_something def done_something)
-          in
-          if not !done_something then
-            tree
-          else
-            String_switch(arg, sw, def)
-        | Let_cont (i, vars, body, handler) ->
+        | Let_cont ({ body; handler; _ } as let_cont) ->
           let new_body = aux body in
           let new_handler = aux handler in
           if new_body == body && new_handler == handler then
             tree
           else
-            Let_cont (i, vars, new_body, new_handler)
-        | Try_with(body, id, handler) ->
-          let new_body = aux body in
-          let new_handler = aux handler in
-          if new_body == body && new_handler == handler then
-            tree
-          else
-            Try_with (new_body, id, new_handler)
-        | If_then_else (arg, ifso, ifnot) ->
-          let new_ifso = aux ifso in
-          let new_ifnot = aux ifnot in
-          if new_ifso == ifso && new_ifnot == ifnot then
-            tree
-          else
-            If_then_else (arg, new_ifso, new_ifnot)
+            Let_cont { let_cont with body = new_body; handler = new_handler; }
       in
       f exp
-  and aux_done_something expr done_something =
-    let new_expr = aux expr in
-    if not (new_expr == expr) then begin
-      done_something := true
-    end;
-    new_expr
   and aux_named (id : Variable.t) (named : Flambda.named) =
     let named : Flambda.named =
       match named with
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Project_closure _ | Move_within_set_of_closures _ | Project_var _
-      | Prim _ | Read_symbol_field _ -> named
+      | Assign _ | Project_closure _ | Move_within_set_of_closures _
+      | Project_var _ | Prim _ | Read_symbol_field _ -> named
       | Set_of_closures ({ function_decls; free_vars; specialised_args;
           direct_call_surrogates }) ->
         if toplevel then named
@@ -337,6 +219,7 @@ let map_general ~toplevel f f_named tree =
                   done_something := true;
                   Flambda.create_function_declaration
                     ~params:func_decl.params
+                    ~continuation_param:func_decl.continuation_param
                     ~body:new_body
                     ~stub:func_decl.stub
                     ~dbg:func_decl.dbg
@@ -358,18 +241,8 @@ let map_general ~toplevel f f_named tree =
             in
             Set_of_closures set_of_closures
         end
-      | Expr expr ->
-        let new_expr = aux expr in
-        if new_expr == expr then named
-        else Expr new_expr
     in
     f_named id named
-  and aux_named_done_something id named done_something =
-    let new_named = aux_named id named in
-    if not (new_named == named) then begin
-      done_something := true
-    end;
-    new_named
   in
   aux tree
 
@@ -410,7 +283,7 @@ let map_symbols tree ~f =
           Read_symbol_field (new_sym, field)
       | (Var _ | Const _ | Allocated_const _ | Set_of_closures _
          | Read_mutable _ | Project_closure _ | Move_within_set_of_closures _
-         | Project_var _ | Prim _ | Expr _) as named -> named)
+         | Project_var _ | Prim _ | Assign _) as named -> named)
     tree
 
 let map_symbols_on_set_of_closures
@@ -427,6 +300,7 @@ let map_symbols_on_set_of_closures
         end;
         Flambda.create_function_declaration
           ~params:func_decl.params
+          ~continuation_param:func_decl.continuation_param
           ~body
           ~stub:func_decl.stub
           ~dbg:func_decl.dbg
@@ -455,7 +329,7 @@ let map_toplevel_sets_of_closures tree ~f =
       | (Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _
       | Project_closure _ | Move_within_set_of_closures _ | Project_var _
-      | Prim _ | Expr _) as named -> named)
+      | Prim _ | Assign _) as named -> named)
     tree
 
 let map_apply tree ~f =
@@ -479,22 +353,8 @@ let map_sets_of_closures tree ~f =
         else
           Set_of_closures new_set_of_closures
       | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
-      | Move_within_set_of_closures _ | Project_var _
-      | Prim _ | Expr _ | Read_mutable _
-      | Read_symbol_field _) as named -> named)
-    tree
-
-let map_project_var_to_expr_opt tree ~f =
-  map_named (function
-      | (Project_var project_var) as named ->
-        begin match f project_var with
-        | None -> named
-        | Some expr -> Expr expr
-        end
-      | (Var _ | Symbol _ | Const _ | Allocated_const _
-      | Set_of_closures _ | Project_closure _ | Move_within_set_of_closures _
-      | Prim _ | Expr _ | Read_mutable _ | Read_symbol_field _)
-          as named -> named)
+      | Move_within_set_of_closures _ | Project_var _ | Assign _
+      | Prim _ | Read_mutable _ | Read_symbol_field _) as named -> named)
     tree
 
 let map_project_var_to_named_opt tree ~f =
@@ -506,7 +366,7 @@ let map_project_var_to_named_opt tree ~f =
         end
       | (Var _ | Symbol _ | Const _ | Allocated_const _
       | Set_of_closures _ | Project_closure _ | Move_within_set_of_closures _
-      | Prim _ | Expr _ | Read_mutable _ | Read_symbol_field _)
+      | Prim _ | Read_mutable _ | Read_symbol_field _ | Assign _)
           as named -> named)
     tree
 
@@ -521,6 +381,7 @@ let map_function_bodies (set_of_closures : Flambda.set_of_closures) ~f =
           done_something := true;
           Flambda.create_function_declaration ~body:new_body
             ~params:function_decl.params
+            ~continuation_param:function_decl.continuation_param
             ~stub:function_decl.stub
             ~dbg:function_decl.dbg
             ~inline:function_decl.inline
@@ -557,6 +418,7 @@ let map_sets_of_closures_of_program (program : Flambda.program)
                 done_something := true;
                 Flambda.create_function_declaration ~body
                   ~params:function_decl.params
+                  ~continuation_param:function_decl.continuation_param
                   ~stub:function_decl.stub
                   ~dbg:function_decl.dbg
                   ~inline:function_decl.inline
@@ -618,12 +480,12 @@ let map_sets_of_closures_of_program (program : Flambda.program)
     | Initialize_symbol (symbol, tag, fields, program') ->
       let done_something = ref false in
       let fields =
-        List.map (fun field ->
+        List.map (fun (field, cont) ->
             let new_field = map_sets_of_closures field ~f in
             if not (new_field == field) then begin
               done_something := true
             end;
-            new_field)
+            new_field, cont)
           fields
       in
       let new_program' = loop program' in
@@ -631,13 +493,13 @@ let map_sets_of_closures_of_program (program : Flambda.program)
         program
       else
         Initialize_symbol (symbol, tag, fields, new_program')
-    | Effect (expr, program') ->
+    | Effect (expr, cont, program') ->
       let new_expr = map_sets_of_closures expr ~f in
       let new_program' = loop program' in
       if new_expr == expr && new_program' == program' then
         program
       else
-        Effect (new_expr, new_program')
+        Effect (new_expr, cont, new_program')
     | End _ -> program
   in
   { program with
@@ -658,6 +520,7 @@ let map_exprs_at_toplevel_of_program (program : Flambda.program)
               done_something := true;
               Flambda.create_function_declaration ~body
                 ~params:function_decl.params
+                ~continuation_param:function_decl.continuation_param
                 ~stub:function_decl.stub
                 ~dbg:function_decl.dbg
                 ~inline:function_decl.inline
@@ -717,12 +580,12 @@ let map_exprs_at_toplevel_of_program (program : Flambda.program)
     | Initialize_symbol (symbol, tag, fields, program') ->
       let done_something = ref false in
       let fields =
-        List.map (fun field ->
+        List.map (fun (field, cont) ->
             let new_field = f field in
             if not (new_field == field) then begin
               done_something := true
             end;
-            new_field)
+            new_field, cont)
           fields
       in
       let new_program' = loop program' in
@@ -730,13 +593,13 @@ let map_exprs_at_toplevel_of_program (program : Flambda.program)
         program
       else
         Initialize_symbol (symbol, tag, fields, new_program')
-    | Effect (expr, program') ->
+    | Effect (expr, cont, program') ->
       let new_expr = f expr in
       let new_program' = loop program' in
       if new_expr == expr && new_program' == program' then
         program
       else
-        Effect (new_expr, new_program')
+        Effect (new_expr, cont, new_program')
     | End _ -> program
   in
   { program with

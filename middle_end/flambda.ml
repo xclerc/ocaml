@@ -201,10 +201,10 @@ let rec lam ppf (flam : t) =
       | Unroll i -> fprintf ppf "<unroll %i>" i
       | Default_inline -> ()
     in
-    fprintf ppf "@[<2>(apply%a%a<%s>@ %a<%a>%a)@]" direct () inline ()
+    fprintf ppf "@[<2>(apply%a%a<%s>@ <%a> %a %a)@]" direct () inline ()
       (Debuginfo.to_string dbg)
-      print_func_and_kind func
       Continuation.print continuation
+      print_func_and_kind func
       Variable.print_list args
   | Proved_unreachable ->
       fprintf ppf "unreachable"

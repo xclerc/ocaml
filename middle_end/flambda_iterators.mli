@@ -192,11 +192,6 @@ val map_sets_of_closures_of_program
   -> f:(Flambda.set_of_closures -> Flambda.set_of_closures)
   -> Flambda.program
 
-val map_project_var_to_expr_opt
-   : Flambda.t
-  -> f:(Flambda.project_var -> Flambda.t option)
-  -> Flambda.t
-
 val map_project_var_to_named_opt
    : Flambda.t
   -> f:(Flambda.project_var -> Flambda.named option)
