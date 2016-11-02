@@ -447,13 +447,17 @@ let rec print_program_body ppf (program : program_body) =
       bindings defs;
     print_program_body ppf program
   | Initialize_symbol (symbol, tag, fields, program) ->
-    let lam_and_cont ppf (lam, cont) =
-      fprintf ppf "<%a>: %a" Continuation.print cont print lam
+    let lam_and_cont ppf (field, defn, cont) =
+      fprintf ppf "Field %d, return continuation %a:@;@[<h>@ @ %a@]"
+        field Continuation.print cont lam defn
     in
-    fprintf ppf "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@ %a@])@]@]@."
+    let pp_sep ppf () = fprintf ppf "@ " in
+    fprintf ppf
+      "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
       Symbol.print symbol
       Tag.print tag
-      (Format.pp_print_list lam_and_cont) fields;
+      (Format.pp_print_list ~pp_sep lam_and_cont)
+      (List.mapi (fun i (defn, cont) -> i, defn, cont) fields);
     print_program_body ppf program
   | Effect (lam, cont, program) ->
     fprintf ppf "@[effect @[<hv 1><%a>: %a@]@]@."

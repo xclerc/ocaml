@@ -103,7 +103,8 @@ let unique_name t =
   t.name ^ "_" ^ (string_of_int t.name_stamp)
 
 let print_list ppf ts =
-  List.iter (fun t -> Format.fprintf ppf "@ %a" print t) ts
+  let pp_sep ppf () = Format.fprintf ppf "@ " in
+  Format.pp_print_list ~pp_sep print ppf ts
 
 let debug_when_stamp_matches t ~stamp ~f =
   if t.name_stamp = stamp then f ()
