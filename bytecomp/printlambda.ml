@@ -312,6 +312,7 @@ let primitive ppf = function
   | Popaque -> fprintf ppf "opaque"
   | Ppushtrap -> fprintf ppf "pushtrap"
   | Ppoptrap -> fprintf ppf "poptrap"
+  | Pread_mutable i -> fprintf ppf "read_mutable %a" Ident.print i
 
 let name_of_primitive = function
   | Pidentity -> "Pidentity"
@@ -415,6 +416,7 @@ let name_of_primitive = function
   | Popaque -> "Popaque"
   | Ppushtrap -> "Ppushtrap"
   | Ppoptrap -> "Ppoptrap"
+  | Pread_mutable -> "Pread_mutable"
 
 let function_attribute ppf { inline; specialise; is_a_functor } =
   if is_a_functor then

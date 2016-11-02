@@ -219,13 +219,43 @@ let simplify_primitive (prim : L.primitive) args loc =
     L.Lapply apply
   | _, _ -> L.Lprim (prim, args, loc)
 
-let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
+module Env : sig
+  type t
+
+  val empty : t
+
+  val add_mutable : t -> Ident.t -> t
+  val is_mutable : t -> Ident.t -> bool
+end = struct
+  type t = {
+    mutables : Ident.Set.t;
+  }
+
+  let empty =
+    { mutables = Ident.Set.empty;
+    }
+
+  let add_mutable t id =
+    assert (not (Ident.Set.mem t.mutables id));
+    { t with mutables = Ident.Set.add id t.mutables; }
+
+  let is_mutable t id =
+    Ident.Set.mem id t.mutables
+end
+
+let rec prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
   match lam with
-  | Lvar _
+  | Lvar id ->
+    (* The special [Pread_mutable] primitive eases the translation to
+       [Read_mutable] in Flambda. *)
+    if Env.is_mutable env id then
+      k (Lprim (Pread_mutable id, [], Location.none))
+    else
+      k lam
   | Lconst _ -> k lam
   | Lapply apply ->
-    prepare apply.ap_func (fun ap_func ->
-      prepare_list apply.ap_args (fun ap_args ->
+    prepare env apply.ap_func (fun ap_func ->
+      prepare_list env apply.ap_args (fun ap_args ->
         k (L.Lapply {
           ap_func;
           ap_args;
@@ -235,7 +265,7 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
           ap_specialised = apply.ap_specialised;
         })))
   | Lfunction func ->
-    prepare func.body (fun body ->
+    prepare env func.body (fun body ->
       k (L.Lfunction {
         kind = func.kind;
         params = func.params;
@@ -244,25 +274,30 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
         loc = func.loc;
       }))
   | Llet (let_kind, value_kind, id, defining_expr, body) ->
-    prepare defining_expr (fun defining_expr ->
-      prepare body (fun body ->
+    prepare env defining_expr (fun defining_expr ->
+      let env =
+        match let_kind with
+        | Strict | StrictOpt | Alias -> env
+        | Variable -> Env.add_mutable env id
+      in
+      prepare env body (fun body ->
         k (L.Llet (let_kind, value_kind, id, defining_expr, body))))
   | Lletrec (bindings, body) ->
     let idents, bindings = List.split bindings in
-    prepare_list bindings (fun bindings ->
+    prepare_list env bindings (fun bindings ->
       let bindings = List.combine idents bindings in
-      prepare body (fun body ->
+      prepare env body (fun body ->
         k (dissect_letrec ~bindings ~body)))
   | Lprim (prim, args, loc) ->
-    prepare_list args (fun args ->
+    prepare_list env args (fun args ->
       k (simplify_primitive prim args loc))
   | Lswitch (scrutinee, switch) ->
-    prepare scrutinee (fun scrutinee ->
+    prepare env scrutinee (fun scrutinee ->
       let const_nums, sw_consts = List.split switch.sw_consts in
       let block_nums, sw_blocks = List.split switch.sw_blocks in
-      prepare_option switch.sw_failaction (fun sw_failaction ->
-        prepare_list sw_consts (fun sw_consts ->
-          prepare_list sw_blocks (fun sw_blocks ->
+      prepare_option env switch.sw_failaction (fun sw_failaction ->
+        prepare_list env sw_consts (fun sw_consts ->
+          prepare_list env sw_blocks (fun sw_blocks ->
             let switch : L.lambda_switch =
               { sw_numconsts = switch.sw_numconsts;
                 sw_consts = List.combine const_nums sw_consts;
@@ -273,18 +308,18 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
             in
             k (L.Lswitch (scrutinee, switch))))))
   | Lstringswitch (scrutinee, cases, default, loc) ->
-    prepare scrutinee (fun scrutinee ->
+    prepare env scrutinee (fun scrutinee ->
       let patterns, cases = List.split cases in
-      prepare_list cases (fun cases ->
+      prepare_list env cases (fun cases ->
         let cases = List.combine patterns cases in
-        prepare_option default (fun default ->
+        prepare_option env default (fun default ->
           k (L.Lstringswitch (scrutinee, cases, default, loc)))))
   | Lstaticraise (cont, args) ->
-    prepare_list args (fun args ->
+    prepare_list env args (fun args ->
       k (L.Lstaticraise (cont, args)))
   | Lstaticcatch (body, (cont, args), handler) ->
-    prepare body (fun body ->
-      prepare handler (fun handler ->
+    prepare env body (fun body ->
+      prepare env handler (fun handler ->
         k (L.Lstaticcatch (body, (cont, args), handler))))
   | Ltrywith (body, id, handler) ->
     let cont = L.next_raise_count () in
@@ -299,11 +334,11 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
         (cont, [id]),
         handler)
     in
-    prepare lam k
+    prepare env lam k
   | Lifthenelse (cond, ifso, ifnot) ->
-    prepare cond (fun cond ->
-      prepare ifso (fun ifso ->
-        prepare ifnot (fun ifnot ->
+    prepare env cond (fun cond ->
+      prepare env ifso (fun ifso ->
+        prepare env ifnot (fun ifnot ->
           let switch : Lambda.lambda_switch =
             { sw_numconsts = 1;
               sw_consts = [0, ifnot];
@@ -315,7 +350,7 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
           k (L.Lswitch (cond, switch)))))
   | Lsequence (lam1, lam2) ->
     let ident = Ident.create "sequence" in
-    prepare (L.Llet (Strict, Pgenval, ident, lam1, lam2)) k
+    prepare env (L.Llet (Strict, Pgenval, ident, lam1, lam2)) k
   | Lwhile (cond, body) ->
     let cont = L.next_raise_count () in
     let cond_result = Ident.create "cond_result" in
@@ -330,7 +365,7 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
               Lstaticraise (cont, [])),
             Lconst (Const_base (Const_int 0)))))
     in
-    prepare lam k
+    prepare env lam k
   | Lfor (ident, start, stop, dir, body) ->
     let loc = Location.none in
     let cont = L.next_raise_count () in
@@ -358,15 +393,20 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
               Lstaticraise (cont, [next_value_of_counter])),
             Lconst (Const_base (Const_int 0)))))
     in
-    prepare lam k
-  | Lassign (ident, lam) -> prepare lam (fun lam -> k (L.Lassign (ident, lam)))
+    prepare env lam k
+  | Lassign (ident, lam) ->
+    if not (Env.is_mutable env ident) then begin
+      Misc.fatal_errorf "Lassign on non-mutable variable %a"
+        Ident.print ident
+    end;
+    prepare env lam (fun lam -> k (L.Lassign (ident, lam)))
   | Lsend (meth_kind, meth, obj, args, loc) ->
-    prepare meth (fun meth ->
-      prepare obj (fun obj ->
-        prepare_list args (fun args ->
+    prepare env meth (fun meth ->
+      prepare env obj (fun obj ->
+        prepare_list env args (fun args ->
           k (L.Lsend (meth_kind, meth, obj, args, loc)))))
   | Levent (body, event) ->
-    prepare body (fun body ->
+    prepare env body (fun body ->
       k (L.Levent (body, event)))
   | Lifused _ ->
     (* [Lifused] is used to mark that this expression should be alive only if
@@ -376,18 +416,18 @@ let rec prepare (lam : L.lambda) (k : L.lambda -> L.lambda) =
     Misc.fatal_error "[Lifused] should have been removed by \
         [Simplif.simplify_lets]"
 
-and prepare_list lams k =
+and prepare_list env lams k =
   match lams with
   | [] -> k []
   | lam::lams ->
-    prepare lam (fun lam ->
-      prepare_list lams (fun lams -> k (lam::lams)))
+    prepare env lam (fun lam ->
+      prepare_list env lams (fun lams -> k (lam::lams)))
 
-and prepare_option lam_opt k =
+and prepare_option env lam_opt k =
   match lam_opt with
   | None -> k None
-  | Some lam -> prepare lam (fun lam -> k (Some lam))
+  | Some lam -> prepare env lam (fun lam -> k (Some lam))
 
 let run lam =
   let lam = add_default_argument_wrappers lam in
-  prepare lam (fun lam -> lam)
+  prepare Env.empty lam (fun lam -> lam)

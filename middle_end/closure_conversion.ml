@@ -65,48 +65,71 @@ let tupled_function_call_stub original_params unboxed_version
     ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
     ~specialise:Default_specialise ~is_a_functor:false
 
-let rec eliminate_const_block (const : Lambda.structured_constant)
-      : Ilambda.t =
-  match const with
-  | Const_block (tag, consts) ->
-    (* CR-soon mshinwell for lwhite: fix location *)
-    Prim (Pmakeblock (tag, Asttypes.Immutable, None),
-      List.map eliminate_const_block consts, Location.none)
-  | Const_base _
-  | Const_pointer _
-  | Const_immstring _
-  | Const_float_array _ -> Const const
+let register_const t (constant:Flambda.constant_defining_value) name
+      : Flambda.constant_defining_value_block_field * string =
+  let current_compilation_unit = Compilation_unit.get_current_exn () in
+  (* Create a variable to ensure uniqueness of the symbol *)
+  let var = Variable.create ~current_compilation_unit name in
+  let symbol =
+    Symbol.create current_compilation_unit
+      (Linkage_name.create (Variable.unique_name var))
+  in
+  t.declared_symbols <- (symbol, constant) :: t.declared_symbols;
+  Symbol symbol, name
 
-let rec close_const t env (const : Lambda.structured_constant) : Flambda.named =
+let rec declare_const t (const : Lambda.structured_constant)
+      : Flambda.constant_defining_value_block_field * string =
   match const with
-  | Const_base (Const_int c) -> Const (Int c)
-  | Const_base (Const_char c) -> Const (Char c)
+  | Const_base (Const_int c) -> Const (Int c), "int"
+  | Const_base (Const_char c) -> Const (Char c), "char"
   | Const_base (Const_string (s, _)) ->
-    if Config.safe_string then Allocated_const (Immutable_string s)
-    else Allocated_const (String s)
+    let const, name =
+      if Config.safe_string then
+        Flambda.Allocated_const (Immutable_string s), "immstring"
+      else Flambda.Allocated_const (String s), "string"
+    in
+    register_const t const name
   | Const_base (Const_float c) ->
-    Allocated_const (Float (float_of_string c))
-  | Const_base (Const_int32 c) -> Allocated_const (Int32 c)
-  | Const_base (Const_int64 c) -> Allocated_const (Int64 c)
+    register_const t
+      (Allocated_const (Float (float_of_string c)))
+      "float"
+  | Const_base (Const_int32 c) ->
+    register_const t (Allocated_const (Int32 c)) "int32"
+  | Const_base (Const_int64 c) ->
+    register_const t (Allocated_const (Int64 c)) "int64"
   | Const_base (Const_nativeint c) ->
-    Allocated_const (Nativeint c)
-  | Const_pointer c -> Const (Const_pointer c)
-  | Const_immstring c -> Allocated_const (Immutable_string c)
+    register_const t (Allocated_const (Nativeint c)) "nativeint"
+  | Const_pointer c -> Const (Const_pointer c), "pointer"
+  | Const_immstring c ->
+    register_const t (Allocated_const (Immutable_string c)) "immstring"
   | Const_float_array c ->
-    Allocated_const (Immutable_float_array (List.map float_of_string c))
-  | Const_block _ ->
-    Expr (close t env (eliminate_const_block const))
+    register_const t
+      (Allocated_const (Immutable_float_array (List.map float_of_string c)))
+      "float_array"
+  | Const_block (tag, consts) ->
+    let const : Flambda.constant_defining_value =
+      Block (Tag.create_exn tag,
+             List.map (fun c -> fst (declare_const t c)) consts)
+    in
+    register_const t const "const_block"
+
+let close_const t (const : Lambda.structured_constant)
+      : Flambda.named * string =
+  match declare_const t const with
+  | Const c, name ->
+    Const c, name
+  | Symbol s, name ->
+    Symbol s, name
 
 and close t env (lam : Ilambda.t) : Flambda.t =
   match lam with
   | Let (id, defining_expr, body) ->
     let var = Variable.create_with_same_name_as_ident id in
-    let defining_expr = close_let_bound_expression t var env defining_expr in
     let body = close t (Env.add_var env id var) body in
-    Flambda.create_let var defining_expr body
+    close_let_bound_expression t var env defining_expr ~body
   | Let_mutable { id; initial_value; contents_kind; body; } ->
     let var = Mutable_variable.of_ident id in
-    let initial_value = Env.find_var_exn env initial_value in
+    let initial_value = Env.find_var env initial_value in
     let body = close t (Env.add_mutable_var env id var) body in
     Let_mutable {
       var;
@@ -114,6 +137,11 @@ and close t env (lam : Ilambda.t) : Flambda.t =
       body;
       contents_kind;
     }
+  | Prim (Pread_mutable id, args, _) ->
+    (* All occurrences of mutable variables bound by [Let_mutable] are
+       identified by [Prim (Pread_mutable, ...)] in Ilambda. *)
+    assert (args = []);
+    Read_mutable (Env.find_mutable_var id)
   | Apply { func; args; continuation; loc; should_be_tailcall = _; inlined;
       specialised; } ->
     let kind : Flambda.apply_kind =
@@ -122,14 +150,13 @@ and close t env (lam : Ilambda.t) : Flambda.t =
       | Method { kind; obj; } ->
         Method {
           kind;
-          obj = Env.find_var_exn obj;
+          obj = Env.find_var obj;
         }
     in
     Apply ({
       kind;
-      (* XXX need to do the read_mutable thing... everywhere *)
-      func = Env.find_var_or_mutable_var_exn env func;
-      args = Env.find_vars_or_mutable_vars_exn env args;
+      func = Env.find_var env func;
+      args = Env.find_vars env args;
       continuation;
       call_kind = Indirect;
       dbg = Debuginfo.from_location loc;
@@ -197,45 +224,38 @@ and close t env (lam : Ilambda.t) : Flambda.t =
         (close t env body) function_declarations
     in
     Flambda.create_let set_of_closures_var set_of_closures body
-  | Let_cont (i, ids, handler, body) ->
+  | Let_cont let_cont ->
     let cont = Continuation.create () in
     let env = Env.add_continuation env i cont in
-    let vars = List.map (Variable.create_with_same_name_as_ident) ids in
-    Let_cont (cont, vars, close t env body,
-      close t (Env.add_vars env ids vars) handler)
-  | Apply_cont (cont, args) ->
-    Lift_code.lifting_helper (close_list t env args)
-      ~evaluation_order:`Right_to_left
-      ~name:"apply_cont_arg"
-      ~create_body:(fun args ->
-        let cont = Env.find_continuation env cont in
-        Apply_cont (cont, args))
-  | Switch (arg, sw) ->
-    let scrutinee = Variable.create "switch" in
-    let aux (i, lam) = i, close t env lam in
+    let params =
+      List.map (Variable.create_with_same_name_as_ident) let_cont.params
+    in
+    let handler_env = Env.add_vars env ids params in
+    Let_cont {
+      name = let_cont.name;
+      params;
+      recursive = let_cont.recursive;
+      body = close t env let_cont.body;
+      handler = close t handler_env let_cont.handler;
+    }
+  | Apply_cont (cont, args) -> Apply_cont (cont, Env.find_vars env args)
+  | Switch (scrutinee, sw) ->
+    (* CR mshinwell: Combine the next two calls into one function *)
+    let scrutinee = Variable.create_with_same_name_as_ident scrutinee in
+    let scrutinee = Env.add_var env id scrutinee in
     let zero_to_n = Numbers.Int.zero_to_n in
-    Flambda.create_let scrutinee (Expr (close t env arg))
-      (Switch (scrutinee,
-        { numconsts = zero_to_n (sw.numconsts - 1);
-          consts = List.map aux sw.consts;
-          numblocks = zero_to_n (sw.numblocks - 1);
-          blocks = List.map aux sw.blocks;
-          failaction = Misc.may_map (close t env) sw.failaction;
-        }))
-  | Event (lam, _) -> close t env lam
+    Switch (scrutinee,
+      { numconsts = zero_to_n (sw.numconsts - 1);
+        consts = sw.consts;
+        numblocks = zero_to_n (sw.numblocks - 1);
+        blocks = sw.blocks;
+        failaction = sw.failaction;
+      })
+  | Event (ilam, _) -> close t env ilam
 
 and close_named t env (named : Ilambda.named) : Flambda.named =
   match named with
-  | Var id ->
-    begin match Env.find_var_exn env id with
-    | var -> Var var
-    | exception Not_found ->
-      match Env.find_mutable_var_exn env id with
-      | mut_var -> name_expr (Read_mutable mut_var) ~name:"read_mutable"
-      | exception Not_found ->
-        Misc.fatal_errorf "Closure_conversion.close: unbound identifier %a"
-          Ident.print id
-    end
+  | Var id -> Env.find_var env id
   | Const cst -> close_const t env cst
   | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
     let name =
@@ -370,8 +390,8 @@ and close_functions t external_env function_declarations : Flambda.named =
 and close_list t sb l = List.map (close t sb) l
 
 and close_let_bound_expression t ?let_rec_ident let_bound_var env
-      (lam : Ilambda.named) : Flambda.named =
-  match lam with
+      (defining_expr : Ilambda.named) ~body : Flambda.expr =
+  match defining_expr with
   | Function { kind; params; body; attr; loc; free_idents_of_body; } ->
     (* Ensure that [let] and [let rec]-bound functions have appropriate
        names. *)
@@ -392,10 +412,12 @@ and close_let_bound_expression t ?let_rec_ident let_bound_var env
         closure_id = Closure_id.wrap closure_bound_var;
       }
     in
-    Expr (Flambda.create_let set_of_closures_var set_of_closures
-      (name_expr (Project_closure (project_closure))
-        ~name:(Variable.unique_name let_bound_var)))
-  | lam -> Expr (close t env lam)
+    let project_closure_var = Variable.rename let_bound_var in
+    Flambda.create_let set_of_closures_var set_of_closures
+      (Flambda.create_let project_closure_var (Project_closure project_closure)
+        body)
+  | defining_expr ->
+    Flambda.create_let var (close_named t env defining_expr) body
 
 let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       (ilam, ilam_result_cont) : Flambda.program =

@@ -67,11 +67,11 @@ and named =
   | Var of Variable.t
   | Const of const
   | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
+  | Read_mutable of Mutable_variable.t
+  | Assign of assign
   | Symbol of Symbol.t
   | Read_symbol_field of Symbol.t * int
   | Allocated_const of Allocated_const.t
-  | Read_mutable of Mutable_variable.t
-  | Assign of assign
   | Set_of_closures of set_of_closures
   | Project_closure of project_closure
   | Move_within_set_of_closures of move_within_set_of_closures
