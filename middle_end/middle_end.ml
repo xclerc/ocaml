@@ -142,8 +142,8 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         +-+ ("lift_lets 1", Lift_code.lift_lets)
 *)
         +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
-(*
         +-+ ("Share_constants", Share_constants.share_constants)
+(*
         +-+ ("Remove_unused_program_constructs",
              Remove_unused_program_constructs.remove_unused_program_constructs)
         +-+ ("Lift_let_to_initialize_symbol",
