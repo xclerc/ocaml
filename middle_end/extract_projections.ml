@@ -82,32 +82,27 @@ let rec analyse_expr ~which_variables expr =
   in
   let for_expr (expr : Flambda.expr) =
     match expr with
-    | Var var
     | Let_mutable { initial_value = var } ->
       check_free_variable var
-    (* CR-soon mshinwell: We don't handle [Apply] for the moment to
+    (* CR-soon mshinwell: We don't handle [Apply] on functions for the moment to
        avoid disabling unboxing optimizations whenever we see a recursive
        call.  We should improve this analysis.  Leo says this can be
        done by a similar thing to the unused argument analysis. *)
-    | Apply _ -> ()
-    | Send { meth; obj; args; _ } ->
+    | Apply { kind = Function; _ } -> ()
+    | Apply { kind = Method { obj; _ }; func = meth; args; _ } ->
       check_free_variable meth;
       check_free_variable obj;
       List.iter check_free_variable args
-    | Assign { new_value; _ } ->
-      check_free_variable new_value
-    | If_then_else (var, _, _)
-    | Switch (var, _)
-    | String_switch (var, _, _) ->
-      check_free_variable var
+    | Switch (var, _) -> check_free_variable var
     | Apply_cont (_, args) ->
       List.iter check_free_variable args
-    | Let _ | Let_rec _ | Let_cont _ | Try_with _
-    | Proved_unreachable -> ()
+    | Let _ | Let_cont _ | Proved_unreachable -> ()
   in
   let for_named (named : Flambda.named) =
     match named with
     | Var var -> check_free_variable var
+    | Assign { new_value; _ } ->
+      check_free_variable new_value
     | Project_var project_var
         when Variable.Map.mem project_var.closure which_variables ->
       projections :=
@@ -157,8 +152,7 @@ let rec analyse_expr ~which_variables expr =
       List.iter check_free_variable vars
     | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
     | Read_symbol_field _ | Project_var _ | Project_closure _
-    | Move_within_set_of_closures _
-    | Expr _ -> ()
+    | Move_within_set_of_closures _ -> ()
   in
   Flambda_iterators.iter_toplevel for_expr for_named expr;
   let projections = !projections in

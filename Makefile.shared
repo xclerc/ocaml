@@ -174,39 +174,10 @@ MIDDLE_END=\
   middle_end/inconstant_idents.cmo \
   middle_end/alias_analysis.cmo \
   middle_end/lift_constants.cmo \
+  middle_end/extract_projections.cmo \
   middle_end/middle_end.cmo
 
-#MIDDLE_END=\
-#  middle_end/debuginfo.cmo \
-#  middle_end/base_types/tag.cmo \
-#  middle_end/base_types/linkage_name.cmo \
-#  middle_end/base_types/compilation_unit.cmo \
-#  middle_end/base_types/variable.cmo \
-#  middle_end/base_types/mutable_variable.cmo \
-#  middle_end/base_types/id_types.cmo \
-#  middle_end/base_types/set_of_closures_id.cmo \
-#  middle_end/base_types/set_of_closures_origin.cmo \
-#  middle_end/base_types/closure_element.cmo \
-#  middle_end/base_types/closure_id.cmo \
-#  middle_end/base_types/var_within_closure.cmo \
-#  middle_end/base_types/continuation.cmo \
-#  middle_end/base_types/export_id.cmo \
-#  middle_end/base_types/symbol.cmo \
-#  middle_end/pass_wrapper.cmo \
-#  middle_end/semantics_of_primitives.cmo \
-#  middle_end/allocated_const.cmo \
-#  middle_end/projection.cmo \
-#  middle_end/flambda.cmo \
-#  middle_end/inlining_cost.cmo \
-#  middle_end/effect_analysis.cmo \
-#  middle_end/freshening.cmo \
-#  middle_end/simple_value_approx.cmo \
 #  middle_end/lift_code.cmo \
-#  middle_end/prepare_lambda.cmo \
-#  middle_end/ilambda.cmo \
-#  middle_end/closure_conversion_aux.cmo \
-#  middle_end/cps_conversion.cmo \
-#  middle_end/closure_conversion.cmo \
 #  middle_end/initialize_symbol_to_let_symbol.cmo \
 #  middle_end/lift_let_to_initialize_symbol.cmo \
 #  middle_end/find_recursive_functions.cmo \
@@ -222,7 +193,6 @@ MIDDLE_END=\
 #  middle_end/inlining_stats.cmo \
 #  middle_end/inline_and_simplify_aux.cmo \
 #  middle_end/remove_free_vars_equal_to_args.cmo \
-#  middle_end/extract_projections.cmo \
 #  middle_end/augment_specialised_args.cmo \
 #  middle_end/unbox_free_vars_of_closures.cmo \
 #  middle_end/unbox_specialised_args.cmo \
@@ -232,7 +202,6 @@ MIDDLE_END=\
 #  middle_end/inline_and_simplify.cmo \
 #  middle_end/ref_to_variables.cmo \
 #  middle_end/flambda_invariants.cmo \
-#  middle_end/middle_end.cmo
 
 TOPLEVEL=toplevel/genprintval.cmo toplevel/toploop.cmo \
   toplevel/trace.cmo toplevel/topdirs.cmo toplevel/topmain.cmo
