@@ -748,7 +748,7 @@ let potentially_taken_const_switch_branch t branch =
   | Value_boxed_int _ | Value_bottom ->
     Cannot_be_taken
 
-let potentially_taken_block_switch_branch t tag =
+let potentially_taken_block_switch_branch_tag t s =
   match t.descr with
   | (Value_unresolved _
     | Value_unknown _
@@ -776,3 +776,22 @@ let potentially_taken_block_switch_branch t tag =
   | Value_bottom ->
     Cannot_be_taken
 
+let potentially_taken_block_switch_branch_string t s =
+  match t.descr with
+  | Value_unresolved _ | Value_unknown _ | Value_extern _ | Value_symbol _ ->
+    Can_be_taken
+  | Value_string (Some s') when s = s' -> Must_be_taken
+  | Value_string (Some _) -> Cannot_be_taken
+  | Value_string None -> Can_be_taken
+  | Value_block (tag, _) when tag = Obj.string_tag ->
+    (* This case seems unlikely, so we don't write the logic to determine
+       [Must_be_taken]. *)
+    Can_be_taken
+  | Value_constptr _ | Value_int _| Value_char _ | Value_block _
+  | Value_float _ | Value_set_of_closures _ | Value_closure _
+  | Value_float_array _ | Value_boxed_int _ | Value_bottom -> Cannot_be_taken
+
+let potentially_taken_block_switch_branch t pattern =
+  match (pattern : Flambda.switch_block_pattern) with
+  | Tag tag -> potentially_taken_block_switch_branch_tag t tag
+  | String s -> potentially_taken_block_switch_branch_string t s

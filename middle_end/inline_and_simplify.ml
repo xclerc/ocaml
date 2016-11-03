@@ -145,8 +145,8 @@ let approx_for_allocated_const (const : Allocated_const.t) =
         (Array.map A.value_float (Array.of_list a))
 
 type filtered_switch_branches =
-  | Must_be_taken of Flambda.t
-  | Can_be_taken of (int * Flambda.t) list
+  | Must_be_taken of Continuation.t
+  | Can_be_taken of (Flambda.switch_block_pattern * Continuation.t) list
 
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body
@@ -339,6 +339,18 @@ let simplify_move_within_set_of_closures env r
                 in
                 let approx = A.value_closure value_set_of_closures move_to in
                 Move_within_set_of_closures move_within, ret r approx)
+
+(** Simplify an application of a continuation. *)
+let simplify_apply_cont _t env r cont ~args_approxs =
+  let cont = Freshening.apply_static_exception (E.freshening env) cont in
+  match E.find_continuation env cont with
+  | exception Not_found ->
+    Misc.fatal_error "Application of unbound continuation %a"
+      Continuation.print cont
+  | cont_approx ->
+    let cont = Continuation_approx.name cont_approx in
+    let r = R.use_continuation r env i args_approxs in
+    cont, r
 
 (* Transform an expression denoting an access to a variable bound in
    a closure.  Variables in the closure ([project_var.closure]) may
@@ -1103,16 +1115,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           contents_kind },
       r)
   | Apply_cont (cont, args) ->
-    let cont = Freshening.apply_static_exception (E.freshening env) cont in
     simplify_free_variables env args ~f:(fun _env args args_approxs ->
-      match E.find_continuation env cont with
-      | exception Not_found ->
-        Misc.fatal_error "Application of unbound continuation %a"
-          Continuation.print cont
-      | cont_approx ->
-        let cont = Continuation_approx.name cont_approx in
-        let r = R.use_continuation r env i args_approxs in
-        Apply_cont (cont, args), ret r A.value_bottom)
+      let cont, r = simplify_apply_cont t env cont ~args_approxs in
+      Apply_cont (cont, args), ret r A.value_bottom)
   | Let_cont ({ name = cont; body; handler } as let_cont) ->
     begin match body with
     | Let { var; defining_expr = def; body; _ }
@@ -1203,14 +1208,14 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let rec filter_branches filter branches compatible_branches =
         match branches with
         | [] -> Can_be_taken compatible_branches
-        | (c, lam) as branch :: branches ->
+        | (c, cont) as branch :: branches ->
           match filter arg_approx c with
           | A.Cannot_be_taken ->
             filter_branches filter branches compatible_branches
           | A.Can_be_taken ->
             filter_branches filter branches (branch :: compatible_branches)
           | A.Must_be_taken ->
-            Must_be_taken lam
+            Must_be_taken cont
       in
       let filtered_consts =
         filter_branches A.potentially_taken_const_switch_branch sw.consts []
@@ -1221,10 +1226,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       begin match filtered_consts, filtered_blocks with
       | Must_be_taken _, Must_be_taken _ ->
         assert false
-      | Must_be_taken branch, _
-      | _, Must_be_taken branch ->
-        let lam, r = simplify env r branch in
-        lam, R.map_benefit r B.remove_branch
+      | Must_be_taken cont, _
+      | _, Must_be_taken cont ->
+        let cont, r = simplify_apply_cont _t env r cont ~args_approxs:[] in
+        Apply_cont (cont, []), R.map_benefit r B.remove_branch
       | Can_be_taken consts, Can_be_taken blocks ->
         match consts, blocks, sw.failaction with
         | [], [], None ->
@@ -1241,18 +1246,16 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                 | Float f -> ...]
          *)
           Proved_unreachable, ret r A.value_bottom
-        | [_, branch], [], None
-        | [], [_, branch], None
-        | [], [], Some branch ->
-          let lam, r = simplify env r branch in
-          lam, R.map_benefit r B.remove_branch
+        | [_, cont], [], None
+        | [], [_, cont], None
+        | [], [], Some cont ->
+          let cont, r = simplify_apply_cont _t env r cont ~args_approxs:[] in
+          Apply_cont (cont, []), R.map_benefit r B.remove_branch
         | _ ->
           let env = E.inside_branch env in
-          let f (i, v) (acc, r) =
-            let approx = R.approx r in
-            let lam, r = simplify env r v in
-            (i, lam)::acc,
-            R.meet_approx r env approx
+          let f (i, cont) (acc, r) =
+            let cont, r = simplify_apply_cont _t env r cont ~args_approxs:[] in
+            (i, cont)::acc, r
           in
           let r = R.set_approx r A.value_bottom in
           let consts, r = List.fold_right f consts ([], r) in
@@ -1260,11 +1263,11 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           let failaction, r =
             match sw.failaction with
             | None -> None, r
-            | Some l ->
-              let approx = R.approx r in
-              let l, r = simplify env r l in
-              Some l,
-              R.meet_approx r env approx
+            | Some cont ->
+              let cont, r =
+                simplify_apply_cont _t env r cont ~args_approxs:[]
+              in
+              Some cont, r
           in
           let sw = { sw with failaction; consts; blocks; } in
           Switch (arg, sw), r
