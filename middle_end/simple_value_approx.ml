@@ -281,49 +281,21 @@ let value_immutable_float_array (contents:t array) =
     Array.map (fun t -> augment_with_kind t Pfloatval) contents
   in
   approx (Value_float_array { contents = Contents contents; size; } )
-(*
-let name_expr_fst (named, thing) ~name =
-  (Flambda_utils.name_expr named ~name), thing
-*)
-
-let name_expr_fst _ ~name:_ = assert false
 
 let make_const_int_named n : Flambda.named * t =
   Const (Int n), value_int n
-let make_const_int (n : int) =
-  let name =
-    match n with
-    | 0 -> "const_zero"
-    | 1 -> "const_one"
-    | _ -> "const_int"
-  in
-  name_expr_fst (make_const_int_named n) ~name
 
 let make_const_char_named n : Flambda.named * t =
   Const (Char n), value_char n
-let make_const_char n =
-  name_expr_fst (make_const_char_named n) ~name:"const_char"
 
 let make_const_ptr_named n : Flambda.named * t =
   Const (Const_pointer n), value_constptr n
-let make_const_ptr (n : int) =
-  let name =
-    match n with
-    | 0 -> "const_ptr_zero"
-    | 1 -> "const_ptr_one"
-    | _ -> "const_ptr"
-  in
-  name_expr_fst (make_const_ptr_named n) ~name
 
 let make_const_bool_named b : Flambda.named * t =
   make_const_ptr_named (if b then 1 else 0)
-let make_const_bool b =
-  name_expr_fst (make_const_bool_named b) ~name:"const_bool"
 
 let make_const_float_named f : Flambda.named * t =
   Allocated_const (Float f), value_float f
-let make_const_float f =
-  name_expr_fst (make_const_float_named f) ~name:"const_float"
 
 let make_const_boxed_int_named (type bi) (t:bi boxed_int) (i:bi)
       : Flambda.named * t =
@@ -334,8 +306,6 @@ let make_const_boxed_int_named (type bi) (t:bi boxed_int) (i:bi)
     | Nativeint -> Nativeint i
   in
   Allocated_const c, value_boxed_int t i
-let make_const_boxed_int t i =
-  name_expr_fst (make_const_boxed_int_named t i) ~name:"const_boxed_int"
 
 type simplification_summary =
   | Nothing_done
