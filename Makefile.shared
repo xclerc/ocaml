@@ -168,10 +168,9 @@ MIDDLE_END=\
   middle_end/closure_conversion_aux.cmo \
   middle_end/closure_conversion.cmo \
   middle_end/inconstant_idents.cmo \
+  middle_end/alias_analysis.cmo \
+  middle_end/lift_constants.cmo \
   middle_end/middle_end.cmo
-
-#  middle_end/alias_analysis.cmo \
-#  middle_end/lift_constants.cmo \
 
 #MIDDLE_END=\
 #  middle_end/debuginfo.cmo \
