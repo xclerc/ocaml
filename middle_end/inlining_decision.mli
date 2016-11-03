@@ -31,6 +31,7 @@ val for_call_site
   -> value_set_of_closures:Simple_value_approx.value_set_of_closures
   -> args:Variable.t list
   -> args_approxs:Simple_value_approx.t list
+  -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
   -> inline_requested:Lambda.inline_attribute

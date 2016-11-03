@@ -74,6 +74,7 @@ val inline_by_copying_function_body
   -> closure_id_being_applied:Closure_id.t
   -> function_decl:Flambda.function_declaration
   -> args:Variable.t list
+  -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
   -> Flambda.t * Inline_and_simplify_aux.Result.t
@@ -95,6 +96,7 @@ val inline_by_copying_function_declaration
   -> function_decl:Flambda.function_declaration
   -> args:Variable.t list
   -> args_approxs:Simple_value_approx.t list
+  -> continuation:Continuation.t
   -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
   -> specialised_args:Flambda.specialised_to Variable.Map.t
   -> direct_call_surrogates:Closure_id.t Closure_id.Map.t

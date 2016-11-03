@@ -37,8 +37,8 @@ let inline env r ~lhs_of_application
     ~(function_decls : Flambda.function_declarations)
     ~closure_id_being_applied ~(function_decl : Flambda.function_declaration)
     ~value_set_of_closures ~only_use_of_function ~original ~recursive
-    ~(args : Variable.t list) ~size_from_approximation ~dbg ~simplify
-    ~(inline_requested : Lambda.inline_attribute)
+    ~(args : Variable.t list) ~continuation ~size_from_approximation ~dbg
+    ~simplify ~(inline_requested : Lambda.inline_attribute)
     ~(specialise_requested : Lambda.specialise_attribute)
     ~self_call ~fun_cost ~inlining_threshold =
   let toplevel = E.at_toplevel env in
@@ -192,7 +192,7 @@ let inline env r ~lhs_of_application
       Inlining_transforms.inline_by_copying_function_body ~env
         ~r:(R.reset_benefit r) ~function_decls ~lhs_of_application
         ~closure_id_being_applied ~specialise_requested ~inline_requested
-        ~function_decl ~args ~dbg ~simplify
+        ~function_decl ~args ~continuation ~dbg ~simplify
     in
     let num_direct_applications_seen =
       (R.num_direct_applications r_inlined) - (R.num_direct_applications r)
@@ -302,8 +302,8 @@ let specialise env r ~lhs_of_application
       ~(function_decl : Flambda.function_declaration)
       ~closure_id_being_applied
       ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
-      ~args ~args_approxs ~dbg ~simplify ~original ~recursive ~self_call
-      ~inlining_threshold ~fun_cost
+      ~args ~args_approxs ~continuation ~dbg ~simplify ~original ~recursive
+      ~self_call ~inlining_threshold ~fun_cost
       ~inline_requested ~specialise_requested =
   let bound_vars =
     lazy
@@ -395,7 +395,7 @@ let specialise env r ~lhs_of_application
         Inlining_transforms.inline_by_copying_function_declaration ~env
           ~r:(R.reset_benefit r) ~lhs_of_application
           ~function_decls ~closure_id_being_applied ~function_decl
-          ~args ~args_approxs
+          ~args ~args_approxs ~continuation
           ~invariant_params:value_set_of_closures.invariant_params
           ~specialised_args:value_set_of_closures.specialised_args
           ~direct_call_surrogates:value_set_of_closures.direct_call_surrogates
@@ -493,7 +493,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       ~lhs_of_application ~closure_id_being_applied
       ~(function_decl : Flambda.function_declaration)
       ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
-      ~args ~args_approxs ~dbg ~simplify ~inline_requested
+      ~args ~args_approxs ~continuation ~dbg ~simplify ~inline_requested
       ~specialise_requested =
   if List.length args <> List.length args_approxs then begin
     Misc.fatal_error "Inlining_decision.for_call_site: inconsistent lengths \
@@ -531,7 +531,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       Inlining_transforms.inline_by_copying_function_body ~env
         ~r ~function_decls ~lhs_of_application
         ~closure_id_being_applied ~specialise_requested ~inline_requested
-        ~function_decl ~args ~dbg ~simplify
+        ~function_decl ~args ~continuation ~dbg ~simplify
     in
     simplify env r body
   else if E.never_inline env then
@@ -605,8 +605,9 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
         let specialise_result =
           specialise env r ~lhs_of_application ~function_decls ~recursive
             ~closure_id_being_applied ~function_decl ~value_set_of_closures
-            ~args ~args_approxs ~dbg ~simplify ~original ~inline_requested
-            ~specialise_requested ~fun_cost ~self_call ~inlining_threshold
+            ~args ~args_approxs ~continuation ~dbg ~simplify ~original
+            ~inline_requested ~specialise_requested ~fun_cost ~self_call
+            ~inlining_threshold
         in
         match specialise_result with
         | Changed (res, spec_reason) ->
@@ -629,7 +630,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
             inline env r ~function_decls ~lhs_of_application
               ~closure_id_being_applied ~function_decl ~value_set_of_closures
               ~only_use_of_function ~original ~recursive
-              ~inline_requested ~specialise_requested ~args
+              ~inline_requested ~specialise_requested ~args ~continuation
               ~size_from_approximation ~dbg ~simplify ~fun_cost ~self_call
               ~inlining_threshold
           in

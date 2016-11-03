@@ -115,7 +115,8 @@ let inline_by_copying_function_body ~env ~r
       ~(inline_requested : Lambda.inline_attribute)
       ~(specialise_requested : Lambda.specialise_attribute)
       ~closure_id_being_applied
-      ~(function_decl : Flambda.function_declaration) ~args ~dbg ~simplify =
+      ~(function_decl : Flambda.function_declaration) ~args
+      ~continuation ~dbg ~simplify =
   assert (E.mem env lhs_of_application);
   assert (List.for_all (E.mem env) args);
   let r =
@@ -138,6 +139,15 @@ let inline_by_copying_function_body ~env ~r
         inline_requested specialise_requested
     else
       body
+  in
+  (* Arrange for the continuation through which the function returns to be
+     that supplied at the call site. *)
+  let body : Flambda.t =
+    Let_cont {
+      name = function_decl.continuation_param;
+      body;
+      handler = Alias continuation;
+    }
   in
   let bindings_for_params_to_args =
     (* Bind the function's parameters to the arguments from the call site. *)
@@ -183,7 +193,7 @@ let inline_by_copying_function_declaration ~env ~r
     ~(inline_requested : Lambda.inline_attribute)
     ~closure_id_being_applied
     ~(function_decl : Flambda.function_declaration)
-    ~args ~args_approxs
+    ~args ~args_approxs ~continuation
     ~(invariant_params:Variable.Set.t Variable.Map.t lazy_t)
     ~(specialised_args : Flambda.specialised_to Variable.Map.t)
     ~direct_call_surrogates ~dbg ~simplify =
@@ -361,9 +371,11 @@ let inline_by_copying_function_declaration ~env ~r
           (Set_of_closures set_of_closures)
           (Flambda.create_let func (Project_closure project_closure)
             (Apply {
+              kind = Function;
+              continuation;
               func;
               args;
-              kind = Direct closure_id_being_applied;
+              call_kind = Direct closure_id_being_applied;
               dbg;
               inline = inline_requested;
               specialise = Default_specialise;
