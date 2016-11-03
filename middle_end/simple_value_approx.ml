@@ -16,8 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module U = Flambda_utils
-
 type 'a boxed_int =
   | Int32 : int32 boxed_int
   | Int64 : int64 boxed_int
@@ -283,6 +281,12 @@ let value_immutable_float_array (contents:t array) =
     Array.map (fun t -> augment_with_kind t Pfloatval) contents
   in
   approx (Value_float_array { contents = Contents contents; size; } )
+(*
+let name_expr_fst (named, thing) ~name =
+  (Flambda_utils.name_expr named ~name), thing
+*)
+
+let name_expr_fst _ ~name:_ = assert false
 
 let make_const_int_named n : Flambda.named * t =
   Const (Int n), value_int n
@@ -337,35 +341,7 @@ type simplification_summary =
   | Nothing_done
   | Replaced_term
 
-type simplification_result = Flambda.t * simplification_summary * t
 type simplification_result_named = Flambda.named * simplification_summary * t
-
-let simplify t (lam : Flambda.t) : simplification_result =
-  if Effect_analysis.no_effects lam then
-    match t.descr with
-    | Value_int n ->
-      let const, approx = make_const_int n in
-      const, Replaced_term, approx
-    | Value_char n ->
-      let const, approx = make_const_char n in
-      const, Replaced_term, approx
-    | Value_constptr n ->
-      let const, approx = make_const_ptr n in
-      const, Replaced_term, approx
-    | Value_float (Some f) ->
-      let const, approx = make_const_float f in
-      const, Replaced_term, approx
-    | Value_boxed_int (t, i) ->
-      let const, approx = make_const_boxed_int t i in
-      const, Replaced_term, approx
-    | Value_symbol sym ->
-      U.name_expr (Symbol sym) ~name:"symbol", Replaced_term, t
-    | Value_string _ | Value_float_array _ | Value_float None
-    | Value_block _ | Value_set_of_closures _ | Value_closure _
-    | Value_unknown _ | Value_bottom | Value_extern _ | Value_unresolved _ ->
-      lam, Nothing_done, t
-  else
-    lam, Nothing_done, t
 
 let simplify_named t (named : Flambda.named) : simplification_result_named =
   if Effect_analysis.no_effects_named named then
@@ -419,22 +395,6 @@ let join_summaries summary ~replaced_by_var_or_symbol =
   | true, Replaced_term
   | false, Replaced_term -> Replaced_term
   | false, Nothing_done -> Nothing_done
-
-let simplify_using_env t ~is_present_in_env flam =
-  let replaced_by_var_or_symbol, flam =
-    match t.var with
-    | Some var when is_present_in_env var ->
-      true, ((Var var) : Flambda.t)
-    | _ ->
-      match t.symbol with
-      | Some (sym, None) -> true,
-        U.name_expr (Symbol sym) ~name:"symbol"
-      | Some (sym, Some field) ->
-        true, U.name_expr (Read_symbol_field (sym, field)) ~name:"symbol_field"
-      | None -> false, flam
-  in
-  let const, summary, approx = simplify t flam in
-  const, join_summaries summary ~replaced_by_var_or_symbol, approx
 
 let simplify_named_using_env t ~is_present_in_env named =
   let replaced_by_var_or_symbol, named =
@@ -573,11 +533,12 @@ let equal_boxed_int (type t1) (type t2)
    v 3
 
    The approximation for [f 1] and [f 2] could both contain the
-   description of [g]. But if [f] were inlined, a new [g] would
+   description of [g]. But if [f] where inlined, a new [g] would
    be created in each branch, leading to incompatible description.
    And we must never make the descrition for a function less
    precise that it used to be: its information are needed for
-   rewriting [Project_var] and [Project_closure] constructions.
+   rewriting [Project_var] and [Project_closure] constructions
+   in [Flambdainline.loop]
 *)
 let rec meet_descr ~really_import_approx d1 d2 = match d1, d2 with
   | Value_int i, Value_int j when i = j ->

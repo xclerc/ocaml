@@ -286,23 +286,16 @@ type simplification_summary =
   | Nothing_done
   | Replaced_term
 
-type simplification_result = Flambda.t * simplification_summary * t
 type simplification_result_named = Flambda.named * simplification_summary * t
 
+(* CR mshinwell: update comments *)
 (** Given an expression and its approximation, attempt to simplify the
     expression to a constant (with associated approximation), taking into
-    account whether the expression has any side effects. *)
-val simplify : t -> Flambda.t -> simplification_result
-
-(** As for [simplify], but also enables us to simplify based on equalities
+    account whether the expression has any side effects.
+    As for [simplify], but also enables us to simplify based on equalities
     between variables.  The caller must provide a function that tells us
     whether, if we simplify to a given variable, the value of that variable
     will be accessible in the current environment. *)
-val simplify_using_env
-   : t
-  -> is_present_in_env:(Variable.t -> bool)
-  -> Flambda.t
-  -> simplification_result
 
 val simplify_named : t -> Flambda.named -> simplification_result_named
 

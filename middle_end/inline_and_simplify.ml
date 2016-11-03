@@ -140,21 +140,6 @@ let simplify_named_using_approx r lam approx =
   let lam, _summary, approx = A.simplify_named approx lam in
   lam, R.set_approx r approx
 
-let simplify_using_approx_and_env env r original_lam approx =
-  let lam, summary, approx =
-    A.simplify_using_env approx ~is_present_in_env:(E.mem env) original_lam
-  in
-  let r =
-    let r = ret r approx in
-    match summary with
-    (* CR-soon mshinwell: Why is [r] not updated with the cost of adding the
-       new code?
-       mshinwell: similar to CR above *)
-    | Replaced_term -> R.map_benefit r (B.remove_code original_lam)
-    | Nothing_done -> r
-  in
-  lam, r
-
 let simplify_named_using_approx_and_env env r original_named approx =
   let named, summary, approx =
     A.simplify_named_using_env approx ~is_present_in_env:(E.mem env)
