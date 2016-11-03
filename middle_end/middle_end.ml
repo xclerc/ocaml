@@ -129,7 +129,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
            Initialize_symbol_to_let_symbol.run)
     in
 *)
-    let loop flam =
+    let rec loop flam =
       pass_number := 0;
       let round = !round_number in
       incr round_number;
@@ -167,10 +167,10 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         +-+ ("Remove_unused_closure_vars 3",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
+*)
         +-+ ("Initialize_symbol_to_let_symbol",
              Initialize_symbol_to_let_symbol.run)
         |> loop
-*)
     in
     let back_end _flam =
       flam

@@ -16,15 +16,19 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let constant_field (expr:Flambda.t)
+let constant_field ((expr : Flambda.t), cont)
   : Flambda.constant_defining_value_block_field option =
   match expr with
-  | Let { var; defining_expr = Const c; body = Var var' ; _ } ->
-    assert(Variable.equal var var');
+  | Let { var; defining_expr = Const c;
+        body = Apply_cont (cont', [var']); _ }
+      when Continuation.equal cont cont' ->
+    assert (Variable.equal var var');
     (* This must be true since var is the only variable in scope *)
     Some (Flambda.Const c)
-  | Let { var; defining_expr = Symbol s; body = Var var' ; _ } ->
-    assert(Variable.equal var var');
+  | Let { var; defining_expr = Symbol s;
+        body = Apply_cont (cont', [var']); _ }
+      when Continuation.equal cont cont' ->
+    assert (Variable.equal var var');
     Some (Flambda.Symbol s)
   | _ ->
     None
@@ -45,8 +49,8 @@ let rec loop (program : Flambda.program_body) : Flambda.program_body =
     Let_symbol (symbol, const, loop program)
   | Let_rec_symbol (defs, program) ->
     Let_rec_symbol (defs, loop program)
-  | Effect (expr, program) ->
-    Effect (expr, loop program)
+  | Effect (expr, cont, program) ->
+    Effect (expr, cont, loop program)
   | End symbol ->
     End symbol
 

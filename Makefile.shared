@@ -174,6 +174,7 @@ MIDDLE_END=\
   middle_end/inconstant_idents.cmo \
   middle_end/alias_analysis.cmo \
   middle_end/lift_constants.cmo \
+  middle_end/initialize_symbol_to_let_symbol.cmo \
   middle_end/find_recursive_functions.cmo \
   middle_end/simplify_common.cmo \
   middle_end/simplify_boxed_integer_ops.cmo \
@@ -184,7 +185,6 @@ MIDDLE_END=\
   middle_end/middle_end.cmo
 
 #  middle_end/lift_code.cmo \
-#  middle_end/initialize_symbol_to_let_symbol.cmo \
 #  middle_end/lift_let_to_initialize_symbol.cmo \
 #  middle_end/invariant_params.cmo \
 #  middle_end/share_constants.cmo \
