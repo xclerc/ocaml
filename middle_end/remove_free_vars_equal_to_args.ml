@@ -50,6 +50,7 @@ let rewrite_one_function_decl ~(function_decl : Flambda.function_declaration)
     in
     Flambda.create_function_declaration
       ~params:function_decl.params
+      ~continuation_param:function_decl.continuation_param
       ~body:body
       ~stub:function_decl.stub
       ~dbg:function_decl.dbg
