@@ -16,13 +16,12 @@
 
 type t = {
   name : Continuation.t;
-  recursive : Asttypes.rec_flag;
+  handler : Flambda.continuation_handler;
 }
 
 let create ~name ~(handler : Flambda.continuation_handler) =
   { name;
-    recursive = handler.recursive;
+    handler;
   }
 
 let name t = t.name
-let recursive t = t.recursive

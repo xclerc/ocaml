@@ -24,4 +24,3 @@ val create
   -> t
 
 val name : t -> Continuation.t
-val recursive : t -> Asttypes.rec_flag

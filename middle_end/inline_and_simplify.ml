@@ -1136,51 +1136,51 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let env = E.set_freshening env sb in
       let body_env = E.add_continuation env cont approx in
       let body, r = simplify body_env r body in
-      let cont = Cont_approx.name approx in
-      let recursive = Cont_approx.recursive approx in
       if not (R.is_used_continuation r i) then begin
         (* If the continuation is not used, we can drop the declaration *)
         body, r
       end else begin
-        let env =
-          match recursive with
-          | Nonrecursive -> env
-          | Recursive -> body_env
-        in
-        match (body : Flambda.t), recursive with
-        | Apply_cont (j, args), Nonrecursive ->
-          assert (Continuation.equal i j);
-          let handler =
-            List.fold_left2 (fun body var arg ->
-                Flambda.create_let var (Var arg) body)
-              handler vars args
+        match handler with
+        | Alias alias_of ->
+          let alias_of =
+            Freshening.apply_static_exception (E.freshening env) alias_of
           in
-          let r, _args_approxs = R.exit_scope_catch r i in
-          simplify env r handler
-        | _, _ ->
-          let vars, sb = Freshening.add_variables' (E.freshening env) vars in
-          let approx = R.approx r in
-          let r, vars_approxs = R.exit_scope_catch r i in
-          let vars_and_approx =
-            List.combine vars vars_approxs
-          in
-          let env =
-            List.fold_left (fun env (id, approx) -> E.add env id approx)
-              (E.set_freshening env sb) vars_and_approx
-          in
-          let env = E.inside_branch env in
-          let handler, r = simplify env r handler in
           let let_cont : Flambda.let_cont =
-            match let_cont with
-            | Alias alias_of ->
-              let alias_of =
-                Freshening.apply_static_exception (E.freshening env) alias_of
-              in
-              { name = cont;
-                body;
-                handler = Alias alias_of;
-              }
-            | Handler _ ->
+            { name = cont;
+              body;
+              handler = Alias alias_of;
+            }
+          in
+          Let_cont let_cont, 
+        | Handler { params = vars; recursive; handler; } ->
+          let env =
+            match recursive with
+            | Nonrecursive -> env
+            | Recursive -> body_env
+          in
+          match (body : Flambda.t), recursive with
+          | Apply_cont (cont', args), Nonrecursive ->
+            assert (Continuation.equal cont cont');
+            let handler =
+              List.fold_left2 (fun body var arg ->
+                  Flambda.create_let var (Var arg) body)
+                handler vars args
+            in
+            let r, _args_approxs = R.exit_scope_catch r cont in
+            simplify env r handler
+          | _, _ ->
+            let vars, sb = Freshening.add_variables' (E.freshening env) vars in
+            let r, vars_approxs = R.exit_scope_catch r cont in
+            let vars_and_approx =
+              List.combine vars vars_approxs
+            in
+            let env =
+              List.fold_left (fun env (id, approx) -> E.add env id approx)
+                (E.set_freshening env sb) vars_and_approx
+            in
+            let env = E.inside_branch env in
+            let handler, r = simplify env r handler in
+            let let_cont : Flambda.let_cont =
               { name = cont;
                 body;
                 handler = Handler {
@@ -1189,8 +1189,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                   handler;
                 };
               }
-          in
-          Let_cont let_cont, R.meet_approx r env approx
+            in
+            (* CR mshinwell: the R.approx field should be able to go *)
+            Let_cont let_cont, ret r A.value_bottom
       end
     end
   | Switch (arg, sw) ->
