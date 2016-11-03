@@ -212,7 +212,7 @@ let rewrite_recursive_calls_with_symbols t
       function_declarations
     end else begin
       let funs =
-        Variable.Map.map (fun (ffun : Flambda.function_declaration) ->
+        Variable.Map.map (fun (func_decl : Flambda.function_declaration) ->
           let body =
             Flambda_iterators.map_toplevel_named
               (* CR-someday pchambart: This may be worth deep substituting
@@ -220,13 +220,15 @@ let rewrite_recursive_calls_with_symbols t
                  of functions' free variables. *)
               (function
                 | Symbol sym when Symbol.Map.mem sym closure_symbols ->
-                  Expr (Var (Symbol.Map.find sym closure_symbols))
+                  Var (Symbol.Map.find sym closure_symbols)
                 | e -> e)
-              ffun.body
+              func_decl.body
           in
-          Flambda.create_function_declaration ~params:ffun.params
-            ~body ~stub:ffun.stub ~dbg:ffun.dbg ~inline:ffun.inline
-            ~specialise:ffun.specialise ~is_a_functor:ffun.is_a_functor)
+          Flambda.create_function_declaration ~params:func_decl.params
+            ~continuation_param:func_decl.continuation_param ~body
+            ~stub:func_decl.stub ~dbg:func_decl.dbg ~inline:func_decl.inline
+            ~specialise:func_decl.specialise
+            ~is_a_functor:func_decl.is_a_functor)
           function_declarations.funs
       in
       Flambda.update_function_declarations function_declarations ~funs
@@ -309,6 +311,7 @@ module Project_var = struct
         in
         let function_decl =
           Flambda.create_function_declaration ~params
+            ~continuation_param:func_decl.continuation_param
             ~body ~stub:func_decl.stub ~dbg:func_decl.dbg
             ~inline:func_decl.inline ~specialise:func_decl.specialise
             ~is_a_functor:func_decl.is_a_functor

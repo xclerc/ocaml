@@ -75,46 +75,27 @@ let lambda_smaller' lam ~than:threshold =
   let rec lambda_size (lam : Flambda.t) =
     if !size > threshold then raise Exit;
     match lam with
-    | Var _ -> ()
-    | Apply ({ func = _; args = _; kind = direct }) ->
+    | Apply ({ func = _; args = _; call_kind = direct }) ->
       let call_cost =
         match direct with Indirect -> 6 | Direct _ -> direct_call_size
       in
       size := !size + call_cost
-    | Assign _ -> incr size
-    | Send _ -> size := !size + 8
     | Proved_unreachable -> ()
     | Let { defining_expr; body; _ } ->
       lambda_named_size defining_expr;
       lambda_size body
     | Let_mutable { body } -> lambda_size body
-    | Let_rec (bindings, body) ->
-      List.iter (fun (_, lam) -> lambda_named_size lam) bindings;
-      lambda_size body
     | Switch (_, sw) ->
       let aux = function _::_::_ -> size := !size + 5 | _ -> () in
-      aux sw.consts; aux sw.blocks;
-      List.iter (fun (_, lam) -> lambda_size lam) sw.consts;
-      List.iter (fun (_, lam) -> lambda_size lam) sw.blocks;
-      Misc.Stdlib.Option.iter lambda_size sw.failaction
-    | String_switch (_, sw, def) ->
-      List.iter (fun (_, lam) ->
-          size := !size + 2;
-          lambda_size lam)
-        sw;
-      Misc.may lambda_size def
+      aux sw.consts; aux sw.blocks
     | Apply_cont _ -> ()
-    | Let_cont (_, _, body, handler) ->
+    | Let_cont { body; handler; _ } ->
       incr size; lambda_size body; lambda_size handler
-    | Try_with (body, _, handler) ->
-      size := !size + 8; lambda_size body; lambda_size handler
-    | If_then_else (_, ifso, ifnot) ->
-      size := !size + 2;
-      lambda_size ifso; lambda_size ifnot
   and lambda_named_size (named : Flambda.named) =
     if !size > threshold then raise Exit;
     match named with
     | Var _ | Symbol _ | Read_mutable _ -> ()
+    | Assign _ -> incr size
     | Const _ | Allocated_const _ -> incr size
     | Read_symbol_field _ -> incr size
     | Set_of_closures ({ function_decls = ffuns }) ->
@@ -127,7 +108,6 @@ let lambda_smaller' lam ~than:threshold =
       incr size
     | Prim (prim, args, _) ->
       size := !size + prim_size prim args
-    | Expr expr -> lambda_size expr
   in
   try
     lambda_size lam;
@@ -247,15 +227,12 @@ module Benefit = struct
 
   let remove_code_helper b (flam : Flambda.t) =
     match flam with
-    | Assign _ -> b := remove_prim !b
-    | Switch _ | String_switch _ | Apply_cont _ | Try_with _
-    | If_then_else _ -> b := remove_branch !b
-    | Apply _ | Send _ -> b := remove_call !b
-    | Let _ | Let_mutable _ | Let_rec _ | Proved_unreachable | Var _
-    | Let_cont _ -> ()
+    | Switch _ | Apply_cont _ | Apply _ -> b := remove_call !b
+    | Let _ | Let_mutable _ | Let_cont _ | Proved_unreachable -> ()
 
   let remove_code_helper_named b (named : Flambda.named) =
     match named with
+    | Assign _ -> b := remove_prim !b
     | Set_of_closures _
     | Prim ((Pmakearray _ | Pmakeblock _ | Pduprecord _), _, _) ->
       b := remove_alloc !b
@@ -264,8 +241,7 @@ module Benefit = struct
     | Prim _ | Project_closure _ | Project_var _
     | Move_within_set_of_closures _
     | Read_symbol_field _ -> b := remove_prim !b
-    | Var _ | Symbol _ | Read_mutable _ | Allocated_const _ | Const _
-    | Expr _ -> ()
+    | Var _ | Symbol _ | Read_mutable _ | Allocated_const _ | Const _ -> ()
 
   let remove_code lam b =
     let b = ref b in

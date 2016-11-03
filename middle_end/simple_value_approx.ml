@@ -284,9 +284,6 @@ let value_immutable_float_array (contents:t array) =
   in
   approx (Value_float_array { contents = Contents contents; size; } )
 
-let name_expr_fst (named, thing) ~name =
-  (Flambda_utils.name_expr named ~name), thing
-
 let make_const_int_named n : Flambda.named * t =
   Const (Int n), value_int n
 let make_const_int (n : int) =
@@ -576,12 +573,11 @@ let equal_boxed_int (type t1) (type t2)
    v 3
 
    The approximation for [f 1] and [f 2] could both contain the
-   description of [g]. But if [f] where inlined, a new [g] would
+   description of [g]. But if [f] were inlined, a new [g] would
    be created in each branch, leading to incompatible description.
    And we must never make the descrition for a function less
    precise that it used to be: its information are needed for
-   rewriting [Project_var] and [Project_closure] constructions
-   in [Flambdainline.loop]
+   rewriting [Project_var] and [Project_closure] constructions.
 *)
 let rec meet_descr ~really_import_approx d1 d2 = match d1, d2 with
   | Value_int i, Value_int j when i = j ->
