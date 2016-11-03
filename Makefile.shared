@@ -174,6 +174,10 @@ MIDDLE_END=\
   middle_end/inconstant_idents.cmo \
   middle_end/alias_analysis.cmo \
   middle_end/lift_constants.cmo \
+  middle_end/find_recursive_functions.cmo \
+  middle_end/simplify_common.cmo \
+  middle_end/simplify_boxed_integer_ops.cmo \
+  middle_end/simplify_primitives.cmo \
   middle_end/inlining_stats_types.cmo \
   middle_end/inlining_stats.cmo \
   middle_end/extract_projections.cmo \
@@ -182,15 +186,11 @@ MIDDLE_END=\
 #  middle_end/lift_code.cmo \
 #  middle_end/initialize_symbol_to_let_symbol.cmo \
 #  middle_end/lift_let_to_initialize_symbol.cmo \
-#  middle_end/find_recursive_functions.cmo \
 #  middle_end/invariant_params.cmo \
 #  middle_end/share_constants.cmo \
-#  middle_end/simplify_common.cmo \
 #  middle_end/remove_unused_arguments.cmo \
 #  middle_end/remove_unused_closure_vars.cmo \
 #  middle_end/remove_unused_program_constructs.cmo \
-#  middle_end/simplify_boxed_integer_ops.cmo \
-#  middle_end/simplify_primitives.cmo \
 #  middle_end/inline_and_simplify_aux.cmo \
 #  middle_end/remove_free_vars_equal_to_args.cmo \
 #  middle_end/augment_specialised_args.cmo \
