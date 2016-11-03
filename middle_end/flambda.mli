@@ -209,9 +209,17 @@ and let_mutable = {
 *)
 and let_cont = {
   name : Continuation.t;
+  body : t;
+  handler : let_cont_handler;
+}
+
+and let_cont_handler =
+  | Handler of continuation_handler
+  | Alias of Continuation.t
+
+and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;
-  body : t;
   handler : t;
 }
 

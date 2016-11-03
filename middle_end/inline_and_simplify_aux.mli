@@ -57,6 +57,10 @@ module Env : sig
   (** Like [add], but for mutable variables. *)
   val add_mutable : t -> Mutable_variable.t -> Simple_value_approx.t -> t
 
+  val add_continuation : t -> Continuation.t -> Continuation_approx.t -> t
+
+  val find_continuation_exn : t -> Continuation.t -> Continuation_approx.t
+
   (** Find the approximation of a given variable, raising a fatal error if
       the environment does not know about the variable.  Use [find_opt]
       instead if you need to catch the failure case. *)
