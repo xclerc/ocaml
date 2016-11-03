@@ -1110,11 +1110,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         Misc.fatal_error "Application of unbound continuation %a"
           Continuation.print cont
       | cont_approx ->
-        let cont =
-          match Continuation_approx.alias_of cont_approx with
-          | None -> cont
-          | Some cont -> cont
-        in
+        let cont = Continuation_approx.name cont_approx in
         let r = R.use_continuation r env i args_approxs in
         Apply_cont (cont, args), ret r A.value_bottom)
   | Let_cont ({ name = cont; body; handler } as let_cont) ->
@@ -1126,7 +1122,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let cont, sb = Freshening.add_static_exception (E.freshening env) cont in
       let approx =
         match handler with
-        | Handler handler -> Cont_approx.create ~alias_of:cont ~handler
+        | Handler handler -> Cont_approx.create ~name:cont ~handler
         | Alias alias_of ->
           let alias_of =
             Freshening.apply_static_exception (E.freshening env) alias_of
@@ -1140,25 +1136,16 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let env = E.set_freshening env sb in
       let body_env = E.add_continuation env cont approx in
       let body, r = simplify body_env r body in
+      let cont = Cont_approx.name approx in
+      let recursive = Cont_approx.recursive approx in
       if not (R.is_used_continuation r i) then begin
         (* If the continuation is not used, we can drop the declaration *)
         body, r
       end else begin
         let env =
-          match Cont_approx.recursive approx with
+          match recursive with
           | Nonrecursive -> env
           | Recursive -> body_env
-        in
-        let params, recursive, handler =
-          match handler with
-          | Alias cont ->
-            let approx =
-              match E.find_continuation_exn with
-              | approx -> approx
-            in
-            C.params approx, C.recursive approx, C.handler approx
-          | Handler { params; recursive; handler; } ->
-            params, recursive, handler
         in
         match (body : Flambda.t), recursive with
         | Apply_cont (j, args), Nonrecursive ->
@@ -1183,8 +1170,27 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           in
           let env = E.inside_branch env in
           let handler, r = simplify env r handler in
-          Let_cont (i, vars, body, handler),
-            R.meet_approx r env approx
+          let let_cont : Flambda.let_cont =
+            match let_cont with
+            | Alias alias_of ->
+              let alias_of =
+                Freshening.apply_static_exception (E.freshening env) alias_of
+              in
+              { name = cont;
+                body;
+                handler = Alias alias_of;
+              }
+            | Handler _ ->
+              { name = cont;
+                body;
+                handler = Handler {
+                  params;
+                  recursive;
+                  handler;
+                };
+              }
+          in
+          Let_cont let_cont, R.meet_approx r env approx
       end
     end
   | Switch (arg, sw) ->

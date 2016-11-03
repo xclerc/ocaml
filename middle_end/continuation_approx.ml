@@ -15,17 +15,14 @@
 (**************************************************************************)
 
 type t = {
-  handler : Flambda.continuation_handler;
-  alias_of : Continuation.t;
+  name : Continuation.t;
+  recursive : Asttypes.rec_flag;
 }
 
-let create ~alias_of ~handler =
-  { handler;
-    alias_of;
+let create ~name ~(handler : Flambda.continuation_handler) =
+  { name;
+    recursive = handler.recursive;
   }
 
-let alias_of t = t.alias_of
-
-let params t = t.handler.params
-let recursive t = t.handler.recursive
-let handler t = t.handler.handler
+let name t = t.name
+let recursive t = t.recursive

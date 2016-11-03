@@ -19,12 +19,9 @@
 type t
 
 val create
-   : alias_of:Continuation.t
+   : name:Continuation.t
   -> handler:Flambda.continuation_handler
   -> t
 
-val alias_of : t -> Continuation.t
-
-val params : t -> Variable.t list
+val name : t -> Continuation.t
 val recursive : t -> Asttypes.rec_flag
-val handler : t -> Flambda.t
