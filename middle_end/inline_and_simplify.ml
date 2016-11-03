@@ -1102,66 +1102,90 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           body;
           contents_kind },
       r)
-  | Apply_cont (i, args) ->
-    let i = Freshening.apply_static_exception (E.freshening env) i in
+  | Apply_cont (cont, args) ->
+    let cont = Freshening.apply_static_exception (E.freshening env) cont in
     simplify_free_variables env args ~f:(fun _env args args_approxs ->
-
-      let r = R.use_continuation r env i args_approxs in
-      Apply_cont (i, args), ret r A.value_bottom)
-  | Let_cont ({ name; params; recursive; body; handler; } as let_cont) ->
-    begin
-      match body with
-      | Let { var; defining_expr = def; body; _ }
-          when not (Flambda_utils.might_raise_static_exn def i) ->
-        simplify env r (Flambda.create_let var def (Let_cont let_cont))
-      | _ ->
-        let i, sb = Freshening.add_static_exception (E.freshening env) i in
-        let env = E.set_freshening env sb in
-        let body, r = simplify env r body in
-        if not (R.is_used_continuation r i) then begin
-          (* If the continuation is not used, we can drop the declaration *)
-          body, r
-        end else begin
-          let params, recursive, handler =
-            match handler with
-            | Alias cont ->
-              let approx =
-                match E.find_continuation_exn with
-                | exception Not_found ->
-                  Misc.fatal_errorf "Alias of unbound continuation %a"
-                    Continuation.print cont
-                | approx -> approx
-              in
-              C.params approx, C.recursive approx, C.handler approx
-            | Handler { params; recursive; handler; } ->
-              params, recursive, handler
+      match E.find_continuation env cont with
+      | exception Not_found ->
+        Misc.fatal_error "Application of unbound continuation %a"
+          Continuation.print cont
+      | cont_approx ->
+        let cont =
+          match Continuation_approx.alias_of cont_approx with
+          | None -> cont
+          | Some cont -> cont
+        in
+        let r = R.use_continuation r env i args_approxs in
+        Apply_cont (cont, args), ret r A.value_bottom)
+  | Let_cont ({ name = cont; body; handler } as let_cont) ->
+    begin match body with
+    | Let { var; defining_expr = def; body; _ }
+        when not (Flambda_utils.might_raise_static_exn def i) ->
+      simplify env r (Flambda.create_let var def (Let_cont let_cont))
+    | _ ->
+      let cont, sb = Freshening.add_static_exception (E.freshening env) cont in
+      let approx =
+        match handler with
+        | Handler handler -> Cont_approx.create ~alias_of:cont ~handler
+        | Alias alias_of ->
+          let alias_of =
+            Freshening.apply_static_exception (E.freshening env) alias_of
           in
-          match (body : Flambda.t), recursive with
-          | Apply_cont (j, args), Nonrecursive ->
-            assert (Continuation.equal i j);
-            let handler =
-              List.fold_left2 (fun body var arg ->
-                  Flambda.create_let var (Var arg) body)
-                handler vars args
+          match E.find_continuation_exn env alias_of with
+          | exception Not_found ->
+            Misc.fatal_errorf "Alias of unbound continuation %a"
+              Continuation.print cont
+          | approx -> approx
+      in
+      let env = E.set_freshening env sb in
+      let body_env = E.add_continuation env cont approx in
+      let body, r = simplify body_env r body in
+      if not (R.is_used_continuation r i) then begin
+        (* If the continuation is not used, we can drop the declaration *)
+        body, r
+      end else begin
+        let env =
+          match Cont_approx.recursive approx with
+          | Nonrecursive -> env
+          | Recursive -> body_env
+        in
+        let params, recursive, handler =
+          match handler with
+          | Alias cont ->
+            let approx =
+              match E.find_continuation_exn with
+              | approx -> approx
             in
-            let r, _args_approxs = R.exit_scope_catch r i in
-            simplify env r handler
-          | _ ->
-            let vars, sb = Freshening.add_variables' (E.freshening env) vars in
-            let approx = R.approx r in
-            let r, vars_approxs = R.exit_scope_catch r i in
-            let vars_and_approx =
-              List.combine vars vars_approxs
-            in
-            let env =
-              List.fold_left (fun env (id, approx) -> E.add env id approx)
-                (E.set_freshening env sb) vars_and_approx
-            in
-            let env = E.inside_branch env in
-            let handler, r = simplify env r handler in
-            Let_cont (i, vars, body, handler),
-              R.meet_approx r env approx
-        end
+            C.params approx, C.recursive approx, C.handler approx
+          | Handler { params; recursive; handler; } ->
+            params, recursive, handler
+        in
+        match (body : Flambda.t), recursive with
+        | Apply_cont (j, args), Nonrecursive ->
+          assert (Continuation.equal i j);
+          let handler =
+            List.fold_left2 (fun body var arg ->
+                Flambda.create_let var (Var arg) body)
+              handler vars args
+          in
+          let r, _args_approxs = R.exit_scope_catch r i in
+          simplify env r handler
+        | _, _ ->
+          let vars, sb = Freshening.add_variables' (E.freshening env) vars in
+          let approx = R.approx r in
+          let r, vars_approxs = R.exit_scope_catch r i in
+          let vars_and_approx =
+            List.combine vars vars_approxs
+          in
+          let env =
+            List.fold_left (fun env (id, approx) -> E.add env id approx)
+              (E.set_freshening env sb) vars_and_approx
+          in
+          let env = E.inside_branch env in
+          let handler, r = simplify env r handler in
+          Let_cont (i, vars, body, handler),
+            R.meet_approx r env approx
+      end
     end
   | Switch (arg, sw) ->
     (* When [arg] is known to be a variable whose approximation is that of a

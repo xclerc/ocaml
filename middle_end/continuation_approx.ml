@@ -14,10 +14,18 @@
 (*                                                                        *)
 (**************************************************************************)
 
-type t = Flambda.continuation_handler
+type t = {
+  handler : Flambda.continuation_handler;
+  alias_of : Continuation.t;
+}
 
-let create handler = handler
+let create ~alias_of ~handler =
+  { handler;
+    alias_of;
+  }
 
-let params (t : t) = t.params
-let recursive (t : t) = t.recursive
-let handler (t : t) = t.handler
+let alias_of t = t.alias_of
+
+let params t = t.handler.params
+let recursive t = t.handler.recursive
+let handler t = t.handler.handler
