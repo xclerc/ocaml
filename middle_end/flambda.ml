@@ -806,10 +806,15 @@ let fold_lets_option
   let rec loop (t : t) ~acc ~rev_lets =
     match t with
     | Let { var; defining_expr; body; _ } ->
-      let acc, var, defining_expr =
+      let acc, var, bindings =
         for_defining_expr acc var defining_expr
       in
-      let rev_lets = (var, defining_expr) :: rev_lets in
+      let rev_lets =
+        match bindings with
+        | None -> ...
+        | Some (bindings, defining_expr) ->
+          (var, defining_expr) :: (List.rev bindings) @@ rev_lets
+      in
       loop body ~acc ~rev_lets
     | t ->
       let last_body, acc = for_last_body acc t in

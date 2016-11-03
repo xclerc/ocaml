@@ -1075,11 +1075,11 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     simplify_apply env r ~apply
   | Let _ ->
     let for_defining_expr (env, r) var defining_expr =
-      let defining_expr, r = simplify_named env r defining_expr in
+      let let_bindings, r = simplify_named env r defining_expr in
       let var, sb = Freshening.add_variable (E.freshening env) var in
       let env = E.set_freshening env sb in
       let env = E.add env var (R.approx r) in
-      (env, r), var, defining_expr
+      (env, r), var, let_bindings
     in
     let for_last_body (env, r) body =
       simplify env r body
