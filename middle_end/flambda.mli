@@ -496,7 +496,11 @@ val free_symbols_program : program -> Symbol.Set.t
 val fold_lets_option
    : t
   -> init:'a
-  -> for_defining_expr:('a -> Variable.t -> named -> 'a * Variable.t * named)
+  -> for_defining_expr:(
+      'a
+    -> Variable.t
+    -> named
+    -> 'a * Variable.t * ((Variable.t * named) list * named) option)
   -> for_last_body:('a -> t -> t * 'b)
   (* CR-someday mshinwell: consider making [filter_defining_expr]
      optional *)

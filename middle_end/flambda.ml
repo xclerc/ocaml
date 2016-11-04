@@ -280,14 +280,20 @@ let rec lam ppf (flam : t) =
       | body -> List.rev let_conts, body
     in
     let let_conts, body = gather_let_conts [] flam in
-    let print_let_cont ppf { name; params; recursive; handler; body = _; } =
-      fprintf ppf "@[<v 2>where %a%s%s%a%s =@ %a@]"
-        Continuation.print name
-        (match recursive with Nonrecursive -> "" | Recursive -> "*")
-        (match params with [] -> "" | _ -> " (")
-        Variable.print_list params
-        (match params with [] -> "" | _ -> ")")
-        lam handler
+    let print_let_cont ppf { name; handler; body = _; } =
+      match handler with
+      | Handler { params; recursive; handler; } ->
+        fprintf ppf "@[<v 2>where %a%s%s%a%s =@ %a@]"
+          Continuation.print name
+          (match recursive with Nonrecursive -> "" | Recursive -> "*")
+          (match params with [] -> "" | _ -> " (")
+          Variable.print_list params
+          (match params with [] -> "" | _ -> ")")
+          lam handler
+      | Alias alias_of ->
+        fprintf ppf "@[<v 2>where %a = %a@]"
+          Continuation.print name
+          Continuation.print alias_of
     in
     let pp_sep ppf () = fprintf ppf "@ " in
     fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
@@ -521,10 +527,14 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       aux body
     | Apply_cont (_, es) ->
       List.iter free_variable es
-    | Let_cont { params; handler; body; _ } ->
-      List.iter bound_variable params;
-      aux handler;
-      aux body
+    | Let_cont { handler; body; _ } ->
+      aux body;
+      begin match handler with
+      | Alias _ -> ()
+      | Handler { params; handler; _ } ->
+        List.iter bound_variable params;
+        aux handler
+      end
     | Switch _ | Proved_unreachable -> ()
   in
   aux tree;
@@ -696,7 +706,10 @@ let iter_general ~toplevel f f_named maybe_named =
       | Let_mutable { body; _ } -> aux body
       | Let_cont { body; handler; _ } ->
         aux body;
-        aux handler
+        begin match handler with
+        | Handler { handler; _ } -> aux handler
+        | Alias _ -> ()
+        end
   and aux_named (named : named) =
     f_named named;
     match named with
@@ -777,31 +790,30 @@ module With_free_variables = struct
     | Named (_, free_vars) -> free_vars
 end
 
-let fold_lets_option
-    t ~init
-    ~(for_defining_expr:('a -> Variable.t -> named -> 'a * Variable.t * named))
-    ~for_last_body
-    ~(filter_defining_expr:('b -> Variable.t -> named -> Variable.Set.t ->
-                            'b * Variable.t * named option)) =
+let fold_lets_option t ~init ~for_defining_expr ~for_last_body
+      ~filter_defining_expr =
   let finish ~last_body ~acc ~rev_lets =
-    let module W = With_free_variables in
-    let acc, t =
-      List.fold_left (fun (acc, t) (var, defining_expr) ->
-          let free_vars_of_body = W.free_variables t in
-          let acc, var, defining_expr =
-            filter_defining_expr acc var defining_expr free_vars_of_body
-          in
-          match defining_expr with
-          | None -> acc, t
-          | Some defining_expr ->
-            let let_expr =
-              W.create_let_reusing_body var defining_expr t
+    match rev_lets with
+    | None -> Proved_unreachable, acc
+    | Some rev_lets ->
+      let module W = With_free_variables in
+      let acc, t =
+        List.fold_left (fun (acc, t) (var, defining_expr) ->
+            let free_vars_of_body = W.free_variables t in
+            let acc, var, defining_expr =
+              filter_defining_expr acc var defining_expr free_vars_of_body
             in
-            acc, W.of_expr let_expr)
-        (acc, W.of_expr last_body)
-        rev_lets
-    in
-    W.contents t, acc
+            match defining_expr with
+            | None -> acc, t
+            | Some defining_expr ->
+              let let_expr =
+                W.create_let_reusing_body var defining_expr t
+              in
+              acc, W.of_expr let_expr)
+          (acc, W.of_expr last_body)
+          rev_lets
+      in
+      W.contents t, acc
   in
   let rec loop (t : t) ~acc ~rev_lets =
     match t with
@@ -810,17 +822,20 @@ let fold_lets_option
         for_defining_expr acc var defining_expr
       in
       let rev_lets =
-        match bindings with
-        | None -> ...
-        | Some (bindings, defining_expr) ->
-          (var, defining_expr) :: (List.rev bindings) @@ rev_lets
+        match rev_lets with
+        | None -> None
+        | Some rev_lets ->
+          match bindings with
+          | None -> None
+          | Some (bindings, defining_expr) ->
+            Some ((var, defining_expr) :: (List.rev bindings) @ rev_lets)
       in
       loop body ~acc ~rev_lets
     | t ->
       let last_body, acc = for_last_body acc t in
       finish ~last_body ~acc ~rev_lets
   in
-  loop t ~acc:init ~rev_lets:[]
+  loop t ~acc:init ~rev_lets:(Some [])
 
 let free_symbols_helper symbols (named : named) =
   match named with
