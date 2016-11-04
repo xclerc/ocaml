@@ -504,6 +504,13 @@ module Result = struct
         Continuation.Map.remove i t.used_continuations;
     }, approxs
 
+  let exit_continuation_scope t cont =
+    (* CR mshinwell: think about this whole "used continuations" thing. *)
+    { t with
+      used_continuations =
+        Continuation.Map.remove cont t.used_continuations;
+    }
+
   let map_benefit t f =
     { t with benefit = f t.benefit }
 

@@ -321,6 +321,8 @@ module Result : sig
       of removing the identifier from the [used_staticfail] set. *)
   val exit_scope_catch : t -> Continuation.t -> t * Simple_value_approx.t list
 
+  val exit_continuation_scope : t -> Continuation.t -> t
+
   (** The benefit to be gained by inlining the subexpression whose
       simplification yielded the given result structure. *)
   val benefit : t -> Inlining_cost.Benefit.t

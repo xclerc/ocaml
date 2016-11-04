@@ -538,7 +538,8 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         List.iter bound_variable params;
         aux handler
       end
-    | Switch _ | Proved_unreachable -> ()
+    | Switch (var, _) -> free_variable var
+    | Proved_unreachable -> ()
   in
   aux tree;
   if all_used_variables then

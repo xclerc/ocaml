@@ -605,6 +605,7 @@ and simplify_set_of_closures original_env r
         ~dbg:function_decl.dbg
         ~f:(fun body_env -> simplify body_env r function_decl.body)
     in
+    let r = R.exit_continuation_scope r function_decl.continuation_param in
     let inline : Lambda.inline_attribute =
       match function_decl.inline with
       | Default_inline ->
@@ -1408,7 +1409,14 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~free_vars ~specialised_args ~parameter_approximations
       ~set_of_closures_env
   in
-  let body, _r =
+  let cont_approx =
+    Continuation_approx.create_unknown ~name:function_decl.continuation_param
+  in
+  let closure_env =
+    E.add_continuation closure_env function_decl.continuation_param
+      cont_approx
+  in
+  let body, r =
     E.enter_closure closure_env
       ~closure_id:(Closure_id.wrap fun_var)
       ~inline_inside:false
@@ -1416,6 +1424,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~f:(fun body_env ->
         simplify body_env (R.create ()) function_decl.body)
   in
+  let _r = R.exit_continuation_scope r function_decl.continuation_param in
   let function_decl =
     Flambda.create_function_declaration ~params:function_decl.params
       ~continuation_param:function_decl.continuation_param
@@ -1600,6 +1609,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         let cont_approx = Continuation_approx.create_unknown ~name:cont in
         let env = E.add_continuation env cont cont_approx in
         let h', r = simplify env r h in
+        let r = R.exit_continuation_scope r cont in
         let approxs = (R.approx r) :: approxs in
         if t' == t && h' == h
         then l, approxs, r
@@ -1616,6 +1626,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
   | Effect (expr, cont, program) ->
     let expr, r = simplify env r expr in
     let program, r = simplify_program_body env r program in
+    let r = R.exit_continuation_scope r cont in
     Effect (expr, cont, program), r
   | End root -> End root, r
 
