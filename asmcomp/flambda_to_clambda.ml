@@ -241,7 +241,8 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     let id, env_body = Env.add_fresh_mutable_ident env mut_var in
     let def = subst_var env var in
     Ulet (Mutable, contents_kind, id, def, to_clambda t env_body body)
-  | Apply { func; args; kind = Direct direct_func; dbg = dbg } ->
+  | Apply { kind = Function; func; args; call_kind = Direct direct_func;
+      dbg = dbg } ->
     (* The closure _parameter_ of the function is added by cmmgen.
        At the call site, for a direct call, the closure argument must be
        explicitly added (by [to_clambda_direct_apply]); there is no special
@@ -250,12 +251,17 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
        do the equivalent of the previous paragraph when it generates a direct
        call to [caml_apply]. *)
     to_clambda_direct_apply t func args direct_func dbg env
-  | Apply { func; args; kind = Indirect; dbg = dbg } ->
+  | Apply { kind = Function; func; args; call_kind = Indirect; dbg = dbg } ->
     let callee = subst_var env func in
     Ugeneric_apply (check_closure callee (Flambda.Var func),
       subst_vars env args, dbg)
+  | Apply { kind = Method { kind; obj; }; func; args; call_kind = _;
+      dbg = dbg; } ->
+    Usend (kind, subst_var env func, subst_var env obj,
+      subst_vars env args, dbg)
   | Switch (arg, sw) ->
   (* CR mshinwell: Simplify as required for Cmmgen *)
+  (* ...needs splitting for ifthenelse/switch/stringswitch *)
     let aux () : Clambda.ulambda =
       let const_index, const_actions =
         to_clambda_switch t env sw.consts sw.numconsts sw.failaction
@@ -294,14 +300,17 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
   | Apply_cont (static_exn, args) ->
     Ustaticfail (Continuation.to_int static_exn,
       List.map (subst_var env) args)
-  | Let_cont (static_exn, vars, body, handler) ->
+  | Let_cont { handler = Alias _; } ->
+    (* keep track of these in env *)
+    ...
+  | Let_cont { name; body; handler = Handler { params; handler; _ }; } ->
     let env_handler, ids =
       List.fold_right (fun var (env, ids) ->
           let id, env = Env.add_fresh_ident env var in
           env, id :: ids)
-        vars (env, [])
+        params (env, [])
     in
-    Ucatch (Continuation.to_int static_exn, ids,
+    Ucatch (Continuation.to_int name, ids,
       to_clambda t env body, to_clambda t env_handler handler)
   | Proved_unreachable -> Uunreachable
 
