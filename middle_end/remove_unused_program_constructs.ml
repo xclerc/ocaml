@@ -75,30 +75,30 @@ let rec loop (program : Flambda.program_body)
     let program, dep = loop program in
     if Symbol.Set.mem sym dep then
       let dep =
-        List.fold_left (fun dep field ->
+        List.fold_left (fun dep (field, _cont) ->
             Symbol.Set.union dep (dependency field))
           dep fields
       in
       Initialize_symbol (sym, tag, fields, program), dep
     else begin
       List.fold_left
-        (fun (program, dep) field ->
+        (fun (program, dep) (field, cont) ->
            if Effect_analysis.no_effects field then
              program, dep
            else
              let new_dep = dependency field in
              let dep = Symbol.Set.union new_dep dep in
-             Flambda.Effect (field, program), dep)
+             Flambda.Effect (field, cont, program), dep)
         (program, dep) fields
     end
-  | Effect (effect, program) ->
+  | Effect (effect, cont, program) ->
     let program, dep = loop program in
     if Effect_analysis.no_effects effect then begin
       program, dep
     end else begin
       let new_dep = dependency effect in
       let dep = Symbol.Set.union new_dep dep in
-      Effect (effect, program), dep
+      Effect (effect, cont, program), dep
     end
   | End symbol -> program, Symbol.Set.singleton symbol
 
