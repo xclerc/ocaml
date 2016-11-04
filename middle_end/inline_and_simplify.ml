@@ -18,7 +18,6 @@
 
 module A = Simple_value_approx
 module B = Inlining_cost.Benefit
-module C = Continuation_approx
 module E = Inline_and_simplify_aux.Env
 module R = Inline_and_simplify_aux.Result
 
@@ -143,7 +142,7 @@ let simplify_free_variable_named env var ~f =
 
 let simplify_named_using_approx r named approx =
   let named, _summary, approx = A.simplify_named approx named in
-  Some ([], named, R.set_approx r approx)
+  Some ([], named), R.set_approx r approx
 
 let simplify_named_using_approx_and_env env r original_named approx =
   let named, summary, approx =
@@ -375,7 +374,7 @@ let simplify_move_within_set_of_closures env r
                   ret r approx)
 
 (** Simplify an application of a continuation. *)
-let simplify_apply_cont _t env r cont ~args_approxs =
+let simplify_apply_cont env r cont ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   match E.find_continuation env cont with
   | exception Not_found ->
@@ -772,6 +771,10 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
           in
           let nargs = List.length args in
           let arity = Flambda_utils.function_arity function_decl in
+          let continuation =
+            Freshening.apply_static_exception (E.freshening env)
+              apply.continuation
+          in
           let result, r =
             if nargs = arity then
               simplify_full_application env r ~function_decls
@@ -843,11 +846,12 @@ and simplify_partial_application env r ~lhs_of_application
     Misc.Stdlib.List.map2_prefix (fun arg id' -> id', arg)
       args freshened_params
   in
+  let wrapper_continuation_param = Continuation.create () in
   let wrapper_accepting_remaining_args =
     let body : Flambda.t =
       Apply {
         kind = Function;
-        continuation;
+        continuation = wrapper_continuation_param;
         func = lhs_of_application;
         args = freshened_params;
         call_kind = Direct closure_id_being_applied;
@@ -865,6 +869,8 @@ and simplify_partial_application env r ~lhs_of_application
       ~body
       ~params:remaining_args
       ~stub:true
+      ~continuation_param:wrapper_continuation_param
+      ~continuation
   in
   let with_known_args =
     Flambda_utils.bind
@@ -887,19 +893,35 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   let full_app_approxs, _ =
     Misc.Stdlib.List.split_at arity args_approxs
   in
-  let expr, r =
+  let after_full_application = Continuation.create () in
+  let full_application, r =
     simplify_full_application env r ~function_decls ~lhs_of_application
       ~closure_id_being_applied ~function_decl ~value_set_of_closures
-      ~args:full_app_args ~args_approxs:full_app_approxs ~dbg
-      ~inline_requested ~specialise_requested
+      ~args:full_app_args ~args_approxs:full_app_approxs
+      ~continuation:after_full_application ~dbg ~inline_requested
+      ~specialise_requested
   in
   let func_var = Variable.create "full_apply" in
   let expr : Flambda.t =
-    Flambda.create_let func_var (Expr expr)
-      (Apply { func = func_var; args = remaining_args; kind = Indirect; dbg;
-        inline = inline_requested; specialise = specialise_requested; })
+    Let_cont {
+      name = after_full_application;
+      body = full_application;
+      handler = Handler {
+        recursive = Nonrecursive;
+        params = [func_var];
+        handler =
+          Apply {
+            kind = Function;
+            continuation;
+            func = func_var;
+            args = remaining_args;
+            call_kind = Indirect;
+            dbg;
+            inline = inline_requested;
+            specialise = specialise_requested;
+          };
+      }};
   in
-  let expr = Lift_code.lift_lets_expr expr ~toplevel:true in
   simplify (E.set_never_inline env) r expr
 
 (** [simplify_named] returns:
@@ -924,15 +946,15 @@ and simplify_named env r (tree : Flambda.named)
        When this comes from another compilation unit, we must load it. *)
     let approx = E.find_or_load_symbol env sym in
     simplify_named_using_approx r tree approx
-  | Const cst -> Some ([], tree, ret r (approx_for_const cst))
+  | Const cst -> Some ([], tree), ret r (approx_for_const cst)
   | Allocated_const cst ->
-    Some ([], tree, ret r (approx_for_allocated_const cst))
+    Some ([], tree), ret r (approx_for_allocated_const cst)
   | Read_mutable mut_var ->
     (* See comment on the [Assign] case. *)
     let mut_var =
       Freshening.apply_mutable_variable (E.freshening env) mut_var
     in
-    Some ([], Read_mutable mut_var, ret r (A.value_unknown Other))
+    Some ([], Read_mutable mut_var), ret r (A.value_unknown Other)
   | Read_symbol_field (symbol, field_index) ->
     let approx = E.find_or_load_symbol env symbol in
     begin match A.get_field approx ~field_index with
@@ -1184,23 +1206,24 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       r)
   | Apply_cont (cont, args) ->
     simplify_free_variables env args ~f:(fun _env args args_approxs ->
-      let cont, r = simplify_apply_cont t env cont ~args_approxs in
+      let cont, r = simplify_apply_cont env r cont ~args_approxs in
       Apply_cont (cont, args), ret r A.value_bottom)
   | Let_cont ({ name = cont; body; handler } as let_cont) ->
     begin match body with
     | Let { var; defining_expr = def; body; _ }
-        when not (Flambda_utils.might_raise_static_exn def i) ->
-      simplify env r (Flambda.create_let var def (Let_cont let_cont))
+        when not (Flambda_utils.might_raise_static_exn def cont) ->
+      simplify env r (Flambda.create_let var def
+        (Let_cont { let_cont with body; }))
     | _ ->
       let cont, sb = Freshening.add_static_exception (E.freshening env) cont in
       let approx =
         match handler with
-        | Handler handler -> Cont_approx.create ~name:cont ~handler
+        | Handler handler -> Continuation_approx.create ~name:cont ~handler
         | Alias alias_of ->
           let alias_of =
             Freshening.apply_static_exception (E.freshening env) alias_of
           in
-          match E.find_continuation_exn env alias_of with
+          match E.find_continuation env alias_of with
           | exception Not_found ->
             Misc.fatal_errorf "Alias of unbound continuation %a"
               Continuation.print cont
@@ -1209,7 +1232,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let env = E.set_freshening env sb in
       let body_env = E.add_continuation env cont approx in
       let body, r = simplify body_env r body in
-      if not (R.is_used_continuation r i) then begin
+      if not (R.is_used_continuation r cont) then begin
         (* If the continuation is not used, we can drop the declaration *)
         body, r
       end else begin
@@ -1257,7 +1280,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
               { name = cont;
                 body;
                 handler = Handler {
-                  params;
+                  params = vars;
                   recursive;
                   handler;
                 };
@@ -1273,30 +1296,33 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
        [Switch].  (This should also make the [Let] that binds [arg] redundant,
        meaning that it too can be eliminated.) *)
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->
-      let rec filter_branches filter branches compatible_branches =
+      let rec filter_branches filter branches compatible_branches ~add =
         match branches with
         | [] -> Can_be_taken compatible_branches
         | (c, cont) as branch :: branches ->
           match filter arg_approx c with
           | A.Cannot_be_taken ->
-            filter_branches filter branches compatible_branches
+            filter_branches filter branches compatible_branches ~add
           | A.Can_be_taken ->
-            filter_branches filter branches (branch :: compatible_branches)
+            filter_branches filter branches (add branch :: compatible_branches)
+              ~add
           | A.Must_be_taken ->
             Must_be_taken cont
       in
       let filtered_consts =
         filter_branches A.potentially_taken_const_switch_branch sw.consts []
+          ~add:(fun (tag, cont) -> Ilambda.Tag tag, cont)
       in
       let filtered_blocks =
         filter_branches A.potentially_taken_block_switch_branch sw.blocks []
+          ~add:(fun branch -> branch)
       in
       begin match filtered_consts, filtered_blocks with
       | Must_be_taken _, Must_be_taken _ ->
         assert false
       | Must_be_taken cont, _
       | _, Must_be_taken cont ->
-        let cont, r = simplify_apply_cont _t env r cont ~args_approxs:[] in
+        let cont, r = simplify_apply_cont env r cont ~args_approxs:[] in
         Apply_cont (cont, []), R.map_benefit r B.remove_branch
       | Can_be_taken consts, Can_be_taken blocks ->
         match consts, blocks, sw.failaction with
@@ -1317,12 +1343,12 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         | [_, cont], [], None
         | [], [_, cont], None
         | [], [], Some cont ->
-          let cont, r = simplify_apply_cont _t env r cont ~args_approxs:[] in
+          let cont, r = simplify_apply_cont env r cont ~args_approxs:[] in
           Apply_cont (cont, []), R.map_benefit r B.remove_branch
         | _ ->
           let env = E.inside_branch env in
           let f (i, cont) (acc, r) =
-            let cont, r = simplify_apply_cont _t env r cont ~args_approxs:[] in
+            let cont, r = simplify_apply_cont env r cont ~args_approxs:[] in
             (i, cont)::acc, r
           in
           let r = R.set_approx r A.value_bottom in
@@ -1333,9 +1359,16 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             | None -> None, r
             | Some cont ->
               let cont, r =
-                simplify_apply_cont _t env r cont ~args_approxs:[]
+                simplify_apply_cont env r cont ~args_approxs:[]
               in
               Some cont, r
+          in
+          let consts =
+            List.map (fun ((pat : Ilambda.switch_block_pattern), cont) ->
+                match pat with
+                | Tag tag -> tag, cont
+                | String _ -> assert false)
+              consts
           in
           let sw = { sw with failaction; consts; blocks; } in
           Switch (arg, sw), r
@@ -1413,7 +1446,7 @@ let constant_defining_value_approx
               | Some approx -> approx
               | None -> A.value_unresolved sym
             end
-          | Flambda.Const cst -> simplify_const cst)
+          | Flambda.Const cst -> approx_for_const cst)
         fields
     in
     A.value_block tag (Array.of_list fields)
@@ -1497,7 +1530,7 @@ let simplify_constant_defining_value
       let fields = List.map
           (function
             | Flambda.Symbol sym -> E.find_symbol_exn env sym
-            | Flambda.Const cst -> simplify_const cst)
+            | Flambda.Const cst -> approx_for_const cst)
           fields
       in
       r, constant_defining_value, A.value_block tag (Array.of_list fields)

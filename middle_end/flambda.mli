@@ -370,6 +370,7 @@ and function_declaration = private {
 }
 
 (** Equivalent to the similar type in [Ilambda]. *)
+(* CR mshinwell: change this type as per Pierre's suggestion? *)
 and switch = {
   numconsts : Numbers.Int.Set.t; (** Integer cases *)
   consts : (int * Continuation.t) list; (** Integer cases *)

@@ -258,9 +258,9 @@ let toplevel_substitution_named sb named =
   | Let let_expr -> let_expr.defining_expr
   | _ -> assert false
 *)
-(* needs ~f
+
 let make_closure_declaration ~id ~body ~params ~continuation_param
-      ~stub : Flambda.t =
+      ~stub ~continuation : Flambda.t =
   let free_variables = Flambda.free_variables body in
   let param_set = Variable.Set.of_list params in
   if not (Variable.Set.subset param_set free_variables) then begin
@@ -323,8 +323,7 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
   in
   Flambda.create_let set_of_closures_var (Set_of_closures set_of_closures)
     (Flambda.create_let project_closure_var project_closure
-      (Var project_closure_var))
-*)
+      (Apply_cont (continuation, [project_closure_var])))
 
 let bind ~bindings ~body =
   List.fold_left (fun expr (var, var_def) ->

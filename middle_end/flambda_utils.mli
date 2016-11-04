@@ -66,15 +66,15 @@ val make_key : Flambda.t -> sharing_key option
 (* CR-soon mshinwell: consider improving name and names of arguments
    lwhite: the params restriction seems odd, perhaps give a reason
    in the comment. *)
-(*
 val make_closure_declaration
    : id:Variable.t
   -> body:Flambda.t
   -> params:Variable.t list
   -> continuation_param:Continuation.t
+  (* CR mshinwell: update comment. *)
   -> stub:bool
+  -> continuation:Continuation.t
   -> Flambda.t
-*)
 
 val toplevel_substitution
    : Variable.t Variable.Map.t
