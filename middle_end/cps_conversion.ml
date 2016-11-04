@@ -50,6 +50,35 @@ let name_for_function (func : Lambda.lfunction) =
 (* CR-soon mshinwell: Remove mutable state. *)
 let static_exn_env = ref Numbers.Int.Map.empty
 
+module Num_continuation_uses : sig
+  type t =
+    | Zero
+    | One
+    | Many
+
+  val (+) : t -> t -> t
+
+  val linear : t -> bool
+end = struct
+  type t =
+    | Zero
+    | One
+    | Many
+
+  let (+) t1 t2 =
+    match t1, t2 with
+    | Zero, Zero -> Zero
+    | Zero, One | One, Zero -> One
+    | One, One -> Many
+    | _, Many | Many, _ -> Many
+
+  let linear = function
+    | Zero | One -> true
+    | Many -> false
+end
+
+module N = Num_continuation_uses
+
 let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
   match lam with
   | Lvar id -> k id
@@ -95,7 +124,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     in
     Let_cont {
       name = after_defining_expr;
-      administrative = (k_count_defining_expr <= 1);
+      administrative = N.linear k_count_defining_expr;
       params = [temp_id];
       recursive = Nonrecursive;
       body = defining_expr;
@@ -129,7 +158,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     in
     Let_cont {
       name = after_defining_expr;
-      administrative = (k_count_defining_expr <= 1);
+      administrative = N.linear k_count_defining_expr;
       params = [id];
       recursive = Nonrecursive;
       body = defining_expr;
@@ -163,7 +192,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let body, k_count = cps_switch proto_switch ~scrutinee after_switch in
     Let_cont {
       name = after_switch;
-      administrative = (k_count <= 1);
+      administrative = N.linear k_count;
       params = [result_var];
       recursive = Nonrecursive;
       body;
@@ -188,7 +217,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let body, k_count = cps_switch proto_switch ~scrutinee after_switch in
     Let_cont {
       name = after_switch;
-      administrative = (k_count <= 1);
+      administrative = N.linear k_count;
       params = [result_var];
       recursive = Nonrecursive;
       body;
@@ -262,9 +291,9 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
 
 (** [cps_tail lam k] returns the Ilambda term together with the number of
     uses in that term of the continuation [k]. *)
-and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
+and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
   match lam with
-  | Lvar id -> Apply_cont (k, [id]), 1
+  | Lvar id -> Apply_cont (k, [id]), N.One
   | Lconst _ -> name_then_cps_tail "const" lam k
   | Lapply apply ->
     cps_non_tail apply.ap_func (fun func ->
@@ -279,7 +308,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
           inlined = apply.ap_inlined;
           specialised = apply.ap_specialised;
         } in
-        I.Apply apply)), 1
+        I.Apply apply)), N.Many
   | Lfunction func -> name_then_cps_tail (name_for_function func) lam k
   | Llet (Variable, value_kind, id, defining_expr, body) ->
     let temp_id = Ident.create "let_mutable" in
@@ -297,7 +326,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
     in
     Let_cont {
       name = after_defining_expr;
-      administrative = (k_count_defining_expr <= 1);
+      administrative = N.linear k_count_defining_expr;
       params = [temp_id];
       recursive = Nonrecursive;
       body = defining_expr;
@@ -332,7 +361,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
     in
     Let_cont {
       name = after_defining_expr;
-      administrative = (k_count_defining_expr <= 1);
+      administrative = N.linear k_count_defining_expr;
       params = [id];
       recursive = Nonrecursive;
       body = defining_expr;
@@ -349,7 +378,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
     let result_var = Ident.create name in
     cps_non_tail_list args (fun args ->
       I.Let (result_var, Prim (prim, args, loc), Apply_cont (k, [result_var]))),
-    1
+    N.One
   | Lswitch (scrutinee, switch) ->
     let block_nums, blocks = List.split switch.sw_blocks in
     let block_pats = List.map (fun tag -> I.Tag tag) block_nums in
@@ -383,7 +412,8 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
         Misc.fatal_errorf "Unbound static exception %d" static_exn
       | continuation -> continuation
     in
-    cps_non_tail_list args (fun args -> I.Apply_cont (continuation, args)), 1
+    cps_non_tail_list args (fun args -> I.Apply_cont (continuation, args)),
+      N.One
   | Lstaticcatch (body, (static_exn, args), handler) ->
     let continuation = Continuation.create () in
     static_exn_env := Numbers.Int.Map.add static_exn continuation
@@ -397,7 +427,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
       recursive = Recursive;  (* see CR comment above *)
       body;
       handler;
-    }, k_count_body + k_count_handler;
+    }, N.(+) k_count_body k_count_handler;
   | Lsend (meth_kind, meth, obj, args, loc) ->
     cps_non_tail obj (fun obj ->
       cps_non_tail meth (fun meth ->
@@ -412,7 +442,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * int =
             inlined = Default_inline;
             specialised = Default_specialise;
           } in
-          I.Apply apply))), 1
+          I.Apply apply))), N.One
   | Lassign _ -> name_then_cps_tail "assign" lam k
   | Levent (lam, event) ->
     let ilam, k_count = cps_tail lam k in
@@ -472,7 +502,7 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
     }
   in
   (* CR mshinwell: tidy this up *)
-  let k_count_ref = ref 0 in
+  let k_count_ref = ref N.Zero in
   let make_continuations desc ~init =
     let ilam, k_count =
       List.fold_right (fun (case, cont) (acc, k_count) ->
@@ -487,11 +517,11 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
               handler;
             }
           in
-          acc, k_count + k_count')
+          acc, N.(+) k_count k_count')
         desc
-        (init, 0)
+        (init, N.Zero)
     in
-    k_count_ref := !k_count_ref + k_count;
+    k_count_ref := N.(+) !k_count_ref k_count;
     ilam
   in
   let ilam =
@@ -502,7 +532,7 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
         | None -> body
         | Some (cont, failaction) ->
           let handler, k_count = cps_tail failaction k in
-          k_count_ref := !k_count_ref + k_count;
+          k_count_ref := N.(+) !k_count_ref k_count;
           I.Let_cont {
             name = cont;
             administrative = false;

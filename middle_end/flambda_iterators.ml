@@ -204,7 +204,7 @@ let map_general ~toplevel f f_named tree =
           else
             Let_mutable { mutable_let with body = new_body }
         | Let_cont ({ body; handler; _ } as let_cont) ->
-          let new_body = f body in
+          let new_body = aux body in
           match handler with
           | Alias _ ->
             if new_body == body then
@@ -212,7 +212,7 @@ let map_general ~toplevel f f_named tree =
             else
               Let_cont { let_cont with body = new_body; }
           | Handler ({ handler; _ } as let_cont_handler) ->
-            let new_handler = f handler in
+            let new_handler = aux handler in
             if new_body == body && new_handler == handler then
               tree
             else
@@ -222,8 +222,8 @@ let map_general ~toplevel f f_named tree =
                   handler = new_handler;
                 };
               }
-            in
-            f exp
+      in
+      f exp
   and aux_named (id : Variable.t) (named : Flambda.named) =
     let named : Flambda.named =
       match named with

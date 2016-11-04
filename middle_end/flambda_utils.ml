@@ -191,6 +191,11 @@ let toplevel_substitution sb tree =
       Let_mutable { mutable_let with initial_value }
     | Apply { kind; func; args; continuation; call_kind; dbg; inline;
         specialise; } ->
+      let kind : Flambda.apply_kind =
+        match kind with
+        | Function -> Function
+        | Method { kind; obj; } -> Method { kind; obj = sb obj; }
+      in
       let func = sb func in
       let args = List.map sb args in
       Apply { kind; func; args; continuation; call_kind; dbg; inline;
@@ -206,8 +211,9 @@ let toplevel_substitution sb tree =
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
     | Var var ->
-      let var = sb var in
-      Var var
+      let var' = sb var in
+      if var == var' then named
+      else Var var'
     | Symbol _ | Const _ -> named
     | Allocated_const _ | Read_mutable _ -> named
     | Assign { being_assigned; new_value; } ->
@@ -249,7 +255,14 @@ let toplevel_substitution sb tree =
   in
   if Variable.Map.is_empty sb' then tree
   else Flambda_iterators.map_toplevel aux aux_named tree
+
 (*
+let toplevel_substitution sb tree =
+  Format.eprintf "Before toplevel_substitution (%a):\n@;%a\n"
+    (Variable.Map.print Variable.print) sb Flambda.print tree;
+  let r = toplevel_substitution sb tree in
+  Format.eprintf "After toplevel_substitution:\n%a\n" Flambda.print r;
+  r
 (* CR-someday mshinwell: Fix [Flambda_iterators] so this can be implemented
    properly. *)
 let toplevel_substitution_named sb named =

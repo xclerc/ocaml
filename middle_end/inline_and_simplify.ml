@@ -1274,12 +1274,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           | _, _ ->
             let vars, sb = Freshening.add_variables' (E.freshening env) vars in
             let r, vars_approxs = R.exit_scope_catch r cont in
-            let vars_and_approx =
-              List.combine vars vars_approxs
-            in
+            let vars_and_approxs = List.combine vars vars_approxs in
             let env =
               List.fold_left (fun env (id, approx) -> E.add env id approx)
-                (E.set_freshening env sb) vars_and_approx
+                (E.set_freshening env sb) vars_and_approxs
             in
             let env = E.inside_branch env in
             let handler, r = simplify env r handler in

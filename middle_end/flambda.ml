@@ -245,20 +245,20 @@ let rec lam ppf (flam : t) =
         List.iter
           (fun (n, l) ->
              if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<hv 1>case int %i:@ apply_cont %a@]"
+             fprintf ppf "@[<hv 1>case int %i:@ goto %a@]"
                n Continuation.print l)
           sw.consts;
         List.iter
           (fun (n, l) ->
              if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<hv 1>case %a:@ apply_cont %a@]"
+             fprintf ppf "@[<hv 1>case %a:@ goto %a@]"
                Ilambda.print_switch_block_pattern n Continuation.print l)
           sw.blocks;
         begin match sw.failaction with
         | None  -> ()
         | Some l ->
             if !spc then fprintf ppf "@ " else spc := true;
-            fprintf ppf "@[<hv 1>default:@ apply_cont %a@]"
+            fprintf ppf "@[<hv 1>default:@ goto %a@]"
               Continuation.print l
         end in
       fprintf ppf
@@ -267,6 +267,9 @@ let rec lam ppf (flam : t) =
         (Int.Set.cardinal sw.numconsts)
         (Int.Set.cardinal sw.numblocks)
         Variable.print larg switch sw
+  | Apply_cont (i, []) ->
+    fprintf ppf "@[<2>(goto@ %a)@]"
+      Continuation.print i
   | Apply_cont (i, ls) ->
     fprintf ppf "@[<2>(apply_cont@ %a@ %a)@]"
       Continuation.print i
@@ -285,7 +288,7 @@ let rec lam ppf (flam : t) =
       | Handler { params; recursive; handler; } ->
         fprintf ppf "@[<v 2>where %a%s%s%a%s =@ %a@]"
           Continuation.print name
-          (match recursive with Nonrecursive -> "" | Recursive -> "*")
+          (match recursive with Nonrecursive -> "" | Recursive -> "rec")
           (match params with [] -> "" | _ -> " (")
           Variable.print_list params
           (match params with [] -> "" | _ -> ")")
