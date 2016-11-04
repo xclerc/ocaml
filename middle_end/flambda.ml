@@ -745,6 +745,10 @@ module With_free_variables = struct
   let of_named named =
     Named (named, free_variables_named named)
 
+  let to_named (t : named t) =
+    match t with
+    | Named (named, _) -> named
+
   let create_let_reusing_defining_expr var (t : named t) body =
     match t with
     | Named (defining_expr, free_vars_of_defining_expr) ->

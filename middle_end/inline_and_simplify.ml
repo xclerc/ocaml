@@ -36,7 +36,7 @@ let ret = R.set_approx
 
 type simplify_variable_result =
   | No_binding of Variable.t
-  | Binding of Variable.t * Flambda.named
+  | Binding of Variable.t * (Flambda.named Flambda.With_free_variables.t)
 
 let simplify_free_variable_internal env original_var =
   let var = Freshening.apply_variable (E.freshening env) original_var in
@@ -65,11 +65,13 @@ let simplify_free_variable_internal env original_var =
   match E.find_with_scope_exn env var with
   | Current, approx -> No_binding var, approx  (* avoid useless [let] *)
   | Outer, approx ->
+    let module W = Flambda.With_free_variables in
     match A.simplify_var approx with
     | None -> No_binding var, approx
-    | Some (named, approx) -> Binding (original_var, named), approx
+    | Some (named, approx) -> Binding (original_var, W.of_named named), approx
 
-let simplify_free_variable env var ~f =
+(*
+let _simplify_free_variable env var ~f =
   match simplify_free_variable_internal env var with
   | No_binding var, approx -> f env var approx
   | Binding (var, named), approx ->
@@ -77,6 +79,36 @@ let simplify_free_variable env var ~f =
     let env = E.add env var approx in
     let body, r = f env var approx in
     Flambda.create_let var named body, r
+*)
+
+let simplify_free_variable env var ~f : Flambda.t * R.t =
+  match simplify_free_variable_internal env var with
+  | No_binding var, approx -> f env var approx
+  | Binding (var, named), approx ->
+    let module W = Flambda.With_free_variables in
+    let var = Variable.rename var in
+    let env = E.add env var approx in
+    let body, r = f env var approx in
+    (W.create_let_reusing_defining_expr var named body), r
+
+let simplify_free_variables env vars ~f : Flambda.t * R.t =
+  let rec collect_bindings vars env bound_vars approxs : Flambda.t * R.t =
+    match vars with
+    | [] -> f env (List.rev bound_vars) (List.rev approxs)
+    | var::vars ->
+      match simplify_free_variable_internal env var with
+      | No_binding var, approx ->
+        collect_bindings vars env (var::bound_vars) (approx::approxs)
+      | Binding (var, named), approx ->
+        let module W = Flambda.With_free_variables in
+        let var = Variable.rename var in
+        let env = E.add env var approx in
+        let body, r =
+          collect_bindings vars env (var::bound_vars) (approx::approxs)
+        in
+        (W.create_let_reusing_defining_expr var named body), r
+  in
+  collect_bindings vars env [] []
 
 let simplify_free_variables_named env vars ~f =
   let rec collect_bindings vars env bound_vars approxs
@@ -88,6 +120,7 @@ let simplify_free_variables_named env vars ~f =
       | No_binding var, approx ->
         collect_bindings vars env (var::bound_vars) (approx::approxs)
       | Binding (var, named), approx ->
+        let named = Flambda.With_free_variables.to_named named in
         let var = Variable.rename var in
         let env = E.add env var approx in
         let bindings_and_named, r =
@@ -123,7 +156,7 @@ let simplify_named_using_approx_and_env env r original_named approx =
     | Replaced_term -> R.map_benefit r (B.remove_code_named original_named)
     | Nothing_done -> r
   in
-  Some ([], named, r)
+  Some ([], named), r
 
 let approx_for_const (const : Flambda.const) =
   match const with
@@ -146,7 +179,7 @@ let approx_for_allocated_const (const : Allocated_const.t) =
 
 type filtered_switch_branches =
   | Must_be_taken of Continuation.t
-  | Can_be_taken of (Flambda.switch_block_pattern * Continuation.t) list
+  | Can_be_taken of (Ilambda.switch_block_pattern * Continuation.t) list
 
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body
@@ -325,7 +358,7 @@ let simplify_move_within_set_of_closures env r
                   A.value_closure ~set_of_closures_var ~set_of_closures_symbol
                     value_set_of_closures move_to
                 in
-                let bindings = [
+                let bindings : (Variable.t * Flambda.named) list = [
                   set_of_closures_var, Symbol set_of_closures_symbol;
                 ]
                 in
@@ -338,18 +371,19 @@ let simplify_move_within_set_of_closures env r
                   { closure; start_from; move_to; }
                 in
                 let approx = A.value_closure value_set_of_closures move_to in
-                Move_within_set_of_closures move_within, ret r approx)
+                Some ([], Move_within_set_of_closures move_within),
+                  ret r approx)
 
 (** Simplify an application of a continuation. *)
 let simplify_apply_cont _t env r cont ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   match E.find_continuation env cont with
   | exception Not_found ->
-    Misc.fatal_error "Application of unbound continuation %a"
+    Misc.fatal_errorf "Application of unbound continuation %a"
       Continuation.print cont
   | cont_approx ->
     let cont = Continuation_approx.name cont_approx in
-    let r = R.use_continuation r env i args_approxs in
+    let r = R.use_continuation r env cont args_approxs in
     cont, r
 
 (* Transform an expression denoting an access to a variable bound in
@@ -634,9 +668,38 @@ and simplify_set_of_closures original_env r
   set_of_closures, r, value_set_of_closures.freshening
 
 and simplify_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
+  match apply.kind with
+  | Function -> simplify_function_apply env r ~apply
+  | Method { kind; obj; } ->
+    simplify_method_call env r ~apply ~kind ~obj
+
+and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
+  simplify_free_variable env obj ~f:(fun env obj _obj_approx ->
+    simplify_free_variable env apply.func ~f:(fun env func _obj_approx ->
+      simplify_free_variables env apply.args ~f:(fun env args _args_approxs ->
+        let continuation =
+          Freshening.apply_static_exception (E.freshening env)
+            apply.continuation
+        in
+        let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
+        let apply : Flambda.apply = {
+          kind = Method { kind; obj; };
+          func;
+          continuation;
+          args;
+          call_kind = apply.call_kind;
+          dbg;
+          inline = apply.inline;
+          specialise = apply.specialise;
+        }
+        in
+        Apply apply, ret r (A.value_unknown Other))))
+
+and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
   let {
-    Flambda. func = lhs_of_application; args; kind = _; dbg;
+    Flambda. func = lhs_of_application; args; call_kind = _; dbg;
     inline = inline_requested; specialise = specialise_requested;
+    continuation; kind;
   } = apply in
   let dbg = E.add_inlined_debuginfo env ~dbg in
   simplify_free_variable env lhs_of_application
@@ -702,7 +765,7 @@ and simplify_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
                 Closure_id.print closure_id_being_applied
           in
           let r =
-            match apply.kind with
+            match apply.call_kind with
             | Indirect ->
               R.map_benefit r Inlining_cost.Benefit.direct_call_of_indirect
             | Direct _ -> r
@@ -713,17 +776,17 @@ and simplify_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
             if nargs = arity then
               simplify_full_application env r ~function_decls
                 ~lhs_of_application ~closure_id_being_applied ~function_decl
-                ~value_set_of_closures ~args ~args_approxs ~dbg
+                ~value_set_of_closures ~args ~args_approxs ~continuation ~dbg
                 ~inline_requested ~specialise_requested
             else if nargs > arity then
               simplify_over_application env r ~args ~args_approxs
-                ~function_decls ~lhs_of_application ~closure_id_being_applied
-                ~function_decl ~value_set_of_closures ~dbg ~inline_requested
-                ~specialise_requested
+                ~continuation ~function_decls ~lhs_of_application
+                ~closure_id_being_applied ~function_decl ~value_set_of_closures
+                ~dbg ~inline_requested ~specialise_requested
             else if nargs > 0 && nargs < arity then
               simplify_partial_application env r ~lhs_of_application
-                ~closure_id_being_applied ~function_decl ~args ~dbg
-                ~inline_requested ~specialise_requested
+                ~closure_id_being_applied ~function_decl ~args
+                ~continuation ~dbg ~inline_requested ~specialise_requested
             else
               Misc.fatal_errorf "Function with arity %d when simplifying \
                   application expression: %a"
@@ -731,20 +794,21 @@ and simplify_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
           in
           wrap result, r
         | Wrong ->  (* Insufficient approximation information to simplify. *)
-          Apply ({ func = lhs_of_application; args; kind = Indirect; dbg;
-              inline = inline_requested; specialise = specialise_requested; }),
+          Apply ({ kind; func = lhs_of_application; args; call_kind = Indirect;
+              dbg; inline = inline_requested; specialise = specialise_requested;
+              continuation; }),
             ret r (A.value_unknown Other)))
 
 and simplify_full_application env r ~function_decls ~lhs_of_application
       ~closure_id_being_applied ~function_decl ~value_set_of_closures ~args
-      ~args_approxs ~dbg ~inline_requested ~specialise_requested =
+      ~args_approxs ~continuation ~dbg ~inline_requested ~specialise_requested =
   Inlining_decision.for_call_site ~env ~r ~function_decls
     ~lhs_of_application ~closure_id_being_applied ~function_decl
-    ~value_set_of_closures ~args ~args_approxs ~dbg ~simplify
+    ~value_set_of_closures ~args ~args_approxs ~continuation ~dbg ~simplify
     ~inline_requested ~specialise_requested
 
 and simplify_partial_application env r ~lhs_of_application
-      ~closure_id_being_applied ~function_decl ~args ~dbg
+      ~closure_id_being_applied ~function_decl ~args ~continuation ~dbg
       ~inline_requested ~specialise_requested =
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity > List.length args);
@@ -782,9 +846,11 @@ and simplify_partial_application env r ~lhs_of_application
   let wrapper_accepting_remaining_args =
     let body : Flambda.t =
       Apply {
+        kind = Function;
+        continuation;
         func = lhs_of_application;
         args = freshened_params;
-        kind = Direct closure_id_being_applied;
+        call_kind = Direct closure_id_being_applied;
         dbg;
         inline = Default_inline;
         specialise = Default_specialise;
@@ -808,9 +874,10 @@ and simplify_partial_application env r ~lhs_of_application
   in
   simplify env r with_known_args
 
-and simplify_over_application env r ~args ~args_approxs ~function_decls
-      ~lhs_of_application ~closure_id_being_applied ~function_decl
-      ~value_set_of_closures ~dbg ~inline_requested ~specialise_requested =
+and simplify_over_application env r ~args ~args_approxs ~continuation
+      ~function_decls ~lhs_of_application ~closure_id_being_applied
+      ~function_decl ~value_set_of_closures ~dbg ~inline_requested
+      ~specialise_requested =
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity < List.length args);
   assert (List.length args = List.length args_approxs);
@@ -881,6 +948,7 @@ and simplify_named env r (tree : Flambda.named)
       simplify_set_of_closures env r set_of_closures
     in
     Some ([], Set_of_closures set_of_closures), r
+    end
 (*
     let simplify env r expr ~pass_name : Flambda.named * R.t =
       (* If simplifying a set of closures more than once during any given round
@@ -1156,7 +1224,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
               handler = Alias alias_of;
             }
           in
-          Let_cont let_cont, 
+          Let_cont let_cont, ret r A.value_bottom
         | Handler { params = vars; recursive; handler; } ->
           let env =
             match recursive with

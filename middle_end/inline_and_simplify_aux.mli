@@ -59,7 +59,7 @@ module Env : sig
 
   val add_continuation : t -> Continuation.t -> Continuation_approx.t -> t
 
-  val find_continuation_exn : t -> Continuation.t -> Continuation_approx.t
+  val find_continuation : t -> Continuation.t -> Continuation_approx.t
 
   (** Find the approximation of a given variable, raising a fatal error if
       the environment does not know about the variable.  Use [find_opt]

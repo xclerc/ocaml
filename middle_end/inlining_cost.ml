@@ -90,7 +90,12 @@ let lambda_smaller' lam ~than:threshold =
       aux sw.consts; aux sw.blocks
     | Apply_cont _ -> ()
     | Let_cont { body; handler; _ } ->
-      incr size; lambda_size body; lambda_size handler
+      incr size;
+      lambda_size body;
+      begin match handler with
+      | Alias _ -> ()
+      | Handler { handler; _ } -> lambda_size handler
+      end
   and lambda_named_size (named : Flambda.named) =
     if !size > threshold then raise Exit;
     match named with

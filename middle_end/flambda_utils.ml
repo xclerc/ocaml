@@ -90,15 +90,22 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
   | Apply_cont (e1, a1), Apply_cont (e2, a2) ->
     Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
   | Apply_cont _, _ | _, Apply_cont _ -> false
-  | Let_cont { name = name1; params = params1; recursive = recursive1;
-      body = body1; handler = handler1; },
-    Let_cont { name = name2; params = params2; recursive = recursive2;
-      body = body2; handler = handler2; } ->
+  | Let_cont { name = name1; body = body1; handler = handler1; },
+    Let_cont { name = name2; body = body2; handler = handler2; } ->
     Continuation.equal name1 name2
-      && Misc.Stdlib.List.equal Variable.equal params1 params2
-      && Pervasives.compare recursive1 recursive2 = 0
       && same body1 body2
-      && same handler1 handler2
+      && begin match handler1, handler2 with
+        | Alias alias_of1, Alias alias_of2 ->
+          Continuation.equal alias_of1 alias_of2
+        | Handler
+            { params = params1; recursive = recursive1; handler = handler1; },
+          Handler
+            { params = params2; recursive = recursive2; handler = handler2; } ->
+          Misc.Stdlib.List.equal Variable.equal params1 params2
+            && Pervasives.compare recursive1 recursive2 = 0
+            && same handler1 handler2
+        | Alias _, Handler _ | Handler _, Alias _ -> false
+        end
   | Let_cont _, _ | _, Let_cont _ -> false
   | Proved_unreachable, Proved_unreachable -> true
 

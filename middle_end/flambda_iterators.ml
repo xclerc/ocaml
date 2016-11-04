@@ -24,9 +24,10 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
     f body
   | Let_mutable { body; _ } ->
     f body
-  | Let_cont { body; handler; } ->
+  | Let_cont { body; handler = Handler { handler; _ }; } ->
     f body;
     f handler
+  | Let_cont { handler = Alias _; _ } -> ()
 
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
@@ -46,11 +47,23 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       Let_mutable { mutable_let with body = new_body }
   | Let_cont ({ body; handler; } as let_cont) ->
     let new_body = f body in
-    let new_handler = f handler in
-    if new_body == body && new_handler == handler then
-      tree
-    else
-      Let_cont { let_cont with body = new_body; handler = new_handler; }
+    match handler with
+    | Alias _ ->
+      if new_body == body then
+        tree
+      else
+        Let_cont { let_cont with body = new_body; }
+    | Handler ({ handler; _ } as let_cont_handler) ->
+      let new_handler = f handler in
+      if new_body == body && new_handler == handler then
+        tree
+      else
+        Let_cont { let_cont with
+          body = new_body;
+          handler = Handler { let_cont_handler with
+            handler = new_handler;
+          };
+        }
 
 let iter_general = Flambda.iter_general
 
@@ -191,14 +204,26 @@ let map_general ~toplevel f f_named tree =
           else
             Let_mutable { mutable_let with body = new_body }
         | Let_cont ({ body; handler; _ } as let_cont) ->
-          let new_body = aux body in
-          let new_handler = aux handler in
-          if new_body == body && new_handler == handler then
-            tree
-          else
-            Let_cont { let_cont with body = new_body; handler = new_handler; }
-      in
-      f exp
+          let new_body = f body in
+          match handler with
+          | Alias _ ->
+            if new_body == body then
+              tree
+            else
+              Let_cont { let_cont with body = new_body; }
+          | Handler ({ handler; _ } as let_cont_handler) ->
+            let new_handler = f handler in
+            if new_body == body && new_handler == handler then
+              tree
+            else
+              Let_cont { let_cont with
+                body = new_body;
+                handler = Handler { let_cont_handler with
+                  handler = new_handler;
+                };
+              }
+            in
+            f exp
   and aux_named (id : Variable.t) (named : Flambda.named) =
     let named : Flambda.named =
       match named with

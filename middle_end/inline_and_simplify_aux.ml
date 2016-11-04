@@ -25,6 +25,7 @@ module Env = struct
     approx : (scope * Simple_value_approx.t) Variable.Map.t;
     approx_mutable : Simple_value_approx.t Mutable_variable.Map.t;
     approx_sym : Simple_value_approx.t Symbol.Map.t;
+    continuations : Continuation_approx.t Continuation.Map.t;
     projections : Variable.t Projection.Map.t;
     current_functions : Set_of_closures_origin.Set.t;
     (* The functions currently being declared: used to avoid inlining
@@ -50,6 +51,7 @@ module Env = struct
       approx = Variable.Map.empty;
       approx_mutable = Mutable_variable.Map.empty;
       approx_sym = Symbol.Map.empty;
+      continuations = Continuation.Map.empty;
       projections = Projection.Map.empty;
       current_functions = Set_of_closures_origin.Set.empty;
       inlining_level = 0;
@@ -73,6 +75,7 @@ module Env = struct
   let local env =
     { env with
       approx = Variable.Map.empty;
+      continuations = Continuation.Map.empty;
       projections = Projection.Map.empty;
       freshening = Freshening.empty_preserving_activation_state env.freshening;
       inlined_debuginfo = Debuginfo.none;
@@ -163,6 +166,17 @@ module Env = struct
     match Projection.Map.find projection t.projections with
     | exception Not_found -> None
     | var -> Some var
+
+  let add_continuation t cont approx =
+    { t with
+      continuations = Continuation.Map.add continuation approx t.continuations;
+    }
+
+  let find_continuation t cont =
+    match Continuation.Map.find cont t.continuations with
+    | exception Not_found ->
+      Misc.fatal_errorf "Unbound continuation %a" Continuation.print cont
+    | approx -> approx
 
   let does_not_bind t vars =
     not (List.exists (mem t) vars)

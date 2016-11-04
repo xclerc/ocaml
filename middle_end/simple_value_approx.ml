@@ -748,7 +748,7 @@ let potentially_taken_const_switch_branch t branch =
   | Value_boxed_int _ | Value_bottom ->
     Cannot_be_taken
 
-let potentially_taken_block_switch_branch_tag t s =
+let potentially_taken_block_switch_branch_tag t tag =
   match t.descr with
   | (Value_unresolved _
     | Value_unknown _
@@ -780,10 +780,10 @@ let potentially_taken_block_switch_branch_string t s =
   match t.descr with
   | Value_unresolved _ | Value_unknown _ | Value_extern _ | Value_symbol _ ->
     Can_be_taken
-  | Value_string (Some s') when s = s' -> Must_be_taken
-  | Value_string (Some _) -> Cannot_be_taken
-  | Value_string None -> Can_be_taken
-  | Value_block (tag, _) when tag = Obj.string_tag ->
+  | Value_string { contents = Some s'; _ } when s = s' -> Must_be_taken
+  | Value_string { contents = Some _; _ } -> Cannot_be_taken
+  | Value_string { contents = None; } -> Can_be_taken
+  | Value_block (tag, _) when Tag.to_int tag = Obj.string_tag ->
     (* This case seems unlikely, so we don't write the logic to determine
        [Must_be_taken]. *)
     Can_be_taken
@@ -792,6 +792,6 @@ let potentially_taken_block_switch_branch_string t s =
   | Value_float_array _ | Value_boxed_int _ | Value_bottom -> Cannot_be_taken
 
 let potentially_taken_block_switch_branch t pattern =
-  match (pattern : Flambda.switch_block_pattern) with
+  match (pattern : Ilambda.switch_block_pattern) with
   | Tag tag -> potentially_taken_block_switch_branch_tag t tag
   | String s -> potentially_taken_block_switch_branch_string t s
