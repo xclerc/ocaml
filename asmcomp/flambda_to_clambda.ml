@@ -14,7 +14,6 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type for_one_or_more_units = {
@@ -233,7 +232,6 @@ let to_clambda_const env (const : Flambda.constant_defining_value_block_field)
 
 let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
   match flam with
-  | Var var -> subst_var env var
   | Let { var; defining_expr; body; _ } ->
     (* TODO: synthesize proper value_kind *)
     let id, env_body = Env.add_fresh_ident env var in
@@ -243,17 +241,6 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     let id, env_body = Env.add_fresh_mutable_ident env mut_var in
     let def = subst_var env var in
     Ulet (Mutable, contents_kind, id, def, to_clambda t env_body body)
-  | Let_rec (defs, body) ->
-    let env, defs =
-      List.fold_right (fun (var, def) (env, defs) ->
-          let id, env = Env.add_fresh_ident env var in
-          env, (id, var, def) :: defs)
-        defs (env, [])
-    in
-    let defs =
-      List.map (fun (id, var, def) -> id, to_clambda_named t env var def) defs
-    in
-    Uletrec (defs, to_clambda t env body)
   | Apply { func; args; kind = Direct direct_func; dbg = dbg } ->
     (* The closure _parameter_ of the function is added by cmmgen.
        At the call site, for a direct call, the closure argument must be
@@ -268,6 +255,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     Ugeneric_apply (check_closure callee (Flambda.Var func),
       subst_vars env args, dbg)
   | Switch (arg, sw) ->
+  (* CR mshinwell: Simplify as required for Cmmgen *)
     let aux () : Clambda.ulambda =
       let const_index, const_actions =
         to_clambda_switch t env sw.consts sw.numconsts sw.failaction
@@ -303,11 +291,6 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
       in
       to_clambda t env expr
     end
-  | String_switch (arg, sw, def) ->
-    let arg = subst_var env arg in
-    let sw = List.map (fun (s, e) -> s, to_clambda t env e) sw in
-    let def = Misc.may_map (to_clambda t env) def in
-    Ustringswitch (arg, sw, def)
   | Apply_cont (static_exn, args) ->
     Ustaticfail (Continuation.to_int static_exn,
       List.map (subst_var env) args)
@@ -320,28 +303,6 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     in
     Ucatch (Continuation.to_int static_exn, ids,
       to_clambda t env body, to_clambda t env_handler handler)
-  | Try_with (body, var, handler) ->
-    let id, env_handler = Env.add_fresh_ident env var in
-    Utrywith (to_clambda t env body, id, to_clambda t env_handler handler)
-  (* CR mshinwell: We need to turn Switch back into Uifthenelse when we can,
-     by the look of it, to satisfy patterns in Cmmgen.  This seems a bit odd
-     because bytecomp/switch.ml (which Cmmgen uses for Uswitch) does appear
-     to be able to just generate if-then-else. *)
-  | If_then_else (arg, ifso, ifnot) ->
-    Uifthenelse (subst_var env arg, to_clambda t env ifso,
-      to_clambda t env ifnot)
-  | Assign { being_assigned; new_value } ->
-    let id =
-      try Env.ident_for_mutable_var_exn env being_assigned
-      with Not_found ->
-        Misc.fatal_errorf "Unbound mutable variable %a in [Assign]: %a"
-          Mutable_variable.print being_assigned
-          Flambda.print flam
-    in
-    Uassign (id, subst_var env new_value)
-  | Send { kind; meth; obj; args; dbg } ->
-    Usend (kind, subst_var env meth, subst_var env obj,
-      subst_vars env args, dbg)
   | Proved_unreachable -> Uunreachable
 
 and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
@@ -363,6 +324,15 @@ and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
         Mutable_variable.print mut_var
         Flambda.print_named named
     end
+  | Assign { being_assigned; new_value } ->
+    let id =
+      try Env.ident_for_mutable_var_exn env being_assigned
+      with Not_found ->
+        Misc.fatal_errorf "Unbound mutable variable %a in [Assign]: %a"
+          Mutable_variable.print being_assigned
+          Flambda.print flam
+    in
+    Uassign (id, subst_var env new_value)
   | Read_symbol_field (symbol, field) ->
     Uprim (Pfield field, [to_clambda_symbol env symbol], Debuginfo.none)
   | Set_of_closures set_of_closures ->
@@ -403,7 +373,6 @@ and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
     Uprim (Pidentity, subst_vars env args, dbg)
   | Prim (p, args, dbg) ->
     Uprim (p, subst_vars env args, dbg)
-  | Expr expr -> to_clambda t env expr
 
 and to_clambda_switch t env cases num_keys default =
   let num_keys =
@@ -566,7 +535,9 @@ and to_clambda_closed_set_of_closures t env symbol
 
 let to_clambda_initialize_symbol t env symbol fields : Clambda.ulambda =
   let fields =
-    List.mapi (fun index expr -> index, to_clambda t env expr) fields
+    List.mapi (fun index (expr, cont) ->
+        index, to_clambda t env expr, cont)
+      fields
   in
   let build_setfield (index, field) : Clambda.ulambda =
     (* Note that this will never cause a write barrier hit, owing to
@@ -576,11 +547,14 @@ let to_clambda_initialize_symbol t env symbol fields : Clambda.ulambda =
       Debuginfo.none)
   in
   match fields with
-  | [] -> Uconst (Uconst_ptr 0)
-  | h :: t ->
-    List.fold_left (fun acc (p, field) ->
-        Clambda.Usequence (build_setfield (p, field), acc))
-      (build_setfield h) t
+  | [] -> assert false  (* See below. *)
+  | first::rest ->
+    let first, first_cont = build_setfield first in
+    List.fold_left (fun (acc, prev_cont) (p, field, cont) ->
+        let prev_cont = Continuation.to_int cont in
+        Clambda.Ucatch (prev_cont, [], acc, build_setfield (p, field)), cont)
+      (first, first_cont)
+      fields
 
 let accumulate_structured_constants t env symbol
       (c : Flambda.constant_defining_value) acc =
@@ -625,13 +599,17 @@ let to_clambda_program t env constants (program : Flambda.program) =
       (* The tag is ignored here: It is used separately to generate the
          preallocated block. Only the initialisation code is generated
          here. *)
-      let e1 = to_clambda_initialize_symbol t env symbol fields in
       let e2, constants = loop env constants program in
-      Usequence (e1, e2), constants
-    | Effect (expr, program) ->
+      begin match fields with
+      | [] -> e2, constants
+      | fields ->
+        let e1, cont = to_clambda_initialize_symbol t env symbol fields in
+        Ucatch (Continuation.to_int cont, [] e1, e2), constants
+      end
+    | Effect (expr, cont, program) ->
       let e1 = to_clambda t env expr in
       let e2, constants = loop env constants program in
-      Usequence (e1, e2), constants
+      Ustaticcatch (cont, [], e1, e2), constants
     | End _ ->
       Uconst (Uconst_ptr 0), constants
   in
@@ -690,15 +668,3 @@ let convert (program, exported) : result =
       ~constant_sets_of_closures:current_unit.constant_sets_of_closures
   in
   { expr; preallocated_blocks; structured_constants; exported; }
-
-*)
-
-type result = {
-  expr : Clambda.ulambda;
-  preallocated_blocks : Clambda.preallocated_block list;
-  structured_constants : Clambda.ustructured_constant Symbol.Map.t;
-  exported : Export_info.t;
-}
-
-let convert (_program, _exported) : result =
-  assert false
