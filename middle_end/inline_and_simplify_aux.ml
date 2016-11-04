@@ -169,7 +169,7 @@ module Env = struct
 
   let add_continuation t cont approx =
     { t with
-      continuations = Continuation.Map.add continuation approx t.continuations;
+      continuations = Continuation.Map.add cont approx t.continuations;
     }
 
   let find_continuation t cont =

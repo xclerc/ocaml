@@ -515,9 +515,11 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
   in
   let original =
     Flambda.Apply {
+      kind = Function;
+      continuation;
       func = lhs_of_application;
       args;
-      kind = Direct closure_id_being_applied;
+      call_kind = Direct closure_id_being_applied;
       dbg;
       inline = inline_requested;
       specialise = specialise_requested;
