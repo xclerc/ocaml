@@ -23,4 +23,6 @@ val create
   -> handler:Flambda.continuation_handler
   -> t
 
+val create_unknown : name:Continuation.t -> t
+
 val name : t -> Continuation.t

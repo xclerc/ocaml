@@ -920,8 +920,10 @@ asmcomp/flambda_to_clambda.cmx : middle_end/base_types/symbol.cmx \
     asmcomp/flambda_to_clambda.cmi
 asmcomp/flambda_to_clambda.cmi : middle_end/base_types/symbol.cmi \
     middle_end/flambda.cmi asmcomp/export_info.cmi asmcomp/clambda.cmi
-asmcomp/import_approx.cmo : asmcomp/import_approx.cmi
-asmcomp/import_approx.cmx : asmcomp/import_approx.cmi
+asmcomp/import_approx.cmo : middle_end/simple_value_approx.cmi \
+    asmcomp/import_approx.cmi
+asmcomp/import_approx.cmx : middle_end/simple_value_approx.cmx \
+    asmcomp/import_approx.cmi
 asmcomp/import_approx.cmi : middle_end/base_types/symbol.cmi \
     middle_end/simple_value_approx.cmi
 asmcomp/interf.cmo : asmcomp/reg.cmi asmcomp/proc.cmi asmcomp/mach.cmi \
@@ -1543,14 +1545,14 @@ middle_end/lift_let_to_initialize_symbol.cmi : middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
 middle_end/middle_end.cmo : utils/timings.cmi middle_end/share_constants.cmi \
     bytecomp/printlambda.cmi middle_end/prepare_lambda.cmi \
-    middle_end/lift_constants.cmi \
+    middle_end/lift_constants.cmi middle_end/inline_and_simplify.cmi \
     middle_end/initialize_symbol_to_let_symbol.cmi middle_end/ilambda.cmi \
     middle_end/flambda.cmi middle_end/cps_conversion.cmi \
     middle_end/base_types/continuation.cmi middle_end/closure_conversion.cmi \
     utils/clflags.cmi middle_end/middle_end.cmi
 middle_end/middle_end.cmx : utils/timings.cmx middle_end/share_constants.cmx \
     bytecomp/printlambda.cmx middle_end/prepare_lambda.cmx \
-    middle_end/lift_constants.cmx \
+    middle_end/lift_constants.cmx middle_end/inline_and_simplify.cmx \
     middle_end/initialize_symbol_to_let_symbol.cmx middle_end/ilambda.cmx \
     middle_end/flambda.cmx middle_end/cps_conversion.cmx \
     middle_end/base_types/continuation.cmx middle_end/closure_conversion.cmx \

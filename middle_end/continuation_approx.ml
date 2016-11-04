@@ -16,12 +16,17 @@
 
 type t = {
   name : Continuation.t;
-  handler : Flambda.continuation_handler;
+  handler : Flambda.continuation_handler option;
 }
 
 let create ~name ~(handler : Flambda.continuation_handler) =
   { name;
-    handler;
+    handler = Some handler;
+  }
+
+let create_unknown ~name =
+  { name;
+    handler = None;
   }
 
 let name t = t.name

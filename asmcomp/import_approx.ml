@@ -13,11 +13,12 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-(*
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module A = Simple_value_approx
 
+(*
 let import_set_of_closures =
   let import_function_declarations (clos : Flambda.function_declarations)
         : Flambda.function_declarations =
@@ -146,11 +147,15 @@ and import_approx (ap : Export_info.approx) =
   | Value_unknown -> A.value_unknown Other
   | Value_id ex -> A.value_extern ex
   | Value_symbol sym -> A.value_symbol sym
+*)
+
+let import_ex _ = A.value_unknown Other
 
 let import_symbol sym =
   if Compilenv.is_predefined_exception sym then
     A.value_unknown Other
   else
+(*
     let symbol_id_map =
       let global = Symbol.compilation_unit sym in
       (Compilenv.approx_for_global global).symbol_id
@@ -158,6 +163,7 @@ let import_symbol sym =
     match Symbol.Map.find sym symbol_id_map with
     | approx -> A.augment_with_symbol (import_ex approx) sym
     | exception Not_found ->
+*)
       A.value_unresolved sym
 
 (* Note for code reviewers: Observe that [really_import] iterates until
@@ -178,8 +184,3 @@ and really_import_symbol sym =
 
 let really_import_approx (approx : Simple_value_approx.t) =
   A.replace_description approx (really_import approx.descr)
-*)
-
-let really_import_approx _ = assert false
-let import_symbol _ = assert false
-let really_import _ = assert false

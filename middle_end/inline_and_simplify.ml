@@ -591,6 +591,13 @@ and simplify_set_of_closures original_env r
         ~free_vars ~specialised_args ~parameter_approximations
         ~set_of_closures_env
     in
+    let cont_approx =
+      Continuation_approx.create_unknown ~name:function_decl.continuation_param
+    in
+    let closure_env =
+      E.add_continuation closure_env function_decl.continuation_param
+        cont_approx
+    in
     let body, r =
       E.enter_closure closure_env ~closure_id:(Closure_id.wrap fun_var)
         ~inline_inside:
@@ -1375,17 +1382,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       end)
   | Proved_unreachable -> tree, ret r A.value_bottom
 
-and simplify_list env r l =
-  match l with
-  | [] -> [], [], r
-  | h::t ->
-    let t', approxs, r = simplify_list env r t in
-    let h', r = simplify env r h in
-    let approxs = (R.approx r) :: approxs in
-    if t' == t && h' == h
-    then l, approxs, r
-    else h' :: t', approxs, r
-
 and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~fun_var =
   let function_decl =
@@ -1598,9 +1594,20 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     let program, r = simplify_program_body env r program in
     Let_symbol (symbol, constant_defining_value, program), r
   | Initialize_symbol (symbol, tag, fields, program) ->
-    let fields, conts = List.split fields in
-    let fields, approxs, r = simplify_list env r fields in
-    let fields = List.combine fields conts in
+    let rec simplify_fields env r l =
+      match l with
+      | [] -> [], [], r
+      | (h, cont) :: t ->
+        let t', approxs, r = simplify_fields env r t in
+        let cont_approx = Continuation_approx.create_unknown ~name:cont in
+        let env = E.add_continuation env cont cont_approx in
+        let h', r = simplify env r h in
+        let approxs = (R.approx r) :: approxs in
+        if t' == t && h' == h
+        then l, approxs, r
+        else (h', cont) :: t', approxs, r
+    in
+    let fields, approxs, r = simplify_fields env r fields in
     let approx =
       A.augment_with_symbol (A.value_block tag (Array.of_list approxs)) symbol
     in
