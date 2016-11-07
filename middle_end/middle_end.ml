@@ -168,17 +168,17 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
              Initialize_symbol_to_let_symbol.run)
         |> loop
     in
-    let back_end _flam =
+    let back_end flam =
       flam
 (*
       +-+ ("Remove_unused_closure_vars",
            Remove_unused_closure_vars.remove_unused_closure_variables
              ~remove_direct_call_surrogates:true)
+*)
       +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
       +-+ ("Share_constants", Share_constants.share_constants)
       +-+ ("Remove_unused_program_constructs",
         Remove_unused_program_constructs.remove_unused_program_constructs)
-*)
     in
     let flam =
       if !Clflags.classic_inlining then
@@ -187,7 +187,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         loop flam
     in
     Format.fprintf ppf "Result:@ %a@." Flambda.print_program flam;
-(*
     let flam = back_end flam in
     (* Check that there aren't any unused "always inline" attributes. *)
     Flambda_iterators.iter_apply_on_program flam ~f:(fun apply ->
@@ -214,4 +213,4 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     check flam;
     (* CR-someday mshinwell: add -d... option for this *)
     (* dump_function_sizes flam ~backend; *)
-    flam *) assert false) ();
+    flam) ();
