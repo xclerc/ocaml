@@ -275,11 +275,11 @@ type tag_switch_or_string_switch =
   | String of (string * Continuation.t) list
 
 let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
-  match switch.blocks with
-  | [] ->
+  match switch.consts, switch.blocks with
+  | [], [] ->
     Misc.fatal_errorf "Flambda.switch with no cases: %a"
       Flambda.print (Flambda.Switch (scrutinee, switch))
-  | _ ->
+  | _, _ ->
     (* CR mshinwell: If this code stays, add [List.partition_map] *)
     let tags, strings =
       List.partition (fun ((pat : Ilambda.switch_block_pattern), _case) ->
@@ -302,13 +302,13 @@ let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
           | String str -> str, case)
         strings
     in
-    match tags, strings with
-    | _::_, _::_ ->
+    match switch.consts, tags, strings with
+    | _, _::_, _::_ ->
       Misc.fatal_errorf "Flambda.switch with both tag and string cases: %a"
         Flambda.print (Flambda.Switch (scrutinee, switch))
-    | [], [] -> assert false  (* see above *)
-    | tags, [] -> Tag tags
-    | [], strings -> String strings
+    | [], [], [] -> assert false  (* see above *)
+    | _consts, tags, [] -> Tag tags
+    | _consts, [], strings -> String strings
 
 let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
   match flam with
