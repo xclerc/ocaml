@@ -139,31 +139,31 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
            duplicate strings. *)
         +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
         +-+ ("Share_constants", Share_constants.share_constants)
-(*
         +-+ ("Remove_unused_program_constructs",
              Remove_unused_program_constructs.remove_unused_program_constructs)
+(*
         +-+ ("Lift_let_to_initialize_symbol",
              Lift_let_to_initialize_symbol.lift ~backend)
+*)
         +-+ ("Remove_unused_closure_vars 1",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
-*)
         +-+ ("Inline_and_simplify",
              Inline_and_simplify.run ~never_inline:false ~backend
                ~prefixname ~round)
-(*
         +-+ ("Remove_unused_closure_vars 2",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
+(*
         +-+ ("Ref_to_variables",
              Ref_to_variables.eliminate_ref)
         +-+ ("Inline_and_simplify noinline",
              Inline_and_simplify.run ~never_inline:true ~backend
               ~prefixname ~round)
+*)
         +-+ ("Remove_unused_closure_vars 3",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
-*)
         +-+ ("Initialize_symbol_to_let_symbol",
              Initialize_symbol_to_let_symbol.run)
         |> loop
