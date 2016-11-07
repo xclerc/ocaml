@@ -2372,7 +2372,7 @@ let combine_constructor loc arg ex_pat cstr partial ctx def
           match
             (cstr.cstr_consts, cstr.cstr_nonconsts, consts, nonconsts)
           with
-          | (1, 1, [0, act1], [0, act2]) ->
+          | (1, 1, [0, act1], [0, act2]) when not !Clflags.native_code ->
            (* Typically, match on lists, will avoid isint primitive in that
               case *)
               Lifthenelse(arg, act2, act1)
@@ -2389,7 +2389,7 @@ let combine_constructor loc arg ex_pat cstr partial ctx def
                     else None
                 | None,_ -> same_actions nonconsts in
               match act0 with
-              | Some act ->
+              | Some act when not !Clflags.native_code ->
                   Lifthenelse
                     (Lprim (Pisint, [arg], loc),
                      call_switcher
@@ -2397,7 +2397,7 @@ let combine_constructor loc arg ex_pat cstr partial ctx def
                        0 (n-1) consts,
                      act)
 (* Emit a switch, as bytecode implements this sophisticated instruction *)
-              | None ->
+              | _ ->
                   let sw =
                     {sw_numconsts = cstr.cstr_consts; sw_consts = consts;
                      sw_numblocks = cstr.cstr_nonconsts; sw_blocks = nonconsts;
