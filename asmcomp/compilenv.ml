@@ -35,7 +35,7 @@ exception Error of error
 let global_infos_table =
   (Hashtbl.create 17 : (string, unit_infos option) Hashtbl.t)
 let export_infos_table =
-  (Hashtbl.create 10 : (string, unit) Hashtbl.t)
+  (Hashtbl.create 10 : (string, Export_info.t) Hashtbl.t)
 
 let imported_sets_of_closures_table =
   (Set_of_closures_id.Tbl.create 10
@@ -68,11 +68,11 @@ let structured_constants = ref structured_constants_empty
 
 let exported_constants = Hashtbl.create 17
 
-let merged_environment = ref ()
+let merged_environment = ref Export_info.empty
 
 let default_ui_export_info =
   if Config.flambda then
-    Cmx_format.Flambda ()
+    Cmx_format.Flambda Export_info.empty
   else
     Cmx_format.Clambda Value_unknown
 
@@ -133,7 +133,7 @@ let reset ?packname ~source_provenance:file name =
   Hashtbl.clear exported_constants;
   structured_constants := structured_constants_empty;
   current_unit.ui_export_info <- default_ui_export_info;
-  merged_environment := ();
+  merged_environment := Export_info.empty;
   Hashtbl.clear export_infos_table;
   let compilation_unit =
     Compilation_unit.create
@@ -318,12 +318,10 @@ let approx_for_global comp_unit =
   try Hashtbl.find export_infos_table modname with
   | Not_found ->
     let exported = match get_global_info id with
-      | None -> ()
+      | None -> Export_info.empty
       | Some ui -> get_flambda_export_info ui in
     Hashtbl.add export_infos_table modname exported;
-(*
     merged_environment := Export_info.merge !merged_environment exported;
-*)
     exported
 
 let approx_env () = !merged_environment
