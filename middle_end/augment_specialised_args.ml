@@ -463,12 +463,15 @@ module Make (T : S) = struct
        We also need to rewrite definitions for any existing specialised
        args; these now have corresponding wrapper parameters that must
        also be specialised. *)
+    let wrapper_continuation_param = Continuation.create () in
     let wrapper_body, benefit =
       let apply : Flambda.expr =
         Apply {
+          kind = Function;
           func = new_fun_var;
+          continuation = wrapper_continuation_param;
           args = wrapper_params @ spec_args_bound_in_the_wrapper;
-          kind = Direct (Closure_id.wrap new_fun_var);
+          call_kind = Direct (Closure_id.wrap new_fun_var);
           dbg = Debuginfo.none;
           inline = Default_inline;
           specialise = Default_specialise;
@@ -531,6 +534,7 @@ module Make (T : S) = struct
     in
     let new_function_decl =
       Flambda.create_function_declaration
+        ~continuation_param:wrapper_continuation_param
         ~params:wrapper_params
         ~body:wrapper_body
         ~stub:true
@@ -612,6 +616,7 @@ module Make (T : S) = struct
       in
       let rewritten_function_decl =
         Flambda.create_function_declaration
+          ~continuation_param:function_decl.continuation_param
           ~params:all_params
           ~body:function_decl.body
           ~stub:function_decl.stub
@@ -653,21 +658,14 @@ module Make (T : S) = struct
       let free_vars = Variable.Map.empty in
       Some (funs, free_vars, specialised_args, direct_call_surrogates, benefit)
 
-  let add_lifted_projections_around_set_of_closures
-        ~(set_of_closures : Flambda.set_of_closures) ~benefit
-        ~new_lifted_defns_indexed_by_new_outer_vars =
-    let body =
-      Flambda_utils.name_expr (Set_of_closures set_of_closures)
-        ~name:("set_of_closures" ^ T.variable_suffix)
-    in
+  let lifted_projections ~benefit ~new_lifted_defns_indexed_by_new_outer_vars =
     Variable.Map.fold (fun new_outer_var (projection : Projection.t)
-          (expr, benefit) ->
+          (acc, benefit) ->
         let named = Flambda_utils.projection_to_named projection in
         let benefit = B.add_projection projection benefit in
-        let expr = Flambda.create_let new_outer_var named expr in
-        expr, benefit)
+        (new_outer_var, named) :: acc, benefit)
       new_lifted_defns_indexed_by_new_outer_vars
-      (body, benefit)
+      ([], benefit)
 
   let rewrite_set_of_closures_core ~env ~duplicate_function ~benefit
         ~(set_of_closures : Flambda.set_of_closures) =
@@ -737,17 +735,19 @@ module Make (T : S) = struct
         check_invariants ~set_of_closures ~original_set_of_closures
           ~pass_name:T.pass_name
       end;
-      let expr, benefit =
-        add_lifted_projections_around_set_of_closures ~set_of_closures ~benefit
+      let bindings, benefit =
+        lifted_projections ~benefit
           ~new_lifted_defns_indexed_by_new_outer_vars:
             what_to_specialise.new_lifted_defns_indexed_by_new_outer_vars
       in
-      Some (expr, benefit)
+      Some (bindings, set_of_closures, benefit)
 
   let rewrite_set_of_closures ~env ~duplicate_function ~set_of_closures =
     Pass_wrapper.with_dump ~pass_name:T.pass_name ~input:set_of_closures
       ~print_input:Flambda.print_set_of_closures
-      ~print_output:(fun ppf (expr, _) -> Flambda.print ppf expr)
+      ~print_output:(fun ppf (_bindings, set_of_closures, _) ->
+        (* CR mshinwell: print bindings *)
+        Flambda.print_set_of_closures ppf set_of_closures)
       ~f:(fun () ->
         rewrite_set_of_closures_core ~env ~duplicate_function
           ~benefit:B.zero ~set_of_closures)
