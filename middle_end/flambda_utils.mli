@@ -55,8 +55,8 @@ val can_be_merged : Flambda.t -> Flambda.t -> bool
 val description_of_toplevel_node : Flambda.t -> string
 
 (** Sharing key, used for coalescing switch cases. *)
-type sharing_key
-val make_key : Flambda.t -> sharing_key option
+type sharing_key = private Continuation.t
+val make_key : Continuation.t -> sharing_key option
 
 (* Given an expression, freshen all variables within it, and form a function
    whose body is the resulting expression.  The variables specified by
@@ -173,7 +173,7 @@ val substitute_read_symbol_field_for_variables
 
 (** For the compilation of switch statements. *)
 module Switch_storer : sig
-  val mk_store : unit -> Flambda.t Switch.t_store
+  val mk_store : unit -> Continuation.t Switch.t_store
 end
 
 (** Within a set of function declarations there is a set of function bodies,

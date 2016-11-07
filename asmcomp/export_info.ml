@@ -64,8 +64,6 @@ and approx =
   | Value_id of Export_id.t
   | Value_symbol of Symbol.t
 
-type t = unit
-(*
 let equal_approx (a1:approx) (a2:approx) =
   match a1, a2 with
   | Value_unknown, Value_unknown ->
@@ -358,4 +356,3 @@ let print_all ppf ((t, root_symbols) : t * Symbol.t list) =
     print_approx (t, root_symbols);
   fprintf ppf "functions@ %a@.@."
     print_functions t
-*)

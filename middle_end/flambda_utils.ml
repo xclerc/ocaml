@@ -633,15 +633,15 @@ let substitute_read_symbol_field_for_variables
   Flambda_iterators.map_toplevel f (fun v -> v) expr
 *)
 
-(* CR-soon mshinwell: implement this so that sharing can occur in
-   matches.  Should probably leave this for the first release. *)
-type sharing_key = unit
-let make_key _ = None
+type sharing_key = Continuation.t
+let make_key cont = Some cont
 
 module Switch_storer =
   Switch.Store
     (struct
-      type t = Flambda.t
+      (* CR mshinwell: Check if this thing uses polymorphic comparison.
+         Should be ok if so, at the moment, but should be fixed. *)
+      type t = Continuation.t
       type key = sharing_key
       let make_key = make_key
     end)

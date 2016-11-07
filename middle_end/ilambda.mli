@@ -21,7 +21,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42-49"]
 
 type switch_block_pattern =
-  | Tag of int
+  | Tag of int  (* CR mshinwell: Use [Tag.t] *)
   | String of string
 
 type t =

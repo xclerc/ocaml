@@ -270,9 +270,47 @@ let switch_looks_like_if ~scrutinee ~(switch : Flambda.switch) =
       Misc.fatal_errorf "Malformed Flambda.switch: %a"
         Flambda.print (Flambda.Switch (scrutinee, switch))
 
-let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
+type tag_switch_or_string_switch =
+  | Tag of (int * Continuation.t) list
+  | String of (string * Continuation.t) list
 
-let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
+let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
+  match switch.blocks with
+  | [] ->
+    Misc.fatal_errorf "Flambda.switch with no cases: %a"
+      Flambda.print (Flambda.Switch (scrutinee, switch))
+  | _ ->
+    (* CR mshinwell: If this code stays, add [List.partition_map] *)
+    let tags, strings =
+      List.partition (fun ((pat : Ilambda.switch_block_pattern), _case) ->
+          match pat with
+          | Tag _ -> true
+          | String _ -> false)
+        switch.blocks
+    in
+    let tags =
+      List.map (fun ((pat : Ilambda.switch_block_pattern), case) ->
+          match pat with
+          | Tag tag -> tag, case
+          | String _ -> assert false)
+        tags
+    in
+    let strings =
+      List.map (fun ((pat : Ilambda.switch_block_pattern), case) ->
+          match pat with
+          | Tag _ -> assert false
+          | String str -> str, case)
+        strings
+    in
+    match tags, strings with
+    | _::_, _::_ ->
+      Misc.fatal_errorf "Flambda.switch with both tag and string cases: %a"
+        Flambda.print (Flambda.Switch (scrutinee, switch))
+    | [], [] -> assert false  (* see above *)
+    | tags, [] -> Tag tags
+    | [], strings -> String strings
+
+let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
   match flam with
   | Let { var; defining_expr; body; _ } ->
     (* TODO: synthesize proper value_kind *)
@@ -306,75 +344,56 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     (* CR mshinwell: More transformations here to satisfy Cmmgen? *)
     begin match switch_looks_like_if ~scrutinee ~switch:sw with
     | Some (ifso_cont, ifnot_cont) ->
-      let ifso_cont = Env.expand_continuation_aliases t ifso_cont in
-      let ifnot_cont = Env.expand_continuation_aliases t ifnot_cont in
-      Uifthenelse (Uvar arg,
+      let ifso_cont = Env.expand_continuation_aliases env ifso_cont in
+      let ifnot_cont = Env.expand_continuation_aliases env ifnot_cont in
+      Uifthenelse (arg,
         Ustaticfail (Continuation.to_int ifso_cont, []),
         Ustaticfail (Continuation.to_int ifnot_cont, []))
     | None ->
-      match tag_switch_or_string_switch ~scrutinee ~switch with
+      match tag_switch_or_string_switch ~scrutinee ~switch:sw with
       | Tag blocks ->
-        let aux () : Clambda.ulambda =
-          let const_index, const_actions =
-            to_clambda_switch t env sw.consts sw.numconsts sw.failaction
-          in
-          let block_index, block_actions =
-            to_clambda_switch t env blocks sw.numblocks sw.failaction
-          in
-          Uswitch (subst_var env arg,
-            { us_index_consts = const_index;
-              us_actions_consts = const_actions;
-              us_index_blocks = block_index;
-              us_actions_blocks = block_actions;
-            })
+        (* Note that the [failaction] may always be duplicated, since it's
+           just a jump to a continuation.  ([Uswitch] doesn't have the notion
+           of a default case.) *)
+        let const_index, const_actions =
+          to_clambda_switch t env sw.consts sw.numconsts sw.failaction
         in
-        (* [Uswitch] doesn't have the notion of a default case.  As such, we
-           check if the [failaction] may be duplicated.  If this is not the
-           case, share it through a static raise / static catch. *)
-        (* CR-someday pchambart for pchambart: This is overly simplified.
-           We should verify that this does not generates too bad code.
-           If it the case, handle some let cases.
-        *)
-        begin match sw.failaction with
-        | None -> aux ()
-        | Some (Apply_cont _) -> aux ()
-        | Some failaction ->
-          let cont = Continuation.create () in
-          let sw =
-            { sw with
-              failaction = Some (Flambda.Apply_cont (cont, []));
-            }
-          in
-          let expr : Flambda.t =
-            Let_cont {
-              name = cont;
-              body = Switch (arg, sw);
-              handler = Handler {
-                params = [];
-                recursive = Nonrecursive;
-                handler = failaction;
-              }
-            }
-          in
-          to_clambda t env expr
-        end
+        let block_index, block_actions =
+          to_clambda_switch t env blocks sw.numblocks sw.failaction
+        in
+        Uswitch (arg,
+          { us_index_consts = const_index;
+            us_actions_consts = const_actions;
+            us_index_blocks = block_index;
+            us_actions_blocks = block_actions;
+          })
       | String cases ->
         let cases =
-          List.map (fun (str, case) -> str, to_clambda t env case) strings
+          List.map (fun (str, cont) ->
+              let cont = Env.expand_continuation_aliases env cont in
+              let case : Clambda.ulambda =
+                Ustaticfail (Continuation.to_int cont, [])
+              in
+              str, case)
+            cases
         in
         let failaction =
-          Misc.Stdlib.Option.map (to_clambda t env) switch.failaction
+          match sw.failaction with
+          | None -> None
+          | Some cont ->
+            let cont = Env.expand_continuation_aliases env cont in
+            Some (Clambda.Ustaticfail (Continuation.to_int cont, []))
         in
         Ustringswitch (arg, cases, failaction)
     end
   | Apply_cont (cont, args) ->
-    let cont = Env.expand_continuation_aliases t cont in
+    let cont = Env.expand_continuation_aliases env cont in
     Ustaticfail (Continuation.to_int cont, List.map (subst_var env) args)
   | Let_cont { name; body; handler = Alias alias_of; } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
   | Let_cont { name; body; handler = Handler { params; handler; _ }; } ->
-    let name = Env.expand_continuation_aliases t name in
+    let name = Env.expand_continuation_aliases env name in
     let env_handler, ids =
       List.fold_right (fun var (env, ids) ->
           let id, env = Env.add_fresh_ident env var in
@@ -385,7 +404,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
       to_clambda t env body, to_clambda t env_handler handler)
   | Proved_unreachable -> Uunreachable
 
-and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
+and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
   match named with
   | Var var -> subst_var env var
   | Symbol sym -> to_clambda_symbol env sym
@@ -410,7 +429,7 @@ and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
       with Not_found ->
         Misc.fatal_errorf "Unbound mutable variable %a in [Assign]: %a"
           Mutable_variable.print being_assigned
-          Flambda.print flam
+          Flambda.print_named named
     in
     Uassign (id, subst_var env new_value)
   | Read_symbol_field (symbol, field) ->
@@ -454,7 +473,7 @@ and to_clambda_named t env var (named : Flambda.named) : Clambda.ulambda =
   | Prim (p, args, dbg) ->
     Uprim (p, subst_vars env args, dbg)
 
-and to_clambda_switch t env cases num_keys default =
+and to_clambda_switch _t env cases num_keys default =
   let num_keys =
     if Numbers.Int.Set.cardinal num_keys = 0 then 0
     else Numbers.Int.Set.max_elt num_keys + 1
@@ -462,11 +481,18 @@ and to_clambda_switch t env cases num_keys default =
   let index = Array.make num_keys 0 in
   let store = Flambda_utils.Switch_storer.mk_store () in
   begin match default with
-  | Some def when List.length cases < num_keys -> ignore (store.act_store def)
+  | Some def when List.length cases < num_keys ->
+    let def = Env.expand_continuation_aliases env def in
+    ignore (store.act_store def)
   | _ -> ()
   end;
-  List.iter (fun (key, lam) -> index.(key) <- store.act_store lam) cases;
-  let actions = Array.map (to_clambda t env) (store.act_get ()) in
+  List.iter (fun (key, cont) -> index.(key) <- store.act_store cont) cases;
+  let actions =
+    Array.map (fun cont : Clambda.ulambda ->
+        let cont = Env.expand_continuation_aliases env cont in
+        Ustaticfail (Continuation.to_int cont, []))
+      (store.act_get ())
+  in
   match actions with
   | [| |] -> [| |], [| |]  (* May happen when [default] is [None]. *)
   | _ -> index, actions
@@ -613,7 +639,8 @@ and to_clambda_closed_set_of_closures t env symbol
   let closure_lbl = Linkage_name.to_string (Symbol.label symbol) in
   Uconst_closure (ufunct, closure_lbl, [])
 
-let to_clambda_initialize_symbol t env symbol fields : Clambda.ulambda =
+let to_clambda_initialize_symbol t env symbol fields
+      : Clambda.ulambda * Continuation.t =
   let fields =
     List.mapi (fun index (expr, cont) ->
         index, to_clambda t env expr, cont)
@@ -628,13 +655,12 @@ let to_clambda_initialize_symbol t env symbol fields : Clambda.ulambda =
   in
   match fields with
   | [] -> assert false  (* See below. *)
-  | first::rest ->
-    let first, first_cont = build_setfield first in
+  | (first_index, first, first_cont)::rest ->
     List.fold_left (fun (acc, prev_cont) (p, field, cont) ->
-        let prev_cont = Continuation.to_int cont in
+        let prev_cont = Continuation.to_int prev_cont in
         Clambda.Ucatch (prev_cont, [], acc, build_setfield (p, field)), cont)
-      (first, first_cont)
-      fields
+      (build_setfield (first_index, first), first_cont)
+      rest
 
 let accumulate_structured_constants t env symbol
       (c : Flambda.constant_defining_value) acc =
@@ -684,12 +710,13 @@ let to_clambda_program t env constants (program : Flambda.program) =
       | [] -> e2, constants
       | fields ->
         let e1, cont = to_clambda_initialize_symbol t env symbol fields in
-        Ucatch (Continuation.to_int cont, [] e1, e2), constants
+        Ucatch (Continuation.to_int cont, [], e1, e2), constants
       end
     | Effect (expr, cont, program) ->
       let e1 = to_clambda t env expr in
       let e2, constants = loop env constants program in
-      Ustaticcatch (cont, [], e1, e2), constants
+      let cont = Continuation.to_int cont in
+      Ucatch (cont, [], e1, e2), constants
     | End _ ->
       Uconst (Uconst_ptr 0), constants
   in
