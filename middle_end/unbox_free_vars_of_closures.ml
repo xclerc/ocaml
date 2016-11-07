@@ -24,15 +24,10 @@ let variable_suffix = ""
 
 (* CR-someday mshinwell: Nearly but not quite the same as something that
    Augment_specialised_args uses. *)
-let add_lifted_projections_around_set_of_closures
-      ~set_of_closures ~existing_inner_to_outer_vars ~benefit
+let lifted_projections ~existing_inner_to_outer_vars ~benefit
       ~definitions_indexed_by_new_inner_vars =
-  let body =
-    Flambda_utils.name_expr (Set_of_closures set_of_closures)
-      ~name:pass_name
-  in
   Variable.Map.fold (fun new_inner_var (projection : Projection.t)
-            (expr, benefit) ->
+            (acc, benefit) ->
       let find_outer_var inner_var =
         match
           Variable.Map.find inner_var existing_inner_to_outer_vars
@@ -54,12 +49,9 @@ let add_lifted_projections_around_set_of_closures
         in
         Flambda_utils.projection_to_named projection
       in
-      let expr =
-        Flambda.create_let (find_outer_var new_inner_var) named expr
-      in
-      (expr, benefit))
+      (find_outer_var new_inner_var, named)::acc, benefit)
     definitions_indexed_by_new_inner_vars
-    (body, benefit)
+    ([], benefit)
 
 let run ~env ~(set_of_closures : Flambda.set_of_closures) =
   if not !Clflags.unbox_free_vars_of_closures then
@@ -160,16 +152,17 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
             ~specialised_args:set_of_closures.specialised_args
             ~direct_call_surrogates:set_of_closures.direct_call_surrogates
         in
-        let expr, benefit =
-          add_lifted_projections_around_set_of_closures ~set_of_closures
-            ~benefit:B.zero
+        let bindings, benefit =
+          lifted_projections ~benefit:B.zero
             ~existing_inner_to_outer_vars:set_of_closures.free_vars
             ~definitions_indexed_by_new_inner_vars
         in
-        Some (expr, benefit)
+        Some (bindings, set_of_closures, benefit)
 
 let run ~env ~set_of_closures =
   Pass_wrapper.with_dump ~pass_name ~input:set_of_closures
     ~print_input:Flambda.print_set_of_closures
-    ~print_output:(fun ppf (expr, _) -> Flambda.print ppf expr)
+    ~print_output:(fun ppf (_bindings, set_of_closures, _) ->
+      (* CR mshinwell: print bindings *)
+      Flambda.print_set_of_closures ppf set_of_closures)
     ~f:(fun () -> run ~env ~set_of_closures)

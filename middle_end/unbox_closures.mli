@@ -29,4 +29,5 @@ val rewrite_set_of_closures
     -> Flambda.function_declaration
       * Flambda.specialised_to Variable.Map.t)
   -> set_of_closures:Flambda.set_of_closures
-  -> (Flambda.expr * Inlining_cost.Benefit.t) option
+  -> ((Variable.t * Flambda.named) list
+    * Flambda.set_of_closures * Inlining_cost.Benefit.t) option
