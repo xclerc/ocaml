@@ -138,15 +138,25 @@ module Env : sig
     -> alias_of:Continuation.t
     -> t
 
-  val expand_continuation_aliases : t -> Continuation.t -> Continuation.t
+  val add_return_continuation : t -> Continuation.t -> t
+
+  type expanded_continuation =
+    | Normal of Continuation.t
+    | Return_continuation
+
+  val expand_continuation_aliases : t -> Continuation.t -> expanded_continuation
 end = struct
+  type expanded_continuation =
+    | Normal of Continuation.t
+    | Return_continuation
+
   type t =
     { subst : Clambda.ulambda Variable.Map.t;
       var : Ident.t Variable.Map.t;
       mutable_var : Ident.t Mutable_variable.Map.t;
       toplevel : bool;
       allocated_constant_for_symbol : Allocated_const.t Symbol.Map.t;
-      continuation_aliases : Continuation.t Continuation.Map.t;
+      continuations : expanded_continuation Continuation.Map.t;
     }
 
   let empty =
@@ -155,7 +165,7 @@ end = struct
       mutable_var = Mutable_variable.Map.empty;
       toplevel = false;
       allocated_constant_for_symbol = Symbol.Map.empty;
-      continuation_aliases = Continuation.Map.empty;
+      continuations = Continuation.Map.empty;
     }
 
   let add_subst t id subst =
@@ -194,15 +204,21 @@ end = struct
     }
 
   let expand_continuation_aliases t cont =
-    match Continuation.Map.find cont t.continuation_aliases with
-    | exception Not_found -> cont
+    match Continuation.Map.find cont t.continuations with
+    | exception Not_found -> Normal cont
     | cont -> cont
+
+  let add_return_continuation t cont =
+    { t with
+      continuations =
+        Continuation.Map.add cont Return_continuation t.continuations;
+    }
 
   let add_continuation_alias t cont ~alias_of =
     let alias_of = expand_continuation_aliases t alias_of in
     { t with
-      continuation_aliases =
-        Continuation.Map.add cont alias_of t.continuation_aliases;
+      continuations =
+        Continuation.Map.add cont alias_of t.continuations;
     }
 end
 
@@ -310,6 +326,15 @@ let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
     | _consts, tags, [] -> Tag tags
     | _consts, [], strings -> String strings
 
+let apply_cont env cont arg : Clambda.ulambda =
+  let cont = Env.expand_continuation_aliases env cont in
+  match cont with
+  | Normal cont -> Ustaticfail (Continuation.to_int cont, [])
+  | Return_continuation -> arg
+
+let apply_cont_returning_unit env cont =
+  apply_cont env cont (Clambda.Uconst (Uconst_int 0))
+
 let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
   match flam with
   | Let { var; defining_expr; body; _ } ->
@@ -344,11 +369,9 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     (* CR mshinwell: More transformations here to satisfy Cmmgen? *)
     begin match switch_looks_like_if ~scrutinee ~switch:sw with
     | Some (ifso_cont, ifnot_cont) ->
-      let ifso_cont = Env.expand_continuation_aliases env ifso_cont in
-      let ifnot_cont = Env.expand_continuation_aliases env ifnot_cont in
-      Uifthenelse (arg,
-        Ustaticfail (Continuation.to_int ifso_cont, []),
-        Ustaticfail (Continuation.to_int ifnot_cont, []))
+      let ifso = apply_cont env ifso_cont arg in
+      let ifnot = apply_cont env ifnot_cont arg in
+      Uifthenelse (arg, ifso, ifnot)
     | None ->
       match tag_switch_or_string_switch ~scrutinee ~switch:sw with
       | Tag blocks ->
@@ -370,30 +393,34 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
       | String cases ->
         let cases =
           List.map (fun (str, cont) ->
-              let cont = Env.expand_continuation_aliases env cont in
-              let case : Clambda.ulambda =
-                Ustaticfail (Continuation.to_int cont, [])
-              in
-              str, case)
+              str, apply_cont_returning_unit env cont)
             cases
         in
         let failaction =
           match sw.failaction with
           | None -> None
-          | Some cont ->
-            let cont = Env.expand_continuation_aliases env cont in
-            Some (Clambda.Ustaticfail (Continuation.to_int cont, []))
+          | Some cont -> Some (apply_cont_returning_unit env cont)
         in
         Ustringswitch (arg, cases, failaction)
     end
   | Apply_cont (cont, args) ->
     let cont = Env.expand_continuation_aliases env cont in
-    Ustaticfail (Continuation.to_int cont, List.map (subst_var env) args)
+    let args = List.map (subst_var env) args in
+    begin match cont with
+    | Normal cont -> Ustaticfail (Continuation.to_int cont, args)
+    | Return_continuation ->
+      match args with
+      | [arg] -> arg
+      | [] -> Clambda.Uconst (Uconst_int 0)
+      | _ ->
+        Misc.fatal_errorf "Apply_cont of return continuation with more than \
+            one argument: %a"
+          Flambda.print flam
+    end
   | Let_cont { name; body; handler = Alias alias_of; } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
   | Let_cont { name; body; handler = Handler { params; handler; _ }; } ->
-    let name = Env.expand_continuation_aliases env name in
     let env_handler, ids =
       List.fold_right (fun var (env, ids) ->
           let id, env = Env.add_fresh_ident env var in
@@ -482,15 +509,13 @@ and to_clambda_switch _t env cases num_keys default =
   let store = Flambda_utils.Switch_storer.mk_store () in
   begin match default with
   | Some def when List.length cases < num_keys ->
-    let def = Env.expand_continuation_aliases env def in
     ignore (store.act_store def)
   | _ -> ()
   end;
   List.iter (fun (key, cont) -> index.(key) <- store.act_store cont) cases;
   let actions =
     Array.map (fun cont : Clambda.ulambda ->
-        let cont = Env.expand_continuation_aliases env cont in
-        Ustaticfail (Continuation.to_int cont, []))
+        apply_cont_returning_unit env cont)
       (store.act_get ())
   in
   match actions with
@@ -551,6 +576,9 @@ and to_clambda_set_of_closures t env
          Note that we must not forget the information about which allocated
          constants contain which unboxed values. *)
       let env = Env.keep_only_symbols env in
+      let env =
+        Env.add_return_continuation env function_decl.continuation_param
+      in
       (* Add the Clambda expressions for the free variables of the function
          to the environment. *)
       let add_env_free_variable id _ env =
