@@ -106,7 +106,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     then
       Format.fprintf ppf "After closure conversion:@ %a@."
         Flambda.print_program flam;
-(*
     check flam;
     let fast_mode flam =
       pass_number := 0;
@@ -114,20 +113,23 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       flam
       +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
       +-+ ("Share_constants", Share_constants.share_constants)
+(*
       +-+ ("Lift_let_to_initialize_symbol",
            Lift_let_to_initialize_symbol.lift ~backend)
+*)
       +-+ ("Inline_and_simplify",
            Inline_and_simplify.run ~never_inline:false ~backend
              ~prefixname ~round)
+(*
       +-+ ("Ref_to_variables",
            Ref_to_variables.eliminate_ref)
+*)
       +-+ ("Remove_unused_closure_vars 2",
            Remove_unused_closure_vars.remove_unused_closure_variables
              ~remove_direct_call_surrogates:false)
       +-+ ("Initialize_symbol_to_let_symbol",
            Initialize_symbol_to_let_symbol.run)
     in
-*)
     let rec loop flam =
       pass_number := 0;
       let round = !round_number in
@@ -170,11 +172,9 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     in
     let back_end flam =
       flam
-(*
       +-+ ("Remove_unused_closure_vars",
            Remove_unused_closure_vars.remove_unused_closure_variables
              ~remove_direct_call_surrogates:true)
-*)
       +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
       +-+ ("Share_constants", Share_constants.share_constants)
       +-+ ("Remove_unused_program_constructs",
@@ -182,7 +182,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     in
     let flam =
       if !Clflags.classic_inlining then
-        assert false (*fast_mode flam *)
+        fast_mode flam
       else
         loop flam
     in
