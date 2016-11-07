@@ -742,6 +742,9 @@ and un_anf_array ident_info env clams : Clambda.ulambda array =
   Array.map (un_anf ident_info env) clams
 
 let apply clam ~what =
+  (* CR mshinwell: maybe call Un_cps from somewhere else.  However it should
+     be done before Un_anf. *)
+  let clam = Un_cps.run clam in
   let ident_info = make_ident_info clam in
   let let_bound_vars_that_can_be_moved =
     let_bound_vars_that_can_be_moved ident_info clam

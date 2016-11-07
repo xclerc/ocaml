@@ -50,33 +50,6 @@ let name_for_function (func : Lambda.lfunction) =
 (* CR-soon mshinwell: Remove mutable state. *)
 let static_exn_env = ref Numbers.Int.Map.empty
 
-module Num_continuation_uses : sig
-  type t =
-    | Zero
-    | One
-    | Many
-
-  val (+) : t -> t -> t
-
-  val linear : t -> bool
-end = struct
-  type t =
-    | Zero
-    | One
-    | Many
-
-  let (+) t1 t2 =
-    match t1, t2 with
-    | Zero, Zero -> Zero
-    | Zero, One | One, Zero -> One
-    | One, One -> Many
-    | _, Many | Many, _ -> Many
-
-  let linear = function
-    | Zero | One -> true
-    | Many -> false
-end
-
 module N = Num_continuation_uses
 
 let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =

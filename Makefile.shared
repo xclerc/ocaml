@@ -120,6 +120,7 @@ ASMCOMP=\
   asmcomp/closure_offsets.cmo \
   asmcomp/flambda_to_clambda.cmo \
   asmcomp/import_approx.cmo \
+  asmcomp/un_cps.cmo \
   asmcomp/un_anf.cmo \
   asmcomp/strmatch.cmo asmcomp/cmmgen.cmo \
   asmcomp/printmach.cmo asmcomp/selectgen.cmo \
@@ -153,6 +154,7 @@ MIDDLE_END=\
   middle_end/base_types/closure_id.cmo \
   middle_end/base_types/var_within_closure.cmo \
   middle_end/base_types/continuation.cmo \
+  middle_end/base_types/num_continuation_uses.cmo \
   middle_end/base_types/export_id.cmo \
   middle_end/base_types/symbol.cmo \
   middle_end/pass_wrapper.cmo \
