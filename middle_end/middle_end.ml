@@ -40,7 +40,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
     ~module_initializer =
   let pass_number = ref 0 in
   let round_number = ref 0 in
-(*
   let check flam =
     if !Clflags.flambda_invariant_checks then begin
       try Flambda_invariants.check_exn flam
@@ -50,8 +49,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
           Flambda.print_program flam
     end
   in
-*)
-  let check _flam = () in
   let (+-+) flam (name, pass) =
     incr pass_number;
     if !Clflags.dump_flambda_verbose then begin
