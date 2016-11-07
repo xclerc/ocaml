@@ -330,13 +330,14 @@ let apply_cont env cont arg : Clambda.ulambda =
   let cont = Env.expand_continuation_aliases env cont in
   match cont with
   | Normal cont -> Ustaticfail (Continuation.to_int cont, [arg])
-  | Return_continuation -> arg
+  | Return_continuation -> Uprim (Preturn, [arg], Debuginfo.none)
 
 let apply_cont_returning_unit env cont : Clambda.ulambda =
   let cont = Env.expand_continuation_aliases env cont in
   match cont with
   | Normal cont -> Ustaticfail (Continuation.to_int cont, [])
-  | Return_continuation -> Uconst (Uconst_int 0)
+  | Return_continuation ->
+    Uprim (Preturn, [Clambda.Uconst (Uconst_int 0)], Debuginfo.none)
 
 let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
   match flam with

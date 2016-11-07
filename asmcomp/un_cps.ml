@@ -18,12 +18,21 @@
 
 module N = Num_continuation_uses
 
-let zero_uses = Numbers.Int.Map.empty
+let zero_uses = Numbers.Int.Map.empty, false
 
-let combine_uses uses1 uses2 =
-  Numbers.Int.Map.union
-    (fun _cont count1 count2 -> Some (N.(+) count1 count2))
-    uses1 uses2
+let combine_uses (uses1, contains_returns1) (uses2, contains_returns2) =
+  let uses =
+    Numbers.Int.Map.union
+      (fun _cont count1 count2 -> Some (N.(+) count1 count2))
+      uses1 uses2
+  in
+  let contains_returns = contains_returns1 || contains_returns2 in
+  uses, contains_returns
+
+(* CR mshinwell: Remove mutable state once we've settled on what we need
+   from this pass. *)
+
+let used_within_catch_bodies = ref Numbers.Int.Map.empty
 
 let rec count_uses (ulam : Clambda.ulambda) =
   let (+) = combine_uses in
@@ -42,6 +51,16 @@ let rec count_uses (ulam : Clambda.ulambda) =
     count_uses defining_expr + count_uses body
   | Uletrec (bindings, ulam) ->
     count_uses_list (List.map snd bindings) + count_uses ulam
+  | Uprim (Preturn, [arg], _) ->
+    let uses, _contains_return = count_uses arg in
+    let contains_return =
+      match arg with
+      | Ustaticfail _ -> false
+      | _ -> true
+    in
+    uses, contains_return
+  | Uprim (Preturn, _, _) ->
+    Misc.fatal_errorf "Preturn takes exactly one argument"
   | Uprim (_, args, _) -> count_uses_list args
   | Uswitch (scrutinee, switch) ->
     count_uses scrutinee + count_uses_array switch.us_actions_consts
@@ -50,9 +69,16 @@ let rec count_uses (ulam : Clambda.ulambda) =
     count_uses scrutinee + count_uses_list (List.map snd cases)
       + count_uses_option default
   | Ustaticfail (cont, args) ->
-    (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty)
+    (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty, false)
       + count_uses_list args
-  | Ucatch (_, _, body, handler)
+  | Ucatch (cont, _, body, handler) ->
+    let body_uses = count_uses body in
+    if Numbers.Int.Map.mem cont !used_within_catch_bodies then begin
+      Misc.fatal_errorf "Duplicate definition of Ucatch %d" cont
+    end;
+    used_within_catch_bodies :=
+      Numbers.Int.Map.add cont body_uses !used_within_catch_bodies;
+    body_uses + count_uses handler
   | Utrywith (body, _, handler) -> count_uses body + count_uses handler
   | Uifthenelse (cond, ifso, ifnot) ->
     count_uses cond + count_uses ifso + count_uses ifnot
@@ -76,7 +102,84 @@ and count_uses_option = function
   | None -> zero_uses
   | Some ulam -> count_uses ulam
 
-let inline ulam ~(uses : N.t Numbers.Int.Map.t) =
+module Env : sig
+  type t
+
+  type action_at_apply_cont =
+    | Unchanged
+    | Let_bind_args_and_substitute of Ident.t list * Clambda.ulambda
+
+  val create : unit -> t
+
+  val linearly_used_continuation
+     : t
+    -> cont:int
+    -> params:Ident.t list
+    -> handler:Clambda.ulambda
+    -> t
+
+  val continuation_will_turn_into_sequence : t -> cont:int -> t
+  val continuation_will_turn_into_let : t -> cont:int -> param:Ident.t -> t
+
+  val action_at_apply_cont : t -> cont:int -> action_at_apply_cont
+end = struct
+  type action_at_apply_cont =
+    | Unchanged
+    | Let_bind_args_and_substitute of Ident.t list * Clambda.ulambda
+
+  type t = {
+    actions : action_at_apply_cont Numbers.Int.Map.t;
+  }
+
+  let create () =
+    { actions = Numbers.Int.Map.empty;
+    }
+
+  let linearly_used_continuation t ~cont ~params ~handler =
+    if Numbers.Int.Map.mem cont t.actions then begin
+      Misc.fatal_errorf "Continuation %d already in Un_cps environment"
+        cont
+    end else begin
+      let action = Let_bind_args_and_substitute (params, handler) in
+      { actions = Numbers.Int.Map.add cont action t.actions;
+      }
+    end
+
+  let continuation_will_turn_into_sequence t ~cont =
+    if Numbers.Int.Map.mem cont t.actions then begin
+      Misc.fatal_errorf "Continuation %d already in Un_cps environment"
+        cont
+    end else begin
+      let action = Let_bind_args_and_substitute ([], Uconst (Uconst_int 0)) in
+      { actions = Numbers.Int.Map.add cont action t.actions;
+      }
+    end
+
+  let continuation_will_turn_into_let t ~cont ~param =
+    if Numbers.Int.Map.mem cont t.actions then begin
+      Misc.fatal_errorf "Continuation %d already in Un_cps environment"
+        cont
+    end else begin
+      let action =
+        Let_bind_args_and_substitute ([param], Uconst (Uconst_int 0))
+      in
+      { actions = Numbers.Int.Map.add cont action t.actions;
+      }
+    end
+
+  let action_at_apply_cont t ~cont =
+    match Numbers.Int.Map.find cont t.actions with
+    | exception Not_found -> Unchanged
+    | action -> action
+end
+
+type can_turn_into_let_or_sequence =
+  | Nothing
+  | Sequence
+  | Let of Ident.t
+
+let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
+  let module E = Env in
   let rec inline env (ulam : Clambda.ulambda) : Clambda.ulambda =
     match ulam with
     | Uvar _ | Uconst _ | Uunreachable -> ulam
@@ -115,9 +218,9 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) =
       in
       Ustringswitch (inline env scrutinee, cases, inline_option env default)
     | Ustaticfail (cont, args) ->
-      begin match Numbers.Int.Map.find cont env with
-      | exception Not_found -> Ustaticfail (cont, inline_list env args)
-      | (params, handler) ->
+      begin match E.action_at_apply_cont env ~cont with
+      | Unchanged -> Ustaticfail (cont, inline_list env args)
+      | Let_bind_args_and_substitute (params, handler) ->
         if List.length params <> List.length args then begin
           Misc.fatal_errorf "Ustaticfail %d has the wrong number of \
               arguments"
@@ -133,10 +236,51 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) =
       begin match Numbers.Int.Map.find cont uses with
       | exception Not_found -> inline env body
       | One ->
-        let env = Numbers.Int.Map.add cont (params, handler) env in
+        let env = E.linearly_used_continuation env ~cont ~params ~handler in
         inline env body
       | Many ->
-        Ucatch (cont, params, inline env body, inline env handler)
+        begin match Numbers.Int.Map.find cont used_within_catch_bodies with
+        | exception Not_found ->
+          Misc.fatal_errorf "No record of used continuations within \
+              Ucatch body %d"
+            cont
+        | (used, contains_returns) ->
+          (* If, after inlining linearly-used continuations in the body, the
+             only occurrences of continuation variables in such body all refer
+             to the "nearest" continuation variable binding (i.e. [cont]),
+             then turn the [Ucatch] into either a let-binding or a sequence.
+          *)
+          let used =
+            Numbers.Int.Map.filter (fun _cont (uses : N.t) ->
+                match uses with
+                | Zero | One -> false
+                | Many -> true)
+              used
+          in
+          let can_turn_into_let_or_sequence =
+            match Numbers.Int.Map.bindings used with
+            | [cont', _] when cont = cont' ->
+              if contains_returns then begin
+                Nothing
+              end else begin
+                match params with
+                | [param] -> Let param
+                | [] -> Sequence
+                | _ -> Nothing
+              end
+            | _ -> Nothing
+          in
+          match can_turn_into_let_or_sequence with
+          | Nothing ->
+            Ucatch (cont, params, inline env body, inline env handler)
+          | Sequence ->
+            let env = E.continuation_will_turn_into_sequence env ~cont in
+            Usequence (inline env body, inline env handler)
+          | Let param ->
+            let env = E.continuation_will_turn_into_let env ~cont ~param in
+            Ulet (Immutable, Pgenval, param, inline env body,
+              inline env handler)
+        end
       | Zero -> assert false
       end
     | Utrywith (body, id, handler) ->
@@ -159,8 +303,11 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) =
   and inline_array env ulams =
     Array.map (fun ulam -> inline env ulam) ulams
   in
-  inline Numbers.Int.Map.empty ulam
+  inline (E.create ()) ulam
 
 let run ulam =
-  let uses = count_uses ulam in
-  inline ulam ~uses
+  used_within_catch_bodies := Numbers.Int.Map.empty;
+  let uses, _contains_returns =
+    count_uses ulam
+  in
+  inline ulam ~uses ~used_within_catch_bodies:!used_within_catch_bodies
