@@ -744,7 +744,13 @@ and un_anf_array ident_info env clams : Clambda.ulambda array =
 let apply clam ~what =
   (* CR mshinwell: maybe call Un_cps from somewhere else.  However it should
      be done before Un_anf. *)
+  if !Clflags.dump_clambda then begin
+    Format.eprintf "@.before un-cps (%s):@ %a@." what Printclambda.clambda clam
+  end;
   let clam = Un_cps.run clam in
+  if !Clflags.dump_clambda then begin
+    Format.eprintf "@.after un-cps (%s):@ %a@." what Printclambda.clambda clam
+  end;
   let ident_info = make_ident_info clam in
   let let_bound_vars_that_can_be_moved =
     let_bound_vars_that_can_be_moved ident_info clam
@@ -756,6 +762,6 @@ let apply clam ~what =
   let ident_info = make_ident_info clam in
   let clam = un_anf ident_info Ident.Map.empty clam in
   if !Clflags.dump_clambda then begin
-    Format.eprintf "@.un-anf (%s):@ %a@." what Printclambda.clambda clam
+    Format.eprintf "@.after un-anf (%s):@ %a@." what Printclambda.clambda clam
   end;
   clam

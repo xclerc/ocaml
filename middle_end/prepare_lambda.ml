@@ -353,7 +353,7 @@ let rec prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
       prepare env ifso (fun ifso ->
         prepare env ifnot (fun ifnot ->
           let switch : Lambda.lambda_switch =
-            { sw_numconsts = 1;
+            { sw_numconsts = 2;
               sw_consts = [0, ifnot];
               sw_numblocks = 0;
               sw_blocks = [];
