@@ -20,7 +20,6 @@ type result = {
   free_variable_offsets : int Var_within_closure.Map.t;
 }
 
-(*
 let add_closure_offsets
       { function_offsets; free_variable_offsets }
       ({ function_decls; free_vars } : Flambda.set_of_closures) =
@@ -129,20 +128,11 @@ let compute_reexported_offsets program
         used_closure_id closure_id;
         used_var_within_closure var
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Read_symbol_field _ | Set_of_closures _ | Prim _ | Expr _ -> ());
+      | Read_symbol_field _ | Set_of_closures _ | Prim _
+      | Assign _ -> ());
   Flambda_iterators.iter_constant_defining_values_on_program program
     ~f:(fun (const : Flambda.constant_defining_value) ->
       match const with
       | Project_closure (_, closure_id) -> used_closure_id closure_id
       | Allocated_const _ | Block _ | Set_of_closures _ -> ());
   !offset_fun, !offset_fv
-
-*)
-
-
-let compute _ = assert false
-
-let compute_reexported_offsets _program
-      ~current_unit_offset_fun:_ ~current_unit_offset_fv:_
-      ~imported_units_offset_fun:_ ~imported_units_offset_fv:_ =
-  assert false
