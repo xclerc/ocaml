@@ -650,6 +650,9 @@ and to_clambda_closed_set_of_closures t env symbol
         (Env.keep_only_symbols env)
         functions
     in
+    let env =
+      Env.add_return_continuation env function_decl.continuation_param
+    in
     let env_body, params =
       List.fold_right (fun var (env, params) ->
           let id, env = Env.add_fresh_ident env var in
