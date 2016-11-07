@@ -44,43 +44,22 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
       Variable.Map.iter (fun _ (function_decl : Flambda.function_declaration) ->
           loop function_decl.body)
         set_of_closures.function_decls.funs
-    | Expr e ->
-      loop e
+    | Assign _ ->
+      set := Variable.Set.union !set (Flambda.free_variables_named flam)
   and loop (flam : Flambda.t) =
     match flam with
     | Let { defining_expr; body; _ } ->
       loop_named defining_expr;
       loop body
-    | Let_rec (defs, body) ->
-      List.iter (fun (_var, named) -> loop_named named) defs;
-      loop body
-    | Var v ->
-      set := Variable.Set.add v !set
     | Let_mutable { initial_value = v; body } ->
       set := Variable.Set.add v !set;
       loop body
-    | If_then_else (cond, ifso, ifnot) ->
-      set := Variable.Set.add cond !set;
-      loop ifso;
-      loop ifnot
-    | Switch (cond, { consts; blocks; failaction }) ->
-      set := Variable.Set.add cond !set;
-      List.iter (fun (_, branch) -> loop branch) consts;
-      List.iter (fun (_, branch) -> loop branch) blocks;
-      Misc.may loop failaction
-    | String_switch (cond, branches, default) ->
-      set := Variable.Set.add cond !set;
-      List.iter (fun (_, branch) -> loop branch) branches;
-      Misc.may loop default
-    | Let_cont (_, _, body, handler) ->
+    | Let_cont { body; handler = Handler { handler; _ }; _ } ->
       loop body;
       loop handler
-    | Try_with (body, _, handler) ->
-      loop body;
-      loop handler
-    | Apply_cont (_, args) ->
-      set := Variable.Set.union (Variable.Set.of_list args) !set
-    | Proved_unreachable | Apply _ | Send _ | Assign _ ->
+    | Let_cont { body; handler = Alias _; _ } ->
+      loop body
+    | Proved_unreachable | Apply _ | Apply_cont _ | Switch _ ->
       set := Variable.Set.union !set (Flambda.free_variables flam)
   in
   loop tree;
@@ -124,6 +103,40 @@ let eliminate_ref_of_expr flam =
       then None (* This case could apply when inlining code containing GADTS *)
       else Some (arr.(field), Array.length arr)
     in
+    let aux_named var (named : Flambda.named) =
+      match named with
+      | Prim(Pfield field, [v], _)
+        when convertible_variable v ->
+        (match get_variable v field with
+         | None -> (), var, None
+         | Some (var',_) -> (), var, Some ([], Flambda.Read_mutable var'))
+      | Prim(Poffsetref delta, [v], dbg)
+        when convertible_variable v ->
+        (match get_variable v 0 with
+         | None -> (), var, None
+         | Some (var', size) ->
+           if size = 1
+           then begin
+             let mut = Variable.create "read_mutable" in
+             let new_value = Variable.create "offseted" in
+             (), var, Some ([
+               mut, Flambda.Read_mutable var';
+               new_value, Flambda.Prim (Poffsetint delta, [mut], dbg);
+             ], Flambda.Assign { being_assigned = var'; new_value; })
+           end
+           else
+             (), var, None)
+      | Prim(Psetfield (field, _, _), [v; new_value], _)
+        when convertible_variable v ->
+        (match get_variable v field with
+         | None -> (), var, None
+         | Some (being_assigned,_) ->
+           (), var, Some ([], Flambda.Assign { being_assigned; new_value }))
+      | Prim _ | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+      | Read_symbol_field _ | Set_of_closures _ | Project_closure _
+      | Move_within_set_of_closures _ | Project_var _ | Assign _ ->
+        (), var, Some ([], named)
+    in
     let aux (flam : Flambda.t) : Flambda.t =
       match flam with
       | Let { var;
@@ -144,53 +157,21 @@ let eliminate_ref_of_expr flam =
                                initial_value = init;
                                body;
                                contents_kind = kind } : Flambda.t))
-            (0,body) l shape in
+            (0, body) l shape in
         expr
-      | Let _ | Let_mutable _
-      | Assign _ | Var _ | Apply _
-      | Let_rec _ | Switch _ | String_switch _
-      | Apply_cont _ | Let_cont _
-      | Try_with _ | If_then_else _
-      | Send _ | Proved_unreachable ->
+      | Let _ ->
+        let flam, () =
+          Flambda.fold_lets_option flam ~init:()
+            ~for_defining_expr:(fun () var named -> aux_named var named)
+            ~for_last_body:(fun () expr -> expr, ())
+            ~filter_defining_expr:(fun () var named _ ->
+              (), var, Some named)
+        in
         flam
-    and aux_named (named : Flambda.named) : Flambda.named =
-      match named with
-      | Prim(Pfield field, [v], _)
-        when convertible_variable v ->
-        (match get_variable v field with
-         | None -> Expr Proved_unreachable
-         | Some (var,_) -> Read_mutable var)
-      | Prim(Poffsetref delta, [v], dbg)
-        when convertible_variable v ->
-        (match get_variable v 0 with
-         | None -> Expr Proved_unreachable
-         | Some (var,size) ->
-           if size = 1
-           then begin
-             let mut = Variable.create "read_mutable" in
-             let new_value = Variable.create "offseted" in
-             let expr =
-               Flambda.create_let mut (Read_mutable var)
-                 (Flambda.create_let new_value
-                    (Prim(Poffsetint delta, [mut], dbg))
-                    (Assign { being_assigned = var; new_value }))
-             in
-             Expr expr
-           end
-           else
-             Expr Proved_unreachable)
-      | Prim(Psetfield (field, _, _), [v; new_value], _)
-        when convertible_variable v ->
-        (match get_variable v field with
-         | None -> Expr Proved_unreachable
-         | Some (being_assigned,_) ->
-           Expr (Assign { being_assigned; new_value }))
-      | Prim _ | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Read_symbol_field _ | Set_of_closures _ | Project_closure _
-      | Move_within_set_of_closures _ | Project_var _ | Expr _ ->
-        named
+      | Let_mutable _ | Apply _ | Switch _
+      | Apply_cont _ | Let_cont _ | Proved_unreachable -> flam
     in
-    Flambda_iterators.map aux aux_named flam
+    Flambda_iterators.map_expr aux flam
 
 let eliminate_ref (program:Flambda.program) =
   Flambda_iterators.map_exprs_at_toplevel_of_program program

@@ -510,6 +510,10 @@ val fold_lets_option
   -> t * 'b
 
 (** Like [fold_lets_option], but just a map. *)
+(* CR mshinwell: consider enhancing this in the same way as for
+   [fold_lets_option] in the [defining_expr] type.  This would be useful eg
+   for Ref_to_variables.  Maybe in fact there should be a new iterator that
+   uses this function for such situations? *)
 val map_lets
    : t
   -> for_defining_expr:(Variable.t -> named -> named)
