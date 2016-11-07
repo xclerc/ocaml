@@ -28,8 +28,6 @@ type flambda_kind =
 *)
 (* CR-someday pchambart: for sum types, we should probably add an exhaustive
    pattern in ignores functions to be reminded if a type change *)
-let already_added_bound_variable_to_env (_ : Variable.t) = ()
-let will_traverse_named_expression_later (_ : Flambda.named) = ()
 let ignore_variable (_ : Variable.t) = ()
 let ignore_call_kind (_ : Flambda.call_kind) = ()
 let ignore_debuginfo (_ : Debuginfo.t) = ()
@@ -37,8 +35,8 @@ let ignore_meth_kind (_ : Lambda.meth_kind) = ()
 let ignore_int (_ : int) = ()
 let ignore_int_set (_ : Numbers.Int.Set.t) = ()
 let ignore_bool (_ : bool) = ()
-let ignore_string (_ : string) = ()
-let ignore_static_exception (_ : Continuation.t) = ()
+let ignore_switch_block_pattern (_ : Ilambda.switch_block_pattern) = ()
+let ignore_continuation (_ : Continuation.t) = ()
 let ignore_primitive ( _ : Lambda.primitive) = ()
 let ignore_const (_ : Flambda.const) = ()
 let ignore_allocated_const (_ : Allocated_const.t) = ()
@@ -50,6 +48,7 @@ let ignore_tag (_ : Tag.t) = ()
 let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
 let ignore_specialise_attribute (_ : Lambda.specialise_attribute) = ()
 let ignore_value_kind (_ : Lambda.value_kind) = ()
+let ignore_rec_flag (_ : Asttypes.rec_flag) = ()
 
 exception Binding_occurrence_not_from_current_compilation_unit of Variable.t
 exception Mutable_binding_occurrence_not_from_current_compilation_unit of
@@ -162,64 +161,53 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_value_kind contents_kind;
       check_variable_is_bound env var;
       loop (add_mutable_binding_occurrence env mut_var) body
-    | Let_rec (defs, body) ->
-      let env =
-        List.fold_left (fun env (var, def) ->
-            will_traverse_named_expression_later def;
-            add_binding_occurrence env var)
-          env defs
-      in
-      List.iter (fun (var, def) ->
-        already_added_bound_variable_to_env var;
-        loop_named env def) defs;
-      loop env body
-    | Let_cont (static_exn, vars, body, handler) ->
-      ignore_static_exception static_exn;
+    | Let_cont { name; body;
+        handler = Handler { params; recursive; handler; }; } ->
+      ignore_continuation name;
       loop env body;
-      loop (add_binding_occurrences env vars) handler
-    | Try_with (body, var, handler) ->
+      ignore_rec_flag recursive;
+      loop (add_binding_occurrences env params) handler
+    | Let_cont { name; body; handler = Alias alias_of; } ->
+      ignore_continuation name;
       loop env body;
-      loop (add_binding_occurrence env var) handler
+      ignore_continuation alias_of
     (* Everything else: *)
-    | Var var -> check_variable_is_bound env var
-    | Apply { func; args; kind; dbg; inline; specialise; } ->
+    | Apply { kind = Function; func; continuation; args; call_kind; dbg; inline;
+        specialise; } ->
       check_variable_is_bound env func;
       check_variables_are_bound env args;
-      ignore_call_kind kind;
+      (* CR mshinwell: check continuations are bound *)
+      ignore_continuation continuation;
+      ignore_call_kind call_kind;
       ignore_debuginfo dbg;
       ignore_inline_attribute inline;
       ignore_specialise_attribute specialise
-    | Assign { being_assigned; new_value; } ->
-      check_mutable_variable_is_bound env being_assigned;
-      check_variable_is_bound env new_value
-    | Send { kind; meth; obj; args; dbg; } ->
+    | Apply { kind = Method { kind; obj; }; func; continuation; args; call_kind;
+        dbg; inline; specialise; } ->
       ignore_meth_kind kind;
-      check_variable_is_bound env meth;
       check_variable_is_bound env obj;
+      check_variable_is_bound env func;
       check_variables_are_bound env args;
-      ignore_debuginfo dbg
-    | If_then_else (cond, ifso, ifnot) ->
-      check_variable_is_bound env cond;
-      loop env ifso;
-      loop env ifnot
+      ignore_continuation continuation;
+      ignore_call_kind call_kind;
+      ignore_debuginfo dbg;
+      ignore_inline_attribute inline;
+      ignore_specialise_attribute specialise
     | Switch (arg, { numconsts; consts; numblocks; blocks; failaction; }) ->
       check_variable_is_bound env arg;
       ignore_int_set numconsts;
       ignore_int_set numblocks;
       List.iter (fun (n, e) ->
           ignore_int n;
-          loop env e)
-        (consts @ blocks);
-      Misc.may (loop env) failaction
-    | String_switch (arg, cases, e_opt) ->
-      check_variable_is_bound env arg;
-      List.iter (fun (label, case) ->
-          ignore_string label;
-          loop env case)
-        cases;
-      Misc.may (loop env) e_opt
+          ignore_continuation e)
+        consts;
+      List.iter (fun (n, e) ->
+          ignore_switch_block_pattern n;
+          ignore_continuation e)
+        blocks;
+      Misc.may ignore_continuation failaction
     | Apply_cont (static_exn, es) ->
-      ignore_static_exception static_exn;
+      ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es
     | Proved_unreachable -> ()
   and loop_named env (named : Flambda.named) =
@@ -230,6 +218,9 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Allocated_const const -> ignore_allocated_const const
     | Read_mutable mut_var ->
       check_mutable_variable_is_bound env mut_var
+    | Assign { being_assigned; new_value; } ->
+      check_mutable_variable_is_bound env being_assigned;
+      check_variable_is_bound env new_value
     | Read_symbol_field (symbol, index) ->
       check_symbol_is_bound env symbol;
       assert (index >= 0)  (* CR-someday mshinwell: add proper error *)
@@ -250,8 +241,6 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_primitive prim;
       check_variables_are_bound env args;
       ignore_debuginfo dbg
-    | Expr expr ->
-      loop env expr
   and loop_set_of_closures env
       ({ Flambda.function_decls; free_vars; specialised_args;
           direct_call_surrogates = _; } as set_of_closures) =
@@ -428,11 +417,15 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       let env = add_binding_occurrence_of_symbol env symbol in
       loop_program_body env program
     | Initialize_symbol (symbol, _tag, fields, program) ->
-      List.iter (loop env) fields;
+      List.iter (fun (field, cont) ->
+          loop env field;
+          ignore_continuation cont)
+        fields;
       let env = add_binding_occurrence_of_symbol env symbol in
       loop_program_body env program
-    | Effect (expr, program) ->
+    | Effect (expr, cont, program) ->
       loop env expr;
+      ignore_continuation cont;
       loop_program_body env program
     | End root ->
       check_symbol_is_bound env root
@@ -553,7 +546,7 @@ let used_closure_ids (program:Flambda.program) =
     | Project_var { closure = _; closure_id; var = _ } ->
       used := Closure_id.Set.add closure_id !used
     | Set_of_closures _ | Var _ | Symbol _ | Const _ | Allocated_const _
-    | Prim _ | Expr _ | Read_mutable _ | Read_symbol_field _ -> ()
+    | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _ -> ()
   in
   (* CR-someday pchambart: check closure_ids of constant_defining_values'
      project_closures *)
@@ -604,7 +597,7 @@ let every_used_var_within_closure_from_current_compilation_unit_is_declared
   then ()
   else raise (Unbound_vars_within_closures counter_examples)
 
-let every_static_exception_is_caught flam =
+let every_continuation_is_caught flam =
   let check env (flam : Flambda.t) =
     match flam with
     | Apply_cont (exn, _) ->
@@ -614,9 +607,12 @@ let every_static_exception_is_caught flam =
   in
   let rec loop env (flam : Flambda.t) =
     match flam with
-    | Let_cont (i, _, body, handler) ->
-      let env = Continuation.Set.add i env in
+    | Let_cont { name; body; handler = Handler { handler; _ }; _ } ->
+      let env = Continuation.Set.add name env in
       loop env handler;
+      loop env body
+    | Let_cont { name; body; handler = Alias _; _ } ->
+      let env = Continuation.Set.add name env in
       loop env body
     | exp ->
       check env exp;
@@ -625,14 +621,14 @@ let every_static_exception_is_caught flam =
   in
   loop Continuation.Set.empty flam
 
-let every_static_exception_is_caught_at_a_single_position flam =
+let every_continuation_is_caught_at_a_single_position flam =
   let caught = ref Continuation.Set.empty in
   let f (flam : Flambda.t) =
     match flam with
-    | Let_cont (i, _, _body, _handler) ->
-      if Continuation.Set.mem i !caught then
-        raise (Continuation_caught_in_multiple_places i);
-      caught := Continuation.Set.add i !caught
+    | Let_cont { name; _ } ->
+      if Continuation.Set.mem name !caught then
+        raise (Continuation_caught_in_multiple_places name);
+      caught := Continuation.Set.add name !caught
     | _ -> ()
   in
   Flambda_iterators.iter f (fun (_ : Flambda.named) -> ()) flam
@@ -685,8 +681,8 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
         flam; *)
     Flambda_iterators.iter_exprs_at_toplevel_of_program flam ~f:(fun flam ->
       primitive_invariants flam ~no_access_to_global_module_identifiers:cmxfile;
-      every_static_exception_is_caught flam;
-      every_static_exception_is_caught_at_a_single_position flam;
+      every_continuation_is_caught flam;
+      every_continuation_is_caught_at_a_single_position flam;
       every_declared_closure_is_from_current_compilation_unit flam)
   with exn -> begin
   (* CR-someday split printing code into its own function *)
