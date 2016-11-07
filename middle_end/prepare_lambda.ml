@@ -119,7 +119,37 @@ let dissect_letrec ~bindings ~body =
     (L.Lletrec (functions, body))
     (preallocations @ nonrecursives @ fillings)
 
-let simplify_primitive (prim : L.primitive) args loc =
+module Env : sig
+  type t
+
+  val create : current_unit_id:Ident.t -> t
+
+  val current_unit_id : t -> Ident.t
+
+  val add_mutable : t -> Ident.t -> t
+  val is_mutable : t -> Ident.t -> bool
+end = struct
+  type t = {
+    current_unit_id : Ident.t;
+    mutables : Ident.Set.t;
+  }
+
+  let create ~current_unit_id =
+    { current_unit_id;
+      mutables = Ident.Set.empty;
+    }
+
+  let current_unit_id t = t.current_unit_id
+
+  let add_mutable t id =
+    assert (not (Ident.Set.mem id t.mutables));
+    { t with mutables = Ident.Set.add id t.mutables; }
+
+  let is_mutable t id =
+    Ident.Set.mem id t.mutables
+end
+
+let rec simplify_primitive env (prim : L.primitive) args loc =
   match prim, args with
 (*
   | Prim ((Pdivint Safe | Pmodint Safe
@@ -190,15 +220,21 @@ let simplify_primitive (prim : L.primitive) args loc =
   | Psequor, [arg1; arg2] ->
     let const_true = Ident.create "const_true" in
     let cond = Ident.create "cond_sequor" in
-    L.Llet (Strict, Pgenval, const_true, Lconst (Const_base (Const_int 1)),
-      (L.Llet (Strict, Pgenval, cond, arg1,
-        (Lifthenelse (Lvar cond, Lvar const_true, arg2)))))
+    prepare env (
+      L.Llet (Strict, Pgenval, const_true, Lconst (Const_base (Const_int 1)),
+        (L.Llet (Strict, Pgenval, cond, arg1,
+          (Lifthenelse (Lvar cond, Lvar const_true, arg2))))))
+      (fun lam -> lam)
   | Psequand, [arg1; arg2] ->
     let const_false = Ident.create "const_false" in
     let cond = Ident.create "cond_sequand" in
-    L.Llet (Strict, Pgenval, const_false, Lconst (Const_base (Const_int 0)),
-      (L.Llet (Strict, Pgenval, cond, arg1,
-        (Lifthenelse (Lvar cond, arg2, Lvar const_false)))))
+    (* CR mshinwell: This recursion is a bit ugly.  Factor out a helper
+       function for constructing if-then-else-like switches? *)
+    prepare env (
+      L.Llet (Strict, Pgenval, const_false, Lconst (Const_base (Const_int 0)),
+        (L.Llet (Strict, Pgenval, cond, arg1,
+          (Lifthenelse (Lvar cond, arg2, Lvar const_false))))))
+      (fun lam -> lam)
   | (Psequand | Psequor), _ ->
     Misc.fatal_error "Psequand / Psequor must have exactly two arguments"
   | Pidentity, [arg] -> arg
@@ -219,37 +255,7 @@ let simplify_primitive (prim : L.primitive) args loc =
     L.Lapply apply
   | _, _ -> L.Lprim (prim, args, loc)
 
-module Env : sig
-  type t
-
-  val create : current_unit_id:Ident.t -> t
-
-  val current_unit_id : t -> Ident.t
-
-  val add_mutable : t -> Ident.t -> t
-  val is_mutable : t -> Ident.t -> bool
-end = struct
-  type t = {
-    current_unit_id : Ident.t;
-    mutables : Ident.Set.t;
-  }
-
-  let create ~current_unit_id =
-    { current_unit_id;
-      mutables = Ident.Set.empty;
-    }
-
-  let current_unit_id t = t.current_unit_id
-
-  let add_mutable t id =
-    assert (not (Ident.Set.mem id t.mutables));
-    { t with mutables = Ident.Set.add id t.mutables; }
-
-  let is_mutable t id =
-    Ident.Set.mem id t.mutables
-end
-
-let rec prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
+and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
   match lam with
   | Lvar id ->
     (* The special [Pread_mutable] primitive eases the translation to
@@ -303,7 +309,7 @@ let rec prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
       forbidden upon entry to the middle end"
   | Lprim (prim, args, loc) ->
     prepare_list env args (fun args ->
-      k (simplify_primitive prim args loc))
+      k (simplify_primitive env prim args loc))
   | Lswitch (scrutinee, switch) ->
     prepare env scrutinee (fun scrutinee ->
       let const_nums, sw_consts = List.split switch.sw_consts in
