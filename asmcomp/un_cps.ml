@@ -107,6 +107,7 @@ module Env : sig
 
   type action_at_apply_cont =
     | Unchanged
+    | Return
     | Let_bind_args_and_substitute of Ident.t list * Clambda.ulambda
 
   val create : unit -> t
@@ -119,12 +120,13 @@ module Env : sig
     -> t
 
   val continuation_will_turn_into_sequence : t -> cont:int -> t
-  val continuation_will_turn_into_let : t -> cont:int -> param:Ident.t -> t
+  val continuation_will_turn_into_let : t -> cont:int -> t
 
   val action_at_apply_cont : t -> cont:int -> action_at_apply_cont
 end = struct
   type action_at_apply_cont =
     | Unchanged
+    | Return
     | Let_bind_args_and_substitute of Ident.t list * Clambda.ulambda
 
   type t = {
@@ -150,20 +152,18 @@ end = struct
       Misc.fatal_errorf "Continuation %d already in Un_cps environment"
         cont
     end else begin
+      (* CR mshinwell: add Return_unit *)
       let action = Let_bind_args_and_substitute ([], Uconst (Uconst_int 0)) in
       { actions = Numbers.Int.Map.add cont action t.actions;
       }
     end
 
-  let continuation_will_turn_into_let t ~cont ~param:_ =
+  let continuation_will_turn_into_let t ~cont =
     if Numbers.Int.Map.mem cont t.actions then begin
       Misc.fatal_errorf "Continuation %d already in Un_cps environment"
         cont
     end else begin
-      let action =
-        Let_bind_args_and_substitute ([], Uconst (Uconst_int 0))
-      in
-      { actions = Numbers.Int.Map.add cont action t.actions;
+      { actions = Numbers.Int.Map.add cont Return t.actions;
       }
     end
 
@@ -220,6 +220,14 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
     | Ustaticfail (cont, args) ->
       begin match E.action_at_apply_cont env ~cont with
       | Unchanged -> Ustaticfail (cont, inline_list env args)
+      | Return ->
+        begin match args with
+        | [arg] -> arg
+        | _ ->
+          Misc.fatal_errorf "Ustaticfail %d has the wrong number of \
+              arguments"
+            cont
+        end
       | Let_bind_args_and_substitute (params, handler) ->
         if List.length params <> List.length args then begin
           Misc.fatal_errorf "Ustaticfail %d has the wrong number of \
@@ -277,7 +285,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
             let env = E.continuation_will_turn_into_sequence env ~cont in
             Usequence (inline env body, inline env handler)
           | Let param ->
-            let env = E.continuation_will_turn_into_let env ~cont ~param in
+            let env = E.continuation_will_turn_into_let env ~cont in
             Ulet (Immutable, Pgenval, param, inline env body,
               inline env handler)
         end
