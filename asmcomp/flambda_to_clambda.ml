@@ -329,11 +329,14 @@ let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
 let apply_cont env cont arg : Clambda.ulambda =
   let cont = Env.expand_continuation_aliases env cont in
   match cont with
-  | Normal cont -> Ustaticfail (Continuation.to_int cont, [])
+  | Normal cont -> Ustaticfail (Continuation.to_int cont, [arg])
   | Return_continuation -> arg
 
-let apply_cont_returning_unit env cont =
-  apply_cont env cont (Clambda.Uconst (Uconst_int 0))
+let apply_cont_returning_unit env cont : Clambda.ulambda =
+  let cont = Env.expand_continuation_aliases env cont in
+  match cont with
+  | Normal cont -> Ustaticfail (Continuation.to_int cont, [])
+  | Return_continuation -> Uconst (Uconst_int 0)
 
 let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
   match flam with
@@ -346,8 +349,8 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     let id, env_body = Env.add_fresh_mutable_ident env mut_var in
     let def = subst_var env var in
     Ulet (Mutable, contents_kind, id, def, to_clambda t env_body body)
-  | Apply { kind = Function; func; args; call_kind = Direct direct_func;
-      dbg = dbg } ->
+  | Apply { kind = Function; func; continuation; args;
+      call_kind = Direct direct_func; dbg = dbg } ->
     (* The closure _parameter_ of the function is added by cmmgen.
        At the call site, for a direct call, the closure argument must be
        explicitly added (by [to_clambda_direct_apply]); there is no special
@@ -355,22 +358,32 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
        For an indirect call, we do not need to do anything here; Cmmgen will
        do the equivalent of the previous paragraph when it generates a direct
        call to [caml_apply]. *)
-    to_clambda_direct_apply t func args direct_func dbg env
-  | Apply { kind = Function; func; args; call_kind = Indirect; dbg = dbg } ->
+    let ulam =
+      to_clambda_direct_apply t func args direct_func dbg env
+    in
+    apply_cont env continuation ulam
+  | Apply { kind = Function; func; continuation; args; call_kind = Indirect;
+      dbg = dbg } ->
     let callee = subst_var env func in
-    Ugeneric_apply (check_closure callee (Flambda.Var func),
-      subst_vars env args, dbg)
-  | Apply { kind = Method { kind; obj; }; func; args; call_kind = _;
-      dbg = dbg; } ->
-    Usend (kind, subst_var env func, subst_var env obj,
-      subst_vars env args, dbg)
+    let ulam : Clambda.ulambda =
+      Ugeneric_apply (check_closure callee (Flambda.Var func),
+        subst_vars env args, dbg)
+    in
+    apply_cont env continuation ulam
+  | Apply { kind = Method { kind; obj; }; func; continuation; args;
+      call_kind = _; dbg = dbg; } ->
+    let ulam : Clambda.ulambda =
+      Usend (kind, subst_var env func, subst_var env obj,
+        subst_vars env args, dbg)
+    in
+    apply_cont env continuation ulam
   | Switch (scrutinee, sw) ->
     let arg = subst_var env scrutinee in
     (* CR mshinwell: More transformations here to satisfy Cmmgen? *)
     begin match switch_looks_like_if ~scrutinee ~switch:sw with
     | Some (ifso_cont, ifnot_cont) ->
-      let ifso = apply_cont env ifso_cont arg in
-      let ifnot = apply_cont env ifnot_cont arg in
+      let ifso = apply_cont_returning_unit env ifso_cont in
+      let ifnot = apply_cont_returning_unit env ifnot_cont in
       Uifthenelse (arg, ifso, ifnot)
     | None ->
       match tag_switch_or_string_switch ~scrutinee ~switch:sw with

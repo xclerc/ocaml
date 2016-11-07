@@ -49,7 +49,9 @@ let rec count_uses (ulam : Clambda.ulambda) =
   | Ustringswitch (scrutinee, cases, default) ->
     count_uses scrutinee + count_uses_list (List.map snd cases)
       + count_uses_option default
-  | Ustaticfail (_, args) -> count_uses_list args
+  | Ustaticfail (cont, args) ->
+    (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty)
+      + count_uses_list args
   | Ucatch (_, _, body, handler)
   | Utrywith (body, _, handler) -> count_uses body + count_uses handler
   | Uifthenelse (cond, ifso, ifnot) ->
@@ -129,12 +131,13 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) =
       end
     | Ucatch (cont, params, body, handler) ->
       begin match Numbers.Int.Map.find cont uses with
-      | Zero -> inline env body
+      | exception Not_found -> inline env body
       | One ->
         let env = Numbers.Int.Map.add cont (params, handler) env in
         inline env body
       | Many ->
         Ucatch (cont, params, inline env body, inline env handler)
+      | Zero -> assert false
       end
     | Utrywith (body, id, handler) ->
       Utrywith (inline env body, id, inline env handler)

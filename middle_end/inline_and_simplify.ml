@@ -688,6 +688,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
           Freshening.apply_static_exception (E.freshening env)
             apply.continuation
         in
+        let r = R.use_continuation r env continuation [A.value_unknown Other] in
         let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
         let apply : Flambda.apply = {
           kind = Method { kind; obj; };
@@ -709,6 +710,10 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
     continuation; kind;
   } = apply in
   let dbg = E.add_inlined_debuginfo env ~dbg in
+  let continuation =
+    Freshening.apply_static_exception (E.freshening env) continuation
+  in
+  let r = R.use_continuation r env continuation [A.value_unknown Other] in
   simplify_free_variable env lhs_of_application
     ~f:(fun env lhs_of_application lhs_of_application_approx ->
       simplify_free_variables env args ~f:(fun env args args_approxs ->
@@ -779,10 +784,6 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
           in
           let nargs = List.length args in
           let arity = Flambda_utils.function_arity function_decl in
-          let continuation =
-            Freshening.apply_static_exception (E.freshening env)
-              apply.continuation
-          in
           let result, r =
             if nargs = arity then
               simplify_full_application env r ~function_decls
