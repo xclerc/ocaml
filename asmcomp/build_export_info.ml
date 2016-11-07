@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-(*
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Env : sig
@@ -202,23 +202,14 @@ let descr_of_allocated_constant (c : Allocated_const.t) : Export_info.descr =
 
 let rec approx_of_expr (env : Env.t) (flam : Flambda.t) : Export_info.approx =
   match flam with
-  | Var var -> Env.find_approx env var
   | Let { var; defining_expr; body; _ } ->
     let approx = descr_of_named env defining_expr in
     let env = Env.add_approx env var approx in
     approx_of_expr env body
   | Let_mutable { body } ->
     approx_of_expr env body
-  | Let_rec (defs, body) ->
-    let env =
-      List.fold_left (fun env (var, defining_expr) ->
-          let approx = descr_of_named env defining_expr in
-          Env.add_approx env var approx)
-        env defs
-    in
-    approx_of_expr env body
-  | Apply { func; kind; _ } ->
-    begin match kind with
+  | Apply { kind = Function; func; call_kind; _ } ->
+    begin match call_kind with
     | Indirect -> Value_unknown
     | Direct closure_id' ->
       match Env.get_descr env (Env.find_approx env func) with
@@ -229,18 +220,17 @@ let rec approx_of_expr (env : Env.t) (flam : Flambda.t) : Export_info.approx =
         Closure_id.Map.find closure_id results
       | _ -> Value_unknown
     end
-  | Assign _ -> Value_id (Env.new_unit_descr env)
-  | Apply_cont _ | Let_cont _ | Try_with _ | If_then_else _
-  | Switch _ | String_switch _ | Send _ | Proved_unreachable ->
+  | Apply { kind = Method _; _ } | Apply_cont _ | Let_cont _ | Switch _
+  | Proved_unreachable ->
     Value_unknown
 
 and descr_of_named (env : Env.t) (named : Flambda.named)
       : Export_info.approx =
   match named with
   | Var var -> Env.find_approx env var
-  | Expr expr -> approx_of_expr env expr
   | Symbol sym -> Value_symbol sym
   | Read_mutable _ -> Value_unknown
+  | Assign _ -> Value_id (Env.new_unit_descr env)
   | Read_symbol_field (sym, i) ->
     begin match Env.get_symbol_descr env sym with
     | Some (Value_block (_, fields)) when Array.length fields > i -> fields.(i)
@@ -475,7 +465,9 @@ let describe_program (env : Env.Global.t) (program : Flambda.program) =
              [Initialize_symbol] construction. *)
           Env.empty_of_global env
         in
-        let field_approxs = List.map (approx_of_expr env) fields in
+        let field_approxs =
+          List.map (fun (field, _cont) -> approx_of_expr env field) fields
+        in
         let descr : Export_info.descr =
           Value_block (tag, Array.of_list field_approxs)
         in
@@ -483,7 +475,7 @@ let describe_program (env : Env.Global.t) (program : Flambda.program) =
       in
       let env = Env.Global.add_symbol env symbol id in
       loop env program
-    | Effect (_expr, program) -> loop env program
+    | Effect (_expr, _cont, program) -> loop env program
     | End symbol -> symbol, env
   in
   loop env program.program_body
@@ -548,9 +540,3 @@ let build_export_info ~(backend : (module Backend_intf.S))
       ~sets_of_closures ~closures
       ~constant_sets_of_closures:Set_of_closures_id.Set.empty
       ~invariant_params
-*)
-let build_export_info ~(backend : (module Backend_intf.S))
-      (program : Flambda.program) : Export_info.t =
-  ignore backend;
-  ignore program;
-  assert false
