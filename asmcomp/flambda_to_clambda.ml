@@ -131,6 +131,14 @@ module Env : sig
   val allocated_const_for_symbol : t -> Symbol.t -> Allocated_const.t option
 
   val keep_only_symbols : t -> t
+
+  val add_continuation_alias
+     : t
+    -> Continuation.t
+    -> alias_of:Continuation.t
+    -> t
+
+  val expand_continuation_aliases : t -> Continuation.t -> Continuation.t
 end = struct
   type t =
     { subst : Clambda.ulambda Variable.Map.t;
@@ -138,6 +146,7 @@ end = struct
       mutable_var : Ident.t Mutable_variable.Map.t;
       toplevel : bool;
       allocated_constant_for_symbol : Allocated_const.t Symbol.Map.t;
+      continuation_aliases : Continuation.t Continuation.Map.t;
     }
 
   let empty =
@@ -146,6 +155,7 @@ end = struct
       mutable_var = Mutable_variable.Map.empty;
       toplevel = false;
       allocated_constant_for_symbol = Symbol.Map.empty;
+      continuation_aliases = Continuation.Map.empty;
     }
 
   let add_subst t id subst =
@@ -181,6 +191,18 @@ end = struct
   let keep_only_symbols t =
     { empty with
       allocated_constant_for_symbol = t.allocated_constant_for_symbol;
+    }
+
+  let expand_continuation_aliases t cont =
+    match Continuation.Map.find cont t.continuation_aliases with
+    | exception Not_found -> cont
+    | cont -> cont
+
+  let add_continuation_alias t cont ~alias_of =
+    let alias_of = expand_continuation_aliases t alias_of in
+    { t with
+      continuation_aliases =
+        Continuation.Map.add cont alias_of t.continuation_aliases;
     }
 end
 
@@ -230,6 +252,26 @@ let to_clambda_const env (const : Flambda.constant_defining_value_block_field)
   | Const (Char c) -> Uconst_int (Char.code c)
   | Const (Const_pointer i) -> Uconst_ptr i
 
+let switch_numconsts_for_if = Numbers.Int.Set.of_list [0; 1]
+
+let switch_looks_like_if ~scrutinee ~(switch : Flambda.switch) =
+  if not (Numbers.Int.Set.equal switch.numconsts switch_numconsts_for_if
+    && Numbers.Int.Set.equal switch.numblocks Numbers.Int.Set.empty)
+  then
+    None
+  else
+    match switch.consts, switch.failaction with
+    | [0, ifnot_cont; 1, ifso_cont], None
+    | [1, ifso_cont; 0, ifnot_cont], None
+    | [0, ifnot_cont], Some ifso_cont
+    | [1, ifso_cont], Some ifnot_cont ->
+      Some (ifso_cont, ifnot_cont)
+    | _ ->
+      Misc.fatal_errorf "Malformed Flambda.switch: %a"
+        Flambda.print (Flambda.Switch (scrutinee, switch))
+
+let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
+
 let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
   match flam with
   | Let { var; defining_expr; body; _ } ->
@@ -259,51 +301,80 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
       dbg = dbg; } ->
     Usend (kind, subst_var env func, subst_var env obj,
       subst_vars env args, dbg)
-  | Switch (arg, sw) ->
-  (* CR mshinwell: Simplify as required for Cmmgen *)
-  (* ...needs splitting for ifthenelse/switch/stringswitch *)
-    let aux () : Clambda.ulambda =
-      let const_index, const_actions =
-        to_clambda_switch t env sw.consts sw.numconsts sw.failaction
-      in
-      let block_index, block_actions =
-        to_clambda_switch t env sw.blocks sw.numblocks sw.failaction
-      in
-      Uswitch (subst_var env arg,
-        { us_index_consts = const_index;
-          us_actions_consts = const_actions;
-          us_index_blocks = block_index;
-          us_actions_blocks = block_actions;
-        })
-    in
-    (* Check that the [failaction] may be duplicated.  If this is not the
-       case, share it through a static raise / static catch. *)
-    (* CR-someday pchambart for pchambart: This is overly simplified.
-       We should verify that this does not generates too bad code.
-       If it the case, handle some let cases.
-    *)
-    begin match sw.failaction with
-    | None -> aux ()
-    | Some (Apply_cont _) -> aux ()
-    | Some failaction ->
-      let exn = Continuation.create () in
-      let sw =
-        { sw with
-          failaction = Some (Flambda.Apply_cont (exn, []));
-        }
-      in
-      let expr : Flambda.t =
-        Let_cont (exn, [], Switch (arg, sw), failaction)
-      in
-      to_clambda t env expr
+  | Switch (scrutinee, sw) ->
+    let arg = subst_var env scrutinee in
+    (* CR mshinwell: More transformations here to satisfy Cmmgen? *)
+    begin match switch_looks_like_if ~scrutinee ~switch:sw with
+    | Some (ifso_cont, ifnot_cont) ->
+      let ifso_cont = Env.expand_continuation_aliases t ifso_cont in
+      let ifnot_cont = Env.expand_continuation_aliases t ifnot_cont in
+      Uifthenelse (Uvar arg,
+        Ustaticfail (Continuation.to_int ifso_cont, []),
+        Ustaticfail (Continuation.to_int ifnot_cont, []))
+    | None ->
+      match tag_switch_or_string_switch ~scrutinee ~switch with
+      | Tag blocks ->
+        let aux () : Clambda.ulambda =
+          let const_index, const_actions =
+            to_clambda_switch t env sw.consts sw.numconsts sw.failaction
+          in
+          let block_index, block_actions =
+            to_clambda_switch t env blocks sw.numblocks sw.failaction
+          in
+          Uswitch (subst_var env arg,
+            { us_index_consts = const_index;
+              us_actions_consts = const_actions;
+              us_index_blocks = block_index;
+              us_actions_blocks = block_actions;
+            })
+        in
+        (* [Uswitch] doesn't have the notion of a default case.  As such, we
+           check if the [failaction] may be duplicated.  If this is not the
+           case, share it through a static raise / static catch. *)
+        (* CR-someday pchambart for pchambart: This is overly simplified.
+           We should verify that this does not generates too bad code.
+           If it the case, handle some let cases.
+        *)
+        begin match sw.failaction with
+        | None -> aux ()
+        | Some (Apply_cont _) -> aux ()
+        | Some failaction ->
+          let cont = Continuation.create () in
+          let sw =
+            { sw with
+              failaction = Some (Flambda.Apply_cont (cont, []));
+            }
+          in
+          let expr : Flambda.t =
+            Let_cont {
+              name = cont;
+              body = Switch (arg, sw);
+              handler = Handler {
+                params = [];
+                recursive = Nonrecursive;
+                handler = failaction;
+              }
+            }
+          in
+          to_clambda t env expr
+        end
+      | String cases ->
+        let cases =
+          List.map (fun (str, case) -> str, to_clambda t env case) strings
+        in
+        let failaction =
+          Misc.Stdlib.Option.map (to_clambda t env) switch.failaction
+        in
+        Ustringswitch (arg, cases, failaction)
     end
-  | Apply_cont (static_exn, args) ->
-    Ustaticfail (Continuation.to_int static_exn,
-      List.map (subst_var env) args)
-  | Let_cont { handler = Alias _; } ->
-    (* keep track of these in env *)
-    ...
+  | Apply_cont (cont, args) ->
+    let cont = Env.expand_continuation_aliases t cont in
+    Ustaticfail (Continuation.to_int cont, List.map (subst_var env) args)
+  | Let_cont { name; body; handler = Alias alias_of; } ->
+    let env = Env.add_continuation_alias env name ~alias_of in
+    to_clambda t env body
   | Let_cont { name; body; handler = Handler { params; handler; _ }; } ->
+    let name = Env.expand_continuation_aliases t name in
     let env_handler, ids =
       List.fold_right (fun var (env, ids) ->
           let id, env = Env.add_fresh_ident env var in
