@@ -690,21 +690,32 @@ let to_clambda_initialize_symbol t env symbol fields
         index, to_clambda t env expr, cont)
       fields
   in
-  let build_setfield (index, field) : Clambda.ulambda =
+  let build_setfield index id : Clambda.ulambda =
     (* Note that this will never cause a write barrier hit, owing to
        the [Initialization]. *)
     Uprim (Psetfield (index, Pointer, Initialization),
-      [to_clambda_symbol env symbol; field],
+      [to_clambda_symbol env symbol; Clambda.Uvar id],
       Debuginfo.none)
   in
   match fields with
   | [] -> assert false  (* See below. *)
-  | (first_index, first, first_cont)::rest ->
-    List.fold_left (fun (acc, prev_cont) (p, field, cont) ->
-        let prev_cont = Continuation.to_int prev_cont in
-        Clambda.Ucatch (prev_cont, [], acc, build_setfield (p, field)), cont)
-      (build_setfield (first_index, first), first_cont)
-      rest
+  | (first_pos, first, first_cont)::rest ->
+    let acc, prev_pos, prev_cont =
+      List.fold_left (fun (acc, prev_pos, prev_cont) (pos, field, cont) ->
+          let prev_cont = Continuation.to_int prev_cont in
+          let id = Ident.create "prev_field" in
+          Clambda.Ucatch (prev_cont, [id], acc,
+              Usequence (build_setfield prev_pos id, field)),
+            pos, cont)
+        (first, first_pos, first_cont)
+        rest
+    in
+    let id = Ident.create "prev_field" in
+    let return_cont = Continuation.create () in
+    Clambda.Ucatch (Continuation.to_int prev_cont, [id], acc,
+        Usequence (build_setfield prev_pos id,
+          Ustaticfail (Continuation.to_int return_cont, []))),
+      return_cont
 
 let accumulate_structured_constants t env symbol
       (c : Flambda.constant_defining_value) acc =
