@@ -576,7 +576,8 @@ let rec substitute loc fpc sb ulam =
            in this substitute function.
         *)
         match sarg with
-        | Uconst (Uconst_ref (_,  Some (Uconst_block (tag, _)))) ->
+        | Uconst (Uconst_ref (_,  Some (Uconst_block (tag, _))))
+        | Uprim (Pmakeblock (tag, Immutable, _), _, _) ->
             find_action sw.us_index_blocks sw.us_actions_blocks tag
         | Uconst (Uconst_ptr tag) ->
             find_action sw.us_index_consts sw.us_actions_consts tag
