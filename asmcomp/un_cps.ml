@@ -155,13 +155,13 @@ end = struct
       }
     end
 
-  let continuation_will_turn_into_let t ~cont ~param =
+  let continuation_will_turn_into_let t ~cont ~param:_ =
     if Numbers.Int.Map.mem cont t.actions then begin
       Misc.fatal_errorf "Continuation %d already in Un_cps environment"
         cont
     end else begin
       let action =
-        Let_bind_args_and_substitute ([param], Uconst (Uconst_int 0))
+        Let_bind_args_and_substitute ([], Uconst (Uconst_int 0))
       in
       { actions = Numbers.Int.Map.add cont action t.actions;
       }
