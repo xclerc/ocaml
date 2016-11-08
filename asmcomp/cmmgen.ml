@@ -2507,6 +2507,7 @@ and make_catch ncatch body handler = match body with
 (* XXX same as above *)
 (*
 | Cexit (nexit,[]) when nexit=ncatch -> handler
+<<<<<<< HEAD
 *)
 | _ ->  ccatch (ncatch, [], body, handler)
 
