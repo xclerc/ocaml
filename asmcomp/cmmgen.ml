@@ -1696,6 +1696,12 @@ let rec transl env e =
       end
 
   (* Control structures *)
+  | Uswitch(arg,
+      { us_index_consts = [|0|];
+        us_actions_consts = [|const_action|];
+        us_actions_blocks = [|block_action|] }) ->
+      transl env (Uifthenelse(arg, block_action, const_action))
+
   | Uswitch(arg, s) ->
       let dbg = Debuginfo.none in
       (* As in the bytecode interpreter, only matching against constants

@@ -375,14 +375,14 @@ let run_initializers obj table =
     iter_f obj inits
 
 let run_initializers_opt obj_0 obj table =
-  if (Obj.magic obj_0 : bool) then obj else begin
+  if (Obj.magic obj_0 : bool) != false then obj else begin
     let inits = table.initializers in
     if inits <> [] then iter_f obj inits;
     obj
   end
 
 let create_object_and_run_initializers obj_0 table =
-  if (Obj.magic obj_0 : bool) then obj_0 else begin
+  if (Obj.magic obj_0 : bool) != false then obj_0 else begin
     let obj = create_object table in
     run_initializers obj table;
     obj
