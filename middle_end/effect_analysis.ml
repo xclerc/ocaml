@@ -31,7 +31,6 @@ let rec no_effects (flam : Flambda.t) =
   | Switch _ -> false
   | Let_cont { body; _ } -> no_effects body
   | Apply _ | Apply_cont _ -> false
-  | Proved_unreachable -> true
 
 and no_effects_named (named : Flambda.named) =
   match named with
@@ -41,3 +40,4 @@ and no_effects_named (named : Flambda.named) =
   | Move_within_set_of_closures _ -> true
   | Assign _ -> false
   | Prim (prim, _, _) -> no_effects_prim prim
+  | Proved_unreachable -> true

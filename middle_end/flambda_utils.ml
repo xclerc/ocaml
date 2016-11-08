@@ -50,7 +50,6 @@ let description_of_toplevel_node (expr : Flambda.t) =
   | Apply _ -> "apply"
   | Apply_cont  _ -> "staticraise"
   | Switch _ -> "switch"
-  | Proved_unreachable -> "unreachable"
 
 let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
   match c1, c2 with
@@ -106,8 +105,6 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
             && same handler1 handler2
         | Alias _, Handler _ | Handler _, Alias _ -> false
         end
-  | Let_cont _, _ | _, Let_cont _ -> false
-  | Proved_unreachable, Proved_unreachable -> true
 
 and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   match named1, named2 with
@@ -145,6 +142,8 @@ and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
     false
   | Prim (p1, al1, _), Prim (p2, al2, _) ->
     p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
+  | Proved_unreachable, Proved_unreachable -> true
+  | Proved_unreachable, _ | _, Proved_unreachable -> false
 
 and sameclosure (c1 : Flambda.function_declaration)
       (c2 : Flambda.function_declaration) =
@@ -206,7 +205,7 @@ let toplevel_substitution sb tree =
     | Apply_cont (static_exn, args) ->
       let args = List.map sb args in
       Apply_cont (static_exn, args)
-    | Let_cont _ | Let _ | Proved_unreachable -> flam
+    | Let_cont _ | Let _ -> flam
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
@@ -252,6 +251,7 @@ let toplevel_substitution sb tree =
       }
     | Prim (prim, args, dbg) ->
       Prim (prim, List.map sb args, dbg)
+    | Proved_unreachable -> Proved_unreachable
   in
   if Variable.Map.is_empty sb' then tree
   else Flambda_iterators.map_toplevel aux aux_named tree

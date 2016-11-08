@@ -18,7 +18,7 @@
 
 let apply_on_subexpressions f f_named (flam : Flambda.t) =
   match flam with
-  | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> ()
+  | Apply _ | Apply_cont _ | Switch _ -> ()
   | Let { defining_expr; body; _ } ->
     f_named defining_expr;
     f body
@@ -31,7 +31,7 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
 
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
-  | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
+  | Apply _ | Apply_cont _ | Switch _ -> tree
   | Let { var; defining_expr; body; _ } ->
     let new_named = f_named var defining_expr in
     let new_body = f body in
@@ -101,7 +101,8 @@ let iter_on_sets_of_closures f t =
       | Set_of_closures clos -> f clos
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Assign _ | Read_symbol_field _ | Project_closure _
-      | Move_within_set_of_closures _ | Project_var _ | Prim _ -> ())
+      | Move_within_set_of_closures _ | Project_var _ | Prim _
+      | Proved_unreachable -> ())
     t
 
 let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
@@ -195,7 +196,7 @@ let map_general ~toplevel f f_named tree =
     | _ ->
       let exp : Flambda.t =
         match tree with
-        | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
+        | Apply _ | Apply_cont _ | Switch _ -> tree
         | Let _ -> assert false
         | Let_mutable mutable_let ->
           let new_body = aux mutable_let.body in
@@ -229,7 +230,8 @@ let map_general ~toplevel f f_named tree =
       match named with
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Assign _ | Project_closure _ | Move_within_set_of_closures _
-      | Project_var _ | Prim _ | Read_symbol_field _ -> named
+      | Project_var _ | Prim _ | Read_symbol_field _
+      | Proved_unreachable -> named
       | Set_of_closures ({ function_decls; free_vars; specialised_args;
           direct_call_surrogates }) ->
         if toplevel then named
@@ -308,7 +310,8 @@ let map_symbols tree ~f =
           Read_symbol_field (new_sym, field)
       | (Var _ | Const _ | Allocated_const _ | Set_of_closures _
          | Read_mutable _ | Project_closure _ | Move_within_set_of_closures _
-         | Project_var _ | Prim _ | Assign _) as named -> named)
+         | Project_var _ | Prim _ | Assign _
+         | Proved_unreachable) as named -> named)
     tree
 
 let map_symbols_on_set_of_closures
@@ -354,7 +357,7 @@ let map_toplevel_sets_of_closures tree ~f =
       | (Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _
       | Project_closure _ | Move_within_set_of_closures _ | Project_var _
-      | Prim _ | Assign _) as named -> named)
+      | Prim _ | Assign _ | Proved_unreachable) as named -> named)
     tree
 
 let map_apply tree ~f =
@@ -379,7 +382,8 @@ let map_sets_of_closures tree ~f =
           Set_of_closures new_set_of_closures
       | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
       | Move_within_set_of_closures _ | Project_var _ | Assign _
-      | Prim _ | Read_mutable _ | Read_symbol_field _) as named -> named)
+      | Prim _ | Read_mutable _ | Read_symbol_field _
+      | Proved_unreachable) as named -> named)
     tree
 
 let map_project_var_to_named_opt tree ~f =
@@ -391,7 +395,8 @@ let map_project_var_to_named_opt tree ~f =
         end
       | (Var _ | Symbol _ | Const _ | Allocated_const _
       | Set_of_closures _ | Project_closure _ | Move_within_set_of_closures _
-      | Prim _ | Read_mutable _ | Read_symbol_field _ | Assign _)
+      | Prim _ | Read_mutable _ | Read_symbol_field _ | Assign _
+      | Proved_unreachable)
           as named -> named)
     tree
 

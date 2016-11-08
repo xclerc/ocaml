@@ -80,7 +80,6 @@ let lambda_smaller' lam ~than:threshold =
         match direct with Indirect -> 6 | Direct _ -> direct_call_size
       in
       size := !size + call_cost
-    | Proved_unreachable -> ()
     | Let { defining_expr; body; _ } ->
       lambda_named_size defining_expr;
       lambda_size body
@@ -113,6 +112,7 @@ let lambda_smaller' lam ~than:threshold =
       incr size
     | Prim (prim, args, _) ->
       size := !size + prim_size prim args
+    | Proved_unreachable -> ()
   in
   try
     lambda_size lam;
@@ -233,7 +233,7 @@ module Benefit = struct
   let remove_code_helper b (flam : Flambda.t) =
     match flam with
     | Switch _ | Apply_cont _ | Apply _ -> b := remove_call !b
-    | Let _ | Let_mutable _ | Let_cont _ | Proved_unreachable -> ()
+    | Let _ | Let_mutable _ | Let_cont _ -> ()
 
   let remove_code_helper_named b (named : Flambda.named) =
     match named with
@@ -246,7 +246,8 @@ module Benefit = struct
     | Prim _ | Project_closure _ | Project_var _
     | Move_within_set_of_closures _
     | Read_symbol_field _ -> b := remove_prim !b
-    | Var _ | Symbol _ | Read_mutable _ | Allocated_const _ | Const _ -> ()
+    | Var _ | Symbol _ | Read_mutable _ | Allocated_const _ | Const _
+    | Proved_unreachable -> ()
 
   let remove_code lam b =
     let b = ref b in

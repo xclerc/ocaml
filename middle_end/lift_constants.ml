@@ -111,6 +111,7 @@ let assign_symbols_and_collect_constant_definitions
           Flambda.print_named named
       | Project_var project_var ->
         record_definition (AA.Project_var project_var)
+      | Proved_unreachable -> ()
     end
   in
   let assign_symbol_program expr =
@@ -997,7 +998,8 @@ let lift_constants (program : Flambda.program) ~backend =
           rewrite_project_var var_to_block_field_tbl project_var ~original
         | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
         | Move_within_set_of_closures _ | Prim _ | Assign _
-        | Read_mutable _ | Read_symbol_field _) as named -> named)
+        | Read_mutable _ | Read_symbol_field _
+        | Proved_unreachable) as named -> named)
       expr
   in
   let constant_definitions =

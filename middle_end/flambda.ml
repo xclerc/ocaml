@@ -61,7 +61,6 @@ type t =
   | Apply of apply
   | Apply_cont of Continuation.t * Variable.t list
   | Switch of Variable.t * switch
-  | Proved_unreachable
 
 and named =
   | Var of Variable.t
@@ -76,6 +75,7 @@ and named =
   | Project_closure of project_closure
   | Move_within_set_of_closures of move_within_set_of_closures
   | Project_var of project_var
+  | Proved_unreachable
 
 and let_expr = {
   var : Variable.t;
@@ -214,8 +214,6 @@ let rec lam ppf (flam : t) =
       Continuation.print continuation
       print_func_and_kind func
       Variable.print_list args
-  | Proved_unreachable ->
-      fprintf ppf "unreachable"
   | Let { var = id; defining_expr = arg; body; _ } ->
       let rec letbody (ul : t) =
         match ul with
@@ -327,6 +325,7 @@ and print_named ppf (named : named) =
     fprintf ppf "@[<2>(%a@ <%s>@ %a)@]" Printlambda.primitive prim
       (Debuginfo.to_string dbg)
       Variable.print_list args
+  | Proved_unreachable -> fprintf ppf "unreachable"
 
 and print_function_declaration ppf var (f : function_declaration) =
   let idents ppf =
@@ -539,7 +538,6 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         aux handler
       end
     | Switch (var, _) -> free_variable var
-    | Proved_unreachable -> ()
   in
   aux tree;
   if all_used_variables then
@@ -585,6 +583,7 @@ and variables_usage_named ?ignore_uses_in_project_var (named : named) =
     | Move_within_set_of_closures { closure; start_from = _; move_to = _ } ->
       free_variable closure
     | Prim (_, args, _) -> List.iter free_variable args
+    | Proved_unreachable -> ()
     end;
     !free
 
@@ -705,7 +704,7 @@ let iter_general ~toplevel f f_named maybe_named =
     | _ ->
       f t;
       match t with
-      | Apply _ | Proved_unreachable | Apply_cont _ | Switch _ -> ()
+      | Apply _ | Apply_cont _ | Switch _ -> ()
       | Let _ -> assert false
       | Let_mutable { body; _ } -> aux body
       | Let_cont { body; handler; _ } ->
@@ -719,7 +718,8 @@ let iter_general ~toplevel f f_named maybe_named =
     match named with
     | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
     | Read_symbol_field _ | Project_closure _ | Project_var _
-    | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
+    | Move_within_set_of_closures _ | Prim _ | Assign _
+    | Proved_unreachable -> ()
     | Set_of_closures ({ function_decls = funcs; free_vars = _;
           specialised_args = _}) ->
       if not toplevel then begin
@@ -801,49 +801,43 @@ end
 let fold_lets_option t ~init ~for_defining_expr ~for_last_body
       ~filter_defining_expr =
   let finish ~last_body ~acc ~rev_lets =
-    match rev_lets with
-    | None -> Proved_unreachable, acc
-    | Some rev_lets ->
-      let module W = With_free_variables in
-      let acc, t =
-        List.fold_left (fun (acc, t) (var, defining_expr) ->
-            let free_vars_of_body = W.free_variables t in
-            let acc, var, defining_expr =
-              filter_defining_expr acc var defining_expr free_vars_of_body
+    let module W = With_free_variables in
+    let acc, t =
+      List.fold_left (fun (acc, t) (var, defining_expr) ->
+          let free_vars_of_body = W.free_variables t in
+          let acc, var, defining_expr =
+            filter_defining_expr acc var defining_expr free_vars_of_body
+          in
+          match defining_expr with
+          | None -> acc, t
+          | Some defining_expr ->
+            let let_expr =
+              W.create_let_reusing_body var defining_expr t
             in
-            match defining_expr with
-            | None -> acc, t
-            | Some defining_expr ->
-              let let_expr =
-                W.create_let_reusing_body var defining_expr t
-              in
-              acc, W.of_expr let_expr)
-          (acc, W.of_expr last_body)
-          rev_lets
-      in
-      W.contents t, acc
+            acc, W.of_expr let_expr)
+        (acc, W.of_expr last_body)
+        rev_lets
+    in
+    W.contents t, acc
   in
   let rec loop (t : t) ~acc ~rev_lets =
     match t with
     | Let { var; defining_expr; body; _ } ->
-      let acc, var, bindings =
+      let acc, bindings, var, defining_expr =
         for_defining_expr acc var defining_expr
       in
       let rev_lets =
-        match rev_lets with
-        | None -> None
-        | Some rev_lets ->
-          match bindings with
-          | None -> None
-          | Some (bindings, defining_expr) ->
-            Some ((var, defining_expr) :: (List.rev bindings) @ rev_lets)
+        (* CR mshinwell: This should spot [Proved_unreachable] and delete
+           subsequent bindings.  However maybe this means we need
+           [Proved_unreachable] in [Flambda.t] again... *)
+        (var, defining_expr) :: (List.rev bindings) @ rev_lets
       in
       loop body ~acc ~rev_lets
     | t ->
       let last_body, acc = for_last_body acc t in
       finish ~last_body ~acc ~rev_lets
   in
-  loop t ~acc:init ~rev_lets:(Some [])
+  loop t ~acc:init ~rev_lets:[]
 
 let free_symbols_helper symbols (named : named) =
   match named with

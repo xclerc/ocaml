@@ -256,8 +256,6 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Switch (arg, _) ->
       mark_curr curr;
       mark_var arg curr
-    | Proved_unreachable ->
-      mark_curr curr
 
   and mark_named ~toplevel curr (named : Flambda.named) =
     match named with
@@ -349,6 +347,8 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Prim (_, args, _) ->
       mark_curr curr;
       mark_vars args curr
+    | Proved_unreachable ->
+      mark_curr curr
 
   and mark_var var curr =
     (* adds 'id in NC => curr in NC' *)

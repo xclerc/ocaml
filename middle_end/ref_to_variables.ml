@@ -46,6 +46,7 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
         set_of_closures.function_decls.funs
     | Assign _ ->
       set := Variable.Set.union !set (Flambda.free_variables_named flam)
+    | Proved_unreachable -> ()
   and loop (flam : Flambda.t) =
     match flam with
     | Let { defining_expr; body; _ } ->
@@ -59,7 +60,7 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
       loop handler
     | Let_cont { body; handler = Alias _; _ } ->
       loop body
-    | Proved_unreachable | Apply _ | Apply_cont _ | Switch _ ->
+    | Apply _ | Apply_cont _ | Switch _ ->
       set := Variable.Set.union !set (Flambda.free_variables flam)
   in
   loop tree;
@@ -108,34 +109,35 @@ let eliminate_ref_of_expr flam =
       | Prim(Pfield field, [v], _)
         when convertible_variable v ->
         (match get_variable v field with
-         | None -> (), var, None
-         | Some (var',_) -> (), var, Some ([], Flambda.Read_mutable var'))
+         | None -> (), [], var, Flambda.Proved_unreachable
+         | Some (var',_) -> (), [], var, Flambda.Read_mutable var')
       | Prim(Poffsetref delta, [v], dbg)
         when convertible_variable v ->
         (match get_variable v 0 with
-         | None -> (), var, None
+         | None -> (), [], var, Flambda.Proved_unreachable
          | Some (var', size) ->
            if size = 1
            then begin
              let mut = Variable.create "read_mutable" in
              let new_value = Variable.create "offseted" in
-             (), var, Some ([
+             (), [
                mut, Flambda.Read_mutable var';
                new_value, Flambda.Prim (Poffsetint delta, [mut], dbg);
-             ], Flambda.Assign { being_assigned = var'; new_value; })
+             ], var, Flambda.Assign { being_assigned = var'; new_value; }
            end
            else
-             (), var, None)
+             (), [], var, Flambda.Proved_unreachable)
       | Prim(Psetfield (field, _, _), [v; new_value], _)
         when convertible_variable v ->
         (match get_variable v field with
-         | None -> (), var, None
+         | None -> (), [], var, Flambda.Proved_unreachable
          | Some (being_assigned,_) ->
-           (), var, Some ([], Flambda.Assign { being_assigned; new_value }))
+           (), [], var, Flambda.Assign { being_assigned; new_value })
       | Prim _ | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _ | Set_of_closures _ | Project_closure _
-      | Move_within_set_of_closures _ | Project_var _ | Assign _ ->
-        (), var, Some ([], named)
+      | Move_within_set_of_closures _ | Project_var _ | Assign _
+      | Proved_unreachable ->
+        (), [], var, named
     in
     let aux (flam : Flambda.t) : Flambda.t =
       match flam with
@@ -169,7 +171,7 @@ let eliminate_ref_of_expr flam =
         in
         flam
       | Let_mutable _ | Apply _ | Switch _
-      | Apply_cont _ | Let_cont _ | Proved_unreachable -> flam
+      | Apply_cont _ | Let_cont _ -> flam
     in
     Flambda_iterators.map_expr aux flam
 

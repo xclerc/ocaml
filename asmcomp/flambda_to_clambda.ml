@@ -443,7 +443,6 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     in
     Ucatch (Continuation.to_int name, ids,
       to_clambda t env body, to_clambda t env_handler handler)
-  | Proved_unreachable -> Uunreachable
 
 and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
   match named with
@@ -513,6 +512,7 @@ and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
     Uprim (Pidentity, subst_vars env args, dbg)
   | Prim (p, args, dbg) ->
     Uprim (p, subst_vars env args, dbg)
+  | Proved_unreachable -> Uunreachable
 
 and to_clambda_switch _t env cases num_keys default =
   let num_keys =
