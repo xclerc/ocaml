@@ -597,7 +597,7 @@ let every_used_var_within_closure_from_current_compilation_unit_is_declared
   then ()
   else raise (Unbound_vars_within_closures counter_examples)
 
-let every_continuation_is_caught flam =
+let _every_continuation_is_caught flam =
   let check env (flam : Flambda.t) =
     match flam with
     | Apply_cont (exn, _) ->
@@ -621,7 +621,7 @@ let every_continuation_is_caught flam =
   in
   loop Continuation.Set.empty flam
 
-let every_continuation_is_caught_at_a_single_position flam =
+let _every_continuation_is_caught_at_a_single_position flam =
   let caught = ref Continuation.Set.empty in
   let f (flam : Flambda.t) =
     match flam with
@@ -681,8 +681,12 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
         flam; *)
     Flambda_iterators.iter_exprs_at_toplevel_of_program flam ~f:(fun flam ->
       primitive_invariants flam ~no_access_to_global_module_identifiers:cmxfile;
+(* CR mshinwell: We need to fix this.  It needs to take account of the
+   return continuations including in "program" constructs probably *)
+(*
       every_continuation_is_caught flam;
       every_continuation_is_caught_at_a_single_position flam;
+*)
       every_declared_closure_is_from_current_compilation_unit flam)
   with exn -> begin
   (* CR-someday split printing code into its own function *)
