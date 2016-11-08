@@ -149,8 +149,10 @@ type primitive =
   (* Inhibition of optimisation *)
   | Popaque
   (* Installation and removal of exception trap frames *)
-  | Ppushtrap
-  | Ppoptrap
+  | Ppushtrap_lambda of int
+  | Ppoptrap_lambda of int
+  | Ppushtrap_flambda of Continuation.t
+  | Ppoptrap_flambda of Continuation.t
   (* Reading of an identifier bound with a [Variable] let.  Uses of this
      primitive only exist during the conversion of Lambda to Flambda. *)    
   | Pread_mutable of Ident.t
@@ -490,11 +492,8 @@ let free_methods l =
   free_ids (function Lsend(Self, Lvar meth, _, _, _) -> [meth] | _ -> []) l
 
 (* Check if an action has a "when" guard *)
-let raise_count = ref 0
-
 let next_raise_count () =
-  incr raise_count ;
-  !raise_count
+  Continuation.next_raise_count ()
 
 let negative_raise_count = ref 0
 
@@ -752,4 +751,4 @@ let rec size_of_lambda lam =
   | _ -> RHS_nonrec
 
 let reset () =
-  raise_count := 0
+  Continuation.reset ()

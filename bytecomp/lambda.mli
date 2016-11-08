@@ -155,8 +155,10 @@ type primitive =
   (* Inhibition of optimisation *)
   | Popaque
   (* Installation and removal of exception trap frames *)
-  | Ppushtrap
-  | Ppoptrap
+  | Ppushtrap_lambda of int
+  | Ppoptrap_lambda of int
+  | Ppushtrap_flambda of Continuation.t
+  | Ppoptrap_flambda of Continuation.t
   (* Reading of an identifier bound with a [Variable] let.  Uses of this
      primitive only exist during the conversion of Lambda to Flambda. *)    
   | Pread_mutable of Ident.t

@@ -23,3 +23,11 @@ include Identifiable.S
 val create : unit -> t
 
 val to_int : t -> int
+
+
+
+(* CR pchambart: moved here to avoid dependecy problems with lambda.
+   The right solution will be to replace every use of int as
+   staticexception identifiers by Continuation.t *)
+val next_raise_count : unit -> int
+val reset : unit -> unit
