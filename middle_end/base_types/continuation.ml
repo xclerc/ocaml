@@ -18,7 +18,18 @@
 
 include Numbers.Int
 
-let create () = Lambda.next_raise_count ()
+(* Imported from Lambda *)
+let raise_count = ref 0
+
+let next_raise_count () =
+  incr raise_count ;
+  !raise_count
+
+let reset () =
+  raise_count := 0
+(* </> Imported from Lambda *)
+
+let create () = next_raise_count ()
 let to_int t = t
 
 let print ppf t = Format.fprintf ppf "k%d" t

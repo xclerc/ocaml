@@ -128,15 +128,26 @@ module Env : sig
 
   val add_mutable : t -> Ident.t -> t
   val is_mutable : t -> Ident.t -> bool
+
+  val add_current_exception_continuation : t -> int -> t
+  val add_continuation : t -> int -> t
+
+  val required_poptrap_for_staticraise : t -> int -> int list
 end = struct
   type t = {
     current_unit_id : Ident.t;
     mutables : Ident.Set.t;
+    current_exception_continuation : int list;
+    current_exception_depth : int;
+    handler_exception_continuation : int Numbers.Int.Map.t; (* exception depth *)
   }
 
   let create ~current_unit_id =
     { current_unit_id;
       mutables = Ident.Set.empty;
+      current_exception_continuation = [];
+      current_exception_depth = 0;
+      handler_exception_continuation = Numbers.Int.Map.empty;
     }
 
   let current_unit_id t = t.current_unit_id
@@ -147,7 +158,39 @@ end = struct
 
   let is_mutable t id =
     Ident.Set.mem id t.mutables
+
+  let add_current_exception_continuation t cont =
+    { t with
+      current_exception_continuation =
+        cont :: t.current_exception_continuation;
+      current_exception_depth = 1 + t.current_exception_depth;
+    }
+
+  let add_continuation t cont =
+    { t with
+      handler_exception_continuation =
+        Numbers.Int.Map.add cont t.current_exception_depth
+          t.handler_exception_continuation;
+    }
+
+  let required_poptrap_for_staticraise t cont =
+    let continuation_depth =
+      Numbers.Int.Map.find cont t.handler_exception_continuation
+    in
+    let number_of_required_poptraps =
+      t.current_exception_depth - continuation_depth
+    in
+    let head, _ =
+      Misc.Stdlib.List.split_at number_of_required_poptraps
+        t.current_exception_continuation
+    in
+    head
+
 end
+
+let sequence (lam1, lam2) =
+  let ident = Ident.create "sequence" in
+  L.Llet (Strict, Pgenval, ident, lam1, lam2)
 
 let rec simplify_primitive env (prim : L.primitive) args loc =
   match prim, args with
@@ -334,36 +377,63 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
         prepare_option env default (fun default ->
           k (L.Lstringswitch (scrutinee, cases, default, loc)))))
   | Lstaticraise (cont, args) ->
+    let required_poptraps = Env.required_poptrap_for_staticraise env cont in
     prepare_list env args (fun args ->
-      k (L.Lstaticraise (cont, args)))
+      let staticraise =
+        match required_poptraps with
+        | [] -> L.Lstaticraise (cont, args)
+        | __ :: _ ->
+          let args_id =
+            List.map (fun _ -> Ident.create "staticraise_arg") args
+          in
+          let args_as_id = List.map (fun id -> L.Lvar id) args_id in
+          let expr =
+            List.fold_left (fun expr handler ->
+              sequence
+                (L.Lprim(Ppoptrap_lambda handler, [], Location.none),
+                 expr))
+            (L.Lstaticraise (cont, args_as_id))
+            required_poptraps
+          in
+          (* Right to left evaluation order *)
+          List.fold_left2 (fun expr id arg ->
+            L.Llet(Strict, Pgenval, id, arg, expr))
+            expr args_id args
+      in
+      k staticraise)
   | Lstaticcatch (body, (cont, args), handler) ->
-    prepare env body (fun body ->
+    let env_body = Env.add_continuation env cont in
+    prepare env_body body (fun body ->
       prepare env handler (fun handler ->
         k (L.Lstaticcatch (body, (cont, args), handler))))
   | Ltrywith (body, id, handler) ->
     let cont = L.next_raise_count () in
-    let loc = Location.none in
-    let lam : L.lambda =
-      Lstaticcatch (
-        Lsequence (
-          Lprim (Ppushtrap, [], loc),
-          Lsequence (
-            body,
-            Lprim (Ppoptrap, [], loc))),
-        (cont, [id]),
-        handler)
+    let env_body =
+      Env.add_current_exception_continuation
+        (Env.add_continuation env cont)
+        cont
     in
-    prepare env lam k
+    let loc = Location.none in
+    prepare env_body body (fun body ->
+      prepare env handler (fun handler ->
+        k (L.Lstaticcatch (
+             sequence (
+               Lprim (Ppushtrap_lambda cont, [], loc),
+               sequence (
+                 body,
+                 Lprim (Ppoptrap_lambda cont, [], loc))),
+             (cont, [id]),
+             handler))))
   | Lifthenelse (cond, ifso, ifnot) ->
     prepare env cond (fun cond ->
       prepare env ifso (fun ifso ->
         prepare env ifnot (fun ifnot ->
           let switch : Lambda.lambda_switch =
             { sw_numconsts = 2;
-              sw_consts = [0, ifnot];
+              sw_consts = [0, ifnot; 1, ifso];
               sw_numblocks = 0;
               sw_blocks = [];
-              sw_failaction = Some ifso;
+              sw_failaction = None;
             }
           in
           k (L.Lswitch (cond, switch)))))
