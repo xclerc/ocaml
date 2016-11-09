@@ -21,13 +21,13 @@ let should_copy (named:Flambda.named) =
   | Symbol _ | Read_symbol_field _ | Const _ -> true
   | _ -> false
 
-let rec lift (expr : Flambda.expr) ~to_restate =
+let rec lift (expr : Flambda.expr) ~to_copy =
   match expr with
   | Let_cont ({ name; body;
       handler = Handler {
           params = [param]; recursive = Nonrecursive; handler; };
       _ } as let_cont) ->
-    let free_conts, lifted, body = lift body ~to_restate in
+    let free_conts, lifted, body = lift body ~to_copy in
     let our_cont = Continuation.Set.singleton name in
     if Continuation.Set.is_empty free_conts then begin
       (* The continuation is unused; delete it. *)
@@ -37,14 +37,14 @@ let rec lift (expr : Flambda.expr) ~to_restate =
          means that [handler] postdominates [body].  As such we can cut off
          [body] and put it inside an [Initialize_symbol] whose continuation
          is [handler].
-         We also augment [to_restate] to ensure that the binding of the existing
+         We also augment [to_copy] to ensure that the binding of the existing
          variable to the new symbol is restated at the top of each subsequent
          lifted expression. *)
       let symbol = Flambda_utils.make_variable_symbol param in
       let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
-      let to_restate = (param, defining_expr)::to_restate in
-      let free_conts, lifted', handler = lift handler ~to_restate in
-      let lifted = lifted @ [name, param, symbol, body, to_restate] @ lifted' in
+      let to_copy = (param, defining_expr)::to_copy in
+      let free_conts, lifted', handler = lift handler ~to_copy in
+      let lifted = lifted @ [name, param, symbol, body, to_copy] @ lifted' in
       let expr = Flambda.create_let param defining_expr handler in
       free_conts, lifted, expr
     end else begin
@@ -58,8 +58,8 @@ let rec lift (expr : Flambda.expr) ~to_restate =
   | Let { var; defining_expr; body; _ } when should_copy defining_expr ->
     (* This let-expression is not to be lifted, but instead restated at the
        top of each lifted expression. *)
-    let to_restate = (var, defining_expr)::to_restate in
-    let free_conts, lifted, body = lift body ~to_restate in
+    let to_copy = (var, defining_expr)::to_copy in
+    let free_conts, lifted, body = lift body ~to_copy in
     let body =
       if Variable.Set.mem var (Flambda.free_variables body) then
         Flambda.create_let var defining_expr body
@@ -70,18 +70,18 @@ let rec lift (expr : Flambda.expr) ~to_restate =
   | Let { var; defining_expr; body; _ } ->
     let var' = Variable.rename var in
     let symbol = Flambda_utils.make_variable_symbol var' in
-    let free_conts, lifted, body = lift body ~to_restate in
+    let free_conts, lifted, body = lift body ~to_copy in
     let cont = Continuation.create () in
     let expr : Flambda.expr =
       Flambda.create_let var' defining_expr (Apply_cont (cont, [var']))
     in
-    let lifted = (cont, var, symbol, expr, to_restate) :: lifted in
+    let lifted = (cont, var, symbol, expr, to_copy) :: lifted in
     let body =
       Flambda.create_let var (Read_symbol_field (symbol, 0)) body
     in
     free_conts, lifted, body
   | Let_mutable ({ body; _ } as let_mutable) ->
-    let free_conts, lifted, body = lift body ~to_restate in
+    let free_conts, lifted, body = lift body ~to_copy in
     let body : Flambda.t = Let_mutable { let_mutable with body; } in
     free_conts, lifted, body
   | Let_cont _ | Apply _ | Apply_cont _ | Switch _ ->
@@ -90,33 +90,33 @@ let rec lift (expr : Flambda.expr) ~to_restate =
 
 (* CR-someday mshinwell: Try to avoid having a separate substitution phase. *)
 let introduce_symbols expr =
-  let _free_conts, lifted, expr = lift expr ~to_restate:[] in
+  let _free_conts, lifted, expr = lift expr ~to_copy:[] in
   let lifted =
-    List.map (fun (cont, var, symbol, expr, to_restate) ->
-        let to_restate, subst =
-          List.fold_left (fun (to_restate, subst) (var, defining_expr) ->
+    List.map (fun (cont, var, symbol, expr, to_copy) ->
+        let to_copy, subst =
+          List.fold_left (fun (to_copy, subst) (var, defining_expr) ->
               let var' = Variable.rename var in
-              let to_restate = (var', defining_expr) :: to_restate in
-              to_restate, Variable.Map.add var var' subst)
+              let to_copy = (var', defining_expr) :: to_copy in
+              to_copy, Variable.Map.add var var' subst)
             ([], Variable.Map.empty)
-            to_restate
+            to_copy
         in
-        let to_restate =
+        let to_copy =
           List.map (fun (var, defining_expr) ->
               let defining_expr =
                 Flambda_utils.toplevel_substitution_named subst defining_expr
               in
               var, defining_expr)
-            to_restate
+            to_copy
         in
         let expr = Flambda_utils.toplevel_substitution subst expr in
-        cont, var, symbol, expr, to_restate)
+        cont, var, symbol, expr, to_copy)
       lifted
   in
   lifted, expr
 
 let add_extracted lifted program_body =
-  List.fold_left (fun acc (cont, _var, symbol, expr, to_restate)
+  List.fold_left (fun acc (cont, _var, symbol, expr, to_copy)
             : Flambda.program_body ->
       let expr =
         List.fold_left (fun expr (var, defining_expr) ->
@@ -125,7 +125,7 @@ let add_extracted lifted program_body =
             else
               expr)
           expr
-          to_restate
+          to_copy
       in
       Initialize_symbol (symbol, Tag.zero, [expr, cont], acc))
     program_body
