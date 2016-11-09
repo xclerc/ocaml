@@ -1611,8 +1611,14 @@ middle_end/lift_constants.cmx : middle_end/base_types/variable.cmx \
 middle_end/lift_constants.cmi : middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
 middle_end/lift_let_to_initialize_symbol.cmo : \
+    middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \
+    middle_end/base_types/symbol.cmi middle_end/flambda_utils.cmi \
+    middle_end/flambda.cmi middle_end/base_types/continuation.cmi \
     middle_end/lift_let_to_initialize_symbol.cmi
 middle_end/lift_let_to_initialize_symbol.cmx : \
+    middle_end/base_types/variable.cmx middle_end/base_types/tag.cmx \
+    middle_end/base_types/symbol.cmx middle_end/flambda_utils.cmx \
+    middle_end/flambda.cmx middle_end/base_types/continuation.cmx \
     middle_end/lift_let_to_initialize_symbol.cmi
 middle_end/lift_let_to_initialize_symbol.cmi : middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
@@ -1621,8 +1627,8 @@ middle_end/middle_end.cmo : utils/warnings.cmi utils/timings.cmi \
     middle_end/remove_unused_program_constructs.cmi \
     middle_end/remove_unused_closure_vars.cmi middle_end/ref_to_variables.cmi \
     bytecomp/printlambda.cmi middle_end/prepare_lambda.cmi utils/misc.cmi \
-    parsing/location.cmi middle_end/lift_constants.cmi \
-    middle_end/inline_and_simplify.cmi \
+    parsing/location.cmi middle_end/lift_let_to_initialize_symbol.cmi \
+    middle_end/lift_constants.cmi middle_end/inline_and_simplify.cmi \
     middle_end/initialize_symbol_to_let_symbol.cmi middle_end/ilambda.cmi \
     middle_end/flambda_iterators.cmi middle_end/flambda_invariants.cmi \
     middle_end/flambda.cmi middle_end/debuginfo.cmi \
@@ -1634,8 +1640,8 @@ middle_end/middle_end.cmx : utils/warnings.cmx utils/timings.cmx \
     middle_end/remove_unused_program_constructs.cmx \
     middle_end/remove_unused_closure_vars.cmx middle_end/ref_to_variables.cmx \
     bytecomp/printlambda.cmx middle_end/prepare_lambda.cmx utils/misc.cmx \
-    parsing/location.cmx middle_end/lift_constants.cmx \
-    middle_end/inline_and_simplify.cmx \
+    parsing/location.cmx middle_end/lift_let_to_initialize_symbol.cmx \
+    middle_end/lift_constants.cmx middle_end/inline_and_simplify.cmx \
     middle_end/initialize_symbol_to_let_symbol.cmx middle_end/ilambda.cmx \
     middle_end/flambda_iterators.cmx middle_end/flambda_invariants.cmx \
     middle_end/flambda.cmx middle_end/debuginfo.cmx \

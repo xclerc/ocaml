@@ -256,21 +256,17 @@ let toplevel_substitution sb tree =
   if Variable.Map.is_empty sb' then tree
   else Flambda_iterators.map_toplevel aux aux_named tree
 
-(*
-let toplevel_substitution sb tree =
-  Format.eprintf "Before toplevel_substitution (%a):\n@;%a\n"
-    (Variable.Map.print Variable.print) sb Flambda.print tree;
-  let r = toplevel_substitution sb tree in
-  Format.eprintf "After toplevel_substitution:\n%a\n" Flambda.print r;
-  r
 (* CR-someday mshinwell: Fix [Flambda_iterators] so this can be implemented
    properly. *)
 let toplevel_substitution_named sb named =
-  let expr = name_expr named ~name:"toplevel_substitution_named" in
+  let var = Variable.create "subst" in
+  let cont = Continuation.create () in
+  let expr : Flambda.t =
+    Flambda.create_let var named (Apply_cont (cont, []))
+  in
   match toplevel_substitution sb expr with
   | Let let_expr -> let_expr.defining_expr
   | _ -> assert false
-*)
 
 let make_closure_declaration ~id ~body ~params ~continuation_param
       ~stub ~continuation : Flambda.t =

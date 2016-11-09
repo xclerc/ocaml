@@ -21,13 +21,13 @@ let should_copy (named:Flambda.named) =
   | Symbol _ | Read_symbol_field _ | Const _ -> true
   | _ -> false
 
-let rec lift (expr : Flambda.expr) ~lifted =
+let rec lift (expr : Flambda.expr) ~copies =
   match expr with
   | Let_cont ({ name; body;
       handler = Handler {
           params = [param]; recursive = Nonrecursive; handler; };
       _ } as let_cont) ->
-    let free_conts, lifted, body = lift body ~lifted in
+    let free_conts, lifted, body = lift body ~copies in
     let our_cont = Continuation.Set.singleton name in
     if Continuation.Set.equal free_conts our_cont then begin
       (* The body of this [Let_cont] can only return through [cont], which
@@ -35,9 +35,16 @@ let rec lift (expr : Flambda.expr) ~lifted =
          [body] and put it inside an [Initialize_symbol] whose continuation
          is [handler]. *)
       let symbol = Flambda_utils.make_variable_symbol param in
-      let lifted = (name, param, symbol, body) :: lifted in
-      let free_conts, lifted, body = lift handler ~lifted in
-      let expr : Flambda.expr = Let_cont { let_cont with body; } in
+Format.eprintf "PD condition satisfied for cont %a, param %a, sym %a\n%!"
+  Continuation.print name
+  Variable.print param
+  Symbol.print symbol;
+      let copies = (param, ((Symbol symbol) : Flambda.named))::copies in
+      let free_conts, lifted', handler = lift handler ~copies in
+      let lifted = (name, param, symbol, body, copies) :: lifted' @ lifted in
+      let expr : Flambda.expr =
+        Flambda.create_let param (Symbol symbol) handler
+      in
       free_conts, lifted, expr
     end else begin
       let free_conts =
@@ -48,20 +55,22 @@ let rec lift (expr : Flambda.expr) ~lifted =
       free_conts, lifted, expr
     end
   | Let { var; defining_expr; body; _ } when should_copy defining_expr ->
-    let free_conts, lifted, body = lift body ~lifted in
+    let copies = (var, defining_expr)::copies in
+    let free_conts, lifted, body = lift body ~copies in
     let body = Flambda.create_let var defining_expr body in
     free_conts, lifted, body
   | Let { var; defining_expr; body; _ } ->
     let symbol = Flambda_utils.make_variable_symbol var in
-    let free_conts, lifted, body = lift body ~lifted in
+    let free_conts, lifted, body = lift body ~copies in
     let cont = Continuation.create () in
     let expr : Flambda.expr =
       Flambda.create_let var defining_expr (Apply_cont (cont, [var]))
     in
-    let lifted = (cont, var, symbol, expr) :: lifted in
+    let lifted = (cont, var, symbol, expr, copies) :: lifted in
+    let body = Flambda.create_let var (Symbol symbol) body in
     free_conts, lifted, body
   | Let_mutable ({ body; _ } as let_mutable) ->
-    let free_conts, lifted, body = lift body ~lifted in
+    let free_conts, lifted, body = lift body ~copies in
     let body : Flambda.t = Let_mutable { let_mutable with body; } in
     free_conts, lifted, body
   | Let_cont _ | Apply _ | Apply_cont _ | Switch _ ->
@@ -70,21 +79,44 @@ let rec lift (expr : Flambda.expr) ~lifted =
 
 (* CR-someday mshinwell: Try to avoid having a separate substitution phase. *)
 let introduce_symbols expr =
-  let _free_conts, lifted_rev, expr = lift expr ~lifted:[] in
-  let subst =
-    List.map (fun (_cont, var, symbol, _expr) -> var, (symbol, Some 0))
+  let _free_conts, lifted_rev, expr = lift expr ~copies:[] in
+  let used_variables = Flambda.used_variables expr in
+  let lifted_rev =
+    List.map (fun (cont, var, symbol, expr, copies) ->
+        let copies, subst =
+          List.fold_left (fun (copies, subst) (var, defining_expr) ->
+              let var' = Variable.rename var in
+              let copies = (var', defining_expr) :: copies in
+              copies, Variable.Map.add var var' subst)
+            ([], Variable.Map.empty)
+            copies
+        in
+        let copies =
+          List.map (fun (var, defining_expr) ->
+              let defining_expr =
+                Flambda_utils.toplevel_substitution_named subst defining_expr
+              in
+              var, defining_expr)
+            copies
+        in
+        let expr = Flambda_utils.toplevel_substitution subst expr in
+        cont, var, symbol, expr, copies)
       lifted_rev
   in
-  let expr =
-    Flambda_utils.substitute_read_symbol_field_for_variables
-      (Variable.Map.of_list subst)
-      expr
-  in
-  let used_variables = Flambda.used_variables expr in
   (lifted_rev, used_variables), expr
 
 let add_extracted (lifted_rev, used_variables) program_body =
-  List.fold_left (fun acc (cont, var, symbol, expr) : Flambda.program_body ->
+  List.fold_left (fun acc (cont, var, symbol, expr, copies)
+            : Flambda.program_body ->
+      let expr =
+        List.fold_left (fun expr (var, defining_expr) ->
+            if Variable.Set.mem var (Flambda.free_variables expr) then
+              Flambda.create_let var defining_expr expr
+            else
+              expr)
+          expr
+          copies
+      in
       if Variable.Set.mem var used_variables then
         Initialize_symbol (symbol, Tag.zero, [expr, cont], acc)
       else

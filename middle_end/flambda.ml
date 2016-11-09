@@ -477,7 +477,7 @@ let rec print_program_body ppf (program : program_body) =
       (List.mapi (fun i (defn, cont) -> i, defn, cont) fields);
     print_program_body ppf program
   | Effect (lam, cont, program) ->
-    fprintf ppf "@[effect @[<hv 1><%a>: %a@]@]@."
+    fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
       Continuation.print cont print lam;
     print_program_body ppf program;
   | End root -> fprintf ppf "End %a" Symbol.print root
