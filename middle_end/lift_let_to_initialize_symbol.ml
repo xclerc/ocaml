@@ -68,17 +68,18 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     in
     free_conts, lifted, body
   | Let { var; defining_expr; body; _ } ->
+    (* This let-expression is to be lifted. *)
     let var' = Variable.rename var in
-    let symbol = Flambda_utils.make_variable_symbol var' in
+    let symbol = Flambda_utils.make_variable_symbol var in
+    let sym_defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
+    let to_copy = (var, sym_defining_expr)::to_copy in
     let free_conts, lifted, body = lift body ~to_copy in
     let cont = Continuation.create () in
     let expr : Flambda.expr =
       Flambda.create_let var' defining_expr (Apply_cont (cont, [var']))
     in
     let lifted = (cont, var, symbol, expr, to_copy) :: lifted in
-    let body =
-      Flambda.create_let var (Read_symbol_field (symbol, 0)) body
-    in
+    let body = Flambda.create_let var sym_defining_expr body in
     free_conts, lifted, body
   | Let_mutable ({ body; _ } as let_mutable) ->
     let free_conts, lifted, body = lift body ~to_copy in
@@ -103,6 +104,7 @@ let introduce_symbols expr =
         in
         let to_copy =
           List.map (fun (var, defining_expr) ->
+Format.eprintf "to_copy var %a\n%!" Variable.print var;
               let defining_expr =
                 Flambda_utils.toplevel_substitution_named subst defining_expr
               in
