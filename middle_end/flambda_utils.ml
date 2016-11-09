@@ -749,3 +749,56 @@ let projection_to_named (projection : Projection.t) : Flambda.named =
   | Move_within_set_of_closures move -> Move_within_set_of_closures move
   | Field (field_index, var) ->
     Prim (Pfield field_index, [var], Debuginfo.none)
+
+let free_continuations expr =
+  let bound_continuations = ref Continuation.Set.empty in
+  let free_continuations = ref Continuation.Set.empty in
+  let aux (expr : Flambda.expr) =
+    match expr with
+    | Let_cont { name; handler = Handler _; _ } ->
+      bound_continuations := Continuation.Set.add name !bound_continuations
+    | Let_cont { name; handler = Alias alias_of; _ } ->
+      bound_continuations := Continuation.Set.add name !bound_continuations;
+      free_continuations := Continuation.Set.add alias_of !free_continuations
+    | Apply_cont (continuation, _)
+    | Apply { continuation; _ } ->
+      free_continuations :=
+        Continuation.Set.add continuation !free_continuations
+    | Switch (_scrutinee, switch) ->
+      let consts = List.map (fun (_, cont) -> cont) switch.consts in
+      let blocks = List.map (fun (_, cont) -> cont) switch.blocks in
+      let failaction =
+        match switch.failaction with
+        | None -> []
+        | Some failaction -> [failaction]
+      in
+      let free =
+        Continuation.Set.of_list (consts @ blocks @ failaction)
+      in
+      free_continuations :=
+        Continuation.Set.union free !free_continuations
+    | Let _
+    | Let_mutable _ -> ()
+  in
+  let aux_named (named : Flambda.named) =
+    match named with
+    | Prim ((Ppushtrap_flambda continuation | Ppoptrap_flambda continuation),
+        _, _) ->
+      free_continuations :=
+        Continuation.Set.add continuation !free_continuations
+    | Var _
+    | Const _
+    | Prim _
+    | Assign _
+    | Read_mutable _
+    | Symbol _
+    | Read_symbol_field _
+    | Allocated_const _
+    | Set_of_closures _
+    | Project_closure _
+    | Move_within_set_of_closures _
+    | Project_var _
+    | Proved_unreachable -> ()
+  in
+  Flambda_iterators.iter_toplevel aux aux_named expr;
+  Continuation.Set.diff !free_continuations !bound_continuations
