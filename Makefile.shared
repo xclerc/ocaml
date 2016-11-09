@@ -202,9 +202,8 @@ MIDDLE_END=\
   middle_end/remove_unused_closure_vars.cmo \
   middle_end/ref_to_variables.cmo \
   middle_end/flambda_invariants.cmo \
+  middle_end/lift_let_to_initialize_symbol.cmo \
   middle_end/middle_end.cmo
-
-#  middle_end/lift_let_to_initialize_symbol.cmo \
 
 TOPLEVEL=toplevel/genprintval.cmo toplevel/toploop.cmo \
   toplevel/trace.cmo toplevel/topdirs.cmo toplevel/topmain.cmo
