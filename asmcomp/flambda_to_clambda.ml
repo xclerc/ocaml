@@ -772,7 +772,8 @@ let to_clambda_program t env constants (program : Flambda.program) =
       let e1 = to_clambda t env expr in
       let e2, constants = loop env constants program in
       let cont = Continuation.to_int cont in
-      Ucatch (cont, [], e1, e2), constants
+      let unused = Ident.create "unused" in
+      Ucatch (cont, [unused], e1, e2), constants
     | End _ ->
       Uconst (Uconst_ptr 0), constants
   in

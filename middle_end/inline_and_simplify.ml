@@ -372,14 +372,10 @@ let simplify_move_within_set_of_closures env r
 (** Simplify an application of a continuation. *)
 let simplify_apply_cont env r cont ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
-  match E.find_continuation env cont with
-  | exception Not_found ->
-    Misc.fatal_errorf "Application of unbound continuation %a"
-      Continuation.print cont
-  | cont_approx ->
-    let cont = Continuation_approx.name cont_approx in
-    let r = R.use_continuation r env cont args_approxs in
-    cont, r
+  let cont_approx = E.find_continuation env cont in
+  let cont = Continuation_approx.name cont_approx in
+  let r = R.use_continuation r env cont args_approxs in
+  cont, r
 
 (* Transform an expression denoting an access to a variable bound in
    a closure.  Variables in the closure ([project_var.closure]) may
@@ -1683,6 +1679,8 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     (* CR mshinwell: This should turn things into [Effect] when it can, no? *)
     Initialize_symbol (symbol, tag, fields, program), r
   | Effect (expr, cont, program) ->
+    let cont_approx = Continuation_approx.create_unknown ~name:cont in
+    let env = E.add_continuation env cont cont_approx in
     let expr, r = simplify env r expr in
     let program, r = simplify_program_body env r program in
     let r = R.exit_continuation_scope r cont in
