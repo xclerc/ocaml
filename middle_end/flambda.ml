@@ -284,9 +284,9 @@ let rec lam ppf (flam : t) =
     let print_let_cont ppf { name; handler; body = _; } =
       match handler with
       | Handler { params; recursive; handler; } ->
-        fprintf ppf "@[<v 2>where %a%s%s%a%s =@ %a@]"
+        fprintf ppf "@[<v 2>where%s %a%s%a%s =@ %a@]"
+          (match recursive with Nonrecursive -> "" | Recursive -> "_rec")
           Continuation.print name
-          (match recursive with Nonrecursive -> "" | Recursive -> "rec")
           (match params with [] -> "" | _ -> " (")
           Variable.print_list params
           (match params with [] -> "" | _ -> ")")
