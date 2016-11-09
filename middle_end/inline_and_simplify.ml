@@ -1654,8 +1654,21 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         let cont_approx = Continuation_approx.create_unknown ~name:cont in
         let env = E.add_continuation env cont cont_approx in
         let h', r = simplify env r h in
-        let r = R.exit_continuation_scope r cont in
-        let approxs = (R.approx r) :: approxs in
+        let r, new_approxs = R.exit_scope_catch r cont in
+        let approx =
+          match new_approxs with
+          | [approx] -> approx
+          | [] ->
+            Misc.fatal_errorf "No approximation returned from simplifying \
+                defining expression of Initialize_symbol with continuation %a"
+              Continuation.print cont
+          | _ ->
+            Misc.fatal_errorf "Multiple approximations returned from \
+                simplifying defining expression of Initialize_symbol with \
+                continuation %a"
+              Continuation.print cont
+        in
+        let approxs = approx :: approxs in
         if t' == t && h' == h
         then l, approxs, r
         else (h', cont) :: t', approxs, r
