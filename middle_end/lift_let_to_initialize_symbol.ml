@@ -104,7 +104,6 @@ let introduce_symbols expr =
         in
         let to_copy =
           List.map (fun (var, defining_expr) ->
-Format.eprintf "to_copy var %a\n%!" Variable.print var;
               let defining_expr =
                 Flambda_utils.toplevel_substitution_named subst defining_expr
               in
