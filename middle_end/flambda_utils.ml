@@ -494,44 +494,40 @@ let make_variables_symbol vars =
   in
   Symbol.create (Compilation_unit.get_current_exn ()) (Linkage_name.create name)
 
-(* CR mshinwell: needs porting
+(* CR-soon mshinwell: This function should be tidied up. *)
 let substitute_read_symbol_field_for_variables
-    (substitution : (Symbol.t * int list) Variable.Map.t)
+    (substitution : (Symbol.t * int option) Variable.Map.t)
     (expr : Flambda.t) =
-  let bind var fresh_var (expr:Flambda.t) : Flambda.t =
+  let bind var fresh_var (expr : Flambda.t) : Flambda.t =
     let symbol, path = Variable.Map.find var substitution in
-    let rec make_named (path:int list) : Flambda.named =
+    let make_named (path : int option) : Flambda.named =
       match path with
-      | [] -> Symbol symbol
-      | [i] -> Read_symbol_field (symbol, i)
-      | h :: t ->
-          let block = Variable.create "symbol_field_block" in
-          let field = Variable.create "get_symbol_field" in
-          Expr (
-            Flambda.create_let block (make_named t)
-              (Flambda.create_let field
-                 (Prim (Pfield h, [block], Debuginfo.none))
-                 (Var field)))
+      | None -> Symbol symbol
+      | Some i -> Read_symbol_field (symbol, i)
     in
     Flambda.create_let fresh_var (make_named path) expr
   in
-  let substitute_named bindings (named:Flambda.named) : Flambda.named =
+  let substitute_named bindings (named : Flambda.named) : Flambda.named =
     let sb to_substitute =
-      try Variable.Map.find to_substitute bindings with
-      | Not_found ->
-        to_substitute
+      try Variable.Map.find to_substitute bindings
+      with Not_found -> to_substitute
     in
     match named with
-    | Var v when Variable.Map.mem v substitution ->
+    | Var v when Variable.Map.mem v substitution -> Var (sb v)
+(*
       let fresh = Variable.rename v in
       Expr (bind v fresh (Var fresh))
+*)
     | Var _ -> named
     | Symbol _ | Const _ -> named
     | Allocated_const _ | Read_mutable _ -> named
     | Assign { being_assigned; new_value }
         when Variable.Map.mem new_value substitution ->
+      Assign { being_assigned; new_value = sb new_value; }
+(*
       let fresh = Variable.rename new_value in
       bind new_value fresh (Assign { being_assigned; new_value = fresh })
+*)
     | Assign _ -> named
     | Read_symbol_field _ -> named
     | Set_of_closures set_of_closures ->
@@ -566,6 +562,7 @@ let substitute_read_symbol_field_for_variables
       }
     | Prim (prim, args, dbg) ->
       Prim (prim, List.map sb args, dbg)
+    | Proved_unreachable -> named
   in
   let make_var_subst var =
     if Variable.Map.mem var substitution then
@@ -573,6 +570,16 @@ let substitute_read_symbol_field_for_variables
       fresh, (fun expr -> bind var fresh expr)
     else
       var, (fun x -> x)
+  in
+  let make_apply_kind_subst (func : Flambda.apply_kind) =
+    match func with
+    | Function -> Flambda.Function, (fun x -> x)
+    | Method { kind; obj; } ->
+      if Variable.Map.mem obj substitution then
+        let fresh = Variable.rename obj in
+        Flambda.Method { kind; obj = fresh; }, (fun expr -> bind obj fresh expr)
+      else
+        Flambda.Method { kind; obj; }, (fun x -> x)
   in
   let f (expr:Flambda.t) : Flambda.t =
     match expr with
@@ -616,22 +623,25 @@ let substitute_read_symbol_field_for_variables
       in
       List.fold_right (fun f expr -> f expr) bind_args @@
         Flambda.Apply_cont (exn, args)
-    | Apply { func; args; continuation; kind; dbg; inline; specialise } ->
+    | Apply { kind; func; args; continuation; call_kind; dbg; inline;
+        specialise } ->
+      let kind, bind_kind = make_apply_kind_subst kind in
       let func, bind_func = make_var_subst func in
       let args, bind_args =
         List.split (List.map make_var_subst args)
       in
-      bind_func @@
-        List.fold_right (fun f expr -> f expr) bind_args @@
-        Flambda.Apply
-          { func; args; continuation; kind; dbg; inline; specialise }
-    | Proved_unreachable
+      bind_kind @@
+        bind_func @@
+          List.fold_right (fun f expr -> f expr) bind_args @@
+          Flambda.Apply
+            { kind; func; args; continuation; call_kind; dbg; inline;
+              specialise;
+            }
     | Let_cont _ ->
       (* No variables directly used in those expressions *)
       expr
   in
-  Flambda_iterators.map_toplevel f (fun v -> v) expr
-*)
+  Flambda_iterators.map_toplevel_expr f expr
 
 type sharing_key = Continuation.t
 let make_key cont = Some cont
