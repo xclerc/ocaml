@@ -243,7 +243,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
     | Ucatch (cont, params, body, handler) ->
       begin match Numbers.Int.Map.find cont uses with
       | exception Not_found -> inline env body
-      | One ->
+      | One -> (* XXX this needs to check it's non-recursive, no? *)
         let env = E.linearly_used_continuation env ~cont ~params ~handler in
         inline env body
       | Many ->

@@ -270,6 +270,18 @@ module Env : sig
 
   (** Appends the locations of inlined call-sites to the [~dbg] argument *)
   val add_inlined_debuginfo : t -> dbg:Debuginfo.t -> Debuginfo.t
+
+  val linearly_used_continuation
+     : t
+    -> cont:Continuation.t
+    -> params:Variable.t list
+    -> handler:Flambda.t
+    -> t
+
+  val continuation_is_linearly_used
+     : t
+    -> Continuation.t
+    -> (Variable.t list * Flambda.t) option
 end
 
 module Result : sig
@@ -308,18 +320,31 @@ module Result : sig
   val no_defined_continuations : t -> bool
 
   (** Mark that the given continuation has been used and provide
-      an approximation for the arguments. *)
+      an approximation for the arguments.  [inlinable_position] should be
+      [true] if the use of the continuation corresponds to a place where
+      the body of the corresponding handler could be substituted (for example
+      at an [Apply_cont] node, but not in a [Switch] arm). *)
   val use_continuation
     : t
     -> Env.t
     -> Continuation.t
+    -> inlinable_position:bool
     -> Simple_value_approx.t list
     -> t
 
+  type continuation_uses = private {
+    inlinable : Num_continuation_uses.t;
+    non_inlinable : Num_continuation_uses.t;
+  }
+
   (** Mark that we are moving up out of the scope of a static-catch block
       that catches the given continuation identifier.  This has the effect
-      of removing the identifier from the [used_staticfail] set. *)
-  val exit_scope_catch : t -> Continuation.t -> t * Simple_value_approx.t list
+      of removing the identifier from the [used_staticfail] set.
+  *)
+  val exit_scope_catch
+     : t
+    -> Continuation.t
+    -> t * Simple_value_approx.t list * continuation_uses
 
   val exit_continuation_scope : t -> Continuation.t -> t
 

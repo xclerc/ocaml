@@ -369,14 +369,6 @@ let simplify_move_within_set_of_closures env r
                 [], Move_within_set_of_closures move_within,
                   ret r approx)
 
-(** Simplify an application of a continuation. *)
-let simplify_apply_cont env r cont ~args_approxs =
-  let cont = Freshening.apply_static_exception (E.freshening env) cont in
-  let cont_approx = E.find_continuation env cont in
-  let cont = Continuation_approx.name cont_approx in
-  let r = R.use_continuation r env cont args_approxs in
-  cont, r
-
 (* Transform an expression denoting an access to a variable bound in
    a closure.  Variables in the closure ([project_var.closure]) may
    have been freshened since [expr] was constructed; as such, we
@@ -680,7 +672,10 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
           Freshening.apply_static_exception (E.freshening env)
             apply.continuation
         in
-        let r = R.use_continuation r env continuation [A.value_unknown Other] in
+        let r =
+          R.use_continuation r env continuation ~inlinable_position:false
+            [A.value_unknown Other]
+        in
         let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
         let apply : Flambda.apply = {
           kind = Method { kind; obj; };
@@ -705,7 +700,10 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
   let continuation =
     Freshening.apply_static_exception (E.freshening env) continuation
   in
-  let r = R.use_continuation r env continuation [A.value_unknown Other] in
+  let r =
+    R.use_continuation r env continuation ~inlinable_position:false
+      [A.value_unknown Other]
+  in
   simplify_free_variable env lhs_of_application
     ~f:(fun env lhs_of_application lhs_of_application_approx ->
       simplify_free_variables env args ~f:(fun env args args_approxs ->
@@ -924,6 +922,41 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
       }};
   in
   simplify (E.set_never_inline env) r expr
+
+(** Simplify an application of a continuation. *)
+and simplify_apply_cont env r cont ~args ~args_approxs : Flambda.t * R.t =
+  let cont = Freshening.apply_static_exception (E.freshening env) cont in
+  let cont_approx = E.find_continuation env cont in
+  let cont = Continuation_approx.name cont_approx in
+  match E.continuation_is_linearly_used env cont with
+  | None ->
+    let r =
+      R.use_continuation r env cont ~inlinable_position:true args_approxs
+    in
+    Apply_cont (cont, args), ret r A.value_bottom
+  | Some (params, handler) ->
+    if List.length params <> List.length args then begin
+      Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
+        Continuation.print cont
+    end;
+    let expr =
+      List.fold_left2 (fun expr param arg ->
+          Flambda.create_let param (Var arg) expr)
+        handler
+        params args
+    in
+    simplify (E.activate_freshening env) r expr
+
+(** Simplify an application of a continuation for a context where only a
+    continuation is valid (e.g. a switch arm). *)
+and simplify_apply_cont_to_cont env r cont ~args_approxs =
+  let cont = Freshening.apply_static_exception (E.freshening env) cont in
+  let cont_approx = E.find_continuation env cont in
+  let cont = Continuation_approx.name cont_approx in
+  let r =
+    R.use_continuation r env cont ~inlinable_position:false args_approxs
+  in
+  cont, ret r A.value_bottom
 
 (** [simplify_named] returns:
     - extra [Let]-bindings to be inserted prior to the one being simplified;
@@ -1253,8 +1286,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       r)
   | Apply_cont (cont, args) ->
     simplify_free_variables env args ~f:(fun _env args args_approxs ->
-      let cont, r = simplify_apply_cont env r cont ~args_approxs in
-      Apply_cont (cont, args), ret r A.value_bottom)
+      simplify_apply_cont env r cont ~args ~args_approxs)
   | Let_cont ({ name = cont; body; handler } as let_cont) ->
     begin match body with
     | Let { var; defining_expr = def; body; _ }
@@ -1278,6 +1310,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       in
       let env = E.set_freshening env sb in
       let body_env = E.add_continuation env cont approx in
+      let original_r = r in
+      let original_body = body in
       let body, r = simplify body_env r body in
       if not (R.is_used_continuation r cont) then begin
         (* If the continuation is not used, we can drop the declaration *)
@@ -1309,29 +1343,39 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                   Flambda.create_let var (Var arg) body)
                 handler vars args
             in
-            let r, _args_approxs = R.exit_scope_catch r cont in
+            let r, _args_approxs, _count = R.exit_scope_catch r cont in
             simplify env r handler
           | _, _ ->
             let vars, sb = Freshening.add_variables' (E.freshening env) vars in
-            let r, vars_approxs = R.exit_scope_catch r cont in
-            let vars_and_approxs = List.combine vars vars_approxs in
-            let env =
-              List.fold_left (fun env (id, approx) -> E.add env id approx)
-                (E.set_freshening env sb) vars_and_approxs
-            in
-            let env = E.inside_branch env in
-            let handler, r = simplify env r handler in
-            let let_cont : Flambda.let_cont =
-              { name = cont;
-                body;
-                handler = Handler {
-                  params = vars;
-                  recursive;
-                  handler;
-                };
-              }
-            in
-            Let_cont let_cont, ret r A.value_bottom
+            let r, vars_approxs, uses = R.exit_scope_catch r cont in
+            (* Inline out linearly-used non-recursive continuations. *)
+            begin match uses.inlinable, uses.non_inlinable with
+            | One, Zero ->
+              let body_env =
+                E.linearly_used_continuation body_env ~cont ~params:vars
+                  ~handler
+              in
+              simplify body_env original_r original_body
+            | _, _ ->
+              let vars_and_approxs = List.combine vars vars_approxs in
+              let env =
+                List.fold_left (fun env (id, approx) -> E.add env id approx)
+                  (E.set_freshening env sb) vars_and_approxs
+              in
+              let env = E.inside_branch env in
+              let handler, r = simplify env r handler in
+              let let_cont : Flambda.let_cont =
+                { name = cont;
+                  body;
+                  handler = Handler {
+                    params = vars;
+                    recursive;
+                    handler;
+                  };
+                }
+              in
+              Let_cont let_cont, ret r A.value_bottom
+            end
       end
     end
   | Switch (arg, sw) ->
@@ -1366,8 +1410,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         assert false
       | Must_be_taken cont, _
       | _, Must_be_taken cont ->
-        let cont, r = simplify_apply_cont env r cont ~args_approxs:[] in
-        Apply_cont (cont, []), R.map_benefit r B.remove_branch
+        let expr, r =
+          simplify_apply_cont env r cont ~args:[] ~args_approxs:[]
+        in
+        expr, R.map_benefit r B.remove_branch
       | Can_be_taken consts, Can_be_taken blocks ->
         match consts, blocks, sw.failaction with
         | [], [], None ->
@@ -1391,12 +1437,16 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         | [_, cont], [], None
         | [], [_, cont], None
         | [], [], Some cont ->
-          let cont, r = simplify_apply_cont env r cont ~args_approxs:[] in
+          let cont, r =
+            simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+          in
           Apply_cont (cont, []), R.map_benefit r B.remove_branch
         | _ ->
           let env = E.inside_branch env in
           let f (i, cont) (acc, r) =
-            let cont, r = simplify_apply_cont env r cont ~args_approxs:[] in
+            let cont, r =
+              simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+            in
             (i, cont)::acc, r
           in
           let r = R.set_approx r A.value_bottom in
@@ -1407,7 +1457,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             | None -> None, r
             | Some cont ->
               let cont, r =
-                simplify_apply_cont env r cont ~args_approxs:[]
+                simplify_apply_cont_to_cont env r cont ~args_approxs:[]
               in
               Some cont, r
           in
@@ -1650,7 +1700,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         let cont_approx = Continuation_approx.create_unknown ~name:cont in
         let env = E.add_continuation env cont cont_approx in
         let h', r = simplify env r h in
-        let r, new_approxs = R.exit_scope_catch r cont in
+        let r, new_approxs, _count = R.exit_scope_catch r cont in
         let approx =
           match new_approxs with
           | [approx] -> approx

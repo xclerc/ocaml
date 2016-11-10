@@ -43,6 +43,8 @@ module Env = struct
     closure_depth : int;
     inlining_stats_closure_stack : Inlining_stats.Closure_stack.t;
     inlined_debuginfo : Debuginfo.t;
+    linearly_used_continuations
+      : (Variable.t list * Flambda.t) Continuation.Map.t;
   }
 
   let create ~never_inline ~backend ~round =
@@ -67,6 +69,7 @@ module Env = struct
       inlining_stats_closure_stack =
         Inlining_stats.Closure_stack.create ();
       inlined_debuginfo = Debuginfo.none;
+      linearly_used_continuations = Continuation.Map.empty;
     }
 
   let backend t = t.backend
@@ -79,6 +82,7 @@ module Env = struct
       projections = Projection.Map.empty;
       freshening = Freshening.empty_preserving_activation_state env.freshening;
       inlined_debuginfo = Debuginfo.none;
+      linearly_used_continuations = Continuation.Map.empty;
     }
 
   let inlining_level_up env =
@@ -418,6 +422,22 @@ module Env = struct
 
   let add_inlined_debuginfo t ~dbg =
     Debuginfo.concat t.inlined_debuginfo dbg
+
+  let linearly_used_continuation t ~cont ~params ~handler =
+    if Continuation.Map.mem cont t.linearly_used_continuations then
+      Misc.fatal_errorf "Continuation %a already added as linearly-used"
+        Continuation.print cont
+    else
+      { t with
+        linearly_used_continuations =
+          Continuation.Map.add cont (params, handler)
+            t.linearly_used_continuations;
+      }
+
+  let continuation_is_linearly_used t cont =
+    match Continuation.Map.find cont t.linearly_used_continuations with
+    | exception Not_found -> None
+    | result -> Some result
 end
 
 let initial_inlining_threshold ~round : Inlining_cost.Threshold.t =
@@ -446,10 +466,15 @@ let initial_inlining_toplevel_threshold ~round : Inlining_cost.Threshold.t =
     (unscaled * Inlining_cost.scale_inline_threshold_by)
 
 module Result = struct
+  type continuation_uses = {
+    inlinable : Num_continuation_uses.t;
+    non_inlinable : Num_continuation_uses.t;
+  }
+
   type t =
     { approx : Simple_value_approx.t;
       used_continuations :
-        Simple_value_approx.t list Continuation.Map.t;
+        (Simple_value_approx.t list * continuation_uses) Continuation.Map.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
       num_direct_applications : int;
@@ -473,19 +498,32 @@ module Result = struct
     in
     set_approx t meet
 
-  let use_continuation t env i approxs =
-    let approxs =
+  let use_continuation t env i ~inlinable_position approxs =
+    let approxs, uses =
       match Continuation.Map.find i t.used_continuations with
       | exception Not_found ->
-        approxs
-      | previous_approxs ->
+        approxs, { inlinable = Zero; non_inlinable = Zero; }
+      | previous_approxs, uses ->
         let really_import_approx = Env.really_import_approx env in
-        List.map2 (Simple_value_approx.meet ~really_import_approx)
-          previous_approxs approxs
+        let approxs =
+          List.map2 (Simple_value_approx.meet ~really_import_approx)
+            previous_approxs approxs
+        in
+        approxs, uses
+    in
+    let uses =
+      let module N = Num_continuation_uses in
+      { inlinable =
+          if inlinable_position then N.(+) uses.inlinable One
+          else uses.inlinable;
+        non_inlinable =
+          if not inlinable_position then N.(+) uses.non_inlinable One
+          else uses.non_inlinable;
+      }
     in
     { t with
       used_continuations =
-        Continuation.Map.add i approxs t.used_continuations;
+        Continuation.Map.add i (approxs, uses) t.used_continuations;
     }
 
   let is_used_continuation t i =
@@ -498,11 +536,18 @@ module Result = struct
     Continuation.Map.is_empty t.used_continuations
 
   let exit_scope_catch t i =
-    let approxs = Continuation.Map.find i t.used_continuations in
+    let approxs, count = Continuation.Map.find i t.used_continuations in
     { t with
       used_continuations =
         Continuation.Map.remove i t.used_continuations;
-    }, approxs
+    }, approxs, count
+(*
+  let num_uses_of_continuation t cont =
+    match Continuation.Map.find cont t.used_continuations with
+    | exception Not_found ->
+      Misc.fatal_errorf "Unbound continuation %a" Continuation.print cont
+    | _approxs, uses -> uses
+*)
 
   let exit_continuation_scope t cont =
     (* CR mshinwell: think about this whole "used continuations" thing. *)
