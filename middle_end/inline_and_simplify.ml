@@ -939,11 +939,6 @@ and simplify_apply_cont env r cont ~args ~args_approxs : Flambda.t * R.t =
       Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
         Continuation.print cont
     end;
-Format.eprintf "Inlining out application of %a.  param %a arg %a term %a\n%!"
-  Continuation.print cont
-  (Format.pp_print_list Variable.print) params
-  (Format.pp_print_list Variable.print) args
-  Flambda.print handler;
     let expr =
       List.fold_left2 (fun expr param arg ->
           Flambda.create_let param (Var arg) expr)
