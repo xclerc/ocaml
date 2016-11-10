@@ -236,7 +236,8 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_loop ~toplevel curr body
     (* Not constant cases: we mark directly 'curr in NC' and mark
        bound variables as in NC also *)
-    | Let_cont { handler = Alias _; _ } ->
+    | Let_cont { body; handler = Alias _; _ } ->
+      mark_loop ~toplevel [] body;
       mark_curr curr
     | Let_cont { body; handler = Handler { handler; params; _ }; _ } ->
       List.iter (fun id -> mark_curr [Var id]) params;
