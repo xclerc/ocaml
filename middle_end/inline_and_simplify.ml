@@ -1329,6 +1329,16 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             }
           in
           Let_cont let_cont, ret r A.value_bottom
+        | Handler { params = []; recursive = Nonrecursive;
+            handler = Apply_cont (cont', []); } ->
+          let r, _args_approxs, _count = R.exit_scope_catch r cont in
+          let cont' =
+            Freshening.apply_static_exception (E.freshening env) cont'
+          in
+          let r =
+            R.use_continuation r env cont' ~inlinable_position:false []
+          in
+          Let_cont { name = cont; body; handler = Alias cont'; }, r
         | Handler { params = vars; recursive; handler; } ->
           let env =
             match recursive with
