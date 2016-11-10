@@ -939,6 +939,11 @@ and simplify_apply_cont env r cont ~args ~args_approxs : Flambda.t * R.t =
       Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
         Continuation.print cont
     end;
+Format.eprintf "Inlining out application of %a.  param %a arg %a term %a\n%!"
+  Continuation.print cont
+  (Format.pp_print_list Variable.print) params
+  (Format.pp_print_list Variable.print) args
+  Flambda.print handler;
     let expr =
       List.fold_left2 (fun expr param arg ->
           Flambda.create_let param (Var arg) expr)
@@ -1356,7 +1361,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             let r, _args_approxs, _count = R.exit_scope_catch r cont in
             simplify env r handler
           | _, _ ->
-            let vars, sb = Freshening.add_variables' (E.freshening env) vars in
             let r, vars_approxs, uses = R.exit_scope_catch r cont in
             (* Inline out linearly-used non-recursive continuations. *)
             begin match uses.inlinable, uses.non_inlinable with
@@ -1367,6 +1371,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
               in
               simplify body_env original_r original_body
             | _, _ ->
+              let vars, sb =
+                Freshening.add_variables' (E.freshening env) vars
+              in
               let vars_and_approxs = List.combine vars vars_approxs in
               let env =
                 List.fold_left (fun env (id, approx) -> E.add env id approx)
