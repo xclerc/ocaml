@@ -944,18 +944,45 @@ and simplify_apply_cont env r cont ~args ~args_approxs =
       Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
         Continuation.print cont
     end;
-    let inline () =
+    let inline ~check_benefit =
       let expr =
         List.fold_left2 (fun expr param arg ->
             Flambda.create_let param (Var arg) expr)
           handler
           params args
       in
-      simplify (E.activate_freshening env) r expr
+      let existing_benefit = R.benefit r in
+      let r = R.reset_benefit r in
+      let original = expr in
+      let expr, r = simplify (E.activate_freshening env) r expr in
+      let inlining_benefit = R.benefit r in
+      let r = R.map_benefit r (fun _ -> existing_benefit) in
+      let module W = Inlining_cost.Whether_sufficient_benefit in
+      let wsb =
+        W.create ~original
+          ~toplevel:(E.at_toplevel env)
+          ~branch_depth:(E.branch_depth env)
+          expr
+          ~benefit:(B.remove_branch inlining_benefit)
+          ~lifting:false
+          ~round:(E.round env)
+      in
+      if (not check_benefit) || W.evaluate wsb then begin
+Format.eprintf "Inlining apply_cont %a to %a%s\n%!"
+  Continuation.print cont
+  Variable.print_list args
+  (if check_benefit then "" else " (unconditionally)");
+        expr, r
+      end else begin
+Format.eprintf "Not inlining apply_cont %a to %a\n%!"
+  Continuation.print cont
+  Variable.print_list args;
+        do_not_inline ()
+      end
     in
     match uses with
-    | Zero | One -> inline ()
-    | Many -> inline ()
+    | Zero | One -> inline ~check_benefit:false
+    | Many -> inline ~check_benefit:true
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm). *)
