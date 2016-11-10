@@ -1367,15 +1367,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             simplify env r handler
           | _, _ ->
             let r, vars_approxs, uses = R.exit_scope_catch r cont in
-            (* Inline out linearly-used non-recursive continuations. *)
-            begin match uses.inlinable, uses.non_inlinable with
-            | (One | Many), Zero ->
-              let body_env =
-                E.consider_continuation_for_inlining env ~cont ~params:vars
-                  ~handler ~uses:uses.inlinable
-              in
-              simplify body_env original_r original_body
-            | _, _ ->
+            let normal_case env r ~body : Flambda.t * R.t =
               let vars, sb =
                 Freshening.add_variables' (E.freshening env) vars
               in
@@ -1397,6 +1389,35 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                 }
               in
               Let_cont let_cont, ret r A.value_bottom
+            in
+            begin match uses.inlinable, uses.non_inlinable with
+            | (Zero | One), Zero ->
+              (* Linearly-used continuation: will always be inlined out, so
+                 the [Let_cont] may be deleted. *)
+              let body_env =
+                E.consider_continuation_for_inlining body_env ~cont
+                  ~params:vars ~handler ~uses:One
+              in
+              simplify body_env original_r original_body
+            | Many, Zero ->
+              (* N.B. In this case, it might turn out that we don't inline
+                 the continuation out, so we may still need the [Let_cont]. *)
+              (* CR mshinwell: In this case we could return through [r]
+                 whether the continuation was inlined out, thus avoiding
+                 another pass to remove the unused handler. *)
+              let body_env =
+                E.consider_continuation_for_inlining body_env ~cont
+                  ~params:vars ~handler ~uses:Many
+              in
+              let body, r = simplify body_env original_r original_body in
+              let r, _vars_approxs, _uses = R.exit_scope_catch r cont in
+              let env =
+                match recursive with
+                | Nonrecursive -> env
+                | Recursive -> body_env
+              in
+              normal_case env r ~body
+            | _, _ -> normal_case env r ~body
             end
       end
     end
