@@ -953,9 +953,9 @@ and simplify_apply_cont env r cont ~args ~args_approxs =
       in
       let existing_benefit = R.benefit r in
       let r = R.reset_benefit r in
-      let original = expr in
+      let original : Flambda.t = Apply_cont (cont, args) in
       let expr, r = simplify (E.activate_freshening env) r expr in
-      let inlining_benefit = R.benefit r in
+      let inlining_benefit = B.remove_prim (R.benefit r) in
       let r = R.map_benefit r (fun _ -> existing_benefit) in
       let module W = Inlining_cost.Whether_sufficient_benefit in
       let wsb =
@@ -963,20 +963,25 @@ and simplify_apply_cont env r cont ~args ~args_approxs =
           ~toplevel:(E.at_toplevel env)
           ~branch_depth:(E.branch_depth env)
           expr
-          ~benefit:(B.remove_branch inlining_benefit)
+          ~benefit:inlining_benefit
           ~lifting:false
           ~round:(E.round env)
       in
       if (not check_benefit) || W.evaluate wsb then begin
-Format.eprintf "Inlining apply_cont %a to %a%s\n%!"
+Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
   Variable.print_list args
-  (if check_benefit then "" else " (unconditionally)");
+  (if check_benefit then "" else " (unconditionally)")
+  B.print inlining_benefit
+  (W.print_description ~subfunctions:false) wsb
+  Flambda.print original
+  Flambda.print expr;
         expr, r
       end else begin
-Format.eprintf "Not inlining apply_cont %a to %a\n%!"
+Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   Continuation.print cont
-  Variable.print_list args;
+  Variable.print_list args
+  B.print inlining_benefit;
         do_not_inline ()
       end
     in

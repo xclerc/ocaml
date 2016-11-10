@@ -278,7 +278,7 @@ let rec lam ppf (flam : t) =
       match t with
       | Let_cont let_cont ->
         gather_let_conts (let_cont :: let_conts) let_cont.body
-      | body -> List.rev let_conts, body
+      | body -> let_conts, body
     in
     let let_conts, body = gather_let_conts [] flam in
     let print_let_cont ppf { name; handler; body = _; } =
