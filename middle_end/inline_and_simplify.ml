@@ -955,7 +955,7 @@ and simplify_apply_cont env r cont ~args ~args_approxs =
     in
     match uses with
     | Zero | One -> inline ()
-    | Many -> do_not_inline ()
+    | Many -> inline ()
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm). *)
@@ -1410,7 +1410,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                   ~params:vars ~handler ~uses:Many
               in
               let body, r = simplify body_env original_r original_body in
-              let r, _vars_approxs, _uses = R.exit_scope_catch r cont in
+              let r = R.exit_continuation_scope r cont in
               let env =
                 match recursive with
                 | Nonrecursive -> env
