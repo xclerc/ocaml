@@ -43,8 +43,9 @@ module Env = struct
     closure_depth : int;
     inlining_stats_closure_stack : Inlining_stats.Closure_stack.t;
     inlined_debuginfo : Debuginfo.t;
-    linearly_used_continuations
-      : (Variable.t list * Flambda.t) Continuation.Map.t;
+    continuation_uses
+      : (Num_continuation_uses.t * Variable.t list * Flambda.t)
+          Continuation.Map.t;
   }
 
   let create ~never_inline ~backend ~round =
@@ -69,7 +70,7 @@ module Env = struct
       inlining_stats_closure_stack =
         Inlining_stats.Closure_stack.create ();
       inlined_debuginfo = Debuginfo.none;
-      linearly_used_continuations = Continuation.Map.empty;
+      continuation_uses = Continuation.Map.empty;
     }
 
   let backend t = t.backend
@@ -82,7 +83,7 @@ module Env = struct
       projections = Projection.Map.empty;
       freshening = Freshening.empty_preserving_activation_state env.freshening;
       inlined_debuginfo = Debuginfo.none;
-      linearly_used_continuations = Continuation.Map.empty;
+      continuation_uses = Continuation.Map.empty;
     }
 
   let inlining_level_up env =
@@ -423,19 +424,19 @@ module Env = struct
   let add_inlined_debuginfo t ~dbg =
     Debuginfo.concat t.inlined_debuginfo dbg
 
-  let linearly_used_continuation t ~cont ~params ~handler =
-    if Continuation.Map.mem cont t.linearly_used_continuations then
-      Misc.fatal_errorf "Continuation %a already added as linearly-used"
+  let consider_continuation_for_inlining t ~cont ~params ~handler ~uses =
+    if Continuation.Map.mem cont t.continuation_uses then
+      Misc.fatal_errorf "Continuation %a already added to environment"
         Continuation.print cont
     else
       { t with
-        linearly_used_continuations =
-          Continuation.Map.add cont (params, handler)
-            t.linearly_used_continuations;
+        continuation_uses =
+          Continuation.Map.add cont (uses, params, handler)
+            t.continuation_uses;
       }
 
-  let continuation_is_linearly_used t cont =
-    match Continuation.Map.find cont t.linearly_used_continuations with
+  let should_consider_continuation_for_inlining t cont =
+    match Continuation.Map.find cont t.continuation_uses with
     | exception Not_found -> None
     | result -> Some result
 end

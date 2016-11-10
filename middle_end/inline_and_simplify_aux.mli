@@ -271,17 +271,18 @@ module Env : sig
   (** Appends the locations of inlined call-sites to the [~dbg] argument *)
   val add_inlined_debuginfo : t -> dbg:Debuginfo.t -> Debuginfo.t
 
-  val linearly_used_continuation
+  val consider_continuation_for_inlining
      : t
     -> cont:Continuation.t
     -> params:Variable.t list
     -> handler:Flambda.t
+    -> uses:Num_continuation_uses.t
     -> t
 
-  val continuation_is_linearly_used
+  val should_consider_continuation_for_inlining
      : t
     -> Continuation.t
-    -> (Variable.t list * Flambda.t) option
+    -> (Num_continuation_uses.t * Variable.t list * Flambda.t) option
 end
 
 module Result : sig

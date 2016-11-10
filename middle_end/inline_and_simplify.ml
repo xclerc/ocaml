@@ -923,29 +923,39 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   in
   simplify (E.set_never_inline env) r expr
 
+(* CR mshinwell: Continuation inlining code should move into separate
+   file(s). *)
+
 (** Simplify an application of a continuation. *)
-and simplify_apply_cont env r cont ~args ~args_approxs : Flambda.t * R.t =
+and simplify_apply_cont env r cont ~args ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
-  match E.continuation_is_linearly_used env cont with
-  | None ->
+  let do_not_inline () : Flambda.t * R.t =
     let r =
       R.use_continuation r env cont ~inlinable_position:true args_approxs
     in
     Apply_cont (cont, args), ret r A.value_bottom
-  | Some (params, handler) ->
+  in
+  match E.should_consider_continuation_for_inlining env cont with
+  | None -> do_not_inline ()
+  | Some (uses, params, handler) ->
     if List.length params <> List.length args then begin
       Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
         Continuation.print cont
     end;
-    let expr =
-      List.fold_left2 (fun expr param arg ->
-          Flambda.create_let param (Var arg) expr)
-        handler
-        params args
+    let inline () =
+      let expr =
+        List.fold_left2 (fun expr param arg ->
+            Flambda.create_let param (Var arg) expr)
+          handler
+          params args
+      in
+      simplify (E.activate_freshening env) r expr
     in
-    simplify (E.activate_freshening env) r expr
+    match uses with
+    | Zero | One -> inline ()
+    | Many -> do_not_inline ()
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm). *)
@@ -1359,10 +1369,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             let r, vars_approxs, uses = R.exit_scope_catch r cont in
             (* Inline out linearly-used non-recursive continuations. *)
             begin match uses.inlinable, uses.non_inlinable with
-            | One, Zero ->
+            | (One | Many), Zero ->
               let body_env =
-                E.linearly_used_continuation body_env ~cont ~params:vars
-                  ~handler
+                E.consider_continuation_for_inlining env ~cont ~params:vars
+                  ~handler ~uses:uses.inlinable
               in
               simplify body_env original_r original_body
             | _, _ ->
