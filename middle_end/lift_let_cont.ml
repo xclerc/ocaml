@@ -16,11 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let rebuild_let_conts defs ~body =
-  List.fold_left (fun body (name, handler) ->
-      Flambda.Let_cont { name; body; handler; })
-    body defs
-
 let params_do_not_overlap_free_variables ~params ~handler =
   let params = Variable.Set.of_list params in
   let handler_fvs = Flambda.free_variables handler in
@@ -39,8 +34,8 @@ type thing_to_lift =
 let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
   match expr with
   | Let_cont { name; body = body1; handler = Handler {
-        params; recursive; handler = Let_cont ({ body = _;
-          handler = Handler { handler; _ }; _ } as let_cont2); }; }
+        params; recursive; handler = (Let_cont { body = _;
+          handler = Handler { handler; _ }; _ }) as let_cont2; }; }
       when params_do_not_overlap_free_variables ~params ~handler ->
     (* The continuation [handler] can be lifted.  First we try to lift things
        (recursively) from inside [handler] itself and then (on the way back
@@ -52,15 +47,12 @@ let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
     in
     find_things_to_lift acc body1
   | Let_cont { name; body; handler = Handler {
-        params; recursive; handler = Let_cont { body = _;
-          handler = Alias alias_to; _ }; }; }
-      when params_do_not_overlap_free_variables ~params ~handler ->
+      handler = Let_cont { handler = Alias alias_to; _ }; }; } ->
     (* Continuation aliases nested immediately inside another [Let_cont]'s
        handler can always be lifted. *)
     let acc = (Continuation (name, Alias alias_to)) :: acc in
     find_things_to_lift acc body
-  | Let_cont { name; body; handler = Handler {
-        params; recursive; handler = Let let_expr; }; }
+  | Let_cont { body; handler = Handler { params; handler = Let let_expr; }; }
       when params_do_not_overlap_free_variables_let ~params ~let_expr ->
     (* The let-bound expression [let_expr] can be lifted.  Since there cannot
        be any nested [Let] or [Let_cont] in the defining expression of the
@@ -69,18 +61,18 @@ let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
        continuations (that may depend on such lets). *)
     let acc = Let (let_expr.var, let_expr.defining_expr) :: acc in
     find_things_to_lift acc body
-  | Let_cont { name; body; handler = Handler handler; } ->
+  | Let_cont { name; body; handler = Handler {
+      params; recursive; handler; }; } ->
     (* The continuation [handler] cannot be lifted---but there might be
        sequences of [Let_cont]s or [Let]s inside [handler] that can be lifted
        (without bringing them out of [handler]).  First we deal with those.
        At that point, observe that there cannot be any non-lifted [Let_cont]s
        (or [Let]s) between this [Let_cont] and the (outer) [Let] or [Let_cont]
-       where we started lifting.  Since this property holds we can just add
+       where we started lifting.  By virtue of this property we can just add
        the [Let_cont] to [acc] without breaking any scoping rules. *)
     let handler = lift handler in
     let acc =
-      (Continuation (name, Handler { params; recursive; handler; })
-        :: acc
+      (Continuation (name, Handler { params; recursive; handler; })) :: acc
     in
     find_things_to_lift acc body
   | Let_cont { name; body; handler = Alias alias_to; } ->
@@ -95,19 +87,28 @@ let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
     (* These things have no subexpressions, so we're done. *)
     acc, expr
 
-let rec lift (expr : Flambda.t) : Flambda.t =
+and lift (expr : Flambda.t) : Flambda.t =
   let defs, body = find_things_to_lift [] expr in
   let defs =
     List.map (fun (def : thing_to_lift) ->
         match def with
-        | Continuation _ -> def
         | Let (var, Set_of_closures set) ->
           let set = Flambda_iterators.map_function_bodies set ~f:lift in
           Let (var, Set_of_closures set)
-        | Let _ -> def
+        | Continuation _ | Let _ -> def)
       defs
   in
-  rebuild_let_conts defs ~body
+  List.fold_left (fun body (def : thing_to_lift) ->
+      match def with
+      | Continuation (name, handler) ->
+        Flambda.Let_cont { name; body; handler; }
+      | Let (var, Set_of_closures set) ->
+        let set = Flambda_iterators.map_function_bodies set ~f:lift in
+        Flambda.create_let var (Set_of_closures set) body
+      | Let (var, defining_expr) ->
+        Flambda.create_let var defining_expr body)
+    body
+    (List.rev defs)
 
 let run program =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:lift
