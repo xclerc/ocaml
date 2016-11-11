@@ -108,7 +108,7 @@ Format.eprintf "not lifting continuation %a\n%!" Continuation.print name;
     acc, expr
 
 and lift (expr : Flambda.t) : Flambda.t =
-Format.eprintf "lift starting\n%!";
+(*Format.eprintf "lift starting\n%!";*)
   let defs, body = find_things_to_lift [] expr in
 let res =
   List.fold_left (fun body (def : thing_to_lift) ->
@@ -123,7 +123,7 @@ let res =
     body
     defs
 in
-Format.eprintf "lift starting\n%!";
+(*Format.eprintf "lift starting\n%!";*)
 res
 
 let run program =
