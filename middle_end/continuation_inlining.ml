@@ -52,41 +52,69 @@ end
 module Uses : sig
   type t
 
-  val create : handler:Flambda.continuation_handler -> t
+  val create
+     : handler:Flambda.continuation_handler
+    -> num_params:int
+    -> t
 
   val add_inlinable_use
      : t
     -> env:E.t
-    -> args:Variable.t list
+    -> args:(Variable.t * A.t) list
     -> t
 
-  val add_non_inlinable_use : t -> t
+  val add_non_inlinable_use
+     : t
+    -> args_approxs:A.t list
+    -> t
 
   val handler : t -> Flambda.continuation_handler
   val linearly_used : t -> bool
+
+  val meet_of_args_approxs : t -> A.t list
 end = struct
   type t = {
     handler : Flambda.continuation_handler;
     inlinable_application_points : Use.t list;
     num_non_inlinable_application_points : Num_continuation_uses.t;
+    meet_of_args_approxs : A.t option;
   }
 
-  let create ~handler =
+  let create ~num_params ~handler =
+    let meet_of_args_approxs =
+      Array.to_list (Array.make num_params None)
+    in
     { handler;
       inlinable_application_points = [];
       num_non_inlinable_application_points = 0;
+      meet_of_args_approxs;
     }
 
+  let compute_meet_of_args_approxs t ~args_approxs =
+    if List.length args_approxs <> List.length t.meet_of_args_approxs then
+      Misc.fatal_errorf "Wrong number of arguments for continuation"
+    else
+      List.map2 (fun approx approx_opt ->
+          match approx_opt with
+          | None -> Some approx
+          | Some approx' -> Some (A.meet approx approx'))
+        args_approxs meet_of_args_approxs
+
   let add_inlinable_use t ~env ~args =
+    let args, args_approxs = List.split args in
+    let meet_of_args_approxs = compute_meet_of_args_approxs t ~args_approxs in
     { t with
       inlinable_application_points =
         (env, args) :: t.inlinable_application_points;
+      meet_of_args_approxs;
     }
 
-  let add_non_inlinable_use t =
+  let add_non_inlinable_use t ~args_approxs =
+    let meet_of_args_approxs = compute_meet_of_args_approxs t ~args_approxs in
     { t with
       num_non_inlinable_application_points =
         t.num_non_inlinable_application_points + 1;
+      meet_of_args_approxs;
     }
 
   let num_inlinable_application_points t : Num_continuation_uses.t =
@@ -101,6 +129,12 @@ end = struct
     with
     | One, Zero -> true
     | _, _ -> false
+
+  let meet_of_args_approxs t =
+    List.map (function
+        | None -> A.value_unknown Other
+        | Some approx -> approx)
+      t.meet_of_args_approxs
 end
 
 type inlining_result =
@@ -158,7 +192,7 @@ Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   end
 
 let find_inlinings expr r ~simplify =
-  let all_uses = R.continuation_uses r in
+  let all_uses = R.used_continuations r in
   Continuation.Map.fold (fun inlinings cont (uses : Uses.t) ->
       let handler = Uses.handler uses in
       let inline_unconditionally = Uses.linearly_used uses in
@@ -177,7 +211,10 @@ let find_inlinings expr r ~simplify =
 
 (* At the moment this doesn't apply the substitution to handlers as we
    discover inlinings (unlike what happens for function inlining).  Let's
-   see how it goes. *)
+   see how it goes.
+   Only mapping the [Apply_cont] nodes also means that we need another pass
+   of simplify to remove continuation handlers for continuations that don't
+   have any remaining uses. *)
 let substitute (expr : Flambda.expr)
       (subst : Flambda.expr Continuation_with_args.Map.t) =
   Flambda_iterators.map_toplevel_apply_cont expr

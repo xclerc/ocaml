@@ -43,9 +43,7 @@ module Env = struct
     closure_depth : int;
     inlining_stats_closure_stack : Inlining_stats.Closure_stack.t;
     inlined_debuginfo : Debuginfo.t;
-    continuation_uses
-      : (Num_continuation_uses.t * Variable.t list * Flambda.t)
-          Continuation.Map.t;
+    in_handlers_of_recursive_continuations : Continuation.Set.t;
   }
 
   let create ~never_inline ~backend ~round =
@@ -70,7 +68,7 @@ module Env = struct
       inlining_stats_closure_stack =
         Inlining_stats.Closure_stack.create ();
       inlined_debuginfo = Debuginfo.none;
-      continuation_uses = Continuation.Map.empty;
+      in_handlers_of_recursive_continuations = Continuation.Set.empty;
     }
 
   let backend t = t.backend
@@ -83,7 +81,7 @@ module Env = struct
       projections = Projection.Map.empty;
       freshening = Freshening.empty_preserving_activation_state env.freshening;
       inlined_debuginfo = Debuginfo.none;
-      continuation_uses = Continuation.Map.empty;
+      in_handlers_of_recursive_continuations = Continuation.Set.empty;
     }
 
   let inlining_level_up env =
@@ -424,21 +422,19 @@ module Env = struct
   let add_inlined_debuginfo t ~dbg =
     Debuginfo.concat t.inlined_debuginfo dbg
 
-  let consider_continuation_for_inlining t ~cont ~params ~handler ~uses =
-    if Continuation.Map.mem cont t.continuation_uses then
-      Misc.fatal_errorf "Continuation %a already added to environment"
+  let set_in_handler_of_recursive_continuation t cont =
+    if Continuation.Set.mem cont t.in_handlers_of_recursive_continuations
+    then
+      Misc.fatal_errorf "Already in handler of recursive continuation %a"
         Continuation.print cont
     else
       { t with
-        continuation_uses =
-          Continuation.Map.add cont (uses, params, handler)
-            t.continuation_uses;
+        in_handlers_of_recursive_continuations =
+          Continuation.Set.add cont t.in_handlers_of_recursive_continuations;
       }
 
-  let should_consider_continuation_for_inlining t cont =
-    match Continuation.Map.find cont t.continuation_uses with
-    | exception Not_found -> None
-    | result -> Some result
+  let in_handler_of_recursive_continuation t cont =
+    Continuation.Set.mem cont t.in_handlers_of_recursive_continuations
 end
 
 let initial_inlining_threshold ~round : Inlining_cost.Threshold.t =
@@ -467,15 +463,9 @@ let initial_inlining_toplevel_threshold ~round : Inlining_cost.Threshold.t =
     (unscaled * Inlining_cost.scale_inline_threshold_by)
 
 module Result = struct
-  type continuation_uses = {
-    inlinable : Num_continuation_uses.t;
-    non_inlinable : Num_continuation_uses.t;
-  }
-
   type t =
     { approx : Simple_value_approx.t;
-      used_continuations :
-        (Simple_value_approx.t list * continuation_uses) Continuation.Map.t;
+      used_continuations : Continuation_inlining.Uses.t Continuation.Map.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
       num_direct_applications : int;

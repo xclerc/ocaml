@@ -271,18 +271,8 @@ module Env : sig
   (** Appends the locations of inlined call-sites to the [~dbg] argument *)
   val add_inlined_debuginfo : t -> dbg:Debuginfo.t -> Debuginfo.t
 
-  val consider_continuation_for_inlining
-     : t
-    -> cont:Continuation.t
-    -> params:Variable.t list
-    -> handler:Flambda.t
-    -> uses:Num_continuation_uses.t
-    -> t
-
-  val should_consider_continuation_for_inlining
-     : t
-    -> Continuation.t
-    -> (Num_continuation_uses.t * Variable.t list * Flambda.t) option
+  val set_in_handler_of_recursive_continuation : t -> Continuation.t -> t
+  val in_handler_of_recursive_continuation : t -> Continuation.t -> bool
 end
 
 module Result : sig
@@ -332,11 +322,6 @@ module Result : sig
     -> inlinable_position:bool
     -> Simple_value_approx.t list
     -> t
-
-  type continuation_uses = private {
-    inlinable : Num_continuation_uses.t;
-    non_inlinable : Num_continuation_uses.t;
-  }
 
   (** Mark that we are moving up out of the scope of a static-catch block
       that catches the given continuation identifier.  This has the effect

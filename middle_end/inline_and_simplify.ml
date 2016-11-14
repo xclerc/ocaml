@@ -587,7 +587,12 @@ and simplify_set_of_closures original_env r
         ~inline_inside:
           (Inlining_decision.should_inline_inside_declaration function_decl)
         ~dbg:function_decl.dbg
-        ~f:(fun body_env -> simplify body_env r function_decl.body)
+        ~f:(fun body_env ->
+          let body, r = simplify body_env r function_decl.body in
+          let body =
+            Continuation_inlining.for_toplevel_expression body r ~simplify
+          in
+          body, r)
     in
     let r = R.exit_continuation_scope r function_decl.continuation_param in
     let inline : Lambda.inline_attribute =
@@ -928,8 +933,11 @@ and simplify_apply_cont env r cont ~args ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
+  let inlinable_position =
+    not (E.in_handler_of_recursive_continuation env cont)
+  in
   let r =
-    R.use_continuation r env cont ~inlinable_position:true args_approxs
+    R.use_continuation r env cont ~inlinable_position args_approxs
   in
   cont, ret r A.value_bottom
 
@@ -1317,7 +1325,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           Let_cont let_cont, ret r A.value_bottom
         | Handler { params = []; recursive = Nonrecursive;
             handler = Apply_cont (cont', []); } ->
-          let r, _args_approxs, _count = R.exit_scope_catch r cont in
+          let r, _args_approxs = R.exit_scope_catch r cont in
           let cont' =
             Freshening.apply_static_exception (E.freshening env) cont'
           in
@@ -1339,62 +1347,46 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                   Flambda.create_let var (Var arg) body)
                 handler vars args
             in
-            let r, _args_approxs, _count = R.exit_scope_catch r cont in
+            let r, _args_approxs = R.exit_scope_catch r cont in
             simplify env r handler
           | _, _ ->
-            let r, vars_approxs, uses = R.exit_scope_catch r cont in
-            let normal_case env r ~body : Flambda.t * R.t =
-              let vars, sb =
-                Freshening.add_variables' (E.freshening env) vars
-              in
-              let vars_and_approxs = List.combine vars vars_approxs in
-              let env =
-                List.fold_left (fun env (id, approx) -> E.add env id approx)
-                  (E.set_freshening env sb) vars_and_approxs
-              in
-              let env = E.inside_branch env in
-              let handler, r = simplify env r handler in
-              let let_cont : Flambda.let_cont =
-                { name = cont;
-                  body;
-                  handler = Handler {
-                    params = vars;
-                    recursive;
-                    handler;
-                  };
-                }
-              in
-              Let_cont let_cont, ret r A.value_bottom
+            let r, vars_approxs =
+              match recursive with
+              | Nonrecursive -> R.exit_scope_catch r cont
+              | Recursive ->
+                r, List.map (fun _ -> A.value_bottom) vars
             in
-            begin match uses.inlinable, uses.non_inlinable with
-            | (Zero | One), Zero ->
-              (* Linearly-used continuation: will always be inlined out, so
-                 the [Let_cont] may be deleted. *)
-              let body_env =
-                E.consider_continuation_for_inlining body_env ~cont
-                  ~params:vars ~handler ~uses:One
-              in
-              simplify body_env original_r original_body
-            | Many, Zero ->
-              (* N.B. In this case, it might turn out that we don't inline
-                 the continuation out, so we may still need the [Let_cont]. *)
-              (* CR mshinwell: In this case we could return through [r]
-                 whether the continuation was inlined out, thus avoiding
-                 another pass to remove the unused handler. *)
-              let body_env =
-                E.consider_continuation_for_inlining body_env ~cont
-                  ~params:vars ~handler ~uses:Many
-              in
-              let body, r = simplify body_env original_r original_body in
-              let r = R.exit_continuation_scope r cont in
-              let env =
-                match recursive with
-                | Nonrecursive -> env
-                | Recursive -> body_env
-              in
-              normal_case env r ~body
-            | _, _ -> normal_case env r ~body
-            end
+            let vars, sb =
+              Freshening.add_variables' (E.freshening env) vars
+            in
+            let vars_and_approxs = List.combine vars vars_approxs in
+            let env =
+              List.fold_left (fun env (id, approx) -> E.add env id approx)
+                (E.set_freshening env sb) vars_and_approxs
+            in
+            let env =
+              E.set_in_handler_of_recursive_continuation (E.inside_branch env)
+                cont
+            in
+            let handler, r = simplify env r handler in
+            let r =
+              match recursive with
+              | Nonrecursive -> r
+              | Recursive ->
+                let r, _args_approxs = R.exit_scope_catch r cont in
+                r
+            in
+            let let_cont : Flambda.let_cont =
+              { name = cont;
+                body;
+                handler = Handler {
+                  params = vars;
+                  recursive;
+                  handler;
+                };
+              }
+            in
+            Let_cont let_cont, ret r A.value_bottom
       end
     end
   | Switch (arg, sw) ->
@@ -1719,6 +1711,9 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         let cont_approx = Continuation_approx.create_unknown ~name:cont in
         let env = E.add_continuation env cont cont_approx in
         let h', r = simplify env r h in
+        let h =
+          Continuation_inlining.for_toplevel_expression h r ~simplify
+        in
         let r, new_approxs, _count = R.exit_scope_catch r cont in
         let approx =
           match new_approxs with
@@ -1751,6 +1746,9 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     let cont_approx = Continuation_approx.create_unknown ~name:cont in
     let env = E.add_continuation env cont cont_approx in
     let expr, r = simplify env r expr in
+    let expr =
+      Continuation_inlining.for_toplevel_expression expr r ~simplify
+    in
     let program, r = simplify_program_body env r program in
     let r = R.exit_continuation_scope r cont in
     Effect (expr, cont, program), r

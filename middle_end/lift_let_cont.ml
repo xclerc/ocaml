@@ -32,6 +32,11 @@ type thing_to_lift =
   | Let of Variable.t * Flambda.named
   | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
 
+(* CR mshinwell: We should review to make sure lifting Const lets is
+   the right thing to do.  Leo pointed out what we could also push
+   non side effecting lets (e.g. makeblocks) downwards into let_cont
+   handlers when the bound var isn't used in the body of such let_cont. *)
+
 let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
   match expr with
   | Let_cont { name; body = body1; handler = Handler {
