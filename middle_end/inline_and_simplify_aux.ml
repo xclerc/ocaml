@@ -586,6 +586,8 @@ module Result = struct
         Continuation.Map.add cont uses t.used_continuations;
     }
 
+  (* CR mshinwell: bad interface - shouldn't need to specify args when
+     non-inlinable *)
   let use_continuation t env cont ~inlinable_position ~args ~args_approxs =
     let uses =
       match Continuation.Map.find cont t.used_continuations with

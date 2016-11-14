@@ -678,7 +678,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
         in
         let r =
           R.use_continuation r env continuation ~inlinable_position:false
-            [A.value_unknown Other]
+            ~args:[] ~args_approxs:[A.value_unknown Other]
         in
         let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
         let apply : Flambda.apply = {
@@ -706,7 +706,7 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
   in
   let r =
     R.use_continuation r env continuation ~inlinable_position:false
-      [A.value_unknown Other]
+      ~args:[] ~args_approxs:[A.value_unknown Other]
   in
   simplify_free_variable env lhs_of_application
     ~f:(fun env lhs_of_application lhs_of_application_approx ->
@@ -928,7 +928,7 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   simplify (E.set_never_inline env) r expr
 
 (** Simplify an application of a continuation. *)
-and simplify_apply_cont env r cont ~args ~args_approxs =
+and simplify_apply_cont env r cont ~args ~args_approxs : Flambda.t * R.t =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
@@ -936,9 +936,9 @@ and simplify_apply_cont env r cont ~args ~args_approxs =
     not (E.in_handler_of_recursive_continuation env cont)
   in
   let r =
-    R.use_continuation r env cont ~inlinable_position args_approxs
+    R.use_continuation r env cont ~inlinable_position ~args ~args_approxs
   in
-  cont, ret r A.value_bottom
+  Apply_cont (cont, args), ret r A.value_bottom
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm). *)
@@ -947,7 +947,8 @@ and simplify_apply_cont_to_cont env r cont ~args_approxs =
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let r =
-    R.use_continuation r env cont ~inlinable_position:false args_approxs
+    R.use_continuation r env cont ~inlinable_position:false ~args:[]
+      ~args_approxs
   in
   cont, ret r A.value_bottom
 
@@ -1303,14 +1304,12 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       in
       let env = E.set_freshening env sb in
       let body_env = E.add_continuation env cont approx in
-      let original_r = r in
-      let original_body = body in
       let body, r =
         let r =
           match handler with
           | Alias _ -> r
-          | Handler { params; handler; _ } ->
-            R.prepare_for_continuation_uses t env cont
+          | Handler ({ params; _ } as handler) ->
+            R.prepare_for_continuation_uses r cont
               ~num_params:(List.length params)
               ~handler
         in
@@ -1334,12 +1333,13 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           Let_cont let_cont, ret r A.value_bottom
         | Handler { params = []; recursive = Nonrecursive;
             handler = Apply_cont (cont', []); } ->
-          let r, _args_approxs = R.exit_scope_catch r cont in
+          let r, args_approxs = R.exit_scope_catch r cont in
           let cont' =
             Freshening.apply_static_exception (E.freshening env) cont'
           in
           let r =
-            R.use_continuation r env cont' ~inlinable_position:false []
+            R.use_continuation r env cont' ~inlinable_position:false
+              ~args:[] ~args_approxs
           in
           Let_cont { name = cont; body; handler = Alias cont'; }, r
         | Handler { params = vars; recursive; handler; } ->
@@ -1535,7 +1535,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~f:(fun body_env ->
         simplify body_env (R.create ()) function_decl.body)
   in
-  let _r = R.exit_continuation_scope r function_decl.continuation_param in
+  let _r, _approx = R.exit_scope_catch r function_decl.continuation_param in
   let function_decl =
     Flambda.create_function_declaration ~params:function_decl.params
       ~continuation_param:function_decl.continuation_param
@@ -1759,7 +1759,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
       Continuation_inlining.for_toplevel_expression expr r ~simplify
     in
     let program, r = simplify_program_body env r program in
-    let r = R.exit_continuation_scope r cont in
+    let r, _approx = R.exit_scope_catch r cont in
     Effect (expr, cont, program), r
   | End root -> End root, r
 
