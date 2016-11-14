@@ -21,7 +21,7 @@ let params_do_not_overlap_free_variables ~params ~handler =
   let handler_fvs = Flambda.free_variables handler in
   Variable.Set.is_empty (Variable.Set.inter params handler_fvs)
 
-let params_do_not_overlap_free_variables_let ~params
+let _params_do_not_overlap_free_variables_let ~params
       ~(let_expr : Flambda.let_expr) =
   let params = Variable.Set.of_list params in
   let defining_expr_fvs = let_expr.free_vars_of_defining_expr in
@@ -59,6 +59,7 @@ let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
        handler can always be lifted. *)
     let acc = (Continuation (name, Alias alias_to)) :: acc in
     acc, lift body
+(*
   | Let_cont { name; body; handler = Handler {
         params; handler = Let let_expr; }; }
       when params_do_not_overlap_free_variables_let ~params ~let_expr
@@ -81,6 +82,7 @@ let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
         :: acc
     in
     acc, lift body
+*)
   | Let_cont { name; body; handler = Handler {
       params; recursive; handler; }; } ->
     (* The continuation [handler] cannot be lifted---but there might be
