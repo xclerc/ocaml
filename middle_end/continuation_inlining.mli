@@ -26,18 +26,23 @@
 module Uses : sig
   type t
 
-  val create : handler:Flambda.continuation_handler -> t
+  val create
+     : handler:Flambda.continuation_handler
+    -> num_params:int
+    -> t
 
   val add_inlinable_use
      : t
-    -> env:Inline_and_simplify_aux.Env.t
-    -> args:Variable.t list
+    -> env:E.t
+    -> args:(Variable.t * A.t) list
     -> t
 
-  val add_non_inlinable_use : t -> t
+  val add_non_inlinable_use
+     : t
+    -> args_approxs:A.t list
+    -> t
 
-  val handler : t -> Flambda.continuation_handler
-  val linearly_used : t -> bool
+  val meet_of_args_approxs : t -> A.t list
 end
 
 val for_toplevel_expression

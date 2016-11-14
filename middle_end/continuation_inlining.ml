@@ -192,7 +192,7 @@ Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   end
 
 let find_inlinings expr r ~simplify =
-  let all_uses = R.used_continuations r in
+  let all_uses = R.continuation_uses r in
   Continuation.Map.fold (fun inlinings cont (uses : Uses.t) ->
       let handler = Uses.handler uses in
       let inline_unconditionally = Uses.linearly_used uses in

@@ -523,40 +523,25 @@ module Result = struct
   let used_continuations t =
     Continuation.Map.keys t.used_continuations
 
+  (* CR mshinwell: naming! *)
+  let continuation_uses t = t.used_continuations
+
   let no_defined_continuations t =
     Continuation.Map.is_empty t.used_continuations
 
   let exit_scope_catch t i =
-    let approxs, count =
+    let uses =
       try Continuation.Map.find i t.used_continuations
       with Not_found ->
         Misc.fatal_errorf "exit_scope_catch: Already out of scope of \
             continuation %a"
           Continuation.print i
     in
+    let approxs = Continuation_inlining.Uses.meet_of_args_approxs uses in
     { t with
       used_continuations =
         Continuation.Map.remove i t.used_continuations;
     }, approxs, count
-(*
-  let num_uses_of_continuation t cont =
-    match Continuation.Map.find cont t.used_continuations with
-    | exception Not_found ->
-      Misc.fatal_errorf "Unbound continuation %a" Continuation.print cont
-    | _approxs, uses -> uses
-*)
-
-  let exit_continuation_scope t cont =
-    (* CR mshinwell: think about this whole "used continuations" thing.
-       It seems like [exit_scope_catch] isn't the right thing in one
-       particular circumstance: when inlining out a continuation (in the
-       "Many" case where the result is not certain), there may not be any
-       uses in the body, which hits the [Not_found] case.  For the moment
-       we use this function instead. *)
-    { t with
-      used_continuations =
-        Continuation.Map.remove cont t.used_continuations;
-    }
 
   let map_benefit t f =
     { t with benefit = f t.benefit }

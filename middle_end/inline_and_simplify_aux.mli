@@ -307,6 +307,9 @@ module Result : sig
       debugging purpose. *)
   val used_continuations : t -> Continuation.Set.t
 
+  (** Continuation usage information for the inliner. *)
+  val continuation_uses : t -> Continuation_inlining.Uses.t Continuation.Map.t
+
   (** Check that there is no static catch in scope *)
   val no_defined_continuations : t -> bool
 
