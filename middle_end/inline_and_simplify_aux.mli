@@ -275,6 +275,39 @@ module Env : sig
   val in_handler_of_recursive_continuation : t -> Continuation.t -> bool
 end
 
+module Continuation_uses : sig
+  module Use : sig
+    type t = private {
+      args : Variable.t list;
+      env : Env.t;
+    }
+  end
+
+  type t
+
+  val create
+     : handler:Flambda.continuation_handler
+    -> num_params:int
+    -> t
+
+  val add_inlinable_use
+     : t
+    -> Env.t
+    -> args:(Variable.t * A.t) list
+    -> t
+
+  val add_non_inlinable_use
+     : t
+    -> Env.t
+    -> args_approxs:A.t list
+    -> t
+
+  val handler : t -> Flambda.continuation_handler
+  val linearly_used : t -> bool
+
+  val meet_of_args_approxs : t -> A.t list
+end
+
 module Result : sig
   (** Result structures approximately follow the evaluation order of the
       program.  They are returned by the simplification algorithm acting on
@@ -302,13 +335,22 @@ module Result : sig
       result structure. *)
   val is_used_continuation : t -> Continuation.t -> bool
 
+  (** To be called upon entering a [Let_cont]'s body. *)
+  val prepare_for_continuation_uses
+     : t
+    -> Env.t
+    -> Continuation.t
+    -> num_params:int
+    -> handler:Flambda.continuation_handler
+    -> t
+
   (** All continuations for which [use_continuation] has been
       called on the given result structure. O(n*log(n)) Used only for
       debugging purpose. *)
   val used_continuations : t -> Continuation.Set.t
 
   (** Continuation usage information for the inliner. *)
-  val continuation_uses : t -> Continuation_inlining.Uses.t Continuation.Map.t
+  val continuation_uses : t -> Continuation_uses.t Continuation.Map.t
 
   (** Check that there is no static catch in scope *)
   val no_defined_continuations : t -> bool
@@ -323,7 +365,8 @@ module Result : sig
     -> Env.t
     -> Continuation.t
     -> inlinable_position:bool
-    -> Simple_value_approx.t list
+    -> args:Variable.t list
+    -> args_approxs:Simple_value_approx.t list
     -> t
 
   (** Mark that we are moving up out of the scope of a static-catch block
@@ -333,7 +376,7 @@ module Result : sig
   val exit_scope_catch
      : t
     -> Continuation.t
-    -> t * Simple_value_approx.t list * continuation_uses
+    -> t * Simple_value_approx.t list
 
   val exit_continuation_scope : t -> Continuation.t -> t
 

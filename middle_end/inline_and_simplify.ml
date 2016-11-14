@@ -1306,7 +1306,13 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let body_env = E.add_continuation env cont approx in
       let original_r = r in
       let original_body = body in
-      let body, r = simplify body_env r body in
+      let body, r =
+        let r =
+          R.prepare_for_continuation_uses t env cont ~num_params:...
+            ~handler
+        in
+        simplify body_env r body
+      in
       if not (R.is_used_continuation r cont) then begin
         (* If the continuation is not used, we can drop the declaration *)
         body, r
@@ -1714,7 +1720,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         let h =
           Continuation_inlining.for_toplevel_expression h r ~simplify
         in
-        let r, new_approxs, _count = R.exit_scope_catch r cont in
+        let r, new_approxs = R.exit_scope_catch r cont in
         let approx =
           match new_approxs with
           | [approx] -> approx

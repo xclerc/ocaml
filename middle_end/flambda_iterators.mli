@@ -178,8 +178,8 @@ val map_apply
   -> Flambda.t
 
 val map_toplevel_apply_cont
-   : (Continuation.t -> Variable.t list -> Flambda.t option)
-  -> Flambda.t
+   : Flambda.t
+  -> f:(Continuation.t -> Variable.t list -> Flambda.t option)
   -> Flambda.t
 
 val map_function_bodies

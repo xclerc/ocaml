@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2016 OCamlPro SAS                                          *)
+(*   Copyright 2016 Jane Street Group LLC                                 *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -40,101 +40,6 @@ module Continuation_with_args = struct
     let output _chan _t = Misc.fatal_error "not implemented"
     let print _ppf _t = Misc.fatal_error "not implemented"
   end)
-end
-
-module Use = struct
-  type t = {
-    args : Variable.t list;
-    env : E.t;
-  }
-end
-
-module Uses : sig
-  type t
-
-  val create
-     : handler:Flambda.continuation_handler
-    -> num_params:int
-    -> t
-
-  val add_inlinable_use
-     : t
-    -> env:E.t
-    -> args:(Variable.t * A.t) list
-    -> t
-
-  val add_non_inlinable_use
-     : t
-    -> args_approxs:A.t list
-    -> t
-
-  val handler : t -> Flambda.continuation_handler
-  val linearly_used : t -> bool
-
-  val meet_of_args_approxs : t -> A.t list
-end = struct
-  type t = {
-    handler : Flambda.continuation_handler;
-    inlinable_application_points : Use.t list;
-    num_non_inlinable_application_points : Num_continuation_uses.t;
-    meet_of_args_approxs : A.t option;
-  }
-
-  let create ~num_params ~handler =
-    let meet_of_args_approxs =
-      Array.to_list (Array.make num_params None)
-    in
-    { handler;
-      inlinable_application_points = [];
-      num_non_inlinable_application_points = 0;
-      meet_of_args_approxs;
-    }
-
-  let compute_meet_of_args_approxs t ~args_approxs =
-    if List.length args_approxs <> List.length t.meet_of_args_approxs then
-      Misc.fatal_errorf "Wrong number of arguments for continuation"
-    else
-      List.map2 (fun approx approx_opt ->
-          match approx_opt with
-          | None -> Some approx
-          | Some approx' -> Some (A.meet approx approx'))
-        args_approxs meet_of_args_approxs
-
-  let add_inlinable_use t ~env ~args =
-    let args, args_approxs = List.split args in
-    let meet_of_args_approxs = compute_meet_of_args_approxs t ~args_approxs in
-    { t with
-      inlinable_application_points =
-        (env, args) :: t.inlinable_application_points;
-      meet_of_args_approxs;
-    }
-
-  let add_non_inlinable_use t ~args_approxs =
-    let meet_of_args_approxs = compute_meet_of_args_approxs t ~args_approxs in
-    { t with
-      num_non_inlinable_application_points =
-        t.num_non_inlinable_application_points + 1;
-      meet_of_args_approxs;
-    }
-
-  let num_inlinable_application_points t : Num_continuation_uses.t =
-    match t.application_points with
-    | [] -> Zero
-    | [_] -> One
-    | _ -> Many
-
-  let linearly_used t =
-    match num_inlinable_application_points t,
-      t.num_non_inlinable_application_points
-    with
-    | One, Zero -> true
-    | _, _ -> false
-
-  let meet_of_args_approxs t =
-    List.map (function
-        | None -> A.value_unknown Other
-        | Some approx -> approx)
-      t.meet_of_args_approxs
 end
 
 type inlining_result =
