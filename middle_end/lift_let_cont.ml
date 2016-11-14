@@ -30,6 +30,7 @@ let params_do_not_overlap_free_variables_let ~params
 type thing_to_lift =
   | Continuation of Continuation.t * Flambda.let_cont_handler
   | Let of Variable.t * Flambda.named
+  | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
 
 let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
   match expr with
@@ -37,14 +38,9 @@ let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
         params; recursive; handler = (Let_cont { name = _ (* name' *); body = _;
           handler = Handler { handler; _ }; _ }) as let_cont2; }; }
       when params_do_not_overlap_free_variables ~params ~handler ->
-(*
-Format.eprintf "lifting continuation %a nested inside %a\n%!"
-  Continuation.print name'
-  Continuation.print name;
-*)
     (* The continuation [handler] can be lifted.  First we try to lift things
-       (recursively) from inside [handler] itself and then (on the way back
-       up from that recursion) we add the lifted continuations to [acc]. *)
+       (recursively) from inside [handler] itself.  (The recursive call will
+       be the thing that actually adds [handler] to [acc].) *)
     let acc, body2 = find_things_to_lift acc let_cont2 in
     let acc =
       (Continuation (name, Handler {
@@ -62,10 +58,6 @@ Format.eprintf "lifting continuation %a nested inside %a\n%!"
         params; handler = Let let_expr; }; }
       when params_do_not_overlap_free_variables_let ~params ~let_expr
         && Effect_analysis.no_effects_named let_expr.defining_expr ->
-(*
-Format.eprintf "lifting let %a nested inside %a\n%!" Variable.print let_expr.var
-  Continuation.print name;
-*)
     (* The let-bound expression [let_expr] can be lifted.  Since there cannot
        be any nested [Let] or [Let_cont] in the defining expression of the
        [Let], we don't need to recurse into that expression.
@@ -80,9 +72,6 @@ Format.eprintf "lifting let %a nested inside %a\n%!" Variable.print let_expr.var
     acc, lift body
   | Let_cont { name; body; handler = Handler {
       params; recursive; handler; }; } ->
-(*
-Format.eprintf "not lifting continuation %a\n%!" Continuation.print name;
-*)
     (* The continuation [handler] cannot be lifted---but there might be
        sequences of [Let_cont]s or [Let]s inside [handler] that can be lifted
        (without bringing them out of [handler]). *)
@@ -103,14 +92,12 @@ Format.eprintf "not lifting continuation %a\n%!" Continuation.print name;
   | Apply _ | Apply_cont _ | Switch _ ->
     (* These things have no subexpressions, so we're done. *)
     acc, expr
-  | Let_mutable _ ->
-    (* CR mshinwell: Think about this case *)
-    acc, expr
+  | Let_mutable { var; initial_value; contents_kind; body; } ->
+    let acc = (Let_mutable (var, initial_value, contents_kind)) :: acc in
+    acc, lift body
 
 and lift (expr : Flambda.t) : Flambda.t =
-(*Format.eprintf "lift starting\n%!";*)
   let defs, body = find_things_to_lift [] expr in
-let res =
   List.fold_left (fun body (def : thing_to_lift) ->
       match def with
       | Continuation (name, handler) ->
@@ -119,12 +106,11 @@ let res =
         let set = Flambda_iterators.map_function_bodies set ~f:lift in
         Flambda.create_let var (Set_of_closures set) body
       | Let (var, defining_expr) ->
-        Flambda.create_let var defining_expr body)
+        Flambda.create_let var defining_expr body
+      | Let_mutable (var, initial_value, contents_kind) ->
+        Flambda.Let_mutable { var; initial_value; contents_kind; body; })
     body
     defs
-in
-(*Format.eprintf "lift starting\n%!";*)
-res
 
 let run program =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:lift
