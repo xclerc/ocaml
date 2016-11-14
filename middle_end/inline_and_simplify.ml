@@ -594,7 +594,6 @@ and simplify_set_of_closures original_env r
           in
           body, r)
     in
-    let r = R.exit_continuation_scope r function_decl.continuation_param in
     let inline : Lambda.inline_attribute =
       match function_decl.inline with
       | Default_inline ->
