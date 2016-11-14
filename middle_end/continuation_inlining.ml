@@ -75,7 +75,7 @@ let try_inlining r ~cont
       ~lifting:false
       ~round:(E.round use.env)
   in
-  if (not inline_unconditionally) || W.evaluate wsb then begin
+  if (not inline_unconditionally) && W.evaluate wsb then begin
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
   Variable.print_list use.args

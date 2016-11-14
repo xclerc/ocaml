@@ -477,6 +477,7 @@ module Continuation_uses = struct
     inlinable_application_points : Use.t list;
     num_non_inlinable_application_points : Num_continuation_uses.t;
     meet_of_args_approxs : A.t option list;
+    is_out_of_scope : bool;
   }
 
   let create ~num_params ~handler =
@@ -487,6 +488,7 @@ module Continuation_uses = struct
       inlinable_application_points = [];
       num_non_inlinable_application_points = Zero;
       meet_of_args_approxs;
+      is_out_of_scope = false;
     }
 
   let compute_meet_of_args_approxs t env ~args_approxs =
@@ -544,6 +546,9 @@ module Continuation_uses = struct
 
   let inlinable_application_points t = t.inlinable_application_points
   let handler t = t.handler
+
+  let set_is_out_of_scope t = { t with is_out_of_scope = true; }
+  let is_out_of_scope t = t.is_out_of_scope
 end
 
 module Result = struct
@@ -618,7 +623,9 @@ module Result = struct
   let continuation_uses t = t.used_continuations
 
   let no_defined_continuations t =
-    Continuation.Map.is_empty t.used_continuations
+    Continuation.Map.for_all (fun _cont uses ->
+        Continuation_uses.is_out_of_scope uses)
+      t.used_continuations
 
   let exit_scope_catch t i =
     let uses =
@@ -629,9 +636,10 @@ module Result = struct
           Continuation.print i
     in
     let approxs = Continuation_uses.meet_of_args_approxs uses in
+    let uses = Continuation_uses.set_is_out_of_scope uses in
     { t with
       used_continuations =
-        Continuation.Map.remove i t.used_continuations;
+        Continuation.Map.add i uses t.used_continuations;
     }, approxs
 
   let map_benefit t f =

@@ -1354,8 +1354,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             | Recursive -> body_env
           in
           match (body : Flambda.t), recursive with
-          | Apply_cont (cont', args), Nonrecursive ->
-            assert (Continuation.equal cont cont');
+          | Apply_cont (cont', args), Nonrecursive
+              when Continuation.equal cont cont' ->
             let handler =
               List.fold_left2 (fun body var arg ->
                   Flambda.create_let var (Var arg) body)
