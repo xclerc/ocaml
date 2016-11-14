@@ -1379,8 +1379,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                 (E.set_freshening env sb) vars_and_approxs
             in
             let env =
-              E.set_in_handler_of_recursive_continuation (E.inside_branch env)
-                cont
+              let env = E.inside_branch env in
+              match recursive with
+              | Nonrecursive -> env
+              | Recursive -> E.set_in_handler_of_recursive_continuation env cont
             in
             let handler, r = simplify env r handler in
             let r =
