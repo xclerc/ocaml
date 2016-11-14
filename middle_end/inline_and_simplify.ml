@@ -1308,8 +1308,12 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let original_body = body in
       let body, r =
         let r =
-          R.prepare_for_continuation_uses t env cont ~num_params:...
-            ~handler
+          match handler with
+          | Alias _ -> r
+          | Handler { params; handler; _ } ->
+            R.prepare_for_continuation_uses t env cont
+              ~num_params:(List.length params)
+              ~handler
         in
         simplify body_env r body
       in

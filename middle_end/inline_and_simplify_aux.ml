@@ -541,6 +541,9 @@ module Continuation_uses = struct
         | None -> A.value_unknown Other
         | Some approx -> approx)
       t.meet_of_args_approxs
+
+  let inlinable_application_points t = t.inlinable_application_points
+  let handler t = t.handler
 end
 
 module Result = struct
@@ -570,10 +573,10 @@ module Result = struct
     in
     set_approx t meet
 
-  let prepare_for_continuation_uses t env cont =
+  let prepare_for_continuation_uses t cont ~num_params ~handler =
     let uses =
       match Continuation.Map.find cont t.used_continuations with
-      | exception Not_found -> Continuation_uses.create ()
+      | exception Not_found -> Continuation_uses.create ~num_params ~handler
       | _ ->
         Misc.fatal_errorf "Already in scope of continuation %a"
           Continuation.print cont
@@ -592,11 +595,11 @@ module Result = struct
       | uses -> uses
     in
     let uses =
-      if inlineable_position then
-        Continuation_uses.add_inlinable_use t env
+      if inlinable_position then
+        Continuation_uses.add_inlinable_use uses env
           ~args:(List.combine args args_approxs)
       else
-        Continuation_uses.add_non_inlinable_use t env ~args_approxs
+        Continuation_uses.add_non_inlinable_use uses env ~args_approxs
     in
     { t with
       used_continuations =
@@ -627,7 +630,7 @@ module Result = struct
     { t with
       used_continuations =
         Continuation.Map.remove i t.used_continuations;
-    }, approxs, count
+    }, approxs
 
   let map_benefit t f =
     { t with benefit = f t.benefit }

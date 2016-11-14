@@ -16,7 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
 module B = Inlining_cost.Benefit
 module E = Inline_and_simplify_aux.Env
 module R = Inline_and_simplify_aux.Result
@@ -46,8 +45,10 @@ type inlining_result =
   | Didn't_inline
   | Inlined of Flambda.expr
 
-let try_inlining ~use ~(handler : Flambda.continuation_handler)
-      ~inline_unconditionally ~simplify =
+let try_inlining r ~cont
+      ~(use : Inline_and_simplify_aux.Continuation_uses.Use.t)
+      ~(handler : Flambda.continuation_handler) ~inline_unconditionally
+      ~simplify =
   if List.length handler.params <> List.length use.args then begin
     Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
       Continuation.print cont
@@ -58,21 +59,21 @@ let try_inlining ~use ~(handler : Flambda.continuation_handler)
       handler.handler
       handler.params use.args
   in
-  let existing_benefit = R.benefit r in
+(*  let existing_benefit = R.benefit r in *)
   let r = R.reset_benefit r in
   let original : Flambda.t = Apply_cont (cont, use.args) in
   let expr, r = simplify (E.activate_freshening use.env) r expr in
   let inlining_benefit = B.remove_prim (R.benefit r) in
-  let r = R.map_benefit r (fun _ -> existing_benefit) in
+(*  let r = R.map_benefit r (fun _ -> existing_benefit) in *)
   let module W = Inlining_cost.Whether_sufficient_benefit in
   let wsb =
     W.create ~original
-      ~toplevel:(E.at_toplevel env)
-      ~branch_depth:(E.branch_depth env)
+      ~toplevel:(E.at_toplevel use.env)
+      ~branch_depth:(E.branch_depth use.env)
       expr
       ~benefit:inlining_benefit
       ~lifting:false
-      ~round:(E.round env)
+      ~round:(E.round use.env)
   in
   if (not inline_unconditionally) || W.evaluate wsb then begin
 (*
@@ -93,26 +94,28 @@ Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   Variable.print_list use.args
   B.print inlining_benefit;
 *)
-    Don't_inline
+    Didn't_inline
   end
 
-let find_inlinings expr r ~simplify =
+let find_inlinings r ~simplify =
   let all_uses = R.continuation_uses r in
-  Continuation.Map.fold (fun inlinings cont (uses : Uses.t) ->
-      let handler = Uses.handler uses in
-      let inline_unconditionally = Uses.linearly_used uses in
-      List.fold_left (fun inlinings use ->
+  let module U = Inline_and_simplify_aux.Continuation_uses in
+  Continuation.Map.fold (fun cont (uses : U.t) inlinings ->
+      let handler = U.handler uses in
+      let inline_unconditionally = U.linearly_used uses in
+      List.fold_left (fun inlinings (use : U.Use.t) ->
           let inlining_result =
-            try_inlining ~use ~handler ~inline_unconditionally ~simplify
+            try_inlining r ~cont ~use ~handler ~inline_unconditionally
+              ~simplify
           in
           match inlining_result with
           | Didn't_inline -> inlinings
           | Inlined inlined ->
             Continuation_with_args.Map.add (cont, use.args) inlined inlinings)
         inlinings
-        uses.application_points)
-    Continuation_with_args.Map.empty
+        (U.inlinable_application_points uses))
     all_uses
+    Continuation_with_args.Map.empty
 
 (* At the moment this doesn't apply the substitution to handlers as we
    discover inlinings (unlike what happens for function inlining).  Let's
@@ -129,5 +132,5 @@ let substitute (expr : Flambda.expr)
       | expr -> Some expr)
 
 let for_toplevel_expression expr r ~simplify =
-  let subst = find_inlinings expr r ~simplify in
+  let subst = find_inlinings r ~simplify in
   substitute expr subst

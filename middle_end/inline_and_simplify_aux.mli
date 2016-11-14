@@ -286,26 +286,28 @@ module Continuation_uses : sig
   type t
 
   val create
-     : handler:Flambda.continuation_handler
-    -> num_params:int
+     : num_params:int
+    -> handler:Flambda.continuation_handler
     -> t
 
   val add_inlinable_use
      : t
     -> Env.t
-    -> args:(Variable.t * A.t) list
+    -> args:(Variable.t * Simple_value_approx.t) list
     -> t
 
   val add_non_inlinable_use
      : t
     -> Env.t
-    -> args_approxs:A.t list
+    -> args_approxs:Simple_value_approx.t list
     -> t
+
+  val inlinable_application_points : t -> Use.t list
 
   val handler : t -> Flambda.continuation_handler
   val linearly_used : t -> bool
 
-  val meet_of_args_approxs : t -> A.t list
+  val meet_of_args_approxs : t -> Simple_value_approx.t list
 end
 
 module Result : sig
@@ -338,7 +340,6 @@ module Result : sig
   (** To be called upon entering a [Let_cont]'s body. *)
   val prepare_for_continuation_uses
      : t
-    -> Env.t
     -> Continuation.t
     -> num_params:int
     -> handler:Flambda.continuation_handler
@@ -377,8 +378,6 @@ module Result : sig
      : t
     -> Continuation.t
     -> t * Simple_value_approx.t list
-
-  val exit_continuation_scope : t -> Continuation.t -> t
 
   (** The benefit to be gained by inlining the subexpression whose
       simplification yielded the given result structure. *)
