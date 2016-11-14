@@ -328,33 +328,23 @@ module Result : sig
   val set_approx : t -> Simple_value_approx.t -> t
 
   (** Set the approximation of the subexpression to the meet of the
-      current return aprroximation and the provided one. Typically
+      current return approximation and the provided one. Typically
       used just before returning from a branch case of the
       simplification algorithm. *)
   val meet_approx : t -> Env.t -> Simple_value_approx.t -> t
 
-  (** Check that [use_continuation] has been called on the given
+  (** Check that [prepare_for_continuation_uses] has been called on the given
       result structure. *)
   val is_used_continuation : t -> Continuation.t -> bool
 
-  (** To be called upon entering a [Let_cont]'s body. *)
+  (** Mark that we are entering the scope of a continuation-binding
+      construct. *)
   val prepare_for_continuation_uses
      : t
     -> Continuation.t
     -> num_params:int
     -> handler:Flambda.continuation_handler option
     -> t
-
-  (** All continuations for which [use_continuation] has been
-      called on the given result structure. O(n*log(n)) Used only for
-      debugging purpose. *)
-  val used_continuations : t -> Continuation.Set.t
-
-  (** Continuation usage information for the inliner. *)
-  val continuation_uses : t -> Continuation_uses.t Continuation.Map.t
-
-  (** Check that there is no static catch in scope *)
-  val no_defined_continuations : t -> bool
 
   (** Mark that the given continuation has been used and provide
       an approximation for the arguments.  [inlinable_position] should be
@@ -370,14 +360,23 @@ module Result : sig
     -> args_approxs:Simple_value_approx.t list
     -> t
 
-  (** Mark that we are moving up out of the scope of a static-catch block
-      that catches the given continuation identifier.  This has the effect
-      of removing the identifier from the [used_staticfail] set.
-  *)
+  (** Mark that we are moving up out of the scope of a continuation-binding
+      construct. *)
   val exit_scope_catch
      : t
     -> Continuation.t
     -> t * Simple_value_approx.t list
+
+  (** All continuations for which [use_continuation] has been
+      called on the given result structure. O(n*log(n)) Used only for
+      debugging purpose. *)
+  val used_continuations : t -> Continuation.Set.t
+
+  (** Continuation usage information for the inliner. *)
+  val continuation_uses : t -> Continuation_uses.t Continuation.Map.t
+
+  (** Check that there is no static catch in scope *)
+  val no_defined_continuations : t -> bool
 
   (** The benefit to be gained by inlining the subexpression whose
       simplification yielded the given result structure. *)
