@@ -57,8 +57,13 @@ let rec find_things_to_lift (acc : thing_to_lift list) (expr : Flambda.t) =
   | Let_cont { name; body; handler = Handler {
         params; handler = Let let_expr; }; }
       when params_do_not_overlap_free_variables_let ~params ~let_expr
-        && Effect_analysis.no_effects_named let_expr.defining_expr ->
-    (* CR mshinwell: Should we prevent allocations being moved? *)
+        && begin match let_expr.defining_expr with
+           | Const _ -> true
+           | Var _ | Prim _ | Assign _ | Read_mutable _ | Symbol _
+           | Read_symbol_field _ | Allocated_const _ | Set_of_closures _
+           | Project_closure _ | Move_within_set_of_closures _ | Project_var _
+           | Proved_unreachable -> false
+           end ->
     (* The let-bound expression [let_expr] can be lifted.  Since there cannot
        be any nested [Let] or [Let_cont] in the defining expression of the
        [Let], we don't need to recurse into that expression.

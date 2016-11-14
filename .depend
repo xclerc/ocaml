@@ -1229,6 +1229,22 @@ middle_end/continuation_approx.cmx : middle_end/flambda.cmx \
     middle_end/base_types/continuation.cmx middle_end/continuation_approx.cmi
 middle_end/continuation_approx.cmi : middle_end/flambda.cmi \
     middle_end/base_types/continuation.cmi
+middle_end/continuation_inlining.cmo : middle_end/base_types/variable.cmi \
+    middle_end/simple_value_approx.cmi \
+    middle_end/base_types/num_continuation_uses.cmi utils/misc.cmi \
+    middle_end/inlining_cost.cmi middle_end/inline_and_simplify_aux.cmi \
+    utils/identifiable.cmi middle_end/flambda_iterators.cmi \
+    middle_end/flambda.cmi middle_end/base_types/continuation.cmi \
+    middle_end/continuation_inlining.cmi
+middle_end/continuation_inlining.cmx : middle_end/base_types/variable.cmx \
+    middle_end/simple_value_approx.cmx \
+    middle_end/base_types/num_continuation_uses.cmx utils/misc.cmx \
+    middle_end/inlining_cost.cmx middle_end/inline_and_simplify_aux.cmx \
+    utils/identifiable.cmx middle_end/flambda_iterators.cmx \
+    middle_end/flambda.cmx middle_end/base_types/continuation.cmx \
+    middle_end/continuation_inlining.cmi
+middle_end/continuation_inlining.cmi : middle_end/base_types/variable.cmi \
+    middle_end/inline_and_simplify_aux.cmi middle_end/flambda.cmi
 middle_end/cps_conversion.cmo : bytecomp/printlambda.cmi utils/numbers.cmi \
     middle_end/base_types/num_continuation_uses.cmi utils/misc.cmi \
     parsing/location.cmi bytecomp/lambda.cmi middle_end/ilambda.cmi \
@@ -1337,7 +1353,8 @@ middle_end/flambda_iterators.cmo : middle_end/base_types/variable.cmi \
 middle_end/flambda_iterators.cmx : middle_end/base_types/variable.cmx \
     middle_end/flambda.cmx middle_end/flambda_iterators.cmi
 middle_end/flambda_iterators.cmi : middle_end/base_types/variable.cmi \
-    middle_end/base_types/symbol.cmi middle_end/flambda.cmi
+    middle_end/base_types/symbol.cmi middle_end/flambda.cmi \
+    middle_end/base_types/continuation.cmi
 middle_end/flambda_utils.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/symbol.cmi bytecomp/switch.cmi \
@@ -1614,11 +1631,13 @@ middle_end/lift_constants.cmx : middle_end/base_types/variable.cmx \
 middle_end/lift_constants.cmi : middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
 middle_end/lift_let_cont.cmo : middle_end/base_types/variable.cmi \
+    middle_end/base_types/mutable_variable.cmi bytecomp/lambda.cmi \
     middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
-    middle_end/lift_let_cont.cmi
+    middle_end/base_types/continuation.cmi middle_end/lift_let_cont.cmi
 middle_end/lift_let_cont.cmx : middle_end/base_types/variable.cmx \
+    middle_end/base_types/mutable_variable.cmx bytecomp/lambda.cmx \
     middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
-    middle_end/lift_let_cont.cmi
+    middle_end/base_types/continuation.cmx middle_end/lift_let_cont.cmi
 middle_end/lift_let_cont.cmi : middle_end/flambda.cmi
 middle_end/lift_let_to_initialize_symbol.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \

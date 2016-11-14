@@ -372,6 +372,21 @@ let map_apply tree ~f =
     (fun named -> named)
     tree
 
+let map_toplevel_apply_cont expr ~f =
+  map_toplevel_expr (fun (expr : Flambda.expr) ->
+      match expr with
+      | Apply_cont (cont, args) ->
+        begin match f cont args with
+        | None -> expr
+        | Some expr -> expr
+        end
+      | Let _
+      | Let_mutable _
+      | Let_cont _
+      | Apply _
+      | Switch _ -> expr)
+    expr
+
 let map_sets_of_closures tree ~f =
   map_named (function
       | (Set_of_closures set_of_closures) as named ->

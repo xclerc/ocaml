@@ -923,71 +923,15 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   in
   simplify (E.set_never_inline env) r expr
 
-(* CR mshinwell: Continuation inlining code should move into separate
-   file(s). *)
-
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~args ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
-  let do_not_inline () : Flambda.t * R.t =
-    let r =
-      R.use_continuation r env cont ~inlinable_position:true args_approxs
-    in
-    Apply_cont (cont, args), ret r A.value_bottom
+  let r =
+    R.use_continuation r env cont ~inlinable_position:true args_approxs
   in
-  match E.should_consider_continuation_for_inlining env cont with
-  | None -> do_not_inline ()
-  | Some (uses, params, handler) ->
-    if List.length params <> List.length args then begin
-      Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
-        Continuation.print cont
-    end;
-    let inline ~check_benefit =
-      let expr =
-        List.fold_left2 (fun expr param arg ->
-            Flambda.create_let param (Var arg) expr)
-          handler
-          params args
-      in
-      let existing_benefit = R.benefit r in
-      let r = R.reset_benefit r in
-      let original : Flambda.t = Apply_cont (cont, args) in
-      let expr, r = simplify (E.activate_freshening env) r expr in
-      let inlining_benefit = B.remove_prim (R.benefit r) in
-      let r = R.map_benefit r (fun _ -> existing_benefit) in
-      let module W = Inlining_cost.Whether_sufficient_benefit in
-      let wsb =
-        W.create ~original
-          ~toplevel:(E.at_toplevel env)
-          ~branch_depth:(E.branch_depth env)
-          expr
-          ~benefit:inlining_benefit
-          ~lifting:false
-          ~round:(E.round env)
-      in
-      if (not check_benefit) || W.evaluate wsb then begin
-Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
-  Continuation.print cont
-  Variable.print_list args
-  (if check_benefit then "" else " (unconditionally)")
-  B.print inlining_benefit
-  (W.print_description ~subfunctions:false) wsb
-  Flambda.print original
-  Flambda.print expr;
-        expr, r
-      end else begin
-Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
-  Continuation.print cont
-  Variable.print_list args
-  B.print inlining_benefit;
-        do_not_inline ()
-      end
-    in
-    match uses with
-    | Zero | One -> inline ~check_benefit:false
-    | Many -> inline ~check_benefit:true
+  cont, ret r A.value_bottom
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm). *)
