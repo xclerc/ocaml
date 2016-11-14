@@ -105,8 +105,11 @@ let find_inlinings r ~simplify =
       let inline_unconditionally = U.linearly_used uses in
       List.fold_left (fun inlinings (use : U.Use.t) ->
           let inlining_result =
-            try_inlining r ~cont ~use ~handler ~inline_unconditionally
-              ~simplify
+            match handler with
+            | None -> Didn't_inline  (* e.g. a return continuation *)
+            | Some handler ->
+              try_inlining r ~cont ~use ~handler ~inline_unconditionally
+                ~simplify
           in
           match inlining_result with
           | Didn't_inline -> inlinings

@@ -287,7 +287,7 @@ module Continuation_uses : sig
 
   val create
      : num_params:int
-    -> handler:Flambda.continuation_handler
+    -> handler:Flambda.continuation_handler option
     -> t
 
   val add_inlinable_use
@@ -304,7 +304,7 @@ module Continuation_uses : sig
 
   val inlinable_application_points : t -> Use.t list
 
-  val handler : t -> Flambda.continuation_handler
+  val handler : t -> Flambda.continuation_handler option
   val linearly_used : t -> bool
 
   val meet_of_args_approxs : t -> Simple_value_approx.t list
@@ -342,7 +342,7 @@ module Result : sig
      : t
     -> Continuation.t
     -> num_params:int
-    -> handler:Flambda.continuation_handler
+    -> handler:Flambda.continuation_handler option
     -> t
 
   (** All continuations for which [use_continuation] has been

@@ -582,6 +582,10 @@ and simplify_set_of_closures original_env r
       E.add_continuation closure_env function_decl.continuation_param
         cont_approx
     in
+    let r =
+      R.prepare_for_continuation_uses r function_decl.continuation_param
+        ~num_params:1 ~handler:None
+    in
     let body, r =
       E.enter_closure closure_env ~closure_id:(Closure_id.wrap fun_var)
         ~inline_inside:
@@ -1311,7 +1315,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           | Handler ({ params; _ } as handler) ->
             R.prepare_for_continuation_uses r cont
               ~num_params:(List.length params)
-              ~handler
+              ~handler:(Some handler)
         in
         simplify body_env r body
       in
@@ -1527,13 +1531,17 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
     E.add_continuation closure_env function_decl.continuation_param
       cont_approx
   in
+  let r =
+    R.prepare_for_continuation_uses (R.create ())
+      function_decl.continuation_param
+      ~num_params:1 ~handler:None
+  in
   let body, r =
     E.enter_closure closure_env
       ~closure_id:(Closure_id.wrap fun_var)
       ~inline_inside:false
       ~dbg:function_decl.dbg
-      ~f:(fun body_env ->
-        simplify body_env (R.create ()) function_decl.body)
+      ~f:(fun body_env -> simplify body_env r function_decl.body)
   in
   let _r, _approx = R.exit_scope_catch r function_decl.continuation_param in
   let function_decl =
@@ -1719,6 +1727,10 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         let t', approxs, r = simplify_fields env r t in
         let cont_approx = Continuation_approx.create_unknown ~name:cont in
         let env = E.add_continuation env cont cont_approx in
+        let r =
+          R.prepare_for_continuation_uses r cont
+            ~num_params:1 ~handler:None
+        in
         let h', r = simplify env r h in
         let h =
           Continuation_inlining.for_toplevel_expression h r ~simplify
@@ -1754,6 +1766,10 @@ let rec simplify_program_body env r (program : Flambda.program_body)
   | Effect (expr, cont, program) ->
     let cont_approx = Continuation_approx.create_unknown ~name:cont in
     let env = E.add_continuation env cont cont_approx in
+    let r =
+      R.prepare_for_continuation_uses r cont
+        ~num_params:1 ~handler:None
+    in
     let expr, r = simplify env r expr in
     let expr =
       Continuation_inlining.for_toplevel_expression expr r ~simplify

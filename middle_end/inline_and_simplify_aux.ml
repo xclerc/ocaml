@@ -473,7 +473,7 @@ module Continuation_uses = struct
   end
 
   type t = {
-    handler : Flambda.continuation_handler;
+    handler : Flambda.continuation_handler option;
     inlinable_application_points : Use.t list;
     num_non_inlinable_application_points : Num_continuation_uses.t;
     meet_of_args_approxs : A.t option list;
