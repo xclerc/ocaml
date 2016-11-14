@@ -367,16 +367,16 @@ module Result : sig
     -> Continuation.t
     -> t * Simple_value_approx.t list
 
-  (** All continuations for which [use_continuation] has been
-      called on the given result structure. O(n*log(n)) Used only for
-      debugging purpose. *)
-  val used_continuations : t -> Continuation.Set.t
-
   (** Continuation usage information for the inliner. *)
   val continuation_uses : t -> Continuation_uses.t Continuation.Map.t
 
-  (** Check that there is no static catch in scope *)
+  (** Check that there is no continuation binding construct in scope. *)
   val no_defined_continuations : t -> bool
+
+  (** All continuations for which [prepare_for_continuation_uses] has been
+      called on the given result structure.  O(n*log(n)).  Used only for
+      debugging purposes. *)
+  val used_continuations : t -> Continuation.Set.t
 
   (** The benefit to be gained by inlining the subexpression whose
       simplification yielded the given result structure. *)
