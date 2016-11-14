@@ -272,34 +272,63 @@ let rec lam ppf (flam : t) =
     fprintf ppf "@[<2>(apply_cont@ %a@ %a)@]"
       Continuation.print i
       Variable.print_list ls
-  | Let_cont _ ->
-    (* CR mshinwell: Share code with ilambda.ml *)
-    let rec gather_let_conts let_conts (t : t) =
-      match t with
-      | Let_cont let_cont ->
-        gather_let_conts (let_cont :: let_conts) let_cont.body
-      | body -> let_conts, body
-    in
-    let let_conts, body = gather_let_conts [] flam in
-    let print_let_cont ppf { name; handler; body = _; } =
-      match handler with
-      | Handler { params; recursive; handler; } ->
-        fprintf ppf "@[<v 2>where%s %a%s%a%s =@ %a@]"
-          (match recursive with Nonrecursive -> "" | Recursive -> "_rec")
-          Continuation.print name
-          (match params with [] -> "" | _ -> " (")
-          Variable.print_list params
-          (match params with [] -> "" | _ -> ")")
-          lam handler
-      | Alias alias_of ->
-        fprintf ppf "@[<v 2>where %a = %a@]"
-          Continuation.print name
-          Continuation.print alias_of
-    in
-    let pp_sep ppf () = fprintf ppf "@ " in
-    fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
-      lam body
-      (Format.pp_print_list ~pp_sep print_let_cont) let_conts
+  | Let_cont { name; body; handler; } ->
+    (* Printing the same way as for [Let] is easier when debugging lifting
+       passes. *)
+    if !Clflags.dump_let_cont then begin
+      let print_handler ppf (handler : let_cont_handler) =
+        match handler with
+        | Handler { params; recursive; handler; } ->
+          fprintf ppf "%s%s%a%s=@ %a"
+            (match recursive with Nonrecursive -> "" | Recursive -> "rec ")
+            (match params with [] -> "" | _ -> "(")
+            Variable.print_list params
+            (match params with [] -> "" | _ -> ") ")
+            lam handler
+        | Alias alias_of ->
+          fprintf ppf "%a" Continuation.print alias_of
+      in
+      let rec let_cont_body (ul : t) =
+        match ul with
+        | Let_cont { name; body; handler; } ->
+          fprintf ppf "@ @[<2>%a@ %a@]" Continuation.print name
+            print_handler handler;
+          let_cont_body body
+        | _ -> ul
+      in
+      fprintf ppf "@[<2>(let_cont@ @[<hv 1>(@[<2>%a@ %a@]"
+        Continuation.print name print_handler handler;
+      let expr = let_cont_body body in
+      fprintf ppf ")@]@ %a)@]" lam expr
+    end else begin
+      (* CR mshinwell: Share code with ilambda.ml *)
+      let rec gather_let_conts let_conts (t : t) =
+        match t with
+        | Let_cont let_cont ->
+          gather_let_conts (let_cont :: let_conts) let_cont.body
+        | body -> let_conts, body
+      in
+      let let_conts, body = gather_let_conts [] flam in
+      let print_let_cont ppf { name; handler; body = _; } =
+        match handler with
+        | Handler { params; recursive; handler; } ->
+          fprintf ppf "@[<v 2>where%s %a%s%a%s =@ %a@]"
+            (match recursive with Nonrecursive -> "" | Recursive -> "_rec")
+            Continuation.print name
+            (match params with [] -> "" | _ -> " (")
+            Variable.print_list params
+            (match params with [] -> "" | _ -> ")")
+            lam handler
+        | Alias alias_of ->
+          fprintf ppf "@[<v 2>where %a = %a@]"
+            Continuation.print name
+            Continuation.print alias_of
+      in
+      let pp_sep ppf () = fprintf ppf "@ " in
+      fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
+        lam body
+        (Format.pp_print_list ~pp_sep print_let_cont) let_conts
+    end
 and print_named ppf (named : named) =
   match named with
   | Var var -> Variable.print ppf var

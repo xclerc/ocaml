@@ -143,6 +143,7 @@ val dump_scheduling : bool ref
 val dump_linear : bool ref
 val keep_startup_file : bool ref
 val dump_combine : bool ref
+val dump_let_cont : bool ref
 val native_code : bool ref
 val default_inline_threshold : float
 val inline_threshold : Float_arg_helper.parsed ref
