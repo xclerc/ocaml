@@ -25,3 +25,5 @@
 val no_effects : Flambda.t -> bool
 
 val no_effects_named : Flambda.named -> bool
+
+val only_generative_effects_named : Flambda.named -> bool

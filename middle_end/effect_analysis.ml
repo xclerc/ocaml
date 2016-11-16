@@ -41,3 +41,16 @@ and no_effects_named (named : Flambda.named) =
   | Assign _ -> false
   | Prim (prim, _, _) -> no_effects_prim prim
   | Proved_unreachable -> true
+
+let only_generative_effects_prim (prim : Lambda.primitive) =
+  match Semantics_of_primitives.for_primitive prim with
+  | Only_generative_effects, No_coeffects -> true
+  | _ -> false
+
+let only_generative_effects_named (named : Flambda.named) =
+  match named with
+  | Set_of_closures _ -> true
+  | Prim (prim, _, _) -> only_generative_effects_prim prim
+  | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+  | Read_symbol_field _ | Project_closure _ | Project_var _
+  | Move_within_set_of_closures _ | Assign _ | Proved_unreachable -> false

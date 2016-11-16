@@ -220,6 +220,9 @@ let rec build_graph_and_extract_constants expr =
       | Var _ | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
       | Allocated_const _ | Set_of_closures _ | Project_closure _
       | Move_within_set_of_closures _ | Project_var _ | Proved_unreachable ->
+        let _only_generative_effects =
+          Effect_analysis.only_generative_effects_named defining_expr
+        in
         let defining_expr : Flambda.named =
           match defining_expr with
           | Set_of_closures set_of_closures ->
