@@ -46,22 +46,34 @@ let free_continuations_and_variables_of_thing_to_lift (thing : thing_to_lift) =
   | Let_cont (name, Handler { handler; _ }) ->
     Flambda.free_continuations handler, Flambda.free_variables handler
 
-let free_continuations_and_variables_of_things_to_lift things =
-  List.fold_left (fun (fcs, fvs) thing ->
-      let fcs', fvs' =
-        free_continuations_and_variables_of_thing_to_lift thing
-      in
-      Continuation.Set.union fcs fcs', Variable.Set.union fvs fvs')
-    (Continuation.Set.empty, Variable.Set.empty)
+let bind_things_to_lift things ~around =
+  List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
+      match thing with
+      | Let (var, defining_expr) ->
+        Flambda.With_free_variables.create_let_reusing_defining_expr var
+          defining_expr body
+      | Let_mutable (var, initial_value, contents_kind) ->
+        Let_mutable { var; initial_value; contents_kind; body; }
+      | Let_cont (name, handler) ->
+        Let_cont { name; body; handler; })
+    around
     things
 
-module State =
+module State = struct
   type t = {
-    constants : (Flambda.var * Flambda.named) list;
-    to_be_lifted : (Flambda.var * Flambda.let_cont_handler) list;
+    constants : (Variable.t * Flambda.named) list;
+    to_be_lifted : (Continuation.t * Flambda.let_cont_handler) list;
     to_remain : thing_to_lift list;
     continuations_to_remain : Continuation.Set.t;
     variables_to_remain : Variable.Set.t;
+  }
+
+  let create () = {
+    constants = [];
+    to_be_lifted = [];
+    to_remain = [];
+    continuations_to_remain = Continuation.Set.empty;
+    variables_to_remain = Variable.Set.empty;
   }
 
   let add_constant t ~var ~defining_expr =
@@ -74,12 +86,12 @@ module State =
       constants = from.constants @ t.constants;
     }
 
-  let lift_continuation state ~name ~handler =
+  let lift_continuation t ~name ~handler =
     { t with
       to_be_lifted = (name, handler) :: t.to_be_lifted;
     }
 
-  let to_remain state (thing : thing_to_lift) =
+  let to_remain t (thing : thing_to_lift) =
     let fcs, fvs = free_continuations_and_variables_of_thing_to_lift thing in
     let continuations_to_remain =
       Continuation.Set.union fcs t.continuations_to_remain
@@ -104,7 +116,7 @@ module State =
   let rev_to_remain t = t.to_remain
 end
 
-let lift_expr (expr : Flambda.expr) ~state =
+let rec lift_expr (expr : Flambda.expr) ~state =
   match expr with
   | Let ({ var; defining_expr; body; } as let_expr) ->
     begin match defining_expr with
@@ -144,7 +156,7 @@ let lift_expr (expr : Flambda.expr) ~state =
       lift_expr handler ~state:(State.create ())
     in
     let state =
-      State.add_constants_from_state t ~from:handler_state
+      State.add_constants_from_state state ~from:handler_state
     in
     let params = Variable.Set.of_list params in
     let to_be_lifted = List.rev (State.rev_to_be_lifted handler_state) in
@@ -165,8 +177,10 @@ let lift_expr (expr : Flambda.expr) ~state =
         state
         to_be_lifted
     in
-    let to_remain = List.rev (State.rev_to_remain handler_state) in
-    let handler = bind_things_to_lift to_remain ~around:handler_terminator in
+    let rev_to_remain = State.rev_to_remain handler_state in
+    let handler =
+      bind_things_to_lift ~rev_to_remain ~around:handler_terminator
+    in
     let fcs = Flambda.free_continuations handler in
     let fvs = Flambda.free_variables handler in
     let handler : Flambda.continuation_handler =
@@ -186,47 +200,6 @@ let lift_expr (expr : Flambda.expr) ~state =
     lift_expr body ~state
   | Apply _ | Apply_cont _ | Switch _ -> expr, state
 
-and lift_returning_constants (expr : Flambda.t) =
-
-
-    let constants = State.constants state in
-    let rev_to_be_lifted = State.rev_to_be_lifted state in
-    let rev_to_remain = State.rev_to_remain state in
-    let expr =
-      
-    in
-(*
-Format.eprintf "\n\n**Starting with %a\n%!" Flambda.print expr;
-*)
-  let graph, terminator, constants = build_graph_and_extract_constants expr in
-  let bindings = topological_sort graph in
-  let expr =
-    List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
-        match thing with
-        | Let (var, defining_expr) ->
-(*
-Format.eprintf "Adding Let %a\n%!" Variable.print var;
-*)
-          Flambda.create_let var defining_expr body
-        | Let_mutable (var, initial_value, contents_kind) ->
-(*
-Format.eprintf "Adding Let_mutable %a\n%!" Mutable_variable.print var;
-*)
-          Let_mutable { var; initial_value; contents_kind; body; }
-        | Let_cont (name, handler) ->
-(*
-Format.eprintf "Adding Continuation %a\n%!" Continuation.print name;
-*)
-          Let_cont { name; body; handler; })
-      terminator
-      (List.rev bindings)
-  in
-(*
-Format.eprintf "Finished, result is %a\n,constants: %a\n%!" Flambda.print expr
-  (Variable.Map.print Flambda.print_named) constants;
-*)
-  expr, constants
-
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let funs =
     Variable.Map.map (fun
@@ -234,7 +207,7 @@ and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
         Flambda.create_function_declaration
           ~params:function_decl.params
           ~continuation_param:function_decl.continuation_param
-          ~body:(lift function_decl.body ~state)
+          ~body:(lift function_decl.body)
           ~stub:function_decl.stub
           ~dbg:function_decl.dbg
           ~inline:function_decl.inline
@@ -259,10 +232,19 @@ and lift_constant_defining_value (def : Flambda.constant_defining_value)
     Set_of_closures (lift_set_of_closures set_of_closures)
 
 and lift (expr : Flambda.t) =
-  let expr, constants = lift_returning_constants expr in
+  let expr, state = lift_expr expr ~state:(State.create ()) in
+  let expr =
+    bind_things_to_remain ~rev_to_remain:(State.rev_to_remain state)
+  in
+  let expr =
+    List.fold_left (fun body (name, handler) : Flambda.t ->
+        Let_cont { name; body; handler; })
+      expr
+      (State.rev_to_be_lifted state)
+  in
   Variable.Map.fold (fun var const expr ->
       Flambda.create_let var const expr)
-    constants
+    (State.constants state)
     expr
 
 let rec lift_program_body (body : Flambda.program_body) : Flambda.program_body =

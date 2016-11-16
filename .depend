@@ -1629,12 +1629,12 @@ middle_end/lift_constants.cmi : middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
 middle_end/lift_let_cont.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/mutable_variable.cmi bytecomp/lambda.cmi \
-    middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
-    middle_end/base_types/continuation.cmi middle_end/lift_let_cont.cmi
+    middle_end/flambda.cmi middle_end/base_types/continuation.cmi \
+    middle_end/lift_let_cont.cmi
 middle_end/lift_let_cont.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/mutable_variable.cmx bytecomp/lambda.cmx \
-    middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
-    middle_end/base_types/continuation.cmx middle_end/lift_let_cont.cmi
+    middle_end/flambda.cmx middle_end/base_types/continuation.cmx \
+    middle_end/lift_let_cont.cmi
 middle_end/lift_let_cont.cmi : middle_end/flambda.cmi
 middle_end/lift_let_to_initialize_symbol.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \

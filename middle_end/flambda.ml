@@ -873,15 +873,11 @@ let rec free_continuations (expr : expr) =
   | Let { body; _ }
   | Let_mutable { body; _ } ->
     free_continuations body
-  | Let_cont { name; body; handler = Alias alias_of; } ->
-    Continuation.Set.add alias_of
-      (Continuation.Set.remove name
+  | Let_cont { name; body; handler; } ->
+    Continuation.Set.remove name
+      (Continuation.Set.union
+        (free_continuations_of_let_cont_handler ~name ~handler)
         (free_continuations body))
-  | Let_cont { name; body; handler = Handler { handler; _ }; } ->
-    (* Careful: [handler] might reference [name]. *)
-    Continuation.Set.remove name (
-      Continuation.Set.union (free_continuations body)
-        (free_continuations handler))
   | Apply_cont (cont, _args) -> Continuation.Set.singleton cont
   | Apply _ -> Continuation.Set.empty
   | Switch (_scrutinee, switch) ->
@@ -895,6 +891,18 @@ let rec free_continuations (expr : expr) =
     Continuation.Set.union failaction
       (Continuation.Set.union (Continuation.Set.of_list consts)
         (Continuation.Set.of_list blocks))
+
+and free_continuations_of_let_cont_handler ~name ~(handler : let_cont_handler) =
+  match handler with
+  | Alias alias_of -> Continuation.Set.singleton alias_of
+  | Handler { handler; _ } ->
+    Continuation.Set.remove name (free_continuations handler)
+
+let free_variables_of_let_cont_handler (handler : let_cont_handler) =
+  match handler with
+  | Alias _ -> Variable.Set.empty
+  | Handler { params; handler; _ } ->
+    Variable.Set.diff (free_variables handler) (Variable.Set.of_list params)
 
 let free_symbols_helper symbols (named : named) =
   match named with

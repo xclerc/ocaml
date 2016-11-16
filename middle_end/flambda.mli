@@ -471,6 +471,10 @@ val free_variables_named
   -> named
   -> Variable.Set.t
 
+val free_variables_of_let_cont_handler
+   : let_cont_handler
+  -> Variable.Set.t
+
 (** Compute _all_ variables occurring inside an expression. *)
 val used_variables
    : ?ignore_uses_as_callee:unit
@@ -484,6 +488,11 @@ val used_variables_named
    : ?ignore_uses_in_project_var:unit
   -> named
   -> Variable.Set.t
+
+val free_continuations_of_let_cont_handler
+   : name:Continuation.t
+  -> handler:let_cont_handler
+  -> Continuation.Set.t
 
 val free_continuations : expr -> Continuation.Set.t
 
