@@ -44,6 +44,7 @@ module type S = sig
     val to_string : t -> string
     val of_list : elt list -> t
     val map : (elt -> elt) -> t -> t
+    val filter_map : t -> f:(elt -> elt option) -> t
   end
 
   module Map : sig

@@ -883,7 +883,18 @@ let rec free_continuations (expr : expr) =
       Continuation.Set.union (free_continuations body)
         (free_continuations handler))
   | Apply_cont (cont, _args) -> Continuation.Set.singleton cont
-  | Apply _ | Switch _ -> Continuation.Set.empty
+  | Apply _ -> Continuation.Set.empty
+  | Switch (_scrutinee, switch) ->
+    let consts = List.map (fun (_int, cont) -> cont) switch.consts in
+    let blocks = List.map (fun (_pat, cont) -> cont) switch.blocks in
+    let failaction =
+      match switch.failaction with
+      | None -> Continuation.Set.empty
+      | Some cont -> Continuation.Set.singleton cont
+    in
+    Continuation.Set.union failaction
+      (Continuation.Set.union (Continuation.Set.of_list consts)
+        (Continuation.Set.of_list blocks))
 
 let free_symbols_helper symbols (named : named) =
   match named with

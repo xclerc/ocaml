@@ -33,7 +33,6 @@ type thing_to_lift =
   | Let of Variable.t * Flambda.named
   | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
   | Let_cont of Continuation.t * Flambda.let_cont_handler
-  | Terminator of Flambda.expr
 
 module Node = struct
   type name =
@@ -41,7 +40,6 @@ module Node = struct
     | Variable of Variable.t
     | Mutable_variable of Mutable_variable.t
     | Continuation of Continuation.t
-    | Terminator of int
 
   type t = {
     name : name;
@@ -58,15 +56,12 @@ module Node = struct
       | Continuation c1, Continuation c2 -> Continuation.compare c1 c2
       | Mutable_variable m1, Mutable_variable m2 ->
         Mutable_variable.compare m1 m2
-      | Terminator id1, Terminator id2 -> Pervasives.compare id1 id2
       | Root, _ -> (-1)
       | _, Root -> 1
       | Variable _, _ -> (-1)
       | _, Variable _ -> 1
       | Continuation _, _ -> (-1)
       | _, Continuation _ -> 1
-      | Terminator _, _ -> (-1)
-      | _, Terminator _ -> 1
 
     let equal t1 t2 =
       compare t1 t2 = 0
@@ -77,7 +72,6 @@ module Node = struct
       | Variable v -> Hashtbl.hash (1, Variable.hash v)
       | Mutable_variable v -> Hashtbl.hash (2, Mutable_variable.hash v)
       | Continuation c -> Hashtbl.hash (3, Continuation.hash c)
-      | Terminator id -> Hashtbl.hash (4, id)
 
     let output _chan _t = Misc.fatal_error "not implemented"
 
@@ -87,7 +81,6 @@ module Node = struct
       | Variable var -> Variable.print ppf var
       | Mutable_variable var -> Mutable_variable.print ppf var
       | Continuation cont -> Continuation.print ppf cont
-      | Terminator id -> Format.fprintf ppf "Terminator-%d" id
   end)
 
   let create name =
@@ -112,41 +105,54 @@ module Node = struct
       vs
       Set.empty
 
-  let next_terminator_id = ref 0
-
   let of_thing (thing : thing_to_lift) =
     let name =
       match thing with
       | Let (var, _) -> Variable var
       | Let_mutable (var, _, _) -> Mutable_variable var
       | Let_cont (cont, _) -> Continuation cont
-      | Terminator _ ->
-        let id = !next_terminator_id in
-        incr next_terminator_id;
-        Terminator id
     in
     create name
 end
 
 let add_to_graph (graph, definitions) (thing : thing_to_lift) ~depends_on =
   let target_node = Node.of_thing thing in
+  assert (not (Node.Map.mem target_node graph));
+  let graph =
+    Node.Map.add target_node Node.Set.empty graph
+  in
   let depends_on =
+    let depends_on =
+      Node.Set.filter_map depends_on ~f:(fun source_node ->
+        (* Since we follow the lexical scoping when traversing, we will
+            only get here when we encounter a constant, free variable of
+            a function body, free variable of a continuation handler or
+            a function's continuation parameter.  All of these are elided
+            from the graph. *)
+        match Node.Map.find source_node graph with
+        | exception Not_found -> None
+        | _ -> Some source_node)
+    in
     if Node.Set.is_empty depends_on then Node.Set.singleton (Node.create Root)
     else depends_on
   in
   let graph =
     Node.Set.fold (fun source_node graph ->
-        match Node.Map.find source_node graph with
-        | exception Not_found ->
-          (* Since we follow the lexical scoping when traversing, we will
-              only get here when we encounter a constant, free variable of
-              a function body, free variable of a continuation handler or
-              a function's continuation parameter.  All of these are elided
-              from the graph. *)
-           graph
-        | target_nodes ->
-          Node.Map.add source_node (Node.Set.add target_node target_nodes)
-            graph)
+        let source_node, target_nodes =
+          match Node.Map.find source_node graph with
+          | exception Not_found ->
+Format.eprintf "Node %a is constant or free\n%!" Node.print source_node;
+            let root = Node.create Root in
+            begin match Node.Map.find root graph with
+            | exception Not_found -> root, Node.Set.empty
+            | target_nodes -> root, target_nodes
+            end
+          | target_nodes -> source_node, target_nodes
+        in
+Format.eprintf "Source node %a --> target node %a\n%!"
+  Node.print source_node Node.print target_node;
+        Node.Map.add source_node (Node.Set.add target_node target_nodes)
+          graph)
       depends_on
       graph
   in
@@ -158,52 +164,39 @@ let print_graph graph =
     (Node.Map.print Node.Set.print) graph
 
 let topological_sort (graph, definitions) =
-Format.eprintf "top sort:\n%!";
+Format.eprintf "graph to top sort:\n%!";
   print_graph graph;
   let rec traverse_node (node : Node.t) =
     let already_marked = Node.mark node in
-    let children =
-      if already_marked then
-        Node.Set.empty
-      else
-        match node.name with
-        | Terminator _ -> Node.Set.empty
-        | _ ->
-          match Node.Map.find node graph with
-          | exception Not_found ->
-            Misc.fatal_errorf "Node %a not found" Node.print node
-          | children -> children
-    in
-    let results =
-      Node.Set.fold (fun child results ->
-          (traverse_node child) :: results)
-        children
-        []
-    in
-    node :: List.concat results
+    if already_marked then
+      []
+    else
+      let children =
+        match Node.Map.find node graph with
+        | exception Not_found ->
+          Misc.fatal_errorf "Node %a not found" Node.print node
+        | children -> children
+      in
+      let results =
+        Node.Set.fold (fun child results ->
+            (traverse_node child) :: results)
+          children
+          []
+      in
+      node :: List.concat results
   in
   match Node.Map.find (Node.create Root) graph with
   | exception Not_found -> Misc.fatal_error "Graph has no root node"
   | _ ->
     let results = traverse_node (Node.create Root) in
-    let rec find_definitions results output =
-      match results with
-      | [{ Node. name = Terminator _; _ } as result] ->
-        begin match Node.Map.find result definitions with
-        | exception Not_found ->
-          Misc.fatal_error "Missing Terminator definition"
-        | Terminator expr -> output, expr
-        | _ -> assert false
-        end
-      | [] -> Misc.fatal_error "Missing Terminator"
-      | result::results ->
+Format.eprintf "top sort in order: %a\n%!"
+  (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
+    Node.print) results;
+    Misc.Stdlib.List.filter_map (fun result ->
         match Node.Map.find result definitions with
-        | exception Not_found ->
-          find_definitions results output
-        | thing_to_lift ->
-          find_definitions results (thing_to_lift :: output)
-    in
-    find_definitions results []
+        | exception Not_found -> None
+        | thing_to_lift -> Some thing_to_lift)
+      results
 
 let rec build_graph_and_extract_constants expr =
   let rec build (expr : Flambda.expr) ~graph ~constants
@@ -227,6 +220,8 @@ let rec build_graph_and_extract_constants expr =
         let fvs_defining_expr = Flambda.free_variables_named defining_expr in
         (* There are no free continuations in the defining expression of
            a let. *)
+Format.eprintf "Adding Let %a (depends on %a)\n%!" Variable.print var
+  Variable.Set.print fvs_defining_expr;
         let graph =
           add_to_graph graph (Let (var, defining_expr))
             ~depends_on:(Node.set_of_variable_set fvs_defining_expr)
@@ -251,7 +246,8 @@ let rec build_graph_and_extract_constants expr =
       in
       build body ~graph ~constants ~most_recent_computational_let
     | Let_cont { name; body; handler =
-        (Handler { params; recursive; handler; }) as whole_handler } ->
+        Handler { params; recursive; handler; } } ->
+      let params_list = params in
       let params = Variable.Set.of_list params in
       let handler, constants' =
         lift_returning_constants handler
@@ -320,20 +316,11 @@ Format.eprintf "Continuation %a being peeled\n%!" Continuation.print name2;
       let graph, handler = peel_handlers handler ~graph in
       let graph =
         add_let_cont_handler_to_graph ~graph ~name ~params ~handler
-          ~whole_handler
+          ~whole_handler:(Handler { params = params_list;
+            recursive; handler; })
       in
       build body ~graph ~constants ~most_recent_computational_let
-    | Apply _ | Apply_cont _ | Switch _ ->
-      let fvs = Node.set_of_variable_set (Flambda.free_variables expr) in
-      let fcs =
-        Node.set_of_continuation_set (Flambda.free_continuations expr)
-      in
-      let depends_on =
-        Node.Set.union most_recent_computational_let
-          (Node.Set.union fvs fcs)
-      in
-      let graph = add_to_graph graph (Terminator expr) ~depends_on in
-      graph, constants
+    | Apply _ | Apply_cont _ | Switch _ -> graph, expr, constants
   in
   let empty_graph =
     Node.Map.add (Node.create Root) Node.Set.empty Node.Map.empty,
@@ -344,46 +331,36 @@ Format.eprintf "Continuation %a being peeled\n%!" Continuation.print name2;
     ~graph:empty_graph
 
 and lift_returning_constants (expr : Flambda.t) =
-  let graph, constants = build_graph_and_extract_constants expr in
-  let rev_bindings, terminator = topological_sort graph in
+Format.eprintf "\n\n**Starting with %a\n%!" Flambda.print expr;
+  let graph, terminator, constants = build_graph_and_extract_constants expr in
+  let bindings = topological_sort graph in
   let expr =
     List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
         match thing with
         | Let (var, defining_expr) ->
+Format.eprintf "Adding Let %a\n%!" Variable.print var;
           Flambda.create_let var defining_expr body
         | Let_mutable (var, initial_value, contents_kind) ->
+Format.eprintf "Adding Let_mutable %a\n%!" Mutable_variable.print var;
           Let_mutable { var; initial_value; contents_kind; body; }
         | Let_cont (name, handler) ->
-          Let_cont { name; body; handler; }
-        | Terminator _ -> assert false)
+Format.eprintf "Adding Continuation %a\n%!" Continuation.print name;
+          Let_cont { name; body; handler; })
       terminator
-      rev_bindings
+      (List.rev bindings)
   in
+Format.eprintf "Finished, result is %a\n,constants: %a\n%!" Flambda.print expr
+  (Variable.Map.print Flambda.print_named) constants;
   expr, constants
 
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let funs =
     Variable.Map.map (fun
             (function_decl : Flambda.function_declaration) ->
-        let continuation_param =
-          Node.create (Continuation function_decl.continuation_param)
-        in
-        let params =
-          Node.set_of_variable_set
-            (Variable.Set.of_list function_decl.params)
-        in
-        let free_variables =
-          Node.set_of_variable_set function_decl.free_variables
-        in
-        let free =
-          Node.Set.union (Node.Set.singleton continuation_param)
-            (Node.Set.union params free_variables)
-        in
-        let body = lift function_decl.body ~free in
         Flambda.create_function_declaration
           ~params:function_decl.params
           ~continuation_param:function_decl.continuation_param
-          ~body
+          ~body:(lift function_decl.body)
           ~stub:function_decl.stub
           ~dbg:function_decl.dbg
           ~inline:function_decl.inline

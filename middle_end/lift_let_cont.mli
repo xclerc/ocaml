@@ -85,6 +85,7 @@ let z = (* computation *) in
 let k2 = ... x ... in
 let k3 = ... k2 ... in
 let k4 = (* uses x but not y *) in
+let k5 = ... in
 
 (x = ..., {}, {})
 (k1 = ..., {}, {})
