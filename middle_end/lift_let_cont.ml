@@ -141,7 +141,9 @@ let add_to_graph (graph, definitions) (thing : thing_to_lift) ~depends_on =
         let source_node, target_nodes =
           match Node.Map.find source_node graph with
           | exception Not_found ->
+(*
 Format.eprintf "Node %a is constant or free\n%!" Node.print source_node;
+*)
             let root = Node.create Root in
             begin match Node.Map.find root graph with
             | exception Not_found -> root, Node.Set.empty
@@ -149,8 +151,10 @@ Format.eprintf "Node %a is constant or free\n%!" Node.print source_node;
             end
           | target_nodes -> source_node, target_nodes
         in
+(*
 Format.eprintf "Source node %a --> target node %a\n%!"
   Node.print source_node Node.print target_node;
+*)
         Node.Map.add source_node (Node.Set.add target_node target_nodes)
           graph)
       depends_on
@@ -159,13 +163,17 @@ Format.eprintf "Source node %a --> target node %a\n%!"
   let definitions = Node.Map.add target_node thing definitions in
   graph, definitions
 
+(*
 let print_graph graph =
   Format.eprintf "%a\n%!"
     (Node.Map.print Node.Set.print) graph
+*)
 
 let topological_sort (graph, definitions) =
+(*
 Format.eprintf "graph to top sort:\n%!";
   print_graph graph;
+*)
   let rec traverse_node (node : Node.t) =
     let already_marked = Node.mark node in
     if already_marked then
@@ -189,9 +197,11 @@ Format.eprintf "graph to top sort:\n%!";
   | exception Not_found -> Misc.fatal_error "Graph has no root node"
   | _ ->
     let results = traverse_node (Node.create Root) in
+(*
 Format.eprintf "top sort in order: %a\n%!"
   (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
     Node.print) results;
+*)
     Misc.Stdlib.List.filter_map (fun result ->
         match Node.Map.find result definitions with
         | exception Not_found -> None
@@ -220,8 +230,10 @@ let rec build_graph_and_extract_constants expr =
         let fvs_defining_expr = Flambda.free_variables_named defining_expr in
         (* There are no free continuations in the defining expression of
            a let. *)
+(*
 Format.eprintf "Adding Let %a (depends on %a)\n%!" Variable.print var
   Variable.Set.print fvs_defining_expr;
+*)
         let graph =
           add_to_graph graph (Let (var, defining_expr))
             ~depends_on:(Node.set_of_variable_set fvs_defining_expr)
@@ -266,7 +278,9 @@ Format.eprintf "Adding Let %a (depends on %a)\n%!" Variable.print var
       in
       let add_let_cont_handler_to_graph ~graph ~name ~params ~handler
             ~whole_handler =
+(*
 Format.eprintf "Continuation %a being added\n%!" Continuation.print name;
+*)
         let fcs_handler =
           Continuation.Set.remove name (Flambda.free_continuations handler)
         in
@@ -298,7 +312,9 @@ Format.eprintf "Continuation %a being added\n%!" Continuation.print name;
           if Variable.Set.is_empty (Variable.Set.inter params
             (Flambda.free_variables handler2))
           then begin
+(*
 Format.eprintf "Continuation %a being peeled\n%!" Continuation.print name2;
+*)
             let graph =
               add_let_cont_handler_to_graph ~graph ~name:name2
                 ~params:(Variable.Set.of_list params2) ~handler:handler2
@@ -331,26 +347,36 @@ Format.eprintf "Continuation %a being peeled\n%!" Continuation.print name2;
     ~graph:empty_graph
 
 and lift_returning_constants (expr : Flambda.t) =
+(*
 Format.eprintf "\n\n**Starting with %a\n%!" Flambda.print expr;
+*)
   let graph, terminator, constants = build_graph_and_extract_constants expr in
   let bindings = topological_sort graph in
   let expr =
     List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
         match thing with
         | Let (var, defining_expr) ->
+(*
 Format.eprintf "Adding Let %a\n%!" Variable.print var;
+*)
           Flambda.create_let var defining_expr body
         | Let_mutable (var, initial_value, contents_kind) ->
+(*
 Format.eprintf "Adding Let_mutable %a\n%!" Mutable_variable.print var;
+*)
           Let_mutable { var; initial_value; contents_kind; body; }
         | Let_cont (name, handler) ->
+(*
 Format.eprintf "Adding Continuation %a\n%!" Continuation.print name;
+*)
           Let_cont { name; body; handler; })
       terminator
       (List.rev bindings)
   in
+(*
 Format.eprintf "Finished, result is %a\n,constants: %a\n%!" Flambda.print expr
   (Variable.Map.print Flambda.print_named) constants;
+*)
   expr, constants
 
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
