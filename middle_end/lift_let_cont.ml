@@ -36,18 +36,23 @@ type thing_to_lift =
   | Terminator of Flambda.expr
 
 module Node = struct
-  type t =
+  type name =
     | Root
     | Variable of Variable.t
     | Mutable_variable of Mutable_variable.t
     | Continuation of Continuation.t
     | Terminator of int
 
+  type t = {
+    name : name;
+    mutable marked : bool;
+  }
+
   include Identifiable.Make (struct
     type nonrec t = t
 
     let compare t1 t2 =
-      match t1, t2 with
+      match t1.name, t2.name with
       | Root, Root -> 0
       | Variable v1, Variable v2 -> Variable.compare v1 v2
       | Continuation c1, Continuation c2 -> Continuation.compare c1 c2
@@ -67,7 +72,7 @@ module Node = struct
       compare t1 t2 = 0
 
     let hash t =
-      match t with
+      match t.name with
       | Root -> 0
       | Variable v -> Hashtbl.hash (1, Variable.hash v)
       | Mutable_variable v -> Hashtbl.hash (2, Mutable_variable.hash v)
@@ -75,38 +80,58 @@ module Node = struct
       | Terminator id -> Hashtbl.hash (4, id)
 
     let output _chan _t = Misc.fatal_error "not implemented"
-    let print _ppf _t = Misc.fatal_error "not implemented"
+
+    let print ppf t =
+      match t.name with
+      | Root -> Format.fprintf ppf "Root"
+      | Variable var -> Variable.print ppf var
+      | Mutable_variable var -> Mutable_variable.print ppf var
+      | Continuation cont -> Continuation.print ppf cont
+      | Terminator id -> Format.fprintf ppf "Terminator-%d" id
   end)
+
+  let create name =
+    { name;
+      marked = false;
+    }
+
+  let mark t =
+    let already_marked = t.marked in
+    t.marked <- true;
+    already_marked
 
   let set_of_variable_set vs =
     Variable.Set.fold (fun var depends_on ->
-        Set.add (Variable var) depends_on)
+        Set.add (create (Variable var)) depends_on)
       vs
       Set.empty
 
   let set_of_continuation_set vs =
     Continuation.Set.fold (fun cont depends_on ->
-        Set.add (Continuation cont) depends_on)
+        Set.add (create (Continuation cont)) depends_on)
       vs
       Set.empty
 
   let next_terminator_id = ref 0
 
   let of_thing (thing : thing_to_lift) =
-    match thing with
-    | Let (var, _) -> Variable var
-    | Let_mutable (var, _, _) -> Mutable_variable var
-    | Let_cont (cont, _) -> Continuation cont
-    | Terminator _ ->
-      let id = !next_terminator_id in
-      incr next_terminator_id;
-      Terminator id
+    let name =
+      match thing with
+      | Let (var, _) -> Variable var
+      | Let_mutable (var, _, _) -> Mutable_variable var
+      | Let_cont (cont, _) -> Continuation cont
+      | Terminator _ ->
+        let id = !next_terminator_id in
+        incr next_terminator_id;
+        Terminator id
+    in
+    create name
 end
 
 let add_to_graph (graph, definitions) (thing : thing_to_lift) ~depends_on =
   let target_node = Node.of_thing thing in
   let depends_on =
-    if Node.Set.is_empty depends_on then Node.Set.singleton Root
+    if Node.Set.is_empty depends_on then Node.Set.singleton (Node.create Root)
     else depends_on
   in
   let graph =
@@ -124,9 +149,26 @@ let add_to_graph (graph, definitions) (thing : thing_to_lift) ~depends_on =
   let definitions = Node.Map.add target_node thing definitions in
   graph, definitions
 
+let print_graph graph =
+  Format.eprintf "graph: %a\n%!"
+    (Node.Map.print Node.Set.print) graph
+
 let topological_sort (graph, definitions) =
-  let rec traverse_node node =
-    let children = Node.Map.find node graph in
+  print_graph graph;
+  let rec traverse_node (node : Node.t) =
+    let already_marked = Node.mark node in
+    let children =
+      if already_marked then
+        Node.Set.empty
+      else
+        match node.name with
+        | Terminator _ -> Node.Set.empty
+        | _ ->
+          match Node.Map.find node graph with
+          | exception Not_found ->
+            Misc.fatal_errorf "Node %a not found" Node.print node
+          | children -> children
+    in
     let results =
       Node.Set.fold (fun child results ->
           (traverse_node child) :: results)
@@ -135,13 +177,13 @@ let topological_sort (graph, definitions) =
     in
     node :: List.concat results
   in
-  match Node.Map.find Root graph with
+  match Node.Map.find (Node.create Root) graph with
   | exception Not_found -> Misc.fatal_error "Graph has no root node"
   | _ ->
-    let results = traverse_node Root in
+    let results = traverse_node (Node.create Root) in
     let rec find_definitions results output =
       match results with
-      | [(Node.Terminator _) as result] ->
+      | [{ Node. name = Terminator _; _ } as result] ->
         begin match Node.Map.find result definitions with
         | exception Not_found ->
           Misc.fatal_error "Missing Terminator definition"
@@ -154,6 +196,7 @@ let topological_sort (graph, definitions) =
         | exception Not_found ->
           (* This is ok; the input expression to this pass may not be
              closed. *)
+          (* ...also, this might be a constant *)
           (* CR mshinwell: maybe we should tighten this up *)
           find_definitions results output
         | thing_to_lift ->
@@ -167,12 +210,23 @@ let rec build_graph_and_extract_constants expr =
     match expr with
     | Let { var; defining_expr; body; } ->
       begin match defining_expr with
-      | Const _ | Symbol _ ->
+      | Const _ | Symbol _
+(*
         let constants = Variable.Map.add var defining_expr constants in
         build body ~graph ~constants ~most_recent_computational_let
+*)
       | Var _ | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
       | Allocated_const _ | Set_of_closures _ | Project_closure _
       | Move_within_set_of_closures _ | Project_var _ | Proved_unreachable ->
+        let defining_expr : Flambda.named =
+          match defining_expr with
+          | Set_of_closures set_of_closures ->
+            let set_of_closures =
+              Flambda_iterators.map_function_bodies set_of_closures ~f:lift
+            in
+            Set_of_closures set_of_closures
+          | _ -> defining_expr
+        in
         let fvs_defining_expr = Flambda.free_variables_named defining_expr in
         (* There are no free continuations in the defining expression of
            a let. *)
@@ -181,19 +235,22 @@ let rec build_graph_and_extract_constants expr =
             ~depends_on:(Node.set_of_variable_set fvs_defining_expr)
         in
         build body ~graph ~constants
-          ~most_recent_computational_let:(Node.Set.singleton (Variable var))
+          ~most_recent_computational_let:
+            (Node.Set.singleton (Node.create (Variable var)))
       end
     | Let_mutable { var; initial_value; contents_kind; body; } ->
       let graph =
         add_to_graph graph (Let_mutable (var, initial_value, contents_kind))
-          ~depends_on:(Node.Set.singleton (Variable initial_value))
+          ~depends_on:
+            (Node.Set.singleton (Node.create (Variable initial_value)))
       in
       (* [Let_mutable] doesn't count as a computation. *)
       build body ~graph ~constants ~most_recent_computational_let
     | Let_cont { name; body; handler = (Alias alias_of) as handler; } ->
       let graph =
         add_to_graph graph (Let_cont (name, handler))
-          ~depends_on:(Node.Set.singleton (Continuation alias_of))
+          ~depends_on:
+            (Node.Set.singleton (Node.create (Continuation alias_of)))
       in
       build body ~graph ~constants ~most_recent_computational_let
     | Let_cont { name; body; handler =
@@ -226,24 +283,26 @@ let rec build_graph_and_extract_constants expr =
         add_to_graph graph (Let_cont (name, whole_handler)) ~depends_on
       in
       (* Any handler that might be eligible for lifting out of the [Let_cont]
-        must now be at the top of [handler]. *)
+         must now be at the top of [handler]. *)
       let rec peel_handlers (handler : Flambda.expr) ~graph =
         match handler with
         | Let_cont { name = name2; body = body2;
             handler = (Alias alias_of) as handler; } ->
           let graph =
             add_to_graph graph (Let_cont (name2, handler))
-              ~depends_on:(Node.Set.singleton (Continuation alias_of))
+              ~depends_on:
+                (Node.Set.singleton (Node.create (Continuation alias_of)))
           in
           peel_handlers body2 ~graph
         | Let_cont { name = name2; body = body2; handler =
             (Handler { params = params2; handler = handler2; _ })
               as whole_handler2 } ->
           (* This nested handler may be lifted so long as it doesn't use any
-            of the outer handler's parameters. *)
+             of the outer handler's parameters. *)
           if Variable.Set.is_empty (Variable.Set.inter params
             (Flambda.free_variables handler2))
           then begin
+Format.eprintf "Continuation %a being peeled\n%!" Continuation.print name2;
             let graph =
               add_let_cont_handler_to_graph ~graph ~name:name2
                 ~params:(Variable.Set.of_list params2) ~handler:handler2
@@ -252,7 +311,7 @@ let rec build_graph_and_extract_constants expr =
             peel_handlers body2 ~graph
           end else begin
             (* There's nothing else eligible for lifting in this nested
-              handler. *)
+               handler. *)
             graph, handler
           end
         | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _ ->
@@ -273,7 +332,8 @@ let rec build_graph_and_extract_constants expr =
   in
   build expr ~constants:Variable.Map.empty
     ~most_recent_computational_let:Node.Set.empty
-    ~graph:(Node.Map.empty, Node.Map.empty)
+    ~graph:(Node.Map.add (Node.create Root) Node.Set.empty Node.Map.empty,
+      Node.Map.empty)
 
 and lift_returning_constants (expr : Flambda.t) =
   let graph, constants = build_graph_and_extract_constants expr in
@@ -293,12 +353,13 @@ and lift_returning_constants (expr : Flambda.t) =
   in
   expr, constants
 
-let lift (expr : Flambda.t) =
+and lift (expr : Flambda.t) =
   let expr, constants = lift_returning_constants expr in
   Variable.Map.fold (fun var const expr ->
       Flambda.create_let var const expr)
     constants
     expr
 
+(* CR mshinwell: What about lifted (constant) closures? *)
 let run program =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:lift
