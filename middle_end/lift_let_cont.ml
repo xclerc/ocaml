@@ -108,6 +108,10 @@ module State = struct
   let can_lift_if_using_continuation t cont =
     not (Continuation.Set.mem cont t.continuations_to_remain)
 
+  let can_lift_if_using_continuations t conts =
+    Continuation.Set.is_empty
+      (Continuation.Set.inter conts t.continuations_to_remain)
+
   let can_lift_if_using_variables t vars =
     Variable.Set.is_empty (Variable.Set.inter vars t.variables_to_remain)
 
