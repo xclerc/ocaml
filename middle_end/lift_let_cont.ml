@@ -39,14 +39,13 @@ let free_continuations_and_variables_of_thing_to_lift (thing : thing_to_lift) =
   match thing with
   | Let (_var, named) ->
     Continuation.Set.empty, Flambda.With_free_variables.free_variables named
-  | Let_mutable (mut_var, var, _kind) ->
+  | Let_mutable (_mut_var, var, _kind) ->
     Continuation.Set.empty, Variable.Set.singleton var
-  | Let_cont (name, Alias alias_of) ->
-    Continuation.Set.singleton alias_of, Variable.Set.empty
-  | Let_cont (name, Handler { handler; _ }) ->
-    Flambda.free_continuations handler, Flambda.free_variables handler
+  | Let_cont (name, handler) ->
+    Flambda.free_continuations_of_let_cont_handler ~name ~handler,
+      Flambda.free_variables_of_let_cont_handler handler
 
-let bind_things_to_lift things ~around =
+let bind_things_to_lift ~rev_things ~around =
   List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
       match thing with
       | Let (var, defining_expr) ->
@@ -57,7 +56,7 @@ let bind_things_to_lift things ~around =
       | Let_cont (name, handler) ->
         Let_cont { name; body; handler; })
     around
-    things
+    rev_things
 
 module State = struct
   type t = {
@@ -162,7 +161,6 @@ let rec lift_expr (expr : Flambda.expr) ~state =
     let state =
       State.add_constants_from_state state ~from:handler_state
     in
-    let params = Variable.Set.of_list params in
     let to_be_lifted = List.rev (State.rev_to_be_lifted handler_state) in
     let state =
       List.fold_left (fun state (name, handler) ->
@@ -183,7 +181,7 @@ let rec lift_expr (expr : Flambda.expr) ~state =
     in
     let rev_to_remain = State.rev_to_remain handler_state in
     let handler =
-      bind_things_to_lift ~rev_to_remain ~around:handler_terminator
+      bind_things_to_lift ~rev_things:rev_to_remain ~around:handler_terminator
     in
     let fcs = Flambda.free_continuations handler in
     let fvs = Flambda.free_variables handler in
@@ -197,7 +195,7 @@ let rec lift_expr (expr : Flambda.expr) ~state =
       if State.can_lift_if_using_continuations state fcs
         && State.can_lift_if_using_variables state fvs
       then
-        State.lift_continuation state ~name ~handler
+        State.lift_continuation state ~name ~handler:(Handler handler)
       else
         State.to_remain state (Let_cont (name, Handler handler))
     in
@@ -238,7 +236,7 @@ and lift_constant_defining_value (def : Flambda.constant_defining_value)
 and lift (expr : Flambda.t) =
   let expr, state = lift_expr expr ~state:(State.create ()) in
   let expr =
-    bind_things_to_remain ~rev_to_remain:(State.rev_to_remain state)
+    bind_things_to_lift ~rev_things:(State.rev_to_remain state) ~around:expr
   in
   let expr =
     List.fold_left (fun body (name, handler) : Flambda.t ->
@@ -246,10 +244,10 @@ and lift (expr : Flambda.t) =
       expr
       (State.rev_to_be_lifted state)
   in
-  Variable.Map.fold (fun var const expr ->
+  List.fold_left (fun expr (var, const) ->
       Flambda.create_let var const expr)
-    (State.constants state)
     expr
+    (State.constants state)
 
 let rec lift_program_body (body : Flambda.program_body) : Flambda.program_body =
   match body with
