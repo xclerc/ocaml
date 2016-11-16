@@ -166,10 +166,11 @@ let add_free_things_to_graph graph target_nodes =
     graph
 
 let print_graph graph =
-  Format.eprintf "graph: %a\n%!"
+  Format.eprintf "%a\n%!"
     (Node.Map.print Node.Set.print) graph
 
 let topological_sort (graph, definitions) =
+Format.eprintf "top sort:\n%!";
   print_graph graph;
   let rec traverse_node (node : Node.t) =
     let already_marked = Node.mark node in
@@ -224,11 +225,9 @@ let rec build_graph_and_extract_constants expr ~free =
     match expr with
     | Let { var; defining_expr; body; } ->
       begin match defining_expr with
-      | Const _ | Symbol _
-(*
+      | Const _ | Symbol _ ->
         let constants = Variable.Map.add var defining_expr constants in
         build body ~graph ~constants ~most_recent_computational_let
-*)
       | Var _ | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
       | Allocated_const _ | Set_of_closures _ | Project_closure _
       | Move_within_set_of_closures _ | Project_var _ | Proved_unreachable ->
@@ -362,6 +361,8 @@ Format.eprintf "Continuation %a being peeled\n%!" Continuation.print name2;
       Node.Map.empty
   in
   let graph = add_free_things_to_graph empty_graph free in
+Format.eprintf "Initial graph:\n%!";
+print_graph (fst graph);
   build expr ~constants:Variable.Map.empty
     ~most_recent_computational_let:Node.Set.empty
     ~graph
