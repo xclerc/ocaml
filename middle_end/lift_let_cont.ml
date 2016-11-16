@@ -146,8 +146,24 @@ let add_to_graph (graph, definitions) (thing : thing_to_lift) ~depends_on =
       depends_on
       graph
   in
-  let definitions = Node.Map.add target_node thing definitions in
+  let definitions = Node.Map.add target_node (Some thing) definitions in
   graph, definitions
+
+let add_free_things_to_graph graph target_nodes =
+  Node.Set.fold (fun target_node (graph, definitions) ->
+      let graph =
+        let root = Node.create Root in
+        let target_nodes =
+          match Node.Map.find root graph with
+          | exception Not_found -> Node.Set.empty
+          | target_nodes -> target_nodes
+        in
+        Node.Map.add root (Node.Set.add target_node target_nodes) graph
+      in
+      let definitions = Node.Map.add target_node None definitions in
+      graph, definitions)
+    target_nodes
+    graph
 
 let print_graph graph =
   Format.eprintf "graph: %a\n%!"
@@ -187,24 +203,22 @@ let topological_sort (graph, definitions) =
         begin match Node.Map.find result definitions with
         | exception Not_found ->
           Misc.fatal_error "Missing Terminator definition"
-        | Terminator expr -> output, expr
+        | Some (Terminator expr) -> output, expr
         | _ -> assert false
         end
       | [] -> Misc.fatal_error "Missing Terminator"
       | result::results ->
         match Node.Map.find result definitions with
         | exception Not_found ->
-          (* This is ok; the input expression to this pass may not be
-             closed. *)
-          (* ...also, this might be a constant *)
-          (* CR mshinwell: maybe we should tighten this up *)
+          Misc.fatal_errorf "No definition for %a" Node.print result
+        | None ->
           find_definitions results output
-        | thing_to_lift ->
+        | Some thing_to_lift ->
           find_definitions results (thing_to_lift :: output)
     in
     find_definitions results []
 
-let rec build_graph_and_extract_constants expr =
+let rec build_graph_and_extract_constants expr ~free =
   let rec build (expr : Flambda.expr) ~graph ~constants
         ~most_recent_computational_let =
     match expr with
@@ -221,9 +235,7 @@ let rec build_graph_and_extract_constants expr =
         let defining_expr : Flambda.named =
           match defining_expr with
           | Set_of_closures set_of_closures ->
-            let set_of_closures =
-              Flambda_iterators.map_function_bodies set_of_closures ~f:lift
-            in
+            let set_of_closures = lift_set_of_closures set_of_closures in
             Set_of_closures set_of_closures
           | _ -> defining_expr
         in
@@ -254,9 +266,18 @@ let rec build_graph_and_extract_constants expr =
       in
       build body ~graph ~constants ~most_recent_computational_let
     | Let_cont { name; body; handler =
-        (Handler { params; recursive = _; handler; }) as whole_handler } ->
+        (Handler { params; recursive; handler; }) as whole_handler } ->
       let params = Variable.Set.of_list params in
-      let handler, constants' = lift_returning_constants handler in
+      let handler, constants' =
+        let fcs =
+          match recursive with
+          | Nonrecursive -> Node.Set.empty
+          | Recursive -> Node.Set.singleton (Node.create (Continuation name))
+        in
+        let fvs = Node.set_of_variable_set params in
+        let free = Node.Set.union fcs fvs in
+        lift_returning_constants handler ~free
+      in
       let constants =
         let eq (named1 : Flambda.named) (named2 : Flambda.named) =
           match named1, named2 with
@@ -271,6 +292,7 @@ let rec build_graph_and_extract_constants expr =
       in
       let add_let_cont_handler_to_graph ~graph ~name ~params ~handler
             ~whole_handler =
+Format.eprintf "Continuation %a being added\n%!" Continuation.print name;
         let fcs_handler =
           Continuation.Set.remove name (Flambda.free_continuations handler)
         in
@@ -324,19 +346,28 @@ Format.eprintf "Continuation %a being peeled\n%!" Continuation.print name2;
       in
       build body ~graph ~constants ~most_recent_computational_let
     | Apply _ | Apply_cont _ | Switch _ ->
-      let graph =
-        add_to_graph graph (Terminator expr)
-          ~depends_on:most_recent_computational_let
+      let fvs = Node.set_of_variable_set (Flambda.free_variables expr) in
+      let fcs =
+        Node.set_of_continuation_set (Flambda.free_continuations expr)
       in
+      let depends_on =
+        Node.Set.union most_recent_computational_let
+          (Node.Set.union fvs fcs)
+      in
+      let graph = add_to_graph graph (Terminator expr) ~depends_on in
       graph, constants
   in
+  let empty_graph =
+    Node.Map.add (Node.create Root) Node.Set.empty Node.Map.empty,
+      Node.Map.empty
+  in
+  let graph = add_free_things_to_graph empty_graph free in
   build expr ~constants:Variable.Map.empty
     ~most_recent_computational_let:Node.Set.empty
-    ~graph:(Node.Map.add (Node.create Root) Node.Set.empty Node.Map.empty,
-      Node.Map.empty)
+    ~graph
 
-and lift_returning_constants (expr : Flambda.t) =
-  let graph, constants = build_graph_and_extract_constants expr in
+and lift_returning_constants (expr : Flambda.t) ~free =
+  let graph, constants = build_graph_and_extract_constants expr ~free in
   let rev_bindings, terminator = topological_sort graph in
   let expr =
     List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
@@ -353,13 +384,87 @@ and lift_returning_constants (expr : Flambda.t) =
   in
   expr, constants
 
-and lift (expr : Flambda.t) =
-  let expr, constants = lift_returning_constants expr in
+and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
+  let funs =
+    Variable.Map.map (fun
+            (function_decl : Flambda.function_declaration) ->
+        let continuation_param =
+          Node.create (Continuation function_decl.continuation_param)
+        in
+        let params =
+          Node.set_of_variable_set
+            (Variable.Set.of_list function_decl.params)
+        in
+        let free_variables =
+          Node.set_of_variable_set function_decl.free_variables
+        in
+        let free =
+          Node.Set.union (Node.Set.singleton continuation_param)
+            (Node.Set.union params free_variables)
+        in
+        let body = lift function_decl.body ~free in
+        Flambda.create_function_declaration
+          ~params:function_decl.params
+          ~continuation_param:function_decl.continuation_param
+          ~body
+          ~stub:function_decl.stub
+          ~dbg:function_decl.dbg
+          ~inline:function_decl.inline
+          ~specialise:function_decl.specialise
+          ~is_a_functor:function_decl.is_a_functor)
+      set_of_closures.function_decls.funs
+  in
+  let function_decls =
+    Flambda.update_function_declarations
+      set_of_closures.function_decls ~funs
+  in
+  Flambda.create_set_of_closures ~function_decls
+    ~free_vars:set_of_closures.free_vars
+    ~specialised_args:set_of_closures.specialised_args
+    ~direct_call_surrogates:set_of_closures.direct_call_surrogates
+
+and lift_constant_defining_value (def : Flambda.constant_defining_value)
+      : Flambda.constant_defining_value =
+  match def with
+  | Allocated_const _ | Block _ | Project_closure _ -> def
+  | Set_of_closures set_of_closures ->
+    Set_of_closures (lift_set_of_closures set_of_closures)
+
+and lift (expr : Flambda.t) ~free =
+  let expr, constants = lift_returning_constants expr ~free in
   Variable.Map.fold (fun var const expr ->
       Flambda.create_let var const expr)
     constants
     expr
 
-(* CR mshinwell: What about lifted (constant) closures? *)
-let run program =
-  Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:lift
+let rec lift_program_body (body : Flambda.program_body) : Flambda.program_body =
+  match body with
+  | Let_symbol (sym, defining_value, body) ->
+    let defining_value = lift_constant_defining_value defining_value in
+    Let_symbol (sym, defining_value, lift_program_body body)
+  | Let_rec_symbol (bindings, body) ->
+    let bindings =
+      List.map (fun (sym, defining_value) ->
+          let defining_value = lift_constant_defining_value defining_value in
+          sym, defining_value)
+        bindings
+    in
+    Let_rec_symbol (bindings, lift_program_body body)
+  | Initialize_symbol (sym, tag, fields, body) ->
+    let fields =
+      List.map (fun (expr, cont) ->
+          let free = Node.Set.singleton (Node.create (Continuation cont)) in
+          lift expr ~free, cont)
+        fields
+    in
+    Initialize_symbol (sym, tag, fields, lift_program_body body)
+  | Effect (expr, cont, body) ->
+    let free = Node.Set.singleton (Node.create (Continuation cont)) in
+    let expr = lift expr ~free in
+    Effect (expr, cont, lift_program_body body)
+  | End _ -> body
+
+let run (program : Flambda.program) =
+  { program with
+    program_body = lift_program_body program.program_body;
+  }
