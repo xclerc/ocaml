@@ -36,27 +36,43 @@ type thing_to_lift =
   | Terminator of Flambda.expr
 
 module Node = struct
+  type t =
+    | Root
+    | Variable of Variable.t
+    | Mutable_variable of Mutable_variable.t
+    | Continuation of Continuation.t
+    | Terminator of int
+
   include Identifiable.Make (struct
-    type t =
-      | Root
-      | Variable of Variable.t
-      | Continuation of Continuation.t
-      | Terminator of Flambda.expr
+    type nonrec t = t
 
     let compare t1 t2 =
       match t1, t2 with
+      | Root, Root -> 0
       | Variable v1, Variable v2 -> Variable.compare v1 v2
       | Continuation c1, Continuation c2 -> Continuation.compare c1 c2
-      | Variable _, Continuation _ -> (-1)
-      | Continuation _, Variable _ -> 1
+      | Mutable_variable m1, Mutable_variable m2 ->
+        Mutable_variable.compare m1 m2
+      | Terminator id1, Terminator id2 -> Pervasives.compare id1 id2
+      | Root, _ -> (-1)
+      | _, Root -> 1
+      | Variable _, _ -> (-1)
+      | _, Variable _ -> 1
+      | Continuation _, _ -> (-1)
+      | _, Continuation _ -> 1
+      | Terminator _, _ -> (-1)
+      | _, Terminator _ -> 1
 
     let equal t1 t2 =
       compare t1 t2 = 0
 
     let hash t =
       match t with
-      | Variable v -> Hashtbl.hash (0, Variable.hash v)
-      | Continuation c -> Hashtbl.hash (1, Continuation.hash c)
+      | Root -> 0
+      | Variable v -> Hashtbl.hash (1, Variable.hash v)
+      | Mutable_variable v -> Hashtbl.hash (2, Mutable_variable.hash v)
+      | Continuation c -> Hashtbl.hash (3, Continuation.hash c)
+      | Terminator id -> Hashtbl.hash (4, id)
 
     let output _chan _t = Misc.fatal_error "not implemented"
     let print _ppf _t = Misc.fatal_error "not implemented"
@@ -66,20 +82,25 @@ module Node = struct
     Variable.Set.fold (fun var depends_on ->
         Set.add (Variable var) depends_on)
       vs
-      Node.Set.empty
+      Set.empty
 
   let set_of_continuation_set vs =
     Continuation.Set.fold (fun cont depends_on ->
         Set.add (Continuation cont) depends_on)
       vs
-      Node.Set.empty
+      Set.empty
+
+  let next_terminator_id = ref 0
 
   let of_thing (thing : thing_to_lift) =
     match thing with
     | Let (var, _) -> Variable var
-    | Let_mutable ...
+    | Let_mutable (var, _, _) -> Mutable_variable var
     | Let_cont (cont, _) -> Continuation cont
-    | Terminator expr -> Terminator expr
+    | Terminator _ ->
+      let id = !next_terminator_id in
+      incr next_terminator_id;
+      Terminator id
 end
 
 let add_to_graph (graph, definitions) (thing : thing_to_lift) ~depends_on =
@@ -114,13 +135,19 @@ let topological_sort (graph, definitions) =
     in
     node :: List.concat results
   in
-  match Node.Map.find root graph with
+  match Node.Map.find Root graph with
   | exception Not_found -> Misc.fatal_error "Graph has no root node"
   | _ ->
-    let results = traverse_node Root children [] in
+    let results = traverse_node Root in
     let rec find_definitions results output =
       match results with
-      | [Terminator expr] -> output, expr
+      | [(Node.Terminator _) as result] ->
+        begin match Node.Map.find result definitions with
+        | exception Not_found ->
+          Misc.fatal_error "Missing Terminator definition"
+        | Terminator expr -> output, expr
+        | _ -> assert false
+        end
       | [] -> Misc.fatal_error "Missing Terminator"
       | result::results ->
         match Node.Map.find result definitions with
@@ -138,119 +165,136 @@ let rec build_graph_and_extract_constants expr =
   let rec build (expr : Flambda.expr) ~graph ~constants
         ~most_recent_computational_let =
     match expr with
-  | Let { var; defining_expr; body; } ->
-    begin match defining_expr with
-    | Const _ | Symbol _ ->
-      let constants = Variable.Map.add var defining_expr constants in
-      build expr ~graph ~constants ~most_recent_computational_let
-    | Var _ | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
-    | Allocated_const _ | Set_of_closures _ | Project_closure _
-    | Move_within_set_of_closures _ | Project_var _ | Proved_unreachable ->
-      let fvs_defining_expr = Flambda.free_variables_named defining_expr in
-      (* There are no free continuations in the defining expression of a let. *)
-      let graph =
-        add_to_graph graph (Let (var, defining_expr))
-          ~depends_on:(Node.set_of_variable_set fvs_defining_expr)
-      in
-      build expr ~graph ~constants
-        ~most_recent_computational_let:(Node.Set.singleton (Variable var))
-    end
-  | Let_mutable { var; initial_value; contents_kind; body; } ->
-    let graph =
-      add_to_graph graph (Let_mutable (var, initial_value, contents_kind))
-        ~depends_on:(Node.Set.singleton (Variable initial_value))
-    in
-    (* [Let_mutable] doesn't count as a computation. *)
-    build body ~graph ~constants ~most_recent_computational_let
-  | Let_cont { name; body; handler = Alias alias_of; } ->
-    let graph =
-      add_to_graph graph (Let_cont (name, handler))
-        ~depends_on:(Node.Set.singleton (Continuation alias_of))
-    in
-    build body ~graph ~constants ~most_recent_computational_let
-  | Let_cont { name; body; handler =
-      (Handler { params; recursive = _; handler; }) as whole_handler } ->
-    let params = Variable.Set.of_list params in
-    let handler, constants' = lift_returning_constants handler in
-    let constants = Variable.Map.union constants constants' in
-    let add_let_cont_handler_to_graph ~graph ~name ~params ~handler
-          ~whole_handler =
-      let fcs_handler =
-        Continuation.Set.remove Flambda.free_continuations handler name
-      in
-      let fvs_handler =
-        Node.set_of_variable_set (Variable.Set.diff fvs_handler params)
-      in
-      let fcs_handler = Node.set_of_continuation_set fcs_handler in
-      let depends_on = Node.Set.union fvs_handler fcs_handler in
-      add_to_graph graph (Let_cont (name, whole_handler)) ~depends_on
-    in
-    (* Any handler that might be eligible for lifting out of the [Let_cont]
-       must now be at the top of [handler]. *)
-    let rec peel_handlers handler ~graph =
-      match handler with
-      | Let_cont { name = name2; body = body2;
-          handler = (Alias alias_of) as handler; } ->
+    | Let { var; defining_expr; body; } ->
+      begin match defining_expr with
+      | Const _ | Symbol _ ->
+        let constants = Variable.Map.add var defining_expr constants in
+        build body ~graph ~constants ~most_recent_computational_let
+      | Var _ | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
+      | Allocated_const _ | Set_of_closures _ | Project_closure _
+      | Move_within_set_of_closures _ | Project_var _ | Proved_unreachable ->
+        let fvs_defining_expr = Flambda.free_variables_named defining_expr in
+        (* There are no free continuations in the defining expression of
+           a let. *)
         let graph =
-          add_to_graph graph (Let_cont (name2, handler))
-            ~depends_on:(Node.Set.singleton (Continuation alias_of))
+          add_to_graph graph (Let (var, defining_expr))
+            ~depends_on:(Node.set_of_variable_set fvs_defining_expr)
         in
-        peel_handlers body2 ~graph
-      | Let_cont { name = name2; body = body2; handler =
-          (Handler { params = params2; handler = handler2; _ })
-            as whole_handler2 } ->
-        (* This nested handler may be lifted so long as it doesn't use any
-           of the outer handler's parameters. *)
-        let fvs_handler2 = Flambda.free_variables handler2 in
-        if Variable.Set.is_empty (Variable.Set.inter params
-          (Flambda.free_variables handler2))
-        then begin
+        build body ~graph ~constants
+          ~most_recent_computational_let:(Node.Set.singleton (Variable var))
+      end
+    | Let_mutable { var; initial_value; contents_kind; body; } ->
+      let graph =
+        add_to_graph graph (Let_mutable (var, initial_value, contents_kind))
+          ~depends_on:(Node.Set.singleton (Variable initial_value))
+      in
+      (* [Let_mutable] doesn't count as a computation. *)
+      build body ~graph ~constants ~most_recent_computational_let
+    | Let_cont { name; body; handler = (Alias alias_of) as handler; } ->
+      let graph =
+        add_to_graph graph (Let_cont (name, handler))
+          ~depends_on:(Node.Set.singleton (Continuation alias_of))
+      in
+      build body ~graph ~constants ~most_recent_computational_let
+    | Let_cont { name; body; handler =
+        (Handler { params; recursive = _; handler; }) as whole_handler } ->
+      let params = Variable.Set.of_list params in
+      let handler, constants' = lift_returning_constants handler in
+      let constants =
+        let eq (named1 : Flambda.named) (named2 : Flambda.named) =
+          match named1, named2 with
+          | Const const1, Const const2 ->
+            Flambda.compare_const const1 const2 = 0
+          | Symbol sym1, Symbol sym2 ->
+            Symbol.equal sym1 sym2
+          | Symbol _, Const _ | Const _, Symbol _ -> false
+          | _, _ -> assert false  (* see above *)
+        in
+        Variable.Map.disjoint_union constants constants' ~eq
+      in
+      let add_let_cont_handler_to_graph ~graph ~name ~params ~handler
+            ~whole_handler =
+        let fcs_handler =
+          Continuation.Set.remove name (Flambda.free_continuations handler)
+        in
+        let fvs_handler =
+          Node.set_of_variable_set (
+            Variable.Set.diff (Flambda.free_variables handler) params)
+        in
+        let fcs_handler = Node.set_of_continuation_set fcs_handler in
+        let depends_on = Node.Set.union fvs_handler fcs_handler in
+        add_to_graph graph (Let_cont (name, whole_handler)) ~depends_on
+      in
+      (* Any handler that might be eligible for lifting out of the [Let_cont]
+        must now be at the top of [handler]. *)
+      let rec peel_handlers (handler : Flambda.expr) ~graph =
+        match handler with
+        | Let_cont { name = name2; body = body2;
+            handler = (Alias alias_of) as handler; } ->
           let graph =
-            add_let_cont_handler_to_graph ~graph ~name:name2
-              ~params:(Variable.Set.of_list params2) ~handler:handler2
-              ~whole_handler:whole_handler2
+            add_to_graph graph (Let_cont (name2, handler))
+              ~depends_on:(Node.Set.singleton (Continuation alias_of))
           in
           peel_handlers body2 ~graph
-        end else begin
-          (* There's nothing else eligible for lifting in this nested
-             handler. *)
+        | Let_cont { name = name2; body = body2; handler =
+            (Handler { params = params2; handler = handler2; _ })
+              as whole_handler2 } ->
+          (* This nested handler may be lifted so long as it doesn't use any
+            of the outer handler's parameters. *)
+          if Variable.Set.is_empty (Variable.Set.inter params
+            (Flambda.free_variables handler2))
+          then begin
+            let graph =
+              add_let_cont_handler_to_graph ~graph ~name:name2
+                ~params:(Variable.Set.of_list params2) ~handler:handler2
+                ~whole_handler:whole_handler2
+            in
+            peel_handlers body2 ~graph
+          end else begin
+            (* There's nothing else eligible for lifting in this nested
+              handler. *)
+            graph, handler
+          end
+        | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _ ->
           graph, handler
-        end
-      | Let_cont _ | Let _ | Let_mutable _
-      | Apply _ | Apply_cont _ | Switch _ -> graph, handler
-    in
-    let graph, handler = peel_handlers handler ~graph in
-      add_to_graph graph
-    in
-    let graph =
-      add_let_cont_handler_to_graph ~graph ~name ~params ~handler
-        ~whole_handler
-    in
-    build body ~graph ~constants ~most_recent_computational_let
-  | Apply _ | Apply_cont _ | Switch _ ->
-    add_to_graph graph (Terminator expr)
-      ~depends_on:most_recent_computational_let
+      in
+      let graph, handler = peel_handlers handler ~graph in
+      let graph =
+        add_let_cont_handler_to_graph ~graph ~name ~params ~handler
+          ~whole_handler
+      in
+      build body ~graph ~constants ~most_recent_computational_let
+    | Apply _ | Apply_cont _ | Switch _ ->
+      let graph =
+        add_to_graph graph (Terminator expr)
+          ~depends_on:most_recent_computational_let
+      in
+      graph, constants
   in
   build expr ~constants:Variable.Map.empty
     ~most_recent_computational_let:Node.Set.empty
+    ~graph:(Node.Map.empty, Node.Map.empty)
 
 and lift_returning_constants (expr : Flambda.t) =
   let graph, constants = build_graph_and_extract_constants expr in
   let rev_bindings, terminator = topological_sort graph in
-  List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
-      match thing with
-      | Let (var, defining_expr) ->
-        Flambda.create_let var defining_expr body
-      | Let_mutable (var, initial_value, contents_kind) ->
-        Let_mutable { var; initial_value; contents_kind; body; }
-      | Let_cont (name, handler) ->
-        Let_cont { name; body; handler; }
-      | Terminator _ -> assert false)
-    terminator
-    rev_bindings
+  let expr =
+    List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
+        match thing with
+        | Let (var, defining_expr) ->
+          Flambda.create_let var defining_expr body
+        | Let_mutable (var, initial_value, contents_kind) ->
+          Let_mutable { var; initial_value; contents_kind; body; }
+        | Let_cont (name, handler) ->
+          Let_cont { name; body; handler; }
+        | Terminator _ -> assert false)
+      terminator
+      rev_bindings
+  in
+  expr, constants
 
 let lift (expr : Flambda.t) =
-  let constants = lift_returning_constants expr in
+  let expr, constants = lift_returning_constants expr in
   Variable.Map.fold (fun var const expr ->
       Flambda.create_let var const expr)
     constants

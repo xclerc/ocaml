@@ -868,6 +868,23 @@ let fold_lets_option t ~init ~for_defining_expr ~for_last_body
   in
   loop t ~acc:init ~rev_lets:[]
 
+let rec free_continuations (expr : expr) =
+  match expr with
+  | Let { body; _ }
+  | Let_mutable { body; _ } ->
+    free_continuations body
+  | Let_cont { name; body; handler = Alias alias_of; } ->
+    Continuation.Set.add alias_of
+      (Continuation.Set.remove name
+        (free_continuations body))
+  | Let_cont { name; body; handler = Handler { handler; _ }; } ->
+    (* Careful: [handler] might reference [name]. *)
+    Continuation.Set.remove name (
+      Continuation.Set.union (free_continuations body)
+        (free_continuations handler))
+  | Apply_cont (cont, _args) -> Continuation.Set.singleton cont
+  | Apply _ | Switch _ -> Continuation.Set.empty
+
 let free_symbols_helper symbols (named : named) =
   match named with
   | Symbol symbol

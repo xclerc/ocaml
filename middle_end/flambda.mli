@@ -485,6 +485,8 @@ val used_variables_named
   -> named
   -> Variable.Set.t
 
+val free_continuations : expr -> Continuation.Set.t
+
 val free_symbols : expr -> Symbol.Set.t
 
 val free_symbols_named : named -> Symbol.Set.t
@@ -700,3 +702,5 @@ val compare_move_within_set_of_closures
   -> int
 
 val compare_project_closure : project_closure -> project_closure -> int
+
+val compare_const : const -> const -> int
