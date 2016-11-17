@@ -200,6 +200,7 @@ MIDDLE_END=\
   middle_end/unbox_closures.cmo \
   middle_end/inline_and_simplify.cmo \
   middle_end/lift_let_cont.cmo \
+  middle_end/sink_lets.cmo \
   middle_end/remove_unused_program_constructs.cmo \
   middle_end/remove_unused_closure_vars.cmo \
   middle_end/ref_to_variables.cmo \

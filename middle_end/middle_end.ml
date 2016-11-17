@@ -109,6 +109,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       let round = 0 in
       flam
       +-+ ("Lift_let_cont 1", Lift_let_cont.run)
+      +-+ ("Sink_lets 1", Sink_lets.run)
       +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
       +-+ ("Share_constants", Share_constants.share_constants)
       +-+ ("Lift_let_to_initialize_symbol",
@@ -134,6 +135,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         (* Beware: [Lift_constants] must be run before any pass that might
            duplicate strings. *)
         +-+ ("Lift_let_cont 1", Lift_let_cont.run)
+        +-+ ("Sink_lets 1", Sink_lets.run)
         +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
         +-+ ("Share_constants", Share_constants.share_constants)
         +-+ ("Remove_unused_program_constructs",
@@ -141,6 +143,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         +-+ ("Lift_let_to_initialize_symbol",
              Lift_let_to_initialize_symbol.lift ~backend)
         +-+ ("Lift_let_cont 2", Lift_let_cont.run)
+        +-+ ("Sink_lets 2", Sink_lets.run)
         +-+ ("Remove_unused_closure_vars 1",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
@@ -151,6 +154,7 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
         +-+ ("Lift_let_cont 3", Lift_let_cont.run)
+        +-+ ("Sink_lets 3", Sink_lets.run)
         +-+ ("Ref_to_variables",
              Ref_to_variables.eliminate_ref)
         +-+ ("Inline_and_simplify noinline",
