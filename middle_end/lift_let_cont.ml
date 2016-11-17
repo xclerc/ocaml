@@ -14,20 +14,6 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(* CR mshinwell: We should also do:
-     let x = <named> in
-     let_cont k = <handler> in
-     <body>
-   -->
-     let_cont k =
-       let x = ... in <handler>
-     in
-     <body>
-
-  when <named> has only generative effects and x is not free in <body>
-  and k is non-recursive.
-*)
-
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type thing_to_lift =
@@ -72,35 +58,6 @@ module State = struct
     mutable_variables_to_remain = Mutable_variable.Set.empty;
     mutable_variables_used = Mutable_variable.Set.empty;
   }
-
-  let _print ppf t =
-    let pp_sep ppf () = Format.fprintf ppf " " in
-    let print_constant ppf (var, named) =
-      Format.fprintf ppf "%a = %a" Variable.print var Flambda.print_named named
-    in
-    let print_to_be_lifted ppf (cont, handler) =
-      Format.fprintf ppf "%a %a" Continuation.print cont
-        Flambda.print_let_cont_handler handler
-    in
-    let print_thing_to_lift ppf (thing : thing_to_lift) =
-      match thing with
-      | Let (var, defining_expr) ->
-        Format.fprintf ppf "%a = %a" Variable.print var
-          Flambda.With_free_variables.print defining_expr
-      | Let_mutable (mut_var, initial_value, _kind) ->
-        Format.fprintf ppf "%a(mut) = %a"
-          Mutable_variable.print mut_var Variable.print initial_value
-      | Let_cont (cont, handler) ->
-        Format.fprintf ppf "%a %a" Continuation.print cont
-          Flambda.print_let_cont_handler handler
-    in
-    Format.fprintf ppf "constants %a@;rev_to_be_lifted %a@;rev_to_remain %a@;\
-        continuations_to_remain %a@;variables_to_remain %a"
-      (Format.pp_print_list ~pp_sep print_constant) t.constants
-      (Format.pp_print_list ~pp_sep print_to_be_lifted) t.to_be_lifted
-      (Format.pp_print_list ~pp_sep print_thing_to_lift) t.to_remain
-      Continuation.Set.print t.continuations_to_remain
-      Variable.Set.print t.variables_to_remain
 
   let add_constant t ~var ~defining_expr =
     { t with
@@ -298,13 +255,6 @@ and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
     ~specialised_args:set_of_closures.specialised_args
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
-and lift_constant_defining_value (def : Flambda.constant_defining_value)
-      : Flambda.constant_defining_value =
-  match def with
-  | Allocated_const _ | Block _ | Project_closure _ -> def
-  | Set_of_closures set_of_closures ->
-    Set_of_closures (lift_set_of_closures set_of_closures)
-
 and lift (expr : Flambda.t) =
   let expr, state = lift_expr expr ~state:(State.create ()) in
   let expr =
@@ -321,28 +271,5 @@ and lift (expr : Flambda.t) =
     expr
     (State.constants state)
 
-let rec lift_program_body (body : Flambda.program_body) : Flambda.program_body =
-  match body with
-  | Let_symbol (sym, defining_value, body) ->
-    let defining_value = lift_constant_defining_value defining_value in
-    Let_symbol (sym, defining_value, lift_program_body body)
-  | Let_rec_symbol (bindings, body) ->
-    let bindings =
-      List.map (fun (sym, defining_value) ->
-          let defining_value = lift_constant_defining_value defining_value in
-          sym, defining_value)
-        bindings
-    in
-    Let_rec_symbol (bindings, lift_program_body body)
-  | Initialize_symbol (sym, tag, fields, body) ->
-    let fields = List.map (fun (expr, cont) -> lift expr, cont) fields in
-    Initialize_symbol (sym, tag, fields, lift_program_body body)
-  | Effect (expr, cont, body) ->
-    let expr = lift expr in
-    Effect (expr, cont, lift_program_body body)
-  | End _ -> body
-
-let run (program : Flambda.program) =
-  { program with
-    program_body = lift_program_body program.program_body;
-  }
+let run program =
+  Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:lift

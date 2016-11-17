@@ -14,12 +14,23 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Move continuations upwards to try to reduce duplication when
-    inlining.  (In previous versions of Flambda this pass used to operate
-    on normal [Let] expressions; that is no longer required since we no
-    longer have nested scopes for those.  However nested scopes do still
-    exist in the context of continuations.  Avoiding that would require
-    something like converting to SSA form.)
+(** Where an expression is evaluated prior to a non-recursive continuation
+    definition, but is only used inside the handler of such continuation,
+    move the expression into the handler.  This transformation should help to
+    move computations occurring before conditional branches to the branches
+    where they are actually used.
+
+      let x = ... in
+      let_cont k = <handler> in
+      <body>
+    -->
+      let_cont k =
+        let x = ... in
+        <handler>
+      in
+      <body>
+
+    when x is not free in <body>.
 *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
