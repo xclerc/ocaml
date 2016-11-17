@@ -438,7 +438,7 @@ and cps_non_tail_list (lams : L.lambda list) (k : Ident.t list -> Ilambda.t) =
   | [] -> k []
   | lam::lams ->
     cps_non_tail lam (fun id ->
-      cps_non_tail_list lams (fun ids -> k (id::ids)))
+      cps_non_tail_list lams (fun ids -> k (ids @ [id])))
 
 and cps_function (func : Lambda.lfunction) : Ilambda.function_declaration =
   let body_cont = Continuation.create () in
