@@ -276,28 +276,16 @@ let rec lam ppf (flam : t) =
     (* Printing the same way as for [Let] is easier when debugging lifting
        passes. *)
     if !Clflags.dump_let_cont then begin
-      let print_handler ppf (handler : let_cont_handler) =
-        match handler with
-        | Handler { params; recursive; handler; } ->
-          fprintf ppf "%s%s%a%s=@ %a"
-            (match recursive with Nonrecursive -> "" | Recursive -> "rec ")
-            (match params with [] -> "" | _ -> "(")
-            Variable.print_list params
-            (match params with [] -> "" | _ -> ") ")
-            lam handler
-        | Alias alias_of ->
-          fprintf ppf "%a" Continuation.print alias_of
-      in
       let rec let_cont_body (ul : t) =
         match ul with
         | Let_cont { name; body; handler; } ->
           fprintf ppf "@ @[<2>%a@ %a@]" Continuation.print name
-            print_handler handler;
+            print_let_cont_handler handler;
           let_cont_body body
         | _ -> ul
       in
       fprintf ppf "@[<2>(let_cont@ @[<hv 1>(@[<2>%a@ %a@]"
-        Continuation.print name print_handler handler;
+        Continuation.print name print_let_cont_handler handler;
       let expr = let_cont_body body in
       fprintf ppf ")@]@ %a)@]" lam expr
     end else begin
@@ -355,6 +343,18 @@ and print_named ppf (named : named) =
       (Debuginfo.to_string dbg)
       Variable.print_list args
   | Proved_unreachable -> fprintf ppf "unreachable"
+
+and print_let_cont_handler ppf (handler : let_cont_handler) =
+  match handler with
+  | Handler { params; recursive; handler; } ->
+    fprintf ppf "%s%s%a%s=@ %a"
+      (match recursive with Nonrecursive -> "" | Recursive -> "rec ")
+      (match params with [] -> "" | _ -> "(")
+      Variable.print_list params
+      (match params with [] -> "" | _ -> ") ")
+      lam handler
+  | Alias alias_of ->
+    fprintf ppf "%a" Continuation.print alias_of
 
 and print_function_declaration ppf var (f : function_declaration) =
   let idents ppf =
@@ -765,6 +765,11 @@ module With_free_variables = struct
   type 'a t =
     | Expr : expr * Variable.Set.t -> expr t
     | Named : named * Variable.Set.t -> named t
+
+  let print (type a) ppf (t : a t) =
+    match t with
+    | Expr (expr, _) -> print ppf expr
+    | Named (named, _) -> print_named ppf named
 
   let of_defining_expr_of_let let_expr =
     Named (let_expr.defining_expr, let_expr.free_vars_of_defining_expr)

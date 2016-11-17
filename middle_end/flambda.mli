@@ -494,6 +494,7 @@ val free_continuations_of_let_cont_handler
   -> handler:let_cont_handler
   -> Continuation.Set.t
 
+(* CR mshinwell: Consider if we want to cache these. *)
 val free_continuations : expr -> Continuation.Set.t
 
 val free_symbols : expr -> Symbol.Set.t
@@ -553,6 +554,8 @@ val map_defining_expr_of_let : let_expr -> f:(named -> named) -> t
     variable sets is to be kept to a minimum. *)
 module With_free_variables : sig
   type 'a t
+
+  val print : Format.formatter -> _ t -> unit
 
   (** O(1) time. *)
   val of_defining_expr_of_let : let_expr -> named t
@@ -696,6 +699,11 @@ val print_set_of_closures
 val print_specialised_to
    : Format.formatter
   -> specialised_to
+  -> unit
+
+val print_let_cont_handler
+   : Format.formatter
+  -> let_cont_handler
   -> unit
 
 val equal_specialised_to
