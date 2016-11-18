@@ -18,6 +18,15 @@
 
 module W = Flambda.With_free_variables
 
+let print_continuation_stack ppf stack =
+  match stack with
+  | [] -> Format.fprintf ppf "<empty stack>"
+  | _ ->
+    Format.fprintf ppf "%a"
+      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ";")
+        (fun ppf (cont, _) -> Continuation.print ppf cont))
+      stack
+
 module State : sig
   type t
 
@@ -87,7 +96,6 @@ end = struct
   let add_candidates_to_sink t ~sink_into ~candidates_to_sink =
     let candidates_to_sink =
       Variable.Set.fold (fun candidate candidates_to_sink ->
-          assert (not (Variable.Map.mem candidate candidates_to_sink));
           Variable.Map.add candidate sink_into
             candidates_to_sink)
         candidates_to_sink
@@ -104,8 +112,12 @@ end = struct
         ~f:(fun var sink_to ->
           if Variable.Set.mem var except then
             None
-          else
-            Some (current_continuation :: sink_to))
+          else begin
+Format.eprintf "Variable %a coming out of handler, stack is now %a\n%!"
+Variable.print var
+  print_continuation_stack (current_continuation :: sink_to);
+            Some (current_continuation :: sink_to)
+end)
     in
     { t with
       candidates_to_sink;
@@ -182,7 +194,6 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
         W.of_named defining_expr, state
       | _ -> W.of_defining_expr_of_let let_expr, state
     in
-    let state =
       let sink_into, state = State.remove_candidate_to_sink state var in
       let state =
         match sink_into with
@@ -196,25 +207,56 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
           end
         | _ -> state
       in
-      match sink_into with
-      | Some sink_into ->
+      let add_candidates ~sink_into =
+let var' = var in
         Variable.Set.fold (fun var state ->
+Format.eprintf "Considering fv %a of defining_expr of %a: "
+  Variable.print var Variable.print var';
             let sink_into =
               match State.is_candidate_to_sink state var with
-              | None -> sink_into
+              | None ->
+Format.eprintf "not a candidate --> %a\n%!"
+  print_continuation_stack sink_into;
+                sink_into
               | Some sink_into' ->
-                join_continuation_stacks sink_into sink_into'
+let result =                join_continuation_stacks sink_into sink_into' in
+Format.eprintf "joining: already needed at %a now also needed at %a --> %a\n%!"
+  print_continuation_stack sink_into'
+  print_continuation_stack sink_into
+  print_continuation_stack result;
+result
             in
             State.add_candidates_to_sink state
               ~sink_into
               ~candidates_to_sink:(Variable.Set.singleton var))
           (W.free_variables defining_expr)
           state
-      | None -> state
+      in
+      let keep_let () =
+        W.create_let_reusing_defining_expr var defining_expr body
+      in
+      begin match sink_into with
+      | Some sink_into -> keep_let (), add_candidates ~sink_into
+      | None ->
+        if Effect_analysis.only_generative_effects_named
+          (W.to_named defining_expr)
+        then begin
+Format.eprintf "deleting let %a\n%!" Variable.print var;
+          body, state
+        end else begin
+Format.eprintf "having to keep let %a, might have side effect\n%!"
+  Variable.print var;
+          keep_let (), add_candidates ~sink_into:[]
+        end
+      end
+  | Let_mutable { var; initial_value; contents_kind; body; }->
+    let body, state = sink_expr body ~state in
+    let state =
+      State.add_candidates_to_sink state
+        ~sink_into:[]
+        ~candidates_to_sink:(Variable.Set.singleton initial_value)
     in
-    W.create_let_reusing_defining_expr var defining_expr body, state
-  | Let_mutable _ (*{ var; initial_value; contents_kind; body; } *)->
-    assert false
+    Let_mutable { var; initial_value; contents_kind; body; }, state
   | Let_cont { name; body; handler = (Alias _) as handler; } ->
     let body, state = sink_expr body ~state in
     Let_cont { name; body; handler; }, state
@@ -223,8 +265,10 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
+Format.eprintf "Starting handler %a\n%!" Continuation.print name;
       sink_expr handler ~state:(State.create ())
     in
+Format.eprintf "Finished handler %a\n%!" Continuation.print name;
     let state =
       State.add_candidates_to_sink_from_handler_state state
         ~current_continuation:(name, recursive)
