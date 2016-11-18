@@ -14,11 +14,11 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Where an expression is evaluated prior to a non-recursive continuation
-    definition, but is only used inside the handler of such continuation,
-    move the expression into the handler.  This transformation should help to
-    move computations occurring before conditional branches to the branches
-    where they are actually used.
+(** Where an expression with only generative effects is evaluated prior to a
+    non-recursive continuation definition, but is only used inside the handler
+    of such continuation, move the expression into the handler. This
+    transformation should help to move computations occurring before conditional
+    branches to the branches where they are actually used.
 
       let x = ... in
       let_cont k = <handler> in

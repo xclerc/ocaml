@@ -23,8 +23,7 @@ module State = struct
     to_sink_by_continuation :
       (Variable.t * Flambda.named W.t) Continuation.Map.t;
     to_sink : Variable.Set.t;
-    candidates_to_sink_by_continuation :
-      (Variable.t * Flambda.named W.t) Continuation.Map.t;
+    candidates_to_sink_by_continuation : Variable.t Continuation.Map.t;
     candidates_to_sink : Variable.Set.t;
     
   }
@@ -44,29 +43,39 @@ let rec sink_expr (expr : Flambda.expr) ~state =
         Flambda.With_free_variables.of_defining_expr_of_let let_expr, state
     in
     let state =
-      if State.candidate_to_sink_let state var then
-        State.definitely_sink_let state var
+      let was_candidate, state = State.remove_candidate_to_sink state var in
+      if was_candidate
+        && Effect_analysis.only_generative_effects_named defining_expr
+      then
+        State.sink_let state var
       else
         let fvs =
           Variable.Set.union (Flambda.free_variables_named defining_expr)
             (Variable.Set.remove var (Flambda.free_variables body))
         in
-
+        State.remove_candidates_to_sink state fvs
     in
-    W.create_let_reusing_defining_expr var defining_expr body
-  | Let_mutable { var; initial_value; contents_kind; body; } ->
-
-  | Let_cont { name; body; handler = (Alias alias_of) as handler; } ->
-
+    W.create_let_reusing_defining_expr var defining_expr body, state
+  | Let_mutable _ (*{ var; initial_value; contents_kind; body; } *)->
+    assert false
+  | Let_cont { name; body; handler = (Alias _) as handler; } ->
+    let body, state = sink_expr body ~state in
+    Let_cont { name; body; handler; }, state
   | Let_cont { name; body; handler =
       Handler { params; recursive; handler; } } ->
+    let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
     let handler, handler_state = sink_expr handler ~state:(State.create ()) in
-    let fvs_handler =
-      Variable.Set.diff (Flambda.free_variables handler)
-        (Variable.Set.of_list params)
+    let state =
+      State.add_candidates_to_sink_from_state state
+        ~from:handler_state
+        ~except:params_set
     in
-    let candidates_to_be_sunk =
+    let state = State.add_to_sink_from_state state ~from:handler_state in
+    let fvs_handler =
+      Variable.Set.diff (Flambda.free_variables handler) params_set
+    in
+    let candidates_to_sink =
       match recursive with
       | Nonrecursive ->
         Variable.Set.diff fvs_handler (Flambda.free_variables body)
@@ -74,8 +83,13 @@ let rec sink_expr (expr : Flambda.expr) ~state =
         (* We don't sink bindings into recursive continuation handlers. *)
         Variable.Set.empty
     in
-
-
+    let state =
+      State.add_candidates_to_sink state
+        ~continuation_handler_for:name
+        ~candidates_to_sink
+    in
+    Let_cont { name; body; handler =
+      Handler { params; recursive; handler; } }, state
   | Apply _ | Apply_cont _ | Switch _ -> expr, state
 
 and sink_set_of_closures (set_of_closures : Flambda.set_of_closures) =
