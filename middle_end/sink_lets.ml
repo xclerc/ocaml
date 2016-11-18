@@ -42,6 +42,8 @@ module State : sig
     -> except:Variable.Set.t
     -> t
 
+  val is_candidate_to_sink : t -> Variable.t -> bool
+
   val remove_candidate_to_sink : t -> Variable.t -> Continuation.t option * t
   val remove_candidates_to_sink : t -> Variable.Set.t -> t
 
@@ -100,6 +102,9 @@ end = struct
     { t with
       candidates_to_sink;
     }
+
+  let is_candidate_to_sink t var =
+    Variable.Map.mem var t.candidates_to_sink
 
   let remove_candidate_to_sink t var =
     let sink_to =
@@ -174,7 +179,25 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
       | Some sink_into
           when Effect_analysis.only_generative_effects_named
             (W.to_named defining_expr) ->
-        State.sink_let state var ~sink_into ~defining_expr
+        let state =
+          State.sink_let state var ~sink_into ~defining_expr
+        in
+        (* Drag down dependencies of [defining_expr] as much as possible. *)
+        Variable.Set.fold (fun var state ->
+            if State.is_candidate_to_sink state var then
+              state
+            else
+              let used_in_body =
+                Variable.Set.mem var (Flambda.free_variables body)
+              in
+              if used_in_body then
+                state
+              else
+                State.add_candidates_to_sink state
+                  ~continuation_handler_for:sink_into
+                  ~candidates_to_sink:(Variable.Set.singleton var))
+          (W.free_variables defining_expr)
+          state
       | Some _ | None ->
         let fvs =
           Variable.Set.union (W.free_variables defining_expr)
