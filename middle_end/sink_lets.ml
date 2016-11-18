@@ -32,7 +32,7 @@ module State : sig
 
   val add_candidates_to_sink
      : t
-    -> continuation_handler_for:Continuation.t
+    -> sink_into:(Continuation.t * Asttypes.rec_flag) list
     -> candidates_to_sink:Variable.Set.t
     -> t
 
@@ -43,10 +43,15 @@ module State : sig
     -> except:Variable.Set.t
     -> t
 
-  val is_candidate_to_sink : t -> Variable.t -> bool
+  val is_candidate_to_sink
+     : t
+    -> Variable.t
+    -> (Continuation.t * Asttypes.rec_flag) list option
 
-  val remove_candidate_to_sink : t -> Variable.t -> Continuation.t option * t
-  val remove_candidates_to_sink : t -> Variable.Set.t -> t
+  val remove_candidate_to_sink
+     : t
+    -> Variable.t
+    -> (Continuation.t * Asttypes.rec_flag) list option * t
 
   val sink_let
      : t
@@ -79,11 +84,11 @@ end = struct
     | exception Not_found -> []
     | to_sink -> to_sink
 
-  let add_candidates_to_sink t ~continuation_handler_for ~candidates_to_sink =
+  let add_candidates_to_sink t ~sink_into ~candidates_to_sink =
     let candidates_to_sink =
       Variable.Set.fold (fun candidate candidates_to_sink ->
           assert (not (Variable.Map.mem candidate candidates_to_sink));
-          Variable.Map.add candidate continuation_handler_for
+          Variable.Map.add candidate sink_into
             candidates_to_sink)
         candidates_to_sink
         t.candidates_to_sink
@@ -107,7 +112,9 @@ end = struct
     }
 
   let is_candidate_to_sink t var =
-    Variable.Map.mem var t.candidates_to_sink
+    match Variable.Map.find var t.candidates_to_sink with
+    | exception Not_found -> None
+    | sink_to -> Some sink_to
 
   let remove_candidate_to_sink t var =
     let sink_to =
@@ -124,17 +131,6 @@ end = struct
       }
     in
     sink_to, t
-
-  let remove_candidates_to_sink t vars =
-    let candidates_to_sink =
-      Variable.Set.fold (fun var candidates_to_sink ->
-          Variable.Map.remove var candidates_to_sink)
-        vars
-        t.candidates_to_sink
-    in
-    { t with
-      candidates_to_sink;
-    }
 
   let sink_let t var ~sink_into ~defining_expr =
     let to_sink =
@@ -165,10 +161,10 @@ end
 
 let rec join_continuation_stacks stack1 stack2 =
   match stack1, stack2 with
-  | [], [] | _, [] | _, [] -> []
-  | (cont1, rec1)::stack1, (cont2, rec2)::stack2 ->
+  | [], [] | _, [] | [], _ -> []
+  | (cont1, rec1)::stack1, (cont2, _rec2)::stack2 ->
     if Continuation.equal cont1 cont2 then
-      match rec1 with
+      match (rec1 : Asttypes.rec_flag) with
       | Nonrecursive ->
         (cont1, rec1) :: join_continuation_stacks stack1 stack2
       | Recursive -> []  (* Don't sink lets into recursive continuations. *)
@@ -190,10 +186,14 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
       let sink_into, state = State.remove_candidate_to_sink state var in
       let state =
         match sink_into with
-        | Some (_ :: _)
+        | Some sink_into
           when Effect_analysis.only_generative_effects_named
             (W.to_named defining_expr) ->
-          State.sink_let state var ~sink_into ~defining_expr
+          begin match List.rev sink_into with
+          | [] -> state
+          | (sink_into, _recursive)::_ ->
+            State.sink_let state var ~sink_into ~defining_expr
+          end
         | _ -> state
       in
       match sink_into with
