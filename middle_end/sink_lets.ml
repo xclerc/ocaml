@@ -18,6 +18,7 @@
 
 module W = Flambda.With_free_variables
 
+(*
 let print_continuation_stack ppf stack =
   match stack with
   | [] -> Format.fprintf ppf "<empty stack>"
@@ -26,6 +27,7 @@ let print_continuation_stack ppf stack =
       (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ";")
         (fun ppf (cont, _) -> Continuation.print ppf cont))
       stack
+*)
 
 module State : sig
   type t
@@ -113,9 +115,11 @@ end = struct
           if Variable.Set.mem var except then
             None
           else begin
+(*
 Format.eprintf "Variable %a coming out of handler, stack is now %a\n%!"
 Variable.print var
   print_continuation_stack (current_continuation :: sink_to);
+*)
             Some (current_continuation :: sink_to)
 end)
     in
@@ -208,22 +212,28 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
         | _ -> state
       in
       let add_candidates ~sink_into =
-let var' = var in
+(*let var' = var in*)
         Variable.Set.fold (fun var state ->
+(*
 Format.eprintf "Considering fv %a of defining_expr of %a: "
   Variable.print var Variable.print var';
+*)
             let sink_into =
               match State.is_candidate_to_sink state var with
               | None ->
+(*
 Format.eprintf "not a candidate --> %a\n%!"
   print_continuation_stack sink_into;
+*)
                 sink_into
               | Some sink_into' ->
 let result =                join_continuation_stacks sink_into sink_into' in
+(*
 Format.eprintf "joining: already needed at %a now also needed at %a --> %a\n%!"
   print_continuation_stack sink_into'
   print_continuation_stack sink_into
   print_continuation_stack result;
+*)
 result
             in
             State.add_candidates_to_sink state
@@ -241,11 +251,15 @@ result
         if Effect_analysis.only_generative_effects_named
           (W.to_named defining_expr)
         then begin
+(*
 Format.eprintf "deleting let %a\n%!" Variable.print var;
+*)
           body, state
         end else begin
+(*
 Format.eprintf "having to keep let %a, might have side effect\n%!"
   Variable.print var;
+*)
           keep_let (), add_candidates ~sink_into:[]
         end
       end
@@ -265,10 +279,14 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
+(*
 Format.eprintf "Starting handler %a\n%!" Continuation.print name;
+*)
       sink_expr handler ~state:(State.create ())
     in
+(*
 Format.eprintf "Finished handler %a\n%!" Continuation.print name;
+*)
     let state =
       State.add_candidates_to_sink_from_handler_state state
         ~current_continuation:(name, recursive)
