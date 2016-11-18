@@ -1629,12 +1629,12 @@ middle_end/lift_constants.cmi : middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
 middle_end/lift_let_cont.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/mutable_variable.cmi bytecomp/lambda.cmi \
-    middle_end/flambda.cmi middle_end/base_types/continuation.cmi \
-    middle_end/lift_let_cont.cmi
+    middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
+    middle_end/base_types/continuation.cmi middle_end/lift_let_cont.cmi
 middle_end/lift_let_cont.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/mutable_variable.cmx bytecomp/lambda.cmx \
-    middle_end/flambda.cmx middle_end/base_types/continuation.cmx \
-    middle_end/lift_let_cont.cmi
+    middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
+    middle_end/base_types/continuation.cmx middle_end/lift_let_cont.cmi
 middle_end/lift_let_cont.cmi : middle_end/flambda.cmi
 middle_end/lift_let_to_initialize_symbol.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \
@@ -1649,7 +1649,7 @@ middle_end/lift_let_to_initialize_symbol.cmx : \
 middle_end/lift_let_to_initialize_symbol.cmi : middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
 middle_end/middle_end.cmo : utils/warnings.cmi utils/timings.cmi \
-    middle_end/share_constants.cmi \
+    middle_end/sink_lets.cmi middle_end/share_constants.cmi \
     middle_end/remove_unused_program_constructs.cmi \
     middle_end/remove_unused_closure_vars.cmi middle_end/ref_to_variables.cmi \
     bytecomp/printlambda.cmi middle_end/prepare_lambda.cmi utils/misc.cmi \
@@ -1663,7 +1663,7 @@ middle_end/middle_end.cmo : utils/warnings.cmi utils/timings.cmi \
     middle_end/closure_conversion.cmi utils/clflags.cmi \
     middle_end/middle_end.cmi
 middle_end/middle_end.cmx : utils/warnings.cmx utils/timings.cmx \
-    middle_end/share_constants.cmx \
+    middle_end/sink_lets.cmx middle_end/share_constants.cmx \
     middle_end/remove_unused_program_constructs.cmx \
     middle_end/remove_unused_closure_vars.cmx middle_end/ref_to_variables.cmx \
     bytecomp/printlambda.cmx middle_end/prepare_lambda.cmx utils/misc.cmx \
@@ -1832,6 +1832,15 @@ middle_end/simplify_primitives.cmi : middle_end/base_types/variable.cmi \
     middle_end/simple_value_approx.cmi bytecomp/lambda.cmi \
     middle_end/inlining_cost.cmi middle_end/flambda.cmi \
     middle_end/debuginfo.cmi
+middle_end/sink_lets.cmo : middle_end/base_types/variable.cmi \
+    middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
+    middle_end/effect_analysis.cmi middle_end/base_types/continuation.cmi \
+    middle_end/sink_lets.cmi
+middle_end/sink_lets.cmx : middle_end/base_types/variable.cmx \
+    middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
+    middle_end/effect_analysis.cmx middle_end/base_types/continuation.cmx \
+    middle_end/sink_lets.cmi
+middle_end/sink_lets.cmi : middle_end/flambda.cmi
 middle_end/unbox_closures.cmo : middle_end/base_types/variable.cmi \
     middle_end/inlining_cost.cmi middle_end/inline_and_simplify_aux.cmi \
     middle_end/flambda_utils.cmi middle_end/flambda_iterators.cmi \
