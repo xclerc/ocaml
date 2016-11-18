@@ -36,9 +36,10 @@ module State : sig
     -> candidates_to_sink:Variable.Set.t
     -> t
 
-  val add_candidates_to_sink_from_state
+  val add_candidates_to_sink_from_handler_state
      : t
-    -> from:t
+    -> current_continuation:(Continuation.t * Asttypes.rec_flag)
+    -> handler_state:t
     -> except:Variable.Set.t
     -> t
 
@@ -60,7 +61,8 @@ end = struct
     to_sink :
       (Variable.t * Flambda.named W.t) list Continuation.Map.t;
     variables_to_sink : Variable.Set.t;
-    candidates_to_sink : Continuation.t Variable.Map.t;
+    candidates_to_sink :
+      (Continuation.t * Asttypes.rec_flag) list Variable.Map.t;
   }
 
   let create () =
@@ -90,14 +92,15 @@ end = struct
       candidates_to_sink;
     }
 
-  let add_candidates_to_sink_from_state t ~from ~except =
+  let add_candidates_to_sink_from_handler_state t ~current_continuation
+        ~handler_state ~except =
     let candidates_to_sink =
-      Variable.Map.filter (fun var _ ->
-          not (Variable.Set.mem var except))
-        from.candidates_to_sink
-    in
-    let candidates_to_sink =
-      Variable.Map.disjoint_union candidates_to_sink t.candidates_to_sink
+      Variable.Map.filter_map handler_state.candidates_to_sink
+        ~f:(fun var sink_to ->
+          if Variable.Set.mem var except then
+            None
+          else
+            Some (current_continuation :: sink_to))
     in
     { t with
       candidates_to_sink;
@@ -160,6 +163,17 @@ end = struct
     }
 end
 
+let rec join_continuation_stacks stack1 stack2 =
+  match stack1, stack2 with
+  | [], [] | _, [] | _, [] -> []
+  | (cont1, rec1)::stack1, (cont2, rec2)::stack2 ->
+    if Continuation.equal cont1 cont2 then
+      match rec1 with
+      | Nonrecursive ->
+        (cont1, rec1) :: join_continuation_stacks stack1 stack2
+      | Recursive -> []  (* Don't sink lets into recursive continuations. *)
+    else []
+
 let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
   match expr with
   | Let ({ var; defining_expr; body; } as let_expr) ->
@@ -169,41 +183,34 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
       | Set_of_closures set_of_closures ->
         let set_of_closures = sink_set_of_closures set_of_closures in
         let defining_expr : Flambda.named = Set_of_closures set_of_closures in
-        Flambda.With_free_variables.of_named defining_expr, state
-      | _ ->
-        Flambda.With_free_variables.of_defining_expr_of_let let_expr, state
+        W.of_named defining_expr, state
+      | _ -> W.of_defining_expr_of_let let_expr, state
     in
     let state =
-      let was_candidate, state = State.remove_candidate_to_sink state var in
-      match was_candidate with
-      | Some sink_into
+      let sink_into, state = State.remove_candidate_to_sink state var in
+      let state =
+        match sink_into with
+        | Some (_ :: _)
           when Effect_analysis.only_generative_effects_named
             (W.to_named defining_expr) ->
-        let state =
           State.sink_let state var ~sink_into ~defining_expr
-        in
-        (* Drag down dependencies of [defining_expr] as much as possible. *)
+        | _ -> state
+      in
+      match sink_into with
+      | Some sink_into ->
         Variable.Set.fold (fun var state ->
-            if State.is_candidate_to_sink state var then
-              state
-            else
-              let used_in_body =
-                Variable.Set.mem var (Flambda.free_variables body)
-              in
-              if used_in_body then
-                state
-              else
-                State.add_candidates_to_sink state
-                  ~continuation_handler_for:sink_into
-                  ~candidates_to_sink:(Variable.Set.singleton var))
+            let sink_into =
+              match State.is_candidate_to_sink state var with
+              | None -> sink_into
+              | Some sink_into' ->
+                join_continuation_stacks sink_into sink_into'
+            in
+            State.add_candidates_to_sink state
+              ~sink_into
+              ~candidates_to_sink:(Variable.Set.singleton var))
           (W.free_variables defining_expr)
           state
-      | Some _ | None ->
-        let fvs =
-          Variable.Set.union (W.free_variables defining_expr)
-            (Variable.Set.remove var (Flambda.free_variables body))
-        in
-        State.remove_candidates_to_sink state fvs
+      | None -> state
     in
     W.create_let_reusing_defining_expr var defining_expr body, state
   | Let_mutable _ (*{ var; initial_value; contents_kind; body; } *)->
@@ -215,32 +222,25 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
       Handler { params; recursive; handler; } } ->
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
-    let handler, handler_state = sink_expr handler ~state:(State.create ()) in
+    let handler, handler_state =
+      sink_expr handler ~state:(State.create ())
+    in
     let state =
-      State.add_candidates_to_sink_from_state state
-        ~from:handler_state
+      State.add_candidates_to_sink_from_handler_state state
+        ~current_continuation:(name, recursive)
+        ~handler_state
         ~except:params_set
     in
     let state = State.add_to_sink_from_state state ~from:handler_state in
-    let fvs_handler =
-      Variable.Set.diff (Flambda.free_variables handler) params_set
-    in
-    let candidates_to_sink =
-      match recursive with
-      | Nonrecursive ->
-        Variable.Set.diff fvs_handler (Flambda.free_variables body)
-      | Recursive ->
-        (* We don't sink bindings into recursive continuation handlers. *)
-        Variable.Set.empty
-    in
-    let state =
-      State.add_candidates_to_sink state
-        ~continuation_handler_for:name
-        ~candidates_to_sink
-    in
     Let_cont { name; body; handler =
       Handler { params; recursive; handler; } }, state
-  | Apply _ | Apply_cont _ | Switch _ -> expr, state
+  | Apply _ | Apply_cont _ | Switch _ ->
+    let state =
+      State.add_candidates_to_sink state
+        ~sink_into:[]
+        ~candidates_to_sink:(Flambda.free_variables expr)
+    in
+    expr, state
 
 and sink_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let funs =
