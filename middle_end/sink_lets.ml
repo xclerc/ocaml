@@ -18,15 +18,118 @@
 
 module W = Flambda.With_free_variables
 
-module State = struct
+module State : sig
+  type t
+
+  val create : unit -> t
+
+  val should_sink_let : t -> Variable.t -> bool
+
+  val sunken_lets_for_handler
+     : t
+    -> Continuation.t
+    -> (Variable.t * Flambda.named W.t) list
+
+  val add_candidates_to_sink
+     : t
+    -> continuation_handler_for:Continuation.t
+    -> candidates_to_sink:Variable.Set.t
+    -> t
+
+  val add_candidates_to_sink_from_state
+     : t
+    -> from:t
+    -> except:Variable.t list
+    -> t
+
+  val remove_candidate_to_sink : t -> Variable.t -> Continuation.t option * t
+  val remove_candidates_to_sink : t -> Variable.Set.t -> t
+
+  val sink_let
+     : t
+    -> Variable.t
+    -> sink_into:Continuation.t
+    -> defining_expr:Flambda.named
+    -> t
+end = struct
   type t = {
-    to_sink_by_continuation :
-      (Variable.t * Flambda.named W.t) Continuation.Map.t;
-    to_sink : Variable.Set.t;
-    candidates_to_sink_by_continuation : Variable.t Continuation.Map.t;
-    candidates_to_sink : Variable.Set.t;
-    
+    to_sink :
+      (Variable.t * Flambda.named W.t) list Continuation.Map.t;
+    candidates_to_sink : Continuation.t Variable.Map.t;
   }
+
+  let create () =
+    { to_sink = Continuation.Map.empty;
+      candidates_to_sink = Variable.Map.empty;
+    }
+
+  let should_sink_let t var =
+    Variable.Set.mem var t.to_sink
+
+  let sunken_lets_for_handler t cont =
+    match Continuation.Map.find cont t.to_sink_by_continuation with
+    | exception Not_found -> []
+    | to_sink -> to_sink
+
+  let add_candidates_to_sink t ~continuation_handler_for ~candidates_to_sink =
+    let candidates_to_sink =
+      Variable.Set.fold (fun candidate candidates_to_sink ->
+          assert (not (Continuation.Map.mem candidate candidates_to_sink));
+          Continuation.Map.add candidate continuation_handler_for
+            candidates_to_sink)
+        candidates_to_sink
+        t.candidates_to_sink
+    in
+    { t with
+      candidates_to_sink;
+    }
+
+  let add_candidates_to_sink_from_state t ~from ~except =
+    let candidates_to_sink =
+      Variable.Map.filter (fun var ->
+          not (Variable.Set.mem var except))
+        from.candidates_to_sink
+    in
+    let candidates_to_sink =
+      Variable.Map.disjoint_union candidates_to_sink t.candidates_to_sink
+        ~eq:Continuation.equal
+    in
+    { t with
+      candidates_to_sink;
+    }
+
+  let remove_candidate_to_sink t var =
+    let candidates_to_sink =
+      Variable.Map.remove var t.candidates_to_sink
+    in
+    { t with
+      candidates_to_sink;
+    }
+
+  let remove_candidates_to_sink t vars =
+    let candidates_to_sink =
+      Variable.Map.fold (fun var candidates_to_sink ->
+          Variable.Map.remove var candidates_to_sink)
+        vars
+        t.candidates_to_sink
+    in
+    { t with
+      candidates_to_sink;
+    }
+
+  let sink_let t var ~sink_into ~defining_expr =
+    let to_sink =
+      let to_sink =
+        match Continuation.Map.find sink_into t.to_sink with
+        | exception Not_found -> []
+        | to_sink -> to_sink
+      in
+      Continuation.Map.add sink_into ((var, defining_expr) :: to_sink)
+        t.to_sink
+    in
+    { t with
+      to_sink;
+    }
 end
 
 let rec sink_expr (expr : Flambda.expr) ~state =
@@ -44,11 +147,11 @@ let rec sink_expr (expr : Flambda.expr) ~state =
     in
     let state =
       let was_candidate, state = State.remove_candidate_to_sink state var in
-      if was_candidate
-        && Effect_analysis.only_generative_effects_named defining_expr
-      then
-        State.sink_let state var
-      else
+      match was_candidate with
+      | Some sink_into
+          when Effect_analysis.only_generative_effects_named defining_expr ->
+        State.sink_let state var ~sink_into ~defining_expr
+      | Some _ | None ->
         let fvs =
           Variable.Set.union (Flambda.free_variables_named defining_expr)
             (Variable.Set.remove var (Flambda.free_variables body))
@@ -139,11 +242,11 @@ and sink (expr : Flambda.t) =
         let handler = sink handler in
         match State.sunken_lets_for_handler state name with
         | None -> handler
-        | Some bindings_rev ->
+        | Some bindings ->
           List.fold_left (fun handler (var, defining_expr) ->
               W.create_let_reusing_defining_expr var defining_expr handler)
             handler
-            bindings_rev
+            (List.rev bindings)
       in
       Let_cont { name; body; handler =
         Handler { params; recursive; handler; } }
