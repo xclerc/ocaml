@@ -570,7 +570,10 @@ module With_free_variables : sig
 
   val of_named : named -> named t
 
-  (* CR mshinwell: should prob remove this.  See the simplify fvs stuff *)
+  (** This function shouldn't be used to build a let from the [named t];
+      use the [create_let_...] functions below.  It is intended to be used
+      for situations such as when you want to use the contents of a [named t]
+      for [Effect_analysis]. *)
   val to_named : named t -> named
 
   (** Takes the time required to calculate the free variables of the given
