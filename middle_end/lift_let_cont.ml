@@ -21,7 +21,7 @@ type thing_to_lift =
   | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
   | Let_cont of Continuation.t * Flambda.let_cont_handler
 
-let bind_things_to_lift ~rev_things ~around =
+let bind_things_to_remain ~rev_things ~around =
   List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
       match thing with
       | Let (var, defining_expr) ->
@@ -49,12 +49,12 @@ module State = struct
     mutable_variables_used : Mutable_variable.Set.t;
   }
 
-  let create () = {
+  let create ~variables_to_remain = {
     constants = [];
     to_be_lifted = [];
     to_remain = [];
     continuations_to_remain = Continuation.Set.empty;
-    variables_to_remain = Variable.Set.empty;
+    variables_to_remain = Variable.Set.of_list variables_to_remain;
     mutable_variables_to_remain = Mutable_variable.Set.empty;
     mutable_variables_used = Mutable_variable.Set.empty;
   }
@@ -183,7 +183,7 @@ let rec lift_expr (expr : Flambda.expr) ~state =
 Format.eprintf "Lifting handler for %a\n%!" Continuation.print name;
 *)
     let handler_terminator, handler_state =
-      lift_expr handler ~state:(State.create ())
+      lift_expr handler ~state:(State.create ~variables_to_remain:params)
     in
 (*
 Format.eprintf "Finished handler for %a\n%!" Continuation.print name;
@@ -191,45 +191,38 @@ Format.eprintf "Finished handler for %a\n%!" Continuation.print name;
     let state =
       State.add_constants_from_state state ~from:handler_state
     in
-    let to_be_lifted = List.rev (State.rev_to_be_lifted handler_state) in
 (*
 let name' = name in
 *)
-    let state, handler_state =
-      List.fold_left (fun (state, handler_state) (name, handler) ->
+    let state =
+      List.fold_left (fun state (name, handler) ->
           let fcs =
             Flambda.free_continuations_of_let_cont_handler ~name ~handler
           in
           let fvs =
             Flambda.free_variables_of_let_cont_handler handler
           in
-          let doesn't_use_params =
-            Variable.Set.is_empty (
-              Variable.Set.inter (Variable.Set.of_list params) fvs)
-          in
 (*
-Format.eprintf "Considering lifting %a outside %a.  fvs %a DUP %b\n%!"
+Format.eprintf "Considering lifting %a outside %a.  fvs %a\n%!"
   Continuation.print name
   Continuation.print name'
-  Variable.Set.print fvs
-  doesn't_use_params;
+  Variable.Set.print fvs;
 *)
           (* Note that we don't have to check any uses of mutable variables
              in [handler], since any such uses would prevent [handler] from
              being in [to_be_lifted]. *)
           if State.can_lift_if_using_continuations state fcs
             && State.can_lift_if_using_variables state fvs
-            && doesn't_use_params
           then
-            State.lift_continuation state ~name ~handler, handler_state
+            State.lift_continuation state ~name ~handler
           else
-            state, State.to_remain handler_state (Let_cont (name, handler)))
-        (state, handler_state)
-        to_be_lifted
+            State.to_remain state (Let_cont (name, handler)))
+        state
+        (List.rev (State.rev_to_be_lifted handler_state))
     in
     let rev_to_remain = State.rev_to_remain handler_state in
     let handler =
-      bind_things_to_lift ~rev_things:rev_to_remain ~around:handler_terminator
+      bind_things_to_remain ~rev_things:rev_to_remain ~around:handler_terminator
     in
 (*
 Format.eprintf "New handler for %a is:\n%a\n"
@@ -282,9 +275,11 @@ and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
 and lift (expr : Flambda.t) =
-  let expr, state = lift_expr expr ~state:(State.create ()) in
+  let expr, state =
+    lift_expr expr ~state:(State.create ~variables_to_remain:[])
+  in
   let expr =
-    bind_things_to_lift ~rev_things:(State.rev_to_remain state) ~around:expr
+    bind_things_to_remain ~rev_things:(State.rev_to_remain state) ~around:expr
   in
   let expr =
     List.fold_left (fun body (name, handler) : Flambda.t ->

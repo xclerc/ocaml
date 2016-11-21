@@ -884,7 +884,7 @@ let rec free_continuations (expr : expr) =
         (free_continuations_of_let_cont_handler ~name ~handler)
         (free_continuations body))
   | Apply_cont (cont, _args) -> Continuation.Set.singleton cont
-  | Apply _ -> Continuation.Set.empty
+  | Apply { continuation; } -> Continuation.Set.singleton continuation
   | Switch (_scrutinee, switch) ->
     let consts = List.map (fun (_int, cont) -> cont) switch.consts in
     let blocks = List.map (fun (_pat, cont) -> cont) switch.blocks in
