@@ -378,7 +378,8 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
         prepare_option env default (fun default ->
           k (L.Lstringswitch (scrutinee, cases, default, loc)))))
   | Lstaticraise (cont, args) ->
-    let required_poptraps = Env.required_poptrap_for_staticraise env cont in
+(* XXX this causes a failure on bytes.ml *)
+    let required_poptraps = [] (* Env.required_poptrap_for_staticraise env cont *) in
     prepare_list env args (fun args ->
       let staticraise =
         match required_poptraps with

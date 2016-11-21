@@ -215,7 +215,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     Let_cont {
       name = after_continuation;
       administrative = false;
-      params = [];
+      params = [result_var];
       recursive = Nonrecursive;
       body =
         Let_cont  {
