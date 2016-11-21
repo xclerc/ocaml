@@ -435,6 +435,8 @@ module Env = struct
 
   let in_handler_of_recursive_continuation t cont =
     Continuation.Set.mem cont t.in_handlers_of_recursive_continuations
+
+  let continuations_in_scope t = t.continuations
 end
 
 let initial_inlining_threshold ~round : Inlining_cost.Threshold.t =

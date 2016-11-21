@@ -45,7 +45,7 @@ type inlining_result =
   | Didn't_inline
   | Inlined of Flambda.expr
 
-let try_inlining r ~cont
+let try_inlining ~cont
       ~(use : Inline_and_simplify_aux.Continuation_uses.Use.t)
       ~(handler : Flambda.continuation_handler) ~inline_unconditionally
       ~simplify =
@@ -59,14 +59,24 @@ let try_inlining r ~cont
       handler.handler
       handler.params use.args
   in
-(*  let existing_benefit = R.benefit r in *)
-  let r = R.reset_benefit r in
+  let r =
+    Continuation.Map.fold (fun cont cont_approx r ->
+        R.prepare_for_continuation_uses r cont
+          ~num_params:(Continuation_approx.num_params cont_approx)
+          ~handler:None)
+      (E.continuations_in_scope use.env)
+      (R.create ())
+  in
   let original : Flambda.t = Apply_cont (cont, use.args) in
+(*
 Format.eprintf "try_inlining simplification %a starts\n%!"
   Continuation.print cont;
+*)
   let expr, r = simplify (E.activate_freshening use.env) r expr in
+(*
 Format.eprintf "try_inlining simplification %a ends\n%!"
   Continuation.print cont;
+*)
   let inlining_benefit = B.remove_prim (R.benefit r) in
 (*  let r = R.map_benefit r (fun _ -> existing_benefit) in *)
   let module W = Inlining_cost.Whether_sufficient_benefit in
@@ -112,7 +122,7 @@ let find_inlinings r ~simplify =
             match handler with
             | None -> Didn't_inline  (* e.g. a return continuation *)
             | Some handler ->
-              try_inlining r ~cont ~use ~handler ~inline_unconditionally
+              try_inlining ~cont ~use ~handler ~inline_unconditionally
                 ~simplify
           in
           match inlining_result with

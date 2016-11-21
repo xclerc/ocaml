@@ -582,14 +582,17 @@ and simplify_set_of_closures original_env r
       in
       let cont_approx =
         Continuation_approx.create_unknown ~name:continuation_param
+          ~num_params:1
       in
       let closure_env =
         E.add_continuation (E.set_freshening closure_env freshening)
           continuation_param cont_approx
       in
+(*
 Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
   Continuation.print function_decl.continuation_param
   Continuation.print continuation_param;
+*)
       continuation_param, closure_env
     in
     let body, r =
@@ -603,10 +606,10 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
               ~num_params:1 ~handler:None
           in
           let body, r = simplify body_env r function_decl.body in
-          let r, _ = R.exit_scope_catch r continuation_param in
           let body =
             Continuation_inlining.for_toplevel_expression body r ~simplify
           in
+          let r, _ = R.exit_scope_catch r continuation_param in
           body, r)
     in
     let inline : Lambda.inline_attribute =
@@ -1294,12 +1297,13 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     let approx, r =
       match handler with
       | Handler ({ params; _ } as handler) ->
+        let num_params = List.length params in
         let r =
           R.prepare_for_continuation_uses r cont
-            ~num_params:(List.length params)
+            ~num_params
             ~handler:(Some handler)
         in
-        Continuation_approx.create ~name:cont ~handler, r
+        Continuation_approx.create ~name:cont ~handler ~num_params, r
       | Alias alias_of ->
         let alias_of =
           Freshening.apply_static_exception (E.freshening env) alias_of
@@ -1530,12 +1534,12 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
   in
   let cont_approx =
     Continuation_approx.create_unknown ~name:function_decl.continuation_param
+      ~num_params:1
   in
   let closure_env =
     E.add_continuation closure_env function_decl.continuation_param
       cont_approx
   in
-  (* XXX this might be wrong as well *)
   let r =
     R.prepare_for_continuation_uses (R.create ())
       function_decl.continuation_param
@@ -1730,7 +1734,9 @@ let rec simplify_program_body env r (program : Flambda.program_body)
       | [] -> [], [], r
       | (h, cont) :: t ->
         let t', approxs, r = simplify_fields env r t in
-        let cont_approx = Continuation_approx.create_unknown ~name:cont in
+        let cont_approx =
+          Continuation_approx.create_unknown ~name:cont ~num_params:1
+        in
         let env = E.add_continuation env cont cont_approx in
         let r =
           R.prepare_for_continuation_uses r cont
@@ -1769,7 +1775,9 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     (* CR mshinwell: This should turn things into [Effect] when it can, no? *)
     Initialize_symbol (symbol, tag, fields, program), r
   | Effect (expr, cont, program) ->
-    let cont_approx = Continuation_approx.create_unknown ~name:cont in
+    let cont_approx =
+      Continuation_approx.create_unknown ~name:cont ~num_params:1
+    in
     let env = E.add_continuation env cont cont_approx in
     let r =
       R.prepare_for_continuation_uses r cont

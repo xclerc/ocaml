@@ -17,16 +17,20 @@
 type t = {
   name : Continuation.t;
   handler : Flambda.continuation_handler option;
+  num_params : int;
 }
 
-let create ~name ~(handler : Flambda.continuation_handler) =
+let create ~name ~(handler : Flambda.continuation_handler) ~num_params =
   { name;
     handler = Some handler;
+    num_params;
   }
 
-let create_unknown ~name =
+let create_unknown ~name ~num_params =
   { name;
     handler = None;
+    num_params;
   }
 
 let name t = t.name
+let num_params t = t.num_params

@@ -21,8 +21,11 @@ type t
 val create
    : name:Continuation.t
   -> handler:Flambda.continuation_handler
+  -> num_params:int
   -> t
 
-val create_unknown : name:Continuation.t -> t
+val create_unknown : name:Continuation.t -> num_params:int -> t
 
 val name : t -> Continuation.t
+
+val num_params : t -> int
