@@ -17,7 +17,6 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module W = Flambda.With_free_variables
-
 (*
 let print_continuation_stack ppf stack =
   match stack with
@@ -204,15 +203,34 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
         | Some sink_into
           when Effect_analysis.only_generative_effects_named
             (W.to_named defining_expr) ->
+(*
+Format.eprintf "binding for %a: sink_into not reversed is %a\n%!"
+  Variable.print var
+  (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
+    Continuation.print) (List.map fst sink_into);
+*)
           begin match List.rev sink_into with
           | [] -> state
           | (sink_into, _recursive)::_ ->
+(*
+Format.eprintf "binding for %a: reversed being sunk to %a\n%!"
+  Variable.print var
+  (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
+    Continuation.print) (List.map fst s);
+*)
             State.sink_let state var ~sink_into ~defining_expr
           end
-        | _ -> state
+        | _ ->
+(*
+Format.eprintf "binding for %a: not to be moved\n%!"
+  Variable.print var;
+*)
+          state
       in
       let add_candidates ~sink_into =
-(*let var' = var in*)
+(*
+let var' = var in
+*)
         Variable.Set.fold (fun var state ->
 (*
 Format.eprintf "Considering fv %a of defining_expr of %a: "
@@ -227,14 +245,14 @@ Format.eprintf "not a candidate --> %a\n%!"
 *)
                 sink_into
               | Some sink_into' ->
-let result =                join_continuation_stacks sink_into sink_into' in
+                join_continuation_stacks sink_into sink_into'
 (*
 Format.eprintf "joining: already needed at %a now also needed at %a --> %a\n%!"
   print_continuation_stack sink_into'
   print_continuation_stack sink_into
   print_continuation_stack result;
-*)
 result
+*)
             in
             State.add_candidates_to_sink state
               ~sink_into
@@ -245,12 +263,19 @@ result
       let keep_let () =
         W.create_let_reusing_defining_expr var defining_expr body
       in
-      begin match sink_into with
-      | Some sink_into -> keep_let (), add_candidates ~sink_into
-      | None ->
-        if Effect_analysis.only_generative_effects_named
+      let only_generative_effects =
+        Effect_analysis.only_generative_effects_named
           (W.to_named defining_expr)
-        then begin
+      in
+      (* CR mshinwell: Try to improve the structure of the code here and
+         above *)
+      begin match sink_into with
+      | Some sink_into when only_generative_effects ->
+        keep_let (), add_candidates ~sink_into
+      | Some _sink_into ->
+        keep_let (), add_candidates ~sink_into:[]
+      | None ->
+        if only_generative_effects then begin
 (*
 Format.eprintf "deleting let %a\n%!" Variable.print var;
 *)
@@ -351,6 +376,12 @@ and sink (expr : Flambda.t) =
       let handler =
         let handler = sink handler in
         let bindings = State.sunken_lets_for_handler state name in
+(*
+Format.eprintf "New bindings for top of %a outermost first is %a\n%!"
+  Continuation.print name
+  (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
+    Variable.print) (List.map fst bindings);
+*)
         List.fold_left (fun handler (var, defining_expr) ->
             W.create_let_reusing_defining_expr var defining_expr handler)
           handler
@@ -360,7 +391,16 @@ and sink (expr : Flambda.t) =
         Handler { params; recursive; handler; } }
     | Apply _ | Apply_cont _ | Switch _ -> expr
   in
+(*
+Format.eprintf "sink_lets starting with:@;%a\n" Flambda.print expr;
+*)
+let expr =
   sink expr
+in
+(*
+Format.eprintf "sink_lets returning:@;%a\n" Flambda.print expr;
+*)
+expr
 
 let run program =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:sink
