@@ -1835,11 +1835,11 @@ middle_end/simplify_primitives.cmi : middle_end/base_types/variable.cmi \
 middle_end/sink_lets.cmo : middle_end/base_types/variable.cmi \
     middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
     middle_end/effect_analysis.cmi middle_end/base_types/continuation.cmi \
-    middle_end/sink_lets.cmi
+    parsing/asttypes.cmi middle_end/sink_lets.cmi
 middle_end/sink_lets.cmx : middle_end/base_types/variable.cmx \
     middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
     middle_end/effect_analysis.cmx middle_end/base_types/continuation.cmx \
-    middle_end/sink_lets.cmi
+    parsing/asttypes.cmi middle_end/sink_lets.cmi
 middle_end/sink_lets.cmi : middle_end/flambda.cmi
 middle_end/unbox_closures.cmo : middle_end/base_types/variable.cmi \
     middle_end/inlining_cost.cmi middle_end/inline_and_simplify_aux.cmi \

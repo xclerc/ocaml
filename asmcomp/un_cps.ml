@@ -202,6 +202,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
         List.map (fun (id, ulam) -> id, inline env ulam) bindings
       in
       Uletrec (bindings, inline env ulam)
+    | Uprim (Preturn, [arg], _dbg) -> inline env arg
     | Uprim (prim, args, dbg) ->
       Uprim (prim, inline_list env args, dbg)
     | Uswitch (scrutinee, switch) ->

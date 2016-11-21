@@ -582,9 +582,12 @@ module Result = struct
     let uses =
       match Continuation.Map.find cont t.used_continuations with
       | exception Not_found -> Continuation_uses.create ~num_params ~handler
-      | _ ->
-        Misc.fatal_errorf "Already in scope of continuation %a"
-          Continuation.print cont
+      | uses ->
+        if Continuation_uses.is_out_of_scope uses then
+          Continuation_uses.create ~num_params ~handler
+        else
+          Misc.fatal_errorf "Already in scope of continuation %a"
+            Continuation.print cont
     in
     { t with
       used_continuations =
@@ -599,7 +602,12 @@ module Result = struct
       | exception Not_found ->
         Misc.fatal_errorf "Not in scope of continuation %a"
           Continuation.print cont
-      | uses -> uses
+      | uses ->
+        if Continuation_uses.is_out_of_scope uses then
+          Misc.fatal_errorf "Not in scope of continuation %a"
+            Continuation.print cont
+        else
+          uses
     in
     let uses =
       if inlinable_position then
@@ -613,8 +621,13 @@ module Result = struct
         Continuation.Map.add cont uses t.used_continuations;
     }
 
+  (* CR mshinwell: Split used_continuations into two maps, one for the ones
+     still in scope, and another for the ones only being retained for
+     [Continuation_inlining]. *)
   let is_used_continuation t i =
-    Continuation.Map.mem i t.used_continuations
+    match Continuation.Map.find i t.used_continuations with
+    | exception Not_found -> false
+    | uses -> not (Continuation_uses.is_out_of_scope uses)
 
   let used_continuations t =
     Continuation.Map.keys t.used_continuations

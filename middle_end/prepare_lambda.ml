@@ -15,6 +15,7 @@
 (**************************************************************************)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
+[@@@ocaml.warning "-32"] (* XXX temporary *)
 
 module L = Lambda
 
@@ -406,7 +407,9 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
     prepare env_body body (fun body ->
       prepare env handler (fun handler ->
         k (L.Lstaticcatch (body, (cont, args), handler))))
-  | Ltrywith (body, id, handler) ->
+  | Ltrywith (body, _id, _handler) ->
+    prepare env body k
+(* XXX temporarily disabled to test the rest
     let cont = L.next_raise_count () in
     let env_body =
       Env.add_current_exception_continuation
@@ -424,6 +427,7 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
                  Lprim (Ppoptrap_lambda cont, [], loc))),
              (cont, [id]),
              handler))))
+*)
   | Lifthenelse (cond, ifso, ifnot) ->
     prepare env cond (fun cond ->
       prepare env ifso (fun ifso ->

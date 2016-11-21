@@ -62,7 +62,11 @@ let try_inlining r ~cont
 (*  let existing_benefit = R.benefit r in *)
   let r = R.reset_benefit r in
   let original : Flambda.t = Apply_cont (cont, use.args) in
+Format.eprintf "try_inlining simplification %a starts\n%!"
+  Continuation.print cont;
   let expr, r = simplify (E.activate_freshening use.env) r expr in
+Format.eprintf "try_inlining simplification %a ends\n%!"
+  Continuation.print cont;
   let inlining_benefit = B.remove_prim (R.benefit r) in
 (*  let r = R.map_benefit r (fun _ -> existing_benefit) in *)
   let module W = Inlining_cost.Whether_sufficient_benefit in

@@ -154,8 +154,7 @@ let for_primitive (prim : Lambda.primitive) =
     Misc.fatal_errorf "The primitive %a should have been eliminated by the \
         [Closure_conversion] pass."
       Printlambda.primitive prim
-  | Preturn ->
-    Misc.fatal_error "Preturn should not appear before [Flambda_to_clambda]"
+  | Preturn -> Arbitrary_effects, Has_coeffects
 
 type return_type =
   | Float

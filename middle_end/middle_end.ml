@@ -183,7 +183,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       else
         loop flam
     in
-    Format.fprintf ppf "Result:@ %a@." Flambda.print_program flam;
     let flam = back_end flam in
     (* Check that there aren't any unused "always inline" attributes. *)
     Flambda_iterators.iter_apply_on_program flam ~f:(fun apply ->

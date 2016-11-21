@@ -22,6 +22,9 @@ include Numbers.Int
 let raise_count = ref 0
 
 let next_raise_count () =
+Format.eprintf "Creation of continuation %d:\n%s\n%!"
+  (!raise_count + 1)
+  (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10));
   incr raise_count ;
   !raise_count
 
