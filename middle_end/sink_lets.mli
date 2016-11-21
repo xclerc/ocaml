@@ -31,6 +31,8 @@
       <body>
 
     when x is not free in <body>.
+
+    Sinking of lets like this exposes more opportunities for Comballoc.
 *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
