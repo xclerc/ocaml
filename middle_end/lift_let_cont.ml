@@ -70,6 +70,9 @@ module State = struct
     }
 
   let lift_continuation t ~name ~handler =
+(*
+Format.eprintf "Continuation %a lifted\n%!" Continuation.print name;
+*)
     { t with
       to_be_lifted = (name, handler) :: t.to_be_lifted;
     }
@@ -79,6 +82,9 @@ module State = struct
       match thing with
       | Let _ | Let_mutable _ -> t.continuations_to_remain
       | Let_cont (name, _) ->
+(*
+Format.eprintf "Continuation %a remaining\n%!" Continuation.print name;
+*)
         Continuation.Set.add name t.continuations_to_remain
     in
     let variables_to_remain =
@@ -173,15 +179,24 @@ let rec lift_expr (expr : Flambda.expr) ~state =
     lift_expr body ~state
   | Let_cont { name; body; handler =
       Handler { params; recursive; handler; } } ->
+(*
+Format.eprintf "Lifting handler for %a\n%!" Continuation.print name;
+*)
     let handler_terminator, handler_state =
       lift_expr handler ~state:(State.create ())
     in
+(*
+Format.eprintf "Finished handler for %a\n%!" Continuation.print name;
+*)
     let state =
       State.add_constants_from_state state ~from:handler_state
     in
     let to_be_lifted = List.rev (State.rev_to_be_lifted handler_state) in
-    let state =
-      List.fold_left (fun state (name, handler) ->
+(*
+let name' = name in
+*)
+    let state, handler_state =
+      List.fold_left (fun (state, handler_state) (name, handler) ->
           let fcs =
             Flambda.free_continuations_of_let_cont_handler ~name ~handler
           in
@@ -192,6 +207,13 @@ let rec lift_expr (expr : Flambda.expr) ~state =
             Variable.Set.is_empty (
               Variable.Set.inter (Variable.Set.of_list params) fvs)
           in
+(*
+Format.eprintf "Considering lifting %a outside %a.  fvs %a DUP %b\n%!"
+  Continuation.print name
+  Continuation.print name'
+  Variable.Set.print fvs
+  doesn't_use_params;
+*)
           (* Note that we don't have to check any uses of mutable variables
              in [handler], since any such uses would prevent [handler] from
              being in [to_be_lifted]. *)
@@ -199,16 +221,20 @@ let rec lift_expr (expr : Flambda.expr) ~state =
             && State.can_lift_if_using_variables state fvs
             && doesn't_use_params
           then
-            State.lift_continuation state ~name ~handler
+            State.lift_continuation state ~name ~handler, handler_state
           else
-            State.to_remain state (Let_cont (name, handler)))
-        state
+            state, State.to_remain handler_state (Let_cont (name, handler)))
+        (state, handler_state)
         to_be_lifted
     in
     let rev_to_remain = State.rev_to_remain handler_state in
     let handler =
       bind_things_to_lift ~rev_things:rev_to_remain ~around:handler_terminator
     in
+(*
+Format.eprintf "New handler for %a is:\n%a\n"
+  Continuation.print name Flambda.print handler;
+*)
     let handler : Flambda.let_cont_handler =
       Handler {
         params;

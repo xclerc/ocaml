@@ -76,6 +76,7 @@ let try_inlining r ~cont
       ~round:(E.round use.env)
   in
   if (not inline_unconditionally) && W.evaluate wsb then begin
+(*
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
   Variable.print_list use.args
@@ -84,12 +85,15 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
   (W.print_description ~subfunctions:false) wsb
   Flambda.print original
   Flambda.print expr;
+*)
     Inlined expr
   end else begin
+(*
 Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   Continuation.print cont
   Variable.print_list use.args
   B.print inlining_benefit;
+*)
     Didn't_inline
   end
 
