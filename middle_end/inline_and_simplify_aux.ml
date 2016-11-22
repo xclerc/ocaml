@@ -618,10 +618,6 @@ module Result = struct
     }, approxs, uses
 
   let define_continuation t cont uses approx =
-    if Continuation.Map.mem cont t.defined_continuations then begin
-      Misc.fatal_errorf "Continuation %a already defined"
-        Continuation.print cont
-    end;
     { t with
       defined_continuations =
         Continuation.Map.add cont (uses, approx) t.defined_continuations;
