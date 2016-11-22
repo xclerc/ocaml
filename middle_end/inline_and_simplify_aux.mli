@@ -286,10 +286,7 @@ module Continuation_uses : sig
 
   type t
 
-  val create
-     : num_params:int
-    -> handler:Flambda.continuation_handler option
-    -> t
+  val create : unit -> t
 
   val add_inlinable_use
      : t
@@ -305,10 +302,7 @@ module Continuation_uses : sig
 
   val inlinable_application_points : t -> Use.t list
 
-  val handler : t -> Flambda.continuation_handler option
   val linearly_used : t -> bool
-
-  val meet_of_args_approxs : t -> Simple_value_approx.t list
 end
 
 module Result : sig
@@ -338,15 +332,6 @@ module Result : sig
       result structure. *)
   val is_used_continuation : t -> Continuation.t -> bool
 
-  (** Mark that we are entering the scope of a continuation-binding
-      construct. *)
-  val prepare_for_continuation_uses
-     : t
-    -> Continuation.t
-    -> num_params:int
-    -> handler:Flambda.continuation_handler option
-    -> t
-
   (** Mark that the given continuation has been used and provide
       an approximation for the arguments.  [inlinable_position] should be
       [true] if the use of the continuation corresponds to a place where
@@ -366,17 +351,27 @@ module Result : sig
   val exit_scope_catch
      : t
     -> Continuation.t
-    -> t * Simple_value_approx.t list
+    -> num_params:int
+    -> t * Simple_value_approx.t list * Continuation_uses.t
 
-  (** Continuation usage information for the inliner. *)
-  val continuation_uses : t -> Continuation_uses.t Continuation.Map.t
+  (** Record the post-simplification definition of a continuation. *)
+  val define_continuation
+     : t
+    -> Continuation.t
+    -> Continuation_uses.t
+    -> Continuation_approx.t
+    -> t
+
+  (** Continuation definition information for the inliner. *)
+  val continuation_definitions_with_uses
+     : t
+    -> (Continuation_uses.t * Continuation_approx.t) Continuation.Map.t
 
   (** Check that there is no continuation binding construct in scope. *)
-  val no_defined_continuations : t -> bool
+  val no_continuations_in_scope : t -> bool
 
-  (** All continuations for which [prepare_for_continuation_uses] has been
-      called on the given result structure.  O(n*log(n)).  Used only for
-      debugging purposes. *)
+  (** All continuations for which [continuation_uses] has been
+      called on the given result structure.  O(n*log(n)). *)
   val used_continuations : t -> Continuation.Set.t
 
   (** The benefit to be gained by inlining the subexpression whose

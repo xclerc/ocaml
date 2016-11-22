@@ -475,40 +475,33 @@ module Continuation_uses = struct
   end
 
   type t = {
-    handler : Flambda.continuation_handler option;
     inlinable_application_points : Use.t list;
     num_non_inlinable_application_points : Num_continuation_uses.t;
-    meet_of_args_approxs : A.t option list;
-    is_out_of_scope : bool;
+    meet_of_args_approxs : A.t list option;
   }
 
-  let create ~num_params ~handler =
-    let meet_of_args_approxs =
-      Array.to_list (Array.make num_params None)
-    in
-    { handler;
-      inlinable_application_points = [];
+  let create () =
+    { inlinable_application_points = [];
       num_non_inlinable_application_points = Zero;
-      meet_of_args_approxs;
-      is_out_of_scope = false;
+      meet_of_args_approxs = None;
     }
 
-  let compute_meet_of_args_approxs t env ~args_approxs =
-    if List.length args_approxs <> List.length t.meet_of_args_approxs then
+  let compute_meet_of_args_approxs env args_approxs1 args_approxs2 =
+    if List.length args_approxs1 <> List.length args_approxs2 then
       Misc.fatal_errorf "Wrong number of arguments for continuation"
     else
-      List.map2 (fun approx approx_opt ->
-          match approx_opt with
-          | None -> Some approx
-          | Some approx' ->
-            Some (A.meet approx approx'
-              ~really_import_approx:(Env.really_import_approx env)))
-        args_approxs t.meet_of_args_approxs
+      List.map2 (fun approx1 approx2 ->
+          A.meet approx1 approx2
+            ~really_import_approx:(Env.really_import_approx env))
+        args_approxs1 args_approxs2
 
   let add_inlinable_use t env ~args =
     let args, args_approxs = List.split args in
     let meet_of_args_approxs =
-      compute_meet_of_args_approxs t env ~args_approxs
+      match t.meet_of_args_approxs with
+      | None -> Some args_approxs
+      | Some args_approxs' ->
+        Some (compute_meet_of_args_approxs env args_approxs args_approxs')
     in
     { t with
       inlinable_application_points =
@@ -518,7 +511,10 @@ module Continuation_uses = struct
 
   let add_non_inlinable_use t env ~args_approxs =
     let meet_of_args_approxs =
-      compute_meet_of_args_approxs t env ~args_approxs
+      match t.meet_of_args_approxs with
+      | None -> Some args_approxs
+      | Some args_approxs' ->
+        Some (compute_meet_of_args_approxs env args_approxs args_approxs')
     in
     { t with
       num_non_inlinable_application_points =
@@ -540,23 +536,23 @@ module Continuation_uses = struct
     | One, Zero -> true
     | _, _ -> false
 
-  let meet_of_args_approxs t =
-    List.map (function
-        | None -> A.value_unknown Other
-        | Some approx -> approx)
-      t.meet_of_args_approxs
+  let meet_of_args_approxs t ~num_params =
+    match t.meet_of_args_approxs with
+    | Some args_approxs ->
+      assert (List.length args_approxs = num_params);
+      args_approxs
+    | None ->
+      Array.to_list (Array.make num_params (A.value_unknown Other))
 
   let inlinable_application_points t = t.inlinable_application_points
-  let handler t = t.handler
-
-  let set_is_out_of_scope t = { t with is_out_of_scope = true; }
-  let is_out_of_scope t = t.is_out_of_scope
 end
 
 module Result = struct
   type t =
     { approx : Simple_value_approx.t;
       used_continuations : Continuation_uses.t Continuation.Map.t;
+      defined_continuations :
+        (Continuation_uses.t * Continuation_approx.t) Continuation.Map.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
       num_direct_applications : int;
@@ -565,6 +561,7 @@ module Result = struct
   let create () =
     { approx = Simple_value_approx.value_unknown Other;
       used_continuations = Continuation.Map.empty;
+      defined_continuations = Continuation.Map.empty;
       inlining_threshold = None;
       benefit = Inlining_cost.Benefit.zero;
       num_direct_applications = 0;
@@ -580,36 +577,11 @@ module Result = struct
     in
     set_approx t meet
 
-  let prepare_for_continuation_uses t cont ~num_params ~handler =
-    let uses =
-      match Continuation.Map.find cont t.used_continuations with
-      | exception Not_found -> Continuation_uses.create ~num_params ~handler
-      | uses ->
-        if Continuation_uses.is_out_of_scope uses then
-          Continuation_uses.create ~num_params ~handler
-        else
-          Misc.fatal_errorf "Already in scope of continuation %a"
-            Continuation.print cont
-    in
-    { t with
-      used_continuations =
-        Continuation.Map.add cont uses t.used_continuations;
-    }
-
-  (* CR mshinwell: bad interface - shouldn't need to specify args when
-     non-inlinable *)
   let use_continuation t env cont ~inlinable_position ~args ~args_approxs =
     let uses =
       match Continuation.Map.find cont t.used_continuations with
-      | exception Not_found ->
-        Misc.fatal_errorf "Not in scope of continuation %a"
-          Continuation.print cont
-      | uses ->
-        if Continuation_uses.is_out_of_scope uses then
-          Misc.fatal_errorf "Not in scope of continuation %a"
-            Continuation.print cont
-        else
-          uses
+      | exception Not_found -> Continuation_uses.create ()
+      | uses -> uses
     in
     let uses =
       if inlinable_position then
@@ -623,26 +595,16 @@ module Result = struct
         Continuation.Map.add cont uses t.used_continuations;
     }
 
-  (* CR mshinwell: Split used_continuations into two maps, one for the ones
-     still in scope, and another for the ones only being retained for
-     [Continuation_inlining]. *)
   let is_used_continuation t i =
-    match Continuation.Map.find i t.used_continuations with
-    | exception Not_found -> false
-    | uses -> not (Continuation_uses.is_out_of_scope uses)
+    Continuation.Map.mem i t.used_continuations
 
   let used_continuations t =
     Continuation.Map.keys t.used_continuations
 
-  (* CR mshinwell: naming! *)
-  let continuation_uses t = t.used_continuations
+  let no_continuations_in_scope t =
+    Continuation.Map.is_empty t.used_continuations
 
-  let no_defined_continuations t =
-    Continuation.Map.for_all (fun _cont uses ->
-        Continuation_uses.is_out_of_scope uses)
-      t.used_continuations
-
-  let exit_scope_catch t i =
+  let exit_scope_catch t i ~num_params =
     let uses =
       try Continuation.Map.find i t.used_continuations
       with Not_found ->
@@ -650,12 +612,23 @@ module Result = struct
             continuation %a"
           Continuation.print i
     in
-    let approxs = Continuation_uses.meet_of_args_approxs uses in
-    let uses = Continuation_uses.set_is_out_of_scope uses in
+    let approxs = Continuation_uses.meet_of_args_approxs uses ~num_params in
     { t with
-      used_continuations =
-        Continuation.Map.add i uses t.used_continuations;
-    }, approxs
+      used_continuations = Continuation.Map.remove i t.used_continuations;
+    }, approxs, uses
+
+  let define_continuation t cont uses approx =
+    if Continuation.Map.mem cont t.defined_continuations then begin
+      Misc.fatal_errorf "Continuation %a already defined"
+        Continuation.print cont
+    end;
+    { t with
+      defined_continuations =
+        Continuation.Map.add cont (uses, approx) t.defined_continuations;
+    }
+
+  let continuation_definitions_with_uses t =
+    t.defined_continuations
 
   let map_benefit t f =
     { t with benefit = f t.benefit }

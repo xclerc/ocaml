@@ -59,14 +59,7 @@ let try_inlining ~cont
       handler.handler
       handler.params use.args
   in
-  let r =
-    Continuation.Map.fold (fun cont cont_approx r ->
-        R.prepare_for_continuation_uses r cont
-          ~num_params:(Continuation_approx.num_params cont_approx)
-          ~handler:None)
-      (E.continuations_in_scope use.env)
-      (R.create ())
-  in
+  let r = R.create () in
   let original : Flambda.t = Apply_cont (cont, use.args) in
 (*
 Format.eprintf "try_inlining simplification %a starts\n%!"
@@ -112,15 +105,13 @@ Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   end
 
 let find_inlinings r ~simplify =
-  let all_uses = R.continuation_uses r in
   let module U = Inline_and_simplify_aux.Continuation_uses in
-  Continuation.Map.fold (fun cont (uses : U.t) inlinings ->
-      let handler = U.handler uses in
+  Continuation.Map.fold (fun cont (uses, approx) inlinings ->
       let inline_unconditionally = U.linearly_used uses in
       List.fold_left (fun inlinings (use : U.Use.t) ->
           let inlining_result =
-            match handler with
-            | None -> Didn't_inline  (* e.g. a return continuation *)
+            match Continuation_approx.handler approx with
+            | None -> Didn't_inline
             | Some handler ->
               try_inlining ~cont ~use ~handler ~inline_unconditionally
                 ~simplify
@@ -131,7 +122,7 @@ let find_inlinings r ~simplify =
             Continuation_with_args.Map.add (cont, use.args) inlined inlinings)
         inlinings
         (U.inlinable_application_points uses))
-    all_uses
+    (R.continuation_definitions_with_uses r)
     Continuation_with_args.Map.empty
 
 (* At the moment this doesn't apply the substitution to handlers as we

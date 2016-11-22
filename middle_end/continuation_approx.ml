@@ -34,3 +34,4 @@ let create_unknown ~name ~num_params =
 
 let name t = t.name
 let num_params t = t.num_params
+let handler t = t.handler

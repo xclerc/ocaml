@@ -601,15 +601,13 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
           (Inlining_decision.should_inline_inside_declaration function_decl)
         ~dbg:function_decl.dbg
         ~f:(fun body_env ->
-          let r =
-            R.prepare_for_continuation_uses r continuation_param
-              ~num_params:1 ~handler:None
-          in
           let body, r = simplify body_env r function_decl.body in
           let body =
             Continuation_inlining.for_toplevel_expression body r ~simplify
           in
-          let r, _ = R.exit_scope_catch r continuation_param in
+          let r, _, _ =
+            R.exit_scope_catch r continuation_param ~num_params:1
+          in
           body, r)
     in
     let inline : Lambda.inline_attribute =
@@ -1298,11 +1296,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       match handler with
       | Handler ({ params; _ } as handler) ->
         let num_params = List.length params in
-        let r =
-          R.prepare_for_continuation_uses r cont
-            ~num_params
-            ~handler:(Some handler)
-        in
         Continuation_approx.create ~name:cont ~handler ~num_params, r
       | Alias alias_of ->
         let alias_of =
@@ -1339,7 +1332,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         Let_cont let_cont, ret r A.value_bottom
       | Handler { params = []; recursive = Nonrecursive;
           handler = Apply_cont (cont', []); } ->
-        let r, args_approxs = R.exit_scope_catch r cont in
+        let r, args_approxs, _uses = R.exit_scope_catch r cont ~num_params:0 in
         let cont' =
           Freshening.apply_static_exception (E.freshening env) cont'
         in
@@ -1356,6 +1349,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           | Nonrecursive -> env
           | Recursive -> body_env
         in
+        let num_params = List.length vars in
         match (body : Flambda.t), recursive with
         | Apply_cont (cont', args), Nonrecursive
             when Continuation.equal cont cont' ->
@@ -1364,14 +1358,18 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                 Flambda.create_let var (Var arg) body)
               handler vars args
           in
-          let r, _args_approxs = R.exit_scope_catch r cont in
+          let r, _args_approxs, _uses =
+            R.exit_scope_catch r cont ~num_params
+          in
           assert (not (R.is_used_continuation r cont));
           simplify env r handler
         | _, _ ->
-          let r, vars_approxs =
+          let r, vars_approxs, uses =
             match recursive with
-            | Nonrecursive -> R.exit_scope_catch r cont
-            | Recursive -> r, List.map (fun _ -> A.value_bottom) vars
+            | Nonrecursive -> R.exit_scope_catch r cont ~num_params
+            | Recursive ->
+              r, List.map (fun _ -> A.value_bottom) vars,
+                Inline_and_simplify_aux.Continuation_uses.create ()
           in
           let vars, sb =
             Freshening.add_variables' (E.freshening env) vars
@@ -1388,23 +1386,35 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             | Recursive -> E.set_in_handler_of_recursive_continuation env cont
           in
           let handler, r = simplify env r handler in
-          let r =
+          let r, recursive =
             match recursive with
-            | Nonrecursive -> r
+            | Nonrecursive -> r, Asttypes.Nonrecursive
             | Recursive ->
-              let r, _args_approxs = R.exit_scope_catch r cont in
-              r
+              let recursive : Asttypes.rec_flag =
+                if R.is_used_continuation r cont then
+                  Recursive
+                else
+                  Nonrecursive
+              in
+              let r, _args_approxs, _uses =
+                R.exit_scope_catch r cont ~num_params
+              in
+              r, recursive
           in
-          (* CR mshinwell: When the continuation wasn't used in a Recursive
-             handler, make it non-recursive.  This needs some care with [r] *)
+          let handler : Flambda.continuation_handler =
+            { params = vars;
+              recursive;
+              handler;
+            }
+          in
+          let cont_approx =
+            Continuation_approx.create ~name:cont ~handler ~num_params
+          in
+          let r = R.define_continuation r cont uses cont_approx in
           let let_cont : Flambda.let_cont =
             { name = cont;
               body;
-              handler = Handler {
-                params = vars;
-                recursive;
-                handler;
-              };
+              handler = Handler handler;
             }
           in
           assert (not (R.is_used_continuation r cont));
@@ -1540,11 +1550,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
     E.add_continuation closure_env function_decl.continuation_param
       cont_approx
   in
-  let r =
-    R.prepare_for_continuation_uses (R.create ())
-      function_decl.continuation_param
-      ~num_params:1 ~handler:None
-  in
+  let r = R.create () in
   let body, r =
     E.enter_closure closure_env
       ~closure_id:(Closure_id.wrap fun_var)
@@ -1552,7 +1558,9 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~dbg:function_decl.dbg
       ~f:(fun body_env -> simplify body_env r function_decl.body)
   in
-  let _r, _approx = R.exit_scope_catch r function_decl.continuation_param in
+  let _r, _approx, _uses =
+    R.exit_scope_catch r function_decl.continuation_param ~num_params:1
+  in
   let function_decl =
     Flambda.create_function_declaration ~params:function_decl.params
       ~continuation_param:function_decl.continuation_param
@@ -1738,15 +1746,11 @@ let rec simplify_program_body env r (program : Flambda.program_body)
           Continuation_approx.create_unknown ~name:cont ~num_params:1
         in
         let env = E.add_continuation env cont cont_approx in
-        let r =
-          R.prepare_for_continuation_uses r cont
-            ~num_params:1 ~handler:None
-        in
         let h', r = simplify env r h in
         let h =
           Continuation_inlining.for_toplevel_expression h r ~simplify
         in
-        let r, new_approxs = R.exit_scope_catch r cont in
+        let r, new_approxs, _uses = R.exit_scope_catch r cont ~num_params:1 in
         let approx =
           match new_approxs with
           | [approx] -> approx
@@ -1779,16 +1783,12 @@ let rec simplify_program_body env r (program : Flambda.program_body)
       Continuation_approx.create_unknown ~name:cont ~num_params:1
     in
     let env = E.add_continuation env cont cont_approx in
-    let r =
-      R.prepare_for_continuation_uses r cont
-        ~num_params:1 ~handler:None
-    in
     let expr, r = simplify env r expr in
     let expr =
       Continuation_inlining.for_toplevel_expression expr r ~simplify
     in
     let program, r = simplify_program_body env r program in
-    let r, _approx = R.exit_scope_catch r cont in
+    let r, _approx, _uses = R.exit_scope_catch r cont ~num_params:1 in
     Effect (expr, cont, program), r
   | End root -> End root, r
 
@@ -1840,13 +1840,13 @@ let run ~never_inline ~backend ~prefixname ~round program =
   in
   let result, r = simplify_program initial_env r program in
   let result = Flambda_utils.introduce_needed_import_symbols result in
-  if not (R.no_defined_continuations r)
+  if not (R.no_continuations_in_scope r)
   then begin
     Misc.fatal_error (Format.asprintf "Remaining continuation vars: %a@.%a@."
       Continuation.Set.print (R.used_continuations r)
       Flambda.print_program result)
   end;
-  assert (R.no_defined_continuations r);
+  assert (R.no_continuations_in_scope r);
   if !Clflags.inlining_report then begin
     let output_prefix = Printf.sprintf "%s.%d" prefixname round in
     Inlining_stats.save_then_forget_decisions ~output_prefix

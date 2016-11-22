@@ -29,3 +29,4 @@ val create_unknown : name:Continuation.t -> num_params:int -> t
 val name : t -> Continuation.t
 
 val num_params : t -> int
+val handler : t -> Flambda.continuation_handler option
