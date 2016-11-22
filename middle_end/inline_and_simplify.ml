@@ -635,7 +635,7 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
     in
     let function_decl =
       Flambda.create_function_declaration ~params:function_decl.params
-        ~continuation_param:function_decl.continuation_param
+        ~continuation_param:continuation_param
         ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
         ~inline ~specialise:function_decl.specialise
         ~is_a_functor:function_decl.is_a_functor
