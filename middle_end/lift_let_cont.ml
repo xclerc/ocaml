@@ -16,6 +16,38 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module Constant_or_symbol = struct
+  type t =
+    | Constant of Flambda.Const.t
+    | Symbol of Symbol.t
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare t1 t2 =
+      match t1, t2 with
+      | Constant c1, Constant c2 -> Flambda.Const.compare c1 c2
+      | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
+      | Constant _, _ -> (-1)
+      | _, Constant _ -> 1
+
+    let equal t1 t2 = (compare t1 t2) = 0
+
+    let hash t =
+      match t with
+      | Constant c -> Hashtbl.hash (0, Flambda.Const.hash c)
+      | Symbol s -> Hashtbl.hash (1, Symbol.hash s)
+
+    let print _ _ = Misc.fatal_error "Not implemented"
+    let output _ _ = Misc.fatal_error "Not implemented"
+  end)
+
+  let to_named t : Flambda.named =
+    match t with
+    | Constant const -> Const const
+    | Symbol sym -> Symbol sym
+end
+
 type thing_to_lift =
   | Let of Variable.t * Flambda.named Flambda.With_free_variables.t
   | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
@@ -301,10 +333,32 @@ and lift (expr : Flambda.t) =
       expr
       (State.rev_to_be_lifted state)
   in
-  List.fold_left (fun expr (var, const) ->
-      Flambda.create_let var const expr)
+  let constants, subst =
+    List.fold_left (fun (constants, subst) (var, (const : Flambda.named)) ->
+        let const : Constant_or_symbol.t =
+          match const with
+          | Const const -> Constant const
+          | Symbol sym -> Symbol sym
+          | _ -> Misc.fatal_error "Unexpected constant"
+        in
+        let new_var, constants =
+          match Constant_or_symbol.Map.find const constants with
+          | exception Not_found ->
+            let var = Variable.rename var in
+            var, Constant_or_symbol.Map.add const var constants
+          | var ->
+            var, constants
+        in
+        constants, Variable.Map.add var new_var subst)
+      (Constant_or_symbol.Map.empty, Variable.Map.empty)
+      (State.constants state)
+  in
+  (* CR mshinwell: Do this substitution more efficiently *)
+  let expr = Flambda_utils.toplevel_substitution subst expr in
+  Constant_or_symbol.Map.fold (fun const var expr ->
+      Flambda.create_let var (Constant_or_symbol.to_named const) expr)
+    constants
     expr
-    (State.constants state)
 
 let run program =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:lift

@@ -20,10 +20,30 @@ type call_kind =
   | Indirect
   | Direct of Closure_id.t
 
-type const =
-  | Int of int
-  | Char of char
-  | Const_pointer of int
+module Const = struct
+  type t =
+    | Int of int
+    | Char of char
+    | Const_pointer of int
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare = Pervasives.compare
+    let equal t1 t2 = (compare t1 t2) = 0
+    let hash = Hashtbl.hash
+
+    let print ppf (t : t) =
+      match t with
+      | Int n -> Format.fprintf ppf "%i" n
+      | Char c -> Format.fprintf ppf "%C" c
+      | Const_pointer n -> Format.fprintf ppf "%ia" n
+
+    let output _ _ = Misc.fatal_error "Not implemented"
+  end)
+end
+
+type const = Const.t
 
 type apply_kind =
   | Function
@@ -169,6 +189,8 @@ type program = {
 
 let fprintf = Format.fprintf
 module Int = Numbers.Int
+
+let print_const = Const.print
 
 let print_specialised_to ppf (spec_to : specialised_to) =
   match spec_to.projection with
@@ -419,12 +441,6 @@ and print_set_of_closures ppf (set_of_closures : set_of_closures) =
       spec specialised_args
       (Variable.Map.print Variable.print)
       set_of_closures.direct_call_surrogates
-
-and print_const ppf (c : const) =
-  match c with
-  | Int n -> fprintf ppf "%i" n
-  | Char c -> fprintf ppf "%C" c
-  | Const_pointer n -> fprintf ppf "%ia" n
 
 let print_function_declarations ppf (fd : function_declarations) =
   let funs ppf =
@@ -1100,22 +1116,12 @@ let used_params (function_decl : function_declaration) =
     (fun param -> Variable.Set.mem param function_decl.free_variables)
     (Variable.Set.of_list function_decl.params)
 
-let compare_const (c1:const) (c2:const) =
-  match c1, c2 with
-  | Int i1, Int i2 -> compare i1 i2
-  | Char i1, Char i2 -> compare i1 i2
-  | Const_pointer i1, Const_pointer i2 -> compare i1 i2
-  | Int _, (Char _ | Const_pointer _) -> -1
-  | (Char _ | Const_pointer _), Int _ -> 1
-  | Char _, Const_pointer _ -> -1
-  | Const_pointer _, Char _ -> 1
-
 let compare_constant_defining_value_block_field
     (c1:constant_defining_value_block_field)
     (c2:constant_defining_value_block_field) =
   match c1, c2 with
   | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
-  | Const c1, Const c2 -> compare_const c1 c2
+  | Const c1, Const c2 -> Const.compare c1 c2
   | Symbol _, Const _ -> -1
   | Const _, Symbol _ -> 1
 
@@ -1182,3 +1188,4 @@ let compare_project_var = Projection.compare_project_var
 let compare_project_closure = Projection.compare_project_closure
 let compare_move_within_set_of_closures =
   Projection.compare_move_within_set_of_closures
+let compare_const = Const.compare

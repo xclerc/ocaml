@@ -33,14 +33,20 @@ type call_kind =
 
 (** Simple constants.  ("Structured constants" are rewritten to invocations
     of [Pmakeblock] so that they easily take part in optimizations.) *)
-type const =
-  | Int of int
-  | Char of char
-  (** [Char] is kept separate from [Int] to improve printing *)
-  | Const_pointer of int
-  (** [Const_pointer] is an immediate value of a type whose values may be
-     boxed (typically a variant type with both constant and non-constant
-     constructors). *)
+module Const : sig
+  type t =
+    | Int of int
+    | Char of char
+    (** [Char] is kept separate from [Int] to improve printing *)
+    | Const_pointer of int
+    (** [Const_pointer] is an immediate value of a type whose values may be
+      boxed (typically a variant type with both constant and non-constant
+      constructors). *)
+
+  include Identifiable.S with type t := t
+end
+
+type const = Const.t
 
 type apply_kind =
   | Function
