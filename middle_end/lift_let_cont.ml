@@ -49,15 +49,20 @@ module State = struct
     mutable_variables_used : Mutable_variable.Set.t;
   }
 
-  let create ~variables_to_remain = {
-    constants = [];
-    to_be_lifted = [];
-    to_remain = [];
-    continuations_to_remain = Continuation.Set.empty;
-    variables_to_remain = Variable.Set.of_list variables_to_remain;
-    mutable_variables_to_remain = Mutable_variable.Set.empty;
-    mutable_variables_used = Mutable_variable.Set.empty;
-  }
+  let create ~variables_to_remain ~continuation_to_remain =
+    let continuations_to_remain =
+      match continuation_to_remain with
+      | None -> Continuation.Set.empty
+      | Some cont -> Continuation.Set.singleton cont
+    in
+    { constants = [];
+      to_be_lifted = [];
+      to_remain = [];
+      continuations_to_remain;
+      variables_to_remain = Variable.Set.of_list variables_to_remain;
+      mutable_variables_to_remain = Mutable_variable.Set.empty;
+      mutable_variables_used = Mutable_variable.Set.empty;
+    }
 
   let add_constant t ~var ~defining_expr =
     { t with
@@ -183,7 +188,15 @@ let rec lift_expr (expr : Flambda.expr) ~state =
 Format.eprintf "Lifting handler for %a\n%!" Continuation.print name;
 *)
     let handler_terminator, handler_state =
-      lift_expr handler ~state:(State.create ~variables_to_remain:params)
+      let continuation_to_remain =
+        match recursive with
+        | Nonrecursive -> None
+        | Recursive -> Some name
+      in
+      let state =
+        State.create ~variables_to_remain:params ~continuation_to_remain
+      in
+      lift_expr handler ~state
     in
 (*
 Format.eprintf "Finished handler for %a\n%!" Continuation.print name;
@@ -275,9 +288,10 @@ and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
 and lift (expr : Flambda.t) =
-  let expr, state =
-    lift_expr expr ~state:(State.create ~variables_to_remain:[])
+  let state =
+    State.create ~variables_to_remain:[] ~continuation_to_remain:None
   in
+  let expr, state = lift_expr expr ~state in
   let expr =
     bind_things_to_remain ~rev_things:(State.rev_to_remain state) ~around:expr
   in

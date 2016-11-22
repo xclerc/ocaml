@@ -28,6 +28,17 @@ let print_continuation_stack ppf stack =
       stack
 *)
 
+let rec join_continuation_stacks stack1 stack2 =
+  match stack1, stack2 with
+  | [], [] | _, [] | [], _ -> []
+  | (cont1, rec1)::stack1, (cont2, _rec2)::stack2 ->
+    if Continuation.equal cont1 cont2 then
+      match (rec1 : Asttypes.rec_flag) with
+      | Nonrecursive ->
+        (cont1, rec1) :: join_continuation_stacks stack1 stack2
+      | Recursive -> []  (* Don't sink lets into recursive continuations. *)
+    else []
+
 module State : sig
   type t
 
@@ -120,7 +131,13 @@ Variable.print var
   print_continuation_stack (current_continuation :: sink_to);
 *)
             Some (current_continuation :: sink_to)
-end)
+          end)
+    in
+    let candidates_to_sink =
+      Variable.Map.union (fun _var sink_to1 sink_to2 ->
+          Some (join_continuation_stacks sink_to1 sink_to2))
+        candidates_to_sink
+        t.candidates_to_sink
     in
     { t with
       candidates_to_sink;
@@ -174,17 +191,6 @@ end)
     }
 end
 
-let rec join_continuation_stacks stack1 stack2 =
-  match stack1, stack2 with
-  | [], [] | _, [] | [], _ -> []
-  | (cont1, rec1)::stack1, (cont2, _rec2)::stack2 ->
-    if Continuation.equal cont1 cont2 then
-      match (rec1 : Asttypes.rec_flag) with
-      | Nonrecursive ->
-        (cont1, rec1) :: join_continuation_stacks stack1 stack2
-      | Recursive -> []  (* Don't sink lets into recursive continuations. *)
-    else []
-
 let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
   match expr with
   | Let ({ var; defining_expr; body; } as let_expr) ->
@@ -197,97 +203,101 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
         W.of_named defining_expr, state
       | _ -> W.of_defining_expr_of_let let_expr, state
     in
-      let sink_into, state = State.remove_candidate_to_sink state var in
-      let state =
-        match sink_into with
-        | Some sink_into
-          when Effect_analysis.only_generative_effects_named
-            (W.to_named defining_expr) ->
+    let sink_into, state = State.remove_candidate_to_sink state var in
+    let state =
+      match sink_into with
+      | Some sink_into
+        when Effect_analysis.only_generative_effects_named
+          (W.to_named defining_expr) ->
 (*
 Format.eprintf "binding for %a: sink_into not reversed is %a\n%!"
   Variable.print var
   (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
     Continuation.print) (List.map fst sink_into);
 *)
-          begin match List.rev sink_into with
-          | [] -> state
-          | (sink_into, _recursive)::_ ->
+        begin match List.rev sink_into with
+        | [] -> state
+        | (sink_into, _recursive)::_  (* ) as s*) ->
 (*
 Format.eprintf "binding for %a: reversed being sunk to %a\n%!"
   Variable.print var
   (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
     Continuation.print) (List.map fst s);
 *)
-            State.sink_let state var ~sink_into ~defining_expr
-          end
-        | _ ->
+          State.sink_let state var ~sink_into ~defining_expr
+        end
+      | _ ->
 (*
 Format.eprintf "binding for %a: not to be moved\n%!"
   Variable.print var;
 *)
-          state
-      in
-      let add_candidates ~sink_into =
+        state
+    in
+    let add_candidates ~sink_into =
 (*
 let var' = var in
 *)
-        Variable.Set.fold (fun var state ->
+      Variable.Set.fold (fun var state ->
 (*
 Format.eprintf "Considering fv %a of defining_expr of %a: "
   Variable.print var Variable.print var';
 *)
-            let sink_into =
-              match State.is_candidate_to_sink state var with
-              | None ->
+          let sink_into =
+            match State.is_candidate_to_sink state var with
+            | None ->
 (*
 Format.eprintf "not a candidate --> %a\n%!"
   print_continuation_stack sink_into;
 *)
-                sink_into
-              | Some sink_into' ->
+              sink_into
+            | Some sink_into' ->
+(*
+let result =
+*)
                 join_continuation_stacks sink_into sink_into'
 (*
+in
 Format.eprintf "joining: already needed at %a now also needed at %a --> %a\n%!"
   print_continuation_stack sink_into'
   print_continuation_stack sink_into
   print_continuation_stack result;
 result
 *)
-            in
-            State.add_candidates_to_sink state
-              ~sink_into
-              ~candidates_to_sink:(Variable.Set.singleton var))
-          (W.free_variables defining_expr)
-          state
-      in
-      let keep_let () =
-        W.create_let_reusing_defining_expr var defining_expr body
-      in
-      let only_generative_effects =
-        Effect_analysis.only_generative_effects_named
-          (W.to_named defining_expr)
-      in
-      (* CR mshinwell: Try to improve the structure of the code here and
-         above *)
-      begin match sink_into with
-      | Some sink_into when only_generative_effects ->
-        keep_let (), add_candidates ~sink_into
-      | Some _sink_into ->
-        keep_let (), add_candidates ~sink_into:[]
-      | None ->
-        if only_generative_effects then begin
+          in
+          State.add_candidates_to_sink state
+            ~sink_into
+            ~candidates_to_sink:(Variable.Set.singleton var))
+        (W.free_variables defining_expr)
+        state
+    in
+    let keep_let () =
+      W.create_let_reusing_defining_expr var defining_expr body
+    in
+    let only_generative_effects =
+      Effect_analysis.only_generative_effects_named
+        (W.to_named defining_expr)
+    in
+    (* CR mshinwell: Try to improve the structure of the code here and
+        above *)
+    begin match sink_into with
+    | Some sink_into when only_generative_effects ->
+      keep_let (), add_candidates ~sink_into
+    | Some _sink_into ->
+      keep_let (), add_candidates ~sink_into:[]
+    | None ->
+      if only_generative_effects then begin
 (*
 Format.eprintf "deleting let %a\n%!" Variable.print var;
 *)
-          body, state
-        end else begin
+        body, state
+      end else begin
 (*
 Format.eprintf "having to keep let %a, might have side effect\n%!"
   Variable.print var;
 *)
-          keep_let (), add_candidates ~sink_into:[]
-        end
+        keep_let (), add_candidates ~sink_into:[]
       end
+    end
   | Let_mutable { var; initial_value; contents_kind; body; }->
     let body, state = sink_expr body ~state in
     let state =
