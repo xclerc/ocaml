@@ -432,13 +432,17 @@ and name_then_cps_tail name lam k =
   let var = Ident.create name in
   cps_tail (L.Llet (Strict, Pgenval, var, lam, Lvar var)) k
 
-and cps_non_tail_list (lams : L.lambda list) (k : Ident.t list -> Ilambda.t) =
+and cps_non_tail_list lams k =
   let lams = List.rev lams in  (* Always evaluate right-to-left. *)
+  cps_non_tail_list_core lams k
+
+and cps_non_tail_list_core (lams : L.lambda list)
+      (k : Ident.t list -> Ilambda.t) =
   match lams with
   | [] -> k []
   | lam::lams ->
     cps_non_tail lam (fun id ->
-      cps_non_tail_list lams (fun ids -> k (ids @ [id])))
+      cps_non_tail_list_core lams (fun ids -> k (ids @ [id])))
 
 and cps_function (func : Lambda.lfunction) : Ilambda.function_declaration =
   let body_cont = Continuation.create () in
