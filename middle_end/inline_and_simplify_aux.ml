@@ -477,50 +477,25 @@ module Continuation_uses = struct
   type t = {
     inlinable_application_points : Use.t list;
     num_non_inlinable_application_points : Num_continuation_uses.t;
-    meet_of_args_approxs : A.t list option;
   }
 
   let create () =
     { inlinable_application_points = [];
       num_non_inlinable_application_points = Zero;
-      meet_of_args_approxs = None;
     }
 
-  let compute_meet_of_args_approxs env args_approxs1 args_approxs2 =
-    if List.length args_approxs1 <> List.length args_approxs2 then
-      Misc.fatal_errorf "Wrong number of arguments for continuation"
-    else
-      List.map2 (fun approx1 approx2 ->
-          A.meet approx1 approx2
-            ~really_import_approx:(Env.really_import_approx env))
-        args_approxs1 args_approxs2
-
   let add_inlinable_use t env ~args =
-    let args_approxs = List.map snd args in
-    let meet_of_args_approxs =
-      match t.meet_of_args_approxs with
-      | None -> Some args_approxs
-      | Some args_approxs' ->
-        Some (compute_meet_of_args_approxs env args_approxs args_approxs')
-    in
     { t with
       inlinable_application_points =
         { Use. env; args; } :: t.inlinable_application_points;
-      meet_of_args_approxs;
     }
 
-  let add_non_inlinable_use t env ~args_approxs =
-    let meet_of_args_approxs =
-      match t.meet_of_args_approxs with
-      | None -> Some args_approxs
-      | Some args_approxs' ->
-        Some (compute_meet_of_args_approxs env args_approxs args_approxs')
-    in
+  let add_non_inlinable_use t _env ~args_approxs:_ =
+    (* CR mshinwell: should we record args_approxs here? *)
     { t with
       num_non_inlinable_application_points =
         Num_continuation_uses.(+) t.num_non_inlinable_application_points
           Num_continuation_uses.One;
-      meet_of_args_approxs;
     }
 
   let num_inlinable_application_points t : Num_continuation_uses.t =
@@ -537,14 +512,27 @@ module Continuation_uses = struct
     | _, _ -> false
 
   let meet_of_args_approxs t ~num_params =
-    match t.meet_of_args_approxs with
-    | Some args_approxs ->
-      assert (List.length args_approxs = num_params);
-      args_approxs
-    | None ->
+    match t.inlinable_application_points with
+    | [] -> 
       Array.to_list (Array.make num_params (A.value_unknown Other))
+    | use::uses ->
+      List.fold_left (fun args_approxs (use : Use.t) ->
+          List.map2 (fun approx1 (_var, approx2) ->
+              A.meet approx1 approx2
+                ~really_import_approx:(Env.really_import_approx use.env))
+            args_approxs use.args)
+        (List.map (fun (_var, approx) -> approx) use.args)
+        uses
 
   let inlinable_application_points t = t.inlinable_application_points
+
+  let filter_out_non_useful_uses t =
+    let inlinable_application_points =
+      List.filter (fun (use : Use.t) ->
+          List.exists (fun (_var, approx) -> A.useful approx) use.args)
+        t.inlinable_application_points
+    in
+    { t with inlinable_application_points; }
 end
 
 module Result = struct
@@ -619,6 +607,7 @@ module Result = struct
     }, approxs, uses
 
   let define_continuation t cont env uses approx =
+    let uses = Continuation_uses.filter_out_non_useful_uses uses in
     { t with
       defined_continuations =
         Continuation.Map.add cont (uses, approx, env) t.defined_continuations;
