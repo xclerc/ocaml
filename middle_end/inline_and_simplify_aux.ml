@@ -469,7 +469,7 @@ module Continuation_uses = struct
 
   module Use = struct
     type t = {
-      args : Variable.t list;
+      args : (Variable.t * A.t) list;
       env : Env.t;
     }
   end
@@ -496,7 +496,7 @@ module Continuation_uses = struct
         args_approxs1 args_approxs2
 
   let add_inlinable_use t env ~args =
-    let args, args_approxs = List.split args in
+    let args_approxs = List.map snd args in
     let meet_of_args_approxs =
       match t.meet_of_args_approxs with
       | None -> Some args_approxs
@@ -552,7 +552,8 @@ module Result = struct
     { approx : Simple_value_approx.t;
       used_continuations : Continuation_uses.t Continuation.Map.t;
       defined_continuations :
-        (Continuation_uses.t * Continuation_approx.t) Continuation.Map.t;
+        (Continuation_uses.t * Continuation_approx.t * Env.t)
+          Continuation.Map.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
       num_direct_applications : int;
@@ -617,10 +618,10 @@ module Result = struct
       used_continuations = Continuation.Map.remove i t.used_continuations;
     }, approxs, uses
 
-  let define_continuation t cont uses approx =
+  let define_continuation t cont env uses approx =
     { t with
       defined_continuations =
-        Continuation.Map.add cont (uses, approx) t.defined_continuations;
+        Continuation.Map.add cont (uses, approx, env) t.defined_continuations;
     }
 
   let continuation_definitions_with_uses t =

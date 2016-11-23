@@ -279,7 +279,7 @@ end
 module Continuation_uses : sig
   module Use : sig
     type t = private {
-      args : Variable.t list;
+      args : (Variable.t * Simple_value_approx.t) list;
       env : Env.t;
     }
   end
@@ -348,6 +348,7 @@ module Result : sig
 
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
+  (* CR mshinwell: should this be combined with define_continuation? *)
   val exit_scope_catch
      : t
     -> Continuation.t
@@ -358,6 +359,7 @@ module Result : sig
   val define_continuation
      : t
     -> Continuation.t
+    -> Env.t
     -> Continuation_uses.t
     -> Continuation_approx.t
     -> t
@@ -365,7 +367,7 @@ module Result : sig
   (** Continuation definition information for the inliner. *)
   val continuation_definitions_with_uses
      : t
-    -> (Continuation_uses.t * Continuation_approx.t) Continuation.Map.t
+    -> (Continuation_uses.t * Continuation_approx.t * Env.t) Continuation.Map.t
 
   (** Check that there is no continuation binding construct in scope. *)
   val no_continuations_in_scope : t -> bool

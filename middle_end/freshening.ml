@@ -120,6 +120,11 @@ let add_static_exception t i =
   | Inactive -> i, t
   | Active t ->
     let i' = Continuation.create () in
+(*
+Format.eprintf "Freshening %a -> %a\n%!"
+  Continuation.print i
+  Continuation.print i';
+*)
     let sb_exn =
       Continuation.Map.add i i' t.sb_exn
     in

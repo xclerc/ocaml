@@ -526,7 +526,11 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
     }
   in
   let original_r =
-    R.set_approx (R.seen_direct_application r) (A.value_unknown Other)
+    let r =
+      R.set_approx (R.seen_direct_application r) (A.value_unknown Other)
+    in
+    R.use_continuation r env continuation ~inlinable_position:false ~args:[]
+      ~args_approxs:[A.value_unknown Other]
   in
   if function_decl.stub then
     let body, r =

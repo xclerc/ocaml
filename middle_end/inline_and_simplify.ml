@@ -606,7 +606,15 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
             Continuation_inlining.for_toplevel_expression body r ~simplify
           in
           let r, _, _ =
+try
             R.exit_scope_catch r continuation_param ~num_params:1
+with _exn ->
+begin
+Misc.fatal_errorf "FAILURE@;Before:@;%a@;After:@;%a@;"
+  Flambda.print function_decl.body
+  Flambda.print body;
+assert false
+end
           in
           body, r)
     in
@@ -905,36 +913,58 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   let full_app_approxs, _ =
     Misc.Stdlib.List.split_at arity args_approxs
   in
+  let func_var = Variable.create "full_apply" in
+  let handler : Flambda.continuation_handler =
+    { recursive = Nonrecursive;
+      params = [func_var];
+      handler =
+        Apply {
+          kind = Function;
+          continuation;
+          func = func_var;
+          args = remaining_args;
+          call_kind = Indirect;
+          dbg;
+          inline = inline_requested;
+          specialise = specialise_requested;
+        };
+    }
+  in
   let after_full_application = Continuation.create () in
+  let after_full_application_approx =
+    Continuation_approx.create ~name:after_full_application
+      ~handler ~num_params:1
+  in
   let full_application, r =
+    let env =
+      E.add_continuation env after_full_application
+        after_full_application_approx
+    in
     simplify_full_application env r ~function_decls ~lhs_of_application
       ~closure_id_being_applied ~function_decl ~value_set_of_closures
       ~args:full_app_args ~args_approxs:full_app_approxs
       ~continuation:after_full_application ~dbg ~inline_requested
       ~specialise_requested
   in
-  let func_var = Variable.create "full_apply" in
+Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
+  (* CR mshinwell: Maybe it would be better just to build a proper term
+     including the full application as a normal Apply node and call simplify
+     on that? *)
+  let r, _, after_full_application_uses =
+    R.exit_scope_catch r after_full_application ~num_params:1
+  in
+  let r =
+    R.define_continuation r after_full_application env
+      after_full_application_uses after_full_application_approx
+  in
   let expr : Flambda.t =
     Let_cont {
       name = after_full_application;
       body = full_application;
-      handler = Handler {
-        recursive = Nonrecursive;
-        params = [func_var];
-        handler =
-          Apply {
-            kind = Function;
-            continuation;
-            func = func_var;
-            args = remaining_args;
-            call_kind = Indirect;
-            dbg;
-            inline = inline_requested;
-            specialise = specialise_requested;
-          };
-      }};
+      handler = Handler handler;
+    }
   in
-  simplify (E.set_never_inline env) r expr
+  expr, r
 
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~args ~args_approxs : Flambda.t * R.t =
@@ -1291,6 +1321,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     simplify_free_variables env args ~f:(fun _env args args_approxs ->
       simplify_apply_cont env r cont ~args ~args_approxs)
   | Let_cont { name = cont; body; handler } ->
+    let env_above_let_cont = env in
     let cont, sb = Freshening.add_static_exception (E.freshening env) cont in
     let approx, r =
       match handler with
@@ -1301,13 +1332,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         let alias_of =
           Freshening.apply_static_exception (E.freshening env) alias_of
         in
-        let approx =
-          match E.find_continuation env alias_of with
-          | exception Not_found ->
-            Misc.fatal_errorf "Alias of unbound continuation %a"
-              Continuation.print cont
-          | approx -> approx
-        in
+        let approx = E.find_continuation env alias_of in
         approx, r
     in
     let env = E.set_freshening env sb in
@@ -1410,7 +1435,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           let cont_approx =
             Continuation_approx.create ~name:cont ~handler ~num_params
           in
-          let r = R.define_continuation r cont uses cont_approx in
+          let r =
+            R.define_continuation r cont env_above_let_cont uses cont_approx
+          in
           let let_cont : Flambda.let_cont =
             { name = cont;
               body;
