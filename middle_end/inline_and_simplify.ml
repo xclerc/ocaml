@@ -1393,7 +1393,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             match recursive with
             | Nonrecursive -> R.exit_scope_catch r cont ~num_params
             | Recursive ->
-              r, List.map (fun _ -> A.value_bottom) vars,
+              r, List.map (fun _ -> A.value_unknown Other) vars,
                 Inline_and_simplify_aux.Continuation_uses.create ()
           in
           let vars, sb =
@@ -1436,7 +1436,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             Continuation_approx.create ~name:cont ~handler ~num_params
           in
           let r =
-            R.define_continuation r cont env_above_let_cont uses cont_approx
+            match recursive with
+            | Nonrecursive ->
+              R.define_continuation r cont env_above_let_cont uses cont_approx
+            | Recursive -> r
           in
           let let_cont : Flambda.let_cont =
             { name = cont;
@@ -1468,6 +1471,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       in
       let filtered_consts =
         filter_branches A.potentially_taken_const_switch_branch sw.consts []
+          (* CR mshinwell: This use of "Tag" is a hack; needs fixing *)
           ~add:(fun (tag, cont) -> Ilambda.Tag tag, cont)
       in
       let filtered_blocks =
@@ -1486,6 +1490,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       | Can_be_taken consts, Can_be_taken blocks ->
         match consts, blocks, sw.failaction with
         | [], [], None ->
+Format.eprintf "Making switch unreachable.  Arg %a approx %a\n%!"
+  Variable.print arg A.print arg_approx;
         (* If the switch is applied to a statically-known value that does not
            match any case:
            * if there is a default action take that case;

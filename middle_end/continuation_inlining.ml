@@ -95,7 +95,9 @@ let try_inlining ~cont ~args ~args_approxs ~env
 Format.eprintf "try_inlining simplification %a starts\n%!"
   Continuation.print cont;
 *)
-  let expr, r = simplify (E.activate_freshening env) r expr in
+  let expr, r =
+    simplify (E.activate_freshening (E.set_never_inline env)) r expr
+  in
 (*
 Format.eprintf "try_inlining simplification %a ends\n%!"
   Continuation.print cont;
