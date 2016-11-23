@@ -151,7 +151,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
          [let rec]. *)
       List.map (function
           | (let_rec_ident,
-              ({ kind; continuation_param; params; body; attr; loc;
+              ({ kind; continuation_param; params; body; attr; loc; stub;
                 free_idents_of_body; } : Ilambda.function_declaration)) ->
             let closure_bound_var =
               Variable.create_with_same_name_as_ident let_rec_ident
@@ -161,6 +161,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
                 ~closure_bound_var ~kind ~params ~continuation_param ~body
                 ~inline:attr.inline ~specialise:attr.specialise
                 ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
+                ~stub
             in
             function_declaration)
         defs
@@ -313,18 +314,11 @@ and close_functions t external_env function_declarations : Flambda.named =
           env)
         params closure_env_without_parameters
     in
-(* CR mshinwell: think about this
     (* If the function is the wrapper for a function with an optional
        argument with a default value, make sure it always gets inlined.
        CR-someday pchambart: eta-expansion wrapper for a primitive are
        not marked as stub but certainly should *)
-    let stub, body =
-      match Function_decl.primitive_wrapper decl with
-      | None -> false, body
-      | Some wrapper_body -> true, wrapper_body
-    in
-*)
-    let stub = false in
+    let stub = Function_decl.stub decl in
     let params = List.map (Env.find_var closure_env) params in
     let closure_bound_var = Function_decl.closure_bound_var decl in
     let body = close t closure_env body in

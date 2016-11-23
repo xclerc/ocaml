@@ -99,8 +99,6 @@ module Env = struct
     | handler -> Some handler
 end
 
-let stub_hack_prim_name = "*stub*"
-
 module Function_decls = struct
   module Function_decl = struct
     type t = {
@@ -115,11 +113,12 @@ module Function_decls = struct
       specialise : Lambda.specialise_attribute;
       is_a_functor : bool;
       loc : Location.t;
+      stub : bool;
     }
 
     let create ~let_rec_ident ~closure_bound_var ~kind ~params
         ~continuation_param ~body ~inline
-        ~specialise ~is_a_functor ~loc ~free_idents_of_body =
+        ~specialise ~is_a_functor ~loc ~free_idents_of_body ~stub =
       let let_rec_ident =
         match let_rec_ident with
         | None -> Ident.create "unnamed_function"
@@ -136,6 +135,7 @@ module Function_decls = struct
         specialise;
         is_a_functor;
         loc;
+        stub;
       }
 
     let let_rec_ident t = t.let_rec_ident
@@ -149,14 +149,7 @@ module Function_decls = struct
     let specialise t = t.specialise
     let is_a_functor t = t.is_a_functor
     let loc t = t.loc
-
-(*
-    let primitive_wrapper t =
-      match t.body with
-      | Prim (Pccall { Primitive. prim_name; }, [body], _)
-        when prim_name = stub_hack_prim_name -> Some body
-      | _ -> None
-*)
+    let stub t = t.stub
   end
 
   type t = {

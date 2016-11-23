@@ -1490,8 +1490,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       | Can_be_taken consts, Can_be_taken blocks ->
         match consts, blocks, sw.failaction with
         | [], [], None ->
-Format.eprintf "Making switch unreachable.  Arg %a approx %a\n%!"
-  Variable.print arg A.print arg_approx;
         (* If the switch is applied to a statically-known value that does not
            match any case:
            * if there is a default action take that case;
@@ -1781,7 +1779,8 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         let env = E.add_continuation env cont cont_approx in
         let h', r = simplify env r h in
         let h =
-          Continuation_inlining.for_toplevel_expression h r ~simplify
+          if E.never_inline env then h
+          else Continuation_inlining.for_toplevel_expression h r ~simplify
         in
         let r, new_approxs, _uses = R.exit_scope_catch r cont ~num_params:1 in
         let approx =

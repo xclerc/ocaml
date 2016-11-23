@@ -78,6 +78,7 @@ module Function_decls : sig
       -> is_a_functor:bool
       -> loc:Location.t
       -> free_idents_of_body:Lambda.IdentSet.t
+      -> stub:bool
       -> t
 
     val let_rec_ident : t -> Ident.t
@@ -90,12 +91,7 @@ module Function_decls : sig
     val specialise : t -> Lambda.specialise_attribute
     val is_a_functor : t -> bool
     val loc : t -> Location.t
-(*
-    (* [primitive_wrapper t] is [None] iff [t] is not a wrapper for a function
-       with default optional arguments. Otherwise it is [Some body], where
-       [body] is the body of the wrapper. *)
-    val primitive_wrapper : t -> Ilambda.t option
-*)
+    val stub : t -> bool
 
     (* Like [all_free_idents], but for just one function. *)
     val free_idents : t -> Lambda.IdentSet.t
@@ -116,5 +112,3 @@ module Function_decls : sig
      It also contains the globals bindings of the provided environment. *)
   val closure_env_without_parameters : Env.t -> t -> Env.t
 end
-
-val stub_hack_prim_name : string

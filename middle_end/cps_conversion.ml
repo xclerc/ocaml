@@ -447,7 +447,13 @@ and cps_non_tail_list_core (lams : L.lambda list)
 and cps_function (func : Lambda.lfunction) : Ilambda.function_declaration =
   let body_cont = Continuation.create () in
   let free_idents_of_body = Lambda.free_variables func.body in
-  let body, _k_count = cps_tail func.body body_cont in
+  let stub, body =
+    match func.body with
+    | Lprim (Pccall { Primitive. prim_name; }, [body], _)
+       when prim_name = Prepare_lambda.stub_hack_prim_name -> true, body
+    | body -> false, body
+  in
+  let body, _k_count = cps_tail body body_cont in
   { kind = func.kind;
     continuation_param = body_cont;
     params = func.params;
@@ -455,6 +461,7 @@ and cps_function (func : Lambda.lfunction) : Ilambda.function_declaration =
     attr = func.attr;
     loc = func.loc;
     free_idents_of_body;
+    stub;
   }
 
 and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =

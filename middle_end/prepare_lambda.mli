@@ -17,3 +17,5 @@
 (** Preparation of [Lambda] code before CPS and closure conversion. *)
 
 val run : Lambda.lambda -> Lambda.lambda
+
+val stub_hack_prim_name : string

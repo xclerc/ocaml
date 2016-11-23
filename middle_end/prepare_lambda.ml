@@ -19,14 +19,14 @@
 
 module L = Lambda
 
+let stub_hack_prim_name = "*stub*"
+
 let add_default_argument_wrappers lam =
   (* CR-someday mshinwell: Temporary hack to mark default argument wrappers
      as stubs.  Other possibilities:
      1. Change L.inline_attribute to add another ("stub") case;
      2. Add a "stub" field to the Lfunction record. *)
   let stubify body : L.lambda =
-    (* CR mshinwell: make this match elsewhere *)
-    let stub_hack_prim_name = "*stub*" in
     let stub_prim =
       Primitive.simple ~name:stub_hack_prim_name
         ~arity:1 ~alloc:false

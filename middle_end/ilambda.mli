@@ -55,6 +55,7 @@ and function_declaration =
     attr : Lambda.function_attribute;
     loc : Location.t;
     free_idents_of_body : Lambda.IdentSet.t;
+    stub : bool;
   }
 
 and let_cont = {
