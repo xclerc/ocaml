@@ -91,18 +91,18 @@ let try_inlining ~cont ~args ~args_approxs ~env
   in
   let r = R.create () in
   let original : Flambda.t = Apply_cont (cont, args) in
-
+(*
 Format.eprintf "try_inlining simplification %a (params %a) starts@;%a@;\n%!"
   Continuation.print cont Variable.print_list params
   Flambda.print expr;
-
+*)
   let expr, r =
     simplify (E.activate_freshening (E.set_never_inline env)) r expr
   in
-
+(*
 Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
   Continuation.print cont Flambda.print expr;
-
+*)
   let inlining_benefit = B.remove_prim (R.benefit r) in
 (*  let r = R.map_benefit r (fun _ -> existing_benefit) in *)
   let module W = Inlining_cost.Whether_sufficient_benefit in
@@ -116,7 +116,7 @@ Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
       ~round:(E.round env)
   in
   if (not inline_unconditionally) && W.evaluate wsb then begin
-
+(*
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
   Variable.print_list args
@@ -125,15 +125,15 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
   (W.print_description ~subfunctions:false) wsb
   Flambda.print original
   Flambda.print expr;
-
+*)
     Inlined (params, expr)
   end else begin
-
+(*
 Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   Continuation.print cont
   Variable.print_list args
   B.print inlining_benefit;
-
+*)
     Didn't_inline
   end
 
@@ -196,11 +196,11 @@ let find_inlinings r ~simplify =
           inlinings, new_shared_conts, zero_uses
         | Many ->
           let new_shared_cont = Continuation.create () in
-
+(*
 Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
   Continuation.print cont
   Continuation.print new_shared_cont Flambda.print body;
-
+*)
           let apply_shared_cont : Flambda.expr =
             Apply_cont (new_shared_cont, args)
           in
@@ -244,9 +244,9 @@ let substitute (expr : Flambda.expr) ~inlinings ~new_shared_conts
         | exception Not_found -> expr
         | new_shared_conts ->
           List.fold_left (fun expr (name, params, handler) ->
-
+(*
 Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
-
+*)
               Flambda.Let_cont {
                 name;
                 body = expr;
@@ -268,6 +268,8 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
     expr
 
 let for_toplevel_expression expr r ~simplify =
+(*
 Format.eprintf "Continuation inlining starting on:@;%a@;" Flambda.print expr;
+*)
   let inlinings, new_shared_conts, zero_uses = find_inlinings r ~simplify in
   substitute expr ~inlinings ~new_shared_conts ~zero_uses

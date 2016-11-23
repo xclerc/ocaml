@@ -607,6 +607,8 @@ module Result = struct
     }, approxs, uses
 
   let define_continuation t cont env uses approx =
+    (* CR mshinwell: comment this next line to see a failure in
+       stdlib/arg.ml *)
     let uses = Continuation_uses.filter_out_non_useful_uses uses in
     { t with
       defined_continuations =

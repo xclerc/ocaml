@@ -946,7 +946,9 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
       ~continuation:after_full_application ~dbg ~inline_requested
       ~specialise_requested
   in
+(*
 Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
+*)
   (* CR mshinwell: Maybe it would be better just to build a proper term
      including the full application as a normal Apply node and call simplify
      on that? *)
