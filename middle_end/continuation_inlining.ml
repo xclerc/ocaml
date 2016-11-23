@@ -21,8 +21,10 @@ module E = Inline_and_simplify_aux.Env
 module R = Inline_and_simplify_aux.Result
 
 module Continuation_with_args = struct
+  type t = Continuation.t * Variable.t list
+
   include Identifiable.Make (struct
-    type t = Continuation.t * Variable.t list
+    type nonrec t = t
 
     let compare t1 t2 =
       let c = Continuation.compare (fst t1) (fst t2) in
@@ -45,25 +47,32 @@ type inlining_result =
   | Didn't_inline
   | Inlined of Variable.t list * Flambda.expr
 
-let try_inlining ~cont
-      ~(use : Inline_and_simplify_aux.Continuation_uses.Use.t)
-      ~(handler : Flambda.continuation_handler) ~inline_unconditionally
-      ~simplify =
-  if List.length handler.params <> List.length use.args then begin
+let try_inlining ~cont ~args ~env ~(handler : Flambda.continuation_handler)
+      ~inline_unconditionally ~count ~simplify =
+  if List.length handler.params <> List.length args then begin
     Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
       Continuation.print cont
   end;
+  let params =
+    (* If there are multiple uses of the continuation with the same arguments,
+       we will create a new shared continuation (see comment below); the
+       parameters of that continuation must be fresh. *)
+    if Num_continuation_uses.linear count then
+      handler.params
+    else
+      List.map (fun param -> Variable.rename param) handler.params
+  in
   let expr =
     List.fold_left2 (fun expr param arg ->
         Flambda.create_let param (Var arg) expr)
       handler.handler
-      handler.params use.args
+      params args
   in
   let r = R.create () in
-  let original : Flambda.t = Apply_cont (cont, use.args) in
+  let original : Flambda.t = Apply_cont (cont, args) in
 Format.eprintf "try_inlining simplification %a starts\n%!"
   Continuation.print cont;
-  let expr, r = simplify (E.activate_freshening use.env) r expr in
+  let expr, r = simplify (E.activate_freshening env) r expr in
 Format.eprintf "try_inlining simplification %a ends\n%!"
   Continuation.print cont;
   let inlining_benefit = B.remove_prim (R.benefit r) in
@@ -71,27 +80,27 @@ Format.eprintf "try_inlining simplification %a ends\n%!"
   let module W = Inlining_cost.Whether_sufficient_benefit in
   let wsb =
     W.create ~original
-      ~toplevel:(E.at_toplevel use.env)
-      ~branch_depth:(E.branch_depth use.env)
+      ~toplevel:(E.at_toplevel env)
+      ~branch_depth:(E.branch_depth env)
       expr
       ~benefit:inlining_benefit
       ~lifting:false
-      ~round:(E.round use.env)
+      ~round:(E.round env)
   in
   if (not inline_unconditionally) && W.evaluate wsb then begin
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
-  Variable.print_list use.args
+  Variable.print_list args
   (if not inline_unconditionally then "" else " (unconditionally)")
   B.print inlining_benefit
   (W.print_description ~subfunctions:false) wsb
   Flambda.print original
   Flambda.print expr;
-    Inlined (handler.params, expr)
+    Inlined (params, expr)
   end else begin
 Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   Continuation.print cont
-  Variable.print_list use.args
+  Variable.print_list args
   B.print inlining_benefit;
     Didn't_inline
   end
@@ -106,47 +115,48 @@ let find_inlinings r ~simplify =
      uses to that.
      In preparation for this transformation we count up, for each continuation,
      how many uses it has with distinct sets of arguments. *)
-  let definitions_with_uses =
-    Continuation.Map.fold (fun cont (uses, approx) definitions_with_uses ->
+  let definitions =
+    Continuation.Map.fold (fun cont (uses, approx) definitions ->
         let inline_unconditionally = U.linearly_used uses in
-        let application_points = U.inlinable_application_points uses in
-        List.fold_left (fun with_same_args (use : U.Use.t) ->
-            let key = cont, use.args in
-            match Continuation_with_args.Map.find key with_same_args with
+        List.fold_left (fun definitions (use : U.Use.t) ->
+            let key : Continuation_with_args.t = cont, use.args in
+            match Continuation_with_args.Map.find key definitions with
             | exception Not_found ->
               Continuation_with_args.Map.add key
-                (inline_unconditionally, N.One, use.env, approx) with_same_args
+                (inline_unconditionally, N.One, use.env, approx) definitions
             | inline_unconditionally, count, env, approx ->
               assert (not inline_unconditionally);
               (* It's ok to use the existing [env] since it must contain all
                  bindings that are necessary for the inlined body. *)
               Continuation_with_args.Map.add key
-                (N.(+) count N.One, env, approx) with_same_args)
-          with_same_args
-          application_points)
-      Continuation_with_args.Map.empty
+                (false, N.(+) count N.One, env, approx) definitions)
+          definitions
+          (U.inlinable_application_points uses))
       (R.continuation_definitions_with_uses r)
+      Continuation_with_args.Map.empty
   in
   Continuation_with_args.Map.fold (fun (cont, args)
             (inline_unconditionally, count, env, approx)
-            (inlinings, new_shared_conts) ->
+            ((inlinings, new_shared_conts, zero_uses) as acc) ->
       assert ((not inline_unconditionally) || N.linear count);
       let inlining_result =
         match Continuation_approx.handler approx with
         | None -> Didn't_inline
         | Some handler ->
-          try_inlining ~cont ~use ~handler ~inline_unconditionally
+          try_inlining ~cont ~args ~env ~handler ~inline_unconditionally
             ~count ~simplify
       in
       match inlining_result with
-      | Didn't_inline -> inlinings
+      | Didn't_inline -> acc
       | Inlined (params, body) ->
-        begin match count with
-        | Zero | One ->
+        begin match (count : N.t) with
+        | Zero ->
+          inlinings, new_shared_conts, Continuation.Set.add cont zero_uses
+        | One ->
           let inlinings =
             Continuation_with_args.Map.add (cont, args) body inlinings
           in
-          inlinings, new_shared_conts
+          inlinings, new_shared_conts, zero_uses
         | Many ->
           let new_shared_cont = Continuation.create () in
           let apply_shared_cont : Flambda.expr =
@@ -160,35 +170,38 @@ let find_inlinings r ~simplify =
              [new_shared_cont] is going to be inserted. *)
           let new_shared_conts =
             Continuation.Map.add cont (new_shared_cont, params, body)
+              new_shared_conts
           in
-          inlinings, new_shared_conts
+          inlinings, new_shared_conts, zero_uses
         end)
-    (Continuation_with_args.Map.empty, Continuation.Map.empty)
-    definitions_with_uses
+    definitions
+    (Continuation_with_args.Map.empty, Continuation.Map.empty,
+      Continuation.Set.empty)
 
 (* At the moment this doesn't apply the substitution to handlers as we
    discover inlinings (unlike what happens for function inlining).  Let's
-   see how it goes.
-   Only mapping the [Apply_cont] nodes also means that we need another pass
-   of simplify to remove continuation handlers for continuations that don't
-   have any remaining uses. *)
-let substitute (expr : Flambda.expr) ~inlinings ~new_shared_conts =
+   see how it goes. *)
+let substitute (expr : Flambda.expr) ~inlinings ~new_shared_conts
+      ~zero_uses =
   Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
       match expr with
-      | Let_cont { name; _ } ->
-        begin match Continuation.Map.find name new_shared_conts with
-        | exception Not_found -> expr
-        | (name, params, handler) ->
-          Flambda.Let_cont {
-            name;
-            body = expr;
-            handler = Handler {
-              params;
-              recursive = Nonrecursive;
-              handler;
-            };
-          }
-        end
+      | Let_cont { name; body; _ } ->
+        if Continuation.Set.mem name zero_uses then
+          body
+        else
+          begin match Continuation.Map.find name new_shared_conts with
+          | exception Not_found -> expr
+          | (name, params, handler) ->
+            Flambda.Let_cont {
+              name;
+              body = expr;
+              handler = Handler {
+                params;
+                recursive = Nonrecursive;
+                handler;
+              };
+            }
+          end
       | Apply_cont (cont, args) ->
         begin match Continuation_with_args.Map.find (cont, args) inlinings with
         | exception Not_found -> expr
@@ -198,5 +211,5 @@ let substitute (expr : Flambda.expr) ~inlinings ~new_shared_conts =
     expr
 
 let for_toplevel_expression expr r ~simplify =
-  let inlinings, new_shared_conts = find_inlinings r ~simplify in
-  substitute expr ~inlinings ~new_shared_conts
+  let inlinings, new_shared_conts, zero_uses = find_inlinings r ~simplify in
+  substitute expr ~inlinings ~new_shared_conts ~zero_uses
