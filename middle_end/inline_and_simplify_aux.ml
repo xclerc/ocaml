@@ -527,7 +527,10 @@ module Continuation_uses = struct
   let inlinable_application_points t = t.inlinable_application_points
 
   let filter_out_non_useful_uses t =
-(* This should check that the approximation is always better than the meet *)
+    (* CR mshinwell: This should check that the approximation is always
+       better than the meet.  We could do this easily by adding an equality
+       function to Simple_value_approx and then using that in conjunction with
+       the "meet" function *)
     let inlinable_application_points =
       List.filter (fun (use : Use.t) ->
           List.exists (fun (_var, approx) -> A.useful approx) use.args)
