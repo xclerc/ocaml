@@ -601,20 +601,19 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
           (Inlining_decision.should_inline_inside_declaration function_decl)
         ~dbg:function_decl.dbg
         ~f:(fun body_env ->
+(*
+Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
+  Flambda.print function_decl.body E.print body_env;
+*)
           let body, r = simplify body_env r function_decl.body in
           let body =
-            Continuation_inlining.for_toplevel_expression body r ~simplify
+            if E.never_inline body_env then
+              body
+            else
+              Continuation_inlining.for_toplevel_expression body r ~simplify
           in
           let r, _, _ =
-try
             R.exit_scope_catch r continuation_param ~num_params:1
-with _exn ->
-begin
-Misc.fatal_errorf "FAILURE@;Before:@;%a@;After:@;%a@;"
-  Flambda.print function_decl.body
-  Flambda.print body;
-assert false
-end
           in
           body, r)
     in
@@ -1320,7 +1319,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           contents_kind },
       r)
   | Apply_cont (cont, args) ->
-    simplify_free_variables env args ~f:(fun _env args args_approxs ->
+    simplify_free_variables env args ~f:(fun env args args_approxs ->
       simplify_apply_cont env r cont ~args ~args_approxs)
   | Let_cont { name = cont; body; handler } ->
     let env_above_let_cont = env in
@@ -1779,6 +1778,10 @@ let rec simplify_program_body env r (program : Flambda.program_body)
           Continuation_approx.create_unknown ~name:cont ~num_params:1
         in
         let env = E.add_continuation env cont cont_approx in
+(*
+Format.eprintf "Simplifying initialize_symbol field:@;%a"
+  Flambda.print h;
+*)
         let h', r = simplify env r h in
         let h =
           if E.never_inline env then h
@@ -1819,7 +1822,8 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     let env = E.add_continuation env cont cont_approx in
     let expr, r = simplify env r expr in
     let expr =
-      Continuation_inlining.for_toplevel_expression expr r ~simplify
+      if E.never_inline env then expr
+      else Continuation_inlining.for_toplevel_expression expr r ~simplify
     in
     let program, r = simplify_program_body env r program in
     let r, _approx, _uses = R.exit_scope_catch r cont ~num_params:1 in

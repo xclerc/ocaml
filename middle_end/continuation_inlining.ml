@@ -64,6 +64,13 @@ let try_inlining ~cont ~args ~args_approxs ~env
       let params = handler.params in
       let expr =
         List.fold_left2 (fun expr param arg ->
+            if not (E.mem env arg) then begin
+              Misc.fatal_errorf "When inlining continuation %a, argument %a \
+                  was not in scope in the environment: %a"
+                Continuation.print cont
+                Variable.print arg
+                E.print env
+            end;
             Flambda.create_let param (Var arg) expr)
           handler.handler
           params args

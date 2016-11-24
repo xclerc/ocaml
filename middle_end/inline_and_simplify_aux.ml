@@ -527,6 +527,7 @@ module Continuation_uses = struct
   let inlinable_application_points t = t.inlinable_application_points
 
   let filter_out_non_useful_uses t =
+(* This should check that the approximation is always better than the meet *)
     let inlinable_application_points =
       List.filter (fun (use : Use.t) ->
           List.exists (fun (_var, approx) -> A.useful approx) use.args)
@@ -567,6 +568,13 @@ module Result = struct
     set_approx t meet
 
   let use_continuation t env cont ~inlinable_position ~args ~args_approxs =
+    if not (List.for_all (fun arg -> Env.mem env arg) args) then begin
+      Misc.fatal_errorf "use_continuation %a: argument(s) (%a) not in \
+          environment %a"
+        Continuation.print cont
+        Variable.print_list args
+        Env.print env
+    end;
     let uses =
       match Continuation.Map.find cont t.used_continuations with
       | exception Not_found -> Continuation_uses.create ()
@@ -607,8 +615,6 @@ module Result = struct
     }, approxs, uses
 
   let define_continuation t cont env uses approx =
-    (* CR mshinwell: comment this next line to see a failure in
-       stdlib/arg.ml *)
     let uses = Continuation_uses.filter_out_non_useful_uses uses in
     { t with
       defined_continuations =
