@@ -263,6 +263,8 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
         failaction = sw.failaction;
       })
   | Event (ilam, _) -> close t env ilam
+  | Push_trap { body; handler; } -> Push_trap { body; handler; }
+  | Pop_trap cont -> Pop_trap cont
 
 and close_named t env (named : Ilambda.named) : Flambda.named =
   match named with

@@ -31,6 +31,8 @@ type t =
   | Apply_cont of Continuation.t * Ident.t list
   | Switch of Ident.t * switch
   | Event of t * L.lambda_event
+  | Push_trap of { body : Continuation.t; handler : Continuation.t; }
+  | Pop_trap of Continuation.t
 
 and named =
   | Var of Ident.t
@@ -238,5 +240,12 @@ and lam ppf (t : t) =
       ev.lev_loc.Location.loc_start.Lexing.pos_cnum
       ev.lev_loc.Location.loc_end.Lexing.pos_cnum
       lam expr
+  | Push_trap { body; handler; } ->
+    fprintf ppf "@[<2>(push_trap@ %a;@ goto@ %a)@]"
+      Continuation.print handler
+      Continuation.print body
+  | Pop_trap { cont; } ->
+    fprintf ppf "@[<2>(pop_trap;@ goto@ %a)@]"
+      Continuation.print cont
 
 let print = lam

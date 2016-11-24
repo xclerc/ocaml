@@ -195,32 +195,25 @@ let sequence (lam1, lam2) =
 
 let rec simplify_primitive env (prim : L.primitive) args loc =
   match prim, args with
-(*
   | Prim ((Pdivint Safe | Pmodint Safe
            | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }) as prim,
            [arg1; arg2], loc)
       when not !Clflags.fast -> (* not -unsafe *)
-    let arg2 = close t env arg2 in
-    let arg1 = close t env arg1 in
     let numerator = Variable.create "numerator" in
     let denominator = Variable.create "denominator" in
     let zero = Variable.create "zero" in
     let is_zero = Variable.create "is_zero" in
     let exn = Variable.create "division_by_zero" in
-    let exn_symbol =
-      t.symbol_for_global' Predef.ident_division_by_zero
-    in
-    let dbg = Debuginfo.from_location loc in
-    let zero_const : Flambda.named =
+    let zero_const : Lambda.structured_constant =
       match prim with
       | Pdivint _ | Pmodint _ ->
-        Const (Int 0)
+        Const_base (Const_int 0)
       | Pdivbint { size = Pint32 } | Pmodbint { size = Pint32 } ->
-        Allocated_const (Int32 0l)
+        Const_base (Const_int32 0l)
       | Pdivbint { size = Pint64 } | Pmodbint { size = Pint64 } ->
-        Allocated_const (Int64 0L)
+        Const_base (Const_int64 0L)
       | Pdivbint { size = Pnativeint } | Pmodbint { size = Pnativeint } ->
-        Allocated_const (Nativeint 0n)
+        Const_base (Const_nativeint 0n)
       | _ -> assert false
     in
     let prim : Lambda.primitive =
@@ -237,16 +230,14 @@ let rec simplify_primitive env (prim : L.primitive) args loc =
       | Pdivbint { size } | Pmodbint { size } -> Pbintcomp (size, Ceq)
       | _ -> assert false
     in
-    t.imported_symbols <- Symbol.Set.add exn_symbol t.imported_symbols;
-    Flambda.create_let zero zero_const
-      (Flambda.create_let exn (Symbol exn_symbol)
-        (Flambda.create_let denominator (Expr arg2)
-          (Flambda.create_let numerator (Expr arg1)
-            (Flambda.create_let is_zero
-              (Prim (comparison, [zero; denominator], dbg))
-                (If_then_else (is_zero,
-                  name_expr (Prim (Praise Raise_regular, [exn], dbg))
-                    ~name:"dummy",
+    Llet (Strict, Pgenval, zero, zero_const
+      (Llet (Strict, Pgenval, exn, Predef.ident_division_by_zero,
+        (Llet (Strict, Pgenval, denominator, arg2,
+          (Llet (Strict, Pgenval, numerator, arg1,
+            (Llet (Strict, Pgenval, is_zero,
+              (Lprim (comparison, [zero; denominator], loc))
+                (Lifthenelse (is_zero,
+                  Lprim (Praise Raise_regular, [exn], loc),
                   (* CR-someday pchambart: find the right event.
                      mshinwell: I briefly looked at this, and couldn't
                      figure it out.
@@ -254,13 +245,11 @@ let rec simplify_primitive env (prim : L.primitive) args loc =
                      are suitable. I had to add a new one for a similar
                      case in the array data types work.
                      mshinwell: deferred CR *)
-                  name_expr ~name:"result"
-                    (Prim (prim, [numerator; denominator], dbg))))))))
+                  Lprim (prim, [numerator; denominator], loc))))))))))))
   | Prim ((Pdivint Safe | Pmodint Safe
            | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _, _)
       when not !Clflags.fast ->
     Misc.fatal_error "Pdivint / Pmodint must have exactly two arguments"
-*)
   | Psequor, [arg1; arg2] ->
     let const_true = Ident.create "const_true" in
     let cond = Ident.create "cond_sequor" in
@@ -378,57 +367,17 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
         prepare_option env default (fun default ->
           k (L.Lstringswitch (scrutinee, cases, default, loc)))))
   | Lstaticraise (cont, args) ->
-(* XXX this causes a failure on bytes.ml *)
-    let required_poptraps = [] (* Env.required_poptrap_for_staticraise env cont *) in
     prepare_list env args (fun args ->
-      let staticraise =
-        match required_poptraps with
-        | [] -> L.Lstaticraise (cont, args)
-        | __ :: _ ->
-          let args_id =
-            List.map (fun _ -> Ident.create "staticraise_arg") args
-          in
-          let args_as_id = List.map (fun id -> L.Lvar id) args_id in
-          let expr =
-            List.fold_left (fun expr handler ->
-              sequence
-                (L.Lprim(Ppoptrap_lambda handler, [], Location.none),
-                 expr))
-            (L.Lstaticraise (cont, args_as_id))
-            required_poptraps
-          in
-          (* Right to left evaluation order *)
-          List.fold_left2 (fun expr id arg ->
-            L.Llet(Strict, Pgenval, id, arg, expr))
-            expr args_id args
-      in
-      k staticraise)
+      k (L.Lstaticraise (cont, args)))
   | Lstaticcatch (body, (cont, args), handler) ->
     let env_body = Env.add_continuation env cont in
     prepare env_body body (fun body ->
       prepare env handler (fun handler ->
         k (L.Lstaticcatch (body, (cont, args), handler))))
-  | Ltrywith (body, _id, _handler) ->
-    prepare env body k
-(* XXX temporarily disabled to test the rest
-    let cont = L.next_raise_count () in
-    let env_body =
-      Env.add_current_exception_continuation
-        (Env.add_continuation env cont)
-        cont
-    in
-    let loc = Location.none in
-    prepare env_body body (fun body ->
+  | Ltrywith (body, id, handler) ->
+    prepare env body (fun body ->
       prepare env handler (fun handler ->
-        k (L.Lstaticcatch (
-             sequence (
-               Lprim (Ppushtrap_lambda cont, [], loc),
-               sequence (
-                 body,
-                 Lprim (Ppoptrap_lambda cont, [], loc))),
-             (cont, [id]),
-             handler))))
-*)
+        k (L.Ltrywith (body, id, handler))))
   | Lifthenelse (cond, ifso, ifnot) ->
     prepare env cond (fun cond ->
       prepare env ifso (fun ifso ->
