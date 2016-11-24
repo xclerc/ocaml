@@ -539,6 +539,12 @@ module Continuation_uses = struct
     { t with inlinable_application_points; }
 end
 
+module Continuation_usage_snapshot = struct
+  type t = {
+    used_continuations : Continuation_uses.t Continuation.Map.t;
+  }
+end
+
 module Result = struct
   type t =
     { approx : Simple_value_approx.t;
@@ -603,6 +609,24 @@ module Result = struct
 
   let no_continuations_in_scope t =
     Continuation.Map.is_empty t.used_continuations
+
+  let snapshot_continuation_uses t =
+    { Continuation_usage_snapshot.
+      used_continuations = t.used_continuations;
+    }
+
+  let roll_back_continuation_uses t (snapshot : Continuation_usage_snapshot.t) =
+    let conts_then = Continuation.Map.keys snapshot.used_continuations in
+    let conts_now = Continuation.Map.keys t.used_continuations in
+    if not (Continuation.Set.subset conts_then conts_now) then begin
+      Misc.fatal_errorf "Cannot roll back continuation uses: at the time of \
+          snapshotting the used continuations were %a but now they are %a"
+        Continuation.Set.print conts_then
+        Continuation.Set.print conts_now
+    end;
+    { t with
+      used_continuations = snapshot.used_continuations;
+    }
 
   let exit_scope_catch t i ~num_params =
     let uses =

@@ -305,6 +305,10 @@ module Continuation_uses : sig
   val linearly_used : t -> bool
 end
 
+module Continuation_usage_snapshot : sig
+  type t
+end
+
 module Result : sig
   (** Result structures approximately follow the evaluation order of the
       program.  They are returned by the simplification algorithm acting on
@@ -345,6 +349,10 @@ module Result : sig
     -> args:Variable.t list
     -> args_approxs:Simple_value_approx.t list
     -> t
+
+  val snapshot_continuation_uses : t -> Continuation_usage_snapshot.t
+
+  val roll_back_continuation_uses : t -> Continuation_usage_snapshot.t -> t
 
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)

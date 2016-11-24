@@ -185,6 +185,7 @@ let inline env r ~lhs_of_application
     let r =
       R.set_inlining_threshold r (Some remaining_inlining_threshold)
     in
+    let cont_usage_snapshot = R.snapshot_continuation_uses r in
     let body, r_inlined =
       (* First we construct the code that would result from copying the body of
          the function, without doing any further inlining upon it, to the call
@@ -231,6 +232,7 @@ let inline env r ~lhs_of_application
         then env
         else E.inlining_level_up env
       in
+      let r = R.roll_back_continuation_uses r cont_usage_snapshot in
       Changed ((simplify env r body), decision)
     in
     if always_inline then
@@ -263,6 +265,7 @@ let inline env r ~lhs_of_application
              to avoid having to check whether or not it is recursive *)
           E.inside_unrolled_function env function_decls.set_of_closures_origin
         in
+        let r = R.roll_back_continuation_uses r cont_usage_snapshot in
         let body, r_inlined = simplify env r_inlined body in
         let wsb_with_subfunctions =
           W.create ~original body

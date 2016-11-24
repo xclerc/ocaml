@@ -122,7 +122,7 @@ Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
       ~lifting:false
       ~round:(E.round env)
   in
-  if (not inline_unconditionally) && W.evaluate wsb then begin
+  if inline_unconditionally || W.evaluate wsb then begin
 (*
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
@@ -157,6 +157,10 @@ let find_inlinings r ~simplify =
   let definitions =
     Continuation.Map.fold (fun cont (uses, approx, env) definitions ->
         let inline_unconditionally = U.linearly_used uses in
+(*
+Format.eprintf "Continuation %a used linearly? %b\n%!"
+  Continuation.print cont inline_unconditionally;
+*)
         List.fold_left (fun definitions (use : U.Use.t) ->
             let args, args_approxs = List.split use.args in
             let key : Continuation_with_args.t = cont, args in

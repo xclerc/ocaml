@@ -73,7 +73,6 @@ module State = struct
     to_remain : thing_to_lift list;
     continuations_to_remain : Continuation.Set.t;
     variables_to_remain : Variable.Set.t;
-    mutable_variables_to_remain : Mutable_variable.Set.t;
     (* [mutable_variables_used] is here to work around the fact that we don't
        have functions (or keep track of) mutable variable usage in [Flambda].
        This seems fine given that the longer-term plan is to remove mutable
@@ -92,7 +91,6 @@ module State = struct
       to_remain = [];
       continuations_to_remain;
       variables_to_remain = Variable.Set.of_list variables_to_remain;
-      mutable_variables_to_remain = Mutable_variable.Set.empty;
       mutable_variables_used = Mutable_variable.Set.empty;
     }
 
@@ -129,17 +127,10 @@ Format.eprintf "Continuation %a remaining\n%!" Continuation.print name;
       | Let (var, _) -> Variable.Set.add var t.variables_to_remain
       | Let_mutable _ | Let_cont _ -> t.variables_to_remain
     in
-    let mutable_variables_to_remain =
-      match thing with
-      | Let_mutable (var, _, _) ->
-        Mutable_variable.Set.add var t.mutable_variables_to_remain
-      | Let _ | Let_cont _ -> t.mutable_variables_to_remain
-    in
     { t with
       to_remain = thing :: t.to_remain;
       continuations_to_remain;
       variables_to_remain;
-      mutable_variables_to_remain;
     }
 
   let can_lift_if_using_continuation t cont =
@@ -152,18 +143,20 @@ Format.eprintf "Continuation %a remaining\n%!" Continuation.print name;
   let can_lift_if_using_variables t vars =
     Variable.Set.is_empty (Variable.Set.inter vars t.variables_to_remain)
 
-  let can_lift_if_using_mutable_variables t vars =
-    Mutable_variable.Set.is_empty (
-      Mutable_variable.Set.inter vars t.mutable_variables_to_remain)
-
   let constants t = t.constants
   let rev_to_be_lifted t = t.to_be_lifted
   let rev_to_remain t = t.to_remain
 
-  let use_mutable_variable t var =
+  let use_mutable_variable t mut_var =
     { t with
       mutable_variables_used =
-        Mutable_variable.Set.add var t.mutable_variables_used;
+        Mutable_variable.Set.add mut_var t.mutable_variables_used;
+    }
+
+  let use_mutable_variables t mut_vars =
+    { t with
+      mutable_variables_used =
+        Mutable_variable.Set.union mut_vars t.mutable_variables_used;
     }
 
   let forget_mutable_variable t var =
@@ -173,6 +166,9 @@ Format.eprintf "Continuation %a remaining\n%!" Continuation.print name;
     }
 
   let mutable_variables_used t = t.mutable_variables_used
+
+  let uses_no_mutable_variables t =
+    Mutable_variable.Set.is_empty t.mutable_variables_used
 end
 
 let rec lift_expr (expr : Flambda.expr) ~state =
@@ -284,9 +280,12 @@ Format.eprintf "New handler for %a is:\n%a\n"
     let fvs = Flambda.free_variables_of_let_cont_handler handler in
     let fvs_mut = State.mutable_variables_used handler_state in
     let state =
+      State.use_mutable_variables state fvs_mut
+    in
+    let state =
       if State.can_lift_if_using_continuations state fcs
         && State.can_lift_if_using_variables state fvs
-        && State.can_lift_if_using_mutable_variables state fvs_mut
+        && State.uses_no_mutable_variables handler_state
       then
         State.lift_continuation state ~name ~handler
       else

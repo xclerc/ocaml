@@ -1032,6 +1032,7 @@ and simplify_named env r (tree : Flambda.named)
     end
   | Set_of_closures set_of_closures -> begin
     let backend = E.backend env in
+    let cont_usage_snapshot = R.snapshot_continuation_uses r in
     let set_of_closures, r, first_freshening =
       simplify_set_of_closures env r set_of_closures
     in
@@ -1041,12 +1042,15 @@ and simplify_named env r (tree : Flambda.named)
          from each call to [simplify_set_of_closures] must be composed.
          Note that this function only composes with [first_freshening] owing
          to the structure of the code below (this new [simplify] is always
-         in tail position). *)
+         in tail position).
+         We also need to be careful not to double-count (or worse) uses of
+         continuations. *)
       (* CR-someday mshinwell: It was mooted that maybe we could try
          structurally-typed closures (i.e. where we would never rename the
          closure elements), or something else, to try to remove
          the "closure freshening" thing in the approximation which is hard
          to deal with. *)
+      let r = R.roll_back_continuation_uses r cont_usage_snapshot in
       let bindings, set_of_closures, r =
         let env = E.set_never_inline env in
         simplify_newly_introduced_let_bindings env r ~bindings
