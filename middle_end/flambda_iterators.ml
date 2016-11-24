@@ -18,7 +18,7 @@
 
 let apply_on_subexpressions f f_named (flam : Flambda.t) =
   match flam with
-  | Apply _ | Apply_cont _ | Switch _ -> ()
+  | Apply _ | Apply_cont _ | Switch _ | Push_trap _ | Pop_trap _ -> ()
   | Let { defining_expr; body; _ } ->
     f_named defining_expr;
     f body
@@ -31,7 +31,7 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
 
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
-  | Apply _ | Apply_cont _ | Switch _ -> tree
+  | Apply _ | Apply_cont _ | Switch _ | Push_trap _ | Pop_trap _ -> tree
   | Let { var; defining_expr; body; _ } ->
     let new_named = f_named var defining_expr in
     let new_body = f body in
@@ -196,7 +196,7 @@ let map_general ~toplevel f f_named tree =
     | _ ->
       let exp : Flambda.t =
         match tree with
-        | Apply _ | Apply_cont _ | Switch _ -> tree
+        | Apply _ | Apply_cont _ | Switch _ | Push_trap _ | Pop_trap _ -> tree
         | Let _ -> assert false
         | Let_mutable mutable_let ->
           let new_body = aux mutable_let.body in
@@ -384,7 +384,9 @@ let map_toplevel_apply_cont expr ~f =
       | Let_mutable _
       | Let_cont _
       | Apply _
-      | Switch _ -> expr)
+      | Switch _
+      | Push_trap _
+      | Pop_trap _ -> expr)
     expr
 
 let map_sets_of_closures tree ~f =

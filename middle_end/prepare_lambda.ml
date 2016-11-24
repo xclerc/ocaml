@@ -195,9 +195,9 @@ let sequence (lam1, lam2) =
 
 let rec simplify_primitive env (prim : L.primitive) args loc =
   match prim, args with
-  | Prim ((Pdivint Safe | Pmodint Safe
-           | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }) as prim,
-           [arg1; arg2], loc)
+  | (Pdivint Safe | Pmodint Safe
+      | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }),
+    [arg1; arg2]
       when not !Clflags.fast -> (* not -unsafe *)
     let numerator = Variable.create "numerator" in
     let denominator = Variable.create "denominator" in

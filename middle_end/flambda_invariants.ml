@@ -209,6 +209,11 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Apply_cont (static_exn, es) ->
       ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es
+    | Push_trap { body; handler; } ->
+      ignore_continuation body;
+      ignore_continuation handler
+    | Pop_trap cont ->
+      ignore_continuation cont
   and loop_named env (named : Flambda.named) =
     match named with
     | Var var -> check_variable_is_bound env var
