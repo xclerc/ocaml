@@ -543,10 +543,14 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
   (* N.B. This function assumes that all bound identifiers are distinct. *)
   let rec aux (flam : t) : unit =
     match flam with
-    | Apply { func; args; kind = _; dbg = _} ->
+    | Apply { func; args; kind; _ } ->
       begin match ignore_uses_as_callee with
       | None -> free_variable func
       | Some () -> ()
+      end;
+      begin match kind with
+      | Function -> ()
+      | Method { obj; _ } -> free_variable obj
       end;
       begin match ignore_uses_as_argument with
       | None -> List.iter free_variable args

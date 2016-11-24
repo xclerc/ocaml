@@ -693,7 +693,7 @@ and simplify_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
 
 and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
   simplify_free_variable env obj ~f:(fun env obj _obj_approx ->
-    simplify_free_variable env apply.func ~f:(fun env func _obj_approx ->
+    simplify_free_variable env apply.func ~f:(fun env func _func_approx ->
       simplify_free_variables env apply.args ~f:(fun env args _args_approxs ->
         let continuation, r =
           simplify_apply_cont_to_cont env r apply.continuation

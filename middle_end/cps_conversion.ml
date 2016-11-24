@@ -252,8 +252,8 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
             administrative = false;
             params = [result_var];
             recursive = Nonrecursive;
-            body = after;
-            handler = Apply apply;
+            body = Apply apply;
+            handler = after;
           })))
   | Lassign _ -> name_then_cps_non_tail "assign" lam k
   | Levent (lam, event) -> Event (cps_non_tail lam k, event)
