@@ -612,12 +612,12 @@ let substitute_read_symbol_field_for_variables
       bind cond fresh (Switch (fresh, sw))
     | Switch _ ->
       expr
-    | Apply_cont (exn, args) ->
+    | Apply_cont (exn, trap_action, args) ->
       let args, bind_args =
         List.split (List.map make_var_subst args)
       in
       List.fold_right (fun f expr -> f expr) bind_args @@
-        Flambda.Apply_cont (exn, args)
+        Flambda.Apply_cont (exn, trap_action, args)
     | Apply { kind; func; args; continuation; call_kind; dbg; inline;
         specialise } ->
       let kind, bind_kind = make_apply_kind_subst kind in
