@@ -230,23 +230,26 @@ let rec simplify_primitive env (prim : L.primitive) args loc =
       | Pdivbint { size } | Pmodbint { size } -> Pbintcomp (size, Ceq)
       | _ -> assert false
     in
-    L.Llet (Strict, Pgenval, zero, Lconst zero_const,
-      (Llet (Strict, Pgenval, exn, Lvar Predef.ident_division_by_zero,
-        (Llet (Strict, Pgenval, denominator, arg2,
-          (Llet (Strict, Pgenval, numerator, arg1,
-            (Llet (Strict, Pgenval, is_zero,
-              (Lprim (comparison, [L.Lvar zero; L.Lvar denominator], loc)),
-              (Lifthenelse (Lvar is_zero,
-                Lprim (Praise Raise_regular, [L.Lvar exn], loc),
-                (* CR-someday pchambart: find the right event.
-                    mshinwell: I briefly looked at this, and couldn't
-                    figure it out.
-                    lwhite: I don't think any of the existing events
-                    are suitable. I had to add a new one for a similar
-                    case in the array data types work.
-                    mshinwell: deferred CR *)
-                Lprim (prim, [L.Lvar numerator; L.Lvar denominator],
-                  loc))))))))))))
+    let expr =
+      L.Llet (Strict, Pgenval, zero, Lconst zero_const,
+        (Llet (Strict, Pgenval, exn, Lvar Predef.ident_division_by_zero,
+          (Llet (Strict, Pgenval, denominator, arg2,
+            (Llet (Strict, Pgenval, numerator, arg1,
+              (Llet (Strict, Pgenval, is_zero,
+                (Lprim (comparison, [L.Lvar zero; L.Lvar denominator], loc)),
+                (Lifthenelse (Lvar is_zero,
+                  Lprim (Praise Raise_regular, [L.Lvar exn], loc),
+                  (* CR-someday pchambart: find the right event.
+                      mshinwell: I briefly looked at this, and couldn't
+                      figure it out.
+                      lwhite: I don't think any of the existing events
+                      are suitable. I had to add a new one for a similar
+                      case in the array data types work.
+                      mshinwell: deferred CR *)
+                  Lprim (prim, [L.Lvar numerator; L.Lvar denominator],
+                    loc))))))))))))
+    in
+    prepare env expr (fun lam -> lam)
   | (Pdivint Safe | Pmodint Safe
       | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _
       when not !Clflags.fast ->

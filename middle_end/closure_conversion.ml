@@ -275,7 +275,14 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
 
 and close_named t env (named : Ilambda.named) : Flambda.named =
   match named with
-  | Var id -> Var (Env.find_var env id)
+  | Var id ->
+    if Ident.is_predef_exn id then begin
+      let symbol = t.symbol_for_global' id in 
+      t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+      Symbol symbol
+    end else begin
+      Var (Env.find_var env id)
+    end
   | Const cst -> fst (close_const t cst)
   | Prim (Pread_mutable id, args, _) ->
     (* All occurrences of mutable variables bound by [Let_mutable] are
@@ -307,7 +314,13 @@ and close_functions t external_env function_declarations : Flambda.named =
     Function_decls.closure_env_without_parameters
       external_env function_declarations
   in
-  let all_free_idents = Function_decls.all_free_idents function_declarations in
+  let all_free_idents =
+    (* Filter out predefined exception identifiers, since they will be
+       turned into symbols when we closure-convert the body. *)
+    IdentSet.filter (fun ident ->
+        not (Ident.is_predef_exn ident))
+      (Function_decls.all_free_idents function_declarations)
+  in
   let close_one_function map decl =
     let body = Function_decl.body decl in
     let loc = Function_decl.loc decl in
