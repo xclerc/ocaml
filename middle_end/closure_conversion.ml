@@ -264,7 +264,8 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
       })
   | Event (ilam, _) -> close t env ilam
   | Push_trap { body; handler; } -> Push_trap { body; handler; }
-  | Pop_trap cont -> Pop_trap cont
+  | Pop_trap (body_result, cont) ->
+    Pop_trap (Env.find_var env body_result, cont)
 
 and close_named t env (named : Ilambda.named) : Flambda.named =
   match named with

@@ -212,7 +212,8 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Push_trap { body; handler; } ->
       ignore_continuation body;
       ignore_continuation handler
-    | Pop_trap cont ->
+    | Pop_trap (result_var, cont) ->
+      check_variable_is_bound env result_var;
       ignore_continuation cont
   and loop_named env (named : Flambda.named) =
     match named with

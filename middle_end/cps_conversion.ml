@@ -256,6 +256,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
             handler = after;
           })))
   | Ltrywith (body, id, handler) ->
+    let body_result = Ident.create "body_result" in
     let result_var = Ident.create "try_with_result" in
     let body_continuation = Continuation.create () in
     let handler_continuation = Continuation.create () in
@@ -295,13 +296,13 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
                 };
               handler = body;
             };
-          handler = Pop_trap after_continuation;
+          handler = Pop_trap (body_result, after_continuation);
         };
       handler = k result_var;
     }
   | Lassign _ -> name_then_cps_non_tail "assign" lam k
   | Levent (lam, event) -> Event (cps_non_tail lam k, event)
-  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _
+  | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
       Printlambda.lambda lam
 
@@ -464,10 +465,10 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
     let ilam, k_count = cps_tail lam k in
     Event (ilam, event), k_count
   | Ltrywith (body, id, handler) ->
+    let body_result = Ident.create "body_result" in
     let body_continuation = Continuation.create () in
     let handler_continuation = Continuation.create () in
     let poptrap_continuation = Continuation.create () in
-    let after_continuation = Continuation.create () in
     let body, _k_count = cps_tail body poptrap_continuation in
     let handler, k_count_handler = cps_tail handler k in
     Let_cont {
@@ -496,8 +497,8 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
             };
           handler = body;
         };
-      handler = Pop_trap k;
-    }, N(+) k_count_handler N.One;
+      handler = Pop_trap (body_result, k);
+    }, N.(+) k_count_handler N.One
   | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
       Printlambda.lambda lam

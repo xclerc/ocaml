@@ -132,7 +132,7 @@ type t =
   | Switch of Variable.t * switch
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
   | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Continuation.t
+  | Pop_trap of Variable.t * Continuation.t
 
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)
 and named =

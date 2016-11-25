@@ -50,7 +50,7 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     end else begin
       let free_conts =
         Continuation.Set.union free_conts
-          (Flambda_utils.free_continuations handler)
+          (Flambda.free_continuations handler)
       in
       let expr : Flambda.expr = Let_cont { let_cont with body; } in
       free_conts, lifted, expr
@@ -85,8 +85,9 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     let free_conts, lifted, body = lift body ~to_copy in
     let body : Flambda.t = Let_mutable { let_mutable with body; } in
     free_conts, lifted, body
-  | Let_cont _ | Apply _ | Apply_cont _ | Switch _ ->
-    let free_conts = Flambda_utils.free_continuations expr in
+  | Let_cont _ | Apply _ | Apply_cont _ | Switch _
+  | Push_trap _ | Pop_trap _ ->
+    let free_conts = Flambda.free_continuations expr in
     free_conts, [], expr
 
 (* CR-someday mshinwell: Try to avoid having a separate substitution phase. *)

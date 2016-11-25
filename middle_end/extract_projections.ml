@@ -96,7 +96,8 @@ let rec analyse_expr ~which_variables expr =
     | Switch (var, _) -> check_free_variable var
     | Apply_cont (_, args) ->
       List.iter check_free_variable args
-    | Let _ | Let_cont _ -> ()
+    | Let _ | Let_cont _ | Push_trap _ -> ()
+    | Pop_trap (body_result, _) -> check_free_variable body_result
   in
   let for_named (named : Flambda.named) =
     match named with

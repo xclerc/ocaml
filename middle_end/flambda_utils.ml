@@ -50,6 +50,8 @@ let description_of_toplevel_node (expr : Flambda.t) =
   | Apply _ -> "apply"
   | Apply_cont  _ -> "staticraise"
   | Switch _ -> "switch"
+  | Push_trap _ -> "push_trap"
+  | Pop_trap _ -> "pop_trap"
 
 let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
   match c1, c2 with
@@ -105,6 +107,13 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
             && same handler1 handler2
         | Alias _, Handler _ | Handler _, Alias _ -> false
         end
+  | Push_trap { body = body1; handler = handler1; },
+      Push_trap { body = body2; handler = handler2; } ->
+    Continuation.equal body1 body2 && Continuation.equal handler1 handler2
+  | Push_trap _, _ | _, Push_trap _ -> false
+  | Pop_trap (body_result1, cont1), Pop_trap (body_result2, cont2) ->
+    Variable.equal body_result1 body_result2 && Continuation.equal cont1 cont2
+  | Pop_trap _, _ | _, Pop_trap _ -> false
 
 and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   match named1, named2 with
@@ -205,7 +214,8 @@ let toplevel_substitution sb tree =
     | Apply_cont (static_exn, args) ->
       let args = List.map sb args in
       Apply_cont (static_exn, args)
-    | Let_cont _ | Let _ -> flam
+    | Let_cont _ | Let _ | Push_trap _ -> flam
+    | Pop_trap (body_result, cont) -> Pop_trap (sb body_result, cont)
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
@@ -633,9 +643,12 @@ let substitute_read_symbol_field_for_variables
             { kind; func; args; continuation; call_kind; dbg; inline;
               specialise;
             }
-    | Let_cont _ ->
+    | Let_cont _ | Push_trap _ ->
       (* No variables directly used in those expressions *)
       expr
+    | Pop_trap (body_result, cont) ->
+      let body_result, bind_body_result = make_var_subst body_result in
+      bind_body_result @@ Flambda.Pop_trap (body_result, cont)
   in
   Flambda_iterators.map_toplevel_expr f expr
 
@@ -745,56 +758,3 @@ let projection_to_named (projection : Projection.t) : Flambda.named =
   | Move_within_set_of_closures move -> Move_within_set_of_closures move
   | Field (field_index, var) ->
     Prim (Pfield field_index, [var], Debuginfo.none)
-
-let free_continuations expr =
-  let bound_continuations = ref Continuation.Set.empty in
-  let free_continuations = ref Continuation.Set.empty in
-  let aux (expr : Flambda.expr) =
-    match expr with
-    | Let_cont { name; handler = Handler _; _ } ->
-      bound_continuations := Continuation.Set.add name !bound_continuations
-    | Let_cont { name; handler = Alias alias_of; _ } ->
-      bound_continuations := Continuation.Set.add name !bound_continuations;
-      free_continuations := Continuation.Set.add alias_of !free_continuations
-    | Apply_cont (continuation, _)
-    | Apply { continuation; _ } ->
-      free_continuations :=
-        Continuation.Set.add continuation !free_continuations
-    | Switch (_scrutinee, switch) ->
-      let consts = List.map (fun (_, cont) -> cont) switch.consts in
-      let blocks = List.map (fun (_, cont) -> cont) switch.blocks in
-      let failaction =
-        match switch.failaction with
-        | None -> []
-        | Some failaction -> [failaction]
-      in
-      let free =
-        Continuation.Set.of_list (consts @ blocks @ failaction)
-      in
-      free_continuations :=
-        Continuation.Set.union free !free_continuations
-    | Let _
-    | Let_mutable _ -> ()
-  in
-  let aux_named (named : Flambda.named) =
-    match named with
-    | Prim ((Ppushtrap_flambda continuation | Ppoptrap_flambda continuation),
-        _, _) ->
-      free_continuations :=
-        Continuation.Set.add continuation !free_continuations
-    | Var _
-    | Const _
-    | Prim _
-    | Assign _
-    | Read_mutable _
-    | Symbol _
-    | Read_symbol_field _
-    | Allocated_const _
-    | Set_of_closures _
-    | Project_closure _
-    | Move_within_set_of_closures _
-    | Project_var _
-    | Proved_unreachable -> ()
-  in
-  Flambda_iterators.iter_toplevel aux aux_named expr;
-  Continuation.Set.diff !free_continuations !bound_continuations

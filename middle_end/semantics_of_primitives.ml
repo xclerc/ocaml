@@ -140,7 +140,6 @@ let for_primitive (prim : Lambda.primitive) =
   | Pbbswap _ -> No_effects, No_coeffects
   | Pint_as_pointer -> No_effects, No_coeffects
   | Popaque -> Arbitrary_effects, Has_coeffects
-  | Ppushtrap_flambda _ | Ppoptrap_flambda _ -> Arbitrary_effects, Has_coeffects
   | Ploc _ ->
     Misc.fatal_error "[Ploc] should have been eliminated by [Translcore]"
   | Prevapply
@@ -150,7 +149,7 @@ let for_primitive (prim : Lambda.primitive) =
     Misc.fatal_errorf "The primitive %a should have been eliminated by the \
         [Prepare_lambda] pass."
       Printlambda.primitive prim
-  | Pread_mutable _ | Ppushtrap_lambda _ | Ppoptrap_lambda _ ->
+  | Pread_mutable _ ->
     Misc.fatal_errorf "The primitive %a should have been eliminated by the \
         [Closure_conversion] pass."
       Printlambda.primitive prim

@@ -310,10 +310,6 @@ let primitive ppf = function
   | Pbbswap(bi) -> print_boxed_integer "bswap" ppf bi
   | Pint_as_pointer -> fprintf ppf "int_as_pointer"
   | Popaque -> fprintf ppf "opaque"
-  | Ppushtrap_lambda i -> fprintf ppf "pushtrap l %i" i
-  | Ppoptrap_lambda i -> fprintf ppf "poptrap l %i" i
-  | Ppushtrap_flambda c -> fprintf ppf "pushtrap f %a" Continuation.print c
-  | Ppoptrap_flambda c -> fprintf ppf "poptrap f %a" Continuation.print c
   | Pread_mutable i -> fprintf ppf "read_mutable %a" Ident.print i
   | Preturn -> fprintf ppf "return"
 
@@ -417,8 +413,6 @@ let name_of_primitive = function
   | Pbbswap _ -> "Pbbswap"
   | Pint_as_pointer -> "Pint_as_pointer"
   | Popaque -> "Popaque"
-  | Ppushtrap_lambda _ | Ppushtrap_flambda _ -> "Ppushtrap"
-  | Ppoptrap_lambda _ | Ppoptrap_flambda _ -> "Ppoptrap"
   | Pread_mutable _ -> "Pread_mutable"
   | Preturn -> "Preturn"
 

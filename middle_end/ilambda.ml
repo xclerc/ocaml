@@ -32,7 +32,7 @@ type t =
   | Switch of Ident.t * switch
   | Event of t * L.lambda_event
   | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Continuation.t
+  | Pop_trap of Ident.t * Continuation.t
 
 and named =
   | Var of Ident.t
@@ -244,8 +244,9 @@ and lam ppf (t : t) =
     fprintf ppf "@[<2>(push_trap@ %a;@ goto@ %a)@]"
       Continuation.print handler
       Continuation.print body
-  | Pop_trap { cont; } ->
-    fprintf ppf "@[<2>(pop_trap;@ goto@ %a)@]"
+  | Pop_trap (body_result, cont) ->
+    fprintf ppf "@[<2>(pop_trap;@ apply_cont@ %a@ %a)@]"
       Continuation.print cont
+      Ident.print body_result
 
 let print = lam

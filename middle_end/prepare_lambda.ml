@@ -199,11 +199,11 @@ let rec simplify_primitive env (prim : L.primitive) args loc =
       | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }),
     [arg1; arg2]
       when not !Clflags.fast -> (* not -unsafe *)
-    let numerator = Variable.create "numerator" in
-    let denominator = Variable.create "denominator" in
-    let zero = Variable.create "zero" in
-    let is_zero = Variable.create "is_zero" in
-    let exn = Variable.create "division_by_zero" in
+    let numerator = Ident.create "numerator" in
+    let denominator = Ident.create "denominator" in
+    let zero = Ident.create "zero" in
+    let is_zero = Ident.create "is_zero" in
+    let exn = Ident.create "division_by_zero" in
     let zero_const : Lambda.structured_constant =
       match prim with
       | Pdivint _ | Pmodint _ ->
@@ -230,24 +230,25 @@ let rec simplify_primitive env (prim : L.primitive) args loc =
       | Pdivbint { size } | Pmodbint { size } -> Pbintcomp (size, Ceq)
       | _ -> assert false
     in
-    Llet (Strict, Pgenval, zero, zero_const
-      (Llet (Strict, Pgenval, exn, Predef.ident_division_by_zero,
+    L.Llet (Strict, Pgenval, zero, Lconst zero_const,
+      (Llet (Strict, Pgenval, exn, Lvar Predef.ident_division_by_zero,
         (Llet (Strict, Pgenval, denominator, arg2,
           (Llet (Strict, Pgenval, numerator, arg1,
             (Llet (Strict, Pgenval, is_zero,
-              (Lprim (comparison, [zero; denominator], loc))
-                (Lifthenelse (is_zero,
-                  Lprim (Praise Raise_regular, [exn], loc),
-                  (* CR-someday pchambart: find the right event.
-                     mshinwell: I briefly looked at this, and couldn't
-                     figure it out.
-                     lwhite: I don't think any of the existing events
-                     are suitable. I had to add a new one for a similar
-                     case in the array data types work.
-                     mshinwell: deferred CR *)
-                  Lprim (prim, [numerator; denominator], loc))))))))))))
-  | Prim ((Pdivint Safe | Pmodint Safe
-           | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _, _)
+              (Lprim (comparison, [L.Lvar zero; L.Lvar denominator], loc)),
+              (Lifthenelse (Lvar is_zero,
+                Lprim (Praise Raise_regular, [L.Lvar exn], loc),
+                (* CR-someday pchambart: find the right event.
+                    mshinwell: I briefly looked at this, and couldn't
+                    figure it out.
+                    lwhite: I don't think any of the existing events
+                    are suitable. I had to add a new one for a similar
+                    case in the array data types work.
+                    mshinwell: deferred CR *)
+                Lprim (prim, [L.Lvar numerator; L.Lvar denominator],
+                  loc))))))))))))
+  | (Pdivint Safe | Pmodint Safe
+      | Pdivbint { is_safe = Safe } | Pmodbint { is_safe = Safe }), _
       when not !Clflags.fast ->
     Misc.fatal_error "Pdivint / Pmodint must have exactly two arguments"
   | Psequor, [arg1; arg2] ->

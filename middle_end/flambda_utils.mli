@@ -215,5 +215,3 @@ val clean_projections
   -> Flambda.specialised_to Variable.Map.t
 
 val projection_to_named : Projection.t -> Flambda.named
-
-val free_continuations : Flambda.t -> Continuation.Set.t

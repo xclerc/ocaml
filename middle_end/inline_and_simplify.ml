@@ -1549,6 +1549,22 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           let sw = { sw with failaction; consts; blocks; } in
           Switch (arg, sw), r
       end)
+  | Push_trap { body; handler; } ->
+    let body, r =
+      simplify_apply_cont_to_cont env r body ~args_approxs:[]
+    in
+    let handler, r =
+      simplify_apply_cont_to_cont env r handler ~args_approxs:[]
+    in
+    Push_trap { body; handler; }, r
+  | Pop_trap (body_result, cont) ->
+    simplify_free_variable env body_result
+      ~f:(fun env body_result body_result_approx ->
+        let cont, r =
+          simplify_apply_cont_to_cont env r cont
+            ~args_approxs:[body_result_approx]
+        in
+        Pop_trap (body_result, cont), r)
 
 and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~fun_var =

@@ -34,7 +34,7 @@ type t =
   | Switch of Ident.t * switch
   | Event of t * Lambda.lambda_event
   | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Continuation.t
+  | Pop_trap of Ident.t * Continuation.t
 
 and named =
   | Var of Ident.t

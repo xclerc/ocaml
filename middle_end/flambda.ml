@@ -82,7 +82,7 @@ type t =
   | Apply_cont of Continuation.t * Variable.t list
   | Switch of Variable.t * switch
   | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Continuation.t
+  | Pop_trap of Variable.t * Continuation.t
 
 and named =
   | Var of Variable.t
@@ -345,9 +345,10 @@ let rec lam ppf (flam : t) =
     fprintf ppf "@[<2>(push_trap@ %a;@ goto@ %a)@]"
       Continuation.print handler
       Continuation.print body
-  | Pop_trap { cont; } ->
-    fprintf ppf "@[<2>(pop_trap;@ goto@ %a)@]"
+  | Pop_trap (body_result, cont) ->
+    fprintf ppf "@[<2>(pop_trap;@ apply_cont@ %a %a)@]"
       Continuation.print cont
+      Variable.print body_result
 and print_named ppf (named : named) =
   match named with
   | Var var -> Variable.print ppf var
@@ -596,7 +597,8 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         aux handler
       end
     | Switch (var, _) -> free_variable var
-    | Push_trap _ | Pop_trap _ -> ()
+    | Push_trap _ -> ()
+    | Pop_trap (var, _) -> free_variable var
   in
   aux tree;
   if all_used_variables then
@@ -928,7 +930,7 @@ let rec free_continuations (expr : expr) =
         (Continuation.Set.of_list blocks))
   | Push_trap { body; handler; } ->
     Continuation.Set.add body (Continuation.Set.singleton handler)
-  | Pop_trap cont -> Continuation.Set.singleton cont
+  | Pop_trap (_, cont) -> Continuation.Set.singleton cont
 
 and free_continuations_of_let_cont_handler ~name ~(handler : let_cont_handler) =
   match handler with

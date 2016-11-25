@@ -31,6 +31,8 @@ let rec no_effects (flam : Flambda.t) =
   | Switch _ -> false
   | Let_cont { body; _ } -> no_effects body
   | Apply _ | Apply_cont _ -> false
+  | Push_trap _ -> false
+  | Pop_trap _ -> false
 
 and no_effects_named (named : Flambda.named) =
   match named with
