@@ -247,7 +247,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       (* CR-someday pchambart: If recursive staticcatch is introduced:
          this becomes ~toplevel:false
          mshinwell: This has been set to the conservative value *)
-    | Apply_cont (_,l) ->
+    | Apply_cont (_, _, l) ->
       mark_curr curr;
       List.iter (fun v -> mark_var v curr) l
     | Apply ({func; args; _ }) ->

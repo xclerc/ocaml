@@ -209,14 +209,13 @@ let variable_and_symbol_invariants (program : Flambda.program) =
           ignore_continuation e)
         blocks;
       Misc.may ignore_continuation failaction
-    | Apply_cont (static_exn, es) ->
+    | Apply_cont (static_exn, trap_action, es) ->
+      begin match trap_action with
+      | None | Some Pop -> ()
+      | Some (Push { exn_handler; }) -> ignore_continuation exn_handler
+      end;
       ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es
-    | Push_trap { body; handler; } ->
-      ignore_continuation body;
-      ignore_continuation handler
-    | Pop_trap cont ->
-      ignore_continuation cont
   and loop_named env (named : Flambda.named) =
     match named with
     | Var var -> check_variable_is_bound env var
@@ -609,7 +608,8 @@ let every_used_var_within_closure_from_current_compilation_unit_is_declared
 let _every_continuation_is_caught flam =
   let check env (flam : Flambda.t) =
     match flam with
-    | Apply_cont (exn, _) ->
+    | Apply_cont (exn, _trap_action, _) ->
+      (* CR mshinwell: look at the trap action *)
       if not (Continuation.Set.mem exn env)
       then raise (Continuation_not_caught exn)
     | _ -> ()

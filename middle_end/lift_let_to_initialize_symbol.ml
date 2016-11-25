@@ -76,7 +76,7 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     let free_conts, lifted, body = lift body ~to_copy in
     let cont = Continuation.create () in
     let expr : Flambda.expr =
-      Flambda.create_let var' defining_expr (Apply_cont (cont, [var']))
+      Flambda.create_let var' defining_expr (Apply_cont (cont, None, [var']))
     in
     let lifted = (cont, var, symbol, expr, to_copy) :: lifted in
     let body = Flambda.create_let var sym_defining_expr body in
@@ -85,7 +85,7 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     let free_conts, lifted, body = lift body ~to_copy in
     let body : Flambda.t = Let_mutable { let_mutable with body; } in
     free_conts, lifted, body
-  | Let_cont _ | Apply _ | Apply_cont _ | Switch _
+  | Let_cont _ | Apply _ | Apply_cont _ | Switch _ ->
     let free_conts = Flambda.free_continuations expr in
     free_conts, [], expr
 

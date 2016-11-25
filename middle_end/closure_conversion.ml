@@ -245,13 +245,22 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
       inline = inlined;
       specialise = specialised;
     })
-  | Apply_cont (cont, args) ->
+  | Apply_cont (cont, trap_action, args) ->
     let args = Env.find_vars env args in
     begin match Env.find_administrative_redex env cont with
-    | None -> Apply_cont (cont, args)
-    | Some (params, handler) ->
+    | Some (params, handler) when trap_action = None ->
       let handler_env = Env.add_vars env params args in
       close t handler_env handler
+    | _ ->
+      let trap_action =
+        Misc.Stdlib.Option.map (fun (trap_action : Ilambda.trap_action)
+                  : Flambda.trap_action ->
+            match trap_action with
+            | Push { exn_handler; } -> Push { exn_handler; }
+            | Pop -> Pop)
+          trap_action
+      in
+      Apply_cont (cont, trap_action, args)
     end
   | Switch (scrutinee, sw) ->
     let zero_to_n = Numbers.Int.zero_to_n in
@@ -263,8 +272,6 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
         failaction = sw.failaction;
       })
   | Event (ilam, _) -> close t env ilam
-  | Push_trap { body; handler; } -> Push_trap { body; handler; }
-  | Pop_trap cont -> Pop_trap cont
 
 and close_named t env (named : Ilambda.named) : Flambda.named =
   match named with
@@ -406,7 +413,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
               (Prim (Pfield 0, [sym_v], Debuginfo.none))
               (Flambda.create_let value_v
                 (Prim (Pfield pos, [result_v], Debuginfo.none))
-                (Apply_cont (continuation, [value_v]))))
+                (Apply_cont (continuation, None, [value_v]))))
       in
       flam, continuation)
   in

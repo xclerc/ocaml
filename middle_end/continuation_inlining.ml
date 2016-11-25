@@ -97,7 +97,7 @@ let try_inlining ~cont ~args ~args_approxs ~env
       params, env, handler
   in
   let r = R.create () in
-  let original : Flambda.t = Apply_cont (cont, args) in
+  let original : Flambda.t = Apply_cont (cont, None, args) in
 (*
 Format.eprintf "try_inlining simplification %a (params %a) starts@;%a@;\n%!"
   Continuation.print cont Variable.print_list params
@@ -213,7 +213,7 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
   Continuation.print new_shared_cont Flambda.print body;
 *)
           let apply_shared_cont : Flambda.expr =
-            Apply_cont (new_shared_cont, args)
+            Apply_cont (new_shared_cont, None, args)
           in
           let inlinings =
             Continuation_with_args.Map.add (cont, args)
@@ -270,10 +270,12 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
             expr
             new_shared_conts
         end
-      | Apply_cont (cont, args) ->
+      | Apply_cont (cont, trap_action, args) ->
         begin match Continuation_with_args.Map.find (cont, args) inlinings with
         | exception Not_found -> expr
-        | expr -> expr
+        | expr ->
+          assert (trap_action = None);
+          expr
         end
       | Apply _ | Let _ | Let_mutable _ | Switch _ -> expr)
     expr

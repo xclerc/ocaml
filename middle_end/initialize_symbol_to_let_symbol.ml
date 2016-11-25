@@ -20,13 +20,13 @@ let constant_field ((expr : Flambda.t), cont)
   : Flambda.constant_defining_value_block_field option =
   match expr with
   | Let { var; defining_expr = Const c;
-        body = Apply_cont (cont', [var']); _ }
+        body = Apply_cont (cont', None, [var']); _ }
       when Continuation.equal cont cont' ->
     assert (Variable.equal var var');
     (* This must be true since var is the only variable in scope *)
     Some (Flambda.Const c)
   | Let { var; defining_expr = Symbol s;
-        body = Apply_cont (cont', [var']); _ }
+        body = Apply_cont (cont', None, [var']); _ }
       when Continuation.equal cont cont' ->
     assert (Variable.equal var var');
     Some (Flambda.Symbol s)
