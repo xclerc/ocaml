@@ -103,8 +103,8 @@ type specialised_to = {
     associated with an [Apply_cont] node; the trap action is executed before
     the application of the continuation. *)
 type trap_action =
-  | Push of { exn_handler : Continuation.t; }
-  | Pop
+  | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
+  | Pop of Trap_id.t
 
 (** With the exception of applications of primitives ([Prim]), Flambda terms
     are in CPS.

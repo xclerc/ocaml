@@ -66,6 +66,9 @@ val add_mutable_variable : t -> Mutable_variable.t -> Mutable_variable.t * t
 (** As for [add_variable], but for static exception identifiers. *)
 val add_static_exception : t -> Continuation.t -> Continuation.t * t
 
+(** As for [add_variable], but for exception trap identifiers. *)
+val add_trap : t -> Trap_id.t -> Trap_id.t * t
+
 (** [apply_variable t var] applies the freshening [t] to [var].
     If no renaming is specified in [t] for [var] it is returned unchanged. *)
 val apply_variable : t -> Variable.t -> Variable.t
@@ -75,6 +78,9 @@ val apply_mutable_variable : t -> Mutable_variable.t -> Mutable_variable.t
 
 (** As for [apply_variable], but for static exception identifiers. *)
 val apply_static_exception : t -> Continuation.t -> Continuation.t
+
+(** As for [apply_variable], but for exception trap identifiers. *)
+val apply_trap : t -> Trap_id.t -> Trap_id.t
 
 (** Replace recursive accesses to the closures in the set through
     [Symbol] by the corresponding [Var]. This is used to recover

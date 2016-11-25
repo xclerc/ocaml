@@ -191,6 +191,10 @@ and lam ppf = function
       fprintf ppf "@[<2>(send%s@ %a@ %a%a)@]" kind lam obj lam met args largs
   | Uunreachable ->
       fprintf ppf "unreachable"
+  | Upushtrap trap ->
+      fprintf ppf "pushtrap %d" trap
+  | Upoptrap trap ->
+      fprintf ppf "poptrap %d" trap
 
 and sequence ppf ulam = match ulam with
   | Usequence(l1, l2) ->

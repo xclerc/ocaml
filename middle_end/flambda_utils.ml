@@ -65,10 +65,12 @@ let trap_action_equal (trap1 : Flambda.trap_action option)
       (trap2 : Flambda.trap_action option) =
   match trap1, trap2 with
   | None, None -> true
-  | Some (Push { exn_handler = exn_handler1; }),
-      Some (Push { exn_handler = exn_handler2; }) ->
-    Continuation.equal exn_handler1 exn_handler2
-  | Some Pop, Some Pop -> true
+  | Some (Push { id = id1; exn_handler = exn_handler1; }),
+      Some (Push { id = id2; exn_handler = exn_handler2; }) ->
+    Trap_id.equal id1 id2
+      && Continuation.equal exn_handler1 exn_handler2
+  | Some (Pop id1), Some (Pop id2) ->
+    Trap_id.equal id1 id2
   | _, _ -> false
 
 let rec same (l1 : Flambda.t) (l2 : Flambda.t) =

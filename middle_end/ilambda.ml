@@ -23,8 +23,8 @@ type switch_block_pattern =
   | String of string
 
 type trap_action =
-  | Push of { exn_handler : Continuation.t; }
-  | Pop
+  | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
+  | Pop of Trap_id.t
 
 type t =
   | Let of Ident.t * named * t
@@ -227,9 +227,10 @@ and lam ppf (t : t) =
     let print_trap_action ppf trap_action =
       match trap_action with
       | None -> ()
-      | Some (Push { exn_handler; }) ->
-        fprintf ppf "pushtrap %a then " Continuation.print exn_handler
-      | Some Pop -> fprintf ppf "poptrap then "
+      | Some (Push { id; exn_handler; }) ->
+        fprintf ppf "push%a %a then " Trap_id.print id
+          Continuation.print exn_handler
+      | Some (Pop id) -> fprintf ppf "poptrap%a then " Trap_id.print id
     in
     fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
       print_trap_action trap_action

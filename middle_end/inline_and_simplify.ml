@@ -974,6 +974,9 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let inlinable_position =
+    (* CR mshinwell: Check how in_handler_of_recursive_continuation relates
+       to the check in the Let_cont case below regarding not inlining
+       recursive ones *)
     (not (E.in_handler_of_recursive_continuation env cont))
       && trap_action = None
   in
@@ -983,13 +986,16 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   let trap_action, r =
     match trap_action with
     | None -> None, r
-    | Some (Push { exn_handler; }) ->
+    | Some (Push { id; exn_handler; }) ->
+      let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
           ~args_approxs:[A.value_unknown Other]
       in
-      Some (Flambda.Push { exn_handler; }), r
-    | Some Pop -> Some Flambda.Pop, r
+      Some (Flambda.Push { id; exn_handler; }), r
+    | Some (Pop id) ->
+      let id = Freshening.apply_trap (E.freshening env) id in
+      Some (Flambda.Pop id), r
   in
   Apply_cont (cont, trap_action, args), ret r A.value_bottom
 

@@ -58,6 +58,8 @@ and ulambda =
   | Uassign of Ident.t * ulambda
   | Usend of meth_kind * ulambda * ulambda * ulambda list * Debuginfo.t
   | Uunreachable
+  | Upushtrap of int
+  | Upoptrap of int
 
 and ufunction = {
   label  : function_label;

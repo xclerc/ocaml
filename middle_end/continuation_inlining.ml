@@ -16,6 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* CR-soon mshinwell: We should add the ability to specialise continuations
+   rather than just inlining them. *)
+
 module A = Simple_value_approx
 module B = Inlining_cost.Benefit
 module E = Inline_and_simplify_aux.Env

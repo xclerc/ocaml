@@ -211,8 +211,8 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       Misc.may ignore_continuation failaction
     | Apply_cont (static_exn, trap_action, es) ->
       begin match trap_action with
-      | None | Some Pop -> ()
-      | Some (Push { exn_handler; }) -> ignore_continuation exn_handler
+      | None | Some (Pop _) -> ()
+      | Some (Push { id = _; exn_handler; }) -> ignore_continuation exn_handler
       end;
       ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es

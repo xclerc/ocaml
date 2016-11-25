@@ -25,8 +25,8 @@ type switch_block_pattern =
   | String of string
 
 type trap_action =
-  | Push of { exn_handler : Continuation.t; }
-  | Pop
+  | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
+  | Pop of Trap_id.t
 
 type t =
   | Let of Ident.t * named * t

@@ -89,6 +89,8 @@ let rec count_uses (ulam : Clambda.ulambda) =
   | Uassign (_, ulam) -> count_uses ulam
   | Usend (_, meth, obj, args, _) ->
     count_uses meth + count_uses obj + count_uses_list args
+  | Upushtrap cont | Upoptrap cont ->
+    (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty, false)
 
 and count_uses_list (ulams : Clambda.ulambda list) =
   let (+) = combine_uses in
@@ -303,6 +305,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
     | Uassign (id, ulam) -> Uassign (id, inline env ulam)
     | Usend (kind, meth, obj, args, dbg) ->
       Usend (kind, inline env meth, inline env obj, inline_list env args, dbg)
+    | Upushtrap _ | Upoptrap _ -> ulam
   and inline_option env ulam =
     match ulam with
     | None -> None

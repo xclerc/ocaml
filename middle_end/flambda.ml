@@ -75,8 +75,8 @@ type specialised_to = {
 }
 
 type trap_action =
-  | Push of { exn_handler : Continuation.t; }
-  | Pop
+  | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
+  | Pop of Trap_id.t
 
 type t =
   | Let of let_expr
@@ -213,9 +213,10 @@ let print_project_closure = Projection.print_project_closure
 let print_trap_action ppf trap_action =
   match trap_action with
   | None -> ()
-  | Some (Push { exn_handler; }) ->
-    fprintf ppf "pushtrap %a then " Continuation.print exn_handler
-  | Some Pop -> fprintf ppf "poptrap then "
+  | Some (Push { id; exn_handler; }) ->
+    fprintf ppf "push%a %a then " Trap_id.print id
+      Continuation.print exn_handler
+  | Some (Pop id) -> fprintf ppf "poptrap%a then " Trap_id.print id
 
 (** CR-someday lwhite: use better name than this *)
 let rec lam ppf (flam : t) =
@@ -919,8 +920,8 @@ let rec free_continuations (expr : expr) =
   | Apply_cont (cont, trap_action, _args) ->
     let trap_action =
       match trap_action with
-      | Some (Push { exn_handler; }) -> Continuation.Set.singleton exn_handler
-      | None | Some Pop -> Continuation.Set.empty
+      | Some (Push { exn_handler; _ }) -> Continuation.Set.singleton exn_handler
+      | None | Some (Pop _) -> Continuation.Set.empty
     in
     Continuation.Set.add cont trap_action
   | Apply { continuation; } -> Continuation.Set.singleton continuation

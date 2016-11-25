@@ -26,6 +26,7 @@ type for_one_or_more_units = {
 type t = {
   current_unit : for_one_or_more_units;
   imported_units : for_one_or_more_units;
+  traps : Continuation.t Trap_id.Map.t;
 }
 
 type ('a, 'b) declaration_position =
@@ -417,19 +418,36 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
         in
         Ustringswitch (arg, cases, failaction)
     end
-  | Apply_cont (cont, _trap_action, args) ->
+  | Apply_cont (cont, trap_action, args) ->
     let cont = Env.expand_continuation_aliases env cont in
     let args = List.map (subst_var env) args in
-    begin match cont with
-    | Normal cont -> Ustaticfail (Continuation.to_int cont, args)
-    | Return_continuation ->
-      match args with
-      | [arg] -> arg
-      | [] -> Clambda.Uconst (Uconst_int 0)
-      | _ ->
-        Misc.fatal_errorf "Apply_cont of return continuation with more than \
-            one argument: %a"
-          Flambda.print flam
+    let expr : Clambda.ulambda =
+      match cont with
+      | Normal cont -> Ustaticfail (Continuation.to_int cont, args)
+      | Return_continuation ->
+        match args with
+        | [arg] -> arg
+        | [] -> Clambda.Uconst (Uconst_int 0)
+        | _ ->
+          Misc.fatal_errorf "Apply_cont of return continuation with more than \
+              one argument: %a"
+            Flambda.print flam
+    in
+    let trap_action : Clambda.ulambda option =
+      match trap_action with
+      | None -> None
+      | Some (Push { id = _; exn_handler; }) ->
+        Some (Clambda.Upushtrap (Continuation.to_int exn_handler))
+      | Some (Pop id) ->
+        match Trap_id.Map.find id t.traps with
+        | exception Not_found ->
+          Misc.fatal_errorf "Trap %a not in traps list" Trap_id.print id
+        | exn_handler ->
+          Some (Clambda.Upoptrap (Continuation.to_int exn_handler))
+    in
+    begin match trap_action with
+    | None -> expr
+    | Some trap_action -> Usequence (trap_action, expr)
     end
   | Let_cont { name; body; handler = Alias alias_of; } ->
     let env = Env.add_continuation_alias env name ~alias_of in
@@ -779,6 +797,18 @@ let to_clambda_program t env constants (program : Flambda.program) =
   in
   loop env constants program.program_body
 
+let collect_traps program =
+  let traps = ref Trap_id.Map.empty in
+  Flambda_iterators.iter_exprs_at_toplevel_of_program program ~f:(fun expr ->
+    Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
+        match expr with
+        | Apply_cont (_, Some (Push { id; exn_handler; }), _) ->
+          traps := Trap_id.Map.add id exn_handler !traps
+        | _ -> ())
+      (fun _named -> ())
+      expr);
+  !traps
+
 type result = {
   expr : Clambda.ulambda;
   preallocated_blocks : Clambda.preallocated_block list;
@@ -804,7 +834,8 @@ let convert (program, exported) : result =
       constant_sets_of_closures = imported.constant_sets_of_closures;
     }
   in
-  let t = { current_unit; imported_units; } in
+  let traps = collect_traps program in
+  let t = { current_unit; imported_units; traps; } in
   let preallocated_blocks =
     List.map (fun (symbol, tag, fields) ->
         { Clambda.

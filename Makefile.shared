@@ -76,6 +76,7 @@ TYPING=typing/ident.cmo typing/path.cmo \
 
 COMP= \
   middle_end/base_types/continuation.cmo \
+  middle_end/base_types/trap_id.cmo \
   bytecomp/lambda.cmo bytecomp/printlambda.cmo \
   bytecomp/typeopt.cmo bytecomp/switch.cmo bytecomp/matching.cmo \
   bytecomp/translobj.cmo bytecomp/translattribute.cmo \

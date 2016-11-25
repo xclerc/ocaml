@@ -165,7 +165,7 @@ let make_ident_info (clam : Clambda.ulambda) : ident_info =
       loop e2;
       List.iter loop args;
       ignore_debuginfo dbg
-    | Uunreachable ->
+    | Uunreachable | Upushtrap _ | Upoptrap _ ->
       ()
   in
   loop clam;
@@ -382,7 +382,7 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
       ignore_ulambda_list args;
       let_stack := [];
       ignore_debuginfo dbg
-    | Uunreachable ->
+    | Uunreachable | Upushtrap _ | Upoptrap _ ->
       let_stack := []
   in
   loop clam;
@@ -508,8 +508,7 @@ let rec substitute_let_moveable is_let_moveable env (clam : Clambda.ulambda)
     let e2 = substitute_let_moveable is_let_moveable env e2 in
     let args = substitute_let_moveable_list is_let_moveable env args in
     Usend (kind, e1, e2, args, dbg)
-  | Uunreachable ->
-    Uunreachable
+  | Uunreachable | Upushtrap _ | Upoptrap _ -> clam
 
 and substitute_let_moveable_list is_let_moveable env clams =
   List.map (substitute_let_moveable is_let_moveable env) clams
@@ -720,8 +719,8 @@ let rec un_anf_and_moveable ident_info env (clam : Clambda.ulambda)
     let e2 = un_anf ident_info env e2 in
     let args = un_anf_list ident_info env args in
     Usend (kind, e1, e2, args, dbg), Fixed
-  | Uunreachable ->
-    Uunreachable, Fixed
+  | Uunreachable | Upushtrap _ | Upoptrap _ ->
+    clam, Fixed
 
 and un_anf ident_info env clam : Clambda.ulambda =
   let clam, _moveable = un_anf_and_moveable ident_info env clam in

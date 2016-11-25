@@ -264,6 +264,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let after_continuation = Continuation.create () in
     let body, _k_count = cps_tail body poptrap_continuation in
     let handler, _k_count = cps_tail handler after_continuation in
+    let trap = Trap_id.create () in
     Let_cont {
       name = after_continuation;
       administrative = false;
@@ -289,13 +290,17 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
                   recursive = Nonrecursive;
                   body =
                     Apply_cont (body_continuation,
-                      Some (I.Push { exn_handler = handler_continuation; }),
+                      Some (I.Push {
+                        id = trap;
+                        exn_handler = handler_continuation;
+                      }),
                       []);
                   handler;
                 };
               handler = body;
             };
-          handler = Apply_cont (after_continuation, Some I.Pop, [body_result]);
+          handler = Apply_cont (after_continuation, Some (I.Pop trap),
+            [body_result]);
         };
       handler = k result_var;
     }
@@ -472,6 +477,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
     let poptrap_continuation = Continuation.create () in
     let body, _k_count = cps_tail body poptrap_continuation in
     let handler, k_count_handler = cps_tail handler k in
+    let trap = Trap_id.create () in
     Let_cont {
       name = poptrap_continuation;
       administrative = false;
@@ -491,13 +497,16 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
               recursive = Nonrecursive;
               body =
                 Apply_cont (body_continuation,
-                  Some (I.Push { exn_handler = handler_continuation; }),
+                  Some (I.Push {
+                    id = trap;
+                    exn_handler = handler_continuation;
+                  }),
                   []);
               handler;
             };
           handler = body;
         };
-      handler = Apply_cont (k, Some I.Pop, [body_result]);
+      handler = Apply_cont (k, Some (I.Pop trap), [body_result]);
     }, N.(+) k_count_handler N.One;
   | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"

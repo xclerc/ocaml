@@ -20,6 +20,7 @@ type tbl = {
   sb_var : Variable.t Variable.Map.t;
   sb_mutable_var : Mutable_variable.t Mutable_variable.Map.t;
   sb_exn : Continuation.t Continuation.Map.t;
+  sb_trap : Trap_id.t Trap_id.Map.t;
   (* Used to handle substitution sequences: we cannot call the substitution
      recursively because there can be name clashes. *)
   back_var : Variable.t list Variable.Map.t;
@@ -36,6 +37,7 @@ let empty_tbl = {
   sb_var = Variable.Map.empty;
   sb_mutable_var = Mutable_variable.Map.empty;
   sb_exn = Continuation.Map.empty;
+  sb_trap = Trap_id.Map.empty;
   back_var = Variable.Map.empty;
   back_mutable_var = Mutable_variable.Map.empty;
 }
@@ -129,6 +131,24 @@ Format.eprintf "Freshening %a -> %a\n%!"
       Continuation.Map.add i i' t.sb_exn
     in
     i', Active { t with sb_exn; }
+
+let apply_trap t trap =
+  match t with
+  | Inactive ->
+    trap
+  | Active t ->
+    try Trap_id.Map.find trap t.sb_trap
+    with Not_found -> trap
+
+let add_trap t trap =
+  match t with
+  | Inactive -> trap, t
+  | Active t ->
+    let trap' = Trap_id.create () in
+    let sb_trap =
+      Trap_id.Map.add trap trap' t.sb_trap
+    in
+    trap', Active { t with sb_trap; }
 
 let active_add_variable t id =
   let id' = Variable.rename id in

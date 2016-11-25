@@ -256,8 +256,8 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
         Misc.Stdlib.Option.map (fun (trap_action : Ilambda.trap_action)
                   : Flambda.trap_action ->
             match trap_action with
-            | Push { exn_handler; } -> Push { exn_handler; }
-            | Pop -> Pop)
+            | Push { id; exn_handler; } -> Push { id; exn_handler; }
+            | Pop id -> Pop id)
           trap_action
       in
       Apply_cont (cont, trap_action, args)
