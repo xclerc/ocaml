@@ -214,9 +214,9 @@ let print_trap_action ppf trap_action =
   match trap_action with
   | None -> ()
   | Some (Push { id; exn_handler; }) ->
-    fprintf ppf "push%a %a then " Trap_id.print id
+    fprintf ppf "push %a %a then " Trap_id.print id
       Continuation.print exn_handler
-  | Some (Pop id) -> fprintf ppf "pop%a then " Trap_id.print id
+  | Some (Pop id) -> fprintf ppf "pop %a then " Trap_id.print id
 
 (** CR-someday lwhite: use better name than this *)
 let rec lam ppf (flam : t) =

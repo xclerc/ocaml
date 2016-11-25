@@ -228,9 +228,9 @@ and lam ppf (t : t) =
       match trap_action with
       | None -> ()
       | Some (Push { id; exn_handler; }) ->
-        fprintf ppf "push%a %a then " Trap_id.print id
+        fprintf ppf "push %a %a then " Trap_id.print id
           Continuation.print exn_handler
-      | Some (Pop id) -> fprintf ppf "poptrap%a then " Trap_id.print id
+      | Some (Pop id) -> fprintf ppf "pop %a then " Trap_id.print id
     in
     fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
       print_trap_action trap_action
