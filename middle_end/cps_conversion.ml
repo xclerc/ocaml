@@ -203,7 +203,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
         Misc.fatal_errorf "Unbound static exception %d" static_exn
       | continuation -> continuation
     in
-    cps_non_tail_list args (fun args -> I.Apply_cont (continuation, args))
+    cps_non_tail_list args (fun args -> I.Apply_cont (continuation, None, args))
   | Lstaticcatch (body, (static_exn, args), handler) ->
     let continuation = Continuation.create () in
     static_exn_env := Numbers.Int.Map.add static_exn continuation
@@ -288,15 +288,14 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
                   params = [id];
                   recursive = Nonrecursive;
                   body =
-                    Push_trap {
-                      body = body_continuation;
-                      handler = handler_continuation;
-                    };
+                    Apply_cont (body_continuation,
+                      Some (I.Push { exn_handler = handler_continuation; }),
+                      []);
                   handler;
                 };
               handler = body;
             };
-          handler = Pop_trap (body_result, after_continuation);
+          handler = Apply_cont (after_continuation, Some I.Pop, [body_result]);
         };
       handler = k result_var;
     }
@@ -310,7 +309,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     uses in that term of the continuation [k]. *)
 and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
   match lam with
-  | Lvar id -> Apply_cont (k, [id]), N.One
+  | Lvar id -> Apply_cont (k, None, [id]), N.One
   | Lconst _ -> name_then_cps_tail "const" lam k
   | Lapply apply ->
     cps_non_tail apply.ap_func (fun func ->
@@ -394,7 +393,8 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
     let name = Printlambda.name_of_primitive prim in
     let result_var = Ident.create name in
     cps_non_tail_list args (fun args ->
-      I.Let (result_var, Prim (prim, args, loc), Apply_cont (k, [result_var]))),
+      I.Let (result_var, Prim (prim, args, loc),
+        Apply_cont (k, None, [result_var]))),
     N.One
   | Lswitch (scrutinee, switch) ->
     let block_nums, blocks = List.split switch.sw_blocks in
@@ -429,7 +429,8 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
         Misc.fatal_errorf "Unbound static exception %d" static_exn
       | continuation -> continuation
     in
-    cps_non_tail_list args (fun args -> I.Apply_cont (continuation, args)),
+    cps_non_tail_list args (fun args ->
+        I.Apply_cont (continuation, None, args)),
       N.One
   | Lstaticcatch (body, (static_exn, args), handler) ->
     let continuation = Continuation.create () in
@@ -489,16 +490,15 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
               params = [id];
               recursive = Nonrecursive;
               body =
-                Push_trap {
-                  body = body_continuation;
-                  handler = handler_continuation;
-                };
+                Apply_cont (body_continuation,
+                  Some (I.Push { exn_handler = handler_continuation; }),
+                  []);
               handler;
             };
           handler = body;
         };
-      handler = Pop_trap (body_result, k);
-    }, N.(+) k_count_handler N.One
+      handler = Apply_cont (k, Some I.Pop, [body_result]);
+    }, N.(+) k_count_handler N.One;
   | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
       Printlambda.lambda lam

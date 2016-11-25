@@ -50,8 +50,6 @@ let description_of_toplevel_node (expr : Flambda.t) =
   | Apply _ -> "apply"
   | Apply_cont  _ -> "staticraise"
   | Switch _ -> "switch"
-  | Push_trap _ -> "push_trap"
-  | Pop_trap _ -> "pop_trap"
 
 let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
   match c1, c2 with
@@ -62,6 +60,16 @@ let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
   | _, Int _ -> 1
   | Char _, _ -> -1
   | _, Char _ -> 1
+
+let trap_action_equal (trap1 : Flambda.trap_action option)
+      (trap2 : Flambda.trap_action option) =
+  match trap1, trap2 with
+  | None, None -> true
+  | Some (Push { exn_handler = exn_handler1; }),
+      Some (Push { exn_handler = exn_handler2; }) ->
+    Continuation.equal exn_handler1 exn_handler2
+  | Some Pop, Some Pop -> true
+  | _, _ -> false
 
 let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
   l1 == l2 || (* it is ok for the string case: if they are physically the same,
@@ -88,8 +96,9 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
   | Switch (a1, s1), Switch (a2, s2) ->
     Variable.equal a1 a2 && sameswitch s1 s2
   | Switch _, _ | _, Switch _ -> false
-  | Apply_cont (e1, a1), Apply_cont (e2, a2) ->
+  | Apply_cont (e1, trap1, a1), Apply_cont (e2, trap2, a2) ->
     Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
+      && trap_action_equal trap1 trap2
   | Apply_cont _, _ | _, Apply_cont _ -> false
   | Let_cont { name = name1; body = body1; handler = handler1; },
     Let_cont { name = name2; body = body2; handler = handler2; } ->
@@ -107,13 +116,6 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
             && same handler1 handler2
         | Alias _, Handler _ | Handler _, Alias _ -> false
         end
-  | Push_trap { body = body1; handler = handler1; },
-      Push_trap { body = body2; handler = handler2; } ->
-    Continuation.equal body1 body2 && Continuation.equal handler1 handler2
-  | Push_trap _, _ | _, Push_trap _ -> false
-  | Pop_trap (body_result1, cont1), Pop_trap (body_result2, cont2) ->
-    Variable.equal body_result1 body_result2 && Continuation.equal cont1 cont2
-  | Pop_trap _, _ | _, Pop_trap _ -> false
 
 and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   match named1, named2 with
@@ -211,11 +213,10 @@ let toplevel_substitution sb tree =
     | Switch (cond, sw) ->
       let cond = sb cond in
       Switch (cond, sw)
-    | Apply_cont (static_exn, args) ->
+    | Apply_cont (static_exn, trap_action, args) ->
       let args = List.map sb args in
-      Apply_cont (static_exn, args)
-    | Let_cont _ | Let _ | Push_trap _ -> flam
-    | Pop_trap (body_result, cont) -> Pop_trap (sb body_result, cont)
+      Apply_cont (static_exn, trap_action, args)
+    | Let_cont _ | Let _ -> flam
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
@@ -272,7 +273,7 @@ let toplevel_substitution_named sb named =
   let var = Variable.create "subst" in
   let cont = Continuation.create () in
   let expr : Flambda.t =
-    Flambda.create_let var named (Apply_cont (cont, []))
+    Flambda.create_let var named (Apply_cont (cont, None, []))
   in
   match toplevel_substitution sb expr with
   | Let let_expr -> let_expr.defining_expr
@@ -342,7 +343,7 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
   in
   Flambda.create_let set_of_closures_var (Set_of_closures set_of_closures)
     (Flambda.create_let project_closure_var project_closure
-      (Apply_cont (continuation, [project_closure_var])))
+      (Apply_cont (continuation, None, [project_closure_var])))
 
 let bind ~bindings ~body =
   List.fold_left (fun expr (var, var_def) ->
@@ -408,18 +409,6 @@ let root_symbol (program : Flambda.program) =
       root
   in
   loop program.program_body
-
-let might_raise_static_exn flam stexn =
-  try
-    Flambda_iterators.iter_on_named
-      (function
-        | Flambda.Apply_cont (ex, _) when Continuation.equal ex stexn ->
-          raise Exit
-        | _ -> ())
-      (fun _ -> ())
-      flam;
-    false
-  with Exit -> true
 
 let make_closure_map program =
   let map = ref Closure_id.Map.empty in
@@ -643,12 +632,9 @@ let substitute_read_symbol_field_for_variables
             { kind; func; args; continuation; call_kind; dbg; inline;
               specialise;
             }
-    | Let_cont _ | Push_trap _ ->
+    | Let_cont _ ->
       (* No variables directly used in those expressions *)
       expr
-    | Pop_trap (body_result, cont) ->
-      let body_result, bind_body_result = make_var_subst body_result in
-      bind_body_result @@ Flambda.Pop_trap (body_result, cont)
   in
   Flambda_iterators.map_toplevel_expr f expr
 

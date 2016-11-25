@@ -22,17 +22,19 @@ type switch_block_pattern =
   | Tag of int
   | String of string
 
+type trap_action =
+  | Push of { exn_handler : Continuation.t; }
+  | Pop
+
 type t =
   | Let of Ident.t * named * t
   | Let_mutable of let_mutable
   | Let_rec of (Ident.t * function_declaration) list * t
   | Let_cont of let_cont
   | Apply of apply
-  | Apply_cont of Continuation.t * Ident.t list
+  | Apply_cont of Continuation.t * trap_action option * Ident.t list
   | Switch of Ident.t * switch
   | Event of t * L.lambda_event
-  | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Ident.t * Continuation.t
 
 and named =
   | Var of Ident.t
@@ -221,8 +223,16 @@ and lam ppf (t : t) =
     fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
       lam body
       (Format.pp_print_list ~pp_sep print_let_cont) let_conts
-  | Apply_cont (i, ls)  ->
-    fprintf ppf "@[<2>(apply_cont@ %a@ %a)@]"
+  | Apply_cont (i, trap_action, ls)  ->
+    let print_trap_action ppf trap_action =
+      match trap_action with
+      | None -> ()
+      | Some (Push { exn_handler; }) ->
+        fprintf ppf "pushtrap %a then " Continuation.print exn_handler
+      | Some Pop -> fprintf ppf "poptrap then "
+    in
+    fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
+      print_trap_action trap_action
       Continuation.print i
       Ident.print_list ls;
   | Event(expr, ev) ->
@@ -240,13 +250,5 @@ and lam ppf (t : t) =
       ev.lev_loc.Location.loc_start.Lexing.pos_cnum
       ev.lev_loc.Location.loc_end.Lexing.pos_cnum
       lam expr
-  | Push_trap { body; handler; } ->
-    fprintf ppf "@[<2>(push_trap@ %a;@ goto@ %a)@]"
-      Continuation.print handler
-      Continuation.print body
-  | Pop_trap (body_result, cont) ->
-    fprintf ppf "@[<2>(pop_trap;@ apply_cont@ %a@ %a)@]"
-      Continuation.print cont
-      Ident.print body_result
 
 let print = lam

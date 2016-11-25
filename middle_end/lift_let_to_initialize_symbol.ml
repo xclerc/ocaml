@@ -86,7 +86,6 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     let body : Flambda.t = Let_mutable { let_mutable with body; } in
     free_conts, lifted, body
   | Let_cont _ | Apply _ | Apply_cont _ | Switch _
-  | Push_trap _ | Pop_trap _ ->
     let free_conts = Flambda.free_continuations expr in
     free_conts, [], expr
 

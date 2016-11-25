@@ -95,10 +95,6 @@ let lambda_smaller' lam ~than:threshold =
       | Alias _ -> ()
       | Handler { handler; _ } -> lambda_size handler
       end
-    | Push_trap _ ->
-      size := !size + 7
-    | Pop_trap _ ->
-      incr size
   and lambda_named_size (named : Flambda.named) =
     if !size > threshold then raise Exit;
     match named with
@@ -238,9 +234,6 @@ module Benefit = struct
     match flam with
     | Switch _ | Apply_cont _ | Apply _ -> b := remove_call !b
     | Let _ | Let_mutable _ | Let_cont _ -> ()
-    (* CR mshinwell: should we add "jump"? *)
-    | Push_trap _ -> b := remove_call !b
-    | Pop_trap _ -> b := remove_call !b
 
   let remove_code_helper_named b (named : Flambda.named) =
     match named with

@@ -417,7 +417,7 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
         in
         Ustringswitch (arg, cases, failaction)
     end
-  | Apply_cont (cont, args) ->
+  | Apply_cont (cont, _trap_action, args) ->
     let cont = Env.expand_continuation_aliases env cont in
     let args = List.map (subst_var env) args in
     begin match cont with
@@ -443,10 +443,6 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     in
     Ucatch (Continuation.to_int name, ids,
       to_clambda t env body, to_clambda t env_handler handler)
-  | Push_trap { body = _; handler = _; } ->
-    assert false
-  | Pop_trap (_result_var, _cont) ->
-    assert false
 
 and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
   match named with

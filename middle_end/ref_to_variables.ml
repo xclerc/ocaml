@@ -60,7 +60,7 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
       loop handler
     | Let_cont { body; handler = Alias _; _ } ->
       loop body
-    | Apply _ | Apply_cont _ | Switch _ | Push_trap _ | Pop_trap _->
+    | Apply _ | Apply_cont _ | Switch _ ->
       set := Variable.Set.union !set (Flambda.free_variables flam)
   in
   loop tree;
@@ -171,7 +171,7 @@ let eliminate_ref_of_expr flam =
         in
         flam
       | Let_mutable _ | Apply _ | Switch _
-      | Apply_cont _ | Let_cont _ | Push_trap _ | Pop_trap _ -> flam
+      | Apply_cont _ | Let_cont _ -> flam
     in
     Flambda_iterators.map_expr aux flam
 

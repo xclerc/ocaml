@@ -292,7 +292,7 @@ Format.eprintf "New handler for %a is:\n%a\n"
         State.to_remain state (Let_cont (name, handler))
     in
     lift_expr body ~state
-  | Apply _ | Apply_cont _ | Switch _ | Push_trap _ | Pop_trap _ -> expr, state
+  | Apply _ | Apply_cont _ | Switch _ -> expr, state
 
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let funs =

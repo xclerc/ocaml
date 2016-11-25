@@ -968,17 +968,30 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
   expr, r
 
 (** Simplify an application of a continuation. *)
-and simplify_apply_cont env r cont ~args ~args_approxs : Flambda.t * R.t =
+and simplify_apply_cont env r cont ~trap_action ~args ~args_approxs
+      : Flambda.t * R.t =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let inlinable_position =
-    not (E.in_handler_of_recursive_continuation env cont)
+    (not (E.in_handler_of_recursive_continuation env cont))
+      && trap_action = None
   in
   let r =
     R.use_continuation r env cont ~inlinable_position ~args ~args_approxs
   in
-  Apply_cont (cont, args), ret r A.value_bottom
+  let trap_action, r =
+    match trap_action with
+    | None -> None, r
+    | Some (Push { exn_handler; }) ->
+      let exn_handler, r =
+        simplify_apply_cont_to_cont env r cont
+          ~args_approxs:[A.value_unknown Other]
+      in
+      Some (Push { exn_handler; })
+    | Some Pop -> Some Pop, r
+  in
+  Apply_cont (cont, trap_action, args), ret r A.value_bottom
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm). *)
@@ -1322,9 +1335,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           body;
           contents_kind },
       r)
-  | Apply_cont (cont, args) ->
+  | Apply_cont (cont, trap_action, args) ->
     simplify_free_variables env args ~f:(fun env args args_approxs ->
-      simplify_apply_cont env r cont ~args ~args_approxs)
+      simplify_apply_cont env r cont ~trap_action ~args ~args_approxs)
   | Let_cont { name = cont; body; handler } ->
     let env_above_let_cont = env in
     let cont, sb = Freshening.add_static_exception (E.freshening env) cont in
@@ -1549,22 +1562,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           let sw = { sw with failaction; consts; blocks; } in
           Switch (arg, sw), r
       end)
-  | Push_trap { body; handler; } ->
-    let body, r =
-      simplify_apply_cont_to_cont env r body ~args_approxs:[]
-    in
-    let handler, r =
-      simplify_apply_cont_to_cont env r handler ~args_approxs:[]
-    in
-    Push_trap { body; handler; }, r
-  | Pop_trap (body_result, cont) ->
-    simplify_free_variable env body_result
-      ~f:(fun env body_result body_result_approx ->
-        let cont, r =
-          simplify_apply_cont_to_cont env r cont
-            ~args_approxs:[body_result_approx]
-        in
-        Pop_trap (body_result, cont), r)
 
 and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~fun_var =

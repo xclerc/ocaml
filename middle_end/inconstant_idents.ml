@@ -257,10 +257,6 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Switch (arg, _) ->
       mark_curr curr;
       mark_var arg curr
-    | Push_trap _ -> mark_curr curr
-    | Pop_trap (result_var, _) ->
-      mark_curr curr;
-      mark_var result_var curr
 
   and mark_named ~toplevel curr (named : Flambda.named) =
     match named with

@@ -177,11 +177,6 @@ val map_apply
   -> f:(Flambda.apply -> Flambda.apply)
   -> Flambda.t
 
-val map_toplevel_apply_cont
-   : Flambda.t
-  -> f:(Continuation.t -> Variable.t list -> Flambda.t option)
-  -> Flambda.t
-
 val map_function_bodies
    : Flambda.set_of_closures
   -> f:(Flambda.t -> Flambda.t)

@@ -99,6 +99,13 @@ type specialised_to = {
       either the [free_vars] or the [specialised_args]. *)
 }
 
+(** Actions affecting exception traps on the stack.  These are always
+    associated with an [Apply_cont] node; the trap action is executed before
+    the application of the continuation. *)
+type trap_action =
+  | Push of { exn_handler : Continuation.t; }
+  | Pop
+
 (** With the exception of applications of primitives ([Prim]), Flambda terms
     are in CPS.
 
@@ -128,11 +135,9 @@ type t =
   | Let_mutable of let_mutable
   | Let_cont of let_cont
   | Apply of apply
-  | Apply_cont of Continuation.t * Variable.t list
+  | Apply_cont of Continuation.t * trap_action option * Variable.t list
   | Switch of Variable.t * switch
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
-  | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Variable.t * Continuation.t
 
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)
 and named =

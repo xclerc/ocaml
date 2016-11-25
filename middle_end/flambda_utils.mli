@@ -108,10 +108,6 @@ val introduce_needed_import_symbols : Flambda.program -> Flambda.program
 
 val root_symbol : Flambda.program -> Symbol.t
 
-(** Returns [true] iff the given term might raise the given static
-    exception. *)
-val might_raise_static_exn : Flambda.named -> Continuation.t -> bool
-
 (** Creates a map from closure IDs to function declarations by iterating over
     all sets of closures in the given program. *)
 val make_closure_map

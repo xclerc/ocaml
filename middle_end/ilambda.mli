@@ -24,17 +24,19 @@ type switch_block_pattern =
   | Tag of int  (* CR mshinwell: Use [Tag.t] *)
   | String of string
 
+type trap_action =
+  | Push of { exn_handler : Continuation.t; }
+  | Pop
+
 type t =
   | Let of Ident.t * named * t
   | Let_mutable of let_mutable
   | Let_rec of (Ident.t * function_declaration) list * t
   | Let_cont of let_cont
   | Apply of apply
-  | Apply_cont of Continuation.t * Ident.t list
+  | Apply_cont of Continuation.t * trap_action option * Ident.t list
   | Switch of Ident.t * switch
   | Event of t * Lambda.lambda_event
-  | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Ident.t * Continuation.t
 
 and named =
   | Var of Ident.t

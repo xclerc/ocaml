@@ -74,15 +74,17 @@ type specialised_to = {
   projection : Projection.t option;
 }
 
+type trap_action =
+  | Push of { exn_handler : Continuation.t; }
+  | Pop
+
 type t =
   | Let of let_expr
   | Let_mutable of let_mutable
   | Let_cont of let_cont
   | Apply of apply
-  | Apply_cont of Continuation.t * Variable.t list
+  | Apply_cont of Continuation.t * trap_action option * Variable.t list
   | Switch of Variable.t * switch
-  | Push_trap of { body : Continuation.t; handler : Continuation.t; }
-  | Pop_trap of Variable.t * Continuation.t
 
 and named =
   | Var of Variable.t
@@ -208,6 +210,13 @@ let print_move_within_set_of_closures =
   Projection.print_move_within_set_of_closures
 let print_project_closure = Projection.print_project_closure
 
+let print_trap_action ppf trap_action =
+  match trap_action with
+  | None -> ()
+  | Some (Push { exn_handler; }) ->
+    fprintf ppf "pushtrap %a then " Continuation.print exn_handler
+  | Some Pop -> fprintf ppf "poptrap then "
+
 (** CR-someday lwhite: use better name than this *)
 let rec lam ppf (flam : t) =
   match flam with
@@ -289,11 +298,13 @@ let rec lam ppf (flam : t) =
         (Int.Set.cardinal sw.numconsts)
         (Int.Set.cardinal sw.numblocks)
         Variable.print larg switch sw
-  | Apply_cont (i, []) ->
-    fprintf ppf "@[<2>(goto@ %a)@]"
+  | Apply_cont (i, trap_action, []) ->
+    fprintf ppf "@[<2>(%agoto@ %a)@]"
+      print_trap_action trap_action
       Continuation.print i
-  | Apply_cont (i, ls) ->
-    fprintf ppf "@[<2>(apply_cont@ %a@ %a)@]"
+  | Apply_cont (i, trap_action, ls) ->
+    fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
+      print_trap_action trap_action
       Continuation.print i
       Variable.print_list ls
   | Let_cont { name; body; handler; } ->
@@ -341,14 +352,6 @@ let rec lam ppf (flam : t) =
         lam body
         (Format.pp_print_list ~pp_sep print_let_cont) let_conts
     end
-  | Push_trap { body; handler; } ->
-    fprintf ppf "@[<2>(push_trap@ %a;@ goto@ %a)@]"
-      Continuation.print handler
-      Continuation.print body
-  | Pop_trap (body_result, cont) ->
-    fprintf ppf "@[<2>(pop_trap;@ apply_cont@ %a %a)@]"
-      Continuation.print cont
-      Variable.print body_result
 and print_named ppf (named : named) =
   match named with
   | Var var -> Variable.print ppf var
@@ -586,7 +589,7 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
     | Let_mutable { initial_value = var; body; _ } ->
       free_variable var;
       aux body
-    | Apply_cont (_, es) ->
+    | Apply_cont (_, _, es) ->
       List.iter free_variable es
     | Let_cont { handler; body; _ } ->
       aux body;
@@ -597,8 +600,6 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         aux handler
       end
     | Switch (var, _) -> free_variable var
-    | Push_trap _ -> ()
-    | Pop_trap (var, _) -> free_variable var
   in
   aux tree;
   if all_used_variables then
@@ -765,7 +766,7 @@ let iter_general ~toplevel f f_named maybe_named =
     | _ ->
       f t;
       match t with
-      | Apply _ | Apply_cont _ | Switch _ | Push_trap _ | Pop_trap _ -> ()
+      | Apply _ | Apply_cont _ | Switch _ -> ()
       | Let _ -> assert false
       | Let_mutable { body; _ } -> aux body
       | Let_cont { body; handler; _ } ->
@@ -915,7 +916,13 @@ let rec free_continuations (expr : expr) =
       (Continuation.Set.union
         (free_continuations_of_let_cont_handler ~name ~handler)
         (free_continuations body))
-  | Apply_cont (cont, _args) -> Continuation.Set.singleton cont
+  | Apply_cont (cont, trap_action, _args) ->
+    let trap_action =
+      match trap_action with
+      | Some (Push { exn_handler; }) -> Continuation.Set.singleton exn_handler
+      | None | Some Pop -> Continuation.Set.empty
+    in
+    Continuation.Set.add cont trap_action
   | Apply { continuation; } -> Continuation.Set.singleton continuation
   | Switch (_scrutinee, switch) ->
     let consts = List.map (fun (_int, cont) -> cont) switch.consts in
@@ -928,9 +935,6 @@ let rec free_continuations (expr : expr) =
     Continuation.Set.union failaction
       (Continuation.Set.union (Continuation.Set.of_list consts)
         (Continuation.Set.of_list blocks))
-  | Push_trap { body; handler; } ->
-    Continuation.Set.add body (Continuation.Set.singleton handler)
-  | Pop_trap (_, cont) -> Continuation.Set.singleton cont
 
 and free_continuations_of_let_cont_handler ~name ~(handler : let_cont_handler) =
   match handler with

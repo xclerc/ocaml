@@ -20,6 +20,9 @@ type flambda_kind =
   | Normal
   | Lifted
 
+(* CR mshinwell: Check that apply_cont is well-formed when there is a
+   trap installation or removal. *)
+
 (* Explicit "ignore" functions.  We name every pattern variable, avoiding
    underscores, to try to avoid accidentally failing to handle (for example)
    a particular variable.
@@ -212,8 +215,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Push_trap { body; handler; } ->
       ignore_continuation body;
       ignore_continuation handler
-    | Pop_trap (result_var, cont) ->
-      check_variable_is_bound env result_var;
+    | Pop_trap cont ->
       ignore_continuation cont
   and loop_named env (named : Flambda.named) =
     match named with

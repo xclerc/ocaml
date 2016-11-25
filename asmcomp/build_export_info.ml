@@ -220,8 +220,7 @@ let rec approx_of_expr (env : Env.t) (flam : Flambda.t) : Export_info.approx =
         Closure_id.Map.find closure_id results
       | _ -> Value_unknown
     end
-  | Apply { kind = Method _; _ } | Apply_cont _ | Let_cont _ | Switch _
-  | Push_trap _ | Pop_trap _ ->
+  | Apply { kind = Method _; _ } | Apply_cont _ | Let_cont _ | Switch _ ->
     Value_unknown
 
 and descr_of_named (env : Env.t) (named : Flambda.named)
