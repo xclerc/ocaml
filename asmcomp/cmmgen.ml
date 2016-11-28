@@ -1826,10 +1826,8 @@ let rec transl env e =
   | Uunreachable ->
       let dbg = Debuginfo.none in
       Cop(Cload Word_int, [Cconst_int 0], dbg)
-  | Upushtrap _ ->
-      assert false
-  | Upoptrap _ ->
-      assert false
+  | Upushtrap cont -> Cpushtrap cont
+  | Upoptrap cont -> Cpoptrap cont
 
 and transl_make_array dbg env kind args =
   match kind with

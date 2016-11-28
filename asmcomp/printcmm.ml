@@ -190,6 +190,10 @@ let rec expr ppf = function
       fprintf ppf "@[<2>(exit %d" i;
       List.iter (fun e -> fprintf ppf "@ %a" expr e) el;
       fprintf ppf ")@]"
+  | Cpushtrap cont ->
+      fprintf ppf "@[<2>(pushtrap %d)@]" cont
+  | Cpoptrap cont ->
+      fprintf ppf "@[<2>(poptrap %d)@]" cont
 
 and sequence ppf = function
   | Csequence(e1, e2) -> fprintf ppf "%a@ %a" sequence e1 sequence e2

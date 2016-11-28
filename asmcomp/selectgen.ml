@@ -737,6 +737,8 @@ method emit_expr (env:environment) exp =
           self#insert (Iexit nfail) [||] [||];
           None
       end
+  | Cpushtrap cont -> self#insert (Ipushtrap cont) [||] [||]
+  | Cpoptrap cont -> self#insert (Ipoptrap cont) [||] [||]
 
 method private emit_sequence (env:environment) exp =
   let s = {< instr_seq = dummy_instr >} in
@@ -987,6 +989,8 @@ method emit_tail (env:environment) exp =
         | Clambda.Exn_handler -> Cmm.Nonrecursive
       in
       self#insert (Icatch(rec_flag, List.map aux handlers, s_body)) [||] [||]
+  | Cpushtrap _ | Cpoptrap _ ->
+      Misc.fatal_error "Cpushtrap/Cpoptrap should not be passed to emit_tail"
   | _ ->
       self#emit_return env exp
 
