@@ -27,6 +27,7 @@ type t = {
   current_unit : for_one_or_more_units;
   imported_units : for_one_or_more_units;
   traps : Continuation.t Trap_id.Map.t;
+  exn_handlers : Continuation.Set.t;
 }
 
 type ('a, 'b) declaration_position =
@@ -419,6 +420,11 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
         Ustringswitch (arg, cases, failaction)
     end
   | Apply_cont (cont, trap_action, args) ->
+    if Continuation.Set.mem cont t.exn_handlers then begin
+      Misc.fatal_errorf "Continuation %a is an exception handler and cannot \
+          be called using [Apply_cont]"
+        Continuation.print cont
+    end;
     let cont = Env.expand_continuation_aliases env cont in
     let args = List.map (subst_var env) args in
     let expr : Clambda.ulambda =
@@ -452,14 +458,23 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
   | Let_cont { name; body; handler = Alias alias_of; } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
-  | Let_cont { name; body; handler = Handler { params; handler; _ }; } ->
+  | Let_cont { name; body; handler = Handler {
+      params; handler; recursive }; } ->
     let env_handler, ids =
       List.fold_right (fun var (env, ids) ->
           let id, env = Env.add_fresh_ident env var in
           env, id :: ids)
         params (env, [])
     in
-    Ucatch (Continuation.to_int name, ids,
+    let kind : Clambda.catch_kind =
+      if Continuation.Set.mem name t.exn_handlers then begin
+        assert (List.length params = 1);
+        Exn_handler
+      end else begin
+        Normal recursive
+      end
+    in
+    Ucatch (Continuation.to_int name, kind, ids,
       to_clambda t env body, to_clambda t env_handler handler)
 
 and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
@@ -723,7 +738,7 @@ let to_clambda_initialize_symbol t env symbol fields
       List.fold_left (fun (acc, prev_pos, prev_cont) (pos, field, cont) ->
           let prev_cont = Continuation.to_int prev_cont in
           let id = Ident.create "prev_field" in
-          Clambda.Ucatch (prev_cont, [id], acc,
+          Clambda.Ucatch (prev_cont, Normal Nonrecursive, [id], acc,
               Usequence (build_setfield prev_pos id, field)),
             pos, cont)
         (first, first_pos, first_cont)
@@ -731,7 +746,8 @@ let to_clambda_initialize_symbol t env symbol fields
     in
     let id = Ident.create "prev_field" in
     let return_cont = Continuation.create () in
-    Clambda.Ucatch (Continuation.to_int prev_cont, [id], acc,
+    Clambda.Ucatch (Continuation.to_int prev_cont, Normal Nonrecursive,
+        [id], acc,
         Usequence (build_setfield prev_pos id,
           Ustaticfail (Continuation.to_int return_cont, []))),
       return_cont
@@ -784,14 +800,15 @@ let to_clambda_program t env constants (program : Flambda.program) =
       | [] -> e2, constants
       | fields ->
         let e1, cont = to_clambda_initialize_symbol t env symbol fields in
-        Ucatch (Continuation.to_int cont, [], e1, e2), constants
+        Ucatch (Continuation.to_int cont, Normal Nonrecursive, [], e1, e2),
+          constants
       end
     | Effect (expr, cont, program) ->
       let e1 = to_clambda t env expr in
       let e2, constants = loop env constants program in
       let cont = Continuation.to_int cont in
       let unused = Ident.create "unused" in
-      Ucatch (cont, [unused], e1, e2), constants
+      Ucatch (cont, Normal Nonrecursive, [unused], e1, e2), constants
     | End _ ->
       Uconst (Uconst_ptr 0), constants
   in
@@ -799,15 +816,17 @@ let to_clambda_program t env constants (program : Flambda.program) =
 
 let collect_traps program =
   let traps = ref Trap_id.Map.empty in
+  let exn_handlers = ref Continuation.Set.empty in
   Flambda_iterators.iter_exprs_at_toplevel_of_program program ~f:(fun expr ->
     Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
         match expr with
         | Apply_cont (_, Some (Push { id; exn_handler; }), _) ->
-          traps := Trap_id.Map.add id exn_handler !traps
+          traps := Trap_id.Map.add id exn_handler !traps;
+          exn_handlers := Continuation.Set.add exn_handler !exn_handlers
         | _ -> ())
       (fun _named -> ())
       expr);
-  !traps
+  !traps, !exn_handlers
 
 type result = {
   expr : Clambda.ulambda;
@@ -834,8 +853,8 @@ let convert (program, exported) : result =
       constant_sets_of_closures = imported.constant_sets_of_closures;
     }
   in
-  let traps = collect_traps program in
-  let t = { current_unit; imported_units; traps; } in
+  let traps, exn_handlers = collect_traps program in
+  let t = { current_unit; imported_units; traps; exn_handlers; } in
   let preallocated_blocks =
     List.map (fun (symbol, tag, fields) ->
         { Clambda.

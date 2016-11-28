@@ -21,6 +21,8 @@ open Lambda
 
 type function_label = string
 
+type catch_kind = Normal of Asttypes.rec_flag | Exn_handler
+
 type ustructured_constant =
   | Uconst_float of float
   | Uconst_int32 of int32
@@ -49,7 +51,8 @@ and ulambda =
   | Uswitch of ulambda * ulambda_switch
   | Ustringswitch of ulambda * (string * ulambda) list * ulambda option
   | Ustaticfail of int * ulambda list
-  | Ucatch of int * Ident.t list * ulambda * ulambda
+  | Ucatch of int * catch_kind * Ident.t list * ulambda * ulambda
+  (* CR mshinwell: delete [Utrywith] *)
   | Utrywith of ulambda * Ident.t * ulambda
   | Uifthenelse of ulambda * ulambda * ulambda
   | Usequence of ulambda * ulambda

@@ -76,7 +76,7 @@ let occurs_var var u =
         List.exists (fun (_,e) -> occurs e) sw ||
         (match d with None -> false | Some d -> occurs d)
     | Ustaticfail (_, args) -> List.exists occurs args
-    | Ucatch(_, _, body, hdlr) -> occurs body || occurs hdlr
+    | Ucatch(_, _, _, body, hdlr) -> occurs body || occurs hdlr
     | Utrywith(body, _exn, hdlr) -> occurs body || occurs hdlr
     | Uifthenelse(cond, ifso, ifnot) ->
         occurs cond || occurs ifso || occurs ifnot
@@ -176,7 +176,7 @@ let lambda_smaller lam threshold =
           sw ;
         Misc.may lambda_size d
     | Ustaticfail (_,args) -> lambda_list_size args
-    | Ucatch(_, _, body, handler) ->
+    | Ucatch(_, _, _, body, handler) ->
         incr size; lambda_size body; lambda_size handler
     | Utrywith(body, _id, handler) ->
         size := !size + 8; lambda_size body; lambda_size handler
@@ -603,14 +603,15 @@ let rec substitute loc fpc sb ulam =
          Misc.may_map (substitute loc fpc sb) d)
   | Ustaticfail (nfail, args) ->
       Ustaticfail (nfail, List.map (substitute loc fpc sb) args)
-  | Ucatch(nfail, ids, u1, u2) ->
+  | Ucatch(nfail, kind, ids, u1, u2) ->
       let ids' = List.map Ident.rename ids in
       let sb' =
         List.fold_right2
           (fun id id' s -> Tbl.add id (Uvar id') s)
           ids ids' sb
       in
-      Ucatch(nfail, ids', substitute loc fpc sb u1, substitute loc fpc sb' u2)
+      Ucatch(nfail, kind, ids', substitute loc fpc sb u1,
+        substitute loc fpc sb' u2)
   | Utrywith(u1, id, u2) ->
       let id' = Ident.rename id in
       Utrywith(substitute loc fpc sb u1, id',
@@ -1007,7 +1008,7 @@ let rec close fenv cenv = function
             let i = next_raise_count () in
             let ubody,_ = fn (Some (Lstaticraise (i,[])))
             and uhandler,_ = close fenv cenv lamfail in
-            Ucatch (i,[],ubody,uhandler),Value_unknown
+            Ucatch (i,Normal Nonrecursive,[],ubody,uhandler),Value_unknown
           else fn fail
       end
   | Lstringswitch(arg,sw,d,_) ->
@@ -1029,7 +1030,7 @@ let rec close fenv cenv = function
   | Lstaticcatch(body, (i, vars), handler) ->
       let (ubody, _) = close fenv cenv body in
       let (uhandler, _) = close fenv cenv handler in
-      (Ucatch(i, vars, ubody, uhandler), Value_unknown)
+      (Ucatch(i, Normal Nonrecursive, vars, ubody, uhandler), Value_unknown)
   | Ltrywith(body, id, handler) ->
       let (ubody, _) = close fenv cenv body in
       let (uhandler, _) = close fenv cenv handler in
@@ -1273,7 +1274,7 @@ and close_switch fenv cenv cases num_keys default =
                 (string_of_lambda lam) ;
 *)
             let ohs = !hs in
-            hs := (fun e -> Ucatch (i,[],ohs e,ulam)) ;
+            hs := (fun e -> Ucatch (i,Normal Nonrecursive,[],ohs e,ulam)) ;
             Ustaticfail (i,[]))
       acts in
   match actions with
@@ -1327,7 +1328,7 @@ let collect_exported_structured_constants a =
         List.iter (fun (_,act) -> ulam act) sw ;
         Misc.may ulam d
     | Ustaticfail (_, ul) -> List.iter ulam ul
-    | Ucatch (_, _, u1, u2)
+    | Ucatch (_, _, _, u1, u2)
     | Utrywith (u1, _, u2)
     | Usequence (u1, u2)
     | Uwhile (u1, u2)  -> ulam u1; ulam u2

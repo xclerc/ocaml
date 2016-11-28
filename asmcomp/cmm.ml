@@ -169,7 +169,8 @@ type expression =
   | Cifthenelse of expression * expression * expression
   | Cswitch of expression * int array * expression array * Debuginfo.t
   | Cloop of expression
-  | Ccatch of rec_flag * (int * Ident.t list * expression) list * expression
+  | Ccatch of Clambda.catch_kind * (int * Ident.t list * expression) list
+      * expression
   | Cexit of int * expression list
   | Ctrywith of expression * Ident.t * expression
 
@@ -199,9 +200,8 @@ type phrase =
     Cfunction of fundecl
   | Cdata of data_item list
 
-let ccatch (i, ids, e1, e2)=
-  (* CR mshinwell: should set the recursive flag more precisely *)
-  Ccatch(Recursive, [i, ids, e2], e1)
+let ccatch (i, kind, ids, e1, e2)=
+  Ccatch(kind, [i, ids, e2], e1)
 
 let reset () =
   label_counter := 99

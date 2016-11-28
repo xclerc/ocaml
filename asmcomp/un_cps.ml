@@ -71,7 +71,7 @@ let rec count_uses (ulam : Clambda.ulambda) =
   | Ustaticfail (cont, args) ->
     (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty, false)
       + count_uses_list args
-  | Ucatch (cont, _, body, handler) ->
+  | Ucatch (cont, _, _, body, handler) ->
     let body_uses = count_uses body in
     if Numbers.Int.Map.mem cont !used_within_catch_bodies then begin
       Misc.fatal_errorf "Duplicate definition of Ucatch %d" cont
@@ -204,7 +204,6 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
         List.map (fun (id, ulam) -> id, inline env ulam) bindings
       in
       Uletrec (bindings, inline env ulam)
-    | Uprim (Preturn, [arg], _dbg) -> inline env arg
     | Uprim (prim, args, dbg) ->
       Uprim (prim, inline_list env args, dbg)
     | Uswitch (scrutinee, switch) ->
@@ -243,13 +242,34 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
             (inline env handler)
         end
       end
-    | Ucatch (cont, params, body, handler) ->
-      begin match Numbers.Int.Map.find cont uses with
-      | exception Not_found -> inline env body
-      | One -> (* XXX this needs to check it's non-recursive, no? *)
+    | Ucatch (cont, kind, params, body, handler) ->
+      let module Action = struct
+        type t =
+          | Unused
+          | Linear_inlining
+          | Normal
+      end in
+      let action : Action.t =
+        match Numbers.Int.Map.find cont uses with
+        | exception Not_found ->
+          begin match kind with
+          | Normal _ -> Unused
+          | Exn_handler -> Normal
+          end
+        | One ->
+          assert (kind <> Clambda.Exn_handler);
+          Linear_inlining
+        | Many ->
+          assert (kind <> Clambda.Exn_handler);
+          Normal
+        | Zero -> assert false
+      in
+      begin match action with
+      | Unused -> inline env body
+      | Linear_inlining ->
         let env = E.linearly_used_continuation env ~cont ~params ~handler in
         inline env body
-      | Many ->
+      | Normal ->
         begin match Numbers.Int.Map.find cont used_within_catch_bodies with
         | exception Not_found ->
           Misc.fatal_errorf "No record of used continuations within \
@@ -283,16 +303,17 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
           in
           match can_turn_into_let_or_sequence with
           | Nothing ->
-            Ucatch (cont, params, inline env body, inline env handler)
+            Ucatch (cont, kind, params, inline env body, inline env handler)
           | Sequence ->
+            assert (kind <> Clambda.Exn_handler);
             let env = E.continuation_will_turn_into_sequence env ~cont in
             Usequence (inline env body, inline env handler)
           | Let param ->
+            assert (kind <> Clambda.Exn_handler);
             let env = E.continuation_will_turn_into_let env ~cont in
             Ulet (Immutable, Pgenval, param, inline env body,
               inline env handler)
         end
-      | Zero -> assert false
       end
     | Utrywith (body, id, handler) ->
       Utrywith (inline env body, id, inline env handler)

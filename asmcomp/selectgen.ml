@@ -665,7 +665,7 @@ method emit_expr (env:environment) exp =
       Some [||]
   | Ccatch(_, [], e1) ->
       self#emit_expr env e1
-  | Ccatch(rec_flag, handlers, body) ->
+  | Ccatch(kind, handlers, body) ->
       let handlers =
         List.map (fun (nfail, ids, e2) ->
             let rs =
@@ -699,6 +699,12 @@ method emit_expr (env:environment) exp =
       let a = Array.of_list ((r_body, s_body) :: List.map snd l) in
       let r = join_array a in
       let aux (nfail, (_r, s)) = (nfail, s#extract) in
+      let rec_flag =
+        match kind with
+        | Clambda.Normal Asttypes.Nonrecursive -> Cmm.Nonrecursive
+        | Clambda.Normal Asttypes.Recursive -> Cmm.Recursive
+        | Clambda.Exn_handler -> Cmm.Nonrecursive
+      in
       self#insert (Icatch (rec_flag, List.map aux l, s_body#extract)) [||] [||];
       r
   | Cexit (nfail,args) ->
@@ -945,9 +951,9 @@ method emit_tail (env:environment) exp =
             (Iswitch(index, Array.map (self#emit_tail_sequence env) ecases))
             rsel [||]
       end
-  | Ccatch(_, [], e1) ->
+  | Ccatch(Clambda.Normal Asttypes.Nonrecursive, [], e1) ->
       self#emit_tail env e1
-  | Ccatch(rec_flag, handlers, e1) ->
+  | Ccatch(kind, handlers, e1) ->
       let handlers =
         List.map (fun (nfail, ids, e2) ->
             let rs =
@@ -968,6 +974,12 @@ method emit_tail (env:environment) exp =
             (fun env (id,r) -> env_add id r env)
             env (List.combine ids rs) in
         nfail, self#emit_tail_sequence new_env e2
+      in
+      let rec_flag =
+        match kind with
+        | Clambda.Normal Asttypes.Nonrecursive -> Cmm.Nonrecursive
+        | Clambda.Normal Asttypes.Recursive -> Cmm.Recursive
+        | Clambda.Exn_handler -> Cmm.Nonrecursive
       in
       self#insert (Icatch(rec_flag, List.map aux handlers, s_body)) [||] [||]
   | Ctrywith(e1, v, e2) ->

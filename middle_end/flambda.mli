@@ -101,7 +101,12 @@ type specialised_to = {
 
 (** Actions affecting exception traps on the stack.  These are always
     associated with an [Apply_cont] node; the trap action is executed before
-    the application of the continuation. *)
+    the application of the continuation.
+
+    Beware: continuations cannot be used both as an exception handler and as
+    a normal continuation (since continuations used as exception handlers
+    use a calling convention that may differ from normal).
+*)
 type trap_action =
   | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
   | Pop of Trap_id.t
@@ -126,7 +131,7 @@ type trap_action =
     of continuations used.
 
     Exception flow is currently handled (for simplicity) using explicit push
-    and pop trap handler primitives rather than double-barrelled CPS.
+    and pop trap operations (see above) rather than double-barrelled CPS.
 
     Note: All bound variables in Flambda terms must be distinct.
     [Flambda_invariants] verifies this. *)

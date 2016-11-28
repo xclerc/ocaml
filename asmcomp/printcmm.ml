@@ -165,7 +165,7 @@ let rec expr ppf = function
       fprintf ppf "@[<v 0>@[<2>(switch@ %a@ @]%t)@]" expr e1 print_cases
   | Cloop e ->
       fprintf ppf "@[<2>(loop@ %a)@]" sequence e
-  | Ccatch(flag, handlers, e1) ->
+  | Ccatch(kind, handlers, e1) ->
       let print_handler ppf (i, ids, e2) =
         fprintf ppf "(%d%a)@ %a"
           i
@@ -179,8 +179,11 @@ let rec expr ppf = function
         List.iter (print_handler ppf) l
       in
       fprintf ppf
-        "@[<2>(catch%a@ %a@;<1 -2>with%a)@]"
-        rec_flag flag
+        "@[<2>(catch%s@ %a@;<1 -2>with%a)@]"
+        (match kind with
+          | Clambda.Normal Asttypes.Nonrecursive -> ""
+          | Clambda.Normal Asttypes.Recursive -> "_rec"
+          | Clambda.Exn_handler -> "_exn")
         sequence e1
         print_handlers handlers
   | Cexit (i, el) ->

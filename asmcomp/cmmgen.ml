@@ -1346,7 +1346,7 @@ struct
       | Cexit (j,_) ->
           if i=j then handler
           else body
-      | _ -> *) ccatch (i,[],body,handler))
+      | _ -> *) ccatch (i,Normal Asttypes.Nonrecursive,[],body,handler))
 
   let make_exit i = Cexit (i,[])
 
@@ -1520,7 +1520,7 @@ let rec is_unboxed_number ~strict env e =
       | Some default -> join k default
       end
   | Ustaticfail _ -> No_result
-  | Uifthenelse (_, e1, e2) | Ucatch (_, _, e1, e2) | Utrywith (e1, _, e2) ->
+  | Uifthenelse (_, e1, e2) | Ucatch (_, _, _, e1, e2) | Utrywith (e1, _, e2) ->
       join (is_unboxed_number ~strict env e1) e2
   | _ -> No_unboxing
 
@@ -1731,12 +1731,15 @@ let rec transl env e =
             (List.map (fun (s,act) -> s,transl env act) sw))
   | Ustaticfail (nfail, args) ->
       Cexit (nfail, List.map (transl env) args)
-  | Ucatch(nfail, [], body, handler) ->
-      make_catch nfail (transl env body) (transl env handler)
-  | Ucatch(nfail, ids, body, handler) ->
-      ccatch(nfail, ids, transl env body, transl env handler)
-  | Utrywith(body, exn, handler) ->
+  | Ucatch(nfail, kind, [], body, handler) ->
+      make_catch nfail kind (transl env body) (transl env handler)
+  | Ucatch(nfail, kind, ids, body, handler) ->
+      ccatch(nfail, kind, ids, transl env body, transl env handler)
+  | Utrywith _ ->
+      Misc.fatal_error "Utrywith not implemented yet"
+(*(body, exn, handler) ->
       Ctrywith(transl env body, exn, transl env handler)
+*)
   | Uifthenelse(Uprim(Pnot, [arg], _), ifso, ifnot) ->
       transl env (Uifthenelse(arg, ifnot, ifso))
   | Uifthenelse(cond, ifso, Ustaticfail (nfail, [])) ->
@@ -1749,12 +1752,14 @@ let rec transl env e =
       let raise_num = next_raise_count () in
       make_catch
         raise_num
+        (Normal Asttypes.Nonrecursive)
         (exit_if_false dbg env cond (transl env ifso) raise_num)
         (transl env ifnot)
   | Uifthenelse(Uprim(Psequor, _, dbg) as cond, ifso, ifnot) ->
       let raise_num = next_raise_count () in
       make_catch
         raise_num
+        (Normal Asttypes.Nonrecursive)
         (exit_if_true dbg env cond raise_num (transl env ifnot))
         (transl env ifso)
   | Uifthenelse (Uifthenelse (cond, condso, condnot), ifso, ifnot) ->
@@ -1762,6 +1767,7 @@ let rec transl env e =
       let num_true = next_raise_count () in
       make_catch
         num_true
+        (Normal Asttypes.Nonrecursive)
         (make_catch2
            (fun shared_false ->
              if_then_else
@@ -1781,7 +1787,7 @@ let rec transl env e =
       let raise_num = next_raise_count () in
       return_unit
         (ccatch
-           (raise_num, [],
+           (raise_num, Normal Asttypes.Nonrecursive, [],
             Cloop(exit_if_false dbg env cond
                     (remove_unit(transl env body)) raise_num),
             Ctuple []))
@@ -1796,7 +1802,7 @@ let rec transl env e =
            (id, transl env low,
             bind_nonvar "bound" (transl env high) (fun high ->
               ccatch
-                (raise_num, [],
+                (raise_num, Normal Asttypes.Nonrecursive, [],
                  Cifthenelse
                    (Cop(Ccmpi tst, [Cvar id; high], dbg),
                     Cexit (raise_num, []),
@@ -2513,13 +2519,13 @@ and transl_let env str kind id exp body =
       Clet(unboxed_id, transl_unbox_number dbg env boxed_number exp,
            transl (add_unboxed_id id unboxed_id boxed_number env) body)
 
-and make_catch ncatch body handler = match body with
+and make_catch ncatch kind body handler = match body with
 (* XXX same as above *)
 (*
 | Cexit (nexit,[]) when nexit=ncatch -> handler
 <<<<<<< HEAD
 *)
-| _ ->  ccatch (ncatch, [], body, handler)
+| _ ->  ccatch (ncatch, kind, [], body, handler)
 
 and make_catch2 mk_body handler = match handler with
 (*
@@ -2530,6 +2536,7 @@ and make_catch2 mk_body handler = match handler with
     let nfail = next_raise_count () in
     make_catch
       nfail
+      (Normal Asttypes.Nonrecursive) (* CR mshinwell: pass as parameter? *)
       (mk_body (Cexit (nfail,[])))
       handler
 
@@ -2550,6 +2557,7 @@ and exit_if_true dbg env cond nfail otherwise =
           let raise_num = next_raise_count () in
           make_catch
             raise_num
+            (Normal Asttypes.Nonrecursive)
             (exit_if_false dbg env cond (Cexit (nfail,[])) raise_num)
             otherwise
       end
@@ -2584,6 +2592,7 @@ and exit_if_false dbg env cond otherwise nfail =
           let raise_num = next_raise_count () in
           make_catch
             raise_num
+            (Normal Asttypes.Nonrecursive)
             (exit_if_true dbg env cond raise_num (Cexit (nfail,[])))
             otherwise
       end
@@ -2955,7 +2964,7 @@ let cache_public_method meths tag cache dbg =
   hi, Cop(Cload Word_int, [meths], dbg),
   Csequence(
   ccatch
-    (raise_num, [],
+    (raise_num, Normal Asttypes.Nonrecursive, [],
      Cloop
        (Clet(
         mi,
