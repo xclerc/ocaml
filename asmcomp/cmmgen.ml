@@ -477,7 +477,6 @@ let rec unbox_float dbg cmm =
     Cswitch(e, tbl, Array.map (unbox_float dbg) el, dbg)
   | Ccatch(rec_flag, handlers, body) ->
     map_ccatch (unbox_float dbg) rec_flag handlers body
-  | Ctrywith(e1, id, e2) -> Ctrywith(unbox_float dbg e1, id, unbox_float dbg e2)
   | c -> Cop(Cload Double_u, [c], dbg)
 
 (* Complex *)
@@ -504,8 +503,6 @@ let rec remove_unit = function
       Cswitch(sel, index, Array.map remove_unit cases, dbg)
   | Ccatch(rec_flag, handlers, body) ->
       map_ccatch remove_unit rec_flag handlers body
-  | Ctrywith(body, exn, handler) ->
-      Ctrywith(remove_unit body, exn, remove_unit handler)
   | Clet(id, c1, c2) ->
       Clet(id, c1, remove_unit c2)
   | Cop(Capply _mty, args, dbg) ->
@@ -863,8 +860,6 @@ let rec unbox_int bi arg dbg =
       Cswitch(e, tbl, Array.map (fun e -> unbox_int bi e dbg) el, dbg)
   | Ccatch(rec_flag, handlers, body) ->
       map_ccatch (fun e -> unbox_int bi e dbg) rec_flag handlers body
-  | Ctrywith(e1, id, e2) ->
-      Ctrywith(unbox_int bi e1 dbg, id, unbox_int bi e2 dbg)
   | _ ->
       if size_int = 4 && bi = Pint64 then
         split_int64_for_32bit_target arg dbg

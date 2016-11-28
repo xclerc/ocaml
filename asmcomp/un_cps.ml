@@ -250,19 +250,14 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
           | Normal
       end in
       let action : Action.t =
-        match Numbers.Int.Map.find cont uses with
-        | exception Not_found ->
-          begin match kind with
-          | Normal _ -> Unused
-          | Exn_handler -> Normal
-          end
-        | One ->
-          assert (kind <> Clambda.Exn_handler);
-          Linear_inlining
-        | Many ->
-          assert (kind <> Clambda.Exn_handler);
-          Normal
-        | Zero -> assert false
+        match kind with
+        | Exn_handler -> Normal
+        | Normal _ ->
+          match Numbers.Int.Map.find cont uses with
+          | exception Not_found -> Unused
+          | One -> Linear_inlining
+          | Many -> Normal
+          | Zero -> assert false
       in
       begin match action with
       | Unused -> inline env body

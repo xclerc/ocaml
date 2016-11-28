@@ -666,13 +666,21 @@ method emit_expr (env:environment) exp =
   | Ccatch(_, [], e1) ->
       self#emit_expr env e1
   | Ccatch(kind, handlers, body) ->
+      assert (kind <> Clambda.Exn_handler || List.length handlers = 1);
       let handlers =
         List.map (fun (nfail, ids, e2) ->
             let rs =
               List.map
                 (* CR-someday mshinwell: consider how we can do better than
                    [typ_val] when appropriate. *)
-                (fun id -> let r = self#regs_for typ_val in name_regs id r; r)
+                (fun id ->
+                  let r =
+                    match kind with
+                    | Clambda.Normal _ -> self#regs_for typ_val
+                    | Clambda.Exn_handler -> [| Proc.loc_exn_bucket |]
+                  in
+                  name_regs id r;
+                  r)
                 ids in
             (nfail, ids, rs, e2))
           handlers
@@ -729,17 +737,6 @@ method emit_expr (env:environment) exp =
           self#insert (Iexit nfail) [||] [||];
           None
       end
-  | Ctrywith(e1, v, e2) ->
-      let (r1, s1) = self#emit_sequence env e1 in
-      let rv = self#regs_for typ_val in
-      let (r2, s2) = self#emit_sequence (env_add v rv env) e2 in
-      let r = join r1 s1 r2 s2 in
-      self#insert
-        (Itrywith(s1#extract,
-                  instr_cons (Iop Imove) [|Proc.loc_exn_bucket|] rv
-                             (s2#extract)))
-        [||] [||];
-      r
 
 method private emit_sequence (env:environment) exp =
   let s = {< instr_seq = dummy_instr >} in
@@ -954,11 +951,19 @@ method emit_tail (env:environment) exp =
   | Ccatch(Clambda.Normal Asttypes.Nonrecursive, [], e1) ->
       self#emit_tail env e1
   | Ccatch(kind, handlers, e1) ->
+      assert (kind <> Clambda.Exn_handler || List.length handlers = 1);
       let handlers =
         List.map (fun (nfail, ids, e2) ->
             let rs =
               List.map
-                (fun id -> let r = self#regs_for typ_val in name_regs id r; r)
+                (fun id ->
+                  let r =
+                    match kind with
+                    | Clambda.Normal _ -> self#regs_for typ_val
+                    | Clambda.Exn_handler -> [| Proc.loc_exn_bucket |]
+                  in
+                  name_regs id r;
+                  r)
                 ids in
             (nfail, ids, rs, e2))
           handlers in
@@ -982,21 +987,6 @@ method emit_tail (env:environment) exp =
         | Clambda.Exn_handler -> Cmm.Nonrecursive
       in
       self#insert (Icatch(rec_flag, List.map aux handlers, s_body)) [||] [||]
-  | Ctrywith(e1, v, e2) ->
-      let (opt_r1, s1) = self#emit_sequence env e1 in
-      let rv = self#regs_for typ_val in
-      let s2 = self#emit_tail_sequence (env_add v rv env) e2 in
-      self#insert
-        (Itrywith(s1#extract,
-                  instr_cons (Iop Imove) [|Proc.loc_exn_bucket|] rv s2))
-        [||] [||];
-      begin match opt_r1 with
-        None -> ()
-      | Some r1 ->
-          let loc = Proc.loc_results r1 in
-          self#insert_moves r1 loc;
-          self#insert Ireturn loc [||]
-      end
   | _ ->
       self#emit_return env exp
 
