@@ -58,6 +58,8 @@ type operation =
   | Iintop_imm of integer_operation * int
   | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
   | Ifloatofint | Iintoffloat
+  | Ipushtrap of int
+  | Ipoptrap of int
   | Ispecific of Arch.specific_operation
 
 type instruction =
@@ -77,7 +79,6 @@ and instruction_desc =
   | Iloop of instruction
   | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
   | Iexit of int
-  | Itrywith of instruction * instruction
   | Iraise of Cmm.raise_kind
 
 type spacetime_part_of_shape =
@@ -141,8 +142,6 @@ let rec instr_iter f i =
           List.iter (fun (_n, handler) -> instr_iter f handler) handlers;
           instr_iter f i.next
       | Iexit _ -> ()
-      | Itrywith(body, handler) ->
-          instr_iter f body; instr_iter f handler; instr_iter f i.next
       | Iraise _ -> ()
       | _ ->
           instr_iter f i.next
@@ -175,7 +174,7 @@ let spacetime_node_hole_pointer_is_live_before insn =
     | Imove | Ispill | Ireload | Iconst_int _ | Iconst_float _
     | Iconst_symbol _ | Istackoffset _ | Iload _ | Istore _
     | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
-    | Ifloatofint | Iintoffloat -> false
+    | Ifloatofint | Iintoffloat | Ipushtrap _ | Ipoptrap _ -> false
     end
   | Iend | Ireturn | Iifthenelse _ | Iswitch _ | Iloop _ | Icatch _
-  | Iexit _ | Itrywith _ | Iraise _ -> false
+  | Iexit _ | Iraise _ -> false

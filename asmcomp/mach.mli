@@ -68,6 +68,8 @@ type operation =
   | Iintop_imm of integer_operation * int
   | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
   | Ifloatofint | Iintoffloat
+  | Ipushtrap of int
+  | Ipoptrap of int
   | Ispecific of Arch.specific_operation
 
 type instruction =
@@ -87,7 +89,6 @@ and instruction_desc =
   | Iloop of instruction
   | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
   | Iexit of int
-  | Itrywith of instruction * instruction
   | Iraise of Cmm.raise_kind
 
 type spacetime_part_of_shape =

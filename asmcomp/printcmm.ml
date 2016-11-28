@@ -101,6 +101,8 @@ let operation d = function
   | Ccmpf c -> Printf.sprintf "%sf" (comparison c)
   | Craise k -> Format.asprintf "%a%s" raise_kind k (Debuginfo.to_string d)
   | Ccheckbound -> "checkbound" ^ Debuginfo.to_string d
+  | Cpushtrap cont -> Format.sprintf "pushtrap %d" cont
+  | Cpoptrap cont -> Format.sprintf "poptrap %d" cont
 
 let rec expr ppf = function
   | Cconst_int n -> fprintf ppf "%i" n
@@ -190,10 +192,6 @@ let rec expr ppf = function
       fprintf ppf "@[<2>(exit %d" i;
       List.iter (fun e -> fprintf ppf "@ %a" expr e) el;
       fprintf ppf ")@]"
-  | Cpushtrap cont ->
-      fprintf ppf "@[<2>(pushtrap %d)@]" cont
-  | Cpoptrap cont ->
-      fprintf ppf "@[<2>(poptrap %d)@]" cont
 
 and sequence ppf = function
   | Csequence(e1, e2) -> fprintf ppf "%a@ %a" sequence e1 sequence e2

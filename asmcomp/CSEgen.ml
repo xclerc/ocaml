@@ -234,7 +234,7 @@ method class_of_operation op =
   | Iintop_imm(_, _) -> Op_pure
   | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
   | Ifloatofint | Iintoffloat -> Op_pure
-  | Ispecific _ -> Op_other
+  | Ipushtrap _ | Ipoptrap _ | Ispecific _ -> Op_other
 
 (* Operations that are so cheap that it isn't worth factoring them. *)
 
@@ -354,10 +354,6 @@ method private cse n i =
         nfail, self#cse empty_numbering handler
       in
       {i with desc = Icatch(rec_flag, List.map aux handlers, self#cse n body);
-              next = self#cse empty_numbering i.next}
-  | Itrywith(body, handler) ->
-      {i with desc = Itrywith(self#cse n body,
-                              self#cse empty_numbering handler);
               next = self#cse empty_numbering i.next}
 
 method fundecl f =

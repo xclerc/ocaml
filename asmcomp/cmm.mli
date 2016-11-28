@@ -123,6 +123,8 @@ and operation =
   | Ccmpf of comparison
   | Craise of raise_kind
   | Ccheckbound
+  | Cpushtrap of int
+  | Cpoptrap of int
 
 (** Not all cmm expressions currently have [Debuginfo.t] values attached to
     them.  The ones that do are those that are likely to generate code that
@@ -148,8 +150,6 @@ and expression =
   | Ccatch of Clambda.catch_kind * (int * Ident.t list * expression) list
       * expression
   | Cexit of int * expression list
-  | Cpushtrap of int
-  | Cpoptrap of int
 
 type fundecl =
   { fun_name: string;

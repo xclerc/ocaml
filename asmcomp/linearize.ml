@@ -295,16 +295,6 @@ let rec linear i n =
         else loop (cons_instr Lpoptrap i) (tt - 1)
       in
       loop (add_branch lbl n1) !try_depth
-  | Itrywith(body, handler) ->
-      let (lbl_join, n1) = get_label (linear i.Mach.next n) in
-      incr try_depth;
-      assert (i.Mach.arg = [| |] || Config.spacetime);
-      let (lbl_body, n2) =
-        get_label (instr_cons Lpushtrap i.Mach.arg [| |]
-                    (linear body (cons_instr Lpoptrap n1))) in
-      decr try_depth;
-      instr_cons (Lsetuptrap lbl_body) i.Mach.arg [| |]
-        (linear handler (add_branch lbl_join n2))
   | Iraise k ->
       copy_instr (Lraise k) i (discard_dead_code n)
 

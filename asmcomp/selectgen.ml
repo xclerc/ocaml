@@ -68,6 +68,7 @@ let oper_result_type = function
   | Cintoffloat -> typ_int
   | Craise _ -> typ_void
   | Ccheckbound -> typ_void
+  | Cpushtrap _ | Cpoptrap _ -> typ_void
 
 (* Infer the size in bytes of the result of a simple expression *)
 
@@ -268,8 +269,6 @@ method mark_instr = function
              #mark_c_tailcall to get a good stack backtrace *)
           self#mark_call
     end
-  | Itrywith _ ->
-    self#mark_call
   | _ -> ()
 
 (* Default instruction selection for operators *)
@@ -343,6 +342,8 @@ method select_operation op args _dbg =
     let extra_args = self#select_checkbound_extra_args () in
     let op = self#select_checkbound () in
     self#select_arith op (args @ extra_args)
+  | (Cpushtrap cont, _) -> (Ipushtrap cont, args)
+  | (Cpoptrap cont, _) -> (Ipoptrap cont, args)
   | _ -> fatal_error "Selection.select_oper"
 
 method private select_arith_comm op = function
@@ -737,8 +738,6 @@ method emit_expr (env:environment) exp =
           self#insert (Iexit nfail) [||] [||];
           None
       end
-  | Cpushtrap cont -> self#insert (Ipushtrap cont) [||] [||]
-  | Cpoptrap cont -> self#insert (Ipoptrap cont) [||] [||]
 
 method private emit_sequence (env:environment) exp =
   let s = {< instr_seq = dummy_instr >} in
@@ -989,8 +988,6 @@ method emit_tail (env:environment) exp =
         | Clambda.Exn_handler -> Cmm.Nonrecursive
       in
       self#insert (Icatch(rec_flag, List.map aux handlers, s_body)) [||] [||]
-  | Cpushtrap _ | Cpoptrap _ ->
-      Misc.fatal_error "Cpushtrap/Cpoptrap should not be passed to emit_tail"
   | _ ->
       self#emit_return env exp
 
