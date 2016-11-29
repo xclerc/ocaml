@@ -1950,8 +1950,6 @@ middle_end/base_types/export_id.cmx : utils/identifiable.cmx \
     middle_end/base_types/export_id.cmi
 middle_end/base_types/export_id.cmi : utils/identifiable.cmi \
     middle_end/base_types/compilation_unit.cmi
-middle_end/base_types/fully_qualified_id.cmo :
-middle_end/base_types/fully_qualified_id.cmx :
 middle_end/base_types/id_types.cmo : utils/identifiable.cmi \
     middle_end/base_types/id_types.cmi
 middle_end/base_types/id_types.cmx : utils/identifiable.cmx \
@@ -1970,8 +1968,6 @@ middle_end/base_types/mutable_variable.cmx : utils/identifiable.cmx \
     middle_end/base_types/mutable_variable.cmi
 middle_end/base_types/mutable_variable.cmi : utils/identifiable.cmi \
     typing/ident.cmi middle_end/base_types/compilation_unit.cmi
-middle_end/base_types/name_for_debugger.cmo :
-middle_end/base_types/name_for_debugger.cmx :
 middle_end/base_types/num_continuation_uses.cmo : \
     middle_end/base_types/num_continuation_uses.cmi
 middle_end/base_types/num_continuation_uses.cmx : \
