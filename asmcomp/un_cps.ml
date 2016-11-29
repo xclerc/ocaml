@@ -285,27 +285,28 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
               used
           in
           let can_turn_into_let_or_sequence =
-            match Numbers.Int.Map.bindings used with
-            | [cont', _] when cont = cont' ->
-              if contains_returns then begin
-                Nothing
-              end else begin
-                match params with
-                | [param] -> Let param
-                | [] -> Sequence
-                | _ -> Nothing
-              end
-            | _ -> Nothing
+            match kind with
+            | Clambda.Exn_handler -> Nothing
+            | Clambda.Normal _ ->
+              match Numbers.Int.Map.bindings used with
+              | [cont', _] when cont = cont' ->
+                if contains_returns then begin
+                  Nothing
+                end else begin
+                  match params with
+                  | [param] -> Let param
+                  | [] -> Sequence
+                  | _ -> Nothing
+                end
+              | _ -> Nothing
           in
           match can_turn_into_let_or_sequence with
           | Nothing ->
             Ucatch (cont, kind, params, inline env body, inline env handler)
           | Sequence ->
-            assert (kind <> Clambda.Exn_handler);
             let env = E.continuation_will_turn_into_sequence env ~cont in
             Usequence (inline env body, inline env handler)
           | Let param ->
-            assert (kind <> Clambda.Exn_handler);
             let env = E.continuation_will_turn_into_let env ~cont in
             Ulet (Immutable, Pgenval, param, inline env body,
               inline env handler)
