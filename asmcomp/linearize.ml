@@ -220,7 +220,11 @@ let local_exit k ~trap_depth =
 (* Collect trap depths at the start of catch handlers by a forwards analysis.
    This is done separately from the linearization phase because that looks at
    catch handlers before bodies, which isn't what we need here.  This analysis
-   doesn't reallocate the instruction stream, so should be efficient enough. *)
+   doesn't reallocate the instruction stream, so should be efficient enough.
+
+   The following invariant is relied upon: all applications of a given
+   continuation must be at the same trap depth.
+*)
 
 let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
   let add_depth ~cont ~depth ~depths_at_exit =
@@ -239,7 +243,9 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
   | Iend ->
     depths_at_exit
   | Ireturn ->
-    assert (depth = 0);
+    if depth <> 0 then begin
+      Misc.fatal_errorf "Trap depth at Ireturn is non-zero: %d" depth
+    end;
     depths_at_exit
   | Iop (Ipushtrap cont) ->
     let depth = depth + 1 in
@@ -274,6 +280,7 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
     in
     let rec process_handlers ~depths_at_exit ~handlers_with_uses
           ~handlers_without_uses =
+      (* By the invariant above, there is no need to compute a fixpoint. *)
       if Int.Map.is_empty handlers_with_uses then
         depths_at_exit
       else
@@ -282,6 +289,7 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
         match Int.Map.find cont depths_at_exit with
         | exception Not_found -> assert false
         | depth ->
+Format.eprintf "Handler %d trap depth at start is %d\n%!" cont depth;
           let depths_at_exit = trap_depths handler ~depth ~depths_at_exit in
           let new_handlers_with_uses, handlers_without_uses =
             Int.Map.partition (fun cont _handler ->
