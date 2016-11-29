@@ -312,14 +312,16 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
     let depths_at_exit = add_depth ~cont ~depth ~depths_at_exit in
     trap_depths insn.Mach.next ~depth ~depths_at_exit
 
-let compute_trap_depths fun_name insn =
+let compute_trap_depths _fun_name insn =
   let depths_at_exit =
     trap_depths insn ~depth:0 ~depths_at_exit:Int.Map.empty
   in
+(*
   Format.eprintf "Trap depths for %s:@;%a@;%!"
     fun_name
     (Int.Map.print (fun ppf i -> Format.fprintf ppf "%d" i))
     depths_at_exit;
+*)
   depths_at_exit
 
 let trap_depths = ref Int.Map.empty
