@@ -24,12 +24,13 @@ let label ppf l =
   Format.fprintf ppf "L%i" l
 
 let instr ppf i =
+  fprintf ppf "[%2d] " i.trap_depth;
   begin match i.desc with
   | Lend -> ()
   | Lop op ->
       begin match op with
       | Ialloc _ | Icall_ind _ | Icall_imm _ | Iextcall _ ->
-          fprintf ppf "@[<1>{%a}@]@," regsetaddr i.live
+          fprintf ppf "@[<1>{%a}@]@,     " regsetaddr i.live
       | _ -> ()
       end;
       operation op i.arg ppf i.res
