@@ -18,6 +18,8 @@
 open Reg
 open Mach
 
+module Int = Numbers.Int
+
 type label = Cmm.label
 
 type instruction =
@@ -220,11 +222,11 @@ let local_exit k ~trap_depth =
    catch handlers before bodies, which isn't what we need here.  This analysis
    doesn't reallocate the instruction stream, so should be efficient enough. *)
 
-let rec trap_depths insn ~depth ~depths_at_exit : int Numbers.Int.Map.t =
+let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
   let add_depth ~cont ~depth ~depths_at_exit =
-    match Numbers.Int.Map.find cont depths_at_exit with
+    match Int.Map.find cont depths_at_exit with
     | exception Not_found ->
-      Numbers.Int.Map.add cont depth depths_at_exit
+      Int.Map.add cont depth depths_at_exit
     | depth' ->
       if depth <> depth' then begin
         Misc.fatal_errorf "Iexit points for continuation %d disagree on \
@@ -234,7 +236,9 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Numbers.Int.Map.t =
       depths_at_exit
   in
   match insn.Mach.desc with
-  | Iend | Ireturn ->
+  | Iend ->
+    depths_at_exit
+  | Ireturn ->
     assert (depth = 0);
     depths_at_exit
   | Iop (Ipushtrap cont) ->
@@ -260,11 +264,41 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Numbers.Int.Map.t =
     trap_depths insn.Mach.next ~depth
       ~depths_at_exit:(trap_depths insn ~depth ~depths_at_exit)
   | Icatch (_rec_flag, handlers, body) ->
-    let depths_at_exit =
-      List.fold_left (fun depths_at_exit (_cont, handler) ->
-          trap_depths handler ~depth ~depths_at_exit)
-        (trap_depths body ~depth ~depths_at_exit)
+    (* This is the crux. *)
+    let depths_at_exit = trap_depths body ~depth ~depths_at_exit in
+    let handlers = Int.Map.of_list handlers in
+    let handlers_with_uses, handlers_without_uses =
+      Int.Map.partition (fun cont _handler ->
+          Int.Map.mem cont depths_at_exit)
         handlers
+    in
+    let rec process_handlers ~depths_at_exit ~handlers_with_uses
+          ~handlers_without_uses =
+      if Int.Map.is_empty handlers_with_uses then
+        depths_at_exit
+      else
+        let cont, handler = Int.Map.min_binding handlers_with_uses in
+        let handlers_with_uses = Int.Map.remove cont handlers_with_uses in
+        match Int.Map.find cont depths_at_exit with
+        | exception Not_found -> assert false
+        | depth ->
+          let depths_at_exit = trap_depths handler ~depth ~depths_at_exit in
+          let new_handlers_with_uses, handlers_without_uses =
+            Int.Map.partition (fun cont _handler ->
+                Int.Map.mem cont depths_at_exit)
+              handlers_without_uses
+          in
+          let handlers_with_uses =
+            Int.Map.disjoint_union handlers_with_uses new_handlers_with_uses
+          in
+          process_handlers ~depths_at_exit ~handlers_with_uses
+            ~handlers_without_uses
+    in
+    (* CR-someday mshinwell: This could be enhanced to delete the
+       [handlers_without_uses]. *)
+    let depths_at_exit =
+      process_handlers ~depths_at_exit ~handlers_with_uses
+        ~handlers_without_uses
     in
     trap_depths insn.Mach.next ~depth ~depths_at_exit
   | Iexit cont ->
@@ -273,15 +307,15 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Numbers.Int.Map.t =
 
 let compute_trap_depths fun_name insn =
   let depths_at_exit =
-    trap_depths insn ~depth:0 ~depths_at_exit:Numbers.Int.Map.empty
+    trap_depths insn ~depth:0 ~depths_at_exit:Int.Map.empty
   in
   Format.eprintf "Trap depths for %s:@;%a@;%!"
     fun_name
-    (Numbers.Int.Map.print (fun ppf i -> Format.fprintf ppf "%d" i))
+    (Int.Map.print (fun ppf i -> Format.fprintf ppf "%d" i))
     depths_at_exit;
   depths_at_exit
 
-let trap_depths = ref Numbers.Int.Map.empty
+let trap_depths = ref Int.Map.empty
 
 (* Linearize an instruction [i]: add it in front of the continuation [n] *)
 
@@ -395,7 +429,7 @@ let rec linear i n =
       let exit_label_add =
         List.map2 (fun (cont, _) lbl ->
             let start_of_handler_trap_depth =
-              match Numbers.Int.Map.find cont !trap_depths with
+              match Int.Map.find cont !trap_depths with
               | exception Not_found ->
                 Misc.fatal_errorf "Missing trap depth for continuation %d"
                   cont
