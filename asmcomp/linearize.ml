@@ -248,9 +248,8 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
     end;
     depths_at_exit
   | Iop (Ipushtrap cont) ->
-    let depth = depth + 1 in
     let depths_at_exit = add_depth ~cont ~depth ~depths_at_exit in
-    trap_depths insn.Mach.next ~depth ~depths_at_exit
+    trap_depths insn.Mach.next ~depth:(depth + 1) ~depths_at_exit
   | Iop (Ipoptrap _) ->
     assert (depth > 0);
     trap_depths insn.Mach.next ~depth:(depth - 1) ~depths_at_exit
@@ -289,7 +288,7 @@ let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
         match Int.Map.find cont depths_at_exit with
         | exception Not_found -> assert false
         | depth ->
-Format.eprintf "Handler %d trap depth at start is %d\n%!" cont depth;
+(*Format.eprintf "Handler %d trap depth at start is %d\n%!" cont depth;*)
           let depths_at_exit = trap_depths handler ~depth ~depths_at_exit in
           let new_handlers_with_uses, handlers_without_uses =
             Int.Map.partition (fun cont _handler ->
