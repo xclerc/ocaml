@@ -850,14 +850,13 @@ let emit_instr fallthrough i =
       cfi_adjust_cfa_offset delta;
       stack_offset := !stack_offset + delta
   | Lpushtrap { handler; } ->
-      I.mov r14 (mem64 QWORD (-16) RSP);
+      cfi_adjust_cfa_offset 16;
+      I.sub (int 16) rsp;
+      stack_offset := !stack_offset + 16;
+      I.mov r14 (mem64 QWORD 0 RSP);
       load_label_addr handler r14;
-      I.push r14;
-      cfi_adjust_cfa_offset 8;
-      I.sub (int 8) rsp;
-      cfi_adjust_cfa_offset 8;
-      I.mov rsp r14;
-      stack_offset := !stack_offset + 16
+      I.mov r14 (mem64 QWORD 8 RSP);
+      I.mov rsp r14
   | Lpoptrap ->
       I.pop r14;
       cfi_adjust_cfa_offset (-8);
