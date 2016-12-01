@@ -46,22 +46,24 @@ let rec trap_stacks insn ~stack ~stacks_at_exit : int list Int.Map.t =
     | _ -> Misc.fatal_error "Trap depth at Ireturn is non-zero"
     end
   | Iop op ->
-    let stack =
+    let stack, stacks_at_exit =
       match op with
-      | Ipushtrap cont -> cont :: stack
+      | Ipushtrap cont ->
+        let stacks_at_exit = add_stack ~cont ~stack ~stacks_at_exit in
+        cont :: stack, stacks_at_exit
       | Ipoptrap cont ->
         begin match stack with
         | [] ->
           Misc.fatal_errorf "Tried to poptrap %d but trap stack is empty" cont
         | cont' :: stack ->
           if cont = cont' then
-            stack
+            stack, stacks_at_exit
           else
             Misc.fatal_errorf "Tried to poptrap %d but trap stack has %d \
                 at the top"
               cont cont'
         end
-      | _ -> stack
+      | _ -> stack, stacks_at_exit
     in
     trap_stacks insn.Mach.next ~stack ~stacks_at_exit
   | Iraise _ ->
