@@ -319,8 +319,7 @@ let simplify_move_within_set_of_closures env r
             in
             let start_from = closure_id_in_approx in
             let move_to =
-              try Closure_id.Map.find start_from
-                    move_within_set_of_closures.move with
+              try Closure_id.Map.find start_from freshened_move with
               | Not_found ->
                 Misc.fatal_errorf "Move %a does not contain projection for %a"
                   Projection.print_move_within_set_of_closures
@@ -794,12 +793,11 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
            (even if the application is currently [Indirect]).  If
            successful---in which case we then have a direct
            application---consider inlining. *)
-        match A.check_approx_for_closure lhs_of_application_approx with
-        | Ok (value_closure, set_of_closures_var,
+        match A.check_approx_for_closure_singleton lhs_of_application_approx with
+        | Ok (closure_id_being_applied, set_of_closures_var,
               set_of_closures_symbol, value_set_of_closures) ->
           let lhs_of_application, closure_id_being_applied,
                 value_set_of_closures, env, wrap =
-            let closure_id_being_applied = value_closure.closure_id in
             (* If the call site is a direct call to a function that has a
                "direct call surrogate" (see inline_and_simplify_aux.mli),
                repoint the call to the surrogate. *)
@@ -820,14 +818,14 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
               in
               let move_to_surrogate : Projection.move_within_set_of_closures =
                 { closure = lhs_of_application;
-                  start_from = closure_id_being_applied;
-                  move_to = surrogate;
+                  move = Closure_id.Map.singleton closure_id_being_applied
+                           surrogate;
                 }
               in
               let approx_for_surrogate =
                 A.value_closure ~closure_var:surrogate_var
                   ?set_of_closures_var ?set_of_closures_symbol
-                  value_set_of_closures surrogate
+                  (Closure_id.Map.singleton surrogate value_set_of_closures)
               in
               let env = E.add env surrogate_var approx_for_surrogate in
               let wrap expr =
@@ -1742,9 +1740,11 @@ let constant_defining_value_approx
         match checked_approx with
         | Ok (_, value_set_of_closures) ->
           let closure_id =
-            A.freshen_and_check_closure_id value_set_of_closures closure_id
+            A.freshen_and_check_closure_id value_set_of_closures
+              (Closure_id.Set.singleton closure_id)
           in
-          A.value_closure value_set_of_closures closure_id
+          A.value_closure
+            (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
         | Unresolved sym -> A.value_unresolved sym
         | Unknown -> A.value_unknown Other
         | Unknown_because_of_unresolved_symbol sym ->
@@ -1815,9 +1815,11 @@ let simplify_constant_defining_value
         match A.check_approx_for_set_of_closures set_of_closures_approx with
         | Ok (_, value_set_of_closures) ->
           let closure_id =
-            A.freshen_and_check_closure_id value_set_of_closures closure_id
+            A.freshen_and_check_closure_id value_set_of_closures
+              (Closure_id.Set.singleton closure_id)
           in
-          A.value_closure value_set_of_closures closure_id
+          A.value_closure
+            (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
         | Unresolved sym -> A.value_unresolved sym
         | Unknown -> A.value_unknown Other
         | Unknown_because_of_unresolved_symbol sym ->

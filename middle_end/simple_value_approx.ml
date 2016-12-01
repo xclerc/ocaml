@@ -726,6 +726,25 @@ let check_approx_for_closure t : checked_approx_for_closure =
   | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_symbol _ ->
     Wrong
 
+type checked_approx_for_closure_singleton =
+  | Wrong
+  | Ok of Closure_id.t * Variable.t option
+          * Symbol.t option * value_set_of_closures
+
+let check_approx_for_closure_singleton t
+  : checked_approx_for_closure_singleton =
+  match check_approx_for_closure_allowing_unresolved t with
+  | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) -> begin
+    match Closure_id.Map.get_singleton value_closures with
+    | None ->
+      Wrong
+    | Some (closure_id, value_set_of_closures) ->
+      Ok (closure_id, set_of_closures_var, set_of_closures_symbol,
+          value_set_of_closures)
+    end
+  | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_symbol _ ->
+    Wrong
+
 let approx_for_bound_var value_set_of_closures var =
   try
     Var_within_closure.Map.find var value_set_of_closures.bound_vars

@@ -375,6 +375,13 @@ type checked_approx_for_closure =
    as "strict_check_approx_for_set_of_closures" *)
 val check_approx_for_closure : t -> checked_approx_for_closure
 
+type checked_approx_for_closure_singleton =
+  | Wrong
+  | Ok of Closure_id.t * Variable.t option
+          * Symbol.t option * value_set_of_closures
+
+val check_approx_for_closure_singleton : t -> checked_approx_for_closure_singleton
+
 type checked_approx_for_closure_allowing_unresolved =
   | Wrong
   | Unresolved of Symbol.t
