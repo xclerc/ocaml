@@ -309,7 +309,14 @@ let simplify_move_within_set_of_closures env r
           (fun closure_id_in_approx
                (value_set_of_closures:A.value_set_of_closures)
                (move, approx_map) ->
-            let module F = Freshening.Project_var in
+            (* Pas efficace: on refait le freshening de tout pour ne
+               garder que la partie pertinente, mais n'est pas très
+               grave parce que ces map sont petites (normalement) *)
+            let freshened_move =
+              Freshening.freshen_move_within_set_of_closures
+                ~closure_freshening:value_set_of_closures.freshening
+                move
+            in
             let start_from = closure_id_in_approx in
             let move_to =
               try Closure_id.Map.find start_from
@@ -319,13 +326,6 @@ let simplify_move_within_set_of_closures env r
                   Projection.print_move_within_set_of_closures
                   move_within_set_of_closures
                   Closure_id.print start_from
-            in
-            let closure_freshening = value_set_of_closures.freshening in
-            let start_from =
-              F.apply_closure_id closure_freshening start_from
-            in
-            let move_to =
-              F.apply_closure_id closure_freshening move_to
             in
             assert(not (Closure_id.Map.mem start_from move));
             Closure_id.Map.add start_from move_to move,
@@ -462,28 +462,44 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
   simplify_free_variable_named env project_var.closure
     ~f:(fun _env closure approx ->
       match A.check_approx_for_closure_allowing_unresolved approx with
-      | Ok (value_closure, _set_of_closures_var, _set_of_closures_symbol,
-            value_set_of_closures) ->
-        let module F = Freshening.Project_var in
-        let freshening = value_set_of_closures.freshening in
-        let var = F.apply_var_within_closure freshening project_var.var in
-        let closure_id = F.apply_closure_id freshening project_var.closure_id in
-        let closure_id_in_approx = value_closure.closure_id in
-        if not (Closure_id.equal closure_id closure_id_in_approx) then begin
-          Misc.fatal_errorf "When simplifying [Project_var], the closure ID %a \
-              in the approximation of the set of closures did not match the \
-              closure ID %a in the [Project_var] term.  Approximation: %a@. \
-              Var-within-closure being projected: %a@."
-            Closure_id.print closure_id_in_approx
-            Closure_id.print closure_id
-            Simple_value_approx.print approx
-            Var_within_closure.print var
-        end;
+      | Ok (value_closures, _set_of_closures_var, _set_of_closures_symbol) -> begin
+        (* Freshening of the projection *)
+        let project_var_var, approx =
+          Closure_id.Map.fold
+            (fun closure_id_in_approx
+              (value_set_of_closures:A.value_set_of_closures)
+              (project_var_var, set_approx) ->
+              let freshened_var =
+                Freshening.freshen_project_var project_var.var
+                  ~closure_freshening:value_set_of_closures.freshening
+              in
+              let closure_id = closure_id_in_approx in
+              let var =
+                try Closure_id.Map.find closure_id_in_approx freshened_var with
+                | Not_found ->
+                  Misc.fatal_errorf "When simplifying [Project_var], the \
+                    closure ID %a in the approximation of the set of closures \
+                    did not match any closure ID in the [Project_var] term %a \
+                    freshened to %a. \
+                    Approximation: %a@."
+                    Closure_id.print closure_id_in_approx
+                    Projection.print_project_var project_var
+                    (Closure_id.Map.print Var_within_closure.print) freshened_var
+                    Simple_value_approx.print approx
+              in
+              let set_approx =
+                let approx = A.approx_for_bound_var value_set_of_closures var in
+                let really_import_approx = E.really_import_approx env in
+                A.meet ~really_import_approx approx set_approx
+              in
+              Closure_id.Map.add closure_id var project_var_var,
+              set_approx)
+            value_closures (Closure_id.Map.empty, A.value_bottom)
+        in
         let projection : Projection.t =
           Project_var {
             closure;
-            closure_id;
-            var;
+            var = project_var_var;
           }
         in
         begin match E.find_projection env ~projection with
@@ -492,19 +508,23 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
             let r = R.map_benefit r (B.remove_projection projection) in
             [], Var var, ret r var_approx)
         | None ->
-          let approx = A.approx_for_bound_var value_set_of_closures var in
           let expr : Flambda.named =
-            Project_var { closure; closure_id; var; }
+            Project_var { closure; var = project_var_var; }
           in
-          let unwrapped = Var_within_closure.unwrap var in
           let expr =
-            if E.mem env unwrapped then
-              Flambda.Var unwrapped
-            else
+            match Closure_id.Map.get_singleton project_var_var with
+            | None ->
               expr
+            | Some (_closure_id, var) ->
+              let unwrapped = Var_within_closure.unwrap var in
+              if E.mem env unwrapped then
+                Flambda.Var unwrapped
+              else
+                expr
           in
           simplify_named_using_approx_and_env env r expr approx
         end
+      end
       | Unresolved symbol ->
         (* This value comes from a symbol for which we couldn't find any
           approximation, telling us that names within the closure couldn't
