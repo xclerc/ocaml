@@ -209,15 +209,15 @@ let value_any_float = approx (Value_float None)
 let value_boxed_int bi i = approx (Value_boxed_int (bi,i))
 
 let value_closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
-      value_set_of_closures closure_id =
-  let approx_set_of_closures =
+      closures =
+  let approx_set_of_closures value_set_of_closures =
     { descr = Value_set_of_closures value_set_of_closures;
       var = set_of_closures_var;
       symbol = Misc.may_map (fun s -> s, None) set_of_closures_symbol;
     }
   in
   let potential_closure =
-    Closure_id.Map.of_set (fun _ -> approx_set_of_closures) closure_id
+    Closure_id.Map.map approx_set_of_closures closures
   in
   { descr = Value_closure { potential_closure };
     var = closure_var;
@@ -536,7 +536,8 @@ let rec meet_descr ~really_import_approx d1 d2 = match d1, d2 with
     Value_closure { potential_closure = map2 } ->
     let potential_closure =
       Closure_id.Map.union_merge
-        (* merging the closure value might loose information in the
+        (* CR pchambart:
+           merging the closure value might loose information in the
            case of one branch having the approximation and the other
            having 'Value_unknown'. We could imagine such as
 
@@ -601,21 +602,24 @@ and meet ~really_import_approx a1 a2 =
    that new closure ID.  A fatal error is produced if the new closure ID
    does not correspond to a function declaration in the given approximation. *)
 let freshen_and_check_closure_id
-      (value_set_of_closures : value_set_of_closures) closure_id =
+      (value_set_of_closures : value_set_of_closures)
+      (closure_id : Closure_id.Set.t) =
   let closure_id =
-    Freshening.Project_var.apply_closure_id
+    Freshening.Project_var.apply_closure_ids
       value_set_of_closures.freshening closure_id
   in
-  try
-    ignore (Flambda_utils.find_declaration closure_id
-      value_set_of_closures.function_decls);
-    closure_id
-  with Not_found ->
-    Misc.fatal_error (Format.asprintf
-      "Function %a not found in the set of closures@ %a@.%a@."
-      Closure_id.print closure_id
-      print_value_set_of_closures value_set_of_closures
-      Flambda.print_function_declarations value_set_of_closures.function_decls)
+  Closure_id.Set.iter (fun closure_id ->
+    try
+      ignore (Flambda_utils.find_declaration closure_id
+      value_set_of_closures.function_decls)
+    with Not_found ->
+      Misc.fatal_error (Format.asprintf
+        "Function %a not found in the set of closures@ %a@.%a@."
+        Closure_id.print closure_id
+        print_value_set_of_closures value_set_of_closures
+        Flambda.print_function_declarations value_set_of_closures.function_decls))
+    closure_id;
+  closure_id
 
 type checked_approx_for_set_of_closures =
   | Wrong
@@ -656,27 +660,47 @@ type checked_approx_for_closure_allowing_unresolved =
   | Unresolved of Symbol.t
   | Unknown
   | Unknown_because_of_unresolved_symbol of Symbol.t
-  | Ok of value_closure * Variable.t option
-          * Symbol.t option * value_set_of_closures
+  | Ok of value_set_of_closures Closure_id.Map.t
+          * Variable.t option * Symbol.t option
 
 let check_approx_for_closure_allowing_unresolved t
       : checked_approx_for_closure_allowing_unresolved =
   match t.descr with
-  | Value_closure value_closure ->
-    begin match value_closure.set_of_closures.descr with
-    | Value_set_of_closures value_set_of_closures ->
-      let symbol = match value_closure.set_of_closures.symbol with
-        | Some (symbol, None) -> Some symbol
-        | None | Some (_, Some _) -> None
-      in
-      Ok (value_closure, value_closure.set_of_closures.var,
-          symbol, value_set_of_closures)
-    | Value_unresolved _
-    | Value_closure _ | Value_block _ | Value_int _ | Value_char _
-    | Value_constptr _ | Value_float _ | Value_boxed_int _ | Value_unknown _
-    | Value_bottom | Value_extern _ | Value_string _ | Value_float_array _
-    | Value_symbol _ ->
-      Wrong
+  | Value_closure value_closure -> begin
+    match Closure_id.Map.get_singleton value_closure.potential_closure with
+    | None -> begin
+      try
+        let closures =
+          Closure_id.Map.map (fun set_of_closures ->
+            match set_of_closures.descr with
+            | Value_set_of_closures value_set_of_closures ->
+              value_set_of_closures
+            | Value_unresolved _
+            | Value_closure _ | Value_block _ | Value_int _ | Value_char _
+            | Value_constptr _ | Value_float _ | Value_boxed_int _
+            | Value_unknown _ | Value_bottom | Value_extern _ | Value_string _
+            | Value_float_array _ | Value_symbol _ ->
+              raise Exit)
+            value_closure.potential_closure
+        in
+        Ok (closures, None, None)
+      with Exit -> Wrong
+      end
+    | Some (closure_id, set_of_closures) ->
+      match set_of_closures.descr with
+      | Value_set_of_closures value_set_of_closures ->
+        let symbol = match set_of_closures.symbol with
+          | Some (symbol, None) -> Some symbol
+          | None | Some (_, Some _) -> None
+        in
+        Ok (Closure_id.Map.singleton closure_id value_set_of_closures,
+            set_of_closures.var, symbol)
+      | Value_unresolved _
+      | Value_closure _ | Value_block _ | Value_int _ | Value_char _
+      | Value_constptr _ | Value_float _ | Value_boxed_int _ | Value_unknown _
+      | Value_bottom | Value_extern _ | Value_string _ | Value_float_array _
+      | Value_symbol _ ->
+        Wrong
     end
   | Value_unknown (Unresolved_symbol symbol) ->
     Unknown_because_of_unresolved_symbol symbol
@@ -692,15 +716,13 @@ let check_approx_for_closure_allowing_unresolved t
 
 type checked_approx_for_closure =
   | Wrong
-  | Ok of value_closure * Variable.t option
-          * Symbol.t option * value_set_of_closures
+  | Ok of value_set_of_closures Closure_id.Map.t
+          * Variable.t option * Symbol.t option
 
 let check_approx_for_closure t : checked_approx_for_closure =
   match check_approx_for_closure_allowing_unresolved t with
-  | Ok (value_closure, set_of_closures_var, set_of_closures_symbol,
-      value_set_of_closures) ->
-    Ok (value_closure, set_of_closures_var, set_of_closures_symbol,
-      value_set_of_closures)
+  | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
+    Ok (value_closures, set_of_closures_var, set_of_closures_symbol)
   | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_symbol _ ->
     Wrong
 

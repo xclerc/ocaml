@@ -808,8 +808,9 @@ let prepare_to_simplify_set_of_closures ~env
   let set_of_closures_env =
     Variable.Map.fold (fun closure _ env ->
         let approx =
-          A.value_closure ~closure_var:closure internal_value_set_of_closures
-            (Closure_id.wrap closure)
+          A.value_closure ~closure_var:closure
+            (Closure_id.Map.singleton (Closure_id.wrap closure)
+               internal_value_set_of_closures)
         in
         E.add env closure approx
       )

@@ -430,8 +430,8 @@ let does_not_freshen t vars =
   | Active subst ->
     not (List.exists (fun var -> Variable.Map.mem var subst.sb_var) vars)
 
-let freshen_project_var (var:_ Closure_id.Map.t)
-      ~closure_freshening : _ Closure_id.Map.t =
+let freshen_project_var (var: Var_within_closure.t Closure_id.Map.t)
+      ~closure_freshening : Var_within_closure.t Closure_id.Map.t =
   Closure_id.Map.fold (fun closure_id var map ->
     let closure_id =
       Project_var.apply_closure_id closure_freshening closure_id
@@ -443,8 +443,8 @@ let freshen_project_var (var:_ Closure_id.Map.t)
     Closure_id.Map.add closure_id var map)
     var Closure_id.Map.empty
 
-let freshen_move_within_set_of_closures (move:_ Closure_id.Map.t)
-      ~closure_freshening : _ Closure_id.Map.t =
+let freshen_move_within_set_of_closures (move:Closure_id.t Closure_id.Map.t)
+      ~closure_freshening : Closure_id.t Closure_id.Map.t =
   Closure_id.Map.fold (fun start_from move_to map ->
     let start_from =
       Project_var.apply_closure_id closure_freshening start_from

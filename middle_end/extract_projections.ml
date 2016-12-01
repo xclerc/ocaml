@@ -43,11 +43,18 @@ let known_valid_projections ~env ~projections ~which_variables =
       match projection with
       | Project_var project_var ->
         begin match A.check_approx_for_closure approx with
-        | Ok (_value_closure, _approx_var, _approx_sym,
-              value_set_of_closures) ->
-          Closure_id.Map.for_all (fun _ var ->
-            Var_within_closure.Map.mem var
-              value_set_of_closures.bound_vars)
+        | Ok (value_closures, _approx_var, _approx_sym) ->
+          Closure_id.Map.for_all (fun closure_id var ->
+            match Closure_id.Map.find closure_id value_closures with
+            | exception Not_found ->
+              Misc.fatal_errorf "Missing closure %a for the projection %a in \
+                                 the approximation %a"
+                Closure_id.print closure_id
+                Projection.print_project_var project_var
+                A.print approx
+            | value_set_of_closures ->
+              Var_within_closure.Map.mem var
+                value_set_of_closures.bound_vars)
             project_var.var
         | Wrong -> false
         end
@@ -65,12 +72,12 @@ let known_valid_projections ~env ~projections ~which_variables =
         end
       | Move_within_set_of_closures move ->
         begin match A.check_approx_for_closure approx with
-        | Ok (value_closure, _approx_var, _approx_sym,
-              _value_set_of_closures) ->
-          (* We could check that [move.move_to] is in [value_set_of_closures],
-             but this is unnecessary, since [Closure_id]s are unique. *)
+        | Ok (value_closures, _approx_var, _approx_sym) ->
+          (* We could check that [move_to] (the image of [move.move])
+             is in [value_set_of_closures], but this is unnecessary,
+             since [Closure_id]s are unique. *)
           Closure_id.Set.equal
-            (Closure_id.Map.keys value_closure.potential_closure)
+            (Closure_id.Map.keys value_closures)
             (Closure_id.Map.keys move.move)
         | Wrong -> false
         end

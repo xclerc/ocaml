@@ -215,8 +215,7 @@ val value_closure
    : ?closure_var:Variable.t
   -> ?set_of_closures_var:Variable.t
   -> ?set_of_closures_symbol:Symbol.t
-  -> value_set_of_closures
-  -> Closure_id.Set.t
+  -> value_set_of_closures Closure_id.Map.t
   -> t
 
 (** Construct a set of closures approximation.  [set_of_closures_var] is as for

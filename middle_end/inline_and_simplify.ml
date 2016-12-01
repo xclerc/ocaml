@@ -242,9 +242,8 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
             let r = R.map_benefit r (B.remove_projection projection) in
             [], Var var, ret r var_approx)
         | None ->
-          match reference_recursive_function_directly env closure_id with
-          | Some (flam, approx) -> [], flam, ret r approx
-          | None ->
+          let if_not_reference_recursive_function_directly ()
+            : (Variable.t * Flambda.named) list * Flambda.named * R.t =
             let set_of_closures_var =
               match set_of_closures_var with
               | Some set_of_closures_var' when E.mem env set_of_closures_var' ->
@@ -252,11 +251,22 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
               | Some _ | None -> None
             in
             let approx =
-              A.value_closure ?set_of_closures_var value_set_of_closures
-                closure_id
+              A.value_closure ?set_of_closures_var
+                (Closure_id.Map.of_set (fun _ -> value_set_of_closures)
+                   closure_id)
             in
             [], Project_closure { set_of_closures; closure_id; },
-              ret r approx)
+              ret r approx
+          in
+          match Closure_id.Set.get_singleton closure_id with
+          | None ->
+            if_not_reference_recursive_function_directly ()
+          | Some closure_id ->
+            match reference_recursive_function_directly env closure_id with
+            | Some (flam, approx) -> [], flam, ret r approx
+            | None ->
+              if_not_reference_recursive_function_directly ())
+
 
 (* Simplify an expression that, given one closure within some set of
    closures, returns another closure (possibly the same one) within the
@@ -275,15 +285,13 @@ let simplify_move_within_set_of_closures env r
     | Unresolved sym ->
       [], Move_within_set_of_closures {
           closure;
-          start_from = move_within_set_of_closures.start_from;
-          move_to = move_within_set_of_closures.move_to;
+          move = move_within_set_of_closures.move;
         },
         ret r (A.value_unresolved sym)
     | Unknown ->
       [], Move_within_set_of_closures {
           closure;
-          start_from = move_within_set_of_closures.start_from;
-          move_to = move_within_set_of_closures.move_to;
+          move = move_within_set_of_closures.move;
         },
         ret r (A.value_unknown Other)
     | Unknown_because_of_unresolved_symbol sym ->
@@ -291,26 +299,60 @@ let simplify_move_within_set_of_closures env r
          is missing). *)
       [], Move_within_set_of_closures {
           closure;
-          start_from = move_within_set_of_closures.start_from;
-          move_to = move_within_set_of_closures.move_to;
+          move = move_within_set_of_closures.move;
         },
         ret r (A.value_unknown (Unresolved_symbol sym))
-    | Ok (_value_closure, set_of_closures_var, set_of_closures_symbol,
-          value_set_of_closures) ->
-      let freshen =
-        (* CR-soon mshinwell: potentially misleading name---not freshening with
-           new names, but with previously fresh names *)
-        A.freshen_and_check_closure_id value_set_of_closures
+    | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
+      (* Freshening of the move. *)
+      let move, approx_map =
+        Closure_id.Map.fold
+          (fun closure_id_in_approx
+               (value_set_of_closures:A.value_set_of_closures)
+               (move, approx_map) ->
+            let module F = Freshening.Project_var in
+            let start_from = closure_id_in_approx in
+            let move_to =
+              try Closure_id.Map.find start_from
+                    move_within_set_of_closures.move with
+              | Not_found ->
+                Misc.fatal_errorf "Move %a does not contain projection for %a"
+                  Projection.print_move_within_set_of_closures
+                  move_within_set_of_closures
+                  Closure_id.print start_from
+            in
+            let closure_freshening = value_set_of_closures.freshening in
+            let start_from =
+              F.apply_closure_id closure_freshening start_from
+            in
+            let move_to =
+              F.apply_closure_id closure_freshening move_to
+            in
+            assert(not (Closure_id.Map.mem start_from move));
+            Closure_id.Map.add start_from move_to move,
+            Closure_id.Map.add move_to value_set_of_closures approx_map)
+          value_closures (Closure_id.Map.empty, Closure_id.Map.empty)
       in
-      let move_to = freshen move_within_set_of_closures.move_to in
-      let start_from = freshen move_within_set_of_closures.start_from in
       let projection : Projection.t =
         Move_within_set_of_closures {
           closure;
-          start_from;
-          move_to;
+          move;
         }
       in
+      match Closure_id.Map.get_singleton value_closures,
+            Closure_id.Map.get_singleton move with
+      | None, Some _ | Some _, None ->
+        (* After the freshening, move and value_closures have the same
+           cardinality *)
+        assert false
+      | None, None ->
+        let approx = A.value_closure approx_map in
+        let move_within : Flambda.move_within_set_of_closures =
+          { closure; move; }
+        in
+        [], Move_within_set_of_closures move_within,
+          ret r approx
+      | Some (_start_from, value_set_of_closures),
+        Some (start_from, move_to) ->
       match E.find_projection env ~projection with
       | Some var ->
         simplify_free_variable_named env var ~f:(fun _env var var_approx ->
@@ -332,12 +374,12 @@ let simplify_move_within_set_of_closures env r
                  [Project_closure]. *)
               let project_closure : Flambda.project_closure =
                 { set_of_closures = set_of_closures_var;
-                  closure_id = move_to;
+                  closure_id = Closure_id.Set.singleton move_to;
                 }
               in
               let approx =
-                A.value_closure ~set_of_closures_var value_set_of_closures
-                  move_to
+                A.value_closure ~set_of_closures_var
+                  (Closure_id.Map.singleton move_to value_set_of_closures)
               in
               [], Project_closure project_closure, ret r approx
             | Some _ | None ->
@@ -346,12 +388,12 @@ let simplify_move_within_set_of_closures env r
                 let set_of_closures_var = Variable.create "symbol" in
                 let project_closure : Flambda.project_closure =
                   { set_of_closures = set_of_closures_var;
-                    closure_id = move_to;
+                    closure_id = Closure_id.Set.singleton move_to;
                   }
                 in
                 let approx =
                   A.value_closure ~set_of_closures_var ~set_of_closures_symbol
-                    value_set_of_closures move_to
+                    (Closure_id.Map.singleton move_to value_set_of_closures)
                 in
                 let bindings : (Variable.t * Flambda.named) list = [
                   set_of_closures_var, Symbol set_of_closures_symbol;
@@ -363,9 +405,9 @@ let simplify_move_within_set_of_closures env r
                 (* The set of closures is not available in scope, and we
                    have no other information by which to simplify the move. *)
                 let move_within : Flambda.move_within_set_of_closures =
-                  { closure; start_from; move_to; }
+                  { closure; move; }
                 in
-                let approx = A.value_closure value_set_of_closures move_to in
+                let approx = A.value_closure approx_map in
                 [], Move_within_set_of_closures move_within,
                   ret r approx)
 
