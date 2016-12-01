@@ -52,6 +52,12 @@ let static_exn_env = ref Numbers.Int.Map.empty
 let try_stack = ref []
 let try_stack_at_handler = ref Continuation.Map.empty
 
+let _print_stack ppf stack =
+  Format.fprintf ppf "%a"
+    (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
+      (fun ppf (_id, cont) -> Format.fprintf ppf "%a" Continuation.print cont))
+    stack
+
 (* Uses of [Lstaticfail] that jump out of try-with handlers need special care:
    the correct number of pop trap operations must be inserted. *)
 let compile_staticfail ~(continuation : Continuation.t) ~args =
@@ -63,6 +69,11 @@ let compile_staticfail ~(continuation : Continuation.t) ~args =
     | stack -> stack
   in
   let try_stack_now = !try_stack in
+(*
+Format.eprintf "staticfail now %a handler %a\n%!"
+  print_stack try_stack_now
+  print_stack try_stack_at_handler;
+*)
   if List.length try_stack_at_handler > List.length try_stack_now then begin
     Misc.fatal_errorf "Cannot jump to continuation %a: it would involve \
         jumping into a try-with body"
@@ -73,6 +84,29 @@ let compile_staticfail ~(continuation : Continuation.t) ~args =
     (Continuation.Set.of_list (List.map snd try_stack_now)));
   let outer_wrapper_cont = Continuation.create () in
   let rec add_pop_traps ~prev_cont ~body ~try_stack_now ~try_stack_at_handler =
+    let add_pop id cont ~try_stack_now =
+      let wrapper_cont = Continuation.create () in
+      let trap_action : I.trap_action =
+        Pop { id; exn_handler = cont; }
+      in
+      let body =
+        match body with
+        | Some body -> body
+        | None -> I.Apply_cont (wrapper_cont, None, [])
+      in
+      let body =
+        I.Let_cont {
+          name = wrapper_cont;
+          administrative = false;
+          params = [];
+          recursive = Nonrecursive;
+          body;
+          handler = Apply_cont (prev_cont, Some trap_action, []);
+        }
+      in
+      add_pop_traps ~prev_cont:wrapper_cont ~body:(Some body)
+        ~try_stack_now ~try_stack_at_handler
+    in
     match try_stack_now, try_stack_at_handler with
     | [], [] -> body
     | (id1, cont1) :: try_stack_now, (id2, cont2) :: _ ->
@@ -80,31 +114,11 @@ let compile_staticfail ~(continuation : Continuation.t) ~args =
         assert (Continuation.equal cont1 cont2);
         body
       end else begin
-        let wrapper_cont = Continuation.create () in
-        let trap_action : I.trap_action =
-          Pop { id = id1; exn_handler = cont1; }
-        in
-        let body =
-          match body with
-          | Some body -> body
-          | None -> I.Apply_cont (wrapper_cont, None, [])
-        in
-        let body =
-          I.Let_cont {
-            name = wrapper_cont;
-            administrative = false;
-            params = [];
-            recursive = Nonrecursive;
-            body;
-            handler = Apply_cont (prev_cont, Some trap_action, []);
-          }
-        in
-        add_pop_traps ~prev_cont:wrapper_cont ~body:(Some body)
-          ~try_stack_now ~try_stack_at_handler
+        add_pop id1 cont1 ~try_stack_now
       end
-    | _ ->
-      Misc.fatal_errorf "Could not compile jump to continuation %a"
-        Continuation.print continuation
+    | (id, cont) :: try_stack_now, [] ->
+      add_pop id cont ~try_stack_now
+    | [], _ :: _ -> assert false  (* see above *)
   in
   let body =
     add_pop_traps ~prev_cont:outer_wrapper_cont
