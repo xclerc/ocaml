@@ -479,7 +479,7 @@ let reset () =
 
 let fundecl f =
   reset ();
-
+  trap_stacks := f.fun_trap_stacks;
   let (body1, _) = reload f.fun_body Reg.Set.empty in
   let (body2, tospill_at_entry) = spill body1 Reg.Set.empty ~trap_stack:[] in
   let new_body =
