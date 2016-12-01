@@ -266,27 +266,27 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let handler, _k_count = cps_tail handler after_continuation in
     let trap = Trap_id.create () in
     Let_cont {
-      name = after_continuation;
+      name = handler_continuation;
       administrative = false;
-      params = [result_var];
+      params = [id];
       recursive = Nonrecursive;
       body =
         Let_cont {
-          name = poptrap_continuation;
+          name = after_continuation;
           administrative = false;
-          params = [body_result];
+          params = [result_var];
           recursive = Nonrecursive;
           body =
             Let_cont {
-              name = body_continuation;
+              name = poptrap_continuation;
               administrative = false;
-              params = [];
+              params = [body_result];
               recursive = Nonrecursive;
               body =
                 Let_cont {
-                  name = handler_continuation;
+                  name = body_continuation;
                   administrative = false;
-                  params = [id];
+                  params = [];
                   recursive = Nonrecursive;
                   body =
                     Apply_cont (body_continuation,
@@ -295,15 +295,15 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
                         exn_handler = handler_continuation;
                       }),
                       []);
-                  handler;
+                  handler = body;
                 };
-              handler = body;
+              handler = Apply_cont (after_continuation,
+                Some (I.Pop { id = trap; exn_handler = handler_continuation; }),
+                [body_result]);
             };
-          handler = Apply_cont (after_continuation,
-            Some (I.Pop { id = trap; exn_handler = handler_continuation; }),
-            [body_result]);
+          handler = k result_var;
         };
-      handler = k result_var;
+      handler;
     }
   | Lassign _ -> name_then_cps_non_tail "assign" lam k
   | Levent (lam, event) -> Event (cps_non_tail lam k, event)
@@ -480,21 +480,21 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
     let handler, k_count_handler = cps_tail handler k in
     let trap = Trap_id.create () in
     Let_cont {
-      name = poptrap_continuation;
+      name = handler_continuation;
       administrative = false;
-      params = [body_result];
+      params = [id];
       recursive = Nonrecursive;
       body =
         Let_cont {
-          name = body_continuation;
+          name = poptrap_continuation;
           administrative = false;
-          params = [];
+          params = [body_result];
           recursive = Nonrecursive;
           body =
             Let_cont {
-              name = handler_continuation;
+              name = body_continuation;
               administrative = false;
-              params = [id];
+              params = [];
               recursive = Nonrecursive;
               body =
                 Apply_cont (body_continuation,
@@ -503,13 +503,13 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
                     exn_handler = handler_continuation;
                   }),
                   []);
-              handler;
+              handler = body;
             };
-          handler = body;
+          handler = Apply_cont (k, Some (
+            I.Pop { id = trap; exn_handler = handler_continuation; }),
+            [body_result]);
         };
-      handler = Apply_cont (k, Some (
-        I.Pop { id = trap; exn_handler = handler_continuation; }),
-        [body_result]);
+      handler;
     }, N.(+) k_count_handler N.One;
   | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
