@@ -18,6 +18,8 @@
 
 open Mach
 
+module Int = Numbers.Int
+
 let live_at_exit = ref []
 
 let find_live_at_exit k =
@@ -26,9 +28,19 @@ let find_live_at_exit k =
   with
   | Not_found -> Misc.fatal_error "Liveness.find_live_at_exit"
 
-let live_at_raise = ref Reg.Set.empty
+let find_live_at_raise ~trap_stack =
+  match trap_stack with
+  | [] -> Reg.Set.empty
+  | cont::_ ->
+    match find_live_at_exit cont with
+    | exception Not_found ->
+      Misc.fatal_errorf "No liveness information for start of continuation %d"
+        cont
+    | live -> live
 
-let rec live i finally =
+let trap_stacks = ref Int.Map.empty
+
+let rec live i finally ~trap_stack =
   (* finally is the set of registers live after execution of the
      instruction sequence.
      The result of the function is the set of registers live just
@@ -49,7 +61,24 @@ let rec live i finally =
       i.live <- Reg.Set.empty; (* no regs are live across *)
       Reg.set_of_array arg
   | Iop op ->
-      let after = live i.next finally in
+      let trap_stack =
+        match op with
+        | Ipushtrap cont -> cont :: trap_stack
+        | Ipoptrap cont ->
+          begin match trap_stack with
+          | [] ->
+            Misc.fatal_errorf "Tried to poptrap %d but trap stack is empty" cont
+          | cont' :: trap_stack ->
+            if cont = cont' then
+              trap_stack
+            else
+              Misc.fatal_errorf "Tried to poptrap %d but trap stack has %d \
+                  at the top"
+                cont cont'
+          end
+        | _ -> trap_stack
+      in
+      let after = live i.next finally ~trap_stack in
       if Proc.op_is_pure op                    (* no side effects *)
       && Reg.disjoint_set_array after i.res    (* results are not used after *)
       && not (Proc.regs_are_volatile arg)      (* no stack-like hard reg *)
@@ -65,25 +94,29 @@ let rec live i finally =
           | Icall_ind _ | Icall_imm _ | Iextcall _
           | Iintop (Icheckbound _) | Iintop_imm(Icheckbound _, _) ->
               (* The function call may raise an exception, branching to the
-                 nearest enclosing try ... with. Similarly for bounds checks.
-                 Hence, everything that must be live at the beginning of
-                 the exception handler must also be live across this instr. *)
-               Reg.Set.union across_after !live_at_raise
-           | _ ->
-               across_after in
+                  nearest enclosing try ... with. Similarly for bounds checks.
+                  Hence, everything that must be live at the beginning of
+                  the exception handler must also be live across this instr. *)
+              let live_at_raise = find_live_at_raise ~trap_stack in
+              Reg.Set.union across_after live_at_raise
+          | _ ->
+              across_after in
         i.live <- across;
         Reg.add_set_array across arg
       end
   | Iifthenelse(_test, ifso, ifnot) ->
-      let at_join = live i.next finally in
-      let at_fork = Reg.Set.union (live ifso at_join) (live ifnot at_join) in
+      let at_join = live i.next finally ~trap_stack in
+      let at_fork =
+        Reg.Set.union (live ifso at_join ~trap_stack)
+          (live ifnot at_join ~trap_stack)
+      in
       i.live <- at_fork;
       Reg.add_set_array at_fork arg
   | Iswitch(_index, cases) ->
-      let at_join = live i.next finally in
+      let at_join = live i.next finally ~trap_stack in
       let at_fork = ref Reg.Set.empty in
       for i = 0 to Array.length cases - 1 do
-        at_fork := Reg.Set.union !at_fork (live cases.(i) at_join)
+        at_fork := Reg.Set.union !at_fork (live cases.(i) at_join ~trap_stack)
       done;
       i.live <- !at_fork;
       Reg.add_set_array !at_fork arg
@@ -93,7 +126,9 @@ let rec live i finally =
          reaching a fixpoint. *)
       begin try
         while true do
-          let new_at_top = Reg.Set.union !at_top (live body !at_top) in
+          let new_at_top =
+            Reg.Set.union !at_top (live body !at_top ~trap_stack)
+          in
           if Reg.Set.equal !at_top new_at_top then raise Exit;
           at_top := new_at_top
         done
@@ -102,10 +137,23 @@ let rec live i finally =
       i.live <- !at_top;
       !at_top
   | Icatch(rec_flag, handlers, body) ->
-      let at_join = live i.next finally in
+      let at_join = live i.next finally ~trap_stack in
       let aux (nfail,handler) (nfail', before_handler) =
         assert(nfail = nfail');
-        let before_handler' = live handler at_join in
+        (* We need the trap stack at the start of the handler in order to
+           compute the registers that must be live at the top of the handler;
+           but we cannot compute the trap stack without examining the body,
+           which requires knowledge of the registers that must be live at
+           the top of the handler.  To avoid this circularity we use
+           pre-computed trap stack information. *)
+        let trap_stack =
+          match Int.Map.find nfail !trap_stacks with
+          | exception Not_found ->
+            Misc.fatal_errorf "No trap stack found for continuation %d"
+              nfail
+          | trap_stack -> trap_stack
+        in
+        let before_handler' = live handler at_join ~trap_stack in
         nfail, Reg.Set.union before_handler before_handler'
       in
       let aux_equal (nfail, before_handler) (nfail', before_handler') =
@@ -139,7 +187,7 @@ let rec live i finally =
          value but we would need to clean the live field before doing the
          analysis (to remove remnants of previous passes). *)
       live_at_exit := (live_at_exit_add before_handler) @ !live_at_exit;
-      let before_body = live body at_join in
+      let before_body = live body at_join ~trap_stack in
       live_at_exit := live_at_exit_before;
       i.live <- before_body;
       before_body
@@ -148,15 +196,16 @@ let rec live i finally =
       i.live <- this_live ;
       this_live
   | Iraise _ ->
-      i.live <- !live_at_raise;
-      Reg.add_set_array !live_at_raise arg
+      let live_at_raise = find_live_at_raise ~trap_stack in
+      i.live <- live_at_raise;
+      Reg.add_set_array live_at_raise arg
 
 let reset () =
-  live_at_raise := Reg.Set.empty;
   live_at_exit := []
 
 let fundecl ppf f =
-  let initially_live = live f.fun_body Reg.Set.empty in
+  trap_stacks := f.fun_trap_stacks;
+  let initially_live = live f.fun_body Reg.Set.empty ~trap_stack:[] in
   (* Sanity check: only function parameters (and the Spacetime node hole
      register, if profiling) can be live at entrypoint *)
   let wrong_live = Reg.Set.diff initially_live (Reg.set_of_array f.fun_args) in

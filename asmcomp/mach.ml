@@ -95,6 +95,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
+    fun_trap_stacks : int list Numbers.Int.Map.t;
   }
 
 let rec dummy_instr =

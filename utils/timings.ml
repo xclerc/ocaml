@@ -35,6 +35,7 @@ type compiler_pass =
   | Selection of source_provenance
   | Comballoc of source_provenance
   | CSE of source_provenance
+  | Trap_analysis of source_provenance
   | Liveness of source_provenance
   | Deadcode of source_provenance
   | Spill of source_provenance
@@ -121,6 +122,7 @@ let pass_name = function
   | Selection k -> Printf.sprintf "selection(%s)" (kind_name k)
   | Comballoc k -> Printf.sprintf "comballoc(%s)" (kind_name k)
   | CSE k -> Printf.sprintf "cse(%s)" (kind_name k)
+  | Trap_analysis k -> Printf.sprintf "trap_analysis(%s)" (kind_name k)
   | Liveness k -> Printf.sprintf "liveness(%s)" (kind_name k)
   | Deadcode k -> Printf.sprintf "deadcode(%s)" (kind_name k)
   | Spill k -> Printf.sprintf "spill(%s)" (kind_name k)

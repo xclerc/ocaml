@@ -1046,6 +1046,7 @@ method emit_fundecl f =
     fun_fast = f.Cmm.fun_fast;
     fun_dbg  = f.Cmm.fun_dbg;
     fun_spacetime_shape;
+    fun_trap_stacks = Numbers.Int.Map.empty;
   }
 
 end

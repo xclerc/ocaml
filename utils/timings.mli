@@ -37,6 +37,7 @@ type compiler_pass =
   | Selection of source_provenance
   | Comballoc of source_provenance
   | CSE of source_provenance
+  | Trap_analysis of source_provenance
   | Liveness of source_provenance
   | Deadcode of source_provenance
   | Spill of source_provenance

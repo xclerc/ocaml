@@ -111,6 +111,9 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
+    fun_trap_stacks : int list Numbers.Int.Map.t;
+    (** For each continuation, a list of exception traps in scope, with the
+        innermost at the head of the list.  Computed by [Trap_analysis]. *)
   }
 
 val dummy_instr: instruction

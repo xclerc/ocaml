@@ -217,113 +217,6 @@ let is_next_catch n ~trap_depth =
 let local_exit k ~trap_depth =
   snd (find_exit_label_trap_depth k) = trap_depth
 
-(* Collect trap depths at the start of catch handlers by a forwards analysis.
-   This is done separately from the linearization phase because that looks at
-   catch handlers before bodies, which isn't what we need here.  This analysis
-   doesn't reallocate the instruction stream, so should be efficient enough.
-
-   The following invariant is relied upon: all applications of a given
-   continuation must be at the same trap depth.
-*)
-
-let rec trap_depths insn ~depth ~depths_at_exit : int Int.Map.t =
-  let add_depth ~cont ~depth ~depths_at_exit =
-    match Int.Map.find cont depths_at_exit with
-    | exception Not_found ->
-      Int.Map.add cont depth depths_at_exit
-    | depth' ->
-      if depth <> depth' then begin
-        Misc.fatal_errorf "Iexit points for continuation %d disagree on \
-            the trap depth"
-          cont
-      end;
-      depths_at_exit
-  in
-  match insn.Mach.desc with
-  | Iend ->
-    depths_at_exit
-  | Ireturn ->
-    if depth <> 0 then begin
-      Misc.fatal_errorf "Trap depth at Ireturn is non-zero: %d" depth
-    end;
-    depths_at_exit
-  | Iop (Ipushtrap cont) ->
-    let depths_at_exit = add_depth ~cont ~depth ~depths_at_exit in
-    trap_depths insn.Mach.next ~depth:(depth + 1) ~depths_at_exit
-  | Iop (Ipoptrap _) ->
-    assert (depth > 0);
-    trap_depths insn.Mach.next ~depth:(depth - 1) ~depths_at_exit
-  | Iop _ | Iraise _ ->
-    trap_depths insn.Mach.next ~depth ~depths_at_exit
-  | Iifthenelse (_, ifso, ifnot) ->
-    trap_depths insn.Mach.next ~depth
-      ~depths_at_exit:(trap_depths ifso ~depth
-        ~depths_at_exit:(trap_depths ifnot ~depth ~depths_at_exit))
-  | Iswitch (_, insns) ->
-    trap_depths insn.Mach.next ~depth
-      ~depths_at_exit:(Array.fold_left (fun depths_at_exit insn ->
-          trap_depths insn ~depth ~depths_at_exit)
-        depths_at_exit
-        insns)
-  | Iloop insn ->
-    trap_depths insn.Mach.next ~depth
-      ~depths_at_exit:(trap_depths insn ~depth ~depths_at_exit)
-  | Icatch (_rec_flag, handlers, body) ->
-    (* This is the crux. *)
-    let depths_at_exit = trap_depths body ~depth ~depths_at_exit in
-    let handlers = Int.Map.of_list handlers in
-    let handlers_with_uses, handlers_without_uses =
-      Int.Map.partition (fun cont _handler ->
-          Int.Map.mem cont depths_at_exit)
-        handlers
-    in
-    let rec process_handlers ~depths_at_exit ~handlers_with_uses
-          ~handlers_without_uses =
-      (* By the invariant above, there is no need to compute a fixpoint. *)
-      if Int.Map.is_empty handlers_with_uses then
-        depths_at_exit
-      else
-        let cont, handler = Int.Map.min_binding handlers_with_uses in
-        let handlers_with_uses = Int.Map.remove cont handlers_with_uses in
-        match Int.Map.find cont depths_at_exit with
-        | exception Not_found -> assert false
-        | depth ->
-(*Format.eprintf "Handler %d trap depth at start is %d\n%!" cont depth;*)
-          let depths_at_exit = trap_depths handler ~depth ~depths_at_exit in
-          let new_handlers_with_uses, handlers_without_uses =
-            Int.Map.partition (fun cont _handler ->
-                Int.Map.mem cont depths_at_exit)
-              handlers_without_uses
-          in
-          let handlers_with_uses =
-            Int.Map.disjoint_union handlers_with_uses new_handlers_with_uses
-          in
-          process_handlers ~depths_at_exit ~handlers_with_uses
-            ~handlers_without_uses
-    in
-    (* CR-someday mshinwell: This could be enhanced to delete the
-       [handlers_without_uses]. *)
-    let depths_at_exit =
-      process_handlers ~depths_at_exit ~handlers_with_uses
-        ~handlers_without_uses
-    in
-    trap_depths insn.Mach.next ~depth ~depths_at_exit
-  | Iexit cont ->
-    let depths_at_exit = add_depth ~cont ~depth ~depths_at_exit in
-    trap_depths insn.Mach.next ~depth ~depths_at_exit
-
-let compute_trap_depths _fun_name insn =
-  let depths_at_exit =
-    trap_depths insn ~depth:0 ~depths_at_exit:Int.Map.empty
-  in
-(*
-  Format.eprintf "Trap depths for %s:@;%a@;%!"
-    fun_name
-    (Int.Map.print (fun ppf i -> Format.fprintf ppf "%d" i))
-    depths_at_exit;
-*)
-  depths_at_exit
-
 let trap_depths = ref Int.Map.empty
 
 (* Linearize an instruction [i]: add it in front of the continuation [n] *)
@@ -476,7 +369,8 @@ let rec linear i n =
       copy_instr (Lraise k) i (discard_dead_code n)
 
 let fundecl f =
-  trap_depths := compute_trap_depths f.Mach.fun_name f.Mach.fun_body;
+  trap_depths :=
+    Int.Map.map (fun trap_stack -> List.length trap_stack) f.fun_trap_stacks;
   let fun_body = linear f.Mach.fun_body end_instr in
   if fun_body.trap_depth <> 0 then begin
     Misc.fatal_errorf "Trap depth should be zero at top of %s but is %d"
