@@ -30,10 +30,18 @@ let rec trap_stacks insn ~stack ~stacks_at_exit : int list Int.Map.t =
     | exception Not_found ->
       Int.Map.add cont stack stacks_at_exit
     | stack' ->
+      let print_stack ppf stack =
+        Format.fprintf ppf "%a"
+          (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
+            (fun ppf cont -> Format.fprintf ppf "%d" cont))
+          stack
+      in
       if stack <> stack' then begin
         Misc.fatal_errorf "Iexit points for continuation %d disagree on \
-            the trap stack"
+            the trap stack: existing = %a new = %a"
           cont
+          print_stack stack'
+          print_stack stack
       end;
       stacks_at_exit
   in
@@ -128,11 +136,13 @@ let run (fundecl : Mach.fundecl) =
   let stacks_at_exit =
     trap_stacks fundecl.fun_body ~stack:[] ~stacks_at_exit:Int.Map.empty
   in
+(*
   Format.eprintf "Trap depths for %s:@;%a@;%!"
     fundecl.fun_name
     (Int.Map.print (fun ppf stack ->
       Format.fprintf ppf "%d" (List.length stack)))
     stacks_at_exit;
+*)
   { fundecl with
     fun_trap_stacks = stacks_at_exit;
   }

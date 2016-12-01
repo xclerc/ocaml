@@ -49,6 +49,80 @@ let name_for_function (func : Lambda.lfunction) =
 
 (* CR-soon mshinwell: Remove mutable state. *)
 let static_exn_env = ref Numbers.Int.Map.empty
+let try_stack = ref []
+let try_stack_at_handler = ref Continuation.Map.empty
+
+(* Uses of [Lstaticfail] that jump out of try-with handlers need special care:
+   the correct number of pop trap operations must be inserted. *)
+let compile_staticfail ~(continuation : Continuation.t) ~args =
+  let try_stack_at_handler =
+    match Continuation.Map.find continuation !try_stack_at_handler with
+    | exception Not_found ->
+      Misc.fatal_errorf "No try stack recorded for handler %a"
+        Continuation.print continuation
+    | stack -> stack
+  in
+  let try_stack_now = !try_stack in
+  if List.length try_stack_at_handler > List.length try_stack_now then begin
+    Misc.fatal_errorf "Cannot jump to continuation %a: it would involve \
+        jumping into a try-with body"
+      Continuation.print continuation
+  end;
+  assert (Continuation.Set.subset
+    (Continuation.Set.of_list (List.map snd try_stack_at_handler))
+    (Continuation.Set.of_list (List.map snd try_stack_now)));
+  let outer_wrapper_cont = Continuation.create () in
+  let rec add_pop_traps ~prev_cont ~body ~try_stack_now ~try_stack_at_handler =
+    match try_stack_now, try_stack_at_handler with
+    | [], [] -> body
+    | (id1, cont1) :: try_stack_now, (id2, cont2) :: _ ->
+      if Trap_id.equal id1 id2 then begin
+        assert (Continuation.equal cont1 cont2);
+        body
+      end else begin
+        let wrapper_cont = Continuation.create () in
+        let trap_action : I.trap_action =
+          Pop { id = id1; exn_handler = cont1; }
+        in
+        let body =
+          match body with
+          | Some body -> body
+          | None -> I.Apply_cont (wrapper_cont, None, [])
+        in
+        let body =
+          I.Let_cont {
+            name = wrapper_cont;
+            administrative = false;
+            params = [];
+            recursive = Nonrecursive;
+            body;
+            handler = Apply_cont (prev_cont, Some trap_action, []);
+          }
+        in
+        add_pop_traps ~prev_cont:wrapper_cont ~body:(Some body)
+          ~try_stack_now ~try_stack_at_handler
+      end
+    | _ ->
+      Misc.fatal_errorf "Could not compile jump to continuation %a"
+        Continuation.print continuation
+  in
+  let body =
+    add_pop_traps ~prev_cont:outer_wrapper_cont
+      ~body:None
+      ~try_stack_now
+      ~try_stack_at_handler
+  in
+  match body with
+  | None -> I.Apply_cont (continuation, None, args)
+  | Some body ->
+    I.Let_cont {
+      name = outer_wrapper_cont;
+      administrative = false;
+      params = [];
+      recursive = Nonrecursive;
+      body;
+      handler = Apply_cont (continuation, None, args);
+    }
 
 module N = Num_continuation_uses
 
@@ -203,11 +277,13 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
         Misc.fatal_errorf "Unbound static exception %d" static_exn
       | continuation -> continuation
     in
-    cps_non_tail_list args (fun args -> I.Apply_cont (continuation, None, args))
+    cps_non_tail_list args (fun args -> compile_staticfail ~continuation ~args)
   | Lstaticcatch (body, (static_exn, args), handler) ->
     let continuation = Continuation.create () in
     static_exn_env := Numbers.Int.Map.add static_exn continuation
       !static_exn_env;
+    try_stack_at_handler := Continuation.Map.add continuation !try_stack
+      !try_stack_at_handler;
     let after_continuation = Continuation.create () in
     let result_var = Ident.create "staticcatch_result" in
     let body, _k_count = cps_tail body after_continuation in
@@ -262,9 +338,12 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let handler_continuation = Continuation.create () in
     let poptrap_continuation = Continuation.create () in
     let after_continuation = Continuation.create () in
-    let body, _k_count = cps_tail body poptrap_continuation in
-    let handler, _k_count = cps_tail handler after_continuation in
     let trap = Trap_id.create () in
+    let old_try_stack = !try_stack in
+    try_stack := (trap, handler_continuation) :: old_try_stack;
+    let body, _k_count = cps_tail body poptrap_continuation in
+    try_stack := old_try_stack;
+    let handler, _k_count = cps_tail handler after_continuation in
     Let_cont {
       name = handler_continuation;
       administrative = false;
@@ -435,13 +514,14 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
         Misc.fatal_errorf "Unbound static exception %d" static_exn
       | continuation -> continuation
     in
-    cps_non_tail_list args (fun args ->
-        I.Apply_cont (continuation, None, args)),
+    cps_non_tail_list args (fun args -> compile_staticfail ~continuation ~args),
       N.One
   | Lstaticcatch (body, (static_exn, args), handler) ->
     let continuation = Continuation.create () in
     static_exn_env := Numbers.Int.Map.add static_exn continuation
       !static_exn_env;
+    try_stack_at_handler := Continuation.Map.add continuation !try_stack
+      !try_stack_at_handler;
     let body, k_count_body = cps_tail body k in
     let handler, k_count_handler = cps_tail handler k in
     Let_cont  {
@@ -476,9 +556,12 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
     let body_continuation = Continuation.create () in
     let handler_continuation = Continuation.create () in
     let poptrap_continuation = Continuation.create () in
-    let body, _k_count = cps_tail body poptrap_continuation in
-    let handler, k_count_handler = cps_tail handler k in
     let trap = Trap_id.create () in
+    let old_try_stack = !try_stack in
+    try_stack := (trap, handler_continuation) :: old_try_stack;
+    let body, _k_count = cps_tail body poptrap_continuation in
+    try_stack := old_try_stack;
+    let handler, k_count_handler = cps_tail handler k in
     Let_cont {
       name = handler_continuation;
       administrative = false;
@@ -623,6 +706,8 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
 
 let lambda_to_ilambda lam =
   static_exn_env := Numbers.Int.Map.empty;
+  try_stack := [];
+  try_stack_at_handler := Continuation.Map.empty;
   let the_end = Continuation.create () in
   let ilam, _k_count = cps_tail lam the_end in
   ilam, the_end

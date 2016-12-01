@@ -231,7 +231,7 @@ and lam ppf (t : t) =
         fprintf ppf "push %a %a then " Trap_id.print id
           Continuation.print exn_handler
       | Some (Pop { id; exn_handler; }) ->
-        fprintf ppf "push %a %a then " Trap_id.print id
+        fprintf ppf "pop %a %a then " Trap_id.print id
           Continuation.print exn_handler
     in
     fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
