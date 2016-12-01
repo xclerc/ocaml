@@ -986,7 +986,6 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   let trap_action, r =
     match trap_action with
     | None -> None, r
-    | Some (Pop { id; exn_handler; })
     | Some (Push { id; exn_handler; }) ->
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
@@ -994,6 +993,13 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
           ~args_approxs:[A.value_unknown Other]
       in
       Some (Flambda.Push { id; exn_handler; }), r
+    | Some (Pop { id; exn_handler; }) ->
+      let id = Freshening.apply_trap (E.freshening env) id in
+      let exn_handler, r =
+        simplify_apply_cont_to_cont env r exn_handler
+          ~args_approxs:[A.value_unknown Other]
+      in
+      Some (Flambda.Pop { id; exn_handler; }), r
   in
   Apply_cont (cont, trap_action, args), ret r A.value_bottom
 
