@@ -103,13 +103,20 @@ type specialised_to = {
     associated with an [Apply_cont] node; the trap action is executed before
     the application of the continuation.
 
+    The [Trap_id] values tie up corresponding pairs of pushes and pops
+    irrespective of the handler (which might be shared).  [Pop] may not appear
+    to need the [exn_handler] value during Flambda passes---but in fact it
+    does, since it compiles to a reference to such continuation, and must
+    not be moved out of its scope.
+
     Beware: continuations cannot be used both as an exception handler and as
     a normal continuation (since continuations used as exception handlers
     use a calling convention that may differ from normal).
 *)
 type trap_action =
   | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
-  | Pop of Trap_id.t
+  (* CR mshinwell: Think about whether we really need the trap IDs now *)
+  | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
 
 (** With the exception of applications of primitives ([Prim]), Flambda terms
     are in CPS.

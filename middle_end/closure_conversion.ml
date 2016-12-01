@@ -257,7 +257,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
                   : Flambda.trap_action ->
             match trap_action with
             | Push { id; exn_handler; } -> Push { id; exn_handler; }
-            | Pop id -> Pop id)
+            | Pop { id; exn_handler; } -> Pop { id; exn_handler; })
           trap_action
       in
       Apply_cont (cont, trap_action, args)

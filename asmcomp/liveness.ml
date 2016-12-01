@@ -26,7 +26,8 @@ let find_live_at_exit k =
   try
     List.assoc k !live_at_exit
   with
-  | Not_found -> Misc.fatal_error "Liveness.find_live_at_exit"
+  | Not_found ->
+    Misc.fatal_errorf "No live-at-exit information for continuation %d" k
 
 let find_live_at_raise ~trap_stack =
   match trap_stack with

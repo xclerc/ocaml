@@ -444,12 +444,8 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
       | None -> None
       | Some (Push { id = _; exn_handler; }) ->
         Some (Clambda.Upushtrap (Continuation.to_int exn_handler))
-      | Some (Pop id) ->
-        match Trap_id.Map.find id t.traps with
-        | exception Not_found ->
-          Misc.fatal_errorf "Trap %a not in traps list" Trap_id.print id
-        | exn_handler ->
-          Some (Clambda.Upoptrap (Continuation.to_int exn_handler))
+      | Some (Pop { id = _; exn_handler; }) ->
+        Some (Clambda.Upoptrap (Continuation.to_int exn_handler))
     in
     begin match trap_action with
     | None -> expr
@@ -814,6 +810,7 @@ let to_clambda_program t env constants (program : Flambda.program) =
   in
   loop env constants program.program_body
 
+(* CR mshinwell: we don't need "traps" now that Pop contains the continuation *)
 let collect_traps program =
   let traps = ref Trap_id.Map.empty in
   let exn_handlers = ref Continuation.Set.empty in

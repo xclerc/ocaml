@@ -299,7 +299,8 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
                 };
               handler = body;
             };
-          handler = Apply_cont (after_continuation, Some (I.Pop trap),
+          handler = Apply_cont (after_continuation,
+            Some (I.Pop { id = trap; exn_handler = handler_continuation; }),
             [body_result]);
         };
       handler = k result_var;
@@ -506,7 +507,9 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
             };
           handler = body;
         };
-      handler = Apply_cont (k, Some (I.Pop trap), [body_result]);
+      handler = Apply_cont (k, Some (
+        I.Pop { id = trap; exn_handler = handler_continuation; }),
+        [body_result]);
     }, N.(+) k_count_handler N.One;
   | Lsequence _ | Lifthenelse _ | Lwhile _ | Lfor _ | Lifused _ ->
     Misc.fatal_errorf "Term should have been eliminated by [Prepare_lambda]: %a"
