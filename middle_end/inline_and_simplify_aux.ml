@@ -629,17 +629,18 @@ module Result = struct
     }
 
   let exit_scope_catch t i ~num_params =
-    let uses =
-      try Continuation.Map.find i t.used_continuations
-      with Not_found ->
-        Misc.fatal_errorf "exit_scope_catch: Already out of scope of \
-            continuation %a"
-          Continuation.print i
-    in
-    let approxs = Continuation_uses.meet_of_args_approxs uses ~num_params in
-    { t with
-      used_continuations = Continuation.Map.remove i t.used_continuations;
-    }, approxs, uses
+    match Continuation.Map.find i t.used_continuations with
+    | exception Not_found ->
+      let uses = Continuation_uses.create () in
+      let approxs =
+        Array.make num_params (Simple_value_approx.value_unknown Other)
+      in
+      t, Array.to_list approxs, uses
+    | uses ->
+      let approxs = Continuation_uses.meet_of_args_approxs uses ~num_params in
+      { t with
+        used_continuations = Continuation.Map.remove i t.used_continuations;
+      }, approxs, uses
 
   let define_continuation t cont env uses approx =
     let uses = Continuation_uses.filter_out_non_useful_uses uses in

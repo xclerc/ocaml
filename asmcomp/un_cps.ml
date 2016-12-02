@@ -255,7 +255,8 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
         | exception Not_found -> Unused
         | One ->
           begin match kind with
-          | Normal _ -> Linear_inlining
+          | Normal Nonrecursive -> Linear_inlining
+          | Normal Recursive -> Normal
           | Exn_handler -> Normal
           end
         | Many -> Normal
@@ -273,22 +274,17 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
               Ucatch body %d"
             cont
         | (used, contains_returns) ->
-          (* If, after inlining linearly-used continuations in the body, the
-             only occurrences of continuation variables in such body all refer
-             to the "nearest" continuation variable binding (i.e. [cont]),
+          (* If the only occurrences of continuation variables in such body all
+             refer to the "nearest" continuation variable binding (i.e. [cont]),
              then turn the [Ucatch] into either a let-binding or a sequence.
+             This only applies when the continuation binding is a normal,
+             non-recursive binding.
           *)
-          let used =
-            Numbers.Int.Map.filter (fun _cont (uses : N.t) ->
-                match uses with
-                | Zero | One -> false
-                | Many -> true)
-              used
-          in
           let can_turn_into_let_or_sequence =
             match kind with
             | Clambda.Exn_handler -> Nothing
-            | Clambda.Normal _ ->
+            | Clambda.Normal Recursive -> Nothing
+            | Clambda.Normal Nonrecursive ->
               match Numbers.Int.Map.bindings used with
               | [cont', _] when cont = cont' ->
                 if contains_returns then begin
@@ -308,6 +304,10 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
             let env = E.continuation_will_turn_into_sequence env ~cont in
             Usequence (inline env body, inline env handler)
           | Let param ->
+(*
+Format.eprintf "Turning continuation with the following defining expr into Let:@;%a\n%!"
+  Printclambda.clambda body;
+*)
             let env = E.continuation_will_turn_into_let env ~cont in
             Ulet (Immutable, Pgenval, param, inline env body,
               inline env handler)
