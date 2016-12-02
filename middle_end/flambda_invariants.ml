@@ -46,6 +46,8 @@ let ignore_allocated_const (_ : Allocated_const.t) = ()
 let ignore_set_of_closures_id (_ : Set_of_closures_id.t) = ()
 let ignore_set_of_closures_origin (_ : Set_of_closures_origin.t) = ()
 let ignore_closure_id (_ : Closure_id.t) = ()
+let ignore_closure_id_set (_ : Closure_id.Set.t) = ()
+let ignore_closure_id_map (_ : 'a -> unit) (_ : 'a Closure_id.Map.t) = ()
 let ignore_var_within_closure (_ : Var_within_closure.t) = ()
 let ignore_tag (_ : Tag.t) = ()
 let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
@@ -235,15 +237,13 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       loop_set_of_closures env set_of_closures
     | Project_closure { set_of_closures; closure_id; } ->
       check_variable_is_bound env set_of_closures;
-      ignore_closure_id closure_id
-    | Move_within_set_of_closures { closure; start_from; move_to; } ->
+      ignore_closure_id_set closure_id
+    | Move_within_set_of_closures { closure; move } ->
       check_variable_is_bound env closure;
-      ignore_closure_id start_from;
-      ignore_closure_id move_to;
-    | Project_var { closure; closure_id; var; } ->
+      ignore_closure_id_map ignore_closure_id move
+    | Project_var { closure; var; } ->
       check_variable_is_bound env closure;
-      ignore_closure_id closure_id;
-      ignore_var_within_closure var
+      ignore_closure_id_map ignore_var_within_closure var;
     | Prim (prim, args, dbg) ->
       ignore_primitive prim;
       check_variables_are_bound env args;
@@ -547,12 +547,14 @@ let used_closure_ids (program:Flambda.program) =
   let f (flam : Flambda.named) =
     match flam with
     | Project_closure { closure_id; _} ->
-      used := Closure_id.Set.add closure_id !used;
-    | Move_within_set_of_closures { closure = _; start_from; move_to; } ->
-      used := Closure_id.Set.add start_from !used;
-      used := Closure_id.Set.add move_to !used
-    | Project_var { closure = _; closure_id; var = _ } ->
-      used := Closure_id.Set.add closure_id !used
+      used := Closure_id.Set.union closure_id !used;
+    | Move_within_set_of_closures { closure = _; move; } ->
+      Closure_id.Map.iter (fun start_from move_to ->
+        used := Closure_id.Set.add start_from !used;
+        used := Closure_id.Set.add move_to !used)
+        move
+    | Project_var { closure = _; var } ->
+      used := Closure_id.Set.union (Closure_id.Map.keys var) !used
     | Set_of_closures _ | Var _ | Symbol _ | Const _ | Allocated_const _
     | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
     | Proved_unreachable -> ()
@@ -566,8 +568,10 @@ let used_vars_within_closures (flam:Flambda.program) =
   let used = ref Var_within_closure.Set.empty in
   let f (flam : Flambda.named) =
     match flam with
-    | Project_var { closure = _; closure_id = _; var; } ->
-      used := Var_within_closure.Set.add var !used
+    | Project_var { closure = _; var; } ->
+      Closure_id.Map.iter (fun _ var ->
+        used := Var_within_closure.Set.add var !used)
+        var
     | _ -> ()
   in
   Flambda_iterators.iter_named_of_program ~f flam;
@@ -648,15 +652,17 @@ let _every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
   let moves = ref Closure_id.Map.empty in
   Flambda_iterators.iter_named_of_program program
     ~f:(function
-        | Move_within_set_of_closures { start_from; move_to; _ } ->
-          let moved_to =
-            try Closure_id.Map.find start_from !moves with
-            | Not_found -> Closure_id.Set.empty
-          in
-          moves :=
-            Closure_id.Map.add start_from
-              (Closure_id.Set.add move_to moved_to)
-              !moves
+        | Move_within_set_of_closures { move; _ } ->
+          Closure_id.Map.iter (fun start_from move_to ->
+            let moved_to =
+              try Closure_id.Map.find start_from !moves with
+              | Not_found -> Closure_id.Set.empty
+            in
+            moves :=
+              Closure_id.Map.add start_from
+                (Closure_id.Set.add move_to moved_to)
+                !moves)
+            move
         | _ -> ());
   Flambda_iterators.iter_on_set_of_closures_of_program program
     ~f:(fun ~constant:_ { Flambda.function_decls = { funs; _ }; _ } ->

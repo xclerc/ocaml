@@ -120,13 +120,17 @@ let compute_reexported_offsets program
     ~f:(fun (named : Flambda.named) ->
       match named with
       | Project_closure { closure_id; _ } ->
-        used_closure_id closure_id
-      | Move_within_set_of_closures { start_from; move_to; _ } ->
-        used_closure_id start_from;
-        used_closure_id move_to
-      | Project_var { closure_id; var; _ } ->
-        used_closure_id closure_id;
-        used_var_within_closure var
+        Closure_id.Set.iter used_closure_id closure_id
+      | Move_within_set_of_closures { closure = _; move; } ->
+        Closure_id.Map.iter (fun start_from move_to ->
+          used_closure_id start_from;
+          used_closure_id move_to)
+          move
+      | Project_var { var; _ } ->
+        Closure_id.Map.iter (fun closure_id var ->
+            used_closure_id closure_id;
+            used_var_within_closure var)
+          var
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _ | Set_of_closures _ | Prim _
       | Assign _ | Proved_unreachable -> ());

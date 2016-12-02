@@ -25,13 +25,19 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
     let aux_named (named : Flambda.named) =
       match named with
       | Project_closure { set_of_closures = _; closure_id } ->
-        Closure_id.Tbl.add used_fun closure_id ()
-      | Project_var { closure_id; var } ->
-        Var_within_closure.Tbl.add used var ();
-        Closure_id.Tbl.add used_fun closure_id ()
-      | Move_within_set_of_closures { closure = _; start_from; move_to } ->
-        Closure_id.Tbl.add used_fun start_from ();
-        Closure_id.Tbl.add used_fun move_to ()
+        Closure_id.Set.iter (fun closure_id ->
+            Closure_id.Tbl.add used_fun closure_id ())
+          closure_id
+      | Project_var { closure = _; var } ->
+        Closure_id.Map.iter (fun closure_id var ->
+          Var_within_closure.Tbl.add used var ();
+          Closure_id.Tbl.add used_fun closure_id ())
+          var
+      | Move_within_set_of_closures { closure = _; move } ->
+        Closure_id.Map.iter (fun start_from move_to ->
+          Closure_id.Tbl.add used_fun start_from ();
+          Closure_id.Tbl.add used_fun move_to ())
+          move
       | Var _ | Symbol _ | Const _ | Set_of_closures _ | Prim _ | Assign _
       | Allocated_const _ | Read_mutable _ | Read_symbol_field _
       | Proved_unreachable -> ()
