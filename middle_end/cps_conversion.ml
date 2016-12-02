@@ -359,15 +359,15 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     try_stack := old_try_stack;
     let handler, _k_count = cps_tail handler after_continuation in
     Let_cont {
-      name = handler_continuation;
+      name = after_continuation;
       administrative = false;
-      params = [id];
+      params = [result_var];
       recursive = Nonrecursive;
       body =
         Let_cont {
-          name = after_continuation;
+          name = handler_continuation;
           administrative = false;
-          params = [result_var];
+          params = [id];
           recursive = Nonrecursive;
           body =
             Let_cont {
@@ -394,9 +394,9 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
                 Some (I.Pop { id = trap; exn_handler = handler_continuation; }),
                 [body_result]);
             };
-          handler = k result_var;
+          handler;
         };
-      handler;
+      handler = k result_var;
     }
   | Lassign _ -> name_then_cps_non_tail "assign" lam k
   | Levent (lam, event) -> Event (cps_non_tail lam k, event)
