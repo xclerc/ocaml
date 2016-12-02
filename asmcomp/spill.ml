@@ -223,7 +223,7 @@ let rec reload i before =
       let (new_next, finally) = reload i.next Reg.Set.empty in
       (instr_cons (Iloop(!final_body)) i.arg i.res new_next,
        finally)
-  | Icatch(rec_flag, handlers, body) ->
+  | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let new_sets = List.map
           (fun (nfail, _) -> nfail, ref Reg.Set.empty) handlers in
       let previous_reload_at_exit = !reload_at_exit in
@@ -239,7 +239,12 @@ let rec reload i before =
                 (* This handler is dead code. *)
                 handler, at_exit
               | _ ->
-                reload handler at_exit) handlers at_exits in
+                let handler, res = reload handler at_exit in
+                if not is_exn_handler then
+                  handler, res
+                else
+                  handler, Reg.Set.remove Proc.loc_exn_bucket res)
+            handlers at_exits in
         match rec_flag with
         | Cmm.Nonrecursive ->
             res
@@ -262,7 +267,8 @@ let rec reload i before =
           (fun (nfail, _) (new_handler, _) -> nfail, new_handler)
           handlers res in
       (instr_cons
-         (Icatch(rec_flag, new_handlers, new_body)) i.arg i.res new_next,
+         (Icatch(rec_flag, is_exn_handler, new_handlers, new_body))
+         i.arg i.res new_next,
        finally)
   | Iexit nfail ->
       let set = find_reload_at_exit nfail in
@@ -324,7 +330,7 @@ let rec spill i finally ~trap_stack =
   | Ireturn | Iop(Itailcall_ind _) | Iop(Itailcall_imm _) ->
       (i, Reg.Set.empty)
   | Iop Ireload ->
-      let (new_next, after) = spill i.next finally  ~trap_stack in
+      let (new_next, after) = spill i.next finally ~trap_stack in
       let before1 = Reg.diff_set_array after i.res in
       (instr_cons i.desc i.arg i.res new_next,
        Reg.add_set_array before1 i.res)
@@ -418,7 +424,7 @@ let rec spill i finally ~trap_stack =
       inside_loop := saved_inside_loop;
       (instr_cons (Iloop(!final_body)) i.arg i.res new_next,
        !at_head)
-  | Icatch(rec_flag, handlers, body) ->
+  | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let (new_next, at_join) = spill i.next finally ~trap_stack in
       let saved_inside_catch = !inside_catch in
       inside_catch := true ;
@@ -462,7 +468,7 @@ let rec spill i finally ~trap_stack =
       let new_handlers = List.map2
           (fun (nfail, _) (handler, _) -> nfail, handler)
           handlers res in
-      (instr_cons (Icatch(rec_flag, new_handlers, new_body))
+      (instr_cons (Icatch(rec_flag, is_exn_handler, new_handlers, new_body))
          i.arg i.res new_next,
        before)
   | Iexit nfail ->

@@ -192,7 +192,7 @@ let rec instr ppf i =
       fprintf ppf "@,endswitch"
   | Iloop(body) ->
       fprintf ppf "@[<v 2>loop@,%a@;<0 -2>endloop@]" instr body
-  | Icatch(flag, handlers, body) ->
+  | Icatch(flag, _is_exn_handler, handlers, body) ->
       fprintf ppf "@[<v 2>catch%a@,%a@;<0 -2>with"
         Printcmm.rec_flag flag instr body;
       let h (nfail, handler) =

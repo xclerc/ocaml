@@ -89,7 +89,7 @@ let rec trap_stacks insn ~stack ~stacks_at_exit : int list Int.Map.t =
   | Iloop insn ->
     trap_stacks insn.Mach.next ~stack
       ~stacks_at_exit:(trap_stacks insn ~stack ~stacks_at_exit)
-  | Icatch (_rec_flag, handlers, body) ->
+  | Icatch (_rec_flag, _is_exn_handler, handlers, body) ->
     let stacks_at_exit = trap_stacks body ~stack ~stacks_at_exit in
     let handlers = Int.Map.of_list handlers in
     let handlers_with_uses, handlers_without_uses =

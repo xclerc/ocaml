@@ -137,7 +137,7 @@ let rec live i finally ~trap_stack =
       end;
       i.live <- !at_top;
       !at_top
-  | Icatch(rec_flag, handlers, body) ->
+  | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let at_join = live i.next finally ~trap_stack in
       let aux (nfail,handler) (nfail', before_handler) =
         assert(nfail = nfail');
@@ -156,6 +156,12 @@ Format.eprintf "DEAD HANDLER %d\n%!" nfail;
           nfail, before_handler
         | trap_stack ->
           let before_handler' = live handler at_join ~trap_stack in
+          let before_handler' =
+            if not is_exn_handler then
+              before_handler'
+            else
+              Reg.Set.remove Proc.loc_exn_bucket before_handler'
+          in
           nfail, Reg.Set.union before_handler before_handler'
       in
       let aux_equal (nfail, before_handler) (nfail', before_handler') =
@@ -217,8 +223,7 @@ let fundecl ppf f =
   in
   if not (Reg.Set.is_empty wrong_live) then begin
     Format.fprintf ppf "%a@." Printmach.regset wrong_live;
-(*
-    Format.fprintf ppf "%s BAD LIVE\n%!" f.fun_name
-*)
+(*    Format.fprintf ppf "%s BAD LIVE\n%!" f.fun_name*)
+
     Misc.fatal_error "Liveness.fundecl"
   end

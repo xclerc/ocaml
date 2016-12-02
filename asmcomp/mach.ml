@@ -77,7 +77,7 @@ and instruction_desc =
   | Iifthenelse of test * instruction * instruction
   | Iswitch of int array * instruction array
   | Iloop of instruction
-  | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
+  | Icatch of Cmm.rec_flag * bool * (int * instruction) list * instruction
   | Iexit of int
   | Iraise of Cmm.raise_kind
 
@@ -138,7 +138,7 @@ let rec instr_iter f i =
           instr_iter f i.next
       | Iloop(body) ->
           instr_iter f body; instr_iter f i.next
-      | Icatch(_, handlers, body) ->
+      | Icatch(_, _, handlers, body) ->
           instr_iter f body;
           List.iter (fun (_n, handler) -> instr_iter f handler) handlers;
           instr_iter f i.next

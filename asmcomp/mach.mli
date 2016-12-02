@@ -87,7 +87,8 @@ and instruction_desc =
   | Iifthenelse of test * instruction * instruction
   | Iswitch of int array * instruction array
   | Iloop of instruction
-  | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
+  (* CR mshinwell: Use Clambda.catch_kind or similar *)
+  | Icatch of Cmm.rec_flag * bool * (int * instruction) list * instruction
   | Iexit of int
   | Iraise of Cmm.raise_kind
 

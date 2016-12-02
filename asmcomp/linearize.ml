@@ -228,9 +228,9 @@ let rec linear i n =
   | Iend -> n
   | Iop(Itailcall_ind _ | Itailcall_imm _ as op) ->
       if not Config.spacetime then
-        copy_instr (Lop op) i (discard_dead_code n)
+        copy_instr (Lop op) i (discard_dead_code n) ~trap_depth:0
       else
-        copy_instr (Lop op) i (linear i.Mach.next n)
+        copy_instr (Lop op) i (linear i.Mach.next n) ~trap_depth:0
   | Iop(Imove | Ireload | Ispill)
     when i.Mach.arg.(0).loc = i.Mach.res.(0).loc ->
       linear i.Mach.next n
@@ -249,8 +249,7 @@ let rec linear i n =
   | Iop op ->
       copy_instr (Lop op) i (linear i.Mach.next n)
   | Ireturn ->
-      let n1 = copy_instr Lreturn i (discard_dead_code n) in
-      assert (n1.trap_depth = 0);
+      let n1 = copy_instr Lreturn i (discard_dead_code n) ~trap_depth:0 in
       if !Proc.contains_calls
       then cons_instr Lreloadretaddr n1 ~trap_depth:0
       else n1
@@ -324,7 +323,7 @@ let rec linear i n =
         linear body (cons_instr (Lbranch lbl_head) n1 ~trap_depth:n1.trap_depth)
       in
       cons_instr (Llabel lbl_head) n2 ~trap_depth:n2.trap_depth
-  | Icatch(_rec_flag, handlers, body) ->
+  | Icatch(_rec_flag, _is_exn_handler, handlers, body) ->
       let (lbl_end, n1) = get_label (linear i.Mach.next n) in
       (* CR mshinwell for pchambart:
          1. rename "io"

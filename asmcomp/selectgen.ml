@@ -708,13 +708,15 @@ method emit_expr (env:environment) exp =
       let a = Array.of_list ((r_body, s_body) :: List.map snd l) in
       let r = join_array a in
       let aux (nfail, (_r, s)) = (nfail, s#extract) in
-      let rec_flag =
+      let rec_flag, is_exn_handler =
         match kind with
-        | Clambda.Normal Asttypes.Nonrecursive -> Cmm.Nonrecursive
-        | Clambda.Normal Asttypes.Recursive -> Cmm.Recursive
-        | Clambda.Exn_handler -> Cmm.Nonrecursive
+        | Clambda.Normal Asttypes.Nonrecursive -> Cmm.Nonrecursive, false
+        | Clambda.Normal Asttypes.Recursive -> Cmm.Recursive, false
+        | Clambda.Exn_handler -> Cmm.Nonrecursive, true
       in
-      self#insert (Icatch (rec_flag, List.map aux l, s_body#extract)) [||] [||];
+      self#insert
+        (Icatch (rec_flag, is_exn_handler, List.map aux l, s_body#extract))
+        [||] [||];
       r
   | Cexit (nfail,args) ->
       begin match self#emit_parts_list env args with
@@ -981,13 +983,15 @@ method emit_tail (env:environment) exp =
             env (List.combine ids rs) in
         nfail, self#emit_tail_sequence new_env e2
       in
-      let rec_flag =
+      let rec_flag, is_exn_handler =
         match kind with
-        | Clambda.Normal Asttypes.Nonrecursive -> Cmm.Nonrecursive
-        | Clambda.Normal Asttypes.Recursive -> Cmm.Recursive
-        | Clambda.Exn_handler -> Cmm.Nonrecursive
+        | Clambda.Normal Asttypes.Nonrecursive -> Cmm.Nonrecursive, false
+        | Clambda.Normal Asttypes.Recursive -> Cmm.Recursive, false
+        | Clambda.Exn_handler -> Cmm.Nonrecursive, true
       in
-      self#insert (Icatch(rec_flag, List.map aux handlers, s_body)) [||] [||]
+      self#insert
+        (Icatch(rec_flag, is_exn_handler, List.map aux handlers, s_body))
+        [||] [||]
   | _ ->
       self#emit_return env exp
 

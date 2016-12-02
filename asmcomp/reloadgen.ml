@@ -112,12 +112,13 @@ method private reload i =
           (self#reload i.next))
   | Iloop body ->
       instr_cons (Iloop(self#reload body)) [||] [||] (self#reload i.next)
-  | Icatch(rec_flag, handlers, body) ->
+  | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let new_handlers = List.map
           (fun (nfail, handler) -> nfail, self#reload handler)
           handlers in
       instr_cons
-        (Icatch(rec_flag, new_handlers, self#reload body)) [||] [||]
+        (Icatch(rec_flag, is_exn_handler, new_handlers, self#reload body))
+        [||] [||]
         (self#reload i.next)
   | Iexit i ->
       instr_cons (Iexit i) [||] [||] dummy_instr
