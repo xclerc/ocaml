@@ -149,6 +149,7 @@ let rec live i finally ~trap_stack =
            pre-computed trap stack information. *)
         match Int.Map.find nfail !trap_stacks with
         | exception Not_found ->
+Format.eprintf "DEAD HANDLER %d\n%!" nfail;
           (* The handler is unused. *)
           nfail, before_handler
         | trap_stack ->
@@ -214,5 +215,8 @@ let fundecl ppf f =
   in
   if not (Reg.Set.is_empty wrong_live) then begin
     Format.fprintf ppf "%a@." Printmach.regset wrong_live;
+    Format.fprintf ppf "%s BAD LIVE\n%!" f.fun_name
+(*
     Misc.fatal_error "Liveness.fundecl"
+*)
   end

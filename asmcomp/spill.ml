@@ -118,6 +118,8 @@ let add_superpressure_regs op live_regs res_regs spilled =
 
 let destroyed_at_fork = ref ([] : (instruction * Reg.Set.t) list)
 
+let trap_stacks = ref Int.Map.empty
+
 (* First pass: insert reload instructions based on an approximation of
    what is destroyed at pressure points. *)
 
@@ -232,7 +234,12 @@ let rec reload i before =
         let res =
           List.map2 (fun (nfail', handler) (nfail, at_exit) ->
               assert(nfail = nfail');
-              reload handler at_exit) handlers at_exits in
+              match Int.Map.find nfail !trap_stacks with
+              | exception Not_found ->
+                (* This handler is dead code. *)
+                handler, at_exit
+              | _ ->
+                reload handler at_exit) handlers at_exits in
         match rec_flag with
         | Cmm.Nonrecursive ->
             res
@@ -291,7 +298,6 @@ let find_spill_at_exit k =
   with
   | Not_found -> Misc.fatal_error "Spill.find_spill_at_exit"
 
-let spill_at_raise = ref Reg.Set.empty
 let inside_loop = ref false
 and inside_arm = ref false
 and inside_catch = ref false
@@ -310,8 +316,6 @@ let find_spill_at_raise ~trap_stack =
       Misc.fatal_errorf "No spill information for start of continuation %d"
         cont
     | spill -> spill
-
-let trap_stacks = ref Int.Map.empty
 
 let rec spill i finally ~trap_stack =
   match i.desc with
@@ -348,7 +352,8 @@ let rec spill i finally ~trap_stack =
         match i.desc with
           Iop Icall_ind _ | Iop(Icall_imm _) | Iop(Iextcall _)
         | Iop(Iintop (Icheckbound _)) | Iop(Iintop_imm((Icheckbound _), _)) ->
-            Reg.Set.union before1 !spill_at_raise
+            let spill_at_raise = find_spill_at_raise ~trap_stack in
+            Reg.Set.union before1 spill_at_raise
         | _ ->
             before1 in
       (instr_cons_debug i.desc i.arg i.res i.dbg

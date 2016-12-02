@@ -100,9 +100,13 @@ let rec trap_stacks insn ~stack ~stacks_at_exit : int list Int.Map.t =
     let rec process_handlers ~stacks_at_exit ~handlers_with_uses
           ~handlers_without_uses =
       (* By the invariant above, there is no need to compute a fixpoint. *)
-      if Int.Map.is_empty handlers_with_uses then
+      if Int.Map.is_empty handlers_with_uses then begin
+(*
+Format.eprintf "UNUSED HANDLERS %a\n%!"
+  Int.Set.print (Int.Map.keys handlers_without_uses);
+*)
         stacks_at_exit
-      else
+      end else
         let cont, handler = Int.Map.min_binding handlers_with_uses in
         let handlers_with_uses = Int.Map.remove cont handlers_with_uses in
         match Int.Map.find cont stacks_at_exit with
@@ -121,8 +125,6 @@ let rec trap_stacks insn ~stack ~stacks_at_exit : int list Int.Map.t =
           process_handlers ~stacks_at_exit ~handlers_with_uses
             ~handlers_without_uses
     in
-    (* CR-someday mshinwell: This could be enhanced to delete the
-       [handlers_without_uses]. *)
     let stacks_at_exit =
       process_handlers ~stacks_at_exit ~handlers_with_uses
         ~handlers_without_uses
