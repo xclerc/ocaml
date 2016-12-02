@@ -219,6 +219,8 @@ let local_exit k ~trap_depth =
 
 let trap_depths = ref Int.Map.empty
 
+let dead_handlers = ref Int.Set.empty
+
 (* Linearize an instruction [i]: add it in front of the continuation [n] *)
 
 let rec linear i n =
@@ -231,6 +233,11 @@ let rec linear i n =
         copy_instr (Lop op) i (linear i.Mach.next n)
   | Iop(Imove | Ireload | Ispill)
     when i.Mach.arg.(0).loc = i.Mach.res.(0).loc ->
+      linear i.Mach.next n
+  | Iop ((Ipushtrap handler) | (Ipoptrap handler))
+      when Int.Set.mem handler !dead_handlers ->
+      (* Push/poptraps of dead handlers deleted by this pass must also be
+         removed, otherwise trap depth imbalance will result. *)
       linear i.Mach.next n
   | Iop (Ipushtrap handler) ->
       let n = linear i.Mach.next n in
@@ -330,26 +337,28 @@ let rec linear i n =
       let previous_exit_label = !exit_label in
       let exit_label_add =
         List.map2 (fun (cont, _) lbl ->
-            let start_of_handler_trap_depth =
-              match Int.Map.find cont !trap_depths with
-              | exception Not_found ->
-                Misc.fatal_errorf "Missing trap depth for continuation %d"
-                  cont
-              | depth -> depth
-            in
-            (cont, (lbl, start_of_handler_trap_depth)))
+            match Int.Map.find cont !trap_depths with
+            | exception Not_found ->
+              (* The handler is dead code. *)
+              dead_handlers := Int.Set.add cont !dead_handlers;
+              cont, (lbl, 0)
+            | start_of_handler_trap_depth ->
+              (cont, (lbl, start_of_handler_trap_depth)))
           handlers labels_at_entry_to_handlers
       in
       exit_label := exit_label_add @ !exit_label;
-      let n2 = List.fold_left2 (fun n (_nfail, handler) lbl_handler ->
-          match handler.Mach.desc with
-          | Iend -> n
-          | _ ->
-            let n = adjust_trap_depth ~before:n1.trap_depth ~after:n in
-            let handler = linear handler n in
-            cons_instr (Llabel lbl_handler) handler
-              ~trap_depth:handler.trap_depth)
-          n1 handlers labels_at_entry_to_handlers
+      let n2 = List.fold_left2 (fun n (nfail, handler) lbl_handler ->
+          if Int.Set.mem nfail !dead_handlers then
+            n  (* Delete dead handlers. *)
+          else
+            match handler.Mach.desc with
+            | Iend -> n
+            | _ ->
+              let n = adjust_trap_depth ~before:n1.trap_depth ~after:n in
+              let handler = linear handler n in
+              cons_instr (Llabel lbl_handler) handler
+                ~trap_depth:handler.trap_depth)
+            n1 handlers labels_at_entry_to_handlers
       in
       let n2 = adjust_trap_depth ~before:n1.trap_depth ~after:n2 in
       let n3 = linear body (add_branch lbl_end n2 ~trap_depth:n2.trap_depth) in
@@ -369,13 +378,17 @@ let rec linear i n =
       copy_instr (Lraise k) i (discard_dead_code n)
 
 let fundecl f =
+  exit_label := [];
   trap_depths :=
     Int.Map.map (fun trap_stack -> List.length trap_stack) f.fun_trap_stacks;
+  dead_handlers := Int.Set.empty;
   let fun_body = linear f.Mach.fun_body end_instr in
+(*
   if fun_body.trap_depth <> 0 then begin
     Misc.fatal_errorf "Trap depth should be zero at top of %s but is %d"
       f.Mach.fun_name fun_body.trap_depth
   end;
+*)
   { fun_name = f.Mach.fun_name;
     fun_body;
     fun_fast = f.Mach.fun_fast;

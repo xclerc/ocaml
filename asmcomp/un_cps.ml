@@ -251,14 +251,15 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
           | Normal
       end in
       let action : Action.t =
-        match kind with
-        | Exn_handler -> Normal
-        | Normal _ ->
-          match Numbers.Int.Map.find cont uses with
-          | exception Not_found -> Unused
-          | One -> Linear_inlining
-          | Many -> Normal
-          | Zero -> assert false
+        match Numbers.Int.Map.find cont uses with
+        | exception Not_found -> Unused
+        | One ->
+          begin match kind with
+          | Normal _ -> Linear_inlining
+          | Exn_handler -> Normal
+          end
+        | Many -> Normal
+        | Zero -> assert false
       in
       begin match action with
       | Unused -> inline env body

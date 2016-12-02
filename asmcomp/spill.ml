@@ -427,14 +427,11 @@ let rec spill i finally ~trap_stack =
         spill_at_exit := spill_at_exit_add @ !spill_at_exit;
         let res =
           List.map (fun (nfail, handler) ->
-              let trap_stack =
-                match Int.Map.find nfail !trap_stacks with
-                | exception Not_found ->
-                  Misc.fatal_errorf "No trap stack found for continuation %d"
-                    nfail
-                | trap_stack -> trap_stack
-              in
-              spill handler at_join ~trap_stack)
+              match Int.Map.find nfail !trap_stacks with
+              | exception Not_found ->
+                (* The handler is dead code. *)
+                handler, at_join
+              | trap_stack -> spill handler at_join ~trap_stack)
             handlers
         in
         spill_at_exit := previous_spill_at_exit;

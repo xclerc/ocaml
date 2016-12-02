@@ -147,15 +147,13 @@ let rec live i finally ~trap_stack =
            which requires knowledge of the registers that must be live at
            the top of the handler.  To avoid this circularity we use
            pre-computed trap stack information. *)
-        let trap_stack =
-          match Int.Map.find nfail !trap_stacks with
-          | exception Not_found ->
-            Misc.fatal_errorf "No trap stack found for continuation %d"
-              nfail
-          | trap_stack -> trap_stack
-        in
-        let before_handler' = live handler at_join ~trap_stack in
-        nfail, Reg.Set.union before_handler before_handler'
+        match Int.Map.find nfail !trap_stacks with
+        | exception Not_found ->
+          (* The handler is unused. *)
+          nfail, before_handler
+        | trap_stack ->
+          let before_handler' = live handler at_join ~trap_stack in
+          nfail, Reg.Set.union before_handler before_handler'
       in
       let aux_equal (nfail, before_handler) (nfail', before_handler') =
         assert(nfail = nfail');
