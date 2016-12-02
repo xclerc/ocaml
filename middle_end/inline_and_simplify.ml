@@ -315,16 +315,20 @@ let simplify_move_within_set_of_closures env r
             let freshened_move =
               Freshening.freshen_move_within_set_of_closures
                 ~closure_freshening:value_set_of_closures.freshening
-                move
+                move_within_set_of_closures.move
             in
             let start_from = closure_id_in_approx in
             let move_to =
               try Closure_id.Map.find start_from freshened_move with
               | Not_found ->
-                Misc.fatal_errorf "Move %a does not contain projection for %a"
+                Misc.fatal_errorf "Move %a freshened to %a does not contain \
+                                   projection for %a@. Approximation is:@ %a@."
                   Projection.print_move_within_set_of_closures
-                  move_within_set_of_closures
+                    move_within_set_of_closures
+                  (Closure_id.Map.print Closure_id.print) freshened_move
                   Closure_id.print start_from
+                  (Closure_id.Map.print A.print_value_set_of_closures)
+                    value_closures
             in
             assert(not (Closure_id.Map.mem start_from move));
             Closure_id.Map.add start_from move_to move,
