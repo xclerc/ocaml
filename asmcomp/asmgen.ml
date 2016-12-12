@@ -117,6 +117,15 @@ let compile_fundecl (ppf : formatter) fd_cmm =
   ++ Timings.(accumulate_time (Regalloc build)) (regalloc ppf 1)
   ++ Timings.(accumulate_time (Linearize build)) Linearize.fundecl
   ++ pass_dump_linear_if ppf dump_linear "Linearized code"
+  ++ (fun linear ->
+    let module L = Linearize in
+    if linear.L.fun_body.L.trap_depth <> 0 then begin
+      Misc.fatal_errorf "Trap depth should be zero at top of %s but is %d:@;%a"
+        linear.L.fun_name linear.L.fun_body.L.trap_depth
+        Printlinear.fundecl linear
+    end else begin
+      linear
+    end)
   ++ Timings.(accumulate_time (Scheduling build)) Scheduling.fundecl
   ++ pass_dump_linear_if ppf dump_scheduling "After instruction scheduling"
   ++ Timings.(accumulate_time (Emit build)) Emit.fundecl

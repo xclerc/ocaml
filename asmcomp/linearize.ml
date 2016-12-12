@@ -382,12 +382,6 @@ let fundecl f =
     Int.Map.map (fun trap_stack -> List.length trap_stack) f.fun_trap_stacks;
   dead_handlers := Int.Set.empty;
   let fun_body = linear f.Mach.fun_body end_instr in
-(*
-  if fun_body.trap_depth <> 0 then begin
-    Misc.fatal_errorf "Trap depth should be zero at top of %s but is %d"
-      f.Mach.fun_name fun_body.trap_depth
-  end;
-*)
   { fun_name = f.Mach.fun_name;
     fun_body;
     fun_fast = f.Mach.fun_fast;
