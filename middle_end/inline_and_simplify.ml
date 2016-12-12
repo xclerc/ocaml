@@ -1445,6 +1445,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             handler = Alias alias_of;
           }
         in
+        let r, _args_approxs, _uses =
+          R.exit_scope_catch r cont
+            ~num_params:(Continuation_approx.num_params approx)
+        in
         assert (not (R.is_used_continuation r cont));
         Let_cont let_cont, ret r A.value_bottom
       | Handler { params = []; recursive = Nonrecursive;
