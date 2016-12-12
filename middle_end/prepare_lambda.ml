@@ -118,7 +118,7 @@ let dissect_letrec ~bindings ~body =
   List.fold_left (fun body (id, binding) ->
       L.Llet (Strict, Pgenval, id, binding, body))
     (L.Lletrec (functions, body))
-    (preallocations @ nonrecursives @ fillings)
+    (fillings @ nonrecursives @ preallocations)
 
 module Env : sig
   type t
