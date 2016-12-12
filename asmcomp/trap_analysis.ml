@@ -25,6 +25,7 @@ module Int = Numbers.Int
 *)
 
 let rec trap_stacks insn ~stack ~stacks_at_exit : int list Int.Map.t =
+  insn.trap_stack <- stack;
   let add_stack ~cont ~stack ~stacks_at_exit =
     match Int.Map.find cont stacks_at_exit with
     | exception Not_found ->
@@ -138,13 +139,6 @@ let run (fundecl : Mach.fundecl) =
   let stacks_at_exit =
     trap_stacks fundecl.fun_body ~stack:[] ~stacks_at_exit:Int.Map.empty
   in
-(*
-  Format.eprintf "Trap depths for %s:@;%a@;%!"
-    fundecl.fun_name
-    (Int.Map.print (fun ppf stack ->
-      Format.fprintf ppf "%d" (List.length stack)))
-    stacks_at_exit;
-*)
   { fundecl with
-    fun_trap_stacks = stacks_at_exit;
+    fun_trap_stacks_at_handlers = stacks_at_exit;
   }

@@ -14,13 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Annotate Mach instructions with the stack of trap handlers (from the
-    current function) in scope at each program point.
-
-    This is needed by [Liveness] and [Spill] to avoid a circularity (see
-    comment in [Liveness].  It is also needed by [Linearize] to emit trap
-    depth adjustment directives.  The order in which code is traversed
-    during [Linearize] prohibits calculating this information in the same
-    pass (and in any case, it would be redundant work). *)
+(** Fill in the [trap_stack] member of Mach instructions by calculating
+    which exception handlers are in scope for each instruction. *)
 
 val run : Mach.fundecl -> Mach.fundecl

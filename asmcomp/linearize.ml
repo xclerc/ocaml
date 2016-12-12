@@ -122,20 +122,18 @@ let cons_instr d n ~trap_depth =
 (* Build an instruction with arg, res, dbg, live taken from
    the given Mach.instruction *)
 
-let copy_instr ?trap_depth d i n =
-  let next, trap_depth =
-    match trap_depth with
-    | None -> n, n.trap_depth
-    | Some trap_depth ->
-      let no_trap_adjustment =
-        match d with
-        | Lpushtrap _ | Lpoptrap -> true
-        | _ -> false
-      in
-      if no_trap_adjustment then
-        n, trap_depth
-      else
-        adjust_trap_depth ~before:trap_depth ~after:n, trap_depth
+let copy_instr d i n =
+  let trap_depth = List.length i.trap_stack in
+  let next =
+    let no_trap_adjustment =
+      match d with
+      | Lpushtrap _ | Lpoptrap -> true
+      | _ -> false
+    in
+    if no_trap_adjustment then
+      n
+    else
+      adjust_trap_depth ~before:trap_depth ~after:n
   in
   { desc = d; next;
     arg = i.Mach.arg; res = i.Mach.res;
@@ -185,7 +183,7 @@ let rec discard_dead_code n =
    or if we jump to dead code after the end of function (lbl=-1)
 *)
 
-let add_branch lbl n ~trap_depth:_ =
+let add_branch lbl n =
   if lbl >= 0 then
     let n1 = discard_dead_code n in
     match n1.desc with
@@ -204,9 +202,8 @@ let find_exit_label_trap_depth k =
   with
   | Not_found -> Misc.fatal_error "Linearize.find_exit_label"
 
-let find_exit_label k ~trap_depth:_ =
+let find_exit_label k =
   let label, _trap_depth' = find_exit_label_trap_depth k in
-(*  assert (trap_depth = trap_depth');*)
   label
 
 let is_next_catch n ~trap_depth =
@@ -227,10 +224,11 @@ let rec linear i n =
   match i.Mach.desc with
   | Iend -> n
   | Iop(Itailcall_ind _ | Itailcall_imm _ as op) ->
+      assert (i.trap_depth = 0);
       if not Config.spacetime then
-        copy_instr (Lop op) i (discard_dead_code n) ~trap_depth:0
+        copy_instr (Lop op) i (discard_dead_code n)
       else
-        copy_instr (Lop op) i (linear i.Mach.next n) ~trap_depth:0
+        copy_instr (Lop op) i (linear i.Mach.next n)
   | Iop(Imove | Ireload | Ispill)
     when i.Mach.arg.(0).loc = i.Mach.res.(0).loc ->
       linear i.Mach.next n
@@ -241,15 +239,16 @@ let rec linear i n =
       linear i.Mach.next n
   | Iop (Ipushtrap handler) ->
       let n = linear i.Mach.next n in
-      let handler = find_exit_label handler ~trap_depth:n.trap_depth in
-      copy_instr (Lpushtrap { handler; }) i n ~trap_depth:(n.trap_depth - 1)
+      let handler = find_exit_label handler in
+      copy_instr (Lpushtrap { handler; }) i n
   | Iop (Ipoptrap _) ->
       let n = linear i.Mach.next n in
-      copy_instr Lpoptrap i n ~trap_depth:(n.trap_depth + 1)
+      copy_instr Lpoptrap i n
   | Iop op ->
       copy_instr (Lop op) i (linear i.Mach.next n)
   | Ireturn ->
-      let n1 = copy_instr Lreturn i (discard_dead_code n) ~trap_depth:0 in
+      assert (i.trap_depth = 0);
+      let n1 = copy_instr Lreturn i (discard_dead_code n) in
       if !Proc.contains_calls
       then cons_instr Lreloadretaddr n1 ~trap_depth:0
       else n1
@@ -265,17 +264,17 @@ let rec linear i n =
       | Iexit nfail1, Iexit nfail2, _
             when is_next_catch nfail1 ~trap_depth
               && local_exit nfail2 ~trap_depth ->
-          let lbl2 = find_exit_label nfail2 ~trap_depth in
+          let lbl2 = find_exit_label nfail2 in
           copy_instr
             (Lcondbranch (invert_test test, lbl2)) i
             (linear ifso n1)
       | Iexit nfail, _, _ when local_exit nfail ~trap_depth ->
           let n2 = linear ifnot n1
-          and lbl = find_exit_label nfail ~trap_depth in
+          and lbl = find_exit_label nfail in 
           copy_instr (Lcondbranch(test, lbl)) i n2
       | _,  Iexit nfail, _ when local_exit nfail ~trap_depth ->
           let n2 = linear ifso n1 in
-          let lbl = find_exit_label nfail ~trap_depth in
+          let lbl = find_exit_label nfail in
           copy_instr (Lcondbranch(invert_test test, lbl)) i n2
       | Iend, _, _ ->
           let (lbl_end, n2) = get_label n1 in
@@ -290,7 +289,7 @@ let rec linear i n =
           let (lbl_end, n2) = get_label n1 in
           let (lbl_else, nelse) = get_label (linear ifnot n2) in
           copy_instr (Lcondbranch(invert_test test, lbl_else)) i
-            (linear ifso (add_branch lbl_end nelse ~trap_depth))
+            (linear ifso (add_branch lbl_end nelse))
       end
   | Iswitch(index, cases) ->
       let lbl_cases = Array.make (Array.length cases) 0 in
@@ -300,7 +299,7 @@ let rec linear i n =
         let (lbl_case, ncase) =
           get_label
             (linear cases.(i)
-              (add_branch lbl_end !n2 ~trap_depth:n1.trap_depth))
+              (add_branch lbl_end !n2))
         in
         lbl_cases.(i) <- lbl_case;
         n2 := discard_dead_code ncase
@@ -360,7 +359,7 @@ let rec linear i n =
             n1 handlers labels_at_entry_to_handlers
       in
       let n2 = adjust_trap_depth ~before:n1.trap_depth ~after:n2 in
-      let n3 = linear body (add_branch lbl_end n2 ~trap_depth:n2.trap_depth) in
+      let n3 = linear body (add_branch lbl_end n2) in
       exit_label := previous_exit_label;
       n3
   | Iexit nfail ->
@@ -372,7 +371,7 @@ let rec linear i n =
         else
           n1
       in
-      add_branch lbl n1 ~trap_depth:n1.trap_depth
+      add_branch lbl n1
   | Iraise k ->
       copy_instr (Lraise k) i (discard_dead_code n)
 

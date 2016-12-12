@@ -330,7 +330,7 @@ let rec spill i finally ~trap_stack =
   | Ireturn | Iop(Itailcall_ind _) | Iop(Itailcall_imm _) ->
       (i, Reg.Set.empty)
   | Iop Ireload ->
-      let (new_next, after) = spill i.next finally ~trap_stack in
+      let (new_next, after) = spill i.next finally in
       let before1 = Reg.diff_set_array after i.res in
       (instr_cons i.desc i.arg i.res new_next,
        Reg.add_set_array before1 i.res)
@@ -352,13 +352,13 @@ let rec spill i finally ~trap_stack =
           end
         | _ -> trap_stack
       in
-      let (new_next, after) = spill i.next finally ~trap_stack in
+      let (new_next, after) = spill i.next finally in
       let before1 = Reg.diff_set_array after i.res in
       let before =
         match i.desc with
           Iop Icall_ind _ | Iop(Icall_imm _) | Iop(Iextcall _)
         | Iop(Iintop (Icheckbound _)) | Iop(Iintop_imm((Icheckbound _), _)) ->
-            let spill_at_raise = find_spill_at_raise ~trap_stack in
+            let spill_at_raise = find_spill_at_raise in
             Reg.Set.union before1 spill_at_raise
         | _ ->
             before1 in
@@ -366,9 +366,9 @@ let rec spill i finally ~trap_stack =
                   (add_spills (Reg.inter_set_array after i.res) new_next),
        before)
   | Iifthenelse(test, ifso, ifnot) ->
-      let (new_next, at_join) = spill i.next finally ~trap_stack in
-      let (new_ifso, before_ifso) = spill ifso at_join ~trap_stack in
-      let (new_ifnot, before_ifnot) = spill ifnot at_join ~trap_stack in
+      let (new_next, at_join) = spill i.next finally in
+      let (new_ifso, before_ifso) = spill ifso at_join in
+      let (new_ifnot, before_ifnot) = spill ifnot at_join in
       if
         !inside_loop || !inside_arm || !inside_catch
       then
@@ -390,14 +390,14 @@ let rec spill i finally ~trap_stack =
                        spill_ifnot_branch)
       end
   | Iswitch(index, cases) ->
-      let (new_next, at_join) = spill i.next finally ~trap_stack in
+      let (new_next, at_join) = spill i.next finally in
       let saved_inside_arm = !inside_arm in
       inside_arm := true ;
       let before = ref Reg.Set.empty in
       let new_cases =
         Array.map
           (fun c ->
-            let (new_c, before_c) = spill c at_join ~trap_stack in
+            let (new_c, before_c) = spill c at_join in
             before := Reg.Set.union !before before_c;
             new_c)
           cases in
@@ -405,14 +405,14 @@ let rec spill i finally ~trap_stack =
       (instr_cons (Iswitch(index, new_cases)) i.arg i.res new_next,
        !before)
   | Iloop(body) ->
-      let (new_next, _) = spill i.next finally ~trap_stack in
+      let (new_next, _) = spill i.next finally in
       let saved_inside_loop = !inside_loop in
       inside_loop := true;
       let at_head = ref Reg.Set.empty in
       let final_body = ref body in
       begin try
         while true do
-          let (new_body, before_body) = spill body !at_head ~trap_stack in
+          let (new_body, before_body) = spill body !at_head in
           let new_at_head = Reg.Set.union !at_head before_body in
           if Reg.Set.equal new_at_head !at_head then begin
             final_body := new_body; raise Exit
@@ -425,7 +425,7 @@ let rec spill i finally ~trap_stack =
       (instr_cons (Iloop(!final_body)) i.arg i.res new_next,
        !at_head)
   | Icatch(rec_flag, is_exn_handler, handlers, body) ->
-      let (new_next, at_join) = spill i.next finally ~trap_stack in
+      let (new_next, at_join) = spill i.next finally in
       let saved_inside_catch = !inside_catch in
       inside_catch := true ;
       let previous_spill_at_exit = !spill_at_exit in
@@ -463,7 +463,7 @@ let rec spill i finally ~trap_stack =
       inside_catch := saved_inside_catch ;
       let spill_at_exit_add = spill_at_exit_add (List.map snd res) in
       spill_at_exit := spill_at_exit_add @ !spill_at_exit;
-      let (new_body, before) = spill body at_join ~trap_stack in
+      let (new_body, before) = spill body at_join in
       spill_at_exit := previous_spill_at_exit;
       let new_handlers = List.map2
           (fun (nfail, _) (handler, _) -> nfail, handler)
@@ -474,7 +474,7 @@ let rec spill i finally ~trap_stack =
   | Iexit nfail ->
       (i, find_spill_at_exit nfail)
   | Iraise _ ->
-      let spill_at_raise = find_spill_at_raise ~trap_stack in
+      let spill_at_raise = find_spill_at_raise in
       (i, spill_at_raise)
 
 (* Entry point *)
@@ -487,9 +487,9 @@ let reset () =
 
 let fundecl f =
   reset ();
-  trap_stacks := f.fun_trap_stacks;
+  trap_stacks := f.fun_trap_stacks_at_handlers;
   let (body1, _) = reload f.fun_body Reg.Set.empty in
-  let (body2, tospill_at_entry) = spill body1 Reg.Set.empty ~trap_stack:[] in
+  let (body2, tospill_at_entry) = spill body1 Reg.Set.empty in
   let new_body =
     add_spills (Reg.inter_set_array tospill_at_entry f.fun_args) body2 in
   spill_env := Reg.Map.empty;
@@ -501,5 +501,5 @@ let fundecl f =
     fun_fast = f.fun_fast;
     fun_dbg  = f.fun_dbg;
     fun_spacetime_shape = f.fun_spacetime_shape;
-    fun_trap_stacks = f.fun_trap_stacks;
+    fun_trap_stacks_at_handlers = f.fun_trap_stacks_at_handlers;
   }

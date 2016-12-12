@@ -68,7 +68,9 @@ type instruction =
     arg: Reg.t array;
     res: Reg.t array;
     dbg: Debuginfo.t;
-    mutable live: Reg.Set.t }
+    mutable live: Reg.Set.t;
+    mutable trap_stack: int list Numbers.Int.Map.t;
+  }
 
 and instruction_desc =
     Iend
@@ -95,7 +97,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
-    fun_trap_stacks : int list Numbers.Int.Map.t;
+    fun_trap_stacks_at_handlers : int list Numbers.Int.Map.t;
   }
 
 let rec dummy_instr =

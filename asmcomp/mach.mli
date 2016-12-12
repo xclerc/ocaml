@@ -78,7 +78,12 @@ type instruction =
     arg: Reg.t array;
     res: Reg.t array;
     dbg: Debuginfo.t;
-    mutable live: Reg.Set.t }
+    mutable live: Reg.Set.t;
+    mutable trap_stack: int list;
+    (** The CFG successor edges for a given [instruction] are those specified
+        by the [desc] together with the exception handlers (referenced by
+        continuation number) given by the [trap_stack]. *)
+  }
 
 and instruction_desc =
     Iend
@@ -112,9 +117,9 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
-    fun_trap_stacks : int list Numbers.Int.Map.t;
-    (** For each continuation, a list of exception traps in scope, with the
-        innermost at the head of the list.  Computed by [Trap_analysis]. *)
+    fun_trap_stacks_at_handlers : int list Numbers.Int.Map.t;
+    (** For convenience, the trap stacks at the start of all [Icatch] handlers,
+        indexed by continuation number. *)
   }
 
 val dummy_instr: instruction
