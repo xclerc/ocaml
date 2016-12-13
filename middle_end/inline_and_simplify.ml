@@ -222,6 +222,19 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
           A.freshen_and_check_closure_id value_set_of_closures
             project_closure.closure_id
         in
+        let () =
+          match Closure_id.Set.elements closure_id with
+          | _ :: _ :: _ ->
+            Format.printf "Set of closures approximation is not a singleton in project closure@ %a@ %a@."
+              A.print set_of_closures_approx
+              Projection.print_project_closure project_closure
+          | [] ->
+            Format.printf "Set of closures approximation is empty in project closure@ %a@ %a@."
+              A.print set_of_closures_approx
+              Projection.print_project_closure project_closure
+          | _ ->
+            ()
+        in
         let projecting_from =
           match set_of_closures_var with
           | None -> None
@@ -303,6 +316,19 @@ let simplify_move_within_set_of_closures env r
         },
         ret r (A.value_unknown (Unresolved_symbol sym))
     | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
+      let () =
+        match Closure_id.Map.bindings value_closures with
+        | _ :: _ :: _ ->
+          Format.printf "Closure approximation is not a singleton in move@ %a@ %a@."
+            A.print closure_approx
+            Projection.print_move_within_set_of_closures move_within_set_of_closures
+        | [] ->
+          Format.printf "Closure approximation is empty in move@ %a@ %a@."
+            A.print closure_approx
+            Projection.print_move_within_set_of_closures move_within_set_of_closures
+        | _ ->
+          ()
+      in
       (* Freshening of the move. *)
       let move, approx_map =
         Closure_id.Map.fold
@@ -466,6 +492,19 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
     ~f:(fun _env closure approx ->
       match A.check_approx_for_closure_allowing_unresolved approx with
       | Ok (value_closures, _set_of_closures_var, _set_of_closures_symbol) -> begin
+        let () =
+          match Closure_id.Map.bindings value_closures with
+           | _ :: _ :: _ ->
+             Format.printf "Closure approximation is not a singleton in project@ %a@ %a@."
+               A.print approx
+               Projection.print_project_var project_var
+           | [] ->
+             Format.printf "Closure approximation is empty in project@ %a@ %a@."
+               A.print approx
+               Projection.print_project_var project_var
+           | _ ->
+             ()
+        in
         (* Freshening of the projection *)
         let project_var_var, approx =
           Closure_id.Map.fold
@@ -880,6 +919,14 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
           in
           wrap result, r
         | Wrong ->  (* Insufficient approximation information to simplify. *)
+          let () =
+            match A.check_approx_for_closure lhs_of_application_approx with
+            | Wrong -> ()
+            | Ok (_, _, _) ->
+              Format.printf "Application is not a singleton@ %a@ %a@."
+                A.print lhs_of_application_approx
+                Flambda.print (Flambda.Apply apply)
+          in
           Apply ({ kind; func = lhs_of_application; args; call_kind = Indirect;
               dbg; inline = inline_requested; specialise = specialise_requested;
               continuation; }),

@@ -110,7 +110,7 @@ let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
     match program with
     | Let_symbol (_, Set_of_closures set_of_closures, program) ->
       Variable.Map.iter (fun _ (function_decl : Flambda.function_declaration) ->
-          f function_decl.body)
+          f function_decl.continuation_param function_decl.body)
         set_of_closures.function_decls.funs;
       loop program
     | Let_rec_symbol (defs, program) ->
@@ -118,24 +118,24 @@ let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
           | (_, Flambda.Set_of_closures set_of_closures) ->
             Variable.Map.iter
               (fun _ (function_decl : Flambda.function_declaration) ->
-                f function_decl.body)
+                f function_decl.continuation_param function_decl.body)
               set_of_closures.function_decls.funs
           | _ -> ()) defs;
       loop program
     | Let_symbol (_, _, program) ->
       loop program
     | Initialize_symbol (_, _, fields, program) ->
-      List.iter (fun (field, _cont) -> f field) fields;
+      List.iter (fun (field, cont) -> f cont field) fields;
       loop program
-    | Effect (expr, _cont, program) ->
-      f expr;
+    | Effect (expr, cont, program) ->
+      f cont expr;
       loop program
     | End _ -> ()
   in
   loop program.program_body
 
 let iter_named_of_program program ~f =
-  iter_exprs_at_toplevel_of_program program ~f:(iter_named f)
+  iter_exprs_at_toplevel_of_program program ~f:(fun _ e -> iter_named f e)
 
 let iter_on_set_of_closures_of_program (program : Flambda.program) ~f =
   let rec loop (program : Flambda.program_body) =
@@ -274,7 +274,7 @@ let map_general ~toplevel f f_named tree =
   aux tree
 
 let iter_apply_on_program program ~f =
-  iter_exprs_at_toplevel_of_program program ~f:(fun expr ->
+  iter_exprs_at_toplevel_of_program program ~f:(fun _cont expr ->
     iter (function
         | Apply apply -> f apply
         | _ -> ())

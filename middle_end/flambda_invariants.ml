@@ -76,6 +76,8 @@ exception Free_variables_set_is_lying of
 exception Set_of_closures_free_vars_map_has_wrong_range of Variable.Set.t
 exception Continuation_not_caught of Continuation.t
 exception Continuation_caught_in_multiple_places of Continuation.t
+exception Continuation_called_with_wrong_arity of Continuation.t * int * int
+exception Malformed_exception_continuation of Continuation.t * string
 exception Access_to_global_module_identifier of Lambda.primitive
 exception Pidentity_should_not_occur
 exception Pdirapply_should_be_expanded
@@ -99,6 +101,214 @@ exception Flambda_invariants_failed
 
 (* CR-someday mshinwell: What about checks for shadowed variables and
    symbols? *)
+
+
+module Push_pop_invariants = struct
+  type stack_t =
+    | Root
+    | Var (* Debug *)
+    | Link of stack_type
+    | Push of Trap_id.t * Continuation.t * stack_type
+
+  and stack_type = stack_t ref
+
+  type env = stack_type Continuation.Map.t
+
+  let rec repr t =
+    match !t with
+    | Link s ->
+      let u = repr s in
+      t := u;
+      u
+    | v -> v
+
+  let rec occur_check cont t checked =
+    if t == checked then
+      raise (Malformed_exception_continuation (cont, "recursive stack"));
+    match !checked with
+    | Var
+    | Root -> ()
+    | Link s
+    | Push (_, _, s) ->
+      occur_check cont t s
+
+  let rec unify_stack cont t1 t2 =
+    if t1 == t2 then ()
+    else
+      match repr t1, repr t2 with
+      | Link _, _ | _, Link _ -> assert false
+      | Var, _ ->
+        occur_check cont t1 t2;
+        t1 := Link t2
+      | _, Var ->
+        occur_check cont t2 t1;
+        t2 := Link t1
+      | Root, Root -> ()
+      | Push (id1, c1, s1), Push (id2, c2, s2) ->
+        if not (Trap_id.equal id1 id2) then
+          raise (Malformed_exception_continuation (cont, "mismatched trap id"));
+        if not (Continuation.equal c1 c2) then
+          raise (Malformed_exception_continuation (cont, "mismatched continuation"));
+        unify_stack cont s1 s2
+      | Root, Push _ | Push _, Root ->
+        raise (Malformed_exception_continuation (cont, "root stack is not empty"))
+
+  let var () =
+    ref (Var)
+
+  let push id cont s =
+    ref (Push(id, cont, s))
+
+  let define table k stack =
+    Continuation.Map.add k stack table
+
+  let rec loop (env:env) current_stack (expr : Flambda.t) =
+    match expr with
+    | Let_mutable { body; _ }
+    | Let { body; _ } ->
+      loop env current_stack body
+    | Let_cont { name; body; handler } ->
+      let handler_stack = var () in
+      begin match handler with
+        | Alias cont ->
+          let cont_stack = Continuation.Map.find cont env in
+          unify_stack cont handler_stack cont_stack
+        | Handler { recursive; handler; _ } ->
+          let env =
+            match recursive with
+            | Recursive -> define env name handler_stack
+            | Nonrecursive -> env
+          in
+          loop env handler_stack handler
+      end;
+      let env = define env name handler_stack in
+      loop env current_stack body
+    | Apply_cont ( cont, exn, _args ) ->
+      let cont_stack = Continuation.Map.find cont env in
+      let stack, cont_stack = match exn with
+        | None ->
+          current_stack,
+          cont_stack
+        | Some (Push { id; exn_handler }) ->
+          push id exn_handler current_stack,
+          cont_stack
+        | Some (Pop { id; exn_handler }) ->
+          current_stack,
+          push id exn_handler cont_stack
+      in
+      unify_stack cont stack cont_stack
+    | Apply { continuation; _ } ->
+      let stack = current_stack in
+      let cont_stack = Continuation.Map.find continuation env in
+      unify_stack continuation stack cont_stack
+    | Switch (_,{ consts; blocks; failaction; _ } ) ->
+      List.iter (fun (_, cont) ->
+        let cont_stack = Continuation.Map.find cont env in
+        unify_stack cont cont_stack current_stack)
+        consts;
+      List.iter (fun (_, cont) ->
+        let cont_stack = Continuation.Map.find cont env in
+        unify_stack cont cont_stack current_stack)
+        blocks;
+      match failaction with
+      | None -> ()
+      | Some cont ->
+        let cont_stack = Continuation.Map.find cont env in
+        unify_stack cont cont_stack current_stack
+
+  let well_formed_trap k (expr : Flambda.t) =
+    let root = ref Root in
+    let env = Continuation.Map.singleton k root in
+    loop env root expr
+
+  let check program =
+    Flambda_iterators.iter_exprs_at_toplevel_of_program program
+      ~f:well_formed_trap
+
+end
+
+module Continuation_scoping = struct
+
+  let rec loop env (expr : Flambda.t) =
+    match expr with
+    | Let_mutable { body; _ }
+    | Let { body; _ } ->
+      loop env body
+    | Let_cont { name; body; handler } ->
+      begin match handler with
+        | Alias cont -> begin
+          match Continuation.Map.find cont env with
+          | exception Not_found ->
+            raise (Continuation_not_caught cont)
+          | arity ->
+            let env = Continuation.Map.add name arity env in
+            loop env body
+        end
+        | Handler { recursive; handler; params } ->
+          let arity = List.length params in
+          let env_with_handler =
+            Continuation.Map.add name arity env
+          in
+          let handler_env =
+            match recursive with
+            | Recursive -> env_with_handler
+            | Nonrecursive -> env
+          in
+          loop handler_env handler;
+          loop env body
+      end;
+    | Apply_cont ( cont, exn, args ) -> begin
+      let arity =
+        try Continuation.Map.find cont env with
+        | Not_found ->
+          raise (Continuation_not_caught cont)
+      in
+      if not (List.length args = arity) then
+        raise (Continuation_called_with_wrong_arity (cont, List.length args, arity));
+      match exn with
+      | None -> ()
+      | Some (Push { id = _; exn_handler })
+      | Some (Pop { id = _; exn_handler }) ->
+        match Continuation.Map.find exn_handler env with
+        | exception Not_found ->
+          raise (Continuation_not_caught exn_handler)
+        | arity ->
+          if not (arity = 1) then
+            raise (Continuation_called_with_wrong_arity (cont, 1, arity));
+      end
+    | Apply { continuation; _ } -> begin
+        match Continuation.Map.find continuation env with
+        | exception Not_found ->
+          raise (Continuation_not_caught continuation)
+        | arity ->
+          if not (arity = 1) then
+            raise (Continuation_called_with_wrong_arity (continuation, 1, arity));
+      end
+    | Switch (_,{ consts; blocks; failaction; _ } ) ->
+      let check (_, cont) =
+        match Continuation.Map.find cont env with
+        | exception Not_found ->
+          raise (Continuation_not_caught cont)
+        | arity ->
+          if not (arity = 0) then
+            raise (Continuation_called_with_wrong_arity (cont, 0, arity));
+      in
+      List.iter check consts;
+      List.iter check blocks;
+      match failaction with
+      | None -> ()
+      | Some cont ->
+        check ((), cont)
+
+  let check_expr k (expr : Flambda.t) =
+    let env = Continuation.Map.singleton k 1 in
+    loop env expr
+
+  let check program =
+    Flambda_iterators.iter_exprs_at_toplevel_of_program program
+      ~f:check_expr
+
+end
 
 let variable_and_symbol_invariants (program : Flambda.program) =
   let all_declared_variables = ref Variable.Set.empty in
@@ -695,15 +905,19 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
        miscompilations *)
     (* every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
         flam; *)
-    Flambda_iterators.iter_exprs_at_toplevel_of_program flam ~f:(fun flam ->
-      primitive_invariants flam ~no_access_to_global_module_identifiers:cmxfile;
+    Flambda_iterators.iter_exprs_at_toplevel_of_program flam
+      ~f:(fun _cont flam ->
+        primitive_invariants flam
+          ~no_access_to_global_module_identifiers:cmxfile;
 (* CR mshinwell: We need to fix this.  It needs to take account of the
    return continuations including in "program" constructs probably *)
 (*
       every_continuation_is_caught flam;
       every_continuation_is_caught_at_a_single_position flam;
 *)
-      every_declared_closure_is_from_current_compilation_unit flam)
+        every_declared_closure_is_from_current_compilation_unit flam);
+    Push_pop_invariants.check flam;
+    Continuation_scoping.check flam
   with exn -> begin
   (* CR-someday split printing code into its own function *)
     begin match exn with

@@ -445,6 +445,8 @@ let freshen_project_var (var: Var_within_closure.t Closure_id.Map.t)
 
 let freshen_move_within_set_of_closures (move:Closure_id.t Closure_id.Map.t)
       ~closure_freshening : Closure_id.t Closure_id.Map.t =
+  (* Format.printf "plop@ %a@." *)
+  (*   (Closure_id.Map.print Closure_id.print) move; *)
   Closure_id.Map.fold (fun start_from move_to map ->
     let start_from =
       Project_var.apply_closure_id closure_freshening start_from

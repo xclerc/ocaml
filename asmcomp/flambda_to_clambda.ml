@@ -949,7 +949,8 @@ let to_clambda_program t env constants (program : Flambda.program) =
 let collect_traps program =
   let traps = ref Trap_id.Map.empty in
   let exn_handlers = ref Continuation.Set.empty in
-  Flambda_iterators.iter_exprs_at_toplevel_of_program program ~f:(fun expr ->
+  Flambda_iterators.iter_exprs_at_toplevel_of_program program
+    ~f:(fun _cont expr ->
     Flambda_iterators.iter (fun (expr : Flambda.expr) ->
         match expr with
         | Apply_cont (_, Some (Push { id; exn_handler; }), _) ->
