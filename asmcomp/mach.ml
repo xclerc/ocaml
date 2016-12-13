@@ -17,6 +17,8 @@
 
 type label = Cmm.label
 
+type trap_stack = int list
+
 type integer_comparison =
     Isigned of Cmm.comparison
   | Iunsigned of Cmm.comparison
@@ -26,7 +28,7 @@ type integer_operation =
   | Iand | Ior | Ixor | Ilsl | Ilsr | Iasr
   | Icomp of integer_comparison
   | Icheckbound of { label_after_error : label option;
-        spacetime_index : int; }
+        spacetime_index : int; trap_stack : trap_stack; }
 
 type test =
     Itruetest
@@ -44,11 +46,13 @@ type operation =
   | Iconst_int of nativeint
   | Iconst_float of int64
   | Iconst_symbol of string
-  | Icall_ind of { label_after : label; }
-  | Icall_imm of { func : string; label_after : label; }
+  | Icall_ind of { label_after : label; trap_stack : trap_stack; }
+  | Icall_imm of { func : string; label_after : label;
+      trap_stack : trap_stack; }
   | Itailcall_ind of { label_after : label; }
   | Itailcall_imm of { func : string; label_after : label; }
-  | Iextcall of { func : string; alloc : bool; label_after : label; }
+  | Iextcall of { func : string; alloc : bool; label_after : label;
+      trap_stack : trap_stack; }
   | Istackoffset of int
   | Iload of Cmm.memory_chunk * Arch.addressing_mode
   | Istore of Cmm.memory_chunk * Arch.addressing_mode * bool
@@ -69,7 +73,6 @@ type instruction =
     res: Reg.t array;
     dbg: Debuginfo.t;
     mutable live: Reg.Set.t;
-    mutable trap_stack: int list Numbers.Int.Map.t;
   }
 
 and instruction_desc =
@@ -81,7 +84,29 @@ and instruction_desc =
   | Iloop of instruction
   | Icatch of Cmm.rec_flag * bool * (int * instruction) list * instruction
   | Iexit of int
-  | Iraise of Cmm.raise_kind
+  | Iraise of Cmm.raise_kind * trap_stack
+
+let update_trap_stack insn ~trap_stack =
+  let desc =
+    match insn.desc with
+    | Iop (Icall_ind call) -> Iop (Icall_ind { call with trap_stack; })
+    | Iop (Icall_imm call) -> Iop (Icall_imm { call with trap_stack; })
+    | Iop (Iextcall call) -> Iop (Iextcall { call with trap_stack; })
+    | Iop (Iintop (Icheckbound check)) ->
+      Iop (Iintop (Icheckbound { check with trap_stack; }))
+    | Iop (Iintop_imm (Icheckbound check, i)) ->
+      Iop (Iintop_imm (Icheckbound { check with trap_stack; }, i))
+    | Iraise (kind, _) -> Iraise (kind, trap_stack)
+    | Iend
+    | Iop _
+    | Ireturn
+    | Iifthenelse _
+    | Iswitch _
+    | Iloop _
+    | Icatch _
+    | Iexit _ -> desc
+  in
+  { insn with desc; }
 
 type spacetime_part_of_shape =
   | Direct_call_point of { callee : string; }
@@ -106,7 +131,9 @@ let rec dummy_instr =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty }
+    live = Reg.Set.empty;
+    trap_stack = Numbers.Int.Map.empty;
+  }
 
 let end_instr () =
   { desc = Iend;
@@ -114,7 +141,9 @@ let end_instr () =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty }
+    live = Reg.Set.empty;
+    trap_stack = Numbers.Int.Map.empty;
+  }
 
 let instr_cons d a r n =
   { desc = d; next = n; arg = a; res = r;

@@ -21,6 +21,8 @@
     behaviour should be checked. *)
 type label = Cmm.label
 
+type trap_stack = int list
+
 type integer_comparison =
     Isigned of Cmm.comparison
   | Iunsigned of Cmm.comparison
@@ -30,7 +32,7 @@ type integer_operation =
   | Iand | Ior | Ixor | Ilsl | Ilsr | Iasr
   | Icomp of integer_comparison
   | Icheckbound of { label_after_error : label option;
-        spacetime_index : int; }
+        spacetime_index : int; trap_stack : trap_stack; }
     (** For Spacetime only, [Icheckbound] operations take two arguments, the
         second being the pointer to the trie node for the current function
         (and the first being as per non-Spacetime mode). *)
@@ -51,15 +53,20 @@ type operation =
   | Iconst_int of nativeint
   | Iconst_float of int64
   | Iconst_symbol of string
-  | Icall_ind of { label_after : label; }
-  | Icall_imm of { func : string; label_after : label; }
+  | Icall_ind of { label_after : label; trap_stack : trap_stack; }
+  | Icall_imm of { func : string; label_after : label;
+      trap_stack : trap_stack; }
   | Itailcall_ind of { label_after : label; }
   | Itailcall_imm of { func : string; label_after : label; }
-  | Iextcall of { func : string; alloc : bool; label_after : label; }
+  | Iextcall of { func : string; alloc : bool; label_after : label;
+      trap_stack : trap_stack; }
   | Istackoffset of int
   | Iload of Cmm.memory_chunk * Arch.addressing_mode
   | Istore of Cmm.memory_chunk * Arch.addressing_mode * bool
                                  (* false = initialization, true = assignment *)
+  (* CR mshinwell: note: Ialloc needs the trap stack as well once the
+     patch to cope with exceptions coming out of allocation points has been
+     merged. *)
   | Ialloc of { words : int; label_after_call_gc : label option;
       spacetime_index : int; }
     (** For Spacetime only, Ialloc instructions take one argument, being the
@@ -79,12 +86,14 @@ type instruction =
     res: Reg.t array;
     dbg: Debuginfo.t;
     mutable live: Reg.Set.t;
-    mutable trap_stack: int list;
-    (** The CFG successor edges for a given [instruction] are those specified
-        by the [desc] together with the exception handlers (referenced by
-        continuation number) given by the [trap_stack]. *)
   }
 
+(** The CFG successor edges at exception-raising instructions are those
+    given naturally by the [desc] together with the exception handlers
+    (referenced by continuation number) given by the [trap_stack] attached
+    to such instructions.
+    [Icatch] is also annotated with the trap stack at the start of each of
+    its handlers. *)
 and instruction_desc =
     Iend
   | Iop of operation
@@ -93,9 +102,10 @@ and instruction_desc =
   | Iswitch of int array * instruction array
   | Iloop of instruction
   (* CR mshinwell: Use Clambda.catch_kind or similar *)
-  | Icatch of Cmm.rec_flag * bool * (int * instruction) list * instruction
+  | Icatch of Cmm.rec_flag * bool * (int * trap_stack * instruction) list
+      * instruction
   | Iexit of int
-  | Iraise of Cmm.raise_kind
+  | Iraise of Cmm.raise_kind * trap_stack
 
 type spacetime_part_of_shape =
   | Direct_call_point of { callee : string; (* the symbol *) }
@@ -133,3 +143,6 @@ val instr_cons_debug:
 val instr_iter: (instruction -> unit) -> instruction -> unit
 
 val spacetime_node_hole_pointer_is_live_before : instruction -> bool
+
+(** Update the trap stack at the top level of the given instruction. *)
+val update_trap_stack : instruction -> trap_stack:trap_stack -> instruction

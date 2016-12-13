@@ -37,7 +37,7 @@ let find_live_at_raise ~trap_stack =
         cont
     | live -> live
 
-let trap_stacks_at_handlers = ref Numbers.Int.Set.empty
+let trap_stacks_at_handlers = ref Numbers.Int.Map.empty
 
 let rec live i finally =
   (* finally is the set of registers live after execution of the
@@ -73,13 +73,16 @@ let rec live i finally =
         let across_after = Reg.diff_set_array after i.res in
         let across =
           match op with
-          | Icall_ind _ | Icall_imm _ | Iextcall _
-          | Iintop (Icheckbound _) | Iintop_imm(Icheckbound _, _) ->
+          | Icall_ind { trap_stack; _ }
+          | Icall_imm { trap_stack; _ }
+          | Iextcall { trap_stack; _ }
+          | Iintop (Icheckbound { trap_stack; _ })
+          | Iintop_imm (Icheckbound { trap_stack; _ }, _) ->
               (* The function call may raise an exception, branching to the
                   nearest enclosing try ... with. Similarly for bounds checks.
                   Hence, everything that must be live at the beginning of
                   the exception handler must also be live across this instr. *)
-              let live_at_raise = find_live_at_raise ~trap_stack:i.trap_stack in
+              let live_at_raise = find_live_at_raise ~trap_stack in
               Reg.Set.union across_after live_at_raise
           | _ ->
               across_after in
@@ -117,19 +120,14 @@ let rec live i finally =
       let at_join = live i.next finally in
       let aux (nfail,handler) (nfail', before_handler) =
         assert(nfail = nfail');
-        match Int.Map.find nfail !trap_stacks_at_handlers with
-        | exception Not_found ->
-          (* The handler is unused. *)
-          nfail, before_handler
-        | trap_stack ->
-          let before_handler' =
-            let before_handler' = live handler at_join in
-            if not is_exn_handler then
-              before_handler'
-            else
-              Reg.Set.remove Proc.loc_exn_bucket before_handler'
-          in
-          nfail, Reg.Set.union before_handler before_handler'
+        let before_handler' =
+          let before_handler' = live handler at_join in
+          if not is_exn_handler then
+            before_handler'
+          else
+            Reg.Set.remove Proc.loc_exn_bucket before_handler'
+        in
+        nfail, Reg.Set.union before_handler before_handler'
       in
       let aux_equal (nfail, before_handler) (nfail', before_handler') =
         assert(nfail = nfail');
@@ -170,8 +168,8 @@ let rec live i finally =
       let this_live = find_live_at_exit nfail in
       i.live <- this_live ;
       this_live
-  | Iraise _ ->
-      let live_at_raise = find_live_at_raise ~trap_stack:i.trap_stack in
+  | Iraise (_, trap_stack) ->
+      let live_at_raise = find_live_at_raise ~trap_stack in
       i.live <- live_at_raise;
       Reg.add_set_array live_at_raise arg
 
@@ -179,7 +177,7 @@ let reset () =
   live_at_exit := []
 
 let fundecl ppf f =
-  trap_stacks_at_handlers := f.trap_stacks_at_handlers;
+  trap_stacks_at_handlers := f.fun_trap_stacks_at_handlers;
   let initially_live = live f.fun_body Reg.Set.empty in
   (* Sanity check: only function parameters (and the Spacetime node hole
      register, if profiling) can be live at entrypoint *)

@@ -323,7 +323,7 @@ let find_spill_at_raise ~trap_stack =
         cont
     | spill -> spill
 
-let rec spill i finally ~trap_stack =
+let rec spill i finally =
   match i.desc with
     Iend ->
       (i, finally)
@@ -334,31 +334,14 @@ let rec spill i finally ~trap_stack =
       let before1 = Reg.diff_set_array after i.res in
       (instr_cons i.desc i.arg i.res new_next,
        Reg.add_set_array before1 i.res)
-  | Iop op ->
-      let trap_stack =
-        match op with
-        | Ipushtrap cont -> cont :: trap_stack
-        | Ipoptrap cont ->
-          begin match trap_stack with
-          | [] ->
-            Misc.fatal_errorf "Tried to poptrap %d but trap stack is empty" cont
-          | cont' :: trap_stack ->
-            if cont = cont' then
-              trap_stack
-            else
-              Misc.fatal_errorf "Tried to poptrap %d but trap stack has %d \
-                  at the top"
-                cont cont'
-          end
-        | _ -> trap_stack
-      in
+  | Iop _ ->
       let (new_next, after) = spill i.next finally in
       let before1 = Reg.diff_set_array after i.res in
       let before =
         match i.desc with
           Iop Icall_ind _ | Iop(Icall_imm _) | Iop(Iextcall _)
         | Iop(Iintop (Icheckbound _)) | Iop(Iintop_imm((Icheckbound _), _)) ->
-            let spill_at_raise = find_spill_at_raise in
+            let spill_at_raise = find_spill_at_raise ~trap_stack:i.trap_stack in
             Reg.Set.union before1 spill_at_raise
         | _ ->
             before1 in
@@ -437,13 +420,7 @@ let rec spill i finally ~trap_stack =
         let spill_at_exit_add = spill_at_exit_add at_exits in
         spill_at_exit := spill_at_exit_add @ !spill_at_exit;
         let res =
-          List.map (fun (nfail, handler) ->
-              match Int.Map.find nfail !trap_stacks with
-              | exception Not_found ->
-                (* The handler is dead code. *)
-                handler, at_join
-              | trap_stack -> spill handler at_join ~trap_stack)
-            handlers
+          List.map (fun (_nfail, handler) -> spill handler at_join) handlers
         in
         spill_at_exit := previous_spill_at_exit;
         match rec_flag with
@@ -474,7 +451,7 @@ let rec spill i finally ~trap_stack =
   | Iexit nfail ->
       (i, find_spill_at_exit nfail)
   | Iraise _ ->
-      let spill_at_raise = find_spill_at_raise in
+      let spill_at_raise = find_spill_at_raise ~trap_stack:i.trap_stack in
       (i, spill_at_raise)
 
 (* Entry point *)

@@ -285,17 +285,17 @@ method select_operation op args _dbg =
   match (op, args) with
   | (Capply _, Cconst_symbol func :: rem) ->
     let label_after = Cmm.new_label () in
-    (Icall_imm { func; label_after; }, rem)
+    (Icall_imm { func; label_after; trap_stack = []; }, rem)
   | (Capply _, _) ->
     let label_after = Cmm.new_label () in
-    (Icall_ind { label_after; }, args)
+    (Icall_ind { label_after; trap_stack = []; }, args)
   | (Cextcall(func, _ty, alloc, label_after), _) ->
     let label_after =
       match label_after with
       | None -> Cmm.new_label ()
       | Some label_after -> label_after
     in
-    Iextcall { func; alloc; label_after; }, args
+    Iextcall { func; alloc; label_after; trap_stack = []; }, args
   | (Cload chunk, [arg]) ->
       let (addr, eloc) = self#select_addressing chunk arg in
       (Iload(chunk, addr), [eloc])
@@ -565,7 +565,7 @@ method emit_expr (env:environment) exp =
       | Some r1 ->
           let rd = [|Proc.loc_exn_bucket|] in
           self#insert (Iop Imove) r1 rd;
-          self#insert_debug (Iraise k) dbg rd [||];
+          self#insert_debug (Iraise (k, [])) dbg rd [||];
           None
       end
   | Cop(Ccmpf _, _, _) ->

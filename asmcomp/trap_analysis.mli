@@ -14,7 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Fill in the [trap_stack] member of Mach instructions by calculating
+(** Fill in the [trap_stack] members of Mach instructions by calculating
     which exception handlers are in scope for each instruction. *)
 
 val run : Mach.fundecl -> Mach.fundecl
