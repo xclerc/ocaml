@@ -15,6 +15,9 @@
 (**************************************************************************)
 
 (** Fill in the [trap_stack] members of Mach instructions by calculating
-    which exception handlers are in scope for each instruction. *)
+    which exception handlers are in scope for each instruction.
+
+    This pass also removes unused [Icatch] handlers.
+*)
 
 val run : Mach.fundecl -> Mach.fundecl

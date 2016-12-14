@@ -25,7 +25,7 @@ module Int = Numbers.Int
 *)
 
 let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
-      : int list Int.Map.t =
+      : Mach.instruction * (Mach.trap_stack Int.Map.t) =
   let insn = Mach.update_trap_stack insn ~trap_stack:stack in
   let add_stack ~cont ~stack ~stacks_at_exit =
     match Int.Map.find cont stacks_at_exit with
@@ -52,10 +52,9 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
     insn, stacks_at_exit
   | Ireturn ->
     begin match stack with
-    | [] -> stacks_at_exit
+    | [] -> insn, stacks_at_exit
     | _ -> Misc.fatal_error "Trap depth at Ireturn is non-zero"
-    end;
-    insn, stacks_at_exit
+    end
   | Iop op ->
     let stack, stacks_at_exit =
       match op with
@@ -86,9 +85,11 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
     in
     { insn with next; }, stacks_at_exit
   | Iifthenelse (cond, ifso, ifnot) ->
-    let ifso, stacks_at_exit = trap_stacks ifso ~stack in
-    let ifnot, stacks_at_exit = trap_stacks ifnot ~stack in
-    let next, stacks_at_exit = trap_stacks insn.Mach.next ~stack in
+    let ifso, stacks_at_exit = trap_stacks ifso ~stack ~stacks_at_exit in
+    let ifnot, stacks_at_exit = trap_stacks ifnot ~stack ~stacks_at_exit in
+    let next, stacks_at_exit =
+      trap_stacks insn.Mach.next ~stack ~stacks_at_exit
+    in
     { insn with
       desc = Iifthenelse (cond, ifso, ifnot);
       next;
@@ -100,7 +101,7 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       let new_insn, new_stacks_at_exit =
         trap_stacks insns.(case) ~stack ~stacks_at_exit:!stacks_at_exit
       in
-      insns_output.(case) <- new_insn;
+      new_insns.(case) <- new_insn;
       stacks_at_exit := new_stacks_at_exit
     done;
     let next, stacks_at_exit =
@@ -112,33 +113,43 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
     }, stacks_at_exit
   | Iloop body ->
     let body, stacks_at_exit = trap_stacks body ~stack ~stacks_at_exit in
+    let next, stacks_at_exit =
+      trap_stacks insn.Mach.next ~stack ~stacks_at_exit
+    in
     { insn with
       desc = Iloop body;
       next;
     }, stacks_at_exit
   | Icatch (rec_flag, is_exn_handler, handlers, body) ->
     let body, stacks_at_exit = trap_stacks body ~stack ~stacks_at_exit in
-
-
-
-    let handlers = Int.Map.of_list handlers in
+    let handlers =
+      let handlers =
+        List.map (fun (cont, _trap_stack, handler) ->
+            cont, handler)
+          handlers
+      in
+      Int.Map.of_list handlers
+    in
     let handlers_with_uses, handlers_without_uses =
       Int.Map.partition (fun cont _handler ->
           Int.Map.mem cont stacks_at_exit)
         handlers
     in
     let rec process_handlers ~stacks_at_exit ~handlers_with_uses
-          ~handlers_without_uses =
+          ~handlers_without_uses ~output_handlers =
       (* By the invariant above, there is no need to compute a fixpoint. *)
       if Int.Map.is_empty handlers_with_uses then begin
-        stacks_at_exit
+        output_handlers, stacks_at_exit
       end else
         let cont, handler = Int.Map.min_binding handlers_with_uses in
         let handlers_with_uses = Int.Map.remove cont handlers_with_uses in
         match Int.Map.find cont stacks_at_exit with
         | exception Not_found -> assert false
         | stack ->
-          let stacks_at_exit = trap_stacks handler ~stack ~stacks_at_exit in
+          (* [handler] is a continuation that is used. *)
+          let handler, stacks_at_exit =
+            trap_stacks handler ~stack ~stacks_at_exit
+          in
           let new_handlers_with_uses, handlers_without_uses =
             Int.Map.partition (fun cont _handler ->
                 Int.Map.mem cont stacks_at_exit)
@@ -149,27 +160,35 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
           in
           process_handlers ~stacks_at_exit ~handlers_with_uses
             ~handlers_without_uses
+            ~output_handlers:((cont, stack, handler) :: output_handlers)
     in
     let handlers, stacks_at_exit =
       process_handlers ~stacks_at_exit ~handlers_with_uses
-        ~handlers_without_uses
+        ~handlers_without_uses ~output_handlers:[]
     in
-    let next, stacks_at_exit = trap_stacks insn.Mach.next ~stack in
-    { insn with
-      desc = Icatch (rec_flag, is_exn_handler, handlers, body);
-      next;
-    }, stacks_at_exit
+    let next, stacks_at_exit =
+      trap_stacks insn.Mach.next ~stack ~stacks_at_exit
+    in
+    begin match handlers with
+    | [] -> next, stacks_at_exit
+    | handlers ->
+      { insn with
+        desc = Icatch (rec_flag, is_exn_handler, handlers, body);
+        next;
+      }, stacks_at_exit
+    end
   | Iexit cont ->
     let stacks_at_exit = add_stack ~cont ~stack ~stacks_at_exit in
     let next, stacks_at_exit =
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
     in
-    insn, stacks_at_exit
+    { insn with next; }, stacks_at_exit
 
 let run (fundecl : Mach.fundecl) =
-  let stacks_at_exit =
+  let fun_body, fun_trap_stacks_at_handlers =
     trap_stacks fundecl.fun_body ~stack:[] ~stacks_at_exit:Int.Map.empty
   in
   { fundecl with
-    fun_trap_stacks_at_handlers = stacks_at_exit;
+    fun_body;
+    fun_trap_stacks_at_handlers;
   }
