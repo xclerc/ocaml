@@ -140,6 +140,3 @@ val instr_cons_debug:
 val instr_iter: (instruction -> unit) -> instruction -> unit
 
 val spacetime_node_hole_pointer_is_live_before : instruction -> bool
-
-(** Update the trap stack at the top level of the given instruction. *)
-val update_trap_stack : instruction -> trap_stack:trap_stack -> instruction

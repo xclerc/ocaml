@@ -87,28 +87,6 @@ and instruction_desc =
   | Iexit of int
   | Iraise of Cmm.raise_kind * trap_stack
 
-let update_trap_stack insn ~trap_stack =
-  let desc =
-    match insn.desc with
-    | Iop (Icall_ind call) -> Iop (Icall_ind { call with trap_stack; })
-    | Iop (Icall_imm call) -> Iop (Icall_imm { call with trap_stack; })
-    | Iop (Iextcall call) -> Iop (Iextcall { call with trap_stack; })
-    | Iop (Iintop (Icheckbound check)) ->
-      Iop (Iintop (Icheckbound { check with trap_stack; }))
-    | Iop (Iintop_imm (Icheckbound check, i)) ->
-      Iop (Iintop_imm (Icheckbound { check with trap_stack; }, i))
-    | Iraise (kind, _) -> Iraise (kind, trap_stack)
-    | Iend
-    | Iop _
-    | Ireturn
-    | Iifthenelse _
-    | Iswitch _
-    | Iloop _
-    | Icatch _
-    | Iexit _ -> insn.desc
-  in
-  { insn with desc; }
-
 type spacetime_part_of_shape =
   | Direct_call_point of { callee : string; }
   | Indirect_call_point
