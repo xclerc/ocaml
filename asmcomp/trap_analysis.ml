@@ -75,8 +75,19 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
         end
       | _ -> stack, stacks_at_exit
     in
-    let desc =
-
+    let desc : Mach.instruction_desc =
+      match op with
+      | Icall_ind call ->
+        Iop (Icall_ind ({ call with trap_stack = stack; }))
+      | Icall_imm call ->
+        Iop (Icall_imm ({ call with trap_stack = stack; }))
+      | Iextcall call ->
+        Iop (Iextcall ({ call with trap_stack = stack; }))
+      | Iintop (Icheckbound check) ->
+        Iop (Iintop (Icheckbound ({ check with trap_stack = stack; })))
+      | Iintop_imm (Icheckbound check, i) ->
+        Iop (Iintop_imm (Icheckbound { check with trap_stack = stack; }, i))
+      | _ -> Iop op
     in
     let next, stacks_at_exit =
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
@@ -84,11 +95,11 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
     { insn with
       desc;
       next; }, stacks_at_exit
-  | Iraise kind ->
+  | Iraise (kind, _) ->
     let next, stacks_at_exit =
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
     in
-    { insn with Iraise (kind, stack); next; }, stacks_at_exit
+    { insn with desc = Iraise (kind, stack); next; }, stacks_at_exit
   | Iifthenelse (cond, ifso, ifnot) ->
     let ifso, stacks_at_exit = trap_stacks ifso ~stack ~stacks_at_exit in
     let ifnot, stacks_at_exit = trap_stacks ifnot ~stack ~stacks_at_exit in
@@ -126,6 +137,7 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       next;
     }, stacks_at_exit
   | Icatch (rec_flag, is_exn_handler, handlers, body) ->
+    assert (not is_exn_handler || List.length handlers = 1);
     let body, stacks_at_exit = trap_stacks body ~stack ~stacks_at_exit in
     let handlers =
       let handlers =
@@ -151,7 +163,20 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
         match Int.Map.find cont stacks_at_exit with
         | exception Not_found -> assert false
         | stack ->
-          (* [handler] is a continuation that is used. *)
+          (* [handler] is a continuation that is used.  It is called (via
+             exit or raise) when the given [stack] of exception handlers are
+             in scope. *)
+          let stack =
+            if not is_exn_handler then
+              stack
+            else
+              match stack with
+              | _::stack -> stack
+              | [] ->
+                Misc.fatal_errorf "Continuation %d is an exception handler \
+                    whose trap-stack-at-start is empty"
+                  cont
+          in
           let handler, stacks_at_exit =
             trap_stacks handler ~stack ~stacks_at_exit
           in

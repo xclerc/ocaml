@@ -29,7 +29,7 @@ let find_live_at_exit k =
 
 let find_live_at_raise ~trap_stack =
   match trap_stack with
-  | [] -> Reg.Set.empty
+  | [] -> Reg.Set.empty  (* raise to toplevel exception handler *)
   | cont::_ ->
     match find_live_at_exit cont with
     | exception Not_found ->
@@ -77,9 +77,9 @@ let rec live i finally =
           | Iintop (Icheckbound { trap_stack; _ })
           | Iintop_imm (Icheckbound { trap_stack; _ }, _) ->
               (* The function call may raise an exception, branching to the
-                  nearest enclosing try ... with. Similarly for bounds checks.
-                  Hence, everything that must be live at the beginning of
-                  the exception handler must also be live across this instr. *)
+                 nearest enclosing try ... with. Similarly for bounds checks.
+                 Hence, everything that must be live at the beginning of
+                 the exception handler must also be live across this instr. *)
               let live_at_raise = find_live_at_raise ~trap_stack in
               Reg.Set.union across_after live_at_raise
           | _ ->
