@@ -195,7 +195,7 @@ let rec instr ppf i =
   | Icatch(flag, _is_exn_handler, handlers, body) ->
       fprintf ppf "@[<v 2>catch%a@,%a@;<0 -2>with"
         Printcmm.rec_flag flag instr body;
-      let h (nfail, handler) =
+      let h (nfail, _, handler) =
         fprintf ppf "(%d)@,%a@;" nfail instr handler in
       let rec aux = function
         | [] -> ()
@@ -209,7 +209,7 @@ let rec instr ppf i =
       fprintf ppf "@]"
   | Iexit i ->
       fprintf ppf "exit(%d)" i
-  | Iraise k ->
+  | Iraise (k, _) ->
       fprintf ppf "%a %a" Printcmm.raise_kind k reg i.arg.(0)
   end;
   if not (Debuginfo.is_none i.dbg) then

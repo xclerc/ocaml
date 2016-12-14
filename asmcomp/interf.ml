@@ -109,7 +109,7 @@ let build_graph fundecl =
         interf body; interf i.next
     | Icatch(_rec_flag, _is_exn_handler, handlers, body) ->
         interf body;
-        List.iter (fun (_, handler) -> interf handler) handlers;
+        List.iter (fun (_, _, handler) -> interf handler) handlers;
         interf i.next
     | Iexit _ ->
         ()
@@ -180,7 +180,7 @@ let build_graph fundecl =
         prefer weight i.next
     | Icatch(rec_flag, _is_exn_handler, handlers, body) ->
         prefer weight body;
-        List.iter (fun (_nfail, handler) ->
+        List.iter (fun (_nfail, _, handler) ->
             let weight =
               match rec_flag with
               | Cmm.Recursive ->

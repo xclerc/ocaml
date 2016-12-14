@@ -75,15 +75,20 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
         end
       | _ -> stack, stacks_at_exit
     in
+    let desc =
+
+    in
     let next, stacks_at_exit =
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
     in
-    { insn with next; }, stacks_at_exit
-  | Iraise _ ->
+    { insn with
+      desc;
+      next; }, stacks_at_exit
+  | Iraise kind ->
     let next, stacks_at_exit =
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
     in
-    { insn with next; }, stacks_at_exit
+    { insn with Iraise (kind, stack); next; }, stacks_at_exit
   | Iifthenelse (cond, ifso, ifnot) ->
     let ifso, stacks_at_exit = trap_stacks ifso ~stack ~stacks_at_exit in
     let ifnot, stacks_at_exit = trap_stacks ifnot ~stack ~stacks_at_exit in
@@ -97,7 +102,7 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
   | Iswitch (cases, insns) ->
     let stacks_at_exit = ref stacks_at_exit in
     let new_insns = Array.copy insns in
-    for case = 0 to Array.length cases - 1 do
+    for case = 0 to Array.length insns - 1 do
       let new_insn, new_stacks_at_exit =
         trap_stacks insns.(case) ~stack ~stacks_at_exit:!stacks_at_exit
       in
@@ -185,10 +190,9 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
     { insn with next; }, stacks_at_exit
 
 let run (fundecl : Mach.fundecl) =
-  let fun_body, fun_trap_stacks_at_handlers =
+  let fun_body, _stacks_at_exit =
     trap_stacks fundecl.fun_body ~stack:[] ~stacks_at_exit:Int.Map.empty
   in
   { fundecl with
     fun_body;
-    fun_trap_stacks_at_handlers;
   }

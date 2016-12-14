@@ -377,6 +377,7 @@ class virtual instruction_selection = object (self)
       Mach.Icheckbound {
         label_after_error = Some label;
         spacetime_index = index;
+        trap_stack = [];
       }
     end else begin
       super#select_checkbound ()

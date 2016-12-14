@@ -82,7 +82,8 @@ and instruction_desc =
   | Iifthenelse of test * instruction * instruction
   | Iswitch of int array * instruction array
   | Iloop of instruction
-  | Icatch of Cmm.rec_flag * bool * (int * instruction) list * instruction
+  | Icatch of Cmm.rec_flag * bool * (int * trap_stack * instruction) list
+      * instruction
   | Iexit of int
   | Iraise of Cmm.raise_kind * trap_stack
 
@@ -104,7 +105,7 @@ let update_trap_stack insn ~trap_stack =
     | Iswitch _
     | Iloop _
     | Icatch _
-    | Iexit _ -> desc
+    | Iexit _ -> insn.desc
   in
   { insn with desc; }
 
@@ -122,7 +123,6 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
-    fun_trap_stacks_at_handlers : int list Numbers.Int.Map.t;
   }
 
 let rec dummy_instr =
@@ -131,9 +131,7 @@ let rec dummy_instr =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty;
-    trap_stack = Numbers.Int.Map.empty;
-  }
+    live = Reg.Set.empty }
 
 let end_instr () =
   { desc = Iend;
@@ -141,9 +139,7 @@ let end_instr () =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty;
-    trap_stack = Numbers.Int.Map.empty;
-  }
+    live = Reg.Set.empty }
 
 let instr_cons d a r n =
   { desc = d; next = n; arg = a; res = r;
@@ -171,7 +167,7 @@ let rec instr_iter f i =
           instr_iter f body; instr_iter f i.next
       | Icatch(_, _, handlers, body) ->
           instr_iter f body;
-          List.iter (fun (_n, handler) -> instr_iter f handler) handlers;
+          List.iter (fun (_n, _, handler) -> instr_iter f handler) handlers;
           instr_iter f i.next
       | Iexit _ -> ()
       | Iraise _ -> ()

@@ -61,9 +61,9 @@ let rec deadcode i =
   | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let (body', _) = deadcode body in
       let handlers' =
-        List.map (fun (nfail, handler) ->
+        List.map (fun (nfail, trap_stack, handler) ->
             let (handler', _) = deadcode handler in
-            nfail, handler')
+            nfail, trap_stack, handler')
           handlers
       in
       let (s, _) = deadcode i.next in

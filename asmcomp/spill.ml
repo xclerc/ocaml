@@ -225,14 +225,14 @@ let rec reload i before =
        finally)
   | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let new_sets = List.map
-          (fun (nfail, _) -> nfail, ref Reg.Set.empty) handlers in
+          (fun (nfail, _, _) -> nfail, ref Reg.Set.empty) handlers in
       let previous_reload_at_exit = !reload_at_exit in
       reload_at_exit := new_sets @ !reload_at_exit ;
       let (new_body, after_body) = reload body before in
       let rec fixpoint () =
         let at_exits = List.map (fun (nfail, set) -> (nfail, !set)) new_sets in
         let res =
-          List.map2 (fun (nfail', handler) (nfail, at_exit) ->
+          List.map2 (fun (nfail', _, handler) (nfail, at_exit) ->
               assert(nfail = nfail');
               match Int.Map.find nfail !trap_stacks with
               | exception Not_found ->
@@ -249,7 +249,8 @@ let rec reload i before =
         | Cmm.Nonrecursive ->
             res
         | Cmm.Recursive ->
-            let equal = List.for_all2 (fun (nfail', at_exit) (nfail, new_set) ->
+            let equal =
+              List.for_all2 (fun (nfail', at_exit) (nfail, new_set) ->
                 assert(nfail = nfail');
                 Reg.Set.equal at_exit !new_set)
                 at_exits new_sets in
@@ -264,7 +265,8 @@ let rec reload i before =
           after_body res in
       let (new_next, finally) = reload i.next union in
       let new_handlers = List.map2
-          (fun (nfail, _) (new_handler, _) -> nfail, new_handler)
+          (fun (nfail, trap_stack, _) (new_handler, _) ->
+            nfail, trap_stack, new_handler)
           handlers res in
       (instr_cons
          (Icatch(rec_flag, is_exn_handler, new_handlers, new_body))
@@ -334,14 +336,17 @@ let rec spill i finally =
       let before1 = Reg.diff_set_array after i.res in
       (instr_cons i.desc i.arg i.res new_next,
        Reg.add_set_array before1 i.res)
-  | Iop _ ->
+  | Iop op ->
       let (new_next, after) = spill i.next finally in
       let before1 = Reg.diff_set_array after i.res in
       let before =
-        match i.desc with
-          Iop Icall_ind _ | Iop(Icall_imm _) | Iop(Iextcall _)
-        | Iop(Iintop (Icheckbound _)) | Iop(Iintop_imm((Icheckbound _), _)) ->
-            let spill_at_raise = find_spill_at_raise ~trap_stack:i.trap_stack in
+        match op with
+        | Icall_ind { trap_stack; _ }
+        | Icall_imm { trap_stack; _ }
+        | Iextcall { trap_stack; _ }
+        | Iintop (Icheckbound { trap_stack; _ })
+        | Iintop_imm (Icheckbound { trap_stack; _ }, _) ->
+            let spill_at_raise = find_spill_at_raise ~trap_stack in
             Reg.Set.union before1 spill_at_raise
         | _ ->
             before1 in
@@ -413,14 +418,14 @@ let rec spill i finally =
       inside_catch := true ;
       let previous_spill_at_exit = !spill_at_exit in
       let spill_at_exit_add at_exits = List.map2
-          (fun (nfail,_) at_exit -> nfail, (ref false, at_exit))
+          (fun (nfail, _, _) at_exit -> nfail, (ref false, at_exit))
           handlers at_exits
       in
       let rec fixpoint at_exits =
         let spill_at_exit_add = spill_at_exit_add at_exits in
         spill_at_exit := spill_at_exit_add @ !spill_at_exit;
         let res =
-          List.map (fun (_nfail, handler) -> spill handler at_join) handlers
+          List.map (fun (_nfail, _, handler) -> spill handler at_join) handlers
         in
         spill_at_exit := previous_spill_at_exit;
         match rec_flag with
@@ -442,16 +447,18 @@ let rec spill i finally =
       spill_at_exit := spill_at_exit_add @ !spill_at_exit;
       let (new_body, before) = spill body at_join in
       spill_at_exit := previous_spill_at_exit;
-      let new_handlers = List.map2
-          (fun (nfail, _) (handler, _) -> nfail, handler)
-          handlers res in
+      let new_handlers =
+        List.map2 (fun (nfail, trap_stack, _) (handler, _) ->
+            nfail, trap_stack, handler)
+          handlers res
+      in
       (instr_cons (Icatch(rec_flag, is_exn_handler, new_handlers, new_body))
          i.arg i.res new_next,
        before)
   | Iexit nfail ->
       (i, find_spill_at_exit nfail)
-  | Iraise _ ->
-      let spill_at_raise = find_spill_at_raise ~trap_stack:i.trap_stack in
+  | Iraise (_, trap_stack) ->
+      let spill_at_raise = find_spill_at_raise ~trap_stack in
       (i, spill_at_raise)
 
 (* Entry point *)
@@ -464,7 +471,6 @@ let reset () =
 
 let fundecl f =
   reset ();
-  trap_stacks := f.fun_trap_stacks_at_handlers;
   let (body1, _) = reload f.fun_body Reg.Set.empty in
   let (body2, tospill_at_entry) = spill body1 Reg.Set.empty in
   let new_body =
@@ -478,5 +484,4 @@ let fundecl f =
     fun_fast = f.fun_fast;
     fun_dbg  = f.fun_dbg;
     fun_spacetime_shape = f.fun_spacetime_shape;
-    fun_trap_stacks_at_handlers = f.fun_trap_stacks_at_handlers;
   }

@@ -114,7 +114,8 @@ method private reload i =
       instr_cons (Iloop(self#reload body)) [||] [||] (self#reload i.next)
   | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let new_handlers = List.map
-          (fun (nfail, handler) -> nfail, self#reload handler)
+          (fun (nfail, trap_stack, handler) ->
+            nfail, trap_stack, self#reload handler)
           handlers in
       instr_cons
         (Icatch(rec_flag, is_exn_handler, new_handlers, self#reload body))
@@ -128,7 +129,6 @@ method fundecl f =
   let new_body = self#reload f.fun_body in
   ({fun_name = f.fun_name; fun_args = f.fun_args;
     fun_body = new_body; fun_fast = f.fun_fast;
-    fun_dbg  = f.fun_dbg; fun_spacetime_shape = f.fun_spacetime_shape;
-    fun_trap_stacks = f.fun_trap_stacks;},
+    fun_dbg  = f.fun_dbg; fun_spacetime_shape = f.fun_spacetime_shape;},
    redo_regalloc)
 end

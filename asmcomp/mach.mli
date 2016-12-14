@@ -127,9 +127,6 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
-    fun_trap_stacks_at_handlers : int list Numbers.Int.Map.t;
-    (** For convenience, the trap stacks at the start of all [Icatch] handlers,
-        indexed by continuation number. *)
   }
 
 val dummy_instr: instruction

@@ -260,7 +260,7 @@ method mark_instr = function
       self#mark_call (* caml_alloc*, caml_garbage_collection *)
   | Iop (Iintop (Icheckbound _) | Iintop_imm(Icheckbound _, _)) ->
       self#mark_c_tailcall (* caml_ml_array_bound_error *)
-  | Iraise raise_kind ->
+  | Iraise (raise_kind, _) ->
     begin match raise_kind with
       | Cmm.Raise_notrace -> ()
       | Cmm.Raise_withtrace ->
@@ -278,7 +278,8 @@ method select_allocation words =
 method select_allocation_args _env = [| |]
 
 method select_checkbound () =
-  Icheckbound { spacetime_index = 0; label_after_error = None; }
+  Icheckbound { spacetime_index = 0; label_after_error = None;
+    trap_stack = []; }
 method select_checkbound_extra_args () = []
 
 method select_operation op args _dbg =
@@ -707,7 +708,7 @@ method emit_expr (env:environment) exp =
       let l = List.map translate_one_handler handlers in
       let a = Array.of_list ((r_body, s_body) :: List.map snd l) in
       let r = join_array a in
-      let aux (nfail, (_r, s)) = (nfail, s#extract) in
+      let aux (nfail, (_r, s)) = (nfail, [], s#extract) in
       let rec_flag, is_exn_handler =
         match kind with
         | Clambda.Normal Asttypes.Nonrecursive -> Cmm.Nonrecursive, false
@@ -981,7 +982,7 @@ method emit_tail (env:environment) exp =
           List.fold_left
             (fun env (id,r) -> env_add id r env)
             env (List.combine ids rs) in
-        nfail, self#emit_tail_sequence new_env e2
+        nfail, [], self#emit_tail_sequence new_env e2
       in
       let rec_flag, is_exn_handler =
         match kind with
@@ -1050,7 +1051,6 @@ method emit_fundecl f =
     fun_fast = f.Cmm.fun_fast;
     fun_dbg  = f.Cmm.fun_dbg;
     fun_spacetime_shape;
-    fun_trap_stacks = Numbers.Int.Map.empty;
   }
 
 end

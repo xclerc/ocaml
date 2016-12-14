@@ -37,8 +37,6 @@ let find_live_at_raise ~trap_stack =
         cont
     | live -> live
 
-let trap_stacks_at_handlers = ref Numbers.Int.Map.empty
-
 let rec live i finally =
   (* finally is the set of registers live after execution of the
      instruction sequence.
@@ -118,7 +116,7 @@ let rec live i finally =
       !at_top
   | Icatch(rec_flag, is_exn_handler, handlers, body) ->
       let at_join = live i.next finally in
-      let aux (nfail, _, handler) (nfail', _, before_handler) =
+      let aux (nfail, _, handler) (nfail', before_handler) =
         assert(nfail = nfail');
         let before_handler' =
           let before_handler' = live handler at_join in
@@ -129,18 +127,18 @@ let rec live i finally =
         in
         nfail, Reg.Set.union before_handler before_handler'
       in
-      let aux_equal (nfail, _, before_handler) (nfail', _, before_handler') =
+      let aux_equal (nfail, before_handler) (nfail', before_handler') =
         assert(nfail = nfail');
         Reg.Set.equal before_handler before_handler'
       in
       let live_at_exit_before = !live_at_exit in
       let live_at_exit_add before_handlers =
-        List.map (fun (nfail, _, before_handler) ->
+        List.map (fun (nfail, before_handler) ->
             (nfail, before_handler))
           before_handlers
       in
       let rec fixpoint before_handlers =
-        let live_at_exit_add = live_at_exit_add before_handlers in
+        let live_at_exit_add = before_handlers in
         live_at_exit := live_at_exit_add @ !live_at_exit;
         let before_handlers' = List.map2 aux handlers before_handlers in
         live_at_exit := live_at_exit_before;
@@ -177,7 +175,6 @@ let reset () =
   live_at_exit := []
 
 let fundecl ppf f =
-  trap_stacks_at_handlers := f.fun_trap_stacks_at_handlers;
   let initially_live = live f.fun_body Reg.Set.empty in
   (* Sanity check: only function parameters (and the Spacetime node hole
      register, if profiling) can be live at entrypoint *)
@@ -188,6 +185,8 @@ let fundecl ppf f =
   in
   if not (Reg.Set.is_empty wrong_live) then begin
     Format.fprintf ppf "%a@." Printmach.regset wrong_live;
-(*    Format.fprintf ppf "%s BAD LIVE\n%!" f.fun_name*)
+    Format.fprintf ppf "%s BAD LIVE\n%!" f.fun_name
+(*
     Misc.fatal_error "Liveness.fundecl"
+*)
   end

@@ -350,8 +350,8 @@ method private cse n i =
       {i with desc = Iloop(self#cse empty_numbering body);
               next = self#cse empty_numbering i.next}
   | Icatch(rec_flag, is_exn_handler, handlers, body) ->
-      let aux (nfail, handler) =
-        nfail, self#cse empty_numbering handler
+      let aux (nfail, trap_stack, handler) =
+        nfail, trap_stack, self#cse empty_numbering handler
       in
       {i with desc = Icatch(rec_flag, is_exn_handler, List.map aux handlers,
                 self#cse n body);

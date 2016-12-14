@@ -166,12 +166,14 @@ let rec rename i sub =
       (instr_cons (Iloop(new_body)) [||] [||] new_next,
        sub_next)
   | Icatch(rec_flag, is_exn_handler, handlers, body) ->
-      let new_subst = List.map (fun (nfail, _) -> nfail, ref None)
+      let new_subst = List.map (fun (nfail, _, _) -> nfail, ref None)
           handlers in
       let previous_exit_subst = !exit_subst in
       exit_subst := new_subst @ !exit_subst;
       let (new_body, sub_body) = rename body sub in
-      let res = List.map2 (fun (_, handler) (_, new_subst) -> rename handler !new_subst)
+      let res =
+        List.map2 (fun (_, _, handler) (_, new_subst) ->
+            rename handler !new_subst)
           handlers new_subst in
       exit_subst := previous_exit_subst;
       let merged_subst =
@@ -179,8 +181,8 @@ let rec rename i sub =
             merge_substs acc sub_handler i.next)
           sub_body res in
       let (new_next, sub_next) = rename i.next merged_subst in
-      let new_handlers = List.map2 (fun (nfail, _) (handler, _) ->
-          (nfail, handler)) handlers res in
+      let new_handlers = List.map2 (fun (nfail, trap_stack, _) (handler, _) ->
+          (nfail, trap_stack, handler)) handlers res in
       (instr_cons
          (Icatch(rec_flag, is_exn_handler, new_handlers, new_body))
          [||] [||] new_next,
@@ -189,8 +191,9 @@ let rec rename i sub =
       let r = find_exit_subst nfail in
       r := merge_substs !r sub i;
       (i, None)
-  | Iraise k ->
-      (instr_cons_debug (Iraise k) (subst_regs i.arg sub) [||] i.dbg i.next,
+  | Iraise (k, trap_stack) ->
+      (instr_cons_debug (Iraise (k, trap_stack)) (subst_regs i.arg sub) [||]
+        i.dbg i.next,
        None)
 
 (* Second pass: replace registers by their final representatives *)
@@ -218,5 +221,4 @@ let fundecl f =
     fun_fast = f.fun_fast;
     fun_dbg  = f.fun_dbg;
     fun_spacetime_shape = f.fun_spacetime_shape;
-    fun_trap_stacks = f.fun_trap_stacks;
   }
