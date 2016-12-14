@@ -26,7 +26,6 @@ module Int = Numbers.Int
 
 let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       : Mach.instruction * (Mach.trap_stack Int.Map.t) =
-  let insn = Mach.update_trap_stack insn ~trap_stack:stack in
   let add_stack ~cont ~stack ~stacks_at_exit =
     match Int.Map.find cont stacks_at_exit with
     | exception Not_found ->
@@ -47,6 +46,11 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       end;
       stacks_at_exit
   in
+  let register_raise ~stack ~stacks_at_exit =
+    match stack with
+    | [] -> stacks_at_exit  (* raise to toplevel handler *)
+    | cont::_ -> add_stack ~cont ~stack ~stacks_at_exit
+  in
   match insn.Mach.desc with
   | Iend ->
     insn, stacks_at_exit
@@ -59,7 +63,6 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
     let stack, stacks_at_exit =
       match op with
       | Ipushtrap cont ->
-        let stacks_at_exit = add_stack ~cont ~stack ~stacks_at_exit in
         cont :: stack, stacks_at_exit
       | Ipoptrap cont ->
         begin match stack with
@@ -75,19 +78,30 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
         end
       | _ -> stack, stacks_at_exit
     in
-    let desc : Mach.instruction_desc =
+    let desc, stacks_at_exit =
       match op with
       | Icall_ind call ->
-        Iop (Icall_ind ({ call with trap_stack = stack; }))
+        let stacks_at_exit = register_raise ~stack ~stacks_at_exit in
+        Mach.Iop (Icall_ind ({ call with trap_stack = stack; })),
+          stacks_at_exit
       | Icall_imm call ->
-        Iop (Icall_imm ({ call with trap_stack = stack; }))
+        let stacks_at_exit = register_raise ~stack ~stacks_at_exit in
+        Mach.Iop (Icall_imm ({ call with trap_stack = stack; })),
+          stacks_at_exit
       | Iextcall call ->
-        Iop (Iextcall ({ call with trap_stack = stack; }))
+        let stacks_at_exit = register_raise ~stack ~stacks_at_exit in
+        Mach.Iop (Iextcall ({ call with trap_stack = stack; })),
+          stacks_at_exit
       | Iintop (Icheckbound check) ->
-        Iop (Iintop (Icheckbound ({ check with trap_stack = stack; })))
+        let stacks_at_exit = register_raise ~stack ~stacks_at_exit in
+        Mach.Iop (Iintop (Icheckbound ({ check with trap_stack = stack; }))),
+          stacks_at_exit
       | Iintop_imm (Icheckbound check, i) ->
-        Iop (Iintop_imm (Icheckbound { check with trap_stack = stack; }, i))
-      | _ -> Iop op
+        let stacks_at_exit = register_raise ~stack ~stacks_at_exit in
+        Mach.Iop (Iintop_imm (
+            Icheckbound { check with trap_stack = stack; }, i)),
+          stacks_at_exit
+      | _ -> Mach.Iop op, stacks_at_exit
     in
     let next, stacks_at_exit =
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
@@ -96,6 +110,7 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       desc;
       next; }, stacks_at_exit
   | Iraise (kind, _) ->
+    let stacks_at_exit = register_raise ~stack ~stacks_at_exit in
     let next, stacks_at_exit =
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
     in
