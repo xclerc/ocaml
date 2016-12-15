@@ -115,10 +115,16 @@ let dissect_letrec ~bindings ~body =
         seq, L.Lprim (Pccall desc, [L.Lvar id; binding], loc))
       recursive_blocks
   in
+  let body =
+  List.fold_left (fun body (id, binding) ->
+      L.Llet (Strict, Pgenval, id, binding, body))
+    body
+    fillings
+  in
   List.fold_left (fun body (id, binding) ->
       L.Llet (Strict, Pgenval, id, binding, body))
     (L.Lletrec (functions, body))
-    (fillings @ nonrecursives @ preallocations)
+    (nonrecursives @ preallocations)
 
 module Env : sig
   type t
