@@ -472,16 +472,19 @@ module Continuation_uses = struct
       args : (Variable.t * A.t) list;
       env : Env.t;
     }
+    type non_inlinable = A.t list
   end
 
   type t = {
+    backend : (module Backend_intf.S);
     inlinable_application_points : Use.t list;
-    num_non_inlinable_application_points : Num_continuation_uses.t;
+    non_inlinable_application_points : Use.non_inlinable list;
   }
 
-  let create () =
-    { inlinable_application_points = [];
-      num_non_inlinable_application_points = Zero;
+  let create ~backend =
+    { backend;
+      inlinable_application_points = [];
+      non_inlinable_application_points = [];
     }
 
   let add_inlinable_use t env ~args =
@@ -490,12 +493,10 @@ module Continuation_uses = struct
         { Use. env; args; } :: t.inlinable_application_points;
     }
 
-  let add_non_inlinable_use t _env ~args_approxs:_ =
-    (* CR mshinwell: should we record args_approxs here? *)
+  let add_non_inlinable_use t _env ~args_approxs =
     { t with
-      num_non_inlinable_application_points =
-        Num_continuation_uses.(+) t.num_non_inlinable_application_points
-          Num_continuation_uses.One;
+      non_inlinable_application_points =
+        args_approxs :: t.non_inlinable_application_points;
     }
 
   let num_inlinable_application_points t : Num_continuation_uses.t =
@@ -504,24 +505,36 @@ module Continuation_uses = struct
     | [_] -> One
     | _ -> Many
 
+  let num_non_inlinable_application_points t : Num_continuation_uses.t =
+    match t.non_inlinable_application_points with
+    | [] -> Zero
+    | [_] -> One
+    | _ -> Many
+
   let linearly_used t =
     match num_inlinable_application_points t,
-      t.num_non_inlinable_application_points
+      num_non_inlinable_application_points t
     with
     | One, Zero -> true
     | _, _ -> false
 
   let meet_of_args_approxs t ~num_params =
-    match t.inlinable_application_points with
-    | [] -> 
-      Array.to_list (Array.make num_params (A.value_unknown Other))
+    let application_points =
+      List.map (fun ({ args } : Use.t) -> List.map snd args)
+        t.inlinable_application_points
+      @ t.non_inlinable_application_points
+    in
+    match application_points with
+    | [] ->
+      Array.to_list (Array.make num_params (A.value_bottom))
     | use::uses ->
-      List.fold_left (fun args_approxs (use : Use.t) ->
-          List.map2 (fun approx1 (_var, approx2) ->
-              A.meet approx1 approx2
-                ~really_import_approx:(Env.really_import_approx use.env))
-            args_approxs use.args)
-        (List.map (fun (_var, approx) -> approx) use.args)
+      List.fold_left (fun args_approxs use ->
+        List.map2 (fun approx1 approx2 ->
+          let module Backend = (val (t.backend) : Backend_intf.S) in
+          A.meet approx1 approx2
+            ~really_import_approx:Backend.really_import_approx)
+          args_approxs use)
+        use
         uses
 
   let inlinable_application_points t = t.inlinable_application_points
@@ -586,7 +599,8 @@ module Result = struct
     end;
     let uses =
       match Continuation.Map.find cont t.used_continuations with
-      | exception Not_found -> Continuation_uses.create ()
+      | exception Not_found ->
+        Continuation_uses.create ~backend:(Env.backend env)
       | uses -> uses
     in
     let uses =
@@ -628,10 +642,10 @@ module Result = struct
       used_continuations = snapshot.used_continuations;
     }
 
-  let exit_scope_catch t i ~num_params =
+  let exit_scope_catch t env i ~num_params =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->
-      let uses = Continuation_uses.create () in
+      let uses = Continuation_uses.create ~backend:(Env.backend env) in
       let approxs =
         Array.make num_params (Simple_value_approx.value_unknown Other)
       in
