@@ -676,11 +676,7 @@ method emit_expr (env:environment) exp =
                 (* CR-someday mshinwell: consider how we can do better than
                    [typ_val] when appropriate. *)
                 (fun id ->
-                  let r =
-                    match kind with
-                    | Clambda.Normal _ -> self#regs_for typ_val
-                    | Clambda.Exn_handler -> [| Proc.loc_exn_bucket |]
-                  in
+                  let r = self#regs_for typ_val in
                   name_regs id r;
                   r)
                 ids in
@@ -702,7 +698,13 @@ method emit_expr (env:environment) exp =
           List.fold_left (fun env (id, r) -> env_add id r env)
             env (List.combine ids rs)
         in
-        let (r, s) = self#emit_sequence new_env e2 in
+        let (r, s) =
+          self#emit_sequence new_env e2 ~at_start:(fun seq ->
+            match kind with
+            | Clambda.Normal _ -> ()
+            | Clambda.Exn_handler ->
+              seq#insert_moves [| Proc.loc_exn_bucket |] (Array.concat rs))
+        in
         (nfail, (r, s))
       in
       let l = List.map translate_one_handler handlers in
@@ -742,8 +744,12 @@ method emit_expr (env:environment) exp =
           None
       end
 
-method private emit_sequence (env:environment) exp =
+method private emit_sequence ?at_start env exp =
   let s = {< instr_seq = dummy_instr >} in
+  begin match at_start with
+  | None -> ()
+  | Some f -> f s
+  end;
   let r = s#emit_expr env exp in
   (r, s)
 
@@ -961,11 +967,7 @@ method emit_tail (env:environment) exp =
             let rs =
               List.map
                 (fun id ->
-                  let r =
-                    match kind with
-                    | Clambda.Normal _ -> self#regs_for typ_val
-                    | Clambda.Exn_handler -> [| Proc.loc_exn_bucket |]
-                  in
+                  let r = self#regs_for typ_val in
                   name_regs id r;
                   r)
                 ids in
@@ -982,7 +984,12 @@ method emit_tail (env:environment) exp =
           List.fold_left
             (fun env (id,r) -> env_add id r env)
             env (List.combine ids rs) in
-        nfail, [], self#emit_tail_sequence new_env e2
+        nfail, [],
+          self#emit_tail_sequence new_env e2 ~at_start:(fun seq ->
+            match kind with
+            | Clambda.Normal _ -> ()
+            | Clambda.Exn_handler ->
+              seq#insert_moves [| Proc.loc_exn_bucket |] (Array.concat rs))
       in
       let rec_flag, is_exn_handler =
         match kind with
@@ -996,8 +1003,12 @@ method emit_tail (env:environment) exp =
   | _ ->
       self#emit_return env exp
 
-method private emit_tail_sequence env exp =
+method private emit_tail_sequence ?at_start env exp =
   let s = {< instr_seq = dummy_instr >} in
+  begin match at_start with
+  | None -> ()
+  | Some f -> f s
+  end;
   s#emit_tail env exp;
   s#extract
 
