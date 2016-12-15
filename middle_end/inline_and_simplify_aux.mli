@@ -286,7 +286,7 @@ module Continuation_uses : sig
 
   type t
 
-  val create : unit -> t
+  val create : backend:(module Backend_intf.S) -> t
 
   val add_inlinable_use
      : t
@@ -359,6 +359,7 @@ module Result : sig
   (* CR mshinwell: should this be combined with define_continuation? *)
   val exit_scope_catch
      : t
+    -> Env.t
     -> Continuation.t
     -> num_params:int
     -> t * Simple_value_approx.t list * Continuation_uses.t

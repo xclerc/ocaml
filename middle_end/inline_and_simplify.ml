@@ -717,7 +717,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
               Continuation_inlining.for_toplevel_expression body r ~simplify
           in
           let r, _, _ =
-            R.exit_scope_catch r continuation_param ~num_params:1
+            R.exit_scope_catch r env continuation_param ~num_params:1
           in
           body, r)
     in
@@ -1055,7 +1055,7 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
      including the full application as a normal Apply node and call simplify
      on that? *)
   let r, _, after_full_application_uses =
-    R.exit_scope_catch r after_full_application ~num_params:1
+    R.exit_scope_catch r env after_full_application ~num_params:1
   in
   let r =
     R.define_continuation r after_full_application env
@@ -1485,14 +1485,16 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           }
         in
         let r, _args_approxs, _uses =
-          R.exit_scope_catch r cont
+          R.exit_scope_catch r env cont
             ~num_params:(Continuation_approx.num_params approx)
         in
         assert (not (R.is_used_continuation r cont));
         Let_cont let_cont, ret r A.value_bottom
       | Handler { params = []; recursive = Nonrecursive;
           handler = Apply_cont (cont', None, []); } ->
-        let r, args_approxs, _uses = R.exit_scope_catch r cont ~num_params:0 in
+        let r, args_approxs, _uses =
+          R.exit_scope_catch r env cont ~num_params:0
+        in
         let cont' =
           Freshening.apply_static_exception (E.freshening env) cont'
         in
@@ -1519,17 +1521,18 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
               handler vars args
           in
           let r, _args_approxs, _uses =
-            R.exit_scope_catch r cont ~num_params
+            R.exit_scope_catch r env cont ~num_params
           in
           assert (not (R.is_used_continuation r cont));
           simplify env r handler
         | _, _ ->
           let r, vars_approxs, uses =
             match recursive with
-            | Nonrecursive -> R.exit_scope_catch r cont ~num_params
+            | Nonrecursive -> R.exit_scope_catch r env cont ~num_params
             | Recursive ->
               r, List.map (fun _ -> A.value_unknown Other) vars,
-                Inline_and_simplify_aux.Continuation_uses.create ()
+                Inline_and_simplify_aux.Continuation_uses.create
+                  ~backend:(E.backend env)
           in
           let vars, sb =
             Freshening.add_variables' (E.freshening env) vars
@@ -1557,7 +1560,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                   Nonrecursive
               in
               let r, _args_approxs, _uses =
-                R.exit_scope_catch r cont ~num_params
+                R.exit_scope_catch r env cont ~num_params
               in
               r, recursive
           in
@@ -1726,7 +1729,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~f:(fun body_env -> simplify body_env r function_decl.body)
   in
   let _r, _approx, _uses =
-    R.exit_scope_catch r function_decl.continuation_param ~num_params:1
+    R.exit_scope_catch r env function_decl.continuation_param ~num_params:1
   in
   let function_decl =
     Flambda.create_function_declaration ~params:function_decl.params
@@ -1926,7 +1929,9 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
           if E.never_inline env then h
           else Continuation_inlining.for_toplevel_expression h r ~simplify
         in
-        let r, new_approxs, _uses = R.exit_scope_catch r cont ~num_params:1 in
+        let r, new_approxs, _uses =
+          R.exit_scope_catch r env cont ~num_params:1
+        in
         let approx =
           match new_approxs with
           | [approx] -> approx
@@ -1965,7 +1970,7 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
       else Continuation_inlining.for_toplevel_expression expr r ~simplify
     in
     let program, r = simplify_program_body env r program in
-    let r, _approx, _uses = R.exit_scope_catch r cont ~num_params:1 in
+    let r, _approx, _uses = R.exit_scope_catch r env cont ~num_params:1 in
     Effect (expr, cont, program), r
   | End root -> End root, r
 
