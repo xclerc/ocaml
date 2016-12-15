@@ -185,8 +185,8 @@ let fundecl ppf f =
   in
   if not (Reg.Set.is_empty wrong_live) then begin
     Format.fprintf ppf "%a@." Printmach.regset wrong_live;
-    Format.fprintf ppf "%s BAD LIVE\n%!" f.fun_name
 (*
-    Misc.fatal_error "Liveness.fundecl"
+    Format.fprintf ppf "%s BAD LIVE\n%!" f.fun_name
 *)
+    Misc.fatal_error "Liveness.fundecl"
   end

@@ -19,8 +19,6 @@
 open Reg
 open Mach
 
-module Int = Numbers.Int
-
 (* We say that a register is "destroyed" if it is live across a construct
    that potentially destroys all physical registers: function calls or
    try...with constructs.
@@ -117,8 +115,6 @@ let add_superpressure_regs op live_regs res_regs spilled =
 (* A-list recording what is destroyed at if-then-else points. *)
 
 let destroyed_at_fork = ref ([] : (instruction * Reg.Set.t) list)
-
-let trap_stacks = ref Int.Map.empty
 
 (* First pass: insert reload instructions based on an approximation of
    what is destroyed at pressure points. *)
@@ -234,16 +230,11 @@ let rec reload i before =
         let res =
           List.map2 (fun (nfail', _, handler) (nfail, at_exit) ->
               assert(nfail = nfail');
-              match Int.Map.find nfail !trap_stacks with
-              | exception Not_found ->
-                (* This handler is dead code. *)
-                handler, at_exit
-              | _ ->
-                let handler, res = reload handler at_exit in
-                if not is_exn_handler then
-                  handler, res
-                else
-                  handler, Reg.Set.remove Proc.loc_exn_bucket res)
+              let handler, res = reload handler at_exit in
+              if not is_exn_handler then
+                handler, res
+              else
+                handler, Reg.Set.remove Proc.loc_exn_bucket res)
             handlers at_exits in
         match rec_flag with
         | Cmm.Nonrecursive ->
