@@ -919,14 +919,6 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
           in
           wrap result, r
         | Wrong ->  (* Insufficient approximation information to simplify. *)
-          let () =
-            match A.check_approx_for_closure lhs_of_application_approx with
-            | Wrong -> ()
-            | Ok (_, _, _) ->
-              Format.printf "Application is not a singleton@ %a@ %a@."
-                A.print lhs_of_application_approx
-                Flambda.print (Flambda.Apply apply)
-          in
           Apply ({ kind; func = lhs_of_application; args; call_kind = Indirect;
               dbg; inline = inline_requested; specialise = specialise_requested;
               continuation; }),
