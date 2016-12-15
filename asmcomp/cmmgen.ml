@@ -1902,8 +1902,8 @@ and transl_ccall env prim args dbg =
 and transl_prim_1 env p arg dbg =
   match p with
   (* Generic operations *)
-    Pidentity | Pbytes_to_string | Pbytes_of_string | Popaque ->
-      transl env arg
+    Preturn | Pidentity | Pbytes_to_string | Pbytes_of_string | Popaque ->
+    transl env arg
   | Pignore ->
       return_unit(remove_unit (transl env arg))
   (* Heap operations *)
