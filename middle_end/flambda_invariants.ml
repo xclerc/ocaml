@@ -74,7 +74,7 @@ exception Projection_must_be_a_specialised_arg of Projection.t
 exception Free_variables_set_is_lying of
   Variable.t * Variable.Set.t * Variable.Set.t * Flambda.function_declaration
 exception Set_of_closures_free_vars_map_has_wrong_range of Variable.Set.t
-exception Continuation_not_caught of Continuation.t
+exception Continuation_not_caught of Continuation.t * string
 exception Continuation_caught_in_multiple_places of Continuation.t
 exception Continuation_called_with_wrong_arity of Continuation.t * int * int
 exception Malformed_exception_continuation of Continuation.t * string
@@ -239,7 +239,7 @@ module Continuation_scoping = struct
         | Alias cont -> begin
           match Continuation.Map.find cont env with
           | exception Not_found ->
-            raise (Continuation_not_caught cont)
+            raise (Continuation_not_caught (cont, "alias"))
           | arity ->
             let env = Continuation.Map.add name arity env in
             loop env body
@@ -255,13 +255,13 @@ module Continuation_scoping = struct
             | Nonrecursive -> env
           in
           loop handler_env handler;
-          loop env body
+          loop env_with_handler body
       end;
     | Apply_cont ( cont, exn, args ) -> begin
       let arity =
         try Continuation.Map.find cont env with
         | Not_found ->
-          raise (Continuation_not_caught cont)
+          raise (Continuation_not_caught (cont, "apply_cont"))
       in
       if not (List.length args = arity) then
         raise (Continuation_called_with_wrong_arity (cont, List.length args, arity));
@@ -271,7 +271,7 @@ module Continuation_scoping = struct
       | Some (Pop { id = _; exn_handler }) ->
         match Continuation.Map.find exn_handler env with
         | exception Not_found ->
-          raise (Continuation_not_caught exn_handler)
+          raise (Continuation_not_caught (exn_handler, "push/pop"))
         | arity ->
           if not (arity = 1) then
             raise (Continuation_called_with_wrong_arity (cont, 1, arity));
@@ -279,7 +279,7 @@ module Continuation_scoping = struct
     | Apply { continuation; _ } -> begin
         match Continuation.Map.find continuation env with
         | exception Not_found ->
-          raise (Continuation_not_caught continuation)
+          raise (Continuation_not_caught (continuation, "apply"))
         | arity ->
           if not (arity = 1) then
             raise (Continuation_called_with_wrong_arity (continuation, 1, arity));
@@ -288,7 +288,7 @@ module Continuation_scoping = struct
       let check (_, cont) =
         match Continuation.Map.find cont env with
         | exception Not_found ->
-          raise (Continuation_not_caught cont)
+          raise (Continuation_not_caught (cont, "switch"))
         | arity ->
           if not (arity = 0) then
             raise (Continuation_called_with_wrong_arity (cont, 0, arity));
@@ -826,7 +826,7 @@ let _every_continuation_is_caught flam =
     | Apply_cont (exn, _trap_action, _) ->
       (* CR mshinwell: look at the trap action *)
       if not (Continuation.Set.mem exn env)
-      then raise (Continuation_not_caught exn)
+      then raise (Continuation_not_caught (exn, ""))
     | _ -> ()
   in
   let rec loop env (flam : Flambda.t) =
@@ -1014,9 +1014,9 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
       Format.eprintf ">> Unbound variable(s) within closure(s) from the \
           current compilation_unit: %a"
         Var_within_closure.Set.print vars_within_closures
-    | Continuation_not_caught static_exn ->
-      Format.eprintf ">> Uncaught continuation variable: %a"
-        Continuation.print static_exn
+    | Continuation_not_caught (static_exn, s) ->
+      Format.eprintf ">> Uncaught continuation variable %a: %s"
+        Continuation.print static_exn s
     | Continuation_caught_in_multiple_places static_exn ->
       Format.eprintf ">> Continuation variable caught in multiple places: %a"
         Continuation.print static_exn
