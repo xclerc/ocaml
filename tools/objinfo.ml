@@ -17,7 +17,7 @@
 
 (* Dump info on .cmi, .cmo, .cmx, .cma, .cmxa, .cmxs files
    and on bytecode executables. *)
-(*
+
 open Printf
 open Misc
 open Config
@@ -330,4 +330,3 @@ let main() =
   exit 0
 
 let _ = main ()
-*)
