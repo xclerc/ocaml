@@ -1642,6 +1642,29 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                 | Float f -> ...]
          *)
           let unreachable = Variable.create "unreachable" in
+          (* CR mshinwell: Think about whether we can restructure the code
+             to make this neater. *)
+          let ignore_continuation r cont =
+            let _cont, r =
+              simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+            in
+            r
+          in
+          let r =
+            List.fold_left (fun r (_, cont) -> ignore_continuation r cont)
+              r
+              sw.consts
+          in
+          let r =
+            List.fold_left (fun r (_, cont) -> ignore_continuation r cont)
+              r
+              sw.blocks
+          in
+          let r =
+            match sw.failaction with
+            | None -> r
+            | Some cont -> ignore_continuation r cont
+          in
           let expr =
             Flambda.create_let unreachable Proved_unreachable (Switch (arg, sw))
           in
