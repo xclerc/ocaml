@@ -238,11 +238,14 @@ let rec reload i before =
                     (Reg.add_set_array handler.live handler.arg)
                 end
               in
+              let handler, after = reload handler before_handler in
 (*
-Format.eprintf "reload for %d: before_handler = %a first insn live = %a\n%!"
-  nfail Printmach.regset before_handler Printmach.regset handler.live;
+Format.eprintf "reload for %d: before_handler = %a@;first insn live = %a@;\
+    after_handler = %a@;new handler = %a@;%!"
+  nfail Printmach.regset before_handler Printmach.regset handler.live
+  Printmach.regset after Printmach.instr handler;
 *)
-              reload handler before_handler)
+              handler, after)
             handlers at_exits in
         match rec_flag with
         | Cmm.Nonrecursive ->
@@ -267,6 +270,17 @@ Format.eprintf "reload for %d: before_handler = %a first insn live = %a\n%!"
           (fun (nfail, trap_stack, _) (new_handler, _) ->
             nfail, trap_stack, new_handler)
           handlers res in
+(*
+let new_insn = {
+  desc = (Icatch(rec_flag, is_exn_handler, new_handlers, new_body));
+  next = Mach.end_instr ();
+  arg = i.arg;
+  res = i.res;
+  dbg = i.dbg;
+  live = Reg.Set.empty;
+} in
+Format.eprintf "NEW: %a\n%!" Printmach.instr new_insn;
+*)
       (instr_cons
          (Icatch(rec_flag, is_exn_handler, new_handlers, new_body))
          i.arg i.res new_next,
@@ -478,6 +492,7 @@ let fundecl f =
   spill_env := Reg.Map.empty;
   use_date := Reg.Map.empty;
   destroyed_at_fork := [];
+let f =
   { fun_name = f.fun_name;
     fun_args = f.fun_args;
     fun_body = new_body;
@@ -485,3 +500,8 @@ let fundecl f =
     fun_dbg  = f.fun_dbg;
     fun_spacetime_shape = f.fun_spacetime_shape;
   }
+in
+(*
+Format.eprintf "Result of Spill:@;%a@;%!" Printmach.fundecl f;
+*)
+f

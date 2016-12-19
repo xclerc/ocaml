@@ -121,6 +121,15 @@ let find_exit_subst k =
     List.assoc k !exit_subst with
   | Not_found -> Misc.fatal_error "Split.find_exit_subst"
 
+let find_raise_subst ~trap_stack =
+  match trap_stack with
+  | [] -> ref None  (* raise to toplevel exception handler *)
+  | cont::_ ->
+    match find_exit_subst cont with
+    | exception Not_found ->
+      Misc.fatal_errorf "No substitution for start of continuation %d" cont
+    | subst -> subst
+
 let rec rename i sub =
   match i.desc with
     Iend ->
@@ -139,7 +148,17 @@ let rec rename i sub =
           (instr_cons i.desc i.arg [|newr|] new_next,
            sub_next)
       end
-  | Iop _ ->
+  | Iop op ->
+      begin match op with
+      | Icall_ind { trap_stack; _ }
+      | Icall_imm { trap_stack; _ }
+      | Iextcall { trap_stack; _ }
+      | Iintop (Icheckbound { trap_stack; _ })
+      | Iintop_imm (Icheckbound { trap_stack; _ }, _) ->
+        let r = find_raise_subst ~trap_stack in
+        r := merge_substs !r sub i
+      | _ -> ()
+      end;
       let (new_next, sub_next) = rename i.next sub in
       (instr_cons_debug i.desc (subst_regs i.arg sub) (subst_regs i.res sub)
                         i.dbg new_next,
@@ -192,6 +211,8 @@ let rec rename i sub =
       r := merge_substs !r sub i;
       (i, None)
   | Iraise (k, trap_stack) ->
+      let r = find_raise_subst ~trap_stack in
+      r := merge_substs !r sub i;
       (instr_cons_debug (Iraise (k, trap_stack)) (subst_regs i.arg sub) [||]
         i.dbg i.next,
        None)
