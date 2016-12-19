@@ -230,11 +230,11 @@ let rec reload i before =
         let res =
           List.map2 (fun (nfail', _, handler) (nfail, at_exit) ->
               assert(nfail = nfail');
-              let handler, res = reload handler at_exit in
-              if not is_exn_handler then
-                handler, res
-              else
-                handler, Reg.Set.remove Proc.loc_exn_bucket res)
+              let before_handler =
+                if not is_exn_handler then at_exit
+                else Reg.Set.remove Proc.loc_exn_bucket at_exit
+              in
+              reload handler before_handler)
             handlers at_exits in
         match rec_flag with
         | Cmm.Nonrecursive ->
@@ -462,6 +462,7 @@ let reset () =
 
 let fundecl f =
   reset ();
+
   let (body1, _) = reload f.fun_body Reg.Set.empty in
   let (body2, tospill_at_entry) = spill body1 Reg.Set.empty in
   let new_body =
