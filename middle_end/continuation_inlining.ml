@@ -276,9 +276,17 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
       | Apply_cont (cont, trap_action, args) ->
         begin match Continuation_with_args.Map.find (cont, args) inlinings with
         | exception Not_found -> expr
-        | expr ->
-          assert (trap_action = None);
-          expr
+        | inlined_body ->
+          match trap_action with
+          | None -> inlined_body
+          | Some _ ->
+            (* Uses like this, with a trap action, will not have been
+               counted as inlinable
+               (cf. [Inline_and_simplify.simplify_apply_cont]).  However
+               there might be other uses with the same continuation and
+               arguments and no trap action, which is why we cannot
+               fail here. *)
+            expr
         end
       | Apply _ | Let _ | Let_mutable _ | Switch _ -> expr)
     expr
