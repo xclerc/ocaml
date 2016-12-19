@@ -63,6 +63,9 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
     let stack, stacks_at_exit =
       match op with
       | Ipushtrap cont ->
+        (* CR pchambart: This shouldn't keep the handler alive. If
+           there is no raise the handler should be eliminated. *)
+        let stacks_at_exit = add_stack ~cont ~stack:(cont :: stack) ~stacks_at_exit in
         cont :: stack, stacks_at_exit
       | Ipoptrap cont ->
         begin match stack with
@@ -215,7 +218,12 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
     in
     begin match handlers with
-    | [] -> next, stacks_at_exit
+    | [] ->
+      { insn with
+        desc = Icatch (Nonrecursive, false, [], body);
+        next;
+      }
+    , stacks_at_exit
     | handlers ->
       { insn with
         desc = Icatch (rec_flag, is_exn_handler, handlers, body);
