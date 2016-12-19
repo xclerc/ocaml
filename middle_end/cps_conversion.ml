@@ -560,7 +560,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
             inlined = Default_inline;
             specialised = Default_specialise;
           } in
-          I.Apply apply))), N.One
+          I.Apply apply))), N.Many
   | Lassign _ -> name_then_cps_tail "assign" lam k
   | Levent (lam, event) ->
     let ilam, k_count = cps_tail lam k in
