@@ -310,6 +310,26 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
     let body, state = sink_expr body ~state in
     Let_cont { name; body; handler; }, state
   | Let_cont { name; body; handler =
+      Handler { params; recursive = Recursive; handler; } } ->
+    (* We don't sink anything into a recursive continuation. *)
+    (* CR mshinwell: This is actually required for correctness at the moment
+       since e.g. mutable block creation is deemed as "no generative effects"
+       but cannot unconditionally be moved into loops. *)
+    let body = sink body in
+    let handler = sink handler in
+    let fvs =
+      Variable.Set.union (Flambda.free_variables body)
+        (Flambda.free_variables handler)
+    in
+    let state =
+      State.add_candidates_to_sink (State.create ())
+        ~sink_into:[]
+        ~candidates_to_sink:fvs
+    in
+    Let_cont { name; body; handler =
+        Handler { params; recursive = Recursive; handler; } },
+      state
+  | Let_cont { name; body; handler =
       Handler { params; recursive; handler; } } ->
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
