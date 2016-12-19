@@ -171,7 +171,14 @@ module Push_pop_invariants = struct
       let handler_stack = var () in
       begin match handler with
         | Alias cont ->
-          let cont_stack = Continuation.Map.find cont env in
+          let cont_stack =
+            match Continuation.Map.find cont env with
+            | exception Not_found ->
+              Misc.fatal_errorf "Unbound continuation %a in Let_cont Alias %a"
+                Continuation.print cont
+                Flambda.print expr
+            | cont_stack -> cont_stack
+          in
           unify_stack cont handler_stack cont_stack
         | Handler { recursive; handler; _ } ->
           let env =
@@ -184,7 +191,14 @@ module Push_pop_invariants = struct
       let env = define env name handler_stack in
       loop env current_stack body
     | Apply_cont ( cont, exn, _args ) ->
-      let cont_stack = Continuation.Map.find cont env in
+      let cont_stack =
+        match Continuation.Map.find cont env with
+        | exception Not_found ->
+          Misc.fatal_errorf "Unbound continuation %a in Apply_cont %a"
+            Continuation.print cont
+            Flambda.print expr
+        | cont_stack -> cont_stack
+      in
       let stack, cont_stack = match exn with
         | None ->
           current_stack,
@@ -199,21 +213,49 @@ module Push_pop_invariants = struct
       unify_stack cont stack cont_stack
     | Apply { continuation; _ } ->
       let stack = current_stack in
-      let cont_stack = Continuation.Map.find continuation env in
+      let cont_stack =
+        match Continuation.Map.find continuation env with
+        | exception Not_found ->
+          Misc.fatal_errorf "Unbound continuation %a in application %a"
+            Continuation.print continuation
+            Flambda.print expr
+        | cont_stack -> cont_stack
+      in
       unify_stack continuation stack cont_stack
     | Switch (_,{ consts; blocks; failaction; _ } ) ->
       List.iter (fun (_, cont) ->
-        let cont_stack = Continuation.Map.find cont env in
+        let cont_stack =
+          match Continuation.Map.find cont env with
+          | exception Not_found ->
+            Misc.fatal_errorf "Unbound continuation %a in switch %a"
+              Continuation.print cont
+              Flambda.print expr
+          | cont_stack -> cont_stack
+        in
         unify_stack cont cont_stack current_stack)
         consts;
       List.iter (fun (_, cont) ->
-        let cont_stack = Continuation.Map.find cont env in
+        let cont_stack =
+          match Continuation.Map.find cont env with
+          | exception Not_found ->
+            Misc.fatal_errorf "Unbound continuation %a in switch %a"
+              Continuation.print cont
+              Flambda.print expr
+          | cont_stack -> cont_stack
+        in
         unify_stack cont cont_stack current_stack)
         blocks;
       match failaction with
       | None -> ()
       | Some cont ->
-        let cont_stack = Continuation.Map.find cont env in
+        let cont_stack =
+          match Continuation.Map.find cont env with
+          | exception Not_found ->
+            Misc.fatal_errorf "Unbound continuation %a in switch %a"
+              Continuation.print cont
+              Flambda.print expr
+          | cont_stack -> cont_stack
+        in
         unify_stack cont cont_stack current_stack
 
   let well_formed_trap k (expr : Flambda.t) =
