@@ -232,8 +232,16 @@ let rec reload i before =
               assert(nfail = nfail');
               let before_handler =
                 if not is_exn_handler then at_exit
-                else Reg.Set.remove Proc.loc_exn_bucket at_exit
+                else begin
+                  assert (List.length handlers = 1);
+                  Reg.Set.remove Proc.loc_exn_bucket
+                    (Reg.add_set_array handler.live handler.arg)
+                end
               in
+(*
+Format.eprintf "reload for %d: before_handler = %a first insn live = %a\n%!"
+  nfail Printmach.regset before_handler Printmach.regset handler.live;
+*)
               reload handler before_handler)
             handlers at_exits in
         match rec_flag with
