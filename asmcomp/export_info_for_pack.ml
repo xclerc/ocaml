@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-(*
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 let rename_id_state = Export_id.Tbl.create 100
@@ -97,6 +97,7 @@ let import_function_declarations_for_pack units pack
     Variable.Map.map (fun (function_decl : Flambda.function_declaration) ->
         Flambda.create_function_declaration ~params:function_decl.params
           ~body:(import_code_for_pack units pack function_decl.body)
+          ~continuation_param:function_decl.continuation_param
           ~stub:function_decl.stub ~dbg:function_decl.dbg
           ~inline:function_decl.inline
           ~specialise:function_decl.specialise
@@ -136,5 +137,3 @@ let import_for_pack ~pack_units ~pack (exp : Export_info.t) =
     ~invariant_params:exp.invariant_params
 
 let clear_import_state () = Export_id.Tbl.clear rename_id_state
-
-*)

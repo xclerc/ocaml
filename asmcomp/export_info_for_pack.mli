@@ -24,7 +24,6 @@
     containing units [pack_units].
     It mainly changes symbols of units [pack_units] to refer to
     [pack] instead. *)
-(*
 val import_for_pack
    : pack_units:Compilation_unit.Set.t
   -> pack:Compilation_unit.t
@@ -33,4 +32,3 @@ val import_for_pack
 
 (** Drops the state after importing several units in the same pack. *)
 val clear_import_state : unit -> unit
-*)

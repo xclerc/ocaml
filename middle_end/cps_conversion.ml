@@ -674,6 +674,10 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
     }
   in
   (* CR mshinwell: tidy this up *)
+  (* CR mshinwell: Also think about the "One / Many" thing as seen in the
+     context of "apply" or "send".  (Those must be "many" since the
+     continuations are used in non-inlinable positions.)  We should at least
+     add a comment about this. *)
   let k_count_ref = ref N.Zero in
   let make_continuations desc ~init =
     let ilam, k_count =

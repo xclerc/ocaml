@@ -168,8 +168,6 @@ let build_package_cmx members cmxfile =
          Compilation_unit.Set.add
            (Compilenv.unit_for_global unit_id) set)
       Compilation_unit.Set.empty units in
-assert false
-(*
   let units =
     if Config.flambda then
       List.map (fun info ->
@@ -221,7 +219,6 @@ assert false
       ui_export_info;
     } in
   Compilenv.write_unit_info pkg_infos cmxfile
-*)
 
 (* Make the .cmx and the .o for the package *)
 
