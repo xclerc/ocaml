@@ -322,7 +322,7 @@ val name_lambda: let_kind -> lambda -> (Ident.t -> lambda) -> lambda
 val name_lambda_list: lambda list -> (lambda list -> lambda) -> lambda
 
 val iter: (lambda -> unit) -> lambda -> unit
-module IdentSet: Set.S with type elt = Ident.t
+module IdentSet = Ident.Set
 val free_variables: lambda -> IdentSet.t
 val free_methods: lambda -> IdentSet.t
 

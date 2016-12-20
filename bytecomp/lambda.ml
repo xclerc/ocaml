@@ -452,7 +452,7 @@ let iter f = function
       f e
 
 
-module IdentSet = Set.Make(Ident)
+module IdentSet = Ident.Set
 
 let free_ids get l =
   let fv = ref IdentSet.empty in

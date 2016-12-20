@@ -70,61 +70,177 @@ let add_default_argument_wrappers lam =
 
 type block_type = Normal | Float
 
-let dissect_letrec ~bindings ~body =
-  let bindings_with_kinds =
-    List.map (fun (id, binding) -> id, binding, L.size_of_lambda binding)
-      bindings
-  in
-  let recursive_blocks, nonrecursives, functions =
-    List.fold_left (fun (recursive_blocks, nonrecursives, functions)
-              (id, binding, (kind : L.rhs_kind)) ->
-        match kind with
-        | RHS_function (_, _, funct) ->
-          recursive_blocks, nonrecursives,
-            (id, L.Lfunction funct)::functions
-        | RHS_block size ->
-          (id, Normal, size, binding) :: recursive_blocks, nonrecursives,
-            functions
-        | RHS_floatblock size ->
-          (id, Float, size, binding) :: recursive_blocks, nonrecursives,
-            functions
-        | RHS_nonrec ->
-          recursive_blocks, (id, binding) :: nonrecursives, functions)
-      ([], [], [])
-      bindings_with_kinds
-  in
+type letrec = {
+  blocks : (Ident.t * block_type * int) list;
+  (* Should we preallocate with the tag ?
+     How to get the tag for cases involving duprecord ? *)
+  consts : (Ident.t * L.structured_constant) list;
+  pre : Lambda.lambda -> Lambda.lambda;
+  effects : Lambda.lambda;
+  functions : (Ident.t * Lambda.lfunction) list;
+}
+
+let lsequence (lam1, lam2) : L.lambda =
+  let seq = Ident.create "sequence" in
+  Llet (Strict, Pgenval, seq, lam1, lam2)
+
+let update_dummy var expr =
   let loc = Location.none in
+  let desc =
+    Primitive.simple ~name:"caml_update_dummy" ~arity:2 ~alloc:true
+  in
+  L.Lprim (Pccall desc, [L.Lvar var; expr], loc)
+
+let build_block var size block_type expr letrec =
+  let blocks =
+    (var, block_type, size) :: letrec.blocks
+  in
+  let effects : Lambda.lambda =
+    lsequence (update_dummy var expr, letrec.effects)
+  in
+  { letrec with blocks; effects }
+
+let rec prepare_letrec recursive_set current_var (lam:Lambda.lambda) letrec =
+  let module T = Types in
+  match lam with
+  | Lfunction funct ->
+    { letrec with functions = (current_var, funct) :: letrec.functions }
+  | Lprim (Pduprecord (kind, size), _, _) -> begin
+    match kind with
+    | T.Record_regular | T.Record_inlined _ ->
+      build_block current_var size Normal lam letrec
+    | T.Record_extension ->
+      build_block current_var (size + 1) Normal lam letrec
+    | T.Record_unboxed _ ->
+      assert false
+    | T.Record_float ->
+      build_block current_var size Float lam letrec
+    end
+  | Lprim(Pmakeblock _, args, _)
+  | Lprim (Pmakearray ((Paddrarray|Pintarray), _), args, _) ->
+    build_block current_var (List.length args) Normal lam letrec
+  | Lprim (Pmakearray (Pfloatarray, _), args, _) ->
+    build_block current_var (List.length args) Float lam letrec
+  | Lconst const ->
+    { letrec with consts = (current_var, const) :: letrec.consts }
+  | Llet (Variable, k, id, def, body) ->
+    let letrec = prepare_letrec recursive_set current_var body letrec in
+    let pre tail : Lambda.lambda =
+      Llet (Variable, k, id, def, letrec.pre tail)
+    in
+    { letrec with pre }
+
+  | Llet ((Strict | Alias | StrictOpt) as let_kind, k, id, def, body) ->
+    let free_vars = Lambda.free_variables def in
+    if Ident.Set.is_empty (Ident.Set.inter free_vars recursive_set) then
+      (* Non recursive let *)
+      let letrec = prepare_letrec recursive_set current_var body letrec in
+      let pre tail : Lambda.lambda =
+        Llet (let_kind, k, id, def, letrec.pre tail)
+      in
+      { letrec with pre }
+    else
+      let letrec =
+        prepare_letrec (Ident.Set.add id recursive_set)
+          current_var body letrec
+      in
+      prepare_letrec recursive_set id def letrec
+  | Lsequence (_lam1, _lam2) ->
+    (* Eliminated by prepare *)
+    assert false
+  | Levent (body, event) ->
+    let letrec = prepare_letrec recursive_set current_var body letrec in
+    { letrec with effects = Levent (letrec.effects, event) }
+  | Lletrec (bindings, body) ->
+    let free_vars =
+      List.fold_left (fun set (_, def) -> Ident.Set.union (Lambda.free_variables def) set)
+        Ident.Set.empty
+        bindings
+    in
+    if Ident.Set.is_empty (Ident.Set.inter free_vars recursive_set) then
+      (* Non recursive relative to top-level letrec *)
+      let letrec = prepare_letrec recursive_set current_var body letrec in
+      let pre tail : Lambda.lambda =
+        Lletrec (bindings, letrec.pre tail)
+      in
+      { letrec with pre }
+    else
+      let recursive_set =
+        Ident.Set.union recursive_set
+          (Ident.Set.of_list (List.map fst bindings))
+      in
+      let letrec =
+        List.fold_right (fun (id, def) letrec -> prepare_letrec recursive_set id def letrec)
+          bindings
+          letrec
+      in
+      prepare_letrec recursive_set current_var body letrec
+  | _ ->
+    let pre tail : Lambda.lambda =
+      Llet (Strict, Pgenval, current_var, lam, letrec.pre tail)
+    in
+    { letrec with pre }
+
+let dissect_letrec ~bindings ~body =
+  Format.printf "dissect@ %a@.@."
+    Printlambda.lambda (L.Lletrec (bindings, Lconst (Const_pointer 0)));
+
+  let recursive_set =
+    Ident.Set.of_list (List.map fst bindings)
+  in
+
+  let letrec =
+    List.fold_right (fun (id, def) letrec -> prepare_letrec recursive_set id def letrec)
+      bindings
+      { blocks = [];
+        consts = [];
+        pre = (fun x -> x);
+        effects = body;
+        functions = [] }
+  in
   let preallocations =
-    List.map (fun (id, block_type, size, _binding) ->
-        let fn =
-          match block_type with
-          | Normal -> "caml_alloc_dummy"
-          | Float -> "caml_alloc_dummy_float"
-        in
-        let desc = Primitive.simple ~name:fn ~arity:1 ~alloc:true in
-        let size : L.lambda = Lconst (Const_base (Const_int size)) in
-        id, L.Lprim (Pccall desc, [size], loc))
-      recursive_blocks
+    let loc = Location.none in
+    List.map (fun (id, block_type, size) ->
+      let fn =
+        match block_type with
+        | Normal -> "caml_alloc_dummy"
+        | Float -> "caml_alloc_dummy_float"
+      in
+      let desc = Primitive.simple ~name:fn ~arity:1 ~alloc:true in
+      let size : L.lambda = Lconst (Const_base (Const_int size)) in
+      id, L.Lprim (Pccall desc, [size], loc))
+      letrec.blocks
   in
-  let fillings =
-    List.map (fun (id, _block_type, _size, binding) ->
-        let seq = Ident.create "sequence" in
-        let desc =
-          Primitive.simple ~name:"caml_update_dummy" ~arity:2 ~alloc:true
-        in
-        seq, L.Lprim (Pccall desc, [L.Lvar id; binding], loc))
-      recursive_blocks
+  let functions =
+    match letrec.functions with
+    | [] ->
+      letrec.effects
+    | _ :: _ ->
+      let functions =
+        List.map (fun (id, lfun) -> id, L.Lfunction lfun) letrec.functions
+      in
+      L.Lletrec (functions, letrec.effects)
   in
-  let body =
-  List.fold_left (fun body (id, binding) ->
-      L.Llet (Strict, Pgenval, id, binding, body))
-    body
-    fillings
+  let with_preallocations =
+    List.fold_left
+      (fun body (id, binding) ->
+         L.Llet (Strict, Pgenval, id, binding, body))
+      functions
+      preallocations
   in
-  List.fold_left (fun body (id, binding) ->
-      L.Llet (Strict, Pgenval, id, binding, body))
-    (L.Lletrec (functions, body))
-    (nonrecursives @ preallocations)
+  let with_non_rec =
+    letrec.pre with_preallocations
+  in
+  let with_constants =
+    List.fold_left
+      (fun body (id, const) ->
+         L.Llet (Strict, Pgenval, id, Lconst const, body))
+      with_non_rec
+      letrec.consts
+  in
+  Format.printf "dissected@ %a@.@."
+    Printlambda.lambda with_constants;
+  with_constants
 
 module Env : sig
   type t
