@@ -182,9 +182,10 @@ let rec prepare_letrec recursive_set current_var (lam:Lambda.lambda) letrec =
     { letrec with pre }
 
 let dissect_letrec ~bindings ~body =
+(*
   Format.printf "dissect@ %a@.@."
     Printlambda.lambda (L.Lletrec (bindings, Lconst (Const_pointer 0)));
-
+*)
   let recursive_set =
     Ident.Set.of_list (List.map fst bindings)
   in
@@ -238,8 +239,10 @@ let dissect_letrec ~bindings ~body =
       with_non_rec
       letrec.consts
   in
+(*
   Format.printf "dissected@ %a@.@."
     Printlambda.lambda with_constants;
+*)
   with_constants
 
 module Env : sig

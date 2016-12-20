@@ -311,7 +311,9 @@ let rec linear i n =
         linear body (cons_instr (Lbranch lbl_head) n1)
       in
       cons_instr (Llabel lbl_head) n2
-  | Icatch(_rec_flag, _is_exn_handler, handlers, body) ->
+  | Icatch(_rec_flag, is_exn_handler, handlers, body) ->
+      (* CR mshinwell: Change the type to make this statically checked *)
+      assert (not is_exn_handler || List.length handlers = 1);
       let (lbl_end, n1) = get_label (linear i.Mach.next n) in
       (* CR mshinwell for pchambart:
          1. rename "io"
