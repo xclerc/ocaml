@@ -18,7 +18,6 @@
 
 module A = Simple_value_approx
 
-(*
 let import_set_of_closures =
   let import_function_declarations (clos : Flambda.function_declarations)
         : Flambda.function_declarations =
@@ -35,7 +34,7 @@ let import_set_of_closures =
     let f_named (named : Flambda.named) =
       match named with
       | Symbol sym ->
-        begin try Flambda.Expr (Var (Symbol.Map.find sym sym_map)) with
+        begin try Flambda.Var (Symbol.Map.find sym sym_map) with
         | Not_found -> named
         end
       | named -> named
@@ -46,6 +45,7 @@ let import_set_of_closures =
             Flambda_iterators.map_toplevel_named f_named function_decl.body
           in
           Flambda.create_function_declaration ~params:function_decl.params
+            ~continuation_param:function_decl.continuation_param
             ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
             ~inline:function_decl.inline
             ~specialise:function_decl.specialise
@@ -131,7 +131,8 @@ let rec import_ex ex =
         ~what:(Format.asprintf "Value_closure %a" Closure_id.print closure_id)
     in
     A.value_closure ?set_of_closures_symbol:aliased_symbol
-      value_set_of_closures closure_id
+      (Closure_id.Map.add closure_id value_set_of_closures
+        Closure_id.Map.empty)
   | Value_set_of_closures { set_of_closures_id; bound_vars; aliased_symbol } ->
     let value_set_of_closures =
       import_value_set_of_closures ~set_of_closures_id ~bound_vars ~ex_info
@@ -147,15 +148,11 @@ and import_approx (ap : Export_info.approx) =
   | Value_unknown -> A.value_unknown Other
   | Value_id ex -> A.value_extern ex
   | Value_symbol sym -> A.value_symbol sym
-*)
-
-let import_ex _ = A.value_unknown Other
 
 let import_symbol sym =
   if Compilenv.is_predefined_exception sym then
     A.value_unknown Other
   else
-(*
     let symbol_id_map =
       let global = Symbol.compilation_unit sym in
       (Compilenv.approx_for_global global).symbol_id
@@ -163,7 +160,6 @@ let import_symbol sym =
     match Symbol.Map.find sym symbol_id_map with
     | approx -> A.augment_with_symbol (import_ex approx) sym
     | exception Not_found ->
-*)
       A.value_unresolved sym
 
 (* Note for code reviewers: Observe that [really_import] iterates until
