@@ -750,6 +750,9 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
         ~is_a_functor:function_decl.is_a_functor
     in
     let function_decl =
+      (* CR mshinwell: In the inlining report functions that are obviously
+         recursive now say "nonrecursive" due to this transformation.  We
+         should try to fix that. *)
       Unrecursify.unrecursify_function fun_var function_decl
     in
     let used_params' = Flambda.used_params function_decl in
