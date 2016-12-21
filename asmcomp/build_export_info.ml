@@ -31,6 +31,17 @@ module Env : sig
 
   val new_unit_descr : t -> Export_id.t
 
+  val add_continuation_alias
+     : t
+    -> Continuation.t
+    -> alias_of:Continuation.t
+    -> t
+
+  val expand_continuation_alias
+     : t
+    -> Continuation.t
+    -> Continuation.t
+
   module Global : sig
     (* "Global" as in "without local variable bindings". *)
     type t
@@ -85,12 +96,14 @@ end = struct
     { var : Export_info.approx Variable.Map.t;
       sym : Export_id.t Symbol.Map.t;
       ex_table : Export_info.descr Export_id.Map.t ref;
+      continuation_aliases : Continuation.t Continuation.Map.t;
     }
 
   let empty_of_global (env : Global.t) =
     { var = Variable.Map.empty;
       sym = env.sym;
       ex_table = env.ex_table;
+      continuation_aliases = Continuation.Map.empty;
     }
 
   let extern_id_descr export_id =
@@ -162,6 +175,65 @@ end = struct
   let find_approx t var : Export_info.approx =
     try Variable.Map.find var t.var with
     | Not_found -> Value_unknown
+
+  let expand_continuation_alias t cont =
+    match Continuation.Map.find cont t.continuation_aliases with
+    | exception Not_found -> cont
+    | cont -> cont
+
+  let add_continuation_alias t cont ~alias_of =
+    let alias_of = expand_continuation_alias t alias_of in
+    { t with
+      continuation_aliases =
+        Continuation.Map.add cont alias_of t.continuation_aliases
+    }
+end
+
+module Result : sig
+  type t
+
+  val create : unit -> t
+
+  val add_continuation_use_approx
+     : t
+    -> Continuation.t
+    -> args_approxs:Export_info.approx list
+    -> t
+
+  val find_continuation_use_args_approxs
+     : t
+    -> Continuation.t
+    -> num_args:int
+    -> Export_info.approx list
+end = struct
+  type t = {
+    continuation_uses : Export_info.approx list Continuation.Map.t;
+  }
+
+  let create () =
+    { continuation_uses = Continuation.Map.empty;
+    }
+
+  let add_continuation_use_approx t cont ~args_approxs =
+    let args_approxs =
+      match Continuation.Map.find cont t.continuation_uses with
+      | exception Not_found -> args_approxs
+      | existing_args_approxs ->
+        assert (List.length existing_args_approxs = List.length args_approxs);
+        List.map2 Export_info.join_approx existing_args_approxs args_approxs
+    in
+    let continuation_uses =
+      Continuation.Map.add cont args_approxs t.continuation_uses
+    in
+    { continuation_uses; }
+
+  let find_continuation_use_args_approxs t cont ~num_args =
+    try
+      let args_approxs = Continuation.Map.find cont t.continuation_uses in
+      assert (num_args = List.length args_approxs);
+      args_approxs
+    with Not_found ->
+      Array.to_list (Array.make num_args Export_info.Value_unknown)
 end
 
 let descr_of_constant (c : Flambda.const) : Export_info.descr =
@@ -200,28 +272,62 @@ let descr_of_allocated_constant (c : Allocated_const.t) : Export_info.descr =
       size = List.length fs;
     }
 
-let rec approx_of_expr (env : Env.t) (flam : Flambda.t) : Export_info.approx =
+let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
+      : Result.t =
   match flam with
   | Let { var; defining_expr; body; _ } ->
     let approx = descr_of_named env defining_expr in
     let env = Env.add_approx env var approx in
-    approx_of_expr env body
-  | Let_mutable { body } ->
-    approx_of_expr env body
-  | Apply { kind = Function; func; call_kind; _ } ->
+    approx_of_expr env r body
+  | Let_mutable { body; _ } ->
+    approx_of_expr env r body
+  | Apply { kind = Function; continuation; func; call_kind; _ } ->
     begin match call_kind with
-    | Indirect -> Value_unknown
+    | Indirect -> r
     | Direct closure_id' ->
       match Env.get_descr env (Env.find_approx env func) with
       | Some (Value_closure
           { closure_id; set_of_closures = { results; _ }; }) ->
         assert (Closure_id.equal closure_id closure_id');
         assert (Closure_id.Map.mem closure_id results);
-        Closure_id.Map.find closure_id results
-      | _ -> Value_unknown
+        let approx = Closure_id.Map.find closure_id results in
+        Result.add_continuation_use_approx r continuation
+          ~args_approxs:[approx]
+      | _ -> r
     end
-  | Apply { kind = Method _; _ } | Apply_cont _ | Let_cont _ | Switch _ ->
-    Value_unknown
+  | Let_cont { name; body;
+      handler = Handler { params; handler; recursive; }; } ->
+    let num_params = List.length params in
+    let r =
+      match recursive with
+      | Nonrecursive -> r
+      | Recursive ->
+        (* CR mshinwell: Do better than this? *)
+        let args_approxs =
+          Array.to_list (Array.make num_params Export_info.Value_unknown)
+        in
+        Result.add_continuation_use_approx r name ~args_approxs
+    in
+    let r = approx_of_expr env r body in
+    let args_approxs =
+      Result.find_continuation_use_args_approxs r name ~num_args:num_params
+    in
+    assert (List.length args_approxs = num_params);
+    let env =
+      List.fold_left (fun env (param, approx) ->
+          Env.add_approx env param approx)
+        env
+        (List.combine params args_approxs)
+    in
+    approx_of_expr env r handler
+  | Let_cont { name; body; handler = Alias alias_of; } ->
+    let env = Env.add_continuation_alias env name ~alias_of in
+    approx_of_expr env r body
+  | Apply_cont (cont, _trap, args) ->
+    let cont = Env.expand_continuation_alias env cont in
+    let args_approxs = List.map (fun arg -> Env.find_approx env arg) args in
+    Result.add_continuation_use_approx r cont ~args_approxs
+  | Apply { kind = Method _; _ } | Switch _ -> r
 
 and descr_of_named (env : Env.t) (named : Flambda.named)
       : Export_info.approx =
@@ -369,7 +475,8 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
   in
   let results =
     let result_approx _var (function_decl : Flambda.function_declaration) =
-      approx_of_expr closure_env function_decl.body
+      approx_of_continuation_uses_in_expr closure_env function_decl.body
+        ~continuation:function_decl.continuation_param
     in
     Variable.Map.mapi result_approx set.function_decls.funs
   in
@@ -378,6 +485,19 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
     results = Closure_id.wrap_map results;
     aliased_symbol = None;
   }
+
+and approx_of_continuation_uses_in_expr env flam ~continuation =
+  let r = approx_of_expr env (Result.create ()) flam in
+  let args_approxs =
+    Result.find_continuation_use_args_approxs r continuation
+      ~num_args:1
+  in
+  match args_approxs with
+  | [approx] -> approx
+  | _ ->
+    Misc.fatal_errorf "Expected only one continuation argument to %a but got %d"
+      Continuation.print continuation
+      (List.length args_approxs)
 
 let approx_of_constant_defining_value_block_field env
       (c : Flambda.constant_defining_value_block_field) : Export_info.approx =
@@ -480,7 +600,9 @@ let describe_program (env : Env.Global.t) (program : Flambda.program) =
           Env.empty_of_global env
         in
         let field_approxs =
-          List.map (fun (field, _cont) -> approx_of_expr env field) fields
+          List.map (fun (field, continuation) ->
+              approx_of_continuation_uses_in_expr env field ~continuation)
+            fields
         in
         let descr : Export_info.descr =
           Value_block (tag, Array.of_list field_approxs)
@@ -496,6 +618,9 @@ let describe_program (env : Env.Global.t) (program : Flambda.program) =
 
 let build_export_info ~(backend : (module Backend_intf.S))
       (program : Flambda.program) : Export_info.t =
+(*
+Format.eprintf "EXPORT INFO@;%a@;%!" Flambda.print_program program;
+*)
   if !Clflags.opaque then
     Export_info.empty
   else
@@ -547,6 +672,7 @@ let build_export_info ~(backend : (module Backend_intf.S))
     let values =
       Export_info.nest_eid_map unnested_values
     in
+let export_info =
     Export_info.create ~values
       ~symbol_id:(Env.Global.symbol_to_export_id_map env)
       ~offset_fun:Closure_id.Map.empty
@@ -554,3 +680,9 @@ let build_export_info ~(backend : (module Backend_intf.S))
       ~sets_of_closures ~closures
       ~constant_sets_of_closures:Set_of_closures_id.Set.empty
       ~invariant_params
+in
+(*
+Format.eprintf "Export info@;%a@;%!"
+  Export_info.print_all (export_info, [global_symbol]);
+*)
+export_info

@@ -1980,6 +1980,11 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
     let approx =
       A.augment_with_symbol (A.value_block tag (Array.of_list approxs)) symbol
     in
+(*
+Format.eprintf "Symbol %a has approximation %a\n%!"
+  Symbol.print symbol
+  A.print (A.value_block tag (Array.of_list approxs));
+*)
     let module Backend = (val (E.backend env) : Backend_intf.S) in
     let env = E.add_symbol env symbol approx in
     let program, r = simplify_program_body env r program in
