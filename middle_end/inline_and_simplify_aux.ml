@@ -94,10 +94,12 @@ module Env = struct
 
   let print ppf t =
     Format.fprintf ppf
-      "Environment maps: %a@.Projections: %a@.Freshening: %a@."
+      "Environment maps: %a@.Projections: %a@.Freshening: %a@.\
+        Continuations: %a@."
       Variable.Set.print (Variable.Map.keys t.approx)
       (Projection.Map.print Variable.print) t.projections
       Freshening.print t.freshening
+      (Continuation.Map.print Continuation_approx.print) t.continuations
 
   let mem t var = Variable.Map.mem var t.approx
 
@@ -437,6 +439,25 @@ module Env = struct
     Continuation.Set.mem cont t.in_handlers_of_recursive_continuations
 
   let continuations_in_scope t = t.continuations
+
+  let invariant t =
+    if !Clflags.flambda_invariant_checks then begin
+      (* Make sure that freshening a continuation through the given
+         environment doesn't yield a continuation not bound by the
+         environment. *)
+      let from_freshening =
+        Freshening.range_of_continuation_freshening t.freshening
+      in
+      Continuation.Set.iter (fun cont ->
+          match Continuation.Map.find cont t.continuations with
+          | exception Not_found ->
+            Misc.fatal_errorf "The freshening in this environment maps to \
+                continuation %a, but that continuation is unbound:@;%a"
+              Continuation.print cont
+              print t
+          | _ -> ())
+        from_freshening
+    end
 end
 
 let initial_inlining_threshold ~round : Inlining_cost.Threshold.t =
@@ -657,6 +678,7 @@ module Result = struct
       }, approxs, uses
 
   let define_continuation t cont env uses approx =
+    Env.invariant env;
     let uses = Continuation_uses.filter_out_non_useful_uses uses in
     { t with
       defined_continuations =

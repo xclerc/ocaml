@@ -65,7 +65,12 @@ let print ppf = function
         Format.fprintf ppf "(mutable) %a -> %a@ "
           Mutable_variable.print mut_var
           Mutable_variable.Set.print (Mutable_variable.Set.of_list mut_vars))
-      tbl.back_mutable_var
+      tbl.back_mutable_var;
+    Continuation.Map.iter (fun cont1 cont2 ->
+        Format.fprintf ppf "(cont) %a -> %a@ "
+          Continuation.print cont1
+          Continuation.print cont2)
+      tbl.sb_exn
 
 let empty = Inactive
 
@@ -123,9 +128,11 @@ let add_static_exception t i =
   | Active t ->
     let i' = Continuation.create () in
 (*
-Format.eprintf "Freshening %a -> %a\n%!"
+Format.eprintf "Freshening %a -> %a.  Is %a in the map? %s\n%!"
   Continuation.print i
-  Continuation.print i';
+  Continuation.print i'
+  Continuation.print i
+  (if Continuation.Map.mem i t.sb_exn then "yes" else "no");
 *)
     let sb_exn =
       Continuation.Map.add i i' t.sb_exn
@@ -500,3 +507,9 @@ let freshen_projection_relation' relation ~freshening ~closure_freshening =
       in
       { spec_to with projection; }, data)
     relation
+
+let range_of_continuation_freshening t =
+  match t with
+  | Inactive -> Continuation.Set.empty
+  | Active tbl ->
+    Continuation.Set.of_list (Continuation.Map.data tbl.sb_exn)

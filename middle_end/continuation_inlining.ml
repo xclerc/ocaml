@@ -107,6 +107,10 @@ Format.eprintf "try_inlining simplification %a (params %a) starts@;%a@;\n%!"
   Flambda.print expr;
 *)
   let expr, r =
+(*
+Format.eprintf "Continuation %a inlining@;%a%!"
+  Continuation.print cont Flambda.print expr;
+*)
     simplify (E.activate_freshening (E.set_never_inline env)) r expr
   in
 (*

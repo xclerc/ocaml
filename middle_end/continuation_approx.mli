@@ -30,3 +30,5 @@ val name : t -> Continuation.t
 
 val num_params : t -> int
 val handler : t -> Flambda.continuation_handler option
+
+val print : Format.formatter -> t -> unit
