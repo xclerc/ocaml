@@ -150,16 +150,19 @@ let emit_call s = I.call (rel_plt s)
 
 let emit_jump s = I.jmp (rel_plt s)
 
-let load_symbol_addr s arg =
+let load_symbol_or_label_addr s arg ~emit =
   if !Clflags.dlcode then
     if windows then begin
       (* I.mov (mem__imp s) arg (\* mov __caml_imp_foo(%rip), ... *\) *)
-      I.mov (sym (emit_symbol s)) arg (* movabsq $foo, ... *)
-    end else I.mov (mem64_rip QWORD (emit_symbol s ^ "@GOTPCREL")) arg
+      I.mov (sym (emit s)) arg (* movabsq $foo, ... *)
+    end else I.mov (mem64_rip QWORD (emit s ^ "@GOTPCREL")) arg
   else if !Clflags.pic_code then
-    I.lea (mem64_rip NONE (emit_symbol s)) arg
+    I.lea (mem64_rip NONE (emit s)) arg
   else
-    I.mov (sym (emit_symbol s)) arg
+    I.mov (sym (emit s)) arg
+
+let load_symbol_addr s arg =
+  load_symbol_or_label_addr s arg ~emit:emit_symbol
 
 (* Output a label *)
 
@@ -177,22 +180,7 @@ let emit_Llabel fallthrough lbl =
   def_label lbl
 
 let load_label_addr s arg =
-  (* CR mshinwell: This hasn't been tested on Windows.  We should also check
-     all the combinations on Linux / BSD. *)
-  (* CR mshinwell: This should all go into the new [Asm_directives]. *)
-  match system with
-  | S_macosx ->
-    I.lea (mem64_rip NONE (emit_label s)) arg
-  | _ ->
-    if !Clflags.dlcode then
-      if windows then begin
-        (* I.mov (mem__imp s) arg (\* mov __caml_imp_foo(%rip), ... *\) *)
-        I.mov (sym (emit_label s)) arg (* movabsq $foo, ... *)
-      end else I.mov (mem64_rip QWORD (emit_label s)) arg
-    else if !Clflags.pic_code then
-      I.lea (mem64_rip NONE (emit_label s)) arg
-    else
-      I.mov (sym (emit_label s)) arg
+  load_symbol_or_label_addr s arg ~emit:emit_label
 
 (* Output a pseudo-register *)
 
