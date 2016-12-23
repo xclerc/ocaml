@@ -1734,11 +1734,21 @@ let rec transl env e =
         transl_switch dbg env (get_tag (transl env arg) dbg)
           s.us_index_blocks s.us_actions_blocks
       else
+        let only_consts ~arg_cmm =
+          (* CR mshinwell: This may be too specific.  An example of where this
+            hits is bdd.ml, Bdd.eval, under CPS-flambda. *)
+          match s.us_index_consts, s.us_actions_consts with
+          | [| 0; _ |], [| if_zero; if_not; |]
+          | [| _; 0 |], [| if_not; if_zero; |] ->
+            transl env (Uifthenelse (arg, if_not, if_zero))
+          | _, _ ->
+            transl_switch dbg env
+              (untag_int arg_cmm dbg) s.us_index_consts s.us_actions_consts
+        in
         bind "switch" (transl env arg) (fun arg ->
           Cifthenelse(
           Cop(Cand, [arg; Cconst_int 1], dbg),
-          transl_switch dbg env
-            (untag_int arg dbg) s.us_index_consts s.us_actions_consts,
+          only_consts ~arg_cmm:arg,
           transl_switch dbg env
             (get_tag arg dbg) s.us_index_blocks s.us_actions_blocks))
   | Ustringswitch(arg,sw,d) ->

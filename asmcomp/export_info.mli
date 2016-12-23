@@ -74,6 +74,8 @@ and approx =
   | Value_id of Export_id.t
   | Value_symbol of Symbol.t
 
+val join_approx : approx -> approx -> approx
+
 (** A structure that describes what a single compilation unit exports. *)
 type t = private {
   sets_of_closures : Flambda.function_declarations Set_of_closures_id.Map.t;

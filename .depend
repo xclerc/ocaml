@@ -1505,7 +1505,7 @@ middle_end/initialize_symbol_to_let_symbol.cmx : \
 middle_end/initialize_symbol_to_let_symbol.cmi : middle_end/flambda.cmi
 middle_end/inline_and_simplify.cmo : utils/warnings.cmi \
     middle_end/base_types/variable.cmi \
-    middle_end/base_types/var_within_closure.cmi \
+    middle_end/base_types/var_within_closure.cmi middle_end/unrecursify.cmi \
     middle_end/unbox_specialised_args.cmi \
     middle_end/unbox_free_vars_of_closures.cmi middle_end/unbox_closures.cmi \
     middle_end/base_types/tag.cmi middle_end/base_types/symbol.cmi \
@@ -1525,7 +1525,7 @@ middle_end/inline_and_simplify.cmo : utils/warnings.cmi \
     middle_end/allocated_const.cmi middle_end/inline_and_simplify.cmi
 middle_end/inline_and_simplify.cmx : utils/warnings.cmx \
     middle_end/base_types/variable.cmx \
-    middle_end/base_types/var_within_closure.cmx \
+    middle_end/base_types/var_within_closure.cmx middle_end/unrecursify.cmx \
     middle_end/unbox_specialised_args.cmx \
     middle_end/unbox_free_vars_of_closures.cmx middle_end/unbox_closures.cmx \
     middle_end/base_types/tag.cmx middle_end/base_types/symbol.cmx \
@@ -1953,6 +1953,16 @@ middle_end/unbox_specialised_args.cmx : middle_end/base_types/variable.cmx \
     middle_end/unbox_specialised_args.cmi
 middle_end/unbox_specialised_args.cmi : middle_end/base_types/variable.cmi \
     middle_end/inlining_cost.cmi middle_end/inline_and_simplify_aux.cmi \
+    middle_end/flambda.cmi
+middle_end/unrecursify.cmo : middle_end/base_types/variable.cmi \
+    middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
+    middle_end/base_types/continuation.cmi \
+    middle_end/base_types/closure_id.cmi middle_end/unrecursify.cmi
+middle_end/unrecursify.cmx : middle_end/base_types/variable.cmx \
+    middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
+    middle_end/base_types/continuation.cmx \
+    middle_end/base_types/closure_id.cmx middle_end/unrecursify.cmi
+middle_end/unrecursify.cmi : middle_end/base_types/variable.cmi \
     middle_end/flambda.cmi
 middle_end/base_types/closure_element.cmo : \
     middle_end/base_types/variable.cmi \

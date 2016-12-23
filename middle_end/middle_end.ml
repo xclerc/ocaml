@@ -16,9 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(* XXX this is temporary *)
-[@@@ocaml.warning "-27-26"]
-(*
 let _dump_function_sizes flam ~backend =
   let module Backend = (val backend : Backend_intf.S) in
   let than = max_int in
@@ -32,7 +29,7 @@ let _dump_function_sizes flam ~backend =
           | Some size -> Format.eprintf "%a %d\n" Symbol.print symbol size
           | None -> assert false)
         set_of_closures.function_decls.funs)
-*)
+
 let middle_end ppf ~source_provenance ~prefixname ~backend
     ~size
     ~filename

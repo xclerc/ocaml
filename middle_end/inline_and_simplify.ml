@@ -749,6 +749,12 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
         ~inline ~specialise:function_decl.specialise
         ~is_a_functor:function_decl.is_a_functor
     in
+    let function_decl =
+      (* CR mshinwell: In the inlining report functions that are obviously
+         recursive now say "nonrecursive" due to this transformation.  We
+         should try to fix that. *)
+      Unrecursify.unrecursify_function fun_var function_decl
+    in
     let used_params' = Flambda.used_params function_decl in
     Variable.Map.add fun_var function_decl funs,
       Variable.Set.union used_params used_params', r
@@ -824,10 +830,18 @@ and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
     continuation; kind;
   } = apply in
   let dbg = E.add_inlined_debuginfo env ~dbg in
+(*
+Format.eprintf "Simplifying function application with cont %a\n%!"
+  Continuation.print continuation;
+*)
   let continuation, r =
     simplify_apply_cont_to_cont env r continuation
       ~args_approxs:[A.value_unknown Other]
   in
+(*
+Format.eprintf "...freshened cont is %a\n%!"
+  Continuation.print continuation;
+*)
   simplify_free_variable env lhs_of_application
     ~f:(fun env lhs_of_application lhs_of_application_approx ->
       simplify_free_variables env args ~f:(fun env args args_approxs ->
@@ -1452,22 +1466,44 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     simplify_free_variables env args ~f:(fun env args args_approxs ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_approxs)
   | Let_cont { name = cont; body; handler } ->
+(*
+Format.eprintf "Let_cont %a@;%a@;Environment:@;%a\n%!"
+  Continuation.print cont Flambda.print tree
+  E.print env;
+*)
     let env_above_let_cont = env in
+    let unfreshened_cont = cont in
     let cont, sb = Freshening.add_static_exception (E.freshening env) cont in
+(*
+Format.eprintf "OLD %a NEW %a\n%!"
+  Continuation.print unfreshened_cont
+  Continuation.print cont;
+*)
     let approx, r =
+      (* Reminder: [handler] isn't freshened up, so its code cannot go in the
+         approximation, irrespective of any other reasons for it not to. *)
       match handler with
-      | Handler ({ params; _ } as handler) ->
+      | Handler { params; _ } ->
         let num_params = List.length params in
-        Continuation_approx.create ~name:cont ~handler ~num_params, r
+        Continuation_approx.create_unknown ~name:cont ~num_params, r
       | Alias alias_of ->
         let alias_of =
           Freshening.apply_static_exception (E.freshening env) alias_of
         in
-        let approx = E.find_continuation env alias_of in
+        let approx =
+          let approx = E.find_continuation env alias_of in
+          Continuation_approx.create_unknown
+            ~name:(Continuation_approx.name approx)
+            ~num_params:(Continuation_approx.num_params approx)
+        in
         approx, r
     in
-    let env = E.set_freshening env sb in
-    let body_env = E.add_continuation env cont approx in
+    assert (Continuation_approx.handler approx = None);
+    let body_env = E.add_continuation (E.set_freshening env sb) cont approx in
+(*
+Format.eprintf "Simplification of body for %a: environment@;%a"
+  Continuation.print cont E.print body_env;
+*)
     let body, r = simplify body_env r body in
     if not (R.is_used_continuation r cont) then begin
       (* If the continuation is not used, we can drop the declaration *)
@@ -1528,7 +1564,20 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         | _, _ ->
           let r, vars_approxs, uses =
             match recursive with
-            | Nonrecursive -> R.exit_scope_catch r env cont ~num_params
+            | Nonrecursive ->
+              if !Clflags.flambda_invariant_checks then begin
+                let fcs = Flambda.free_continuations handler in
+                if Continuation.Set.mem unfreshened_cont fcs then begin
+                  Misc.fatal_errorf "Continuation %a declared as non-recursive \
+                      but is recursive:@;%a"
+                    Continuation.print unfreshened_cont
+                    Flambda.print handler
+                end
+                (* Note that [cont] may not be fresh for [handler] at the
+                   moment, since the latter may come from another compilation
+                   unit, and has not yet been freshened up. *)
+              end;
+              R.exit_scope_catch r env cont ~num_params
             | Recursive ->
               r, List.map (fun _ -> A.value_unknown Other) vars,
                 Inline_and_simplify_aux.Continuation_uses.create
@@ -1548,10 +1597,24 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             | Nonrecursive -> env
             | Recursive -> E.set_in_handler_of_recursive_continuation env cont
           in
+(*
+Format.eprintf "Simplification of handler for %a: environment@;%a"
+  Continuation.print cont E.print env;
+*)
           let handler, r = simplify env r handler in
           let r, recursive =
             match recursive with
-            | Nonrecursive -> r, Asttypes.Nonrecursive
+            | Nonrecursive ->
+              if !Clflags.flambda_invariant_checks then begin
+                let fcs = Flambda.free_continuations handler in
+                if Continuation.Set.mem cont fcs then begin
+                  Misc.fatal_errorf "Continuation %a declared as non-recursive \
+                      but became recursive during simplification:@;%a"
+                    Continuation.print cont
+                    Flambda.print handler
+                end
+              end;
+              r, Asttypes.Nonrecursive
             | Recursive ->
               let recursive : Asttypes.rec_flag =
                 if R.is_used_continuation r cont then
@@ -1977,6 +2040,11 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
     let approx =
       A.augment_with_symbol (A.value_block tag (Array.of_list approxs)) symbol
     in
+(*
+Format.eprintf "Symbol %a has approximation %a\n%!"
+  Symbol.print symbol
+  A.print (A.value_block tag (Array.of_list approxs));
+*)
     let module Backend = (val (E.backend env) : Backend_intf.S) in
     let env = E.add_symbol env symbol approx in
     let program, r = simplify_program_body env r program in

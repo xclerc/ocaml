@@ -401,7 +401,7 @@ module Whether_sufficient_benefit = struct
       new_size; evaluated_benefit; estimate = true;
     }
 
-  let correct_branch_factor f =
+  let _correct_branch_factor f =
     f = f (* is not nan *)
     && f >= 0.
 
@@ -422,6 +422,12 @@ module Whether_sufficient_benefit = struct
          The probability is expressed as [1 / (1 + factor)] rather
          than letting the user directly provide [p], since for every
          positive value of [factor] [p] is in [0, 1]. *)
+      float t.evaluated_benefit
+(* CR mshinwell: Think about this some more and re-enable.
+   Maybe we should mark continuation uses that are involved in [Switch] and
+   only count those ones here, or something?
+*)
+(*
       let branch_taken_estimated_probability =
         let inline_branch_factor =
           let factor =
@@ -442,6 +448,7 @@ module Whether_sufficient_benefit = struct
         branch_taken_estimated_probability ** float t.branch_depth
       in
       float t.evaluated_benefit *. call_estimated_probability
+*)
     end
 
   let evaluate t =

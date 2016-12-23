@@ -180,3 +180,5 @@ val freshen_projection_relation'
   -> freshening:t
   -> closure_freshening:Project_var.t
   -> (Flambda.specialised_to * 'a) Variable.Map.t
+
+val range_of_continuation_freshening : t -> Continuation.Set.t

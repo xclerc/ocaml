@@ -14,37 +14,10 @@
 (*                                                                        *)
 (**************************************************************************)
 
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type t = {
-  name : Continuation.t;
-  handler : Flambda.continuation_handler option;
-  num_params : int;
-}
-
-let create ~name ~(handler : Flambda.continuation_handler) ~num_params =
-  { name;
-    handler = Some handler;
-    num_params;
-  }
-
-let create_unknown ~name ~num_params =
-  { name;
-    handler = None;
-    num_params;
-  }
-
-let name t = t.name
-let num_params t = t.num_params
-let handler t = t.handler
-
-let print ppf t =
-  let print_handler ppf = function
-    | None -> Format.fprintf ppf "<handler not known>"
-    | Some handler ->
-      Flambda.print_let_cont_handler ppf (Handler handler)
-  in
-  Format.fprintf ppf "@[(%a with %d params %a)@]"
-    Continuation.print t.name
-    t.num_params
-    print_handler t.handler
+val unrecursify_function
+   : Variable.t
+  -> Flambda.function_declaration
+  -> Flambda.function_declaration

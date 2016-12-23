@@ -76,6 +76,10 @@ let equal_approx (a1:approx) (a2:approx) =
     (Value_unknown | Value_symbol _ | Value_id _) ->
     false
 
+let join_approx (a1 : approx) (a2 : approx) : approx =
+  if equal_approx a1 a2 then a1
+  else Value_unknown
+
 let equal_array eq a1 a2 =
   Array.length a1 = Array.length a2 &&
   try
