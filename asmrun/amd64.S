@@ -580,7 +580,8 @@ CFI_STARTPROC
         jne     LBL(110)
         movq    %r14, %rsp
         popq    %r14
-        ret
+        popq    %r11
+        jmp     %r11
 LBL(110):
         movq    %rax, %r12            /* Save exception bucket */
         movq    %rax, C_ARG_1         /* arg 1: exception bucket */
