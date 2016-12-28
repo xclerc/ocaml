@@ -601,7 +601,8 @@ LBL(110):
         movq    %r12, %rax            /* Recover exception bucket */
         movq    %r14, %rsp
         popq    %r14
-        ret
+        popq    %r11
+	      jmp     %r11
 CFI_ENDPROC
 
 /* Raise an exception from C */
@@ -614,7 +615,8 @@ CFI_STARTPROC
         LOAD_VAR(caml_exception_pointer, %rsp)  /* Cut stack */
         popq    %r14                   /* Recover previous exception handler */
         LOAD_VAR(caml_young_ptr, %r15) /* Reload alloc ptr */
-        ret
+        popq    %r11
+	      jmp     %r11
 LBL(112):
 #ifdef WITH_FRAME_POINTERS
         ENTER_FUNCTION          ;
