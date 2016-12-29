@@ -286,7 +286,7 @@ module Continuation_scoping = struct
             let env = Continuation.Map.add name arity env in
             loop env body
         end
-        | Handler { recursive; handler; params } ->
+        | Handler { recursive; handler; params; specialised_args; } ->
           let arity = List.length params in
           let env_with_handler =
             Continuation.Map.add name arity env
@@ -297,7 +297,8 @@ module Continuation_scoping = struct
             | Nonrecursive -> env
           in
           loop handler_env handler;
-          loop env_with_handler body
+          loop env_with_handler body;
+          ignore specialised_args (* CR mshinwell: fixme *)
       end;
     | Apply_cont ( cont, exn, args ) -> begin
       let arity =
@@ -419,11 +420,13 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       check_variable_is_bound env var;
       loop (add_mutable_binding_occurrence env mut_var) body
     | Let_cont { name; body;
-        handler = Handler { params; recursive; handler; }; } ->
+        handler = Handler { params; recursive; handler;
+          specialised_args; }; } ->
       ignore_continuation name;
       loop env body;
       ignore_rec_flag recursive;
-      loop (add_binding_occurrences env params) handler
+      loop (add_binding_occurrences env params) handler;
+      ignore specialised_args (* CR mshinwell: fixme *)
     | Let_cont { name; body; handler = Alias alias_of; } ->
       ignore_continuation name;
       loop env body;

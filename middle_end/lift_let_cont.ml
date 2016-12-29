@@ -274,6 +274,7 @@ Format.eprintf "New handler for %a is:\n%a\n"
         params;
         recursive;
         handler;
+        specialised_args;
       }
     in
     let fcs = Flambda.free_continuations_of_let_cont_handler ~name ~handler in

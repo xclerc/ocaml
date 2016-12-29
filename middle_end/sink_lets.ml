@@ -329,7 +329,8 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
         ~candidates_to_sink:fvs
     in
     Let_cont { name; body; handler =
-        Handler { params; recursive = Recursive; handler; } },
+        Handler { params; recursive = Recursive; handler;
+          specialised_args; } },
       state
   | Let_cont { name; body; handler =
       Handler { params; recursive; handler; specialised_args; } } ->
@@ -358,7 +359,7 @@ Format.eprintf "Finished handler %a\n%!" Continuation.print name;
           (Flambda.free_variables_of_specialised_args specialised_args)
     in
     Let_cont { name; body; handler =
-      Handler { params; recursive; handler; } }, state
+      Handler { params; recursive; handler; specialised_args; } }, state
   | Apply _ | Apply_cont _ | Switch _ ->
     let state =
       State.add_candidates_to_sink state
@@ -409,7 +410,7 @@ and sink (expr : Flambda.t) =
       let body = sink body in
       Let_cont { name; body; handler; }
     | Let_cont { name; body; handler =
-        Handler { params; recursive; handler; } } ->
+        Handler { params; recursive; handler; specialised_args; } } ->
       let body = sink body in
       let handler =
         let handler = sink handler in
@@ -426,7 +427,7 @@ Format.eprintf "New bindings for top of %a outermost first is %a\n%!"
           (List.rev bindings)
       in
       Let_cont { name; body; handler =
-        Handler { params; recursive; handler; } }
+        Handler { params; recursive; handler; specialised_args; } }
     | Apply _ | Apply_cont _ | Switch _ -> expr
   in
 (*

@@ -1047,6 +1047,7 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
           inline = inline_requested;
           specialise = specialise_requested;
         };
+      specialised_args = Variable.Map.empty;
     }
   in
   let after_full_application = Continuation.create () in
@@ -1492,7 +1493,6 @@ Format.eprintf "OLD %a NEW %a\n%!"
         let num_params = List.length params in
         let approx =
           Continuation_approx.create_unknown ~name:cont ~num_params
-            ~specialised_args:Variable.Map.empty
         in
         approx, r
       | Alias alias_of ->
@@ -1504,7 +1504,6 @@ Format.eprintf "OLD %a NEW %a\n%!"
           Continuation_approx.create_unknown
             ~name:(Continuation_approx.name approx)
             ~num_params:(Continuation_approx.num_params approx)
-            ~specialised_args
         in
         approx, r
     in
@@ -1550,8 +1549,7 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
         in
         assert (not (R.is_used_continuation r cont));
         assert (R.is_used_continuation r cont');
-        Let_cont { name = cont; body;
-          handler = Alias (cont', Variable.Map.empty); }, r
+        Let_cont { name = cont; body; handler = Alias cont'; }, r
       | Handler { params = vars; recursive; handler; specialised_args; } ->
         (* CR mshinwell: rename "vars" to "params" *)
         let env =
@@ -1601,7 +1599,7 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
                     | Some var -> var
                   in
                   let projection = spec_to.projection in
-                  Some ({ var; projection; } : Flambda.specialised_to))
+                  ({ var; projection; } : Flambda.specialised_to))
                 specialised_args
             in
             Freshening.freshen_projection_relation specialised_args
@@ -1629,8 +1627,8 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
                 List.map (fun param ->
                     match Variable.Map.find param specialised_args with
                     | exception Not_found -> A.value_unknown Other
-                    | specialised_to -> E.find_exn env spec_to.var)
-                  freshened_params
+                    | spec_to -> E.find_exn env spec_to.var)
+                  freshened_vars
               in
               r, param_approxs,
                 Inline_and_simplify_aux.Continuation_uses.create
