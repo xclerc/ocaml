@@ -49,7 +49,8 @@ let unrecursify_function function_variable
             Handler {
               params = function_decl.params;
               recursive = Recursive;
-              handler
+              handler;
+              specialised_args = Variable.Map.empty;
             };
           body = Apply_cont (loop_continuation, None, new_params) }
     in

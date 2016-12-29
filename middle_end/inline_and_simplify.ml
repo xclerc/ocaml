@@ -1495,50 +1495,12 @@ Format.eprintf "OLD %a NEW %a\n%!"
             ~specialised_args:Variable.Map.empty
         in
         approx, r
-      | Alias { alias_of; specialised_args = new_specialised_args; } ->
+      | Alias alias_of ->
         let alias_of =
           Freshening.apply_static_exception (E.freshening env) alias_of
         in
         let approx =
           let approx = E.find_continuation env alias_of in
-          let specialised_args =
-            let existing_specialised_args =
-              Continuation_approx.specialised_args approx
-            in
-            let new_specialised_args =
-              let new_specialised_args =
-                Variable.Map.map_keys
-                  (Freshening.apply_variable (E.freshening env))
-                  new_specialised_args
-              in
-              let new_specialised_args =
-                (* CR mshinwell: Duplicate of a part of
-                   [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
-                *)
-                Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                    let external_var = spec_to.var in
-                    let var =
-                      Freshening.apply_variable (E.freshening env) external_var
-                    in
-                    let var =
-                      match
-                        A.simplify_var_to_var_using_env (E.find_exn env var)
-                          ~is_present_in_env:(fun var -> E.mem env var)
-                      with
-                      | None -> var
-                      | Some var -> var
-                    in
-                    let projection = spec_to.projection in
-                    Some ({ var; projection; } : Flambda.specialised_to))
-                  new_specialised_args
-              in
-              Freshening.freshen_projection_relation new_specialised_args
-                ~freshening:(E.freshening env)
-                ~closure_freshening:None
-            in
-            Variable.Map.disjoint_union existing_specialised_args
-              new_specialised_args
-          in
           Continuation_approx.create_unknown
             ~name:(Continuation_approx.name approx)
             ~num_params:(Continuation_approx.num_params approx)
@@ -1558,17 +1520,14 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
       body, r
     end else begin
       match handler with
-      | Alias { alias_of; specialised_args; } ->
+      | Alias alias_of ->
         let alias_of =
           Freshening.apply_static_exception (E.freshening env) alias_of
-        in
-        let specialised_args =
-          Continuation_approx.specialised_args approx
         in
         let let_cont : Flambda.let_cont =
           { name = cont;
             body;
-            handler = Alias { alias_of; specialised_args; };
+            handler = Alias alias_of;
           }
         in
         let r, _args_approxs, _uses =
@@ -1593,7 +1552,7 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
         assert (R.is_used_continuation r cont');
         Let_cont { name = cont; body;
           handler = Alias (cont', Variable.Map.empty); }, r
-      | Handler { params = vars; recursive; handler; } ->
+      | Handler { params = vars; recursive; handler; specialised_args; } ->
         (* CR mshinwell: rename "vars" to "params" *)
         let env =
           match recursive with
@@ -1618,6 +1577,37 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
           let freshened_vars, sb =
             Freshening.add_variables' (E.freshening env) vars
           in
+          let specialised_args =
+            let specialised_args =
+              Variable.Map.map_keys
+                (Freshening.apply_variable (E.freshening env))
+                specialised_args
+            in
+            let specialised_args =
+              (* CR mshinwell: Duplicate of a part of
+                  [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
+              *)
+              Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
+                  let external_var = spec_to.var in
+                  let var =
+                    Freshening.apply_variable (E.freshening env) external_var
+                  in
+                  let var =
+                    match
+                      A.simplify_var_to_var_using_env (E.find_exn env var)
+                        ~is_present_in_env:(fun var -> E.mem env var)
+                    with
+                    | None -> var
+                    | Some var -> var
+                  in
+                  let projection = spec_to.projection in
+                  Some ({ var; projection; } : Flambda.specialised_to))
+                specialised_args
+            in
+            Freshening.freshen_projection_relation specialised_args
+              ~freshening:(E.freshening env)
+              ~closure_freshening:None
+          in
           let r, vars_approxs, uses =
             match recursive with
             | Nonrecursive ->
@@ -1637,7 +1627,7 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
             | Recursive ->
               let param_approxs =
                 List.map (fun param ->
-                    match Variable.Map.find param approx.specialised_args with
+                    match Variable.Map.find param specialised_args with
                     | exception Not_found -> A.value_unknown Other
                     | specialised_to -> E.find_exn env spec_to.var)
                   freshened_params
@@ -1692,6 +1682,7 @@ Format.eprintf "Simplification of handler for %a: environment@;%a"
             { params = vars;
               recursive;
               handler;
+              specialised_args;
             }
           in
           let cont_approx =

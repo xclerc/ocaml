@@ -235,9 +235,6 @@ and let_mutable = {
     - Continuations are second-class.
     - Continuations do not capture variables.
     - Continuations may be recursive.
-    
-    Continuations may be aliased or specialised using the [Alias]
-    construction (see [let_cont_handler], below).
 
     It is an error to mark a continuation that might be recursive as
     non-recursive.  The converse is safe.
@@ -247,29 +244,23 @@ and let_cont = {
   body : t;
   handler : let_cont_handler;
 }
+(* CR mshinwell: We need to add the following invariant checks:
+   1. Usual checks on [let_cont.specialised_args].
+   2. Also on that specialised_args map, that only [Field] projections are
+      used.  (The other projections are all things to do with closures.)  We
+      might consider changing the type somehow to make this statically
+      checked. *)
 
 and let_cont_handler =
   | Handler of continuation_handler
-  (* CR mshinwell: Maybe change the "Alias" name, since this will yield
-     real code in the case of a specialisation. *)
-  | Alias of continuation_alias
+  | Alias of Continuation.t
 
 and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;
   handler : t;
-}
-
-and continuation_alias = {
-  alias_of : Continuation.t;
   specialised_args : specialised_args;
 }
-(* CR mshinwell: We need to add the following invariant checks:
-   1. Usual checks on [continuation_alias.specialised_args].
-   2. Also on that specialised_args map, that only [Field] projections are
-      used.  (The other projections are all things to do with closures.)  We
-      might consider changing the type somehow to make this statically
-      checked. *)
 
 (** The representation of a set of function declarations (possibly mutually
     recursive).  Such a set encapsulates the declarations themselves,

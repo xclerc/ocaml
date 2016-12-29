@@ -306,20 +306,11 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
         ~candidates_to_sink:(Variable.Set.singleton initial_value)
     in
     Let_mutable { var; initial_value; contents_kind; body; }, state
-  | Let_cont { name; body;
-      handler = (Alias { specialised_args; _ }) as handler; } ->
+  | Let_cont { name; body; handler = (Alias _) as handler; } ->
     let body, state = sink_expr body ~state in
-    let specialised_args_fvs =
-      Flambda_utils.free_variables_of_specialised_args specialised_args
-    in
-    let state =
-      State.add_candidates_to_sink state
-        ~sink_into:[]
-        ~candidates_to_sink:specialised_args_fvs
-    in
     Let_cont { name; body; handler; }, state
   | Let_cont { name; body; handler =
-      Handler { params; recursive = Recursive; handler; } } ->
+      Handler { params; recursive = Recursive; handler; specialised_args; } } ->
     (* We don't sink anything into a recursive continuation. *)
     (* CR mshinwell: This is actually required for correctness at the moment
        since e.g. mutable block creation is deemed as "no generative effects"
@@ -327,8 +318,10 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
     let body = sink body in
     let handler = sink handler in
     let fvs =
-      Variable.Set.union (Flambda.free_variables body)
-        (Flambda.free_variables handler)
+      Variable.Set.union
+        (Flambda.free_variables_of_specialised_args specialised_args)
+        (Variable.Set.union (Flambda.free_variables body)
+          (Flambda.free_variables handler))
     in
     let state =
       State.add_candidates_to_sink (State.create ())
@@ -339,7 +332,7 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
         Handler { params; recursive = Recursive; handler; } },
       state
   | Let_cont { name; body; handler =
-      Handler { params; recursive; handler; } } ->
+      Handler { params; recursive; handler; specialised_args; } } ->
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
@@ -358,6 +351,12 @@ Format.eprintf "Finished handler %a\n%!" Continuation.print name;
         ~except:params_set
     in
     let state = State.add_to_sink_from_state state ~from:handler_state in
+    let state =
+      State.add_candidates_to_sink state
+        ~sink_into:[]
+        ~candidates_to_sink:
+          (Flambda.free_variables_of_specialised_args specialised_args)
+    in
     Let_cont { name; body; handler =
       Handler { params; recursive; handler; } }, state
   | Apply _ | Apply_cont _ | Switch _ ->

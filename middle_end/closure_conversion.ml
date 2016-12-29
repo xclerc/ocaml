@@ -224,6 +224,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
           params;
           recursive = let_cont.recursive;
           handler = close t handler_env let_cont.handler;
+          specialised_args = Variable.Map.empty;
         };
       }
     end

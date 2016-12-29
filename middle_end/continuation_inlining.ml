@@ -272,6 +272,7 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
                   params;
                   recursive = Nonrecursive;
                   handler;
+                  specialised_args = Variable.Map.empty;
                 };
               })
             expr

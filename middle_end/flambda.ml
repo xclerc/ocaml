@@ -126,12 +126,13 @@ and let_cont = {
 
 and let_cont_handler =
   | Handler of continuation_handler
-  | Alias of continuation_alias
+  | Alias of Continuation.t
 
 and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;
   handler : t;
+  specialised_args : specialised_args;
 }
 
 and set_of_closures = {
@@ -205,6 +206,16 @@ let print_specialised_to ppf (spec_to : specialised_to) =
     fprintf ppf "%a(= %a)"
       Variable.print spec_to.var
       Projection.print projection
+
+let print_specialised_args ppf spec_args =
+  if not (Variable.Map.is_empty spec_args)
+  then begin
+    fprintf ppf "@ ";
+    Variable.Map.iter (fun id (spec_to : specialised_to) ->
+        fprintf ppf "@ %a := %a"
+          Variable.print id print_specialised_to spec_to)
+      spec_args
+  end
 
 (* CR-soon mshinwell: delete uses of old names *)
 let print_project_var = Projection.print_project_var
@@ -339,19 +350,19 @@ let rec lam ppf (flam : t) =
       let let_conts, body = gather_let_conts [] flam in
       let print_let_cont ppf { name; handler; body = _; } =
         match handler with
-        | Handler { params; recursive; handler; } ->
-          fprintf ppf "@[<v 2>where%s %a%s%a%s =@ %a@]"
+        | Handler { params; recursive; handler; specialised_args; } ->
+          fprintf ppf "@[<v 2>where%s %a%s%a%s%a =@ %a@]"
             (match recursive with Nonrecursive -> "" | Recursive -> "_rec")
             Continuation.print name
             (match params with [] -> "" | _ -> " (")
             Variable.print_list params
             (match params with [] -> "" | _ -> ")")
+            print_specialised_args specialised_args
             lam handler
-        | Alias { alias_of; specialised_args; } ->
-          fprintf ppf "@[<v 2>where %a = %a (specialisation: %a)@]"
+        | Alias alias_of ->
+          fprintf ppf "@[<v 2>where %a = %a@]"
             Continuation.print name
             Continuation.print alias_of
-            print_specialised_args specialised_args
       in
       let pp_sep ppf () = fprintf ppf "@ " in
       fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
@@ -387,16 +398,16 @@ and print_named ppf (named : named) =
 
 and print_let_cont_handler ppf (handler : let_cont_handler) =
   match handler with
-  | Handler { params; recursive; handler; } ->
-    fprintf ppf "%s%s%a%s=@ %a"
+  | Handler { params; recursive; handler; specialised_args; } ->
+    fprintf ppf "%s%s%a%s%a=@ %a"
       (match recursive with Nonrecursive -> "" | Recursive -> "rec ")
       (match params with [] -> "" | _ -> "(")
       Variable.print_list params
       (match params with [] -> "" | _ -> ") ")
-      lam handler
-  | Alias { alias_of; specialised_args; } ->
-    fprintf ppf "%a (specialisation: %a)" Continuation.print alias_of
       print_specialised_args specialised_args
+      lam handler
+  | Alias alias_of ->
+    fprintf ppf "%a" Continuation.print alias_of
 
 and print_function_declaration ppf var (f : function_declaration) =
   let idents ppf =
@@ -442,23 +453,13 @@ and print_set_of_closures ppf (set_of_closures : set_of_closures) =
           fprintf ppf "@ %a -rename-> %a"
             Variable.print id print_specialised_to v)
     in
-    let spec ppf spec_args =
-      if not (Variable.Map.is_empty spec_args)
-      then begin
-        fprintf ppf "@ ";
-        Variable.Map.iter (fun id (spec_to : specialised_to) ->
-            fprintf ppf "@ %a := %a"
-              Variable.print id print_specialised_to spec_to)
-          spec_args
-      end
-    in
     fprintf ppf "@[<2>(set_of_closures id=%a@ %a@ @[<2>free_vars={%a@ }@]@ \
         @[<2>specialised_args={%a})@]@ \
         @[<2>direct_call_surrogates=%a@]@]"
       Set_of_closures_id.print function_decls.set_of_closures_id
       funs function_decls.funs
       vars free_vars
-      spec specialised_args
+      print_specialised_args specialised_args
       (Variable.Map.print Variable.print)
       set_of_closures.direct_call_surrogates
 
@@ -647,7 +648,6 @@ and variables_usage_named ?ignore_uses_in_project_var (named : named) =
         free_vars;
       Variable.Set.iter (fun var -> free_variable var)
         (free_variables_of_specialised_args specialised_args)
-        specialised_args
     | Project_closure { set_of_closures; closure_id = _ } ->
       free_variable set_of_closures
     | Project_var { closure; var = _ } ->
@@ -952,16 +952,16 @@ let rec free_continuations (expr : expr) =
 
 and free_continuations_of_let_cont_handler ~name ~(handler : let_cont_handler) =
   match handler with
-  | Alias (alias_of, _specialised_args) -> Continuation.Set.singleton alias_of
+  | Alias alias_of -> Continuation.Set.singleton alias_of
   | Handler { handler; _ } ->
     Continuation.Set.remove name (free_continuations handler)
 
 let free_variables_of_let_cont_handler (handler : let_cont_handler) =
   match handler with
-  | Alias (_alias_of, specialised_args) ->
-    free_variables_of_specialised_args specialised_args
-  | Handler { params; handler; _ } ->
-    Variable.Set.diff (free_variables handler) (Variable.Set.of_list params)
+  | Alias _ -> Variable.Set.empty
+  | Handler { params; handler; specialised_args; _ } ->
+    Variable.Set.union (free_variables_of_specialised_args specialised_args)
+      (Variable.Set.diff (free_variables handler) (Variable.Set.of_list params))
 
 let free_symbols_helper symbols (named : named) =
   match named with

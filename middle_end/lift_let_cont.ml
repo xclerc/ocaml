@@ -202,22 +202,16 @@ let rec lift_expr (expr : Flambda.expr) ~state =
     in
     let expr, state = lift_expr body ~state in
     expr, State.forget_mutable_variable state var
-  | Let_cont { name; body;
-      handler = (Alias { alias_of; specialised_args; }) as handler; } ->
-    let specialised_args_fvs =
-      Flambda_utils.free_variables_of_specialised_args specialised_args
-    in
+  | Let_cont { name; body; handler = (Alias alias_of) as handler; } ->
     let state =
-      if State.can_lift_if_using_continuation state alias_of
-        && State.can_lift_if_using_variables state specialised_args_fvs
-      then
+      if State.can_lift_if_using_continuation state alias_of then
         State.lift_continuation state ~name ~handler
       else
         State.to_remain state (Let_cont (name, handler))
     in
     lift_expr body ~state
   | Let_cont { name; body; handler =
-      Handler { params; recursive; handler; } } ->
+      Handler { params; recursive; handler; specialised_args; } } ->
 (*
 Format.eprintf "Lifting handler for %a\n%!" Continuation.print name;
 *)
@@ -284,6 +278,9 @@ Format.eprintf "New handler for %a is:\n%a\n"
     in
     let fcs = Flambda.free_continuations_of_let_cont_handler ~name ~handler in
     let fvs = Flambda.free_variables_of_let_cont_handler handler in
+    let fvs_specialised_args =
+      Flambda.free_variables_of_specialised_args specialised_args
+    in
     let fvs_mut = State.mutable_variables_used handler_state in
     let state =
       State.use_mutable_variables state fvs_mut
@@ -291,6 +288,7 @@ Format.eprintf "New handler for %a is:\n%a\n"
     let state =
       if State.can_lift_if_using_continuations state fcs
         && State.can_lift_if_using_variables state fvs
+        && State.can_lift_if_using_variables state fvs_specialised_args
         && State.uses_no_mutable_variables handler_state
       then
         State.lift_continuation state ~name ~handler
