@@ -467,18 +467,27 @@ let freshen_move_within_set_of_closures (move:Closure_id.t Closure_id.Map.t)
 
 let freshen_projection (projection : Projection.t) ~freshening
       ~closure_freshening : Projection.t =
+  let get_closure_freshening () =
+    match closure_freshening with
+    | Some closure_freshening -> closure_freshening
+    | None ->
+      Misc.fatal_error "Closure freshening has not been provided"
+  in
   match projection with
   | Project_var project_var ->
+    let closure_freshening = get_closure_freshening () in
     Project_var {
       var = freshen_project_var project_var.var ~closure_freshening;
       closure = apply_variable freshening project_var.closure;
-  }
+    }
   | Project_closure { set_of_closures; closure_id; } ->
+    let closure_freshening = get_closure_freshening () in
     Project_closure {
       set_of_closures = apply_variable freshening set_of_closures;
       closure_id = Project_var.apply_closure_ids closure_freshening closure_id;
     }
   | Move_within_set_of_closures { closure; move } ->
+    let closure_freshening = get_closure_freshening () in
     Move_within_set_of_closures {
       closure = apply_variable freshening closure;
       move = freshen_move_within_set_of_closures ~closure_freshening move;

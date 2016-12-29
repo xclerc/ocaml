@@ -202,9 +202,15 @@ let rec lift_expr (expr : Flambda.expr) ~state =
     in
     let expr, state = lift_expr body ~state in
     expr, State.forget_mutable_variable state var
-  | Let_cont { name; body; handler = (Alias alias_of) as handler; } ->
+  | Let_cont { name; body;
+      handler = (Alias { alias_of; specialised_args; }) as handler; } ->
+    let specialised_args_fvs =
+      Flambda_utils.free_variables_of_specialised_args specialised_args
+    in
     let state =
-      if State.can_lift_if_using_continuation state alias_of then
+      if State.can_lift_if_using_continuation state alias_of
+        && State.can_lift_if_using_variables state specialised_args_fvs
+      then
         State.lift_continuation state ~name ~handler
       else
         State.to_remain state (Let_cont (name, handler))

@@ -306,8 +306,17 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
         ~candidates_to_sink:(Variable.Set.singleton initial_value)
     in
     Let_mutable { var; initial_value; contents_kind; body; }, state
-  | Let_cont { name; body; handler = (Alias _) as handler; } ->
+  | Let_cont { name; body;
+      handler = (Alias { specialised_args; _ }) as handler; } ->
     let body, state = sink_expr body ~state in
+    let specialised_args_fvs =
+      Flambda_utils.free_variables_of_specialised_args specialised_args
+    in
+    let state =
+      State.add_candidates_to_sink state
+        ~sink_into:[]
+        ~candidates_to_sink:specialised_args_fvs
+    in
     Let_cont { name; body; handler; }, state
   | Let_cont { name; body; handler =
       Handler { params; recursive = Recursive; handler; } } ->

@@ -172,13 +172,13 @@ val freshen_move_within_set_of_closures
 val freshen_projection_relation
    : Flambda.specialised_to Variable.Map.t
   -> freshening:t
-  -> closure_freshening:Project_var.t
+  -> closure_freshening:Project_var.t option
   -> Flambda.specialised_to Variable.Map.t
 
 val freshen_projection_relation'
    : (Flambda.specialised_to * 'a) Variable.Map.t
   -> freshening:t
-  -> closure_freshening:Project_var.t
+  -> closure_freshening:Project_var.t option
   -> (Flambda.specialised_to * 'a) Variable.Map.t
 
 val range_of_continuation_freshening : t -> Continuation.Set.t

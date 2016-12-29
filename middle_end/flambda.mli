@@ -87,6 +87,10 @@ type project_var = Projection.project_var
 (* CR-someday mshinwell: move to separate module and make [Identifiable].
   (Or maybe nearly Identifiable; having a special map that enforces invariants
   might be good.) *)
+(* CR-someday mshinwell: This should perhaps be altered so that the
+   specialisation isn't just to a variable, or some particular projection,
+   but is instead to an actual approximation (which would be enhanced to
+   describe the projection too). *)
 type specialised_to = {
   var : Variable.t;
   (** The "outer variable". *)
@@ -98,6 +102,8 @@ type specialised_to = {
       As such, this field describes a relation of projections between
       either the [free_vars] or the [specialised_args]. *)
 }
+
+type specialised_args = specialised_to Variable.Map.t
 
 (** Actions affecting exception traps on the stack.  These are always
     associated with an [Apply_cont] node; the trap action is executed before
@@ -229,6 +235,9 @@ and let_mutable = {
     - Continuations are second-class.
     - Continuations do not capture variables.
     - Continuations may be recursive.
+    
+    Continuations may be aliased or specialised using the [Alias]
+    construction (see [let_cont_handler], below).
 
     It is an error to mark a continuation that might be recursive as
     non-recursive.  The converse is safe.
@@ -241,13 +250,26 @@ and let_cont = {
 
 and let_cont_handler =
   | Handler of continuation_handler
-  | Alias of Continuation.t
+  (* CR mshinwell: Maybe change the "Alias" name, since this will yield
+     real code in the case of a specialisation. *)
+  | Alias of continuation_alias
 
 and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;
   handler : t;
 }
+
+and continuation_alias = {
+  alias_of : Continuation.t;
+  specialised_args : specialised_args;
+}
+(* CR mshinwell: We need to add the following invariant checks:
+   1. Usual checks on [continuation_alias.specialised_args].
+   2. Also on that specialised_args map, that only [Field] projections are
+      used.  (The other projections are all things to do with closures.)  We
+      might consider changing the type somehow to make this statically
+      checked. *)
 
 (** The representation of a set of function declarations (possibly mutually
     recursive).  Such a set encapsulates the declarations themselves,
@@ -284,7 +306,7 @@ and set_of_closures = private {
       variables in scope at the definition point of the [set_of_closures].
       The domain of this map is sometimes known as the "variables bound by
       the closure". *)
-  specialised_args : specialised_to Variable.Map.t;
+  specialised_args : specialised_args;
   (** Parameters whose corresponding arguments are known to always alias a
       particular value.  These are the only parameters that may, during
       [Inline_and_simplify], have non-unknown approximations.
@@ -498,6 +520,10 @@ val free_variables_named
 
 val free_variables_of_let_cont_handler
    : let_cont_handler
+  -> Variable.Set.t
+
+val free_variables_of_specialised_args
+   : specialised_args
   -> Variable.Set.t
 
 (** Compute _all_ variables occurring inside an expression. *)
@@ -722,6 +748,11 @@ val print_project_var
 val print_set_of_closures
    : Format.formatter
   -> set_of_closures
+  -> unit
+
+val print_specialised_args
+   : Format.formatter
+  -> specialised_args
   -> unit
 
 val print_specialised_to

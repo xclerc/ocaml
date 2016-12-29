@@ -789,7 +789,7 @@ let prepare_to_simplify_set_of_closures ~env
   let free_vars =
     Freshening.freshen_projection_relation' free_vars
       ~freshening:(E.freshening env)
-      ~closure_freshening:freshening
+      ~closure_freshening:(Some freshening)
   in
   let specialised_args =
     let specialised_args =
@@ -798,11 +798,12 @@ let prepare_to_simplify_set_of_closures ~env
     in
     Freshening.freshen_projection_relation specialised_args
       ~freshening:(E.freshening env)
-      ~closure_freshening:freshening
+      ~closure_freshening:(Some freshening)
   in
   let parameter_approximations =
     (* Approximations of parameters that are known to always hold the same
        argument throughout the body of the function. *)
+    (* CR mshinwell: This next line might be a duplicate of a line above? *)
     Variable.Map.map_keys (Freshening.apply_variable (E.freshening env))
       (Variable.Map.mapi (fun _id' (spec_to : Flambda.specialised_to) ->
           E.find_exn environment_before_cleaning spec_to.var)

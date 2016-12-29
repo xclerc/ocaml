@@ -74,6 +74,8 @@ type specialised_to = {
   projection : Projection.t option;
 }
 
+type specialised_args = specialised_to Variable.Map.t
+
 type trap_action =
   | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
   | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
@@ -124,7 +126,7 @@ and let_cont = {
 
 and let_cont_handler =
   | Handler of continuation_handler
-  | Alias of Continuation.t
+  | Alias of continuation_alias
 
 and continuation_handler = {
   params : Variable.t list;
@@ -345,10 +347,11 @@ let rec lam ppf (flam : t) =
             Variable.print_list params
             (match params with [] -> "" | _ -> ")")
             lam handler
-        | Alias alias_of ->
-          fprintf ppf "@[<v 2>where %a = %a@]"
+        | Alias { alias_of; specialised_args; } ->
+          fprintf ppf "@[<v 2>where %a = %a (specialisation: %a)@]"
             Continuation.print name
             Continuation.print alias_of
+            print_specialised_args specialised_args
       in
       let pp_sep ppf () = fprintf ppf "@ " in
       fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
@@ -391,8 +394,9 @@ and print_let_cont_handler ppf (handler : let_cont_handler) =
       Variable.print_list params
       (match params with [] -> "" | _ -> ") ")
       lam handler
-  | Alias alias_of ->
-    fprintf ppf "%a" Continuation.print alias_of
+  | Alias { alias_of; specialised_args; } ->
+    fprintf ppf "%a (specialisation: %a)" Continuation.print alias_of
+      print_specialised_args specialised_args
 
 and print_function_declaration ppf var (f : function_declaration) =
   let idents ppf =
@@ -549,6 +553,15 @@ let print_program ppf program =
     program.imported_symbols;
   print_program_body ppf program.program_body
 
+let free_variables_of_specialised_args specialised_args =
+  Variable.Map.fold (fun _ (spec_to : specialised_to) fvs ->
+      (* We don't need to do anything with [spec_to.projectee.var], if
+          it is present, since it would only be another specialised arg
+          in the same set of closures or continuation. *)
+      Variable.Set.add spec_to.var fvs)
+    specialised_args
+    Variable.Set.empty
+
 let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
     ?ignore_uses_in_project_var ~all_used_variables tree =
   let free = ref Variable.Set.empty in
@@ -632,11 +645,8 @@ and variables_usage_named ?ignore_uses_in_project_var (named : named) =
              in the same set of closures. *)
           free_variable renamed_to.var)
         free_vars;
-      Variable.Map.iter (fun _ (spec_to : specialised_to) ->
-          (* We don't need to do anything with [spec_to.projectee.var], if
-             it is present, since it would only be another specialised arg
-             in the same set of closures. *)
-          free_variable spec_to.var)
+      Variable.Set.iter (fun var -> free_variable var)
+        (free_variables_of_specialised_args specialised_args)
         specialised_args
     | Project_closure { set_of_closures; closure_id = _ } ->
       free_variable set_of_closures
@@ -942,13 +952,14 @@ let rec free_continuations (expr : expr) =
 
 and free_continuations_of_let_cont_handler ~name ~(handler : let_cont_handler) =
   match handler with
-  | Alias alias_of -> Continuation.Set.singleton alias_of
+  | Alias (alias_of, _specialised_args) -> Continuation.Set.singleton alias_of
   | Handler { handler; _ } ->
     Continuation.Set.remove name (free_continuations handler)
 
 let free_variables_of_let_cont_handler (handler : let_cont_handler) =
   match handler with
-  | Alias _ -> Variable.Set.empty
+  | Alias (_alias_of, specialised_args) ->
+    free_variables_of_specialised_args specialised_args
   | Handler { params; handler; _ } ->
     Variable.Set.diff (free_variables handler) (Variable.Set.of_list params)
 
