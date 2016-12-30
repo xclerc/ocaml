@@ -584,7 +584,8 @@ module Result = struct
     { approx : Simple_value_approx.t;
       used_continuations : Continuation_uses.t Continuation.Map.t;
       defined_continuations :
-        (Continuation_uses.t * Continuation_approx.t * Env.t)
+        (Continuation_uses.t * Continuation_approx.t * Env.t
+            * Asttypes.rec_flag)
           Continuation.Map.t;
       inlining_threshold : Inlining_cost.Threshold.t option;
       benefit : Inlining_cost.Benefit.t;
@@ -677,12 +678,13 @@ module Result = struct
         used_continuations = Continuation.Map.remove i t.used_continuations;
       }, approxs, uses
 
-  let define_continuation t cont env uses approx =
+  let define_continuation t cont env recursive uses approx =
     Env.invariant env;
     let uses = Continuation_uses.filter_out_non_useful_uses uses in
     { t with
       defined_continuations =
-        Continuation.Map.add cont (uses, approx, env) t.defined_continuations;
+        Continuation.Map.add cont (uses, approx, env, recursive)
+          t.defined_continuations;
     }
 
   let continuation_definitions_with_uses t =

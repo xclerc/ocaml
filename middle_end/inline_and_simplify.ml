@@ -1076,7 +1076,7 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
     R.exit_scope_catch r env after_full_application ~num_params:1
   in
   let r =
-    R.define_continuation r after_full_application env
+    R.define_continuation r after_full_application env Nonrecursive
       after_full_application_uses after_full_application_approx
   in
   let expr : Flambda.t =
@@ -1687,10 +1687,8 @@ Format.eprintf "Simplification of handler for %a: environment@;%a"
             Continuation_approx.create ~name:cont ~handler ~num_params
           in
           let r =
-            match recursive with
-            | Nonrecursive ->
-              R.define_continuation r cont env_above_let_cont uses cont_approx
-            | Recursive -> r
+            R.define_continuation r cont env_above_let_cont recursive uses
+              cont_approx
           in
           let let_cont : Flambda.let_cont =
             { name = cont;

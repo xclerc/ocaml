@@ -371,6 +371,7 @@ module Result : sig
      : t
     -> Continuation.t
     -> Env.t
+    -> Asttypes.rec_flag
     -> Continuation_uses.t
     -> Continuation_approx.t
     -> t
@@ -378,7 +379,8 @@ module Result : sig
   (** Continuation definition information for the inliner. *)
   val continuation_definitions_with_uses
      : t
-    -> (Continuation_uses.t * Continuation_approx.t * Env.t) Continuation.Map.t
+    -> (Continuation_uses.t * Continuation_approx.t * Env.t
+      * Asttypes.rec_flag) Continuation.Map.t
 
   (** Check that there is no continuation binding construct in scope. *)
   val no_continuations_in_scope : t -> bool
