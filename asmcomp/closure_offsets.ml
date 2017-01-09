@@ -133,7 +133,7 @@ let compute_reexported_offsets program
           var
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _ | Set_of_closures _ | Prim _
-      | Assign _ | Proved_unreachable -> ());
+      | Assign _ -> ());
   Flambda_iterators.iter_constant_defining_values_on_program program
     ~f:(fun (const : Flambda.constant_defining_value) ->
       match const with

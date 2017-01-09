@@ -245,7 +245,7 @@ module Push_pop_invariants = struct
         in
         unify_stack cont cont_stack current_stack)
         blocks;
-      match failaction with
+      begin match failaction with
       | None -> ()
       | Some cont ->
         let cont_stack =
@@ -257,6 +257,8 @@ module Push_pop_invariants = struct
           | cont_stack -> cont_stack
         in
         unify_stack cont cont_stack current_stack
+      end
+    | Proved_unreachable -> ()
 
   let well_formed_trap k (expr : Flambda.t) =
     let root = ref Root in
@@ -338,10 +340,12 @@ module Continuation_scoping = struct
       in
       List.iter check consts;
       List.iter check blocks;
-      match failaction with
+      begin match failaction with
       | None -> ()
       | Some cont ->
         check ((), cont)
+      end
+    | Proved_unreachable -> ()
 
   let check_expr k (expr : Flambda.t) =
     let env = Continuation.Map.singleton k 1 in
@@ -474,6 +478,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       end;
       ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es
+    | Proved_unreachable -> ()
   and loop_named env (named : Flambda.named) =
     match named with
     | Var var -> check_variable_is_bound env var
@@ -503,7 +508,6 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_primitive prim;
       check_variables_are_bound env args;
       ignore_debuginfo dbg
-    | Proved_unreachable -> ()
   and loop_set_of_closures env
       ({ Flambda.function_decls; free_vars; specialised_args;
           direct_call_surrogates = _; } as set_of_closures) =
@@ -811,8 +815,7 @@ let used_closure_ids (program:Flambda.program) =
     | Project_var { closure = _; var } ->
       used := Closure_id.Set.union (Closure_id.Map.keys var) !used
     | Set_of_closures _ | Var _ | Symbol _ | Const _ | Allocated_const _
-    | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
-    | Proved_unreachable -> ()
+    | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _ -> ()
   in
   (* CR-someday pchambart: check closure_ids of constant_defining_values'
      project_closures *)

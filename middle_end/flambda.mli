@@ -156,6 +156,7 @@ type t =
   | Apply_cont of Continuation.t * trap_action option * Variable.t list
   | Switch of Variable.t * switch
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
+  | Proved_unreachable
 
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)
 and named =
@@ -199,7 +200,6 @@ and named =
   | Project_closure of project_closure
   | Move_within_set_of_closures of move_within_set_of_closures
   | Project_var of project_var
-  | Proved_unreachable
 
 (* CR-someday mshinwell: Since we lack expression identifiers on every term,
    we should probably introduce [Mutable_var] into [named] if we introduce
@@ -545,6 +545,8 @@ val free_symbols_named : named -> Symbol.Set.t
 
 val free_symbols_program : program -> Symbol.Set.t
 
+type named_reachable = Reachable of named | Unreachable
+
 (** Used to avoid exceeding the stack limit when handling expressions with
     multiple consecutive nested [Let]-expressions.  This saves rewriting large
     simplification functions in CPS.  This function provides for the
@@ -556,7 +558,7 @@ val fold_lets_option
       'a
     -> Variable.t
     -> named
-    -> 'a * (Variable.t * named) list * Variable.t * named)
+    -> 'a * (Variable.t * named) list * Variable.t * named_reachable)
   -> for_last_body:('a -> t -> t * 'b)
   (* CR-someday mshinwell: consider making [filter_defining_expr]
      optional *)

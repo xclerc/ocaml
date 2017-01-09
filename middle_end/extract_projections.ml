@@ -112,7 +112,7 @@ let rec analyse_expr ~which_variables expr =
     | Switch (var, _) -> check_free_variable var
     | Apply_cont (_, _, args) ->
       List.iter check_free_variable args
-    | Let _ | Let_cont _ -> ()
+    | Let _ | Let_cont _ | Proved_unreachable -> ()
   in
   let for_named (named : Flambda.named) =
     match named with
@@ -168,7 +168,7 @@ let rec analyse_expr ~which_variables expr =
       List.iter check_free_variable vars
     | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
     | Read_symbol_field _ | Project_var _ | Project_closure _
-    | Move_within_set_of_closures _ | Proved_unreachable -> ()
+    | Move_within_set_of_closures _ -> ()
   in
   Flambda_iterators.iter_toplevel for_expr for_named expr;
   let projections = !projections in

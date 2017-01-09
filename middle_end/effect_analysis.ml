@@ -31,6 +31,7 @@ let rec no_effects (flam : Flambda.t) =
   | Switch _ -> false
   | Let_cont { body; _ } -> no_effects body
   | Apply _ | Apply_cont _ -> false
+  | Proved_unreachable -> true
 
 and no_effects_named (named : Flambda.named) =
   match named with
@@ -40,7 +41,6 @@ and no_effects_named (named : Flambda.named) =
   | Move_within_set_of_closures _ -> true
   | Assign _ -> false
   | Prim (prim, _, _) -> no_effects_prim prim
-  | Proved_unreachable -> true
 
 let only_generative_effects_prim (prim : Lambda.primitive) =
   match Semantics_of_primitives.for_primitive prim with
@@ -53,4 +53,4 @@ let only_generative_effects_named (named : Flambda.named) =
   | Prim (prim, _, _) -> only_generative_effects_prim prim
   | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
   | Read_symbol_field _ | Project_closure _ | Project_var _
-  | Move_within_set_of_closures _ | Assign _ | Proved_unreachable -> false
+  | Move_within_set_of_closures _ | Assign _ -> false

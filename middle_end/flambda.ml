@@ -87,6 +87,7 @@ type t =
   | Apply of apply
   | Apply_cont of Continuation.t * trap_action option * Variable.t list
   | Switch of Variable.t * switch
+  | Proved_unreachable
 
 and named =
   | Var of Variable.t
@@ -101,7 +102,6 @@ and named =
   | Project_closure of project_closure
   | Move_within_set_of_closures of move_within_set_of_closures
   | Project_var of project_var
-  | Proved_unreachable
 
 and let_expr = {
   var : Variable.t;
@@ -369,6 +369,7 @@ let rec lam ppf (flam : t) =
         lam body
         (Format.pp_print_list ~pp_sep print_let_cont) let_conts
     end
+  | Proved_unreachable -> fprintf ppf "unreachable"
 and print_named ppf (named : named) =
   match named with
   | Var var -> Variable.print ppf var
@@ -394,7 +395,6 @@ and print_named ppf (named : named) =
     fprintf ppf "@[<2>(%a@ <%s>@ %a)@]" Printlambda.primitive prim
       (Debuginfo.to_string dbg)
       Variable.print_list args
-  | Proved_unreachable -> fprintf ppf "unreachable"
 
 and print_let_cont_handler ppf (handler : let_cont_handler) =
   match handler with
@@ -617,6 +617,7 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         aux handler
       end
     | Switch (var, _) -> free_variable var
+    | Proved_unreachable -> ()
   in
   aux tree;
   if all_used_variables then
@@ -658,7 +659,6 @@ and variables_usage_named ?ignore_uses_in_project_var (named : named) =
     | Move_within_set_of_closures { closure; move = _ } ->
       free_variable closure
     | Prim (_, args, _) -> List.iter free_variable args
-    | Proved_unreachable -> ()
     end;
     !free
 
@@ -788,13 +788,13 @@ let iter_general ~toplevel f f_named maybe_named =
         | Handler { handler; _ } -> aux handler
         | Alias _ -> ()
         end
+      | Proved_unreachable -> ()
   and aux_named (named : named) =
     f_named named;
     match named with
     | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
     | Read_symbol_field _ | Project_closure _ | Project_var _
-    | Move_within_set_of_closures _ | Prim _ | Assign _
-    | Proved_unreachable -> ()
+    | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
     | Set_of_closures ({ function_decls = funcs; free_vars = _;
           specialised_args = _}) ->
       if not toplevel then begin
@@ -878,6 +878,8 @@ module With_free_variables = struct
     | Named (_, free_vars) -> free_vars
 end
 
+type named_reachable = Reachable of named | Unreachable
+
 let fold_lets_option t ~init ~for_defining_expr ~for_last_body
       ~filter_defining_expr =
   let finish ~last_body ~acc ~rev_lets =
@@ -903,16 +905,20 @@ let fold_lets_option t ~init ~for_defining_expr ~for_last_body
   let rec loop (t : t) ~acc ~rev_lets =
     match t with
     | Let { var; defining_expr; body; _ } ->
-      let acc, bindings, var, defining_expr =
+      let acc, bindings, var, (defining_expr : named_reachable) =
         for_defining_expr acc var defining_expr
       in
-      let rev_lets =
-        (* CR mshinwell: This should spot [Proved_unreachable] and delete
-           subsequent bindings.  However maybe this means we need
-           [Proved_unreachable] in [Flambda.t] again... *)
-        (var, defining_expr) :: (List.rev bindings) @ rev_lets
-      in
-      loop body ~acc ~rev_lets
+      begin match defining_expr with
+      | Reachable defining_expr ->
+        let rev_lets =
+          (var, defining_expr) :: (List.rev bindings) @ rev_lets
+        in
+        loop body ~acc ~rev_lets
+      | Unreachable ->
+        let rev_lets = (List.rev bindings) @ rev_lets in
+        let last_body, acc = for_last_body acc Proved_unreachable in
+        finish ~last_body ~acc ~rev_lets
+      end
     | t ->
       let last_body, acc = for_last_body acc t in
       finish ~last_body ~acc ~rev_lets
@@ -949,6 +955,7 @@ let rec free_continuations (expr : expr) =
     Continuation.Set.union failaction
       (Continuation.Set.union (Continuation.Set.of_list consts)
         (Continuation.Set.of_list blocks))
+  | Proved_unreachable -> Continuation.Set.empty
 
 and free_continuations_of_let_cont_handler ~name ~(handler : let_cont_handler) =
   match handler with

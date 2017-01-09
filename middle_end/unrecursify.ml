@@ -27,7 +27,7 @@ let unrecursify_function function_variable
     Flambda_iterators.map_toplevel_expr
       (function
         | (Let _ | Let_mutable _ | Let_cont _ |
-           Apply_cont _ | Switch _) as expr ->
+           Apply_cont _ | Switch _ | Proved_unreachable) as expr ->
           expr
         | Apply { kind = Function;
                   continuation;

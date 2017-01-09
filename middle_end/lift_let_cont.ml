@@ -180,7 +180,7 @@ let rec lift_expr (expr : Flambda.expr) ~state =
       lift_expr body ~state
     | Var _ | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
     | Allocated_const _ | Set_of_closures _ | Project_closure _
-    | Move_within_set_of_closures _ | Project_var _ | Proved_unreachable ->
+    | Move_within_set_of_closures _ | Project_var _ ->
       let defining_expr, state =
         match defining_expr with
         | Set_of_closures set_of_closures ->
@@ -297,7 +297,7 @@ Format.eprintf "New handler for %a is:\n%a\n"
         State.to_remain state (Let_cont (name, handler))
     in
     lift_expr body ~state
-  | Apply _ | Apply_cont _ | Switch _ -> expr, state
+  | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr, state
 
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let funs =

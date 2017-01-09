@@ -95,6 +95,7 @@ let lambda_smaller' lam ~than:threshold =
       | Alias _ -> ()
       | Handler { handler; _ } -> lambda_size handler
       end
+    | Proved_unreachable -> ()
   and lambda_named_size (named : Flambda.named) =
     if !size > threshold then raise Exit;
     match named with
@@ -112,7 +113,6 @@ let lambda_smaller' lam ~than:threshold =
       incr size
     | Prim (prim, args, _) ->
       size := !size + prim_size prim args
-    | Proved_unreachable -> ()
   in
   try
     lambda_size lam;
@@ -233,7 +233,7 @@ module Benefit = struct
   let remove_code_helper b (flam : Flambda.t) =
     match flam with
     | Switch _ | Apply_cont _ | Apply _ -> b := remove_call !b
-    | Let _ | Let_mutable _ | Let_cont _ -> ()
+    | Let _ | Let_mutable _ | Let_cont _ | Proved_unreachable -> ()
 
   let remove_code_helper_named b (named : Flambda.named) =
     match named with
@@ -246,8 +246,7 @@ module Benefit = struct
     | Prim _ | Project_closure _ | Project_var _
     | Move_within_set_of_closures _
     | Read_symbol_field _ -> b := remove_prim !b
-    | Var _ | Symbol _ | Read_mutable _ | Allocated_const _ | Const _
-    | Proved_unreachable -> ()
+    | Var _ | Symbol _ | Read_mutable _ | Allocated_const _ | Const _ -> ()
 
   let remove_code lam b =
     let b = ref b in

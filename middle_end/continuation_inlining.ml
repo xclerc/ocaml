@@ -294,7 +294,7 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
                fail here. *)
             expr
         end
-      | Apply _ | Let _ | Let_mutable _ | Switch _ -> expr)
+      | Apply _ | Let _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
     expr
 
 let for_toplevel_expression expr r ~simplify =

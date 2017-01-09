@@ -360,7 +360,7 @@ Format.eprintf "Finished handler %a\n%!" Continuation.print name;
     in
     Let_cont { name; body; handler =
       Handler { params; recursive; handler; specialised_args; } }, state
-  | Apply _ | Apply_cont _ | Switch _ ->
+  | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
@@ -428,7 +428,7 @@ Format.eprintf "New bindings for top of %a outermost first is %a\n%!"
       in
       Let_cont { name; body; handler =
         Handler { params; recursive; handler; specialised_args; } }
-    | Apply _ | Apply_cont _ | Switch _ -> expr
+    | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr
   in
 (*
 Format.eprintf "sink_lets starting with:@;%a\n" Flambda.print expr;

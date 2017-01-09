@@ -327,7 +327,7 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
     let cont = Env.expand_continuation_alias env cont in
     let args_approxs = List.map (fun arg -> Env.find_approx env arg) args in
     Result.add_continuation_use_approx r cont ~args_approxs
-  | Apply { kind = Method _; _ } | Switch _ -> r
+  | Apply { kind = Method _; _ } | Switch _ | Proved_unreachable -> r
 
 and descr_of_named (env : Env.t) (named : Flambda.named)
       : Export_info.approx =
@@ -422,8 +422,6 @@ and descr_of_named (env : Env.t) (named : Flambda.named)
       end
     | _ -> Value_unknown
     end
-  | Proved_unreachable ->
-    Value_unknown
 
 and describe_set_of_closures env (set : Flambda.set_of_closures)
       : Export_info.value_set_of_closures =
