@@ -508,6 +508,7 @@ module Continuation_uses = struct
       non_inlinable_application_points = [];
     }
 
+  (* CR mshinwell: change to "add_inlinable_or_specialisable_use"? *)
   let add_inlinable_use t env ~args =
     { t with
       inlinable_application_points =
