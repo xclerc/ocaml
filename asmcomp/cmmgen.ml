@@ -1856,9 +1856,7 @@ let rec transl env e =
           return_unit(Cassign(unboxed_id,
             transl_unbox_number dbg env bn exp))
       end
-  | Uunreachable ->
-      let dbg = Debuginfo.none in
-      Cop(Cload Word_int, [Cconst_int 0], dbg)
+  | Uunreachable -> Cunreachable
   | Upushtrap cont ->
       let dbg = Debuginfo.none in
       Cop(Cpushtrap cont, [], dbg)

@@ -44,6 +44,7 @@ and instruction_desc =
   | Lpushtrap of { handler : label; }
   | Lpoptrap
   | Lraise of Cmm.raise_kind
+  | Lunreachable
 
 let has_fallthrough = function
   | Lreturn | Lbranch _ | Lswitch _ | Lraise _
@@ -354,6 +355,10 @@ let rec linear i n =
       let trap_depth = List.length trap_stack in
       let n = adjust_trap_depth ~before:trap_depth ~after:n in
       copy_instr (Lraise k) i (discard_dead_code n)
+  | Iunreachable trap_stack ->
+      let trap_depth = List.length trap_stack in
+      let n = adjust_trap_depth ~before:trap_depth ~after:n in
+      copy_instr Lunreachable i (discard_dead_code n)
 
 let fundecl f =
   exit_label := [];

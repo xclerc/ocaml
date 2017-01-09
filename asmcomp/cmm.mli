@@ -150,6 +150,7 @@ and expression =
   | Ccatch of Clambda.catch_kind * (int * Ident.t list * expression) list
       * expression
   | Cexit of int * expression list
+  | Cunreachable
 
 type fundecl =
   { fun_name: string;

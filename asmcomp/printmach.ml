@@ -229,6 +229,8 @@ let rec instr ppf i =
   | Iraise (k, trap_stack) ->
       fprintf ppf "%a%a %a" Printcmm.raise_kind k
         print_trap_stack trap_stack reg i.arg.(0)
+  | Iunreachable trap_stack ->
+      fprintf ppf "unreachable %a" print_trap_stack trap_stack
   end;
   if not (Debuginfo.is_none i.dbg) then
     fprintf ppf "%s" (Debuginfo.to_string i.dbg);

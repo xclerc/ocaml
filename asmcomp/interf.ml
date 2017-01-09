@@ -118,7 +118,9 @@ let build_graph fundecl =
         interf i.next
     | Iexit _ ->
         ()
-    | Iraise _ -> () in
+    | Iraise _ -> ()
+    | Iunreachable _ -> ()
+  in
 
   (* Add a preference from one reg to another.
      Do not add anything if the two registers conflict,
@@ -198,6 +200,7 @@ let build_graph fundecl =
     | Iexit _ ->
         ()
     | Iraise _ -> ()
+    | Iunreachable _ -> ()
   in
 
   interf fundecl.fun_body; prefer 8 fundecl.fun_body

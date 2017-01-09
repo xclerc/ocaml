@@ -118,6 +118,11 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       trap_stacks insn.Mach.next ~stack ~stacks_at_exit
     in
     { insn with desc = Iraise (kind, stack); next; }, stacks_at_exit
+  | Iunreachable _ ->
+    let next, stacks_at_exit =
+      trap_stacks insn.Mach.next ~stack ~stacks_at_exit
+    in
+    { insn with desc = Iunreachable stack; next; }, stacks_at_exit
   | Iifthenelse (cond, ifso, ifnot) ->
     let ifso, stacks_at_exit = trap_stacks ifso ~stack ~stacks_at_exit in
     let ifnot, stacks_at_exit = trap_stacks ifnot ~stack ~stacks_at_exit in

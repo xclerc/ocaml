@@ -575,6 +575,9 @@ let emit_instr fallthrough i =
       if n <> 0
       then cfi_adjust_cfa_offset n;
       stack_offset := !stack_offset + n
+  | Lunreachable ->
+      I.mov (int 0) rax;
+      I.mov (mem64 QWORD 0 RAX) rax
   | Lop(Iload(chunk, addr)) ->
       let dest = res i 0 in
       begin match chunk with

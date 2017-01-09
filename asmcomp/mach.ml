@@ -86,6 +86,7 @@ and instruction_desc =
       * instruction
   | Iexit of int
   | Iraise of Cmm.raise_kind * trap_stack
+  | Iunreachable of trap_stack
 
 type spacetime_part_of_shape =
   | Direct_call_point of { callee : string; }
@@ -149,6 +150,7 @@ let rec instr_iter f i =
           instr_iter f i.next
       | Iexit _ -> ()
       | Iraise _ -> ()
+      | Iunreachable _ -> ()
       | _ ->
           instr_iter f i.next
 
@@ -183,4 +185,4 @@ let spacetime_node_hole_pointer_is_live_before insn =
     | Ifloatofint | Iintoffloat | Ipushtrap _ | Ipoptrap _ -> false
     end
   | Iend | Ireturn | Iifthenelse _ | Iswitch _ | Iloop _ | Icatch _
-  | Iexit _ | Iraise _ -> false
+  | Iexit _ | Iraise _ | Iunreachable _ -> false

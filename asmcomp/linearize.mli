@@ -41,6 +41,7 @@ and instruction_desc =
   | Lpushtrap of { handler : label; }
   | Lpoptrap
   | Lraise of Cmm.raise_kind
+  | Lunreachable
 
 val has_fallthrough :  instruction_desc -> bool
 val end_instr: instruction

@@ -29,7 +29,8 @@ let rec deadcode i =
     else i.arg
   in
   match i.desc with
-  | Iend | Ireturn | Iop(Itailcall_ind _) | Iop(Itailcall_imm _) | Iraise _ ->
+  | Iend | Ireturn | Iop(Itailcall_ind _) | Iop(Itailcall_imm _) | Iraise _
+  | Iunreachable _ ->
       (i, Reg.add_set_array i.live arg)
   | Iop op ->
       let (s, before) = deadcode i.next in

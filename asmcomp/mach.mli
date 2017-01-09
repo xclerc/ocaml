@@ -106,6 +106,7 @@ and instruction_desc =
       * instruction
   | Iexit of int
   | Iraise of Cmm.raise_kind * trap_stack
+  | Iunreachable of trap_stack
 
 type spacetime_part_of_shape =
   | Direct_call_point of { callee : string; (* the symbol *) }

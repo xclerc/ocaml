@@ -743,6 +743,9 @@ method emit_expr (env:environment) exp =
           self#insert (Iexit nfail) [||] [||];
           None
       end
+  | Cunreachable ->
+      self#insert (Iunreachable []) [||] [||];
+      None
 
 method private emit_sequence ?at_start env exp =
   let s = {< instr_seq = dummy_instr >} in
@@ -1000,6 +1003,8 @@ method emit_tail (env:environment) exp =
       self#insert
         (Icatch(rec_flag, is_exn_handler, List.map aux handlers, s_body))
         [||] [||]
+  | Cunreachable ->
+      self#insert (Iunreachable []) [||] [||]
   | _ ->
       self#emit_return env exp
 
