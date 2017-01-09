@@ -540,6 +540,11 @@ module Continuation_uses = struct
     | One, Zero -> true
     | _, _ -> false
 
+  let has_non_inlinable_uses t =
+    match t.non_inlinable_application_points with
+    | [] -> false
+    | _::_ -> true
+
   let meet_of_args_approxs t ~num_params =
     let application_points =
       List.map (fun ({ args } : Use.t) -> List.map snd args)

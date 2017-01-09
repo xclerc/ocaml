@@ -165,6 +165,7 @@ let find_inlinings r ~simplify =
         | Recursive -> definitions
         | Nonrecursive ->
           let inline_unconditionally = U.linearly_used uses in
+          let has_non_inlinable_uses = U.has_non_inlinable_uses uses in
 (*
 Format.eprintf "Continuation %a used linearly? %b\n%!"
   Continuation.print cont inline_unconditionally;
@@ -174,8 +175,12 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
               let key : Continuation_with_args.t = cont, args in
               match Continuation_with_args.Map.find key definitions with
               | exception Not_found ->
+                let count =
+                  if has_non_inlinable_uses then N.Many
+                  else N.One
+                in
                 Continuation_with_args.Map.add key
-                  (inline_unconditionally, N.One, use.env, approx, args_approxs)
+                  (inline_unconditionally, count, use.env, approx, args_approxs)
                   definitions
               | inline_unconditionally, count, _env, approx, args_approxs ->
                 assert (not inline_unconditionally);
