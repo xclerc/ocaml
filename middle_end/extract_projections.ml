@@ -175,10 +175,9 @@ let rec analyse_expr ~which_variables expr =
   let used_which_variables = !used_which_variables in
   projections, used_which_variables
 
-let from_function_decl ~env ~which_variables
-      ~(function_decl : Flambda.function_declaration) =
+let from_expr ~env ~which_variables expr =
   let projections, used_which_variables =
-    analyse_expr ~which_variables function_decl.body
+    analyse_expr ~which_variables expr
   in
   (* We must use approximation information to determine which projections
      are actually valid in the current environment, other we might lift
@@ -195,3 +194,11 @@ let from_function_decl ~env ~which_variables
       let projecting_from = Projection.projecting_from projection in
       not (Variable.Set.mem projecting_from used_which_variables))
     projections
+
+let from_function_decl ~env ~which_variables
+      ~(function_decl : Flambda.function_declaration) =
+  from_expr ~env ~which_variables function_decl.body
+
+let from_continuation ~env ~which_variables
+      ~(handler : Flambda.continuation_handler) =
+  from_expr ~env ~which_variables handler.handler

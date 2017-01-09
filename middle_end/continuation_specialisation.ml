@@ -25,6 +25,14 @@ type arg_action =
   | Cannot_specialise
   | Specialise_to of Variable.t
 
+type specialising_result =
+  | Didn't_specialise
+  | Specialised of Continuation.t * Flambda.continuation_handler
+
+let try_specialising ~cont ~(handler : Flambda.continuation_handler) ~env
+      ~simplify =
+
+
 let find_specialisations r ~simplify =
   let module N = Num_continuation_uses in
   let module U = Inline_and_simplify_aux.Continuation_uses in
@@ -42,8 +50,8 @@ let find_specialisations r ~simplify =
         | None -> specialisations
         | Some handler ->
           (* Note that we don't need to check any non-inlinable application
-              points in [uses], since continuations occurring in such places
-              never have any arguments. *)
+             points in [uses], since continuations occurring in such places
+             never have any arguments. *)
           let new_specialised_args =
             List.fold_left (fun specialised_args (use : U.Use.t) ->
                 let params_with_approxs =
@@ -57,7 +65,9 @@ let find_specialisations r ~simplify =
                     | None, None | None, Some _ | Some _, None ->
                       Some Cannot_specialise
                     | Some var1, Some var2 ->
-                      if Variable.equal var1 var2 then
+                      if Variable.equal var1 var2
+                        && A.useful approx1
+                      then
                         Some (Specialise_to var1)
                       else
                         Some Cannot_specialise)
@@ -66,12 +76,11 @@ let find_specialisations r ~simplify =
               definitions
               (U.inlinable_application_points uses)
           in
-          let added_specialised_arg = ref false in
-          let specialised_args =
+          let specialised_args, added_specialised_arg =
             Variable.Map.fold (fun param (action : arg_action)
-                    specialised_args ->
+                    ((specialised_args, added_specialised_arg) as acc) ->
                 match action with
-                | Cannot_specialise -> specialised_args
+                | Cannot_specialise -> acc
                 | Specialise_to var ->
                   match Variable.Map.find param specialised_args with
                   | exception Not_found ->
@@ -80,19 +89,51 @@ let find_specialisations r ~simplify =
                         projection = None;
                       }
                     in
-                    added_specialised_arg := true;
-                    Variable.Map.add param spec_to specialised_args
+                    Variable.Map.add param spec_to specialised_args, true
                   | _spec_to ->
                     (* This parameter is already specialised. *)
-                    specialised_args)
+                    acc)
               new_specialised_args
-              Variable.Map.empty
+              (Variable.Map.empty, false)
           in
-          if not !added_specialised_arg then begin
+          if not added_specialised_arg then begin
             specialisations
           end else begin
             assert (not (Continuation.Map.mem cont specialisations));
-            Continuation.Map.add cont specialised_args specialisations
+            let handler = {
+              handler with
+              specialised_args;
+            } in
+            match try_specialising ~cont ~handler ~env ~simplify with
+            | Didn't_specialise -> specialisations
+            | Specialised (new_cont, handler) ->
+            Continuation.Map.add cont (new_cont, handler) specialisations
           end)
     (R.continuation_definitions_with_uses r)
     Continuation_with_args.Map.empty
+
+let insert_specialisations (expr : Flambda.expr) ~specialisations =
+  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
+      match expr with
+      | Let_cont { name; _ } ->
+        begin match Continuation.Map.find name specialisations with
+        | exception Not_found -> expr
+        | (new_cont, handler) ->
+          Let_cont {
+            name = new_cont;
+            body = expr;
+            handler;
+          }
+        end
+      | Apply_cont (cont, trap_action, args) ->
+        begin match Continuation.Map.find cont specialisations with
+        | exception Not_found -> expr
+        | (new_cont, _handler) ->
+          assert (trap_action = None);
+          Apply_cont (new_cont, None, args)
+        end
+      | Apply _ | Let _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
+    expr
+
+let for_toplevel_expression expr r ~simplify =
+  let specialisations = find_specialisations r ~simplify in
