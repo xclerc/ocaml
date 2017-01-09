@@ -174,7 +174,7 @@ let default_inline_threshold = if Config.flambda then 10. else 10. /. 8.
 let inline_toplevel_multiplier = 16
 let default_inline_toplevel_threshold =
   int_of_float ((float inline_toplevel_multiplier) *. default_inline_threshold)
-let default_inline_call_cost = (* 5 *) 100
+let default_inline_call_cost = 5
 let default_inline_alloc_cost = 7
 let default_inline_prim_cost = 3
 let default_inline_branch_cost = 5
@@ -309,7 +309,7 @@ let classic_arguments = {
 }
 
 let o2_arguments = {
-  inline_call_cost = Some 100 (*(2 * default_inline_call_cost) *);
+  inline_call_cost = Some (2 * default_inline_call_cost);
   inline_alloc_cost = Some (2 * default_inline_alloc_cost);
   inline_prim_cost = Some (2 * default_inline_prim_cost);
   inline_branch_cost = Some (2 * default_inline_branch_cost);
@@ -323,7 +323,7 @@ let o2_arguments = {
 }
 
 let o3_arguments = {
-  inline_call_cost = Some 100 (*(3 * default_inline_call_cost) *);
+  inline_call_cost = Some (3 * default_inline_call_cost);
   inline_alloc_cost = Some (3 * default_inline_alloc_cost);
   inline_prim_cost = Some (3 * default_inline_prim_cost);
   inline_branch_cost = Some (3 * default_inline_branch_cost);
