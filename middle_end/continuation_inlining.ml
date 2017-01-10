@@ -58,6 +58,9 @@ let try_inlining ~cont ~args ~args_approxs ~env
         List.map (fun param -> param, Variable.rename param) handler.params
       in
       let subst = Variable.Map.of_list freshening in
+      (* CR mshinwell: We should be able to avoid this substitution by
+         adding [subst] to the freshening in the environment in the same way
+         as [Continuation_specialisation] does *)
       let handler =
         Flambda_utils.toplevel_substitution subst handler.handler
       in
