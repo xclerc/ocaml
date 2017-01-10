@@ -49,6 +49,11 @@ val invariant_param_sources
   -> backend:(module Backend_intf.S)
   -> Variable.Pair.Set.t Variable.Map.t
 
+val invariant_params_of_continuation
+   : Continuation.t
+  -> Flambda.continuation_handler
+  -> Variable.Set.t
+
 (* CR-soon mshinwell: think about whether this function should
    be in this file.  Should it be called "unused_parameters"? *)
 val unused_arguments

@@ -379,6 +379,37 @@ let invariant_param_sources decls ~backend =
       | Implication set -> Variable.Map.add var set relation)
     relation Variable.Map.empty
 
+let invariant_params_of_continuation cont
+      (handler : Flambda.continuation_handler) =
+  match handler.recursive with
+  | Nonrecursive ->
+    Misc.fatal_error "invariant_params_of_continuation on non-recursive \
+      continuation"
+  | Recursive ->
+    (* For the moment this is a very simple analysis (in particular it does
+       not perform any alias analysis at all). *)
+    let invariant_params = ref (Variable.Set.of_list handler.params) in
+    Flambda_iterators.iter_expr (fun (expr : Flambda.expr) ->
+        match expr with
+        | Apply_cont (cont', trap_action, args) ->
+          begin match trap_action with
+          | None -> ()
+          | Some _ ->
+            Misc.fatal_errorf "Continuation %a has a trap action and is \
+                recursive"
+              Continuation.print cont'
+          end;
+          assert (List.length handler.params = List.length args);
+          List.iter2 (fun param arg ->
+              if not (Variable.equal param arg) then begin
+                invariant_params := Variable.Set.remove param !invariant_params
+              end)
+            handler.params args
+        | Let _ | Let_mutable _ | Let_cont _ | Apply _ | Switch _
+        | Proved_unreachable -> ())
+      handler.body;
+    !invariant_params
+
 let pass_name = "unused-arguments"
 let () = Clflags.all_passes := pass_name :: !Clflags.all_passes
 

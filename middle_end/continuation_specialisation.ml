@@ -29,16 +29,20 @@ type specialising_result =
   | Didn't_specialise
   | Specialised of Continuation.t * Flambda.continuation_handler
 
-let try_specialising ~cont ~(handler : Flambda.continuation_handler) ~env
-      ~simplify =
-
+let try_specialising ~cont ~(old_handler : Flambda.continuation_handler)
+      ~specialised_args ~env ~simplify =
+  let freshening =
+    List.map (fun param -> param, Variable.rename param) handler.params
+  in
+  let subst = Variable.Map.of_list freshening in
+  let handler =
+    Flambda_utils.toplevel_substitution subst handler.handler
+  in
+  let params = List.map snd freshening in
 
 let find_specialisations r ~simplify =
   let module N = Num_continuation_uses in
   let module U = Inline_and_simplify_aux.Continuation_uses in
-  (* For the moment, a very simple analysis: add specialised arguments to
-     recursive continuations just when all of their application points have
-     exactly the same variable as the given argument. *)
   (* CR mshinwell: [recursive] appears to be redundant with
      [approx.recursive] *)
   Continuation.Map.fold (fun cont (uses, approx, env, recursive)
@@ -52,62 +56,37 @@ let find_specialisations r ~simplify =
           (* Note that we don't need to check any non-inlinable application
              points in [uses], since continuations occurring in such places
              never have any arguments. *)
-          let new_specialised_args =
-            List.fold_left (fun specialised_args (use : U.Use.t) ->
-                let params_with_approxs =
-                  assert (List.length handler.params = List.length use.args);
-                  List.map2 (fun param (arg, arg_approx) ->
-                      param, arg_approx)
-                    handler.params use.args
-                in
-                Variable.Map.union (fun (approx1 : A.t) (approx2 : A.t) ->
-                    match approx1.var, approx2.var with
-                    | None, None | None, Some _ | Some _, None ->
-                      Some Cannot_specialise
-                    | Some var1, Some var2 ->
-                      if Variable.equal var1 var2
-                        && A.useful approx1
-                      then
-                        Some (Specialise_to var1)
-                      else
-                        Some Cannot_specialise)
-                  specialised_args
-                  params_with_approxs)
-              definitions
-              (U.inlinable_application_points uses)
+          let invariant_params =
+            Invariant_params.invariant_params_of_continuation cont handler
           in
           let specialised_args, added_specialised_arg =
-            Variable.Map.fold (fun param (action : arg_action)
+            Variable.Set.fold (fun param
                     ((specialised_args, added_specialised_arg) as acc) ->
-                match action with
-                | Cannot_specialise -> acc
-                | Specialise_to var ->
-                  match Variable.Map.find param specialised_args with
-                  | exception Not_found ->
-                    let spec_to : Flambda.specialised_to =
-                      { var;
-                        projection = None;
-                      }
-                    in
-                    Variable.Map.add param spec_to specialised_args, true
-                  | _spec_to ->
-                    (* This parameter is already specialised. *)
-                    acc)
-              new_specialised_args
+                match Variable.Map.find param specialised_args with
+                | exception Not_found ->
+                  (* This parameter is to be a newly-specialised argument. *)
+                  let spec_to : Flambda.specialised_to =
+                    { var;
+                      projection = None;
+                    }
+                  in
+                  Variable.Map.add param spec_to specialised_args, true
+                | _spec_to ->
+                  (* This parameter is already specialised. *)
+                  acc)
+              invariant_params
               (Variable.Map.empty, false)
           in
           if not added_specialised_arg then begin
             specialisations
           end else begin
             assert (not (Continuation.Map.mem cont specialisations));
-            let handler = {
-              handler with
-              specialised_args;
-            } in
-            match try_specialising ~cont ~handler ~env ~simplify with
+            match
+              try_specialising ~cont ~handler ~specialised_args ~env ~simplify
+            with
             | Didn't_specialise -> specialisations
             | Specialised (new_cont, handler) ->
-            Continuation.Map.add cont (new_cont, handler) specialisations
+              Continuation.Map.add cont (new_cont, handler) specialisations
           end)
     (R.continuation_definitions_with_uses r)
     Continuation_with_args.Map.empty
@@ -115,13 +94,16 @@ let find_specialisations r ~simplify =
 let insert_specialisations (expr : Flambda.expr) ~specialisations =
   Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
       match expr with
-      | Let_cont { name; _ } ->
+      | Let_cont { name; body; _ } ->
         begin match Continuation.Map.find name specialisations with
         | exception Not_found -> expr
         | (new_cont, handler) ->
+          (* Note that the continuation called [name] may be elided, since
+             we don't specialise unless all uses of a given continuation are
+             eligible for specialisation. *)
           Let_cont {
             name = new_cont;
-            body = expr;
+            body;
             handler;
           }
         end
