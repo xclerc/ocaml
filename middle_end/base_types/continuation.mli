@@ -24,10 +24,13 @@ val create : unit -> t
 
 val to_int : t -> int
 
-
-
-(* CR pchambart: moved here to avoid dependecy problems with lambda.
+(* CR pchambart: moved here to avoid dependency problems with lambda.
    The right solution will be to replace every use of int as
-   staticexception identifiers by Continuation.t *)
+   static exception identifiers by Continuation.t *)
 val next_raise_count : unit -> int
 val reset : unit -> unit
+
+module With_args : sig
+  type nonrec t = t * Variable.t list
+  include Identifiable.S with type t := t
+end

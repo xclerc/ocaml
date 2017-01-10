@@ -21,29 +21,6 @@ module B = Inlining_cost.Benefit
 module E = Inline_and_simplify_aux.Env
 module R = Inline_and_simplify_aux.Result
 
-module Continuation_with_args = struct
-  type t = Continuation.t * Variable.t list
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare t1 t2 =
-      let c = Continuation.compare (fst t1) (fst t2) in
-      if c <> 0 then c
-      else Variable.compare_lists (snd t1) (snd t2)
-
-    let equal t1 t2 =
-      compare t1 t2 = 0
-
-    let hash t =
-      Hashtbl.hash (Continuation.hash (fst t),
-        List.map Variable.hash (snd t))
-
-    let output _chan _t = Misc.fatal_error "not implemented"
-    let print _ppf _t = Misc.fatal_error "not implemented"
-  end)
-end
-
 type inlining_result =
   | Didn't_inline
   | Inlined of Variable.t list * Flambda.expr
@@ -172,14 +149,14 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
 *)
           List.fold_left (fun definitions (use : U.Use.t) ->
               let args, args_approxs = List.split use.args in
-              let key : Continuation_with_args.t = cont, args in
-              match Continuation_with_args.Map.find key definitions with
+              let key : Continuation.With_args.t = cont, args in
+              match Continuation.With_args.Map.find key definitions with
               | exception Not_found ->
                 let count =
                   if has_non_inlinable_uses then N.Many
                   else N.One
                 in
-                Continuation_with_args.Map.add key
+                Continuation.With_args.Map.add key
                   (inline_unconditionally, count, use.env, approx, args_approxs)
                   definitions
               | inline_unconditionally, count, _env, approx, args_approxs ->
@@ -188,15 +165,15 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
                   always that immediately prior to the continuation whose
                   body will be simplified to form the body of the shared
                   continuation. *)
-                Continuation_with_args.Map.add key
+                Continuation.With_args.Map.add key
                   (false, N.(+) count N.One, env, approx, args_approxs)
                   definitions)
             definitions
             (U.inlinable_application_points uses))
       (R.continuation_definitions_with_uses r)
-      Continuation_with_args.Map.empty
+      Continuation.With_args.Map.empty
   in
-  Continuation_with_args.Map.fold (fun (cont, args)
+  Continuation.With_args.Map.fold (fun (cont, args)
             (inline_unconditionally, count, env, approx, args_approxs)
             ((inlinings, new_shared_conts, zero_uses) as acc) ->
       assert ((not inline_unconditionally) || N.linear count);
@@ -215,7 +192,7 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
           inlinings, new_shared_conts, Continuation.Set.add cont zero_uses
         | One ->
           let inlinings =
-            Continuation_with_args.Map.add (cont, args) body inlinings
+            Continuation.With_args.Map.add (cont, args) body inlinings
           in
           inlinings, new_shared_conts, zero_uses
         | Many ->
@@ -229,7 +206,7 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
             Apply_cont (new_shared_cont, None, args)
           in
           let inlinings =
-            Continuation_with_args.Map.add (cont, args)
+            Continuation.With_args.Map.add (cont, args)
               apply_shared_cont inlinings
           in
           (* [cont] is recorded because it's the place where the binding of the
@@ -247,7 +224,7 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
           inlinings, new_shared_conts, zero_uses
         end)
     definitions
-    (Continuation_with_args.Map.empty, Continuation.Map.empty,
+    (Continuation.With_args.Map.empty, Continuation.Map.empty,
       Continuation.Set.empty)
 
 (* At the moment this doesn't apply the substitution to handlers as we
@@ -285,7 +262,7 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
             new_shared_conts
         end
       | Apply_cont (cont, trap_action, args) ->
-        begin match Continuation_with_args.Map.find (cont, args) inlinings with
+        begin match Continuation.With_args.Map.find (cont, args) inlinings with
         | exception Not_found -> expr
         | inlined_body ->
           match trap_action with

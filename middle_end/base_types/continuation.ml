@@ -40,3 +40,26 @@ let create () = next_raise_count ()
 let to_int t = t
 
 let print ppf t = Format.fprintf ppf "k%d" t
+
+module With_args = struct
+  type nonrec t = t * Variable.t list
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare t1 t2 =
+      let c = Continuation.compare (fst t1) (fst t2) in
+      if c <> 0 then c
+      else Variable.compare_lists (snd t1) (snd t2)
+
+    let equal t1 t2 =
+      compare t1 t2 = 0
+
+    let hash t =
+      Hashtbl.hash (Continuation.hash (fst t),
+        List.map Variable.hash (snd t))
+
+    let output _chan _t = Misc.fatal_error "not implemented"
+    let print _ppf _t = Misc.fatal_error "not implemented"
+  end)
+end
