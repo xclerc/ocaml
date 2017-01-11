@@ -181,6 +181,12 @@ type filtered_switch_branches =
   | Must_be_taken of Continuation.t
   | Can_be_taken of (Ilambda.switch_block_pattern * Continuation.t) list
 
+let inline_and_specialise_continuations body r ~simplify =
+  let body =
+    Continuation_inlining.for_toplevel_expression body r ~simplify
+  in
+  Continuation_specialisation.for_toplevel_expression body r ~simplify
+
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body
    of a [let rec]-bound function refers to another in the same set of closures.
@@ -721,7 +727,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
             if E.never_inline body_env then
               body
             else
-              Continuation_inlining.for_toplevel_expression body r ~simplify
+              inline_and_specialise_continuations h r ~simplify
           in
           let r, _, _ =
             R.exit_scope_catch r env continuation_param ~num_params:1
@@ -2056,7 +2062,7 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
         let h', r = simplify env r h in
         let h =
           if E.never_inline env then h
-          else Continuation_inlining.for_toplevel_expression h r ~simplify
+          else inline_and_specialise_continuations h r ~simplify
         in
         let r, new_approxs, _uses =
           R.exit_scope_catch r env cont ~num_params:1
@@ -2101,7 +2107,7 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     let expr, r = simplify env r expr in
     let expr =
       if E.never_inline env then expr
-      else Continuation_inlining.for_toplevel_expression expr r ~simplify
+      else inline_and_specialise_continuations h r ~simplify
     in
     let program, r = simplify_program_body env r program in
     let r, _approx, _uses = R.exit_scope_catch r env cont ~num_params:1 in

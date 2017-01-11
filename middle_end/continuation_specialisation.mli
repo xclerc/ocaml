@@ -14,4 +14,15 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** Introduce specialised arguments to continuations. *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
+
+val for_toplevel_expression
+   : Flambda.expr
+  -> Inline_and_simplify_aux.Result.t
+  -> simplify:(Inline_and_simplify_aux.Env.t
+    -> Inline_and_simplify_aux.Result.t
+    -> Flambda.expr
+    -> Flambda.expr * Inline_and_simplify_aux.Result.t)
+  -> Flambda.expr
