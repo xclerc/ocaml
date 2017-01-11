@@ -69,8 +69,15 @@ type project_closure = Projection.project_closure
 type move_within_set_of_closures = Projection.move_within_set_of_closures
 type project_var = Projection.project_var
 
-type specialised_to = {
+type free_var = {
   var : Variable.t;
+  projection : Projection.t option;
+}
+
+type free_vars = free_var Variable.Map.t
+
+type specialised_to = {
+  var : Variable.t option;
   projection : Projection.t option;
 }
 
@@ -137,8 +144,8 @@ and continuation_handler = {
 
 and set_of_closures = {
   function_decls : function_declarations;
-  free_vars : specialised_to Variable.Map.t;
-  specialised_args : specialised_to Variable.Map.t;
+  free_vars : free_vars;
+  specialised_args : specialised_args;
   direct_call_surrogates : Variable.t Variable.Map.t;
 }
 
@@ -199,13 +206,37 @@ module Int = Numbers.Int
 
 let print_const = Const.print
 
-let print_specialised_to ppf (spec_to : specialised_to) =
-  match spec_to.projection with
-  | None -> fprintf ppf "%a" Variable.print spec_to.var
+let print_free_var ppf (free_var : free_var) =
+  match free_var.projection with
+  | None ->
+    fprintf ppf "%a" Variable.print free_var.var
   | Some projection ->
     fprintf ppf "%a(= %a)"
-      Variable.print spec_to.var
+      Variable.print free_var.var
       Projection.print projection
+
+let print_free_vars ppf free_vars =
+  Variable.Map.iter (fun id v ->
+      fprintf ppf "@ %a -rename-> %a"
+        Variable.print id print_free_var v)
+    free_vars
+
+let print_specialised_to ppf (spec_to : specialised_to) =
+  match spec_to.projection with
+  | None ->
+    begin match spec_to.var with
+    | None -> fprintf ppf "<none>"
+    | Some var -> fprintf ppf "%a" Variable.print var
+    end
+  | Some projection ->
+    match spec_to.var with
+    | None ->
+      fprintf ppf "<none>(= %a)"
+        Projection.print projection
+    | Some var ->
+      fprintf ppf "%a(= %a)"
+        Variable.print var
+        Projection.print projection
 
 let print_specialised_args ppf spec_args =
   if not (Variable.Map.is_empty spec_args)
@@ -448,17 +479,12 @@ and print_set_of_closures ppf (set_of_closures : set_of_closures) =
     let funs ppf =
       Variable.Map.iter (print_function_declaration ppf)
     in
-    let vars ppf =
-      Variable.Map.iter (fun id v ->
-          fprintf ppf "@ %a -rename-> %a"
-            Variable.print id print_specialised_to v)
-    in
     fprintf ppf "@[<2>(set_of_closures id=%a@ %a@ @[<2>free_vars={%a@ }@]@ \
         @[<2>specialised_args={%a})@]@ \
         @[<2>direct_call_surrogates=%a@]@]"
       Set_of_closures_id.print function_decls.set_of_closures_id
       funs function_decls.funs
-      vars free_vars
+      print_free_vars free_vars
       print_specialised_args specialised_args
       (Variable.Map.print Variable.print)
       set_of_closures.direct_call_surrogates
@@ -559,7 +585,9 @@ let free_variables_of_specialised_args specialised_args =
       (* We don't need to do anything with [spec_to.projectee.var], if
           it is present, since it would only be another specialised arg
           in the same set of closures or continuation. *)
-      Variable.Set.add spec_to.var fvs)
+      match spec_to.var with
+      | None -> fvs
+      | Some var -> Variable.Set.add var fvs)
     specialised_args
     Variable.Set.empty
 
@@ -641,7 +669,7 @@ and variables_usage_named ?ignore_uses_in_project_var (named : named) =
       (* Sets of closures are, well, closed---except for the free variable and
          specialised argument lists, which may identify variables currently in
          scope outside of the closure. *)
-      Variable.Map.iter (fun _ (renamed_to : specialised_to) ->
+      Variable.Map.iter (fun _ (renamed_to : free_var) ->
           (* We don't need to do anything with [renamed_to.projectee.var], if
              it is present, since it would only be another free variable
              in the same set of closures. *)
@@ -1219,15 +1247,41 @@ module Constant_defining_value = struct
   end)
 end
 
+let compare_free_var (free_var1 : free_var)
+      (free_var2 : free_var) =
+  let c = Variable.compare free_var1.var free_var2.var in
+  if c <> 0 then c
+  else
+    match free_var1.projection, free_var2.projection with
+    | None, None -> 0
+    | Some _, None -> 1
+    | None, Some _ -> -1
+    | Some proj1, Some proj2 -> Projection.compare proj1 proj2
+
+let equal_free_var (free_var1 : free_var)
+      (free_var2 : free_var) =
+  compare_free_var free_var1 free_var2 = 0
+
+let compare_specialised_to (spec_to1 : specialised_to)
+      (spec_to2 : specialised_to) =
+  let c =
+    match spec_to1.var, spec_to2.var with
+    | None, None -> 0
+    | Some _, None -> 1
+    | None, Some _ -> -1
+    | Some var1, Some var2 -> Variable.compare var1 var2
+  in
+  if c <> 0 then c
+  else
+    match spec_to1.projection, spec_to2.projection with
+    | None, None -> 0
+    | Some _, None -> 1
+    | None, Some _ -> -1
+    | Some proj1, Some proj2 -> Projection.compare proj1 proj2
+
 let equal_specialised_to (spec_to1 : specialised_to)
       (spec_to2 : specialised_to) =
-  Variable.equal spec_to1.var spec_to2.var
-    && begin
-      match spec_to1.projection, spec_to2.projection with
-      | None, None -> true
-      | Some _, None | None, Some _ -> false
-      | Some proj1, Some proj2 -> Projection.equal proj1 proj2
-    end
+  compare_specialised_to spec_to1 spec_to2 = 0
 
 let compare_project_var = Projection.compare_project_var
 let compare_project_closure = Projection.compare_project_closure

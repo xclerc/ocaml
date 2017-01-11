@@ -84,6 +84,12 @@ type move_within_set_of_closures = Projection.move_within_set_of_closures
 type project_var = Projection.project_var
 
 (** See [free_vars] and [specialised_args], below. *)
+type free_var = {
+  var : Variable.t;
+  projection : Projection.t option;
+}
+
+type free_vars = free_var Variable.Map.t
 (* CR-someday mshinwell: move to separate module and make [Identifiable].
   (Or maybe nearly Identifiable; having a special map that enforces invariants
   might be good.) *)
@@ -92,8 +98,10 @@ type project_var = Projection.project_var
    but is instead to an actual approximation (which would be enhanced to
    describe the projection too). *)
 type specialised_to = {
-  var : Variable.t;
-  (** The "outer variable". *)
+  var : Variable.t option;
+  (** The "outer variable".  For non-specialised arguments of continuations
+      (which may still be involved in projection relations) this may be
+      [None]. *)
   projection : Projection.t option;
   (** The [projecting_from] value (see projection.mli) of any [projection]
       must be another free variable or specialised argument (depending on
@@ -249,7 +257,11 @@ and let_cont = {
    2. Also on that specialised_args map, that only [Field] projections are
       used.  (The other projections are all things to do with closures.)  We
       might consider changing the type somehow to make this statically
-      checked. *)
+      checked.
+   3. Specialised args are only allowed to have [var = None] in the
+      [specialised_to] record iff they are non-specialised parameters of a
+      continuation.
+*)
 
 and let_cont_handler =
   | Handler of continuation_handler
@@ -258,7 +270,20 @@ and let_cont_handler =
 and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;
+  stub : bool;
+  (* CR-someday mshinwell: We will eventually need to support multiple
+     mutually-recursive handlers, like the backend can. *)
   handler : t;
+  (* CR-someday mshinwell: For the moment the [specialised_args] structure
+     here matches that used for functions, even though for continuations
+     (unlike for functions) it is possible to use [specialised_args] to provide
+     projection relation information for non-specialised parameters.  Arguably
+     we should just have this information directly in [params].  One point
+     about doing that is whether we could turn [params] into a map, or
+     whether ordering is still important.
+     It was also suggested that maybe specialised args information on functions
+     should move from the set of closures into the function declaration
+     structure. *)
   specialised_args : specialised_args;
 }
 
@@ -292,7 +317,7 @@ and set_of_closures = private {
   (* CR-soon mshinwell: I'd like to arrange these maps so that it's impossible
      to put invalid projection information into them (in particular, so that
      we enforce that the relation stays within the domain of the map). *)
-  free_vars : specialised_to Variable.Map.t;
+  free_vars : free_vars;
   (** Mapping from all variables free in the body of the [function_decls] to
       variables in scope at the definition point of the [set_of_closures].
       The domain of this map is sometimes known as the "variables bound by
@@ -678,8 +703,8 @@ val update_function_declarations
     and [specialised_args] are reasonable. *)
 val create_set_of_closures
    : function_decls:function_declarations
-  -> free_vars:specialised_to Variable.Map.t
-  -> specialised_args:specialised_to Variable.Map.t
+  -> free_vars:free_vars
+  -> specialised_args:specialised_args
   -> direct_call_surrogates:Variable.t Variable.Map.t
   -> set_of_closures
 
@@ -757,6 +782,21 @@ val print_let_cont_handler
    : Format.formatter
   -> let_cont_handler
   -> unit
+
+val compare_free_var
+   : free_var
+  -> free_var
+  -> int
+
+val equal_free_var
+   : free_var
+  -> free_var
+  -> bool
+
+val compare_specialised_to
+   : specialised_to
+  -> specialised_to
+  -> int
 
 val equal_specialised_to
    : specialised_to

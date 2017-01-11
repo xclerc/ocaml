@@ -381,7 +381,7 @@ and close_functions t external_env function_declarations : Flambda.named =
           let internal_var =
             Env.find_var closure_env_without_parameters var
           in
-          let external_var : Flambda.specialised_to =
+          let external_var : Flambda.free_var =
             { var = Env.find_var external_env var;
               projection = None;
             }

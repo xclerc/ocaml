@@ -19,21 +19,23 @@
     [which_variables] below).  Projections from variables that are also
     used boxed are not returned. *)
 
-(** [which_variables] maps (existing) inner variables to (existing) outer
-    variables in the manner of [free_vars] and [specialised_args] in
-    [Flambda.set_of_closures].
-
-    The returned projections are [projecting_from] (cf. projection.mli)
+(** The returned projections are [projecting_from] (cf. projection.mli)
     the "existing inner vars".
 *)
-val from_function_decl
+val from_function's_free_vars
    : env:Inline_and_simplify_aux.Env.t
-  -> which_variables:Flambda.specialised_to Variable.Map.t
+  -> free_vars:Flambda.free_vars
   -> function_decl:Flambda.function_declaration
   -> Projection.Set.t
 
-val from_continuation
+val from_function's_specialised_args
    : env:Inline_and_simplify_aux.Env.t
-  -> which_variables:Flambda.specialised_to Variable.Map.t
+  -> specialised_args:Flambda.specialised_args
+  -> function_decl:Flambda.function_declaration
+  -> Projection.Set.t
+
+(** For continuations, all parameters are checked for potential projections. *)
+val from_continuation
+   : uses:Inline_and_simplify_aux.Continuation_uses.t
   -> handler:Flambda.continuation_handler
   -> Projection.Set.t

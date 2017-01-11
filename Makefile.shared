@@ -195,6 +195,7 @@ MIDDLE_END=\
   middle_end/inlining_transforms.cmo \
   middle_end/inlining_decision.cmo \
   middle_end/continuation_inlining.cmo \
+  middle_end/continuation_specialisation.cmo \
   middle_end/remove_free_vars_equal_to_args.cmo \
   middle_end/remove_unused_arguments.cmo \
   middle_end/extract_projections.cmo \

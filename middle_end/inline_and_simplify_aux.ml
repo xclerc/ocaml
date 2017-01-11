@@ -545,6 +545,7 @@ module Continuation_uses = struct
     | [] -> false
     | _::_ -> true
 
+  (* CR mshinwell: this should be called "join" *)
   let meet_of_args_approxs t ~num_params =
     let application_points =
       List.map (fun ({ args } : Use.t) -> List.map snd args)
@@ -568,9 +569,9 @@ module Continuation_uses = struct
 
   let filter_out_non_useful_uses t =
     (* CR mshinwell: This should check that the approximation is always
-       better than the meet.  We could do this easily by adding an equality
+       better than the join.  We could do this easily by adding an equality
        function to Simple_value_approx and then using that in conjunction with
-       the "meet" function *)
+       the "join" function *)
     let inlinable_application_points =
       List.filter (fun (use : Use.t) ->
           List.exists (fun (_var, approx) -> A.useful approx) use.args)

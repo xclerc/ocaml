@@ -26,10 +26,10 @@ let find_declaration_variable cf ({ funs } : Flambda.function_declarations) =
   else var
 
 let find_free_variable cv ({ free_vars } : Flambda.set_of_closures) =
-  let var : Flambda.specialised_to =
+  let free_var : Flambda.free_var =
     Variable.Map.find (Var_within_closure.unwrap cv) free_vars
   in
-  var.var
+  free_var.var
 
 let function_arity (f : Flambda.function_declaration) = List.length f.params
 
@@ -166,7 +166,7 @@ and sameclosure (c1 : Flambda.function_declaration)
 and same_set_of_closures (c1 : Flambda.set_of_closures)
       (c2 : Flambda.set_of_closures) =
   Variable.Map.equal sameclosure c1.function_decls.funs c2.function_decls.funs
-    && Variable.Map.equal Flambda.equal_specialised_to
+    && Variable.Map.equal Flambda.equal_free_var
         c1.free_vars c2.free_vars
     && Variable.Map.equal Flambda.equal_specialised_to c1.specialised_args
         c2.specialised_args
@@ -195,6 +195,10 @@ let can_be_merged = same
 let toplevel_substitution sb tree =
   let sb' = sb in
   let sb v = try Variable.Map.find v sb with Not_found -> v in
+  let sb_opt = function
+    | None -> None
+    | Some v -> Some (sb v)
+  in
   let aux (flam : Flambda.t) : Flambda.t =
     match flam with
     | Let_mutable mutable_let ->
@@ -236,12 +240,12 @@ let toplevel_substitution sb tree =
         Flambda.create_set_of_closures
           ~function_decls:set_of_closures.function_decls
           ~free_vars:
-            (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                { spec_to with var = sb spec_to.var; })
+            (Variable.Map.map (fun (free_var : Flambda.free_var) ->
+                { free_var with var = sb free_var.var; })
               set_of_closures.free_vars)
           ~specialised_args:
             (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                { spec_to with var = sb spec_to.var; })
+                { spec_to with var = sb_opt spec_to.var; })
               set_of_closures.specialised_args)
           ~direct_call_surrogates:set_of_closures.direct_call_surrogates
       in
@@ -306,12 +310,12 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
     function_declaration.free_variables);
   let free_vars =
     Variable.Map.fold (fun id id' fv' ->
-        let spec_to : Flambda.specialised_to =
+        let free_var : Flambda.free_var =
           { var = id;
             projection = None;
           }
         in
-        Variable.Map.add id' spec_to fv')
+        Variable.Map.add id' free_var fv')
       (Variable.Map.filter
         (fun id _ -> not (Variable.Set.mem id param_set))
         sb)
@@ -507,6 +511,10 @@ let substitute_read_symbol_field_for_variables
       try Variable.Map.find to_substitute bindings
       with Not_found -> to_substitute
     in
+    let sb_opt = function
+      | None -> None
+      | Some v -> Some (sb v)
+    in
     match named with
     | Var v when Variable.Map.mem v substitution -> Var (sb v)
 (*
@@ -530,12 +538,12 @@ let substitute_read_symbol_field_for_variables
         Flambda.create_set_of_closures
           ~function_decls:set_of_closures.function_decls
           ~free_vars:
-            (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                { spec_to with var = sb spec_to.var; })
+            (Variable.Map.map (fun (free_var : Flambda.free_var) ->
+                { free_var with var = sb free_var.var; })
               set_of_closures.free_vars)
           ~specialised_args:
             (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                { spec_to with var = sb spec_to.var; })
+                { spec_to with var = sb_opt spec_to.var; })
               set_of_closures.specialised_args)
           ~direct_call_surrogates:set_of_closures.direct_call_surrogates
       in
@@ -724,17 +732,29 @@ let contains_stub (fun_decls : Flambda.function_declarations) =
   in
   number_of_stub_functions > 0
 
-let clean_projections ~which_variables =
+let clean_free_vars_projections free_vars =
+  Variable.Map.map (fun (free_var : Flambda.free_var) ->
+      match free_var.projection with
+      | None -> free_var
+      | Some projection ->
+        let from = Projection.projecting_from projection in
+        if Variable.Map.mem from free_vars then
+          free_var
+        else
+          ({ free_var with projection = None; } : Flambda.free_var))
+    free_vars
+
+let clean_specialised_args_projections specialised_args =
   Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
       match spec_to.projection with
       | None -> spec_to
       | Some projection ->
         let from = Projection.projecting_from projection in
-        if Variable.Map.mem from which_variables then
+        if Variable.Map.mem from specialised_args then
           spec_to
         else
           ({ spec_to with projection = None; } : Flambda.specialised_to))
-    which_variables
+    specialised_args
 
 let projection_to_named (projection : Projection.t) : Flambda.named =
   match projection with

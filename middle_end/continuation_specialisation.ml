@@ -34,14 +34,15 @@ module Continuation_with_specialised_args = struct
     let compare t1 t2 =
       let c = Continuation.compare (fst t1) (fst t2) in
       if c <> 0 then c
-      else (Variable.Map.compare Variable.compare) (snd t1) (snd t2)
+      else
+        (Variable.Map.compare Flambda.compare_specialised_to) (snd t1) (snd t2)
 
     let equal t1 t2 =
       compare t1 t2 = 0
 
     let hash t =
       Hashtbl.hash (Continuation.hash (fst t),
-        (Variable.Map.hash Variable.hash) (snd t))
+        Hashtbl.hash (Variable.Map.bindings (snd t)))
 
     let output _chan _t = Misc.fatal_error "not implemented"
     let print _ppf _t = Misc.fatal_error "not implemented"
@@ -62,7 +63,7 @@ let try_specialising ~cont ~(old_handler : Flambda.continuation_handler)
   let params, freshening =
     Freshening.add_variables' freshening old_handler.params
   in
-  let new_cont, freshening = Freshening.add_static_exception t cont in
+  let new_cont, freshening = Freshening.add_static_exception freshening cont in
   let env = E.set_freshening env freshening in
   let new_cont_approx =
     Continuation_approx.create_unknown ~name:new_cont
@@ -71,11 +72,12 @@ let try_specialising ~cont ~(old_handler : Flambda.continuation_handler)
   let env = E.add_continuation env new_cont new_cont_approx in
   let wrong_spec_args =
     Variable.Set.inter (Variable.Map.keys old_handler.specialised_args)
-      newly_specialised_args
+      (Variable.Map.keys newly_specialised_args)
   in
   if not (Variable.Set.is_empty wrong_spec_args) then begin
     Misc.fatal_errorf "These parameters of continuation %a have already been \
         specialised: %a"
+      Continuation.print cont
       Variable.Set.print wrong_spec_args
   end;
   let env =
@@ -84,41 +86,44 @@ let try_specialising ~cont ~(old_handler : Flambda.continuation_handler)
         let param' = Freshening.apply_variable freshening param in
         match Variable.Map.find param old_handler.specialised_args with
         | exception Not_found ->
-          if Variable.Set.mem newly_specialised_args then
+          if Variable.Map.mem param newly_specialised_args then
             env
           else
             E.add env param' (A.value_unknown Other)
         | { var; projection; } ->
           let env =
-            E.add_projection env ~projection:spec_to.projection
-              ~bound_to:param'
+            match projection with
+            | None -> env
+            | Some projection ->
+              E.add_projection env ~projection ~bound_to:param'
           in
-          match E.find_opt env spec_to.var with
+          match E.find_opt env var with
           | Some approx -> E.add env param' approx
           | None ->
             Misc.fatal_errorf "Existing parameter %a of continuation %a is \
-                specialised to variable %a which does not exist in the
+                specialised to variable %a which does not exist in the \
                 environment: %a"
               Variable.print param
               Continuation.print cont
-              Variable.print spec_to.var
+              Variable.print var
               E.print env)
       env
       old_handler.params
   in
   let env =
     (* Add approximations for newly-specialised args. *)
-    Variable.Set.fold (fun param spec_to env ->
+    Variable.Map.fold (fun param (spec_to : Flambda.specialised_to) env ->
         let param' = Freshening.apply_variable freshening param in
         let env =
-          E.add_projection env ~projection:spec_to.projection
-            ~bound_to:param'
+          match spec_to.projection with
+          | None -> env
+          | Some projection -> E.add_projection env ~projection ~bound_to:param'
         in
         match E.find_opt env spec_to.var with
         | Some approx -> E.add env param' approx
         | None ->
           Misc.fatal_errorf "Attempt to specialise parameter %a of \
-              continuation %a to variable %a which does not exist in the
+              continuation %a to variable %a which does not exist in the \
               environment: %a"
             Variable.print param
             Continuation.print cont
@@ -127,6 +132,7 @@ let try_specialising ~cont ~(old_handler : Flambda.continuation_handler)
       newly_specialised_args
       env
   in
+  let r = R.create () in
   let new_handler, r = simplify env r old_handler.handler in
   let inlining_benefit = R.benefit r in
   let module W = Inlining_cost.Whether_sufficient_benefit in
@@ -194,7 +200,7 @@ let find_specialisations r ~simplify =
                     params_with_args
                 in
                 if Variable.Map.cardinal params_with_specialised_args < 1 then
-                  new_conts, uses_to_new_conts
+                  specialisations
                 else
                   let params_with_specialised_args =
                     Variable.Map.map (fun (arg, _) : Flambda.specialised_to ->
@@ -211,11 +217,14 @@ let find_specialisations r ~simplify =
                       Continuation_with_specialised_args.Map.find key
                         specialisations
                     with
-                    | exception Not_found -> Continuation_with_args.Set.empty
+                    | exception Not_found -> Continuation.With_args.Set.empty
                     | uses -> uses
                   in
+                  let use_args =
+                    List.map (fun (arg, _approx) -> arg) use.args
+                  in
                   Continuation_with_specialised_args.Map.add key
-                    (Continuation_with_args.Set.add (cont, use.args) uses)
+                    (Continuation.With_args.Set.add (cont, use_args) uses)
                     specialisations)
               Continuation_with_specialised_args.Map.empty
               (U.inlinable_application_points uses))
@@ -232,7 +241,8 @@ let find_specialisations r ~simplify =
           (cont, newly_specialised_args)
           cont_application_points ((new_conts, apply_cont_rewrites) as acc) ->
       match
-        try_specialising ~cont ~handler ~newly_specialised_args ~env ~simplify
+        try_specialising ~cont ~old_handler:handler ~newly_specialised_args
+          ~env ~simplify
       with
       | Didn't_specialise -> acc
       | Specialised (new_cont, handler) ->
