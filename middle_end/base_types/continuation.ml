@@ -48,7 +48,7 @@ module With_args = struct
     type nonrec t = t
 
     let compare t1 t2 =
-      let c = Continuation.compare (fst t1) (fst t2) in
+      let c = compare (fst t1) (fst t2) in
       if c <> 0 then c
       else Variable.compare_lists (snd t1) (snd t2)
 
@@ -56,7 +56,7 @@ module With_args = struct
       compare t1 t2 = 0
 
     let hash t =
-      Hashtbl.hash (Continuation.hash (fst t),
+      Hashtbl.hash (hash (fst t),
         List.map Variable.hash (snd t))
 
     let output _chan _t = Misc.fatal_error "not implemented"

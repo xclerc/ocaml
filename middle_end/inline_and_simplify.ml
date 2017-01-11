@@ -727,7 +727,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
             if E.never_inline body_env then
               body
             else
-              inline_and_specialise_continuations h r ~simplify
+              inline_and_specialise_continuations body r ~simplify
           in
           let r, _, _ =
             R.exit_scope_catch r env continuation_param ~num_params:1
@@ -2107,7 +2107,7 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     let expr, r = simplify env r expr in
     let expr =
       if E.never_inline env then expr
-      else inline_and_specialise_continuations h r ~simplify
+      else inline_and_specialise_continuations expr r ~simplify
     in
     let program, r = simplify_program_body env r program in
     let r, _approx, _uses = R.exit_scope_catch r env cont ~num_params:1 in

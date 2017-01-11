@@ -75,6 +75,11 @@ TYPING=typing/ident.cmo typing/path.cmo \
   typing/typemod.cmo
 
 COMP= \
+  middle_end/debuginfo.cmo \
+  middle_end/base_types/tag.cmo \
+  middle_end/base_types/linkage_name.cmo \
+  middle_end/base_types/compilation_unit.cmo \
+  middle_end/base_types/variable.cmo \
   middle_end/base_types/continuation.cmo \
   middle_end/base_types/trap_id.cmo \
   bytecomp/lambda.cmo bytecomp/printlambda.cmo \
@@ -146,11 +151,6 @@ ASMCOMP=\
   driver/opterrors.cmo driver/optcompile.cmo
 
 MIDDLE_END=\
-  middle_end/debuginfo.cmo \
-  middle_end/base_types/tag.cmo \
-  middle_end/base_types/linkage_name.cmo \
-  middle_end/base_types/compilation_unit.cmo \
-  middle_end/base_types/variable.cmo \
   middle_end/base_types/mutable_variable.cmo \
   middle_end/base_types/id_types.cmo \
   middle_end/base_types/set_of_closures_id.cmo \

@@ -82,24 +82,27 @@ let try_specialising ~cont ~(old_handler : Flambda.continuation_handler)
     (* Add approximations for parameters including existing specialised args. *)
     List.fold_left (fun env param ->
         let param' = Freshening.apply_variable freshening param in
-        let approx =
-          match Variable.Map.find param old_handler.specialised_args with
-          | exception Not_found -> A.value_unknown Other
-          | { var; projection; } ->
-            let env =
-              E.add_projection env ~projection:spec_to.projection
-                ~bound_to:param'
-            in
-            match E.find_opt env spec_to.var with
-            | Some approx -> E.add env param' approx
-            | None ->
-              Misc.fatal_errorf "Existing parameter %a of continuation %a is \
-                  specialised to variable %a which does not exist in the
-                  environment: %a"
-                Variable.print param
-                Continuation.print cont
-                Variable.print spec_to.var
-                E.print env)
+        match Variable.Map.find param old_handler.specialised_args with
+        | exception Not_found ->
+          if Variable.Set.mem newly_specialised_args then
+            env
+          else
+            E.add env param' (A.value_unknown Other)
+        | { var; projection; } ->
+          let env =
+            E.add_projection env ~projection:spec_to.projection
+              ~bound_to:param'
+          in
+          match E.find_opt env spec_to.var with
+          | Some approx -> E.add env param' approx
+          | None ->
+            Misc.fatal_errorf "Existing parameter %a of continuation %a is \
+                specialised to variable %a which does not exist in the
+                environment: %a"
+              Variable.print param
+              Continuation.print cont
+              Variable.print spec_to.var
+              E.print env)
       env
       old_handler.params
   in

@@ -35,5 +35,5 @@ val from_function_decl
 val from_continuation
    : env:Inline_and_simplify_aux.Env.t
   -> which_variables:Flambda.specialised_to Variable.Map.t
-  -> function_decl:Flambda.continuation_handler
+  -> handler:Flambda.continuation_handler
   -> Projection.Set.t

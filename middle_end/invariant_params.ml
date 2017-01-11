@@ -391,7 +391,8 @@ let invariant_params_of_continuation cont
     let invariant_params = ref (Variable.Set.of_list handler.params) in
     Flambda_iterators.iter_expr (fun (expr : Flambda.expr) ->
         match expr with
-        | Apply_cont (cont', trap_action, args) ->
+        | Apply_cont (cont', trap_action, args)
+            when Continuation.equal cont cont' ->
           begin match trap_action with
           | None -> ()
           | Some _ ->
@@ -405,9 +406,9 @@ let invariant_params_of_continuation cont
                 invariant_params := Variable.Set.remove param !invariant_params
               end)
             handler.params args
-        | Let _ | Let_mutable _ | Let_cont _ | Apply _ | Switch _
-        | Proved_unreachable -> ())
-      handler.body;
+        | Apply_cont _ | Let _ | Let_mutable _ | Let_cont _ | Apply _
+        | Switch _ | Proved_unreachable -> ())
+      handler.handler;
     !invariant_params
 
 let pass_name = "unused-arguments"
