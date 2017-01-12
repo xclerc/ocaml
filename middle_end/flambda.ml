@@ -126,14 +126,13 @@ and let_mutable = {
 }
 
 and let_cont = {
-  name : Continuation.t;
   body : t;
-  handler : let_cont_handler;
+  handlers : let_cont_handlers;
 }
 
-and let_cont_handler =
-  | Handler of continuation_handler
-  | Alias of Continuation.t
+and let_cont_handlers =
+  | Handlers of continuation_handler Continuation.Map.t
+  | Alias of { name : Continuation.t; alias_of : Continuation.t; }
 
 and continuation_handler = {
   params : Variable.t list;
@@ -355,20 +354,19 @@ let rec lam ppf (flam : t) =
       print_trap_action trap_action
       Continuation.print i
       Variable.print_list ls
-  | Let_cont { name; body; handler; } ->
+  | Let_cont { body; handlers; } ->
     (* Printing the same way as for [Let] is easier when debugging lifting
        passes. *)
     if !Clflags.dump_let_cont then begin
       let rec let_cont_body (ul : t) =
         match ul with
-        | Let_cont { name; body; handler; } ->
-          fprintf ppf "@ @[<2>%a@ %a@]" Continuation.print name
-            print_let_cont_handler handler;
+        | Let_cont { body; handlers; } ->
+          fprintf ppf "@ @[<2>%a@]" print_let_cont_handlers handlers;
           let_cont_body body
         | _ -> ul
       in
-      fprintf ppf "@[<2>(let_cont@ @[<hv 1>(@[<2>%a@ %a@]"
-        Continuation.print name print_let_cont_handler handler;
+      fprintf ppf "@[<2>(let_cont@ @[<hv 1>(@[<2>%a@]"
+        print_let_cont_handlers handlers;
       let expr = let_cont_body body in
       fprintf ppf ")@]@ %a)@]" lam expr
     end else begin
@@ -380,18 +378,22 @@ let rec lam ppf (flam : t) =
         | body -> let_conts, body
       in
       let let_conts, body = gather_let_conts [] flam in
-      let print_let_cont ppf { name; handler; body = _; } =
-        match handler with
-        | Handler { params; recursive; handler; specialised_args; } ->
-          fprintf ppf "@[<v 2>where%s %a%s%a%s%a =@ %a@]"
-            (match recursive with Nonrecursive -> "" | Recursive -> "_rec")
-            Continuation.print name
-            (match params with [] -> "" | _ -> " (")
-            Variable.print_list params
-            (match params with [] -> "" | _ -> ")")
-            print_specialised_args specialised_args
-            lam handler
-        | Alias alias_of ->
+      let print_let_cont ppf { handlers; body = _; } =
+        match handlers with
+        | Handlers handlers ->
+          Continuation.Map.iter (fun name
+                  { params; recursive; stub; handler; specialised_args; } ->
+              fprintf ppf "@[<v 2>where%s %a%s%s%a%s%a =@ %a@]"
+                (match recursive with Nonrecursive -> "" | Recursive -> "_rec")
+                Continuation.print name
+                (if stub then "*stub* " else "")
+                (match params with [] -> "" | _ -> " (")
+                Variable.print_list params
+                (match params with [] -> "" | _ -> ")")
+                print_specialised_args specialised_args
+                lam handler)
+            handlers
+        | Alias { name; alias_of; } ->
           fprintf ppf "@[<v 2>where %a = %a@]"
             Continuation.print name
             Continuation.print alias_of
@@ -428,18 +430,23 @@ and print_named ppf (named : named) =
       (Debuginfo.to_string dbg)
       Variable.print_list args
 
-and print_let_cont_handler ppf (handler : let_cont_handler) =
+and print_let_cont_handlers ppf (handler : let_cont_handlers) =
   match handler with
-  | Handler { params; recursive; handler; specialised_args; } ->
-    fprintf ppf "%s%s%a%s%a=@ %a"
-      (match recursive with Nonrecursive -> "" | Recursive -> "rec ")
-      (match params with [] -> "" | _ -> "(")
-      Variable.print_list params
-      (match params with [] -> "" | _ -> ") ")
-      print_specialised_args specialised_args
-      lam handler
-  | Alias alias_of ->
-    fprintf ppf "%a" Continuation.print alias_of
+  | Handlers handlers ->
+    Continuation.Map.iter (fun name
+            { params; recursive; stub; handler; specialised_args; } ->
+        fprintf ppf "%a@ %s%s%s%a%s%a=@ %a"
+          Continuation.print name
+          (match recursive with Nonrecursive -> "" | Recursive -> "rec ")
+          (if stub then "*stub* " else "")
+          (match params with [] -> "" | _ -> "(")
+          Variable.print_list params
+          (match params with [] -> "" | _ -> ") ")
+          print_specialised_args specialised_args
+          lam handler)
+      handlers
+  | Alias { name; alias_of; } ->
+    fprintf ppf "%a = %a" Continuation.print name Continuation.print alias_of
 
 and print_function_declaration ppf var (f : function_declaration) =
   let idents ppf =
@@ -593,7 +600,8 @@ let free_variables_of_specialised_args specialised_args =
     Variable.Set.empty
 
 let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ?ignore_uses_in_project_var ~all_used_variables tree =
+    ?ignore_uses_in_project_var ?ignore_uses_in_apply_cont
+    ~all_used_variables tree =
   let free = ref Variable.Set.empty in
   let bound = ref Variable.Set.empty in
   let free_variables ids = free := Variable.Set.union ids !free in
@@ -622,6 +630,7 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
           || ignore_uses_as_callee <> None
           || ignore_uses_as_argument <> None
           || ignore_uses_in_project_var <> None
+          || ignore_uses_in_apply_cont <> None
       then begin
         (* In these cases we can't benefit from the pre-computed free
             variable sets. *)
@@ -636,14 +645,19 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       free_variable var;
       aux body
     | Apply_cont (_, _, es) ->
-      List.iter free_variable es
-    | Let_cont { handler; body; _ } ->
+      begin match ignore_uses_in_apply_cont with
+      | None -> List.iter free_variable es
+      | Some () -> ()
+      end
+    | Let_cont { handlers; body; } ->
       aux body;
-      begin match handler with
+      begin match handlers with
       | Alias _ -> ()
-      | Handler { params; handler; _ } ->
-        List.iter bound_variable params;
-        aux handler
+      | Handlers handlers ->
+        Continuation.Map.iter (fun _name { params; handler; _ } ->
+            List.iter bound_variable params;
+            aux handler)
+          handlers
       end
     | Switch (var, _) -> free_variable var
     | Proved_unreachable -> ()
@@ -692,9 +706,10 @@ and variables_usage_named ?ignore_uses_in_project_var (named : named) =
     !free
 
 let free_variables ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ?ignore_uses_in_project_var tree =
+    ?ignore_uses_in_project_var ?ignore_uses_in_apply_cont tree =
   variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ?ignore_uses_in_project_var ~all_used_variables:false tree
+    ?ignore_uses_in_project_var ?ignore_uses_in_apply_cont
+    ~all_used_variables:false tree
 
 let free_variables_named ?ignore_uses_in_project_var named =
   variables_usage_named ?ignore_uses_in_project_var named
@@ -811,10 +826,12 @@ let iter_general ~toplevel f f_named maybe_named =
       | Apply _ | Apply_cont _ | Switch _ -> ()
       | Let _ -> assert false
       | Let_mutable { body; _ } -> aux body
-      | Let_cont { body; handler; _ } ->
+      | Let_cont { body; handlers; _ } ->
         aux body;
-        begin match handler with
-        | Handler { handler; _ } -> aux handler
+        begin match handlers with
+        | Handlers handlers ->
+          Continuation.Map.iter (fun _cont { handler; } -> aux handler)
+            handlers
         | Alias _ -> ()
         end
       | Proved_unreachable -> ()
@@ -959,11 +976,10 @@ let rec free_continuations (expr : expr) =
   | Let { body; _ }
   | Let_mutable { body; _ } ->
     free_continuations body
-  | Let_cont { name; body; handler; } ->
-    Continuation.Set.remove name
-      (Continuation.Set.union
-        (free_continuations_of_let_cont_handler ~name ~handler)
-        (free_continuations body))
+  | Let_cont { body; handlers; } ->
+    Continuation.Set.union
+      (free_continuations_of_let_cont_handlers ~handlers)
+      (free_continuations body)
   | Apply_cont (cont, trap_action, _args) ->
     let trap_action =
       match trap_action with
@@ -986,18 +1002,30 @@ let rec free_continuations (expr : expr) =
         (Continuation.Set.of_list blocks))
   | Proved_unreachable -> Continuation.Set.empty
 
-and free_continuations_of_let_cont_handler ~name ~(handler : let_cont_handler) =
-  match handler with
-  | Alias alias_of -> Continuation.Set.singleton alias_of
-  | Handler { handler; _ } ->
-    Continuation.Set.remove name (free_continuations handler)
+and free_continuations_of_let_cont_handlers ~(handlers : let_cont_handlers) =
+  match handlers with
+  | Alias { name = _; alias_of; } -> Continuation.Set.singleton alias_of
+  | Handlers handlers ->
+    let bound_conts = Continuation.Map.keys handlers in
+    Continuation.Map.fold (fun _name { handler; _ } fcs ->
+        Continuation.Set.union fcs
+          (Continuation.Set.diff (free_continuations handler) bound_conts))
+      handlers
+      Continuation.Set.empty
 
-let free_variables_of_let_cont_handler (handler : let_cont_handler) =
-  match handler with
+let free_variables_of_let_cont_handlers (handlers : let_cont_handlers) =
+  match handlers with
   | Alias _ -> Variable.Set.empty
-  | Handler { params; handler; specialised_args; _ } ->
-    Variable.Set.union (free_variables_of_specialised_args specialised_args)
-      (Variable.Set.diff (free_variables handler) (Variable.Set.of_list params))
+  | Handlers handlers ->
+    Continuation.Map.fold (fun _name { params; handler; specialised_args; _ }
+            fvs ->
+        Variable.Set.union fvs
+          (Variable.Set.union
+            (free_variables_of_specialised_args specialised_args)
+            (Variable.Set.diff (free_variables handler)
+              (Variable.Set.of_list params))))
+      handlers
+      Variable.Set.empty
 
 let free_symbols_helper symbols (named : named) =
   match named with

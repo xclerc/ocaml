@@ -198,6 +198,7 @@ MIDDLE_END=\
   middle_end/continuation_specialisation.cmo \
   middle_end/remove_free_vars_equal_to_args.cmo \
   middle_end/remove_unused_arguments.cmo \
+  middle_end/remove_unused_continuation_params.cmo \
   middle_end/extract_projections.cmo \
   middle_end/augment_specialised_args.cmo \
   middle_end/unbox_free_vars_of_closures.cmo \

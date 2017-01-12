@@ -18,7 +18,7 @@
 
 let unrecursify_function function_variable
     (function_decl : Flambda.function_declaration)
-  : Flambda.function_declaration =
+          : Flambda.function_declaration =
   let closure_id = Closure_id.wrap function_variable in
   let loop_continuation = Continuation.create () in
   let new_params = List.map (fun v -> Variable.rename v) function_decl.params in
@@ -44,16 +44,20 @@ let unrecursify_function function_variable
   if !did_something then
     let body : Flambda.t =
       Let_cont
-        { name = loop_continuation;
-          handler =
-            Handler {
-              params = function_decl.params;
-              recursive = Recursive;
-              stub = false;
-              handler;
-              specialised_args = Variable.Map.empty;
-            };
-          body = Apply_cont (loop_continuation, None, new_params) }
+        { handlers =
+            Handlers (
+              Continuation.Map.of_list [
+                loop_continuation,
+                  { Flambda.
+                    params = function_decl.params;
+                    recursive = Recursive;
+                    stub = false;
+                    handler;
+                    specialised_args = Variable.Map.empty;
+                  };
+              ]);
+          body = Apply_cont (loop_continuation, None, new_params);
+        }
     in
     Flambda.create_function_declaration
       ~params:new_params

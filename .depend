@@ -1366,9 +1366,8 @@ middle_end/extract_projections.cmx : middle_end/base_types/variable.cmx \
     middle_end/freshening.cmx middle_end/flambda_iterators.cmx \
     middle_end/flambda.cmx middle_end/base_types/closure_id.cmx \
     middle_end/extract_projections.cmi
-middle_end/extract_projections.cmi : middle_end/base_types/variable.cmi \
-    middle_end/projection.cmi middle_end/inline_and_simplify_aux.cmi \
-    middle_end/flambda.cmi
+middle_end/extract_projections.cmi : middle_end/projection.cmi \
+    middle_end/inline_and_simplify_aux.cmi middle_end/flambda.cmi
 middle_end/find_recursive_functions.cmo : middle_end/base_types/variable.cmi \
     utils/strongly_connected_components.cmi middle_end/flambda_utils.cmi \
     middle_end/flambda.cmi middle_end/find_recursive_functions.cmi
@@ -1514,15 +1513,17 @@ middle_end/ilambda.cmi : middle_end/base_types/trap_id.cmi \
 middle_end/inconstant_idents.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/symbol.cmi \
     middle_end/base_types/set_of_closures_id.cmi utils/numbers.cmi \
-    bytecomp/lambda.cmi utils/identifiable.cmi middle_end/flambda_utils.cmi \
-    middle_end/flambda.cmi middle_end/base_types/compilation_unit.cmi \
+    utils/misc.cmi bytecomp/lambda.cmi utils/identifiable.cmi \
+    middle_end/flambda_utils.cmi middle_end/flambda.cmi \
+    middle_end/base_types/compilation_unit.cmi \
     middle_end/base_types/closure_id.cmi middle_end/backend_intf.cmi \
     parsing/asttypes.cmi middle_end/inconstant_idents.cmi
 middle_end/inconstant_idents.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/symbol.cmx \
     middle_end/base_types/set_of_closures_id.cmx utils/numbers.cmx \
-    bytecomp/lambda.cmx utils/identifiable.cmx middle_end/flambda_utils.cmx \
-    middle_end/flambda.cmx middle_end/base_types/compilation_unit.cmx \
+    utils/misc.cmx bytecomp/lambda.cmx utils/identifiable.cmx \
+    middle_end/flambda_utils.cmx middle_end/flambda.cmx \
+    middle_end/base_types/compilation_unit.cmx \
     middle_end/base_types/closure_id.cmx middle_end/backend_intf.cmi \
     parsing/asttypes.cmi middle_end/inconstant_idents.cmi
 middle_end/inconstant_idents.cmi : middle_end/base_types/variable.cmi \
@@ -1761,6 +1762,7 @@ middle_end/middle_end.cmo : utils/warnings.cmi \
     middle_end/base_types/symbol.cmi middle_end/sink_lets.cmi \
     middle_end/share_constants.cmi \
     middle_end/remove_unused_program_constructs.cmi \
+    middle_end/remove_unused_continuation_params.cmi \
     middle_end/remove_unused_closure_vars.cmi middle_end/ref_to_variables.cmi \
     bytecomp/printlambda.cmi middle_end/prepare_lambda.cmi utils/misc.cmi \
     parsing/location.cmi middle_end/lift_let_to_initialize_symbol.cmi \
@@ -1777,6 +1779,7 @@ middle_end/middle_end.cmx : utils/warnings.cmx \
     middle_end/base_types/symbol.cmx middle_end/sink_lets.cmx \
     middle_end/share_constants.cmx \
     middle_end/remove_unused_program_constructs.cmx \
+    middle_end/remove_unused_continuation_params.cmx \
     middle_end/remove_unused_closure_vars.cmx middle_end/ref_to_variables.cmx \
     bytecomp/printlambda.cmx middle_end/prepare_lambda.cmx utils/misc.cmx \
     parsing/location.cmx middle_end/lift_let_to_initialize_symbol.cmx \
@@ -1824,11 +1827,11 @@ middle_end/ref_to_variables.cmx : middle_end/base_types/variable.cmx \
 middle_end/ref_to_variables.cmi : middle_end/flambda.cmi
 middle_end/remove_free_vars_equal_to_args.cmo : \
     middle_end/base_types/variable.cmi middle_end/pass_wrapper.cmi \
-    middle_end/flambda_utils.cmi middle_end/flambda.cmi \
+    utils/misc.cmi middle_end/flambda_utils.cmi middle_end/flambda.cmi \
     middle_end/remove_free_vars_equal_to_args.cmi
 middle_end/remove_free_vars_equal_to_args.cmx : \
     middle_end/base_types/variable.cmx middle_end/pass_wrapper.cmx \
-    middle_end/flambda_utils.cmx middle_end/flambda.cmx \
+    utils/misc.cmx middle_end/flambda_utils.cmx middle_end/flambda.cmx \
     middle_end/remove_free_vars_equal_to_args.cmi
 middle_end/remove_free_vars_equal_to_args.cmi : middle_end/flambda.cmi
 middle_end/remove_unused_arguments.cmo : middle_end/base_types/variable.cmi \
@@ -1862,6 +1865,11 @@ middle_end/remove_unused_closure_vars.cmx : \
     middle_end/base_types/closure_id.cmx \
     middle_end/remove_unused_closure_vars.cmi
 middle_end/remove_unused_closure_vars.cmi : middle_end/flambda.cmi
+middle_end/remove_unused_continuation_params.cmo : \
+    middle_end/remove_unused_continuation_params.cmi
+middle_end/remove_unused_continuation_params.cmx : \
+    middle_end/remove_unused_continuation_params.cmi
+middle_end/remove_unused_continuation_params.cmi : middle_end/flambda.cmi
 middle_end/remove_unused_program_constructs.cmo : \
     middle_end/base_types/symbol.cmi utils/misc.cmi middle_end/flambda.cmi \
     middle_end/effect_analysis.cmi \

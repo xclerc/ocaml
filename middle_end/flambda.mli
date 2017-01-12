@@ -242,15 +242,14 @@ and let_mutable = {
 
     - Continuations are second-class.
     - Continuations do not capture variables.
-    - Continuations may be recursive.
+    - Continuations may be (mutually-)recursive.
 
     It is an error to mark a continuation that might be recursive as
     non-recursive.  The converse is safe.
 *)
 and let_cont = {
-  name : Continuation.t;
   body : t;
-  handler : let_cont_handler;
+  handlers : let_cont_handlers;
 }
 (* CR mshinwell: We need to add the following invariant checks:
    1. Usual checks on [let_cont.specialised_args].
@@ -263,16 +262,14 @@ and let_cont = {
       continuation.
 *)
 
-and let_cont_handler =
-  | Handler of continuation_handler
-  | Alias of Continuation.t
+and let_cont_handlers =
+  | Handlers of continuation_handler Continuation.Map.t
+  | Alias of { name : Continuation.t; alias_of : Continuation.t; }
 
 and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;
   stub : bool;
-  (* CR-someday mshinwell: We will eventually need to support multiple
-     mutually-recursive handlers, like the backend can. *)
   handler : t;
   (* CR-someday mshinwell: For the moment the [specialised_args] structure
      here matches that used for functions, even though for continuations
@@ -525,6 +522,7 @@ val free_variables
    : ?ignore_uses_as_callee:unit
   -> ?ignore_uses_as_argument:unit
   -> ?ignore_uses_in_project_var:unit
+  -> ?ignore_uses_in_apply_cont:unit
   -> t
   -> Variable.Set.t
 
@@ -534,8 +532,8 @@ val free_variables_named
   -> named
   -> Variable.Set.t
 
-val free_variables_of_let_cont_handler
-   : let_cont_handler
+val free_variables_of_let_cont_handlers
+   : let_cont_handlers
   -> Variable.Set.t
 
 val free_variables_of_specialised_args
@@ -556,9 +554,8 @@ val used_variables_named
   -> named
   -> Variable.Set.t
 
-val free_continuations_of_let_cont_handler
-   : name:Continuation.t
-  -> handler:let_cont_handler
+val free_continuations_of_let_cont_handlers
+   : handlers:let_cont_handlers
   -> Continuation.Set.t
 
 (* CR mshinwell: Consider if we want to cache these. *)
@@ -778,9 +775,9 @@ val print_specialised_to
   -> specialised_to
   -> unit
 
-val print_let_cont_handler
+val print_let_cont_handlers
    : Format.formatter
-  -> let_cont_handler
+  -> let_cont_handlers
   -> unit
 
 val compare_free_var

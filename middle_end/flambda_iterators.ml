@@ -24,10 +24,12 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
     f body
   | Let_mutable { body; _ } ->
     f body
-  | Let_cont { body; handler = Handler { handler; _ }; } ->
+  | Let_cont { body; handlers = Handlers handlers; } ->
     f body;
-    f handler
-  | Let_cont { handler = Alias _; _ } -> ()
+    Continuation.Map.iter
+      (fun _cont ({ handler; _ } : Flambda.continuation_handler) -> f handler)
+      handlers
+  | Let_cont { handlers = Alias _; _ } -> ()
 
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
@@ -45,25 +47,33 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       Let_mutable { mutable_let with body = new_body }
-  | Let_cont ({ body; handler; } as let_cont) ->
+  | Let_cont ({ body; handlers; } as let_cont) ->
     let new_body = f body in
-    match handler with
+    match handlers with
     | Alias _ ->
       if new_body == body then
         tree
       else
         Let_cont { let_cont with body = new_body; }
-    | Handler ({ handler; _ } as let_cont_handler) ->
-      let new_handler = f handler in
-      if new_body == body && new_handler == handler then
-        tree
-      else
-        Let_cont { let_cont with
+    | Handlers handlers ->
+      let something_changed = ref false in
+      let candidate_handlers =
+        Continuation.Map.map
+          (fun (handler : Flambda.continuation_handler) ->
+            let new_handler = f handler.handler in
+            if not (new_handler == handler.handler) then begin
+              something_changed := true
+            end;
+            { handler with handler = new_handler; })
+          handlers
+      in
+      if !something_changed || not (new_body == body) then
+        Let_cont {
           body = new_body;
-          handler = Handler { let_cont_handler with
-            handler = new_handler;
-          };
+          handlers = Handlers candidate_handlers;
         }
+      else
+        tree
 
 let iter_general = Flambda.iter_general
 
@@ -203,25 +213,35 @@ let map_general ~toplevel f f_named tree =
             tree
           else
             Let_mutable { mutable_let with body = new_body }
-        | Let_cont ({ body; handler; _ } as let_cont) ->
+        (* CR-soon mshinwell: There's too much code duplication here with
+           [map_subexpressions]. *)
+        | Let_cont ({ body; handlers; } as let_cont) ->
           let new_body = aux body in
-          match handler with
+          match handlers with
           | Alias _ ->
             if new_body == body then
               tree
             else
               Let_cont { let_cont with body = new_body; }
-          | Handler ({ handler; _ } as let_cont_handler) ->
-            let new_handler = aux handler in
-            if new_body == body && new_handler == handler then
-              tree
-            else
-              Let_cont { let_cont with
+          | Handlers handlers ->
+            let something_changed = ref false in
+            let candidate_handlers =
+              Continuation.Map.map
+                (fun (handler : Flambda.continuation_handler) ->
+                  let new_handler = aux handler.handler in
+                  if not (new_handler == handler.handler) then begin
+                    something_changed := true
+                  end;
+                  { handler with handler = new_handler; })
+                handlers
+            in
+            if !something_changed || not (new_body == body) then
+              Let_cont {
                 body = new_body;
-                handler = Handler { let_cont_handler with
-                  handler = new_handler;
-                };
+                handlers = Handlers candidate_handlers;
               }
+            else
+              tree
       in
       f exp
   and aux_named (id : Variable.t) (named : Flambda.named) =

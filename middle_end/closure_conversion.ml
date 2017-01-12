@@ -218,16 +218,19 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
     end else begin
       let handler_env, params = Env.add_vars_like env let_cont.params in
       Let_cont {
-        name = let_cont.name;
         body = close t env let_cont.body;
-        handler = Handler {
-          params;
-          recursive = let_cont.recursive;
-          stub = false;
-          handler = close t handler_env let_cont.handler;
-          specialised_args = Variable.Map.empty;
-        };
-      }
+        handlers = Handlers (
+          Continuation.Map.of_list [
+            let_cont.name,
+              { Flambda.
+                params;
+                recursive = let_cont.recursive;
+                stub = false;
+                handler = close t handler_env let_cont.handler;
+                specialised_args = Variable.Map.empty;
+              };
+          ]);
+      };
     end
   | Apply { kind; func; args; continuation; loc; should_be_tailcall = _;
       inlined; specialised; } ->
