@@ -202,8 +202,5 @@ type phrase =
     Cfunction of fundecl
   | Cdata of data_item list
 
-let ccatch (i, kind, ids, e1, e2)=
-  Ccatch(kind, [i, ids, e2], e1)
-
 let reset () =
   label_counter := 99

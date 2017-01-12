@@ -131,12 +131,14 @@ let make_ident_info (clam : Clambda.ulambda) : ident_info =
     | Ustaticfail (static_exn, args) ->
       ignore_int static_exn;
       List.iter loop args
-    | Ucatch (static_exn, _kind, idents, body, handler) ->
-      (* CR mshinwell: add ignore_catch_kind *)
-      ignore_int static_exn;
-      ignore_ident_list idents;
+    | Ucatch (_kind, conts, body) ->
       loop body;
-      loop handler
+      List.iter (fun (cont, params, handler) ->
+          (* CR mshinwell: add ignore_catch_kind *)
+          ignore_int cont;
+          ignore_ident_list params;
+          loop handler)
+        conts
     | Utrywith (body, ident, handler) ->
       loop body;
       ignore_ident ident;
@@ -329,13 +331,15 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
       ignore_int static_exn;
       ignore_ulambda_list args;
       let_stack := []
-    | Ucatch (static_exn, _kind, idents, body, handler) ->
-      ignore_int static_exn;
-      ignore_ident_list idents;
+    | Ucatch (_kind, conts, body) ->
       let_stack := [];
       loop body;
       let_stack := [];
-      loop handler;
+      List.iter (fun (cont, params, handler) ->
+          ignore_int cont;
+          ignore_ident_list params;
+          loop handler)
+        conts
       let_stack := []
     | Utrywith (body, ident, handler) ->
       let_stack := [];
@@ -475,10 +479,15 @@ let rec substitute_let_moveable is_let_moveable env (clam : Clambda.ulambda)
   | Ustaticfail (n, args) ->
     let args = substitute_let_moveable_list is_let_moveable env args in
     Ustaticfail (n, args)
-  | Ucatch (n, kind, ids, body, handler) ->
+  | Ucatch (kind, conts, body) ->
     let body = substitute_let_moveable is_let_moveable env body in
-    let handler = substitute_let_moveable is_let_moveable env handler in
-    Ucatch (n, kind, ids, body, handler)
+    let conts =
+      List.map (fun (cont, params, handler) ->
+          let handler = substitute_let_moveable is_let_moveable env handler in
+          cont, params, handler)
+        conts
+    in
+    Ucatch (kind, conts, body)
   | Utrywith (body, id, handler) ->
     let body = substitute_let_moveable is_let_moveable env body in
     let handler = substitute_let_moveable is_let_moveable env handler in
@@ -682,10 +691,15 @@ let rec un_anf_and_moveable ident_info env (clam : Clambda.ulambda)
   | Ustaticfail (n, args) ->
     let args = un_anf_list ident_info env args in
     Ustaticfail (n, args), Fixed
-  | Ucatch (n, kind, ids, body, handler) ->
+  | Ucatch (kind, conts, body) ->
     let body = un_anf ident_info env body in
-    let handler = un_anf ident_info env handler in
-    Ucatch (n, kind, ids, body, handler), Fixed
+    let conts =
+      List.map (fun (cont, params, handler) ->
+          let handler = un_anf ident_info env handler in
+          cont, params, handler)
+        conts
+    in
+    Ucatch (kind, conts, body), Fixed
   | Utrywith (body, id, handler) ->
     let body = un_anf ident_info env body in
     let handler = un_anf ident_info env handler in

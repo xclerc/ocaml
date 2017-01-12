@@ -242,7 +242,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
             (inline env handler)
         end
       end
-    | Ucatch (cont, kind, params, body, handler) ->
+    | Ucatch (Normal Nonrecursive, [cont; params; body], body) ->
       let module Action = struct
         type t =
           | Unused
@@ -252,12 +252,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
       let action : Action.t =
         match Numbers.Int.Map.find cont uses with
         | exception Not_found -> Unused
-        | One ->
-          begin match kind with
-          | Normal Nonrecursive -> Linear_inlining
-          | Normal Recursive -> Normal
-          | Exn_handler -> Normal
-          end
+        | One -> Linear_inlining
         | Many -> Normal
         | Zero -> assert false
       in
@@ -276,29 +271,26 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
           (* If the only occurrences of continuation variables in such body all
              refer to the "nearest" continuation variable binding (i.e. [cont]),
              then turn the [Ucatch] into either a let-binding or a sequence.
-             This only applies when the continuation binding is a normal,
-             non-recursive binding.
+             (Remember this only applies when the continuation binding is a
+             normal, non-recursive binding.)
           *)
           let can_turn_into_let_or_sequence =
-            match kind with
-            | Clambda.Exn_handler -> Nothing
-            | Clambda.Normal Recursive -> Nothing
-            | Clambda.Normal Nonrecursive ->
-              match Numbers.Int.Map.bindings used with
-              | [cont', _] when cont = cont' ->
-                if contains_returns then begin
-                  Nothing
-                end else begin
-                  match params with
-                  | [param] -> Let param
-                  | [] -> Sequence
-                  | _ -> Nothing
-                end
-              | _ -> Nothing
+            match Numbers.Int.Map.bindings used with
+            | [cont', _] when cont = cont' ->
+              if contains_returns then begin
+                Nothing
+              end else begin
+                match params with
+                | [param] -> Let param
+                | [] -> Sequence
+                | _ -> Nothing
+              end
+            | _ -> Nothing
           in
           match can_turn_into_let_or_sequence with
           | Nothing ->
-            Ucatch (cont, kind, params, inline env body, inline env handler)
+            Ucatch (kind, [cont, params, inline env handler],
+              inline env handler)
           | Sequence ->
             let env = E.continuation_will_turn_into_sequence env ~cont in
             Usequence (inline env body, inline env handler)
@@ -312,6 +304,13 @@ Format.eprintf "Turning continuation with the following defining expr into Let:@
               inline env handler)
         end
       end
+    | Ucatch (kind, conts, body) ->
+      let conts =
+        List.map (fun (cont, params, handler) ->
+            cont, params, inline env handler)
+          conts
+      in
+      Ucatch (kind, conts, inline env body)
     | Utrywith (body, id, handler) ->
       Utrywith (inline env body, id, inline env handler)
     | Uifthenelse (cond, ifso, ifnot) ->

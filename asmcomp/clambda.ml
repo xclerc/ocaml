@@ -51,7 +51,7 @@ and ulambda =
   | Uswitch of ulambda * ulambda_switch
   | Ustringswitch of ulambda * (string * ulambda) list * ulambda option
   | Ustaticfail of int * ulambda list
-  | Ucatch of int * catch_kind * Ident.t list * ulambda * ulambda
+  | Ucatch of catch_kind * (int * Ident.t list * ulambda) list * ulambda
   | Utrywith of ulambda * Ident.t * ulambda
   | Uifthenelse of ulambda * ulambda * ulambda
   | Usequence of ulambda * ulambda

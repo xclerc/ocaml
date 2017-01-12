@@ -178,8 +178,4 @@ type phrase =
     Cfunction of fundecl
   | Cdata of data_item list
 
-val ccatch
-   : int * Clambda.catch_kind * Ident.t list * expression * expression
-  -> expression
-
 val reset : unit -> unit

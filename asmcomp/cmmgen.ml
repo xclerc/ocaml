@@ -1364,7 +1364,7 @@ struct
       | Cexit (j,_) ->
           if i=j then handler
           else body
-      | _ -> *) ccatch (i,Normal Asttypes.Nonrecursive,[],body,handler))
+      | _ -> *) Ccatch (Normal Asttypes.Nonrecursive, [i, [], handler], body))
 
   let make_exit i = Cexit (i,[])
 
@@ -1538,7 +1538,8 @@ let rec is_unboxed_number ~strict env e =
       | Some default -> join k default
       end
   | Ustaticfail _ -> No_result
-  | Uifthenelse (_, e1, e2) | Ucatch (_, _, _, e1, e2) | Utrywith (e1, _, e2) ->
+  | Uifthenelse (_, e1, e2)
+  | Ucatch (Nonrecursive, [_, _, e1], e2) | Utrywith (e1, _, e2) ->
       join (is_unboxed_number ~strict env e1) e2
   | _ -> No_unboxing
 
@@ -1759,10 +1760,13 @@ let rec transl env e =
             (List.map (fun (s,act) -> s,transl env act) sw))
   | Ustaticfail (nfail, args) ->
       Cexit (nfail, List.map (transl env) args)
-  | Ucatch(nfail, kind, [], body, handler) ->
-      make_catch nfail kind (transl env body) (transl env handler)
-  | Ucatch(nfail, kind, ids, body, handler) ->
-      ccatch(nfail, kind, ids, transl env body, transl env handler)
+  | Ucatch (kind, conts, body) ->
+      let conts =
+        List.map (fun (cont, params, handler) ->
+            cont, params, transl env handler)
+          conts
+      in
+      Ccatch (kind, conts, transl env body)
   | Utrywith _ ->
       Misc.fatal_error "Utrywith not implemented yet"
 (*(body, exn, handler) ->
@@ -2551,7 +2555,7 @@ and make_catch ncatch kind body handler = match body with
 | Cexit (nexit,[]) when nexit=ncatch -> handler
 <<<<<<< HEAD
 *)
-| _ ->  ccatch (ncatch, kind, [], body, handler)
+| _ ->  Ccatch (kind, [ncatch, [], handler], body)
 
 and make_catch2 mk_body handler = match handler with
 (*
@@ -2561,10 +2565,9 @@ and make_catch2 mk_body handler = match handler with
 | _ ->
     let nfail = next_raise_count () in
     make_catch
-      nfail
       (Normal Asttypes.Nonrecursive) (* CR mshinwell: pass as parameter? *)
+      [nfail, (), handler]
       (mk_body (Cexit (nfail,[])))
-      handler
 
 and exit_if_true dbg env cond nfail otherwise =
   match cond with

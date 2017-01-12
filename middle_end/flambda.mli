@@ -260,6 +260,8 @@ and let_cont = {
    3. Specialised args are only allowed to have [var = None] in the
       [specialised_to] record iff they are non-specialised parameters of a
       continuation.
+   4. Exception handlers should be "Handlers" with a single non-recursive
+      continuation.
 *)
 
 and let_cont_handlers =

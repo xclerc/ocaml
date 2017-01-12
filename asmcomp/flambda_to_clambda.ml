@@ -484,27 +484,55 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     | None -> expr
     | Some trap_action -> Usequence (trap_action, expr)
     end
-  | Let_cont { name; body; handler = Alias alias_of; } ->
+  | Let_cont { body; handler = Alias { name; alias_of; } } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
-  | Let_cont { name; body; handler = Handler {
-      params; handler; recursive }; } ->
-    let env_handler, ids =
-      List.fold_right (fun var (env, ids) ->
-          let id, env = Env.add_fresh_ident env var in
-          env, id :: ids)
-        params (env, [])
+  | Let_cont { body; handlers = Handlers handlers; } ->
+    let kind, conts =
+      Variable.Map.fold (fun name (handler : Flambda.continuation_handler)
+              (kind, conts) ->
+          let env_handler, ids =
+            List.fold_right (fun var (env, ids) ->
+                let id, env = Env.add_fresh_ident env var in
+                env, id :: ids)
+              handler.params (env, [])
+          in
+          let handler = to_clambda t env_handler handler.handler in
+          let this_kind : Clambda.catch_kind =
+            if Continuation.Set.mem name t.exn_handlers then begin
+              assert (List.length handler.params = 1);
+              Exn_handler
+            end else begin
+              Normal handler.recursive
+            end
+          in
+          let kind =
+            match kind with
+            | None -> this_kind
+            | Some kind ->
+              match kind, this_kind with
+              | Normal _, Exn_handler | Exn_handler, Normal _ ->
+                Misc.fatal_errorf "Let_cont involving continuation %a \
+                    contains both exception-handling and non-exception-handling
+                    continuations"
+                  Continuation.print name
+              | Exn_handler, Exn_handler -> Exn_handler
+              | Normal Nonrecursive, Normal Nonrecursive -> Normal Nonrecursive
+              | Normal Recursive, Normal _
+              | Normal _, Normal Recursive -> Normal Recursive
+          in
+          let cont = Continuation.to_int name, ids, handler in
+          Some kind, cont)
+        handlers
+        (None, [])
     in
-    let kind : Clambda.catch_kind =
-      if Continuation.Set.mem name t.exn_handlers then begin
-        assert (List.length params = 1);
-        Exn_handler
-      end else begin
-        Normal recursive
-      end
-    in
-    Ucatch (Continuation.to_int name, kind, ids,
-      to_clambda t env body, to_clambda t env_handler handler)
+    begin match kind with
+    | None ->
+      assert (handlers = []);
+      to_clambda t env body
+    | Some kind ->
+      Ucatch (kind, conts, to_clambda t env body)
+    end
   | Proved_unreachable -> Uunreachable
 
 and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
@@ -871,18 +899,20 @@ let to_clambda_initialize_symbol t env symbol fields
       List.fold_left (fun (acc, prev_pos, prev_cont) (pos, field, cont) ->
           let prev_cont = Continuation.to_int prev_cont in
           let id = Ident.create "prev_field" in
-          Clambda.Ucatch (prev_cont, Normal Nonrecursive, [id], acc,
-              Usequence (build_setfield prev_pos id, field)),
+          Clambda.Ucatch (Normal Nonrecursive,
+              [prev_cont, [id], Usequence (build_setfield prev_pos id, field)],
+              acc),
             pos, cont)
         (first, first_pos, first_cont)
         rest
     in
     let id = Ident.create "prev_field" in
     let return_cont = Continuation.create () in
-    Clambda.Ucatch (Continuation.to_int prev_cont, Normal Nonrecursive,
-        [id], acc,
-        Usequence (build_setfield prev_pos id,
-          Ustaticfail (Continuation.to_int return_cont, []))),
+    Clambda.Ucatch (Normal Nonrecursive,
+        [Continuation.to_int prev_cont, [id],
+          Usequence (build_setfield prev_pos id,
+            Ustaticfail (Continuation.to_int return_cont, []))],
+        acc)
       return_cont
 
 let accumulate_structured_constants t env symbol
@@ -933,7 +963,8 @@ let to_clambda_program t env constants (program : Flambda.program) =
       | [] -> e2, constants
       | fields ->
         let e1, cont = to_clambda_initialize_symbol t env symbol fields in
-        Ucatch (Continuation.to_int cont, Normal Nonrecursive, [], e1, e2),
+        Ucatch (Normal Nonrecursive, [], [Continuation.to_int cont, [], e2],
+            e1),
           constants
       end
     | Effect (expr, cont, program) ->
@@ -941,7 +972,7 @@ let to_clambda_program t env constants (program : Flambda.program) =
       let e2, constants = loop env constants program in
       let cont = Continuation.to_int cont in
       let unused = Ident.create "unused" in
-      Ucatch (cont, Normal Nonrecursive, [unused], e1, e2), constants
+      Ucatch (Normal Nonrecursive, [cont, unused, e2], e1), constants
     | End _ ->
       Uconst (Uconst_ptr 0), constants
   in
