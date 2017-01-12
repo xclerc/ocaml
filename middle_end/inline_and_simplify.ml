@@ -1677,6 +1677,16 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
               (E.set_freshening env sb) vars_and_approxs
           in
           let env =
+            Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
+                    env ->
+                match spec_to.projection with
+                | None -> env
+                | Some projection ->
+                  E.add_projection env ~projection ~bound_to:param)
+              specialised_args
+              env
+          in
+          let env =
             let env = E.inside_branch env in
             match recursive with
             | Nonrecursive -> env
