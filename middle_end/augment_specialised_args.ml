@@ -138,7 +138,13 @@ module Processed_what_to_specialise = struct
        not inner variables. *)
     let find_outer_var inner_var =
       match Variable.Map.find inner_var t.set_of_closures.specialised_args with
-      | (outer_var : Flambda.specialised_to) -> outer_var.var
+      | (outer_var : Flambda.specialised_to) ->
+        begin match outer_var.var with
+        | Some var -> var
+        | None ->
+          Misc.fatal_errorf "No equality to variable for specialised arg %a"
+            Variable.print inner_var
+        end
       | exception Not_found ->
         Misc.fatal_errorf "find_outer_var: expected %a \
             to be in [specialised_args], but it is \
@@ -377,26 +383,32 @@ let check_invariants ~pass_name ~(set_of_closures : Flambda.set_of_closures)
         Variable.Map.iter (fun inner_var
                     (outer_var : Flambda.specialised_to) ->
               if Variable.Set.mem inner_var params then begin
-                assert (not (Variable.Set.mem outer_var.var
-                  function_decl.free_variables));
-                match outer_var.projection with
-                | None -> ()
-                | Some projection ->
-                  let from = Projection.projecting_from projection in
-                  if not (Variable.Set.mem from params) then begin
-                    Misc.fatal_errorf "Augment_specialised_args (%s): \
-                        specialised argument (%a -> %a) references a \
-                        projection variable that is not a specialised \
-                        argument of the function %a. @ The set of closures \
-                        before the transformation was:@  %a. @ The set of \
-                        closures after the transformation was:@ %a."
-                      pass_name
-                      Variable.print inner_var
-                      Flambda.print_specialised_to outer_var
-                      Variable.print fun_var
-                      Flambda.print_set_of_closures original_set_of_closures
-                      Flambda.print_set_of_closures set_of_closures
-                  end
+                match outer_var.var with
+                | None ->
+                  Misc.fatal_errorf "No equality to variable for specialised \
+                      arg %a"
+                    Variable.print inner_var
+                | Some outer_var' ->
+                  assert (not (Variable.Set.mem outer_var'
+                    function_decl.free_variables));
+                  match outer_var.projection with
+                  | None -> ()
+                  | Some projection ->
+                    let from = Projection.projecting_from projection in
+                    if not (Variable.Set.mem from params) then begin
+                      Misc.fatal_errorf "Augment_specialised_args (%s): \
+                          specialised argument (%a -> %a) references a \
+                          projection variable that is not a specialised \
+                          argument of the function %a. @ The set of closures \
+                          before the transformation was:@  %a. @ The set of \
+                          closures after the transformation was:@ %a."
+                        pass_name
+                        Variable.print inner_var
+                        Flambda.print_specialised_to outer_var
+                        Variable.print fun_var
+                        Flambda.print_set_of_closures original_set_of_closures
+                        Flambda.print_set_of_closures set_of_closures
+                    end
               end)
           set_of_closures.specialised_args)
       set_of_closures.function_decls.funs
@@ -577,7 +589,7 @@ module Make (T : S) = struct
             | new_outer_var ->
               match definition with
               | Existing_inner_free_var _ ->
-                { var = new_outer_var;
+                { var = Some new_outer_var;
                   projection = None;
                 }
               | Projection_from_existing_specialised_arg projection ->
@@ -586,7 +598,7 @@ module Make (T : S) = struct
                   set_of_closures.specialised_args);
                 assert (Variable.Set.mem projecting_from
                   (Variable.Set.of_list function_decl.params));
-                { var = new_outer_var;
+                { var = Some new_outer_var;
                   projection = Some projection;
                 })
           for_one_function.new_definitions_indexed_by_new_inner_vars

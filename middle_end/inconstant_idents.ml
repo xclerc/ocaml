@@ -385,16 +385,21 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
         { Flambda. function_decls; free_vars; specialised_args } =
     (* If a function in the set of closures is specialised, do not consider
        it constant, unless all specialised args are also constant. *)
-    Variable.Map.iter (fun _ (spec_arg : Flambda.specialised_to) ->
-          register_implication
-            ~in_nc:(Var spec_arg.var)
-            ~implies_in_nc:[Closure function_decls.set_of_closures_id])
+    Variable.Map.iter (fun param (spec_to : Flambda.specialised_to) ->
+          match spec_to.var with
+          | Some var ->
+            register_implication
+              ~in_nc:(Var var)
+              ~implies_in_nc:[Closure function_decls.set_of_closures_id]
+          | None ->
+            Misc.fatal_errorf "No equality to variable for specialised arg %a"
+              Variable.print param)
         specialised_args;
     (* adds 'function_decls in NC => curr in NC' *)
     register_implication ~in_nc:(Closure function_decls.set_of_closures_id)
       ~implies_in_nc:curr;
     (* a closure is constant if its free variables are constants. *)
-    Variable.Map.iter (fun inner_id (var : Flambda.specialised_to) ->
+    Variable.Map.iter (fun inner_id (var : Flambda.free_var) ->
         register_implication ~in_nc:(Var var.var)
           ~implies_in_nc:[
             Var inner_id;
@@ -409,9 +414,14 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
         List.iter (fun param ->
             match Variable.Map.find param specialised_args with
             | exception Not_found -> mark_curr [Var param]
-            | outer_var ->
-              register_implication ~in_nc:(Var outer_var.var)
-                ~implies_in_nc:[Var param])
+            | spec_to ->
+              match spec_to.var with
+              | Some var ->
+                register_implication ~in_nc:(Var var)
+                  ~implies_in_nc:[Var param]
+              | None ->
+                Misc.fatal_errorf "No equality to variable for specialised arg %a"
+                  Variable.print param)
           ffunc.params;
         mark_loop ~toplevel:false [] ffunc.body)
       function_decls.funs

@@ -1048,6 +1048,7 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   let func_var = Variable.create "full_apply" in
   let handler : Flambda.continuation_handler =
     { recursive = Nonrecursive;
+      stub = false;
       params = [func_var];
       handler =
         Apply {
@@ -1577,7 +1578,8 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
         assert (not (R.is_used_continuation r cont));
         assert (R.is_used_continuation r cont');
         Let_cont { name = cont; body; handler = Alias cont'; }, r
-      | Handler { params = vars; recursive; handler; specialised_args; } ->
+      | Handler { params = vars; recursive; stub; handler;
+          specialised_args; } ->
         (* CR mshinwell: rename "vars" to "params" *)
         let env =
           match recursive with
@@ -1610,26 +1612,30 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
             in
             let specialised_args =
               (* CR mshinwell: Duplicate of a part of
-                  [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
+                 [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
               *)
               Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                  let external_var = spec_to.var in
-                  let var =
-                    Freshening.apply_variable (E.freshening env) external_var
-                  in
-                  let var =
-                    match
-                      A.simplify_var_to_var_using_env (E.find_exn env var)
-                        ~is_present_in_env:(fun var -> E.mem env var)
-                    with
-                    | None -> var
-                    | Some var -> var
-                  in
-                  let projection = spec_to.projection in
-                  ({ var; projection; } : Flambda.specialised_to))
+                  match spec_to.var with
+                  | Some external_var ->
+                    let var =
+                      Freshening.apply_variable (E.freshening env) external_var
+                    in
+                    let var =
+                      match
+                        A.simplify_var_to_var_using_env (E.find_exn env var)
+                          ~is_present_in_env:(fun var -> E.mem env var)
+                      with
+                      | None -> var
+                      | Some var -> var
+                    in
+                    let projection = spec_to.projection in
+                    ({ var = Some var; projection; } : Flambda.specialised_to)
+                  | None ->
+                    spec_to)
                 specialised_args
             in
-            Freshening.freshen_projection_relation specialised_args
+            Freshening.freshen_specialised_args_projection_relation
+              specialised_args
               ~freshening:(E.freshening env)
               ~closure_freshening:None
           in
@@ -1654,7 +1660,10 @@ Format.eprintf "Simplification of body for %a: environment@;%a"
                 List.map (fun param ->
                     match Variable.Map.find param specialised_args with
                     | exception Not_found -> A.value_unknown Other
-                    | spec_to -> E.find_exn env spec_to.var)
+                    | spec_to ->
+                      match spec_to.var with
+                      | None -> A.value_unknown Other
+                      | Some var -> E.find_exn env var)
                   freshened_vars
               in
               r, param_approxs,
@@ -1706,6 +1715,7 @@ Format.eprintf "Simplification of handler for %a: environment@;%a"
           let handler : Flambda.continuation_handler =
             { params = vars;
               recursive;
+              stub;
               handler;
               specialised_args;
             }

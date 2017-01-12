@@ -211,7 +211,7 @@ let rec lift_expr (expr : Flambda.expr) ~state =
     in
     lift_expr body ~state
   | Let_cont { name; body; handler =
-      Handler { params; recursive; handler; specialised_args; } } ->
+      Handler { params; recursive; stub; handler; specialised_args; } } ->
 (*
 Format.eprintf "Lifting handler for %a\n%!" Continuation.print name;
 *)
@@ -273,6 +273,7 @@ Format.eprintf "New handler for %a is:\n%a\n"
       Handler {
         params;
         recursive;
+        stub;
         handler;
         specialised_args;
       }

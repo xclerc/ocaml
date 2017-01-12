@@ -306,6 +306,11 @@ module Continuation_uses : sig
 
   val linearly_used : t -> bool
   val has_non_inlinable_uses : t -> bool
+
+  val meet_of_args_approxs
+     : t
+    -> num_params:int
+    -> Simple_value_approx.t list
 end
 
 module Continuation_usage_snapshot : sig
@@ -434,7 +439,7 @@ val prepare_to_simplify_set_of_closures
   -> function_decls:Flambda.function_declarations
   -> freshen:bool
   -> only_for_function_decl:Flambda.function_declaration option
-  -> (Flambda.specialised_to * Simple_value_approx.t) Variable.Map.t  (* fvs *)
+  -> (Flambda.free_var * Simple_value_approx.t) Variable.Map.t  (* fvs *)
     * Flambda.specialised_to Variable.Map.t         (* specialised arguments *)
     * Flambda.function_declarations
     * Simple_value_approx.t Variable.Map.t       (* parameter approximations *)
@@ -443,7 +448,7 @@ val prepare_to_simplify_set_of_closures
 
 val prepare_to_simplify_closure
    : function_decl:Flambda.function_declaration
-  -> free_vars:(Flambda.specialised_to * Simple_value_approx.t) Variable.Map.t
+  -> free_vars:(Flambda.free_var * Simple_value_approx.t) Variable.Map.t
   -> specialised_args:Flambda.specialised_to Variable.Map.t
   -> parameter_approximations:Simple_value_approx.t Variable.Map.t
   -> set_of_closures_env:Env.t

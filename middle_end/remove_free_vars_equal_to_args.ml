@@ -28,16 +28,21 @@ let rewrite_one_function_decl ~(function_decl : Flambda.function_declaration)
           (* param is not specialised *)
           subst
         | (spec_to : Flambda.specialised_to) ->
-          let outside_var = spec_to.var in
-          match Variable.Map.find outside_var back_free_vars with
-          | exception Not_found ->
-            (* No free variables equal to the param *)
-            subst
-          | set ->
-            (* Replace the free variables equal to a parameter *)
-            Variable.Set.fold (fun free_var subst ->
-                Variable.Map.add free_var param subst)
-              set subst)
+          match spec_to.var with
+          | Some outside_var ->
+            begin match Variable.Map.find outside_var back_free_vars with
+            | exception Not_found ->
+              (* No free variables equal to the param *)
+              subst
+            | set ->
+              (* Replace the free variables equal to a parameter *)
+              Variable.Set.fold (fun free_var subst ->
+                  Variable.Map.add free_var param subst)
+                set subst
+            end
+          | None ->
+            Misc.fatal_errorf "No equality to variable for specialised arg %a"
+              Variable.print param)
       Variable.Map.empty function_decl.params
   in
   if Variable.Map.is_empty params_for_equal_free_vars then
@@ -60,7 +65,7 @@ let rewrite_one_function_decl ~(function_decl : Flambda.function_declaration)
 
 let rewrite_one_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let back_free_vars =
-    Variable.Map.fold (fun var (outside_var : Flambda.specialised_to) map ->
+    Variable.Map.fold (fun var (outside_var : Flambda.free_var) map ->
         let set =
           match Variable.Map.find outside_var.var map with
           | exception Not_found -> Variable.Set.singleton var

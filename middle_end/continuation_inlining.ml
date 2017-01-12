@@ -165,9 +165,9 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
               | inline_unconditionally, count, _env, approx, args_approxs ->
                 assert (not inline_unconditionally);
                 (* When generating a shared continuation the environment is
-                  always that immediately prior to the continuation whose
-                  body will be simplified to form the body of the shared
-                  continuation. *)
+                   always that immediately prior to the continuation whose
+                   body will be simplified to form the body of the shared
+                   continuation. *)
                 Continuation.With_args.Map.add key
                   (false, N.(+) count N.One, env, approx, args_approxs)
                   definitions)
@@ -184,6 +184,11 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
         match Continuation_approx.handler approx with
         | None -> Didn't_inline
         | Some handler ->
+          let inline_unconditionally =
+            (* CR-soon mshinwell: Stubs should probably just be immediately
+               inlined by [Inline_and_simplify] upon the first traversal. *)
+            inline_unconditionally || handler.stub
+          in
           try_inlining ~cont ~args ~args_approxs ~env ~handler
             ~inline_unconditionally ~count ~simplify
       in
@@ -257,6 +262,7 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
                 handler = Handler {
                   params;
                   recursive = Nonrecursive;
+                  stub = false;
                   handler;
                   specialised_args = Variable.Map.empty;
                 };

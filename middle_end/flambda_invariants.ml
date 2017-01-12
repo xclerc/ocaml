@@ -288,7 +288,7 @@ module Continuation_scoping = struct
             let env = Continuation.Map.add name arity env in
             loop env body
         end
-        | Handler { recursive; handler; params; specialised_args; } ->
+        | Handler { stub; recursive; handler; params; specialised_args; } ->
           let arity = List.length params in
           let env_with_handler =
             Continuation.Map.add name arity env
@@ -300,6 +300,7 @@ module Continuation_scoping = struct
           in
           loop handler_env handler;
           loop env_with_handler body;
+          ignore_bool stub;
           ignore specialised_args (* CR mshinwell: fixme *)
       end;
     | Apply_cont ( cont, exn, args ) -> begin
@@ -424,9 +425,10 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       check_variable_is_bound env var;
       loop (add_mutable_binding_occurrence env mut_var) body
     | Let_cont { name; body;
-        handler = Handler { params; recursive; handler;
+        handler = Handler { params; recursive; stub; handler;
           specialised_args; }; } ->
       ignore_continuation name;
+      ignore_bool stub;
       loop env body;
       ignore_rec_flag recursive;
       loop (add_binding_occurrences env params) handler;
@@ -519,7 +521,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_set_of_closures_origin set_of_closures_origin;
       let functions_in_closure = Variable.Map.keys funs in
       let variables_in_closure =
-        Variable.Map.fold (fun var (var_in_closure : Flambda.specialised_to)
+        Variable.Map.fold (fun var (var_in_closure : Flambda.free_var)
                   variables_in_closure ->
             (* [var] may occur in the body, but will effectively be renamed
                to [var_in_closure], so the latter is what we check to make
@@ -616,10 +618,9 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       (* Check that every "specialised arg" is a parameter of one of the
          functions being declared, and that the variable to which the
          parameter is being specialised is bound. *)
-      Variable.Map.iter (fun _inner_var
-                (specialised_to : Flambda.specialised_to) ->
-          check_variable_is_bound env specialised_to.var;
-          match specialised_to.projection with
+      Variable.Map.iter (fun _inner_var (free_var : Flambda.free_var) ->
+          check_variable_is_bound env free_var.var;
+          match free_var.projection with
           | None -> ()
           | Some projection ->
             let projecting_from = Projection.projecting_from projection in
@@ -633,7 +634,10 @@ let variable_and_symbol_invariants (program : Flambda.program) =
           if not (Variable.Set.mem being_specialised all_params) then begin
             raise (Specialised_arg_that_is_not_a_parameter being_specialised)
           end;
-          check_variable_is_bound env specialised_to.var;
+          begin match specialised_to.var with
+          | None -> ()
+          | Some var -> check_variable_is_bound env var
+          end;
           match specialised_to.projection with
           | None -> ()
           | Some projection ->

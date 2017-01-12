@@ -49,6 +49,7 @@ let unrecursify_function function_variable
             Handler {
               params = function_decl.params;
               recursive = Recursive;
+              stub = false;
               handler;
               specialised_args = Variable.Map.empty;
             };

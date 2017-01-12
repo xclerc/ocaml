@@ -308,7 +308,7 @@ module Project_var = struct
       * a fresh ffunction_subst with only the substitution of free variables
    *)
   let subst_free_vars fv subst ~only_freshen_parameters
-      : (Flambda.specialised_to * _) Variable.Map.t * _ * _ =
+      : (Flambda.free_var * _) Variable.Map.t * _ * _ =
     Variable.Map.fold (fun id lam (fv, subst, t) ->
         let id, subst, t =
           if only_freshen_parameters then
@@ -495,7 +495,32 @@ let freshen_projection (projection : Projection.t) ~freshening
   | Field (field_index, var) ->
     Field (field_index, apply_variable freshening var)
 
-let freshen_projection_relation relation ~freshening ~closure_freshening =
+let freshen_free_vars_projection_relation relation ~freshening
+      ~closure_freshening =
+  Variable.Map.map (fun (spec_to : Flambda.free_var) ->
+      let projection =
+        match spec_to.projection with
+        | None -> None
+        | Some projection ->
+          Some (freshen_projection projection ~freshening ~closure_freshening)
+      in
+      { spec_to with projection; })
+    relation
+
+let freshen_free_vars_projection_relation' relation ~freshening
+      ~closure_freshening =
+  Variable.Map.map (fun ((spec_to : Flambda.free_var), data) ->
+      let projection =
+        match spec_to.projection with
+        | None -> None
+        | Some projection ->
+          Some (freshen_projection projection ~freshening ~closure_freshening)
+      in
+      { spec_to with projection; }, data)
+    relation
+
+let freshen_specialised_args_projection_relation relation ~freshening
+      ~closure_freshening =
   Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
       let projection =
         match spec_to.projection with
@@ -506,7 +531,8 @@ let freshen_projection_relation relation ~freshening ~closure_freshening =
       { spec_to with projection; })
     relation
 
-let freshen_projection_relation' relation ~freshening ~closure_freshening =
+let freshen_specialised_args_projection_relation' relation ~freshening
+      ~closure_freshening =
   Variable.Map.map (fun ((spec_to : Flambda.specialised_to), data) ->
       let projection =
         match spec_to.projection with

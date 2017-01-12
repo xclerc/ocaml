@@ -144,10 +144,10 @@ end
 (* CR-soon mshinwell for mshinwell: add comment *)
 val apply_function_decls_and_free_vars
    : t
-  -> (Flambda.specialised_to * 'a) Variable.Map.t
+  -> (Flambda.free_var * 'a) Variable.Map.t
   -> Flambda.function_declarations
   -> only_freshen_parameters:bool
-  -> (Flambda.specialised_to * 'a) Variable.Map.t
+  -> (Flambda.free_var * 'a) Variable.Map.t
     * Flambda.function_declarations
     * t
     * Project_var.t
@@ -169,13 +169,25 @@ val freshen_move_within_set_of_closures
 (** N.B. This does not freshen the domain of the supplied map, only the
     range. *)
 (* CR-someday mshinwell: consider fixing that *)
-val freshen_projection_relation
+val freshen_free_vars_projection_relation
+   : Flambda.free_var Variable.Map.t
+  -> freshening:t
+  -> closure_freshening:Project_var.t option
+  -> Flambda.free_var Variable.Map.t
+
+val freshen_free_vars_projection_relation'
+   : (Flambda.free_var * 'a) Variable.Map.t
+  -> freshening:t
+  -> closure_freshening:Project_var.t option
+  -> (Flambda.free_var * 'a) Variable.Map.t
+
+val freshen_specialised_args_projection_relation
    : Flambda.specialised_to Variable.Map.t
   -> freshening:t
   -> closure_freshening:Project_var.t option
   -> Flambda.specialised_to Variable.Map.t
 
-val freshen_projection_relation'
+val freshen_specialised_args_projection_relation'
    : (Flambda.specialised_to * 'a) Variable.Map.t
   -> freshening:t
   -> closure_freshening:Project_var.t option

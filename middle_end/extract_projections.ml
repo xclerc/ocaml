@@ -86,7 +86,7 @@ let rec analyse_expr ~which_variables expr =
   let projections = ref Projection.Set.empty in
   let used_which_variables = ref Variable.Set.empty in
   let check_free_variable var =
-    if Variable.Map.mem var which_variables then begin
+    if Variable.Set.mem var which_variables then begin
       used_which_variables := Variable.Set.add var !used_which_variables
     end
   in
@@ -114,36 +114,43 @@ let rec analyse_expr ~which_variables expr =
     | Assign { new_value; _ } ->
       check_free_variable new_value
     | Project_var project_var
-        when Variable.Map.mem project_var.closure which_variables ->
+        when Variable.Set.mem project_var.closure which_variables ->
       projections :=
         Projection.Set.add (Project_var project_var) !projections
     | Project_closure project_closure
-        when Variable.Map.mem project_closure.set_of_closures
+        when Variable.Set.mem project_closure.set_of_closures
           which_variables ->
       projections :=
         Projection.Set.add (Project_closure project_closure) !projections
     | Move_within_set_of_closures move
-        when Variable.Map.mem move.closure which_variables ->
+        when Variable.Set.mem move.closure which_variables ->
       projections :=
         Projection.Set.add (Move_within_set_of_closures move) !projections
     | Prim (Pfield field_index, [var], _dbg)
-        when Variable.Map.mem var which_variables ->
+        when Variable.Set.mem var which_variables ->
       projections :=
         Projection.Set.add (Field (field_index, var)) !projections
     | Set_of_closures set_of_closures ->
       let aliasing_free_vars =
-        Variable.Map.filter (fun _ (free_var : Flambda.free_var) ->
-            Variable.Map.mem free_var.var which_variables)
-          set_of_closures.free_vars
+        Variable.Map.filter_map set_of_closures.free_vars
+          ~f:(fun _ (free_var : Flambda.free_var) ->
+            if not (Variable.Set.mem free_var.var which_variables) then
+              None
+            else
+              Some free_var.var)
       in
       let aliasing_specialised_args =
-        Variable.Map.filter (fun param (spec_to : Flambda.specialised_to) ->
+        Variable.Map.filter_map set_of_closures.specialised_args
+          ~f:(fun param (spec_to : Flambda.specialised_to) ->
             match spec_to.var with
-            | Some var -> Variable.Map.mem var which_variables
+            | Some var ->
+              if not (Variable.Set.mem var which_variables) then
+                None
+              else
+                Some var
             | None ->
               Misc.fatal_errorf "No equality to variable for specialised arg %a"
                 Variable.print param)
-          set_of_closures.specialised_args
       in
       let aliasing_vars =
         Variable.Map.disjoint_union
@@ -153,12 +160,13 @@ let rec analyse_expr ~which_variables expr =
         Variable.Map.iter (fun _ (fun_decl : Flambda.function_declaration) ->
           (* We ignore projections from within nested sets of closures. *)
           let _, used =
-            analyse_expr fun_decl.body ~which_variables:aliasing_vars
+            analyse_expr fun_decl.body
+              ~which_variables:(Variable.Map.keys aliasing_vars)
           in
           Variable.Set.iter (fun var ->
             match Variable.Map.find var aliasing_vars with
             | exception Not_found -> assert false
-            | spec_to -> check_free_variable spec_to.var)
+            | var -> check_free_variable var)
             used)
           set_of_closures.function_decls.funs
       end
@@ -173,7 +181,7 @@ let rec analyse_expr ~which_variables expr =
   let used_which_variables = !used_which_variables in
   projections, used_which_variables
 
-let from_expr ~env ~get_approx ~which_variables expr =
+let from_expr ~get_approx ~which_variables expr =
   let projections, used_which_variables =
     analyse_expr ~which_variables expr
   in
@@ -183,9 +191,7 @@ let from_expr ~env ~get_approx ~which_variables expr =
      When analysing a continuation, the approximation information comes
      not from an environment, but the usage information collected during
      simplification. *)
-  let projections =
-    known_valid_projections ~env ~projections ~get_approx
-  in
+  let projections = known_valid_projections ~get_approx ~projections in
   (* Don't extract projections whose [projecting_from] variable is also
      used boxed.  We could in the future consider being more sophisticated
      about this based on the uses in the body, but given we are not doing
@@ -208,7 +214,7 @@ let from_function's_free_vars ~env ~free_vars
     in
     E.find_exn env outer_var
   in
-  from_expr ~env ~which_variables function_decl.body
+  from_expr ~get_approx ~which_variables function_decl.body
 
 let from_function's_specialised_args ~env ~specialised_args
       ~(function_decl : Flambda.function_declaration) =
@@ -217,17 +223,16 @@ let from_function's_specialised_args ~env ~specialised_args
     let outer_var =
       match Variable.Map.find from specialised_args with
       | exception Not_found -> assert false
-      | (outer_var : Flambda.free_var) ->
+      | (outer_var : Flambda.specialised_to) ->
         match outer_var.var with
-        | Some var ->
-          Freshening.apply_variable (E.freshening env) outer_var.var
+        | Some var -> Freshening.apply_variable (E.freshening env) var
         | None ->
           Misc.fatal_errorf "No equality to variable for specialised arg %a"
-            Variable.print param
+            Variable.print from
     in
     E.find_exn env outer_var
   in
-  from_expr ~env ~which_variables function_decl.body
+  from_expr ~get_approx ~which_variables function_decl.body
 
 let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
   let which_variables = Variable.Set.of_list handler.params in

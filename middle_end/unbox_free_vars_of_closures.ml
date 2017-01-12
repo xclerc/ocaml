@@ -32,7 +32,7 @@ let lifted_projections ~existing_inner_to_outer_vars ~benefit
         match
           Variable.Map.find inner_var existing_inner_to_outer_vars
         with
-        | (outer_var : Flambda.specialised_to) -> outer_var.var
+        | (outer_var : Flambda.free_var) -> outer_var.var
         | exception Not_found ->
           Misc.fatal_errorf "(UFV) find_outer_var: expected %a \
               to be in [existing_inner_to_outer_vars], but it is \
@@ -59,7 +59,7 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
   else
     let definitions_indexed_by_new_inner_vars, _, free_vars, done_something =
       let all_existing_definitions =
-        Variable.Map.fold (fun _inner_var (outer_var : Flambda.specialised_to)
+        Variable.Map.fold (fun _inner_var (outer_var : Flambda.free_var)
               all_existing_definitions ->
             match outer_var.projection with
             | None -> all_existing_definitions
@@ -73,8 +73,8 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
           set_of_closures.free_vars, false)
         ~f:(fun ~fun_var:_ ~function_decl result ->
           let extracted =
-            Extract_projections.from_function_decl ~env ~function_decl
-              ~which_variables:set_of_closures.free_vars
+            Extract_projections.from_function's_free_vars ~env
+              ~function_decl ~free_vars:set_of_closures.free_vars
           in
           Projection.Set.fold (fun projection
                 ((definitions_indexed_by_new_inner_vars,
@@ -112,7 +112,7 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
                   Projection.Set.add projection
                     all_existing_definitions_including_added_ones
                 in
-                let new_outer_var : Flambda.specialised_to =
+                let new_outer_var : Flambda.free_var =
                   { var = new_outer_var;
                     projection = Some projection;
                   }

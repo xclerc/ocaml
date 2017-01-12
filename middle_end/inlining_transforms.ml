@@ -242,11 +242,15 @@ let inline_by_copying_function_declaration ~env ~r
              may need renaming for that one *)
           map
         | original_spec_to ->
-          let original_outside_var = original_spec_to.var in
-          let spec_to =
-            { original_spec_to with var = outside_var; }
-          in
-          Variable.Map.add original_outside_var spec_to map)
+          match original_spec_to.var with
+          | Some original_outside_var ->
+            let spec_to =
+              { original_spec_to with var = Some outside_var; }
+            in
+            Variable.Map.add original_outside_var spec_to map
+          | None ->
+            Misc.fatal_errorf "No equality to variable for specialised arg %a"
+              Variable.print param)
       specialisable_args_with_aliases Variable.Map.empty
   in
   if Variable.Set.subset worth_specialising_args specialised_args_set
@@ -267,7 +271,7 @@ let inline_by_copying_function_declaration ~env ~r
       fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
         ~lhs_of_application ~function_decls ~init:(Variable.Map.empty, [])
         ~f:(fun ~acc:(map, for_lets) ~var:internal_var ~expr ->
-          let from_closure : Flambda.specialised_to =
+          let from_closure : Flambda.free_var =
             { var = new_var "from_closure";
               projection = None;
             }
@@ -311,42 +315,47 @@ let inline_by_copying_function_declaration ~env ~r
           | Some var, _ ->
             (* New specialised argument being introduced. *)
             let spec_to : Flambda.specialised_to =
-              { var;
+              { var = Some var;
                 projection = None;
               }
             in
             Some spec_to
           | None, Some (spec_to : Flambda.specialised_to) ->
             (* Renaming an existing specialised argument. *)
-            if Variable.Set.mem param all_functions_parameters then
-              match Variable.Map.find spec_to.var specialisable_renaming with
-              | exception Not_found ->
-                Misc.fatal_errorf
-                  "Missing renaming for specialised argument of a function \
-                    being duplicated but not directly applied: %a -> %a.@ \
-                    Closure ID being applied = %a.@ \
-                    required_functions = %a.@ \
-                    specialisable_renaming = %a@ \
-                    specialisable_args_with_aliases = %a@ \
-                    Original function declarations = %a@ \
-                    Filtered function declarations = %a@ \
-                    Original specialised args = %a"
-                  Variable.print param
-                  Flambda.print_specialised_to spec_to
-                  Closure_id.print closure_id_being_applied
-                  Variable.Set.print required_functions
-                  (Variable.Map.print Flambda.print_specialised_to)
-                    specialisable_renaming
-                  (Variable.Map.print Variable.print)
-                    specialisable_args_with_aliases
-                  Flambda.print_function_declarations original_function_decls
-                  Flambda.print_function_declarations function_decls
-                  (Variable.Map.print Flambda.print_specialised_to)
-                    specialised_args
-              | argument_from_the_current_application ->
-                Some argument_from_the_current_application
-            else
-              None)
+            match spec_to.var with
+            | Some var ->
+              if Variable.Set.mem param all_functions_parameters then
+                match Variable.Map.find var specialisable_renaming with
+                | exception Not_found ->
+                  Misc.fatal_errorf
+                    "Missing renaming for specialised argument of a function \
+                      being duplicated but not directly applied: %a -> %a.@ \
+                      Closure ID being applied = %a.@ \
+                      required_functions = %a.@ \
+                      specialisable_renaming = %a@ \
+                      specialisable_args_with_aliases = %a@ \
+                      Original function declarations = %a@ \
+                      Filtered function declarations = %a@ \
+                      Original specialised args = %a"
+                    Variable.print param
+                    Flambda.print_specialised_to spec_to
+                    Closure_id.print closure_id_being_applied
+                    Variable.Set.print required_functions
+                    (Variable.Map.print Flambda.print_specialised_to)
+                      specialisable_renaming
+                    (Variable.Map.print Variable.print)
+                      specialisable_args_with_aliases
+                    Flambda.print_function_declarations original_function_decls
+                    Flambda.print_function_declarations function_decls
+                    (Variable.Map.print Flambda.print_specialised_to)
+                      specialised_args
+                | argument_from_the_current_application ->
+                  Some argument_from_the_current_application
+              else
+                None
+            | None ->
+              Misc.fatal_errorf "No equality to variable for specialised arg %a"
+                Variable.print param)
         specialisable_args_with_aliases specialised_args
     in
     let set_of_closures =

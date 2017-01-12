@@ -310,7 +310,8 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
     let body, state = sink_expr body ~state in
     Let_cont { name; body; handler; }, state
   | Let_cont { name; body; handler =
-      Handler { params; recursive = Recursive; handler; specialised_args; } } ->
+      Handler { params; recursive = Recursive; stub; handler;
+        specialised_args; } } ->
     (* We don't sink anything into a recursive continuation. *)
     (* CR mshinwell: This is actually required for correctness at the moment
        since e.g. mutable block creation is deemed as "no generative effects"
@@ -329,11 +330,11 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
         ~candidates_to_sink:fvs
     in
     Let_cont { name; body; handler =
-        Handler { params; recursive = Recursive; handler;
+        Handler { params; recursive = Recursive; stub; handler;
           specialised_args; } },
       state
   | Let_cont { name; body; handler =
-      Handler { params; recursive; handler; specialised_args; } } ->
+      Handler { params; recursive; stub; handler; specialised_args; } } ->
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
@@ -359,7 +360,7 @@ Format.eprintf "Finished handler %a\n%!" Continuation.print name;
           (Flambda.free_variables_of_specialised_args specialised_args)
     in
     Let_cont { name; body; handler =
-      Handler { params; recursive; handler; specialised_args; } }, state
+      Handler { params; recursive; stub; handler; specialised_args; } }, state
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
     let state =
       State.add_candidates_to_sink state
@@ -410,7 +411,7 @@ and sink (expr : Flambda.t) =
       let body = sink body in
       Let_cont { name; body; handler; }
     | Let_cont { name; body; handler =
-        Handler { params; recursive; handler; specialised_args; } } ->
+        Handler { params; recursive; stub; handler; specialised_args; } } ->
       let body = sink body in
       let handler =
         let handler = sink handler in
@@ -427,7 +428,7 @@ Format.eprintf "New bindings for top of %a outermost first is %a\n%!"
           (List.rev bindings)
       in
       Let_cont { name; body; handler =
-        Handler { params; recursive; handler; specialised_args; } }
+        Handler { params; recursive; stub; handler; specialised_args; } }
     | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr
   in
 (*

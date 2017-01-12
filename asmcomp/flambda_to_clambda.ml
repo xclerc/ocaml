@@ -807,7 +807,7 @@ and to_clambda_set_of_closures t env
   let funs = List.map to_clambda_function all_functions in
   let free_vars =
     Variable.Map.bindings (Variable.Map.map (
-      fun (free_var : Flambda.specialised_to) ->
+      fun (free_var : Flambda.free_var) ->
         subst_var env free_var.var) free_vars)
   in
   Uclosure (funs, List.map snd free_vars)

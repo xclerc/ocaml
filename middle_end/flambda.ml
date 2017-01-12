@@ -138,6 +138,7 @@ and let_cont_handler =
 and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;
+  stub : bool;
   handler : t;
   specialised_args : specialised_args;
 }

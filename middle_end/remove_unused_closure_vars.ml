@@ -107,7 +107,7 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
           set_of_closures.specialised_args
       in
       let free_vars =
-        Flambda_utils.clean_projections ~which_variables:free_vars
+        Flambda_utils.clean_free_vars_projections free_vars
       in
       let direct_call_surrogates =
         (* Remove direct call surrogates where either the existing function

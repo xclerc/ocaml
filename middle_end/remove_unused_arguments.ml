@@ -149,7 +149,7 @@ let separate_unused_arguments ~only_specialised
           set_of_closures.specialised_args)
     in
     let specialised_args =
-      Flambda_utils.clean_projections ~which_variables:specialised_args
+      Flambda_utils.clean_specialised_args_projections specialised_args
     in
     let function_decls =
       Flambda.update_function_declarations function_decls ~funs
