@@ -1095,9 +1095,11 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
   in
   let expr : Flambda.t =
     Let_cont {
-      name = after_full_application;
       body = full_application;
-      handler = Handler handler;
+      handlers = Handlers (
+        Continuation.Map.of_list [
+          after_full_application, handler;
+        ]);
     }
   in
   expr, r
@@ -1465,6 +1467,198 @@ and filter_defining_expr_of_let r var defining_expr free_vars_of_body =
   else
     r, var, Some defining_expr
 
+and simplify_let_cont_handler ... =
+  | Handler { params = []; recursive = Nonrecursive;
+      handler = Apply_cont (cont', None, []); } ->
+    let r, args_approxs, _uses =
+      R.exit_scope_catch r env cont ~num_params:0
+    in
+    let cont' =
+      Freshening.apply_static_exception (E.freshening env) cont'
+    in
+    let r =
+      R.use_continuation r env cont' ~inlinable_position:false
+        ~args:[] ~args_approxs
+    in
+    assert (not (R.is_used_continuation r cont));
+    assert (R.is_used_continuation r cont');
+    Let_cont { name = cont; body; handler = Alias cont'; }, r
+  | Handler { params = vars; recursive; stub; handler;
+      specialised_args; } ->
+    (* CR mshinwell: rename "vars" to "params" *)
+    let env =
+      match recursive with
+      | Nonrecursive -> env
+      | Recursive -> body_env
+    in
+    let num_params = List.length vars in
+    match (body : Flambda.t), recursive with
+    | Apply_cont (cont', None, args), Nonrecursive
+        when Continuation.equal cont cont' ->
+      let handler =
+        List.fold_left2 (fun body var arg ->
+            Flambda.create_let var (Var arg) body)
+          handler vars args
+      in
+      let r, _args_approxs, _uses =
+        R.exit_scope_catch r env cont ~num_params
+      in
+      assert (not (R.is_used_continuation r cont));
+      simplify env r handler
+    | _, _ ->
+      let freshened_vars, sb =
+        Freshening.add_variables' (E.freshening env) vars
+      in
+      let specialised_args =
+        let specialised_args =
+          Variable.Map.map_keys
+            (Freshening.apply_variable (E.freshening env))
+            specialised_args
+        in
+        let specialised_args =
+          (* CR mshinwell: Duplicate of a part of
+             [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
+          *)
+          Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
+              match spec_to.var with
+              | Some external_var ->
+                let var =
+                  Freshening.apply_variable (E.freshening env) external_var
+                in
+                let var =
+                  match
+                    A.simplify_var_to_var_using_env (E.find_exn env var)
+                      ~is_present_in_env:(fun var -> E.mem env var)
+                  with
+                  | None -> var
+                  | Some var -> var
+                in
+                let projection = spec_to.projection in
+                ({ var = Some var; projection; } : Flambda.specialised_to)
+              | None ->
+                spec_to)
+            specialised_args
+        in
+        Freshening.freshen_specialised_args_projection_relation
+          specialised_args
+          ~freshening:(E.freshening env)
+          ~closure_freshening:None
+      in
+      let r, vars_approxs, uses =
+        match recursive with
+        | Nonrecursive ->
+          if !Clflags.flambda_invariant_checks then begin
+            let fcs = Flambda.free_continuations handler in
+            if Continuation.Set.mem unfreshened_cont fcs then begin
+              Misc.fatal_errorf "Continuation %a declared as non-recursive \
+                  but is recursive:@;%a"
+                Continuation.print unfreshened_cont
+                Flambda.print handler
+            end
+            (* Note that [cont] may not be fresh for [handler] at the
+               moment, since the latter may come from another compilation
+               unit, and has not yet been freshened up. *)
+          end;
+          R.exit_scope_catch r env cont ~num_params
+        | Recursive ->
+          let param_approxs =
+            List.map (fun param ->
+                match Variable.Map.find param specialised_args with
+                | exception Not_found -> A.value_unknown Other
+                | spec_to ->
+                  match spec_to.var with
+                  | None -> A.value_unknown Other
+                  | Some var -> E.find_exn env var)
+              freshened_vars
+          in
+          r, param_approxs,
+            Inline_and_simplify_aux.Continuation_uses.create
+              ~backend:(E.backend env)
+      in
+      let vars = freshened_vars in
+      let vars_and_approxs = List.combine vars vars_approxs in
+      let env =
+        List.fold_left (fun env (id, approx) -> E.add env id approx)
+          (E.set_freshening env sb) vars_and_approxs
+      in
+      let env =
+        Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
+                env ->
+            match spec_to.projection with
+            | None -> env
+            | Some projection ->
+              E.add_projection env ~projection ~bound_to:param)
+          specialised_args
+          env
+      in
+      let env =
+        let env = E.inside_branch env in
+        match recursive with
+        | Nonrecursive -> env
+        | Recursive -> E.set_in_handler_of_recursive_continuation env cont
+      in
+(*
+Format.eprintf "Simplification of handler for %a: environment@;%a"
+  Continuation.print cont E.print env;
+*)
+      let handler, r = simplify env r handler in
+      let r, recursive =
+        match recursive with
+        | Nonrecursive ->
+          if !Clflags.flambda_invariant_checks then begin
+            let fcs = Flambda.free_continuations handler in
+            if Continuation.Set.mem cont fcs then begin
+              Misc.fatal_errorf "Continuation %a declared as non-recursive \
+                  but became recursive during simplification:@;%a"
+                Continuation.print cont
+                Flambda.print handler
+            end
+          end;
+          r, Asttypes.Nonrecursive
+        | Recursive ->
+          let recursive : Asttypes.rec_flag =
+            if R.is_used_continuation r cont then
+              Recursive
+            else
+              Nonrecursive
+          in
+          let r, _args_approxs, _uses =
+            R.exit_scope_catch r env cont ~num_params
+          in
+          r, recursive
+      in
+      let handler : Flambda.continuation_handler =
+        { params = vars;
+          recursive;
+          stub;
+          handler;
+          specialised_args;
+        }
+      in
+      let cont_approx =
+        Continuation_approx.create ~name:cont ~handler ~num_params
+      in
+
+and simplify_let_cont_handlers ... ~handlers =
+
+(*
+    if not (R.is_used_continuation r cont) then begin
+      (* If the continuation is not used, we can drop the declaration *)
+      body, r
+    end else *) begin
+        let r =
+          R.define_continuation r cont env_above_let_cont recursive uses
+            cont_approx
+        in
+        let let_cont : Flambda.let_cont =
+          { name = cont;
+            body;
+            handler = Handler handler;
+          }
+        in
+        assert (not (R.is_used_continuation r cont));
+        Let_cont let_cont, ret r A.value_bottom
+
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
   | Apply apply ->
@@ -1497,33 +1691,36 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   | Apply_cont (cont, trap_action, args) ->
     simplify_free_variables env args ~f:(fun env args args_approxs ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_approxs)
-  | Let_cont { name = cont; body; handler } ->
-    (* CR mshinwell: This clause is long enough to warrant it's own
-       function (or maybe more than one function). *)
-(*
-Format.eprintf "Let_cont %a@;%a@;Environment:@;%a\n%!"
-  Continuation.print cont Flambda.print tree
-  E.print env;
-*)
+  | Let_cont { body; handlers; } ->
     let env_above_let_cont = env in
-    let unfreshened_cont = cont in
-    let cont, sb = Freshening.add_static_exception (E.freshening env) cont in
-(*
-Format.eprintf "OLD %a NEW %a\n%!"
-  Continuation.print unfreshened_cont
-  Continuation.print cont;
-*)
-    let approx, r =
-      (* Reminder: [handler] isn't freshened up, so its code cannot go in the
-         approximation, irrespective of any other reasons for it not to. *)
-      match handler with
-      | Handler { params; _ } ->
-        let num_params = List.length params in
-        let approx =
-          Continuation_approx.create_unknown ~name:cont ~num_params
+    let conts_and_approxs, freshening =
+      match handlers with
+      | Handler handlers ->
+        Continuation.Map.fold (fun name
+                (handler : Flambda.continuation_handler)
+                (conts_and_approxs, freshening) ->
+            (* Reminder: [handler] isn't freshened up, so its code cannot go
+               in the approximation, irrespective of any other reasons for it
+               not to. *)
+            let freshened_name, freshening =
+              Freshening.add_static_exception freshening name
+            in
+            let num_params = List.length handler.params in
+            let approx =
+              Continuation_approx.create_unknown ~name ~num_params
+            in
+            assert (Continuation_approx.handler approx = None);
+            let conts_and_approxs =
+              Continuation.Map.add freshened_name [name, approx]
+                conts_and_approxs
+            in
+            conts_and_approxs, freshening)
+          handlers
+          Continuation.Map.empty, E.freshening env
+      | Alias { name; alias_of; } ->
+        let freshened_name, freshening =
+          Freshening.add_static_exception (E.freshening env) name
         in
-        approx, r
-      | Alias alias_of ->
         let alias_of =
           Freshening.apply_static_exception (E.freshening env) alias_of
         in
@@ -1533,219 +1730,42 @@ Format.eprintf "OLD %a NEW %a\n%!"
             ~name:(Continuation_approx.name approx)
             ~num_params:(Continuation_approx.num_params approx)
         in
-        approx, r
+        assert (Continuation_approx.handler approx = None);
+        let conts_and_approxs =
+          Continuation.Map.of_list [
+            freshened_name, [name, approx];
+          ]
+        in
+        conts_and_approxs
     in
-    assert (Continuation_approx.handler approx = None);
-    let body_env = E.add_continuation (E.set_freshening env sb) cont approx in
-(*
-Format.eprintf "Simplification of body for %a: environment@;%a"
-  Continuation.print cont E.print body_env;
-*)
+    let body_env =
+      Continuation.Map.fold (fun name (_unfreshened_name, approx) env ->
+          E.add_continuation env name approx)
+        conts_and_approxs
+        (E.set_freshening env freshening)
+    in
     let body, r = simplify body_env r body in
-    if not (R.is_used_continuation r cont) then begin
-      (* If the continuation is not used, we can drop the declaration *)
-      body, r
-    end else begin
-      match handler with
-      | Alias alias_of ->
-        let alias_of =
-          Freshening.apply_static_exception (E.freshening env) alias_of
-        in
-        let let_cont : Flambda.let_cont =
-          { name = cont;
-            body;
-            handler = Alias alias_of;
-          }
-        in
-        let r, _args_approxs, _uses =
-          R.exit_scope_catch r env cont
-            ~num_params:(Continuation_approx.num_params approx)
-        in
-        assert (not (R.is_used_continuation r cont));
-        Let_cont let_cont, ret r A.value_bottom
-      | Handler { params = []; recursive = Nonrecursive;
-          handler = Apply_cont (cont', None, []); } ->
-        let r, args_approxs, _uses =
-          R.exit_scope_catch r env cont ~num_params:0
-        in
-        let cont' =
-          Freshening.apply_static_exception (E.freshening env) cont'
-        in
-        let r =
-          R.use_continuation r env cont' ~inlinable_position:false
-            ~args:[] ~args_approxs
-        in
-        assert (not (R.is_used_continuation r cont));
-        assert (R.is_used_continuation r cont');
-        Let_cont { name = cont; body; handler = Alias cont'; }, r
-      | Handler { params = vars; recursive; stub; handler;
-          specialised_args; } ->
-        (* CR mshinwell: rename "vars" to "params" *)
-        let env =
-          match recursive with
-          | Nonrecursive -> env
-          | Recursive -> body_env
-        in
-        let num_params = List.length vars in
-        match (body : Flambda.t), recursive with
-        | Apply_cont (cont', None, args), Nonrecursive
-            when Continuation.equal cont cont' ->
-          let handler =
-            List.fold_left2 (fun body var arg ->
-                Flambda.create_let var (Var arg) body)
-              handler vars args
-          in
-          let r, _args_approxs, _uses =
-            R.exit_scope_catch r env cont ~num_params
-          in
-          assert (not (R.is_used_continuation r cont));
-          simplify env r handler
-        | _, _ ->
-          let freshened_vars, sb =
-            Freshening.add_variables' (E.freshening env) vars
-          in
-          let specialised_args =
-            let specialised_args =
-              Variable.Map.map_keys
-                (Freshening.apply_variable (E.freshening env))
-                specialised_args
-            in
-            let specialised_args =
-              (* CR mshinwell: Duplicate of a part of
-                 [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
-              *)
-              Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                  match spec_to.var with
-                  | Some external_var ->
-                    let var =
-                      Freshening.apply_variable (E.freshening env) external_var
-                    in
-                    let var =
-                      match
-                        A.simplify_var_to_var_using_env (E.find_exn env var)
-                          ~is_present_in_env:(fun var -> E.mem env var)
-                      with
-                      | None -> var
-                      | Some var -> var
-                    in
-                    let projection = spec_to.projection in
-                    ({ var = Some var; projection; } : Flambda.specialised_to)
-                  | None ->
-                    spec_to)
-                specialised_args
-            in
-            Freshening.freshen_specialised_args_projection_relation
-              specialised_args
-              ~freshening:(E.freshening env)
-              ~closure_freshening:None
-          in
-          let r, vars_approxs, uses =
-            match recursive with
-            | Nonrecursive ->
-              if !Clflags.flambda_invariant_checks then begin
-                let fcs = Flambda.free_continuations handler in
-                if Continuation.Set.mem unfreshened_cont fcs then begin
-                  Misc.fatal_errorf "Continuation %a declared as non-recursive \
-                      but is recursive:@;%a"
-                    Continuation.print unfreshened_cont
-                    Flambda.print handler
-                end
-                (* Note that [cont] may not be fresh for [handler] at the
-                   moment, since the latter may come from another compilation
-                   unit, and has not yet been freshened up. *)
-              end;
-              R.exit_scope_catch r env cont ~num_params
-            | Recursive ->
-              let param_approxs =
-                List.map (fun param ->
-                    match Variable.Map.find param specialised_args with
-                    | exception Not_found -> A.value_unknown Other
-                    | spec_to ->
-                      match spec_to.var with
-                      | None -> A.value_unknown Other
-                      | Some var -> E.find_exn env var)
-                  freshened_vars
-              in
-              r, param_approxs,
-                Inline_and_simplify_aux.Continuation_uses.create
-                  ~backend:(E.backend env)
-          in
-          let vars = freshened_vars in
-          let vars_and_approxs = List.combine vars vars_approxs in
-          let env =
-            List.fold_left (fun env (id, approx) -> E.add env id approx)
-              (E.set_freshening env sb) vars_and_approxs
-          in
-          let env =
-            Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
-                    env ->
-                match spec_to.projection with
-                | None -> env
-                | Some projection ->
-                  E.add_projection env ~projection ~bound_to:param)
-              specialised_args
-              env
-          in
-          let env =
-            let env = E.inside_branch env in
-            match recursive with
-            | Nonrecursive -> env
-            | Recursive -> E.set_in_handler_of_recursive_continuation env cont
-          in
-(*
-Format.eprintf "Simplification of handler for %a: environment@;%a"
-  Continuation.print cont E.print env;
-*)
-          let handler, r = simplify env r handler in
-          let r, recursive =
-            match recursive with
-            | Nonrecursive ->
-              if !Clflags.flambda_invariant_checks then begin
-                let fcs = Flambda.free_continuations handler in
-                if Continuation.Set.mem cont fcs then begin
-                  Misc.fatal_errorf "Continuation %a declared as non-recursive \
-                      but became recursive during simplification:@;%a"
-                    Continuation.print cont
-                    Flambda.print handler
-                end
-              end;
-              r, Asttypes.Nonrecursive
-            | Recursive ->
-              let recursive : Asttypes.rec_flag =
-                if R.is_used_continuation r cont then
-                  Recursive
-                else
-                  Nonrecursive
-              in
-              let r, _args_approxs, _uses =
-                R.exit_scope_catch r env cont ~num_params
-              in
-              r, recursive
-          in
-          let handler : Flambda.continuation_handler =
-            { params = vars;
-              recursive;
-              stub;
-              handler;
-              specialised_args;
-            }
-          in
-          let cont_approx =
-            Continuation_approx.create ~name:cont ~handler ~num_params
-          in
-          let r =
-            R.define_continuation r cont env_above_let_cont recursive uses
-              cont_approx
-          in
-          let let_cont : Flambda.let_cont =
-            { name = cont;
-              body;
-              handler = Handler handler;
-            }
-          in
-          assert (not (R.is_used_continuation r cont));
-          Let_cont let_cont, ret r A.value_bottom
-    end
+    match handlers with
+    | Handlers handlers ->
+      simplify_let_cont_handlers ... ~handlers
+    | Alias { name; alias_of; } ->
+      let name =
+        Freshening.apply_static_exception freshening name
+      in
+      let alias_of =
+        Freshening.apply_static_exception freshening alias_of
+      in
+      let let_cont : Flambda.let_cont =
+        { body;
+          handler = Alias { name; alias_of; }
+        }
+      in
+      let r, _args_approxs, _uses =
+        R.exit_scope_catch r env cont
+          ~num_params:(Continuation_approx.num_params approx)
+      in
+      assert (not (R.is_used_continuation r cont));
+      Let_cont let_cont, ret r A.value_bottom
   | Switch (arg, sw) ->
     (* When [arg] is known to be a variable whose approximation is that of a
        block with a fixed tag or a fixed integer, we can eliminate the
