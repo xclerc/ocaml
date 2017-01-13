@@ -43,7 +43,6 @@ module Env = struct
     closure_depth : int;
     inlining_stats_closure_stack : Inlining_stats.Closure_stack.t;
     inlined_debuginfo : Debuginfo.t;
-    in_handlers_of_recursive_continuations : Continuation.Set.t;
   }
 
   let create ~never_inline ~backend ~round =
@@ -68,7 +67,6 @@ module Env = struct
       inlining_stats_closure_stack =
         Inlining_stats.Closure_stack.create ();
       inlined_debuginfo = Debuginfo.none;
-      in_handlers_of_recursive_continuations = Continuation.Set.empty;
     }
 
   let backend t = t.backend
@@ -81,7 +79,6 @@ module Env = struct
       projections = Projection.Map.empty;
       freshening = Freshening.empty_preserving_activation_state env.freshening;
       inlined_debuginfo = Debuginfo.none;
-      in_handlers_of_recursive_continuations = Continuation.Set.empty;
     }
 
   let inlining_level_up env =
@@ -423,20 +420,6 @@ module Env = struct
 
   let add_inlined_debuginfo t ~dbg =
     Debuginfo.concat t.inlined_debuginfo dbg
-
-  let set_in_handler_of_recursive_continuation t cont =
-    if Continuation.Set.mem cont t.in_handlers_of_recursive_continuations
-    then
-      Misc.fatal_errorf "Already in handler of recursive continuation %a"
-        Continuation.print cont
-    else
-      { t with
-        in_handlers_of_recursive_continuations =
-          Continuation.Set.add cont t.in_handlers_of_recursive_continuations;
-      }
-
-  let in_handler_of_recursive_continuation t cont =
-    Continuation.Set.mem cont t.in_handlers_of_recursive_continuations
 
   let continuations_in_scope t = t.continuations
 

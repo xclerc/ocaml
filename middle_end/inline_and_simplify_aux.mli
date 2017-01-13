@@ -273,8 +273,6 @@ module Env : sig
   (** Appends the locations of inlined call-sites to the [~dbg] argument *)
   val add_inlined_debuginfo : t -> dbg:Debuginfo.t -> Debuginfo.t
 
-  val set_in_handler_of_recursive_continuation : t -> Continuation.t -> t
-  val in_handler_of_recursive_continuation : t -> Continuation.t -> bool
   val continuations_in_scope : t -> Continuation_approx.t Continuation.Map.t
 end
 

@@ -29,8 +29,9 @@
      let rec f x l = List.iter (f x) l
 
    For invariant parameters it also computes the set of parameters of functions
-   in the set of closures that are always aliased to it. For example in the set
-   of closures:
+   in the set of closures (or parameters of continuations in the same
+   mutually-recursive set of handlers) that are always aliased to it. For
+   example in the set of closures:
 
      let rec f x y = (f x y) + (f x (y+1)) + g x
      and g z = z + 1
@@ -39,24 +40,30 @@
 
      x -> { x; z }
 *)
-val invariant_params_in_recursion
-   : Flambda.function_declarations
-  -> backend:(module Backend_intf.S)
-  -> Variable.Set.t Variable.Map.t
 
-val invariant_param_sources
-   : Flambda.function_declarations
-  -> backend:(module Backend_intf.S)
-  -> Variable.Pair.Set.t Variable.Map.t
+module type S = sig
+  type declarations
 
-val invariant_params_of_continuation
-   : Continuation.t
-  -> Flambda.continuation_handler
-  -> Variable.Set.t
+  val invariant_params_in_recursion
+     : declarations
+    -> backend:(module Backend_intf.S)
+    -> Variable.Set.t Variable.Map.t
 
-(* CR-soon mshinwell: think about whether this function should
-   be in this file.  Should it be called "unused_parameters"? *)
-val unused_arguments
-   : Flambda.function_declarations
-  -> backend:(module Backend_intf.S)
-  -> Variable.Set.t
+  val invariant_param_sources
+     : declarations
+    -> backend:(module Backend_intf.S)
+    -> Variable.Pair.Set.t Variable.Map.t
+
+  (* CR-soon mshinwell: think about whether this function should
+     be in this file.  Should it be called "unused_parameters"? *)
+  val unused_arguments
+     : declarations
+    -> backend:(module Backend_intf.S)
+    -> Variable.Set.t
+end
+
+module Functions : S
+  with type declarations = Flambda.function_declarations
+
+module Continuations : S
+  with type declarations = Flambda.continuation_handlers

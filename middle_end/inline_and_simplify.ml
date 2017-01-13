@@ -1111,11 +1111,9 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let inlinable_position =
-    (* CR mshinwell: Check how in_handler_of_recursive_continuation relates
-       to the check in the Let_cont case below regarding not inlining
-       recursive ones *)
-    (not (E.in_handler_of_recursive_continuation env cont))
-      && trap_action = None
+    match Continuation_approx.handler cont_approx, trap_action with
+    | Some _handler, None -> true
+    | None, _ -> false
   in
   let r =
     R.use_continuation r env cont ~inlinable_position ~args ~args_approxs

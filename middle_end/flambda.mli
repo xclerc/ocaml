@@ -268,6 +268,9 @@ and let_cont_handlers =
   | Handlers of continuation_handler Continuation.Map.t
   | Alias of { name : Continuation.t; alias_of : Continuation.t; }
 
+and continuation_handlers =
+  continuation_handler Continuation.Map.t
+
 and continuation_handler = {
   params : Variable.t list;
   recursive : Asttypes.rec_flag;

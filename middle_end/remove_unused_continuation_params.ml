@@ -77,35 +77,25 @@ let for_continuation ~cont ~body ~(handler : Flambda.continuation_handler)
             not (Variable.Set.mem param unused))
           handler.specialised_args)
     in
-    let rewritten_original_handler = Continuation.create () in
-    let wrapper_inside_handler = Continuation.create () in
-    let expr =
-
-(* Needs mutually recursive continuations to add the wrapper *)
+    let rewritten_original_cont = Continuation.create () in
+    let wrapper_cont = Continuation.create () in
+    let wrapper_handler : Flambda.continuation_handler =
+      { params = handler.params;
+        recursive = 
+    in
+    let rewritten_original_handler : Flambda.continuation_handler =
 
     in
+    let handlers =
+      Continuation.Map.of_list [
+        wrapper_cont, wrapper_handler;
+        rewritten_original_cont, rewritten_original_handler;
+      ]
+    in
     Let_cont {
-      name = rewritten_original_handler;
-      handler = Handler {
-        params = remaining_params;
-        recursive = handler.recursive;
-        stub = handler.stub;
-        handler =
-        specialised_args = remaining_specialised_args;
-      };
-      body =
-        Let_
-          Let_cont {
-            name = wrapper_inside_handler;
-            handler = Handler {
-              params = wrapper_inside_handler_params;
-              recursive = false;
-              stub = true;
-              handler =
-                Apply ...;
-              specialised_args = Variable.Map.empty;
-            }
-          };
+      body;
+      handlers = Handlers handlers;
+    }
 
 let run program =
   Flambda_iterators.map_exprs_at_toplevel_of_program program
@@ -118,6 +108,7 @@ let run program =
           | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
           | Proved_unreachable -> expr)
         expr)
-*)
 
 let run _program = assert false
+
+*)
