@@ -533,6 +533,13 @@ module Continuation_uses = struct
     | [_] -> One
     | _ -> Many
 
+  let unused t =
+    match num_inlinable_application_points t,
+      num_non_inlinable_application_points t
+    with
+    | Zero, Zero -> true
+    | _, _ -> false
+
   let linearly_used t =
     match num_inlinable_application_points t,
       num_non_inlinable_application_points t

@@ -304,6 +304,7 @@ module Continuation_uses : sig
 
   val inlinable_application_points : t -> Use.t list
 
+  val unused : t -> bool
   val linearly_used : t -> bool
   val has_non_inlinable_uses : t -> bool
 
