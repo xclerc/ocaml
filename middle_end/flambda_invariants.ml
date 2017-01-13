@@ -427,6 +427,8 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Let_cont { name; body;
         handler = Handler { params; recursive; stub; handler;
           specialised_args; }; } ->
+      (* CR mshinwell: if the continuation is [Nonrecursive] then make sure
+         it really is. *)
       ignore_continuation name;
       ignore_bool stub;
       loop env body;
