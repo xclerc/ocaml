@@ -155,7 +155,7 @@ and lam ppf = function
         List.iter (fun l -> fprintf ppf "@ %a" lam l) largs in
       fprintf ppf "@[<2>(exit@ %d%a)@]" i lams ls;
   | Ucatch(kind, handlers, lbody) ->
-      let print_handler ppf (cont, params, lhandler) ->
+      let print_handler ppf (cont, params, lhandler) =
         fprintf ppf "@[<2>(%d%a)@ %a@]"
           cont
           (fun ppf vars -> match vars with
@@ -164,7 +164,7 @@ and lam ppf = function
                 List.iter
                   (fun x -> fprintf ppf " %a" Ident.print x)
                   vars)
-          vars
+          params
           lam lhandler
       in
       fprintf ppf "@[<2>(catch%s@ %a@;<1 -1>with %a)@]"
@@ -172,7 +172,7 @@ and lam ppf = function
           | Normal Asttypes.Nonrecursive -> ""
           | Normal Asttypes.Recursive -> "_rec"
           | Exn_handler -> "_exn")
-        lam lbody i
+        lam lbody
         (Format.pp_print_list print_handler) handlers
   | Utrywith(lbody, param, lhandler) ->
       fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"

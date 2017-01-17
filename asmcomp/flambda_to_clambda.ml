@@ -484,20 +484,20 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     | None -> expr
     | Some trap_action -> Usequence (trap_action, expr)
     end
-  | Let_cont { body; handler = Alias { name; alias_of; } } ->
+  | Let_cont { body; handlers = Alias { name; alias_of; } } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
   | Let_cont { body; handlers = Handlers handlers; } ->
     let kind, conts =
-      Variable.Map.fold (fun name (handler : Flambda.continuation_handler)
-              (kind, conts) ->
+      Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
+              ((kind : Clambda.catch_kind option), conts) ->
           let env_handler, ids =
             List.fold_right (fun var (env, ids) ->
                 let id, env = Env.add_fresh_ident env var in
                 env, id :: ids)
               handler.params (env, [])
           in
-          let handler = to_clambda t env_handler handler.handler in
+          let uhandler = to_clambda t env_handler handler.handler in
           let this_kind : Clambda.catch_kind =
             if Continuation.Set.mem name t.exn_handlers then begin
               assert (List.length handler.params = 1);
@@ -506,7 +506,7 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
               Normal handler.recursive
             end
           in
-          let kind =
+          let kind : Clambda.catch_kind =
             match kind with
             | None -> this_kind
             | Some kind ->
@@ -521,14 +521,14 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
               | Normal Recursive, Normal _
               | Normal _, Normal Recursive -> Normal Recursive
           in
-          let cont = Continuation.to_int name, ids, handler in
-          Some kind, cont)
+          let cont = Continuation.to_int name, ids, uhandler in
+          Some kind, cont::conts)
         handlers
         (None, [])
     in
     begin match kind with
     | None ->
-      assert (handlers = []);
+      assert (Continuation.Map.cardinal handlers = 0);
       to_clambda t env body
     | Some kind ->
       Ucatch (kind, conts, to_clambda t env body)
@@ -912,7 +912,7 @@ let to_clambda_initialize_symbol t env symbol fields
         [Continuation.to_int prev_cont, [id],
           Usequence (build_setfield prev_pos id,
             Ustaticfail (Continuation.to_int return_cont, []))],
-        acc)
+        acc),
       return_cont
 
 let accumulate_structured_constants t env symbol
@@ -963,8 +963,7 @@ let to_clambda_program t env constants (program : Flambda.program) =
       | [] -> e2, constants
       | fields ->
         let e1, cont = to_clambda_initialize_symbol t env symbol fields in
-        Ucatch (Normal Nonrecursive, [], [Continuation.to_int cont, [], e2],
-            e1),
+        Ucatch (Normal Nonrecursive, [Continuation.to_int cont, [], e2], e1),
           constants
       end
     | Effect (expr, cont, program) ->
@@ -972,7 +971,7 @@ let to_clambda_program t env constants (program : Flambda.program) =
       let e2, constants = loop env constants program in
       let cont = Continuation.to_int cont in
       let unused = Ident.create "unused" in
-      Ucatch (Normal Nonrecursive, [cont, unused, e2], e1), constants
+      Ucatch (Normal Nonrecursive, [cont, [unused], e2], e1), constants
     | End _ ->
       Uconst (Uconst_ptr 0), constants
   in
