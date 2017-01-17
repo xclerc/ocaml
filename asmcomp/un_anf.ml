@@ -339,7 +339,7 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
           ignore_int cont;
           ignore_ident_list params;
           loop handler)
-        conts
+        conts;
       let_stack := []
     | Utrywith (body, ident, handler) ->
       let_stack := [];

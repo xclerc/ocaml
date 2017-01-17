@@ -71,14 +71,18 @@ let rec count_uses (ulam : Clambda.ulambda) =
   | Ustaticfail (cont, args) ->
     (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty, false)
       + count_uses_list args
-  | Ucatch (cont, _, _, body, handler) ->
+  | Ucatch (kind, handlers, body) ->
     let body_uses = count_uses body in
-    if Numbers.Int.Map.mem cont !used_within_catch_bodies then begin
-      Misc.fatal_errorf "Duplicate definition of Ucatch %d" cont
+    begin match kind, handlers with
+    | Normal Nonrecursive, [cont, _params, _handler] ->
+      used_within_catch_bodies :=
+        Numbers.Int.Map.add cont body_uses !used_within_catch_bodies
+    | _ -> ()
     end;
-    used_within_catch_bodies :=
-      Numbers.Int.Map.add cont body_uses !used_within_catch_bodies;
-    body_uses + count_uses handler
+    List.fold_left (fun handler_uses (_cont, _params, handler) ->
+        handler_uses + count_uses handler)
+      body_uses
+      handlers
   | Utrywith (body, _, handler) -> count_uses body + count_uses handler
   | Uifthenelse (cond, ifso, ifnot) ->
     count_uses cond + count_uses ifso + count_uses ifnot
@@ -242,7 +246,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
             (inline env handler)
         end
       end
-    | Ucatch (Normal Nonrecursive, [cont; params; body], body) ->
+    | Ucatch (Normal Nonrecursive, [cont, params, handler], body) ->
       let module Action = struct
         type t =
           | Unused
@@ -289,7 +293,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
           in
           match can_turn_into_let_or_sequence with
           | Nothing ->
-            Ucatch (kind, [cont, params, inline env handler],
+            Ucatch (Normal Nonrecursive, [cont, params, inline env handler],
               inline env handler)
           | Sequence ->
             let env = E.continuation_will_turn_into_sequence env ~cont in

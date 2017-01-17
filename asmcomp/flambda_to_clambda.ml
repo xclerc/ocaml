@@ -513,8 +513,8 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
               match kind, this_kind with
               | Normal _, Exn_handler | Exn_handler, Normal _ ->
                 Misc.fatal_errorf "Let_cont involving continuation %a \
-                    contains both exception-handling and non-exception-handling
-                    continuations"
+                    contains both exception-handling and \
+                    non-exception-handling continuations"
                   Continuation.print name
               | Exn_handler, Exn_handler -> Exn_handler
               | Normal Nonrecursive, Normal Nonrecursive -> Normal Nonrecursive
