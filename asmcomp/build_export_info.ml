@@ -295,8 +295,9 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
           ~args_approxs:[approx]
       | _ -> r
     end
-  | Let_cont { name; body;
-      handler = Handler { params; handler; recursive; }; } ->
+  | Let_cont { body; handlers = Handlers handlers; } ->
+
+
     let num_params = List.length params in
     let r =
       match recursive with
@@ -320,7 +321,7 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
         (List.combine params args_approxs)
     in
     approx_of_expr env r handler
-  | Let_cont { name; body; handler = Alias alias_of; } ->
+  | Let_cont { body; handlers = Alias { name; alias_of; }; } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     approx_of_expr env r body
   | Apply_cont (cont, _trap, args) ->
