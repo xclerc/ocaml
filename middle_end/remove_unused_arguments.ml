@@ -103,7 +103,9 @@ let make_stub unused var (fun_decl : Flambda.function_declaration)
 let separate_unused_arguments ~only_specialised
       ~backend ~(set_of_closures : Flambda.set_of_closures) =
   let function_decls = set_of_closures.function_decls in
-  let unused = Invariant_params.unused_arguments ~backend function_decls in
+  let unused =
+    Invariant_params.Functions.unused_arguments ~backend function_decls
+  in
   let non_stub_arguments =
     Variable.Map.fold (fun _ (decl : Flambda.function_declaration) acc ->
         if decl.stub then

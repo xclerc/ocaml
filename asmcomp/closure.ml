@@ -606,15 +606,18 @@ let rec substitute loc fpc sb ulam =
          Misc.may_map (substitute loc fpc sb) d)
   | Ustaticfail (nfail, args) ->
       Ustaticfail (nfail, List.map (substitute loc fpc sb) args)
-  | Ucatch(nfail, kind, ids, u1, u2) ->
-      let ids' = List.map Ident.rename ids in
-      let sb' =
-        List.fold_right2
-          (fun id id' s -> Tbl.add id (Uvar id') s)
-          ids ids' sb
+  | Ucatch(kind, handlers, body) ->
+      let subst_handler (nfail, ids, handler) =
+        let ids' = List.map Ident.rename ids in
+        let sb' =
+          List.fold_right2
+            (fun id id' s -> Tbl.add id (Uvar id') s)
+            ids ids' sb
+        in
+        nfail, ids', substitute loc fpc sb' handler
       in
-      Ucatch(nfail, kind, ids', substitute loc fpc sb u1,
-        substitute loc fpc sb' u2)
+      let handlers = List.map subst_handler handlers in
+      Ucatch(kind, handlers, substitute loc fpc sb body)
   | Utrywith(u1, id, u2) ->
       let id' = Ident.rename id in
       Utrywith(substitute loc fpc sb u1, id',
@@ -1011,7 +1014,8 @@ let rec close fenv cenv = function
             let i = next_raise_count () in
             let ubody,_ = fn (Some (Lstaticraise (i,[])))
             and uhandler,_ = close fenv cenv lamfail in
-            Ucatch (i,Normal Nonrecursive,[],ubody,uhandler),Value_unknown
+            Ucatch (Normal Nonrecursive, [i, [], uhandler], ubody),
+              Value_unknown
           else fn fail
       end
   | Lstringswitch(arg,sw,d,_) ->
@@ -1033,7 +1037,8 @@ let rec close fenv cenv = function
   | Lstaticcatch(body, (i, vars), handler) ->
       let (ubody, _) = close fenv cenv body in
       let (uhandler, _) = close fenv cenv handler in
-      (Ucatch(i, Normal Nonrecursive, vars, ubody, uhandler), Value_unknown)
+      (Ucatch(Normal Nonrecursive, [i, vars, uhandler], ubody),
+        Value_unknown)
   | Ltrywith(body, id, handler) ->
       let (ubody, _) = close fenv cenv body in
       let (uhandler, _) = close fenv cenv handler in
@@ -1277,7 +1282,8 @@ and close_switch fenv cenv cases num_keys default =
                 (string_of_lambda lam) ;
 *)
             let ohs = !hs in
-            hs := (fun e -> Ucatch (i,Normal Nonrecursive,[],ohs e,ulam)) ;
+            hs := (fun e ->
+              Ucatch (Normal Nonrecursive, [i, [], ulam], ohs e)) ;
             Ustaticfail (i,[]))
       acts in
   match actions with
@@ -1331,7 +1337,9 @@ let collect_exported_structured_constants a =
         List.iter (fun (_,act) -> ulam act) sw ;
         Misc.may ulam d
     | Ustaticfail (_, ul) -> List.iter ulam ul
-    | Ucatch (_, _, _, u1, u2)
+    | Ucatch (_, handlers, body) ->
+        List.iter (fun (_, _, handler) -> ulam handler) handlers;
+        ulam body
     | Utrywith (u1, _, u2)
     | Usequence (u1, u2)
     | Uwhile (u1, u2)  -> ulam u1; ulam u2

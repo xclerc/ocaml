@@ -154,21 +154,26 @@ and lam ppf = function
       let lams ppf largs =
         List.iter (fun l -> fprintf ppf "@ %a" lam l) largs in
       fprintf ppf "@[<2>(exit@ %d%a)@]" i lams ls;
-  | Ucatch(i, kind, vars, lbody, lhandler) ->
-      fprintf ppf "@[<2>(catch%s@ %a@;<1 -1>with (%d%a)@ %a)@]"
+  | Ucatch(kind, handlers, lbody) ->
+      let print_handler ppf (cont, params, lhandler) ->
+        fprintf ppf "@[<2>(%d%a)@ %a@]"
+          cont
+          (fun ppf vars -> match vars with
+            | [] -> ()
+            | _ ->
+                List.iter
+                  (fun x -> fprintf ppf " %a" Ident.print x)
+                  vars)
+          vars
+          lam lhandler
+      in
+      fprintf ppf "@[<2>(catch%s@ %a@;<1 -1>with %a)@]"
         (match kind with
           | Normal Asttypes.Nonrecursive -> ""
           | Normal Asttypes.Recursive -> "_rec"
           | Exn_handler -> "_exn")
         lam lbody i
-        (fun ppf vars -> match vars with
-          | [] -> ()
-          | _ ->
-              List.iter
-                (fun x -> fprintf ppf " %a" Ident.print x)
-                vars)
-        vars
-        lam lhandler
+        (Format.pp_print_list print_handler) handlers
   | Utrywith(lbody, param, lhandler) ->
       fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"
         lam lbody Ident.print param lam lhandler
