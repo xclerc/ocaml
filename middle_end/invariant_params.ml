@@ -194,7 +194,20 @@ module For_functions : Continuations_or_functions = struct
 end
 
 module For_continuations : Continuations_or_functions = struct
+  module Name = struct
+    include Continuation
+    let as_variable _ = None
+  end
 
+  module Declaration = struct
+    type t = Flambda.continuation_handler
+    let params (t : t) = t.params
+  end
+
+  module Declarations = struct
+    type t = Flambda.continuation_handlers
+    let declarations (t : t) = t
+  end
 end
 
 module Analyse (CF : Continuations_or_functions) = struct
@@ -212,7 +225,7 @@ module Analyse (CF : Continuations_or_functions) = struct
       | exception Not_found -> None (* not a recursive call *)
       | arr ->
         (* Ignore overapplied parameters: they are applied to a different
-          function. *)
+           function. *)
         if callee_pos < Array.length arr then Some arr.(callee_pos)
         else None
     in
@@ -230,7 +243,7 @@ module Analyse (CF : Continuations_or_functions) = struct
     let used_variable var = Variable.Tbl.add used_variables var () in
     let relation = ref Variable.Pair.Map.empty in
     (* If the called closure is in the current set of closures, record the
-      relation (callee, callee_arg) <- (caller, caller_arg) *)
+       relation (callee, callee_arg) <- (caller, caller_arg) *)
     let check_argument ~caller ~callee ~callee_pos ~caller_arg =
       escaping_function caller_arg;
       match find_callee_arg ~callee ~callee_pos with
@@ -270,7 +283,7 @@ module Analyse (CF : Continuations_or_functions) = struct
         let num_args = List.length args in
         for callee_pos = num_args to (arity ~callee) - 1 do
           (* If a function is partially applied, consider all missing
-            arguments as "anything". *)
+             arguments as "anything". *)
           match find_callee_arg ~callee ~callee_pos with
           | None -> ()
           | Some callee_arg ->
@@ -288,8 +301,8 @@ module Analyse (CF : Continuations_or_functions) = struct
         Variable.Set.iter
           (fun var -> escaping_function var; used_variable var)
           (* CR-soon mshinwell: we should avoid recomputing this, cache in
-            [function_declaration].  See also comment on
-            [only_via_symbols] in [Flambda_utils]. *)
+             [function_declaration].  See also comment on
+             [only_via_symbols] in [Flambda_utils]. *)
           (CF.Declaration.free_variables ~ignore_uses_as_callee:()
             ~ignore_uses_as_argument:() decl))
       (CF.Declarations.declarations decls)
@@ -312,40 +325,40 @@ module Analyse (CF : Continuations_or_functions) = struct
     transitive_closure !relation
 
   (* A parameter [x] of the function [f] is considered as unchanging if
-    during an 'external' (call from outside the set of closures) call of
-    [f], every recursive call of [f] all the instances of [x] are aliased
-    to the original one.  This function computes an underapproximation of
-    that set by computing the flow of parameters between the different
-    functions of the set of closures.
-
-    We record [(f, x) <- (g, y)] when the function g calls f and
-    the y parameter of g is used as argument for the x parameter of f. For
-    instance in
-
-      let rec f x = ...
-      and g y = f x
-
-    We record [(f, x) <- Top] when some unknown values can flow to the
-    [y] parameter.
-
-      let rec f x = f 1
-
-    We record also [(f, x) <- Top] if [f] could escape. This is over
-    approximated by considering that a function escape when its variable is used
-    for something else than an application:
-
-      let rec f x = (f, f)
-
-    [x] is not unchanging if either
-        (f, x) <- Top
-    or (f, x) <- (f, y) with x != y
-
-    Notice that having (f, x) <- (g, a) and (f, x) <- (g, b) does not make
-    x not unchanging. This is because (g, a) and (g, b) represent necessarily
-    different values only if g is the externaly called function. If some
-    value where created during the execution of the function that could
-    flow to (g, a), then (g, a) <- Top, so (f, x) <- Top.
-
+     during an 'external' (call from outside the set of closures) call of
+     [f], every recursive call of [f] all the instances of [x] are aliased
+     to the original one.  This function computes an underapproximation of
+     that set by computing the flow of parameters between the different
+     functions of the set of closures.
+ 
+     We record [(f, x) <- (g, y)] when the function g calls f and
+     the y parameter of g is used as argument for the x parameter of f. For
+     instance in
+ 
+       let rec f x = ...
+       and g y = f x
+ 
+     We record [(f, x) <- Top] when some unknown values can flow to the
+     [y] parameter.
+ 
+       let rec f x = f 1
+ 
+     We record also [(f, x) <- Top] if [f] could escape. This is over
+     approximated by considering that a function escape when its variable is used
+     for something else than an application:
+ 
+       let rec f x = (f, f)
+ 
+     [x] is not unchanging if either
+         (f, x) <- Top
+     or (f, x) <- (f, y) with x != y
+ 
+     Notice that having (f, x) <- (g, a) and (f, x) <- (g, b) does not make
+     x not unchanging. This is because (g, a) and (g, b) represent necessarily
+     different values only if g is the externaly called function. If some
+     value where created during the execution of the function that could
+     flow to (g, a), then (g, a) <- Top, so (f, x) <- Top.
+ 
   *)
 
   let invariant_params_in_recursion (decls : CF.Declarations.t) =

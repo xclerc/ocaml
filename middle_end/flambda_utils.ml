@@ -103,24 +103,40 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
     Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
       && trap_action_equal trap1 trap2
   | Apply_cont _, _ | _, Apply_cont _ -> false
-  | Let_cont { name = name1; body = body1; handler = handler1; },
-    Let_cont { name = name2; body = body2; handler = handler2; } ->
-    Continuation.equal name1 name2
-      && same body1 body2
-      && begin match handler1, handler2 with
-        | Alias alias_of1, Alias alias_of2 ->
-          Continuation.equal alias_of1 alias_of2
-        | Handler
-            { params = params1; recursive = recursive1; handler = handler1; },
-          Handler
-            { params = params2; recursive = recursive2; handler = handler2; } ->
-          Misc.Stdlib.List.equal Variable.equal params1 params2
-            && Pervasives.compare recursive1 recursive2 = 0
-            && same handler1 handler2
-        | Alias _, Handler _ | Handler _, Alias _ -> false
-        end
+  | Let_cont { body = body1; handlers = handlers1; },
+      Let_cont { body = body2; handlers = handlers2; } ->
+    same body1 body2
+      && same_let_cont_handlers handlers1 handlers2
   | Proved_unreachable, Proved_unreachable -> true
   | Proved_unreachable, _ | _, Proved_unreachable -> false
+
+and same_let_cont_handlers (handlers1 : Flambda.let_cont_handlers)
+      (handlers2 : Flambda.let_cont_handlers) =
+  match handlers1, handlers2 with
+  | Alias { name = name1; alias_of = alias_of1; },
+      Alias { name = name2; alias_of = alias_of2; } ->
+    Continuation.equal name1 name2
+      && Continuation.equal alias_of1 alias_of2
+  | Handlers handlers1, Handlers handlers2 ->
+    same_continuation_handlers handlers1 handlers2
+  | Alias _, Handlers _ | Handlers _, Alias _ -> false
+
+and same_continuation_handlers handlers =
+  Continuation.Map.equal same_continuation_handler handlers
+
+and same_continuation_handler
+      ({ params = params1; recursive = recursive1; stub = stub1;
+         handler = handler1; specialised_args = specialised_args1; }
+        : Flambda.continuation_handler)
+      ({ params = params2; recursive = recursive2; stub = stub2;
+         handler = handler2; specialised_args = specialised_args2; }
+        : Flambda.continuation_handler) =
+  Variable.compare_lists params1 params2 = 0
+    && Pervasives.compare recursive1 recursive2 = 0
+    && stub1 = stub2
+    && same handler1 handler2
+    && Variable.Map.equal Flambda.equal_specialised_to
+      specialised_args1 specialised_args2
 
 and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   match named1, named2 with

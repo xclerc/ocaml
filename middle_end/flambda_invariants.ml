@@ -32,6 +32,7 @@ type flambda_kind =
 (* CR-someday pchambart: for sum types, we should probably add an exhaustive
    pattern in ignores functions to be reminded if a type change *)
 let ignore_variable (_ : Variable.t) = ()
+let ignore_variable_list (_ : Variable.t list) = ()
 let ignore_call_kind (_ : Flambda.call_kind) = ()
 let ignore_debuginfo (_ : Debuginfo.t) = ()
 let ignore_meth_kind (_ : Lambda.meth_kind) = ()
@@ -75,7 +76,6 @@ exception Free_variables_set_is_lying of
   Variable.t * Variable.Set.t * Variable.Set.t * Flambda.function_declaration
 exception Set_of_closures_free_vars_map_has_wrong_range of Variable.Set.t
 exception Continuation_not_caught of Continuation.t * string
-exception Continuation_caught_in_multiple_places of Continuation.t
 exception Continuation_called_with_wrong_arity of Continuation.t * int * int
 exception Malformed_exception_continuation of Continuation.t * string
 exception Access_to_global_module_identifier of Lambda.primitive
@@ -101,7 +101,6 @@ exception Flambda_invariants_failed
 
 (* CR-someday mshinwell: What about checks for shadowed variables and
    symbols? *)
-
 
 module Push_pop_invariants = struct
   type stack_t =
@@ -160,6 +159,10 @@ module Push_pop_invariants = struct
     ref (Push(id, cont, s))
 
   let define table k stack =
+    if Continuation.Map.mem k table then begin
+      Misc.fatal_errorf "Multiple definitions of continuation %a"
+        Continuation.print k
+    end;
     Continuation.Map.add k stack table
 
   let rec loop (env:env) current_stack (expr : Flambda.t) =
@@ -167,28 +170,46 @@ module Push_pop_invariants = struct
     | Let_mutable { body; _ }
     | Let { body; _ } ->
       loop env current_stack body
-    | Let_cont { name; body; handler } ->
+    | Let_cont { body; handlers; } ->
       let handler_stack = var () in
-      begin match handler with
-        | Alias cont ->
+      let env =
+        match handlers with
+        | Alias { name; alias_of; } ->
+          let env = define env name handler_stack in
           let cont_stack =
-            match Continuation.Map.find cont env with
+            match Continuation.Map.find alias_of env with
             | exception Not_found ->
               Misc.fatal_errorf "Unbound continuation %a in Let_cont Alias %a"
-                Continuation.print cont
+                Continuation.print alias_of
                 Flambda.print expr
             | cont_stack -> cont_stack
           in
-          unify_stack cont handler_stack cont_stack
-        | Handler { recursive; handler; _ } ->
-          let env =
-            match recursive with
-            | Recursive -> define env name handler_stack
-            | Nonrecursive -> env
+          unify_stack alias_of handler_stack cont_stack;
+          define env name handler_stack
+        | Handlers handlers ->
+          let recursive_env =
+            Continuation.Map.fold (fun cont
+                    (handler : Flambda.continuation_handler) env ->
+                match handler.recursive with
+                | Nonrecursive -> env
+                | Recursive -> define env cont handler_stack)
+              handlers
+              env
           in
-          loop env handler_stack handler
-      end;
-      let env = define env name handler_stack in
+          Continuation.Map.iter (fun _cont
+                  (handler : Flambda.continuation_handler) ->
+              let env =
+                match handler.recursive with
+                | Nonrecursive -> env
+                | Recursive -> recursive_env
+              in
+              loop env handler_stack handler.handler)
+            handlers;
+          Continuation.Map.fold (fun cont _handler env ->
+              define env cont handler_stack)
+            handlers
+            env
+      in
       loop env current_stack body
     | Apply_cont ( cont, exn, _args ) ->
       let cont_stack =
@@ -199,7 +220,8 @@ module Push_pop_invariants = struct
             Flambda.print expr
         | cont_stack -> cont_stack
       in
-      let stack, cont_stack = match exn with
+      let stack, cont_stack =
+        match exn with
         | None ->
           current_stack,
           cont_stack
@@ -268,41 +290,56 @@ module Push_pop_invariants = struct
   let check program =
     Flambda_iterators.iter_exprs_at_toplevel_of_program program
       ~f:well_formed_trap
-
 end
 
 module Continuation_scoping = struct
-
   let rec loop env (expr : Flambda.t) =
     match expr with
     | Let_mutable { body; _ }
     | Let { body; _ } ->
       loop env body
-    | Let_cont { name; body; handler } ->
-      begin match handler with
-        | Alias cont -> begin
-          match Continuation.Map.find cont env with
+    | Let_cont { body; handlers; } ->
+      let env =
+        match handlers with
+        | Alias { name; alias_of; } ->
+          begin match Continuation.Map.find alias_of env with
           | exception Not_found ->
-            raise (Continuation_not_caught (cont, "alias"))
-          | arity ->
-            let env = Continuation.Map.add name arity env in
-            loop env body
-        end
-        | Handler { stub; recursive; handler; params; specialised_args; } ->
-          let arity = List.length params in
-          let env_with_handler =
-            Continuation.Map.add name arity env
+            raise (Continuation_not_caught (alias_of, "alias"))
+          | arity -> Continuation.Map.add name arity env
+          end
+        | Handlers handlers ->
+          let recursive_env =
+            Continuation.Map.fold (fun cont
+                    (handler : Flambda.continuation_handler) env ->
+                let arity = List.length handler.params in
+                match handler.recursive with
+                | Nonrecursive -> env
+                | Recursive -> Continuation.Map.add cont arity env)
+              handlers
+              env
           in
-          let handler_env =
-            match recursive with
-            | Recursive -> env_with_handler
-            | Nonrecursive -> env
-          in
-          loop handler_env handler;
-          loop env_with_handler body;
-          ignore_bool stub;
-          ignore specialised_args (* CR mshinwell: fixme *)
-      end;
+          Continuation.Map.iter (fun name
+                  ({ params; recursive; stub; handler; specialised_args; }
+                    : Flambda.continuation_handler) ->
+              ignore_continuation name;
+              let env =
+                match recursive with
+                | Recursive -> recursive_env
+                | Nonrecursive -> env
+              in
+              ignore_variable_list params;
+              loop env handler;
+              ignore_bool stub;
+              ignore specialised_args (* CR mshinwell: fixme *) )
+            handlers;
+          Continuation.Map.fold (fun cont
+                  (handler : Flambda.continuation_handler) env ->
+              let arity = List.length handler.params in
+              Continuation.Map.add cont arity env)
+            handlers
+            env
+      in
+      loop env body
     | Apply_cont ( cont, exn, args ) -> begin
       let arity =
         try Continuation.Map.find cont env with
@@ -353,9 +390,7 @@ module Continuation_scoping = struct
     loop env expr
 
   let check program =
-    Flambda_iterators.iter_exprs_at_toplevel_of_program program
-      ~f:check_expr
-
+    Flambda_iterators.iter_exprs_at_toplevel_of_program program ~f:check_expr
 end
 
 let variable_and_symbol_invariants (program : Flambda.program) =
@@ -424,21 +459,23 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_value_kind contents_kind;
       check_variable_is_bound env var;
       loop (add_mutable_binding_occurrence env mut_var) body
-    | Let_cont { name; body;
-        handler = Handler { params; recursive; stub; handler;
-          specialised_args; }; } ->
-      (* CR mshinwell: if the continuation is [Nonrecursive] then make sure
-         it really is. *)
-      ignore_continuation name;
-      ignore_bool stub;
+    | Let_cont { body; handlers; } ->
       loop env body;
-      ignore_rec_flag recursive;
-      loop (add_binding_occurrences env params) handler;
-      ignore specialised_args (* CR mshinwell: fixme *)
-    | Let_cont { name; body; handler = Alias alias_of; } ->
-      ignore_continuation name;
-      loop env body;
-      ignore_continuation alias_of
+      begin match handlers with
+      | Alias { name; alias_of; } ->
+        ignore_continuation name;
+        ignore_continuation alias_of
+      | Handlers handlers ->
+        Continuation.Map.iter (fun name
+                ({ params; recursive; stub; handler; specialised_args; }
+                  : Flambda.continuation_handler) ->
+            ignore_continuation name;
+            ignore_bool stub;
+            ignore_rec_flag recursive;
+            loop (add_binding_occurrences env params) handler;
+            ignore specialised_args (* CR mshinwell: fixme *) )
+          handlers
+      end
     (* Everything else: *)
     | Apply { kind = Function; func; continuation; args; call_kind; dbg; inline;
         specialise; } ->
@@ -874,43 +911,6 @@ let every_used_var_within_closure_from_current_compilation_unit_is_declared
   then ()
   else raise (Unbound_vars_within_closures counter_examples)
 
-let _every_continuation_is_caught flam =
-  let check env (flam : Flambda.t) =
-    match flam with
-    | Apply_cont (exn, _trap_action, _) ->
-      (* CR mshinwell: look at the trap action *)
-      if not (Continuation.Set.mem exn env)
-      then raise (Continuation_not_caught (exn, ""))
-    | _ -> ()
-  in
-  let rec loop env (flam : Flambda.t) =
-    match flam with
-    | Let_cont { name; body; handler = Handler { handler; _ }; _ } ->
-      let env = Continuation.Set.add name env in
-      loop env handler;
-      loop env body
-    | Let_cont { name; body; handler = Alias _; _ } ->
-      let env = Continuation.Set.add name env in
-      loop env body
-    | exp ->
-      check env exp;
-      Flambda_iterators.apply_on_subexpressions (loop env)
-        (fun (_ : Flambda.named) -> ()) exp
-  in
-  loop Continuation.Set.empty flam
-
-let _every_continuation_is_caught_at_a_single_position flam =
-  let caught = ref Continuation.Set.empty in
-  let f (flam : Flambda.t) =
-    match flam with
-    | Let_cont { name; _ } ->
-      if Continuation.Set.mem name !caught then
-        raise (Continuation_caught_in_multiple_places name);
-      caught := Continuation.Set.add name !caught
-    | _ -> ()
-  in
-  Flambda_iterators.iter f (fun (_ : Flambda.named) -> ()) flam
-
 let _every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
       program =
   let moves = ref Closure_id.Map.empty in
@@ -963,12 +963,6 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
       ~f:(fun _cont flam ->
         primitive_invariants flam
           ~no_access_to_global_module_identifiers:cmxfile;
-(* CR mshinwell: We need to fix this.  It needs to take account of the
-   return continuations including in "program" constructs probably *)
-(*
-      every_continuation_is_caught flam;
-      every_continuation_is_caught_at_a_single_position flam;
-*)
         every_declared_closure_is_from_current_compilation_unit flam);
     Push_pop_invariants.check flam;
     Continuation_scoping.check flam
@@ -1071,9 +1065,6 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
     | Continuation_not_caught (static_exn, s) ->
       Format.eprintf ">> Uncaught continuation variable %a: %s"
         Continuation.print static_exn s
-    | Continuation_caught_in_multiple_places static_exn ->
-      Format.eprintf ">> Continuation variable caught in multiple places: %a"
-        Continuation.print static_exn
     | Access_to_global_module_identifier prim ->
       (* CR-someday mshinwell: backend-specific checks should move to another
          module, in the asmcomp/ directory. *)
