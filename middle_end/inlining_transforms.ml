@@ -144,9 +144,11 @@ let inline_by_copying_function_body ~env ~r
      that supplied at the call site. *)
   let body : Flambda.t =
     Let_cont {
-      name = function_decl.continuation_param;
       body;
-      handler = Alias continuation;
+      handlers = Alias {
+        name = function_decl.continuation_param;
+        alias_of = continuation;
+      };
     }
   in
   let bindings_for_params_to_args =

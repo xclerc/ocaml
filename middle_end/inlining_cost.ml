@@ -88,12 +88,16 @@ let lambda_smaller' lam ~than:threshold =
       let aux = function _::_::_ -> size := !size + 5 | _ -> () in
       aux sw.consts; aux sw.blocks
     | Apply_cont _ -> incr size
-    | Let_cont { body; handler; _ } ->
+    | Let_cont { body; handlers; } ->
       incr size;
       lambda_size body;
-      begin match handler with
+      begin match handlers with
       | Alias _ -> ()
-      | Handler { handler; _ } -> lambda_size handler
+      | Handlers handlers ->
+        Continuation.Map.iter (fun _cont
+                (handler : Flambda.continuation_handler) ->
+            lambda_size handler.handler)
+          handlers
       end
     | Proved_unreachable -> ()
   and lambda_named_size (named : Flambda.named) =

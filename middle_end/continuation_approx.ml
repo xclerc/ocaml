@@ -42,7 +42,11 @@ let print ppf t =
   let print_handler ppf = function
     | None -> Format.fprintf ppf "<handler not known>"
     | Some handler ->
-      Flambda.print_let_cont_handler ppf (Handler handler)
+      let handlers =
+        Continuation.Map.add t.name handler Continuation.Map.empty
+      in
+      Flambda.print_let_cont_handlers ppf
+        (Handlers handlers)
   in
   Format.fprintf ppf "@[(%a with %d params %a)@]"
     Continuation.print t.name
