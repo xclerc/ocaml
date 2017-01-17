@@ -76,7 +76,9 @@ let occurs_var var u =
         List.exists (fun (_,e) -> occurs e) sw ||
         (match d with None -> false | Some d -> occurs d)
     | Ustaticfail (_, args) -> List.exists occurs args
-    | Ucatch(_, _, _, body, hdlr) -> occurs body || occurs hdlr
+    | Ucatch(_, handlers, body) ->
+        occurs body
+          || List.exists (fun (_, _, handler) -> occurs handler) handlers
     | Utrywith(body, _exn, hdlr) -> occurs body || occurs hdlr
     | Uifthenelse(cond, ifso, ifnot) ->
         occurs cond || occurs ifso || occurs ifnot
@@ -176,8 +178,9 @@ let lambda_smaller lam threshold =
           sw ;
         Misc.may lambda_size d
     | Ustaticfail (_,args) -> lambda_list_size args
-    | Ucatch(_, _, _, body, handler) ->
-        incr size; lambda_size body; lambda_size handler
+    | Ucatch(_, handlers, body) ->
+        incr size; lambda_size body;
+        List.iter (fun (_, _, handler) -> lambda_size handler) handlers
     | Utrywith(body, _id, handler) ->
         size := !size + 8; lambda_size body; lambda_size handler
     | Uifthenelse(cond, ifso, ifnot) ->
