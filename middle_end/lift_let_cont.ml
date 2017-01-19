@@ -51,7 +51,7 @@ end
 type thing_to_lift =
   | Let of Variable.t * Flambda.named Flambda.With_free_variables.t
   | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
-  | Let_cont of Continuation.t * Flambda.let_cont_handler
+  | Let_cont of Flambda.let_cont_handlers
 
 let bind_things_to_remain ~rev_things ~around =
   List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
@@ -61,15 +61,15 @@ let bind_things_to_remain ~rev_things ~around =
           defining_expr body
       | Let_mutable (var, initial_value, contents_kind) ->
         Let_mutable { var; initial_value; contents_kind; body; }
-      | Let_cont (name, handler) ->
-        Let_cont { name; body; handler; })
+      | Let_cont handlers ->
+        Let_cont { body; handlers; })
     around
     rev_things
 
 module State = struct
   type t = {
     constants : (Variable.t * Flambda.named) list;
-    to_be_lifted : (Continuation.t * Flambda.let_cont_handler) list;
+    to_be_lifted : Flambda.let_cont_handlers list;
     to_remain : thing_to_lift list;
     continuations_to_remain : Continuation.Set.t;
     variables_to_remain : Variable.Set.t;
@@ -104,12 +104,9 @@ module State = struct
       constants = from.constants @ t.constants;
     }
 
-  let lift_continuation t ~name ~handler =
-(*
-Format.eprintf "Continuation %a lifted\n%!" Continuation.print name;
-*)
+  let lift_continuation t ~name ~handlers =
     { t with
-      to_be_lifted = (name, handler) :: t.to_be_lifted;
+      to_be_lifted = (name, handlers) :: t.to_be_lifted;
     }
 
   let to_remain t (thing : thing_to_lift) =
@@ -117,9 +114,6 @@ Format.eprintf "Continuation %a lifted\n%!" Continuation.print name;
       match thing with
       | Let _ | Let_mutable _ -> t.continuations_to_remain
       | Let_cont (name, _) ->
-(*
-Format.eprintf "Continuation %a remaining\n%!" Continuation.print name;
-*)
         Continuation.Set.add name t.continuations_to_remain
     in
     let variables_to_remain =
@@ -171,6 +165,95 @@ Format.eprintf "Continuation %a remaining\n%!" Continuation.print name;
     Mutable_variable.Set.is_empty t.mutable_variables_used
 end
 
+let lift_let_cont ~body ~handlers ~state ~recursive =
+  let bound_recursively =
+    match recursive with
+    | Nonrecursive -> Continuation.Set.empty
+    | Recursive -> Continuation.Map.keys handlers
+  in
+  let handler_terminators_and_states =
+    Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
+        let state =
+          State.create ~variables_to_remain:handler.params
+            ~continuations_to_remain:bound_recursively
+        in
+        lift_expr handler ~state)
+      handlers
+  in
+  let state =
+    Continuation.Map.fold (fun _cont (_expr, handler_state) state ->
+        State.add_constants_from_state state ~from:handler_state)
+      handler_terminators_and_states
+      state
+  in
+  let state, handlers, can_lift_handler =
+    Continuation.Map.fold (fun cont (handler_terminator, handler_state)
+            (state, handlers, can_lift_handler) ->
+        (* There are two separate things here:
+           1. Lifting of things out of the handler.
+           2. Lifting of the handler itself (which may only be done if
+              all simultaneously-defined handlers can also be lifted). *)
+        List.fold_left (fun state (name, handler) ->
+            let fcs =
+              Flambda.free_continuations_of_let_cont_handler ~name ~handler
+            in
+            let fvs =
+              Flambda.free_variables_of_let_cont_handler handler
+            in
+            (* Note that we don't have to check any uses of mutable variables
+               in [handler], since any such uses would prevent [handler] from
+               being in [to_be_lifted]. *)
+            if State.can_lift_if_using_continuations state fcs
+              && State.can_lift_if_using_variables state fvs
+            then
+              State.lift_continuations state ~name ~handler
+            else
+              State.to_remain state (Let_cont (name, handler)))
+          state
+          (List.rev (State.rev_to_be_lifted handler_state))
+        in
+        let rev_to_remain = State.rev_to_remain handler_state in
+        let handler =
+          bind_things_to_remain ~rev_things:rev_to_remain ~around:handler_terminator
+        in
+        let handler : Flambda.let_cont_handler =
+          Handler {
+            params;
+            recursive;
+            stub;
+            handler;
+            specialised_args;
+          }
+        in
+        let handlers = Continuation.Map.add cont handler handlers in
+        let fcs =
+          Flambda.free_continuations_of_let_cont_handler ~name ~handler
+        in
+        let fvs = Flambda.free_variables_of_let_cont_handler handler in
+        let fvs_specialised_args =
+          Flambda.free_variables_of_specialised_args specialised_args
+        in
+        let fvs_mut = State.mutable_variables_used handler_state in
+        let state =
+          State.use_mutable_variables state fvs_mut
+        in
+        let can_lift_handler =
+          can_lift_handler
+            && State.can_lift_if_using_continuations state fcs
+            && State.can_lift_if_using_variables state fvs
+            && State.can_lift_if_using_variables state fvs_specialised_args
+            && State.uses_no_mutable_variables handler_state
+        in
+        state, handlers, can_lift_handler)
+      handler_terminators_and_states
+      (state, Continuation.Map.empty, true)
+  in
+  let state =
+    if can_lift_handler then State.lift_continuations state ~name ~handlers
+    else State.to_remain state (Let_cont handlers)
+  in
+  lift_expr body ~state
+
 let rec lift_expr (expr : Flambda.expr) ~state =
   match expr with
   | Let ({ var; defining_expr; body; } as let_expr) ->
@@ -202,102 +285,18 @@ let rec lift_expr (expr : Flambda.expr) ~state =
     in
     let expr, state = lift_expr body ~state in
     expr, State.forget_mutable_variable state var
-  | Let_cont { name; body; handler = (Alias alias_of) as handler; } ->
+  | Let_cont { body; handlers = (Alias { name; alias_of; }) as handlers; } ->
     let state =
       if State.can_lift_if_using_continuation state alias_of then
-        State.lift_continuation state ~name ~handler
+        State.lift_continuations state ~name ~handlers
       else
-        State.to_remain state (Let_cont (name, handler))
+        State.to_remain state (Let_cont handlers)
     in
     lift_expr body ~state
-  | Let_cont { name; body; handler =
-      Handler { params; recursive; stub; handler; specialised_args; } } ->
-(*
-Format.eprintf "Lifting handler for %a\n%!" Continuation.print name;
-*)
-    let handler_terminator, handler_state =
-      let continuation_to_remain =
-        match recursive with
-        | Nonrecursive -> None
-        | Recursive -> Some name
-      in
-      let state =
-        State.create ~variables_to_remain:params ~continuation_to_remain
-      in
-      lift_expr handler ~state
-    in
-(*
-Format.eprintf "Finished handler for %a\n%!" Continuation.print name;
-*)
-    let state =
-      State.add_constants_from_state state ~from:handler_state
-    in
-(*
-let name' = name in
-*)
-    let state =
-      List.fold_left (fun state (name, handler) ->
-          let fcs =
-            Flambda.free_continuations_of_let_cont_handler ~name ~handler
-          in
-          let fvs =
-            Flambda.free_variables_of_let_cont_handler handler
-          in
-(*
-Format.eprintf "Considering lifting %a outside %a.  fvs %a\n%!"
-  Continuation.print name
-  Continuation.print name'
-  Variable.Set.print fvs;
-*)
-          (* Note that we don't have to check any uses of mutable variables
-             in [handler], since any such uses would prevent [handler] from
-             being in [to_be_lifted]. *)
-          if State.can_lift_if_using_continuations state fcs
-            && State.can_lift_if_using_variables state fvs
-          then
-            State.lift_continuation state ~name ~handler
-          else
-            State.to_remain state (Let_cont (name, handler)))
-        state
-        (List.rev (State.rev_to_be_lifted handler_state))
-    in
-    let rev_to_remain = State.rev_to_remain handler_state in
-    let handler =
-      bind_things_to_remain ~rev_things:rev_to_remain ~around:handler_terminator
-    in
-(*
-Format.eprintf "New handler for %a is:\n%a\n"
-  Continuation.print name Flambda.print handler;
-*)
-    let handler : Flambda.let_cont_handler =
-      Handler {
-        params;
-        recursive;
-        stub;
-        handler;
-        specialised_args;
-      }
-    in
-    let fcs = Flambda.free_continuations_of_let_cont_handler ~name ~handler in
-    let fvs = Flambda.free_variables_of_let_cont_handler handler in
-    let fvs_specialised_args =
-      Flambda.free_variables_of_specialised_args specialised_args
-    in
-    let fvs_mut = State.mutable_variables_used handler_state in
-    let state =
-      State.use_mutable_variables state fvs_mut
-    in
-    let state =
-      if State.can_lift_if_using_continuations state fcs
-        && State.can_lift_if_using_variables state fvs
-        && State.can_lift_if_using_variables state fvs_specialised_args
-        && State.uses_no_mutable_variables handler_state
-      then
-        State.lift_continuation state ~name ~handler
-      else
-        State.to_remain state (Let_cont (name, handler))
-    in
-    lift_expr body ~state
+  | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+    lift_let_cont ~body ~handlers ~state ~recursive:Nonrecursive
+  | Let_cont { body; handlers = Recursive handlers; } ->
+    lift_let_cont ~body ~handlers ~state ~recursive:Recursive
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr, state
 
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
