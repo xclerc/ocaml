@@ -51,7 +51,11 @@ end
 
 type specialising_result =
   | Didn't_specialise
-  | Specialised of Flambda.continuation_handlers
+  | Specialised of {
+      old_cont : Continuation.t;
+      new_cont : Continuation.t;
+      new_handlers : Flambda.continuation_handlers;
+    }
 
 (* This function constructs a suitable environment for simplification of a
    continuation's body that is eligible for specialisation.  The freshening
@@ -67,7 +71,11 @@ type specialising_result =
 *)
 let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       ~(newly_specialised_args : Flambda.specialised_args) ~env ~simplify
-      : specialising_result =
+      ~backend : specialising_result =
+  let invariant_params_flow =
+    Invariant_params.Continuations.invariant_param_sources old_handlers
+      ~backend
+  in
   let freshening = Freshening.activate (E.freshening env) in
   let new_conts, freshening =
     Continuation.Map.fold (fun cont _handler (new_conts, freshening) ->
@@ -84,6 +92,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
   let env =
     E.set_freshening env freshening
   in
+  let entry_point_cont = cont in
   let new_handlers, total_benefit =
     Continuation.Map.fold (fun cont old_handler benefit ->
         let params, freshening =
@@ -140,7 +149,31 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
             old_handler.params
         in
         let env =
-          (* Add approximations for newly-specialised args. *)
+          (* Add approximations for newly-specialised args.  These are either:
+             (a) those arising from the "entry point" (i.e. [Apply_cont] of
+                 [entry_point_cont]); or
+             (b) those arising from invariant parameters flow from the entry
+                 point's continuation handler. *)
+          let newly_specialised_args =
+            if Continuation.equal cont entry_point_cont then
+              newly_specialised_args
+            else
+              Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
+                      newly_specialised_args ->
+                  match Variable.Map.find param invariant_params_flow with
+                  | exception Not_found -> newly_specialised_args
+                  | flows_to ->
+                    Variable.Set.fold (fun (cont', param')
+                            newly_specialised_args ->
+                        if not (Continuation.equal cont cont') then
+                          newly_specialised_args
+                        else
+                          Variable.Map.add param' spec_to
+                            newly_specialised_args)
+                      flows_to)
+                newly_specialised_args
+                Variable.Map.empty
+          in
           Variable.Map.fold (fun param (spec_to : Flambda.specialised_to) env ->
               let param' = Freshening.apply_variable freshening param in
               let env =
@@ -195,12 +228,16 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
   let module W = Inlining_cost.Whether_sufficient_benefit in
   let wsb =
     let originals =
-
+      List.map (fun (handler : Flambda.continuation_handler) ->
+          handler.handler)
+        (Continuation.Map.data old_handlers)
     in
     let new_handlers =
-
+      List.map (fun (handler : Flambda.continuation_handler) ->
+          handler.handler)
+        (Continuation.Map.data new_handlers)
     in
-    W.create_list ~originals:old_handler.handler
+    W.create_list ~originals
       ~toplevel:(E.at_toplevel env)
       ~branch_depth:(E.branch_depth env)
       new_handlers
@@ -209,7 +246,13 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       ~round:(E.round env)
   in
   if W.evaluate wsb then
-    Specialised new_handlers
+    let old_cont = cont in
+    let new_cont = Freshening.apply_static_exception freshening old_cont in
+    Specialised {
+      old_cont;
+      new_cont;
+      new_handlers;
+    }
   else
     Didn't_specialise
 
@@ -225,8 +268,7 @@ let find_specialisations r ~simplify ~backend =
      nodes which will need to be repointed if the continuation is specialised
      for those uses.
      The second map just maps continuations to their handlers (including any
-     handlers defined simultaneously), the environment of definition and
-     the invariant parameters information. *)
+     handlers defined simultaneously) and the environment of definition. *)
   let specialisations, conts_to_handlers =
     (* CR mshinwell: [recursive] appears to be redundant with
        [approx.recursive] *)
@@ -296,8 +338,7 @@ let find_specialisations r ~simplify ~backend =
                     specialisations
                 in
                 let conts_to_handlers =
-                  Continuation.Map.add cont (handlers, env, invariant_params)
-                    conts_to_handlers
+                  Continuation.Map.add cont (handlers, env) conts_to_handlers
                 in
                 specialisations, conts_to_handlers)
             (specialisations, conts_to_handlers)
@@ -308,31 +349,31 @@ let find_specialisations r ~simplify ~backend =
   in
   (* The second step takes the map from above and makes a decision for
      each proposed specialisation, returning two maps:
-       continuation "k" -> new continuations to be defined just before "k"
+       continuation "k" -> new continuation(s) to be defined just before "k"
        (continuation * args) -> new continuation
      The first map is then used to add new [Let_cont] definitions and the
      second is used to rewrite [Apply_cont] to specialised continuations. *)
   Continuation_with_specialised_args.Map.fold (fun
           (cont, newly_specialised_args)
           cont_application_points ((new_conts, apply_cont_rewrites) as acc) ->
-      let old_handlers, env, invariant_params =
+      let old_handlers, env =
         match Continuation.Map.find cont conts_to_handlers with
         | exception Not_found -> assert false  (* see above *)
         | old_handlers -> old_handlers
       in
       match
         try_specialising ~cont ~old_handlers ~newly_specialised_args
-          ~invariant_params ~env ~simplify
+          ~env ~simplify ~backend
       with
       | Didn't_specialise -> acc
-      | Specialised (new_cont, handler) ->
+      | Specialised { old_cont; new_cont; new_handlers; } ->
         let existing_conts =
-          match Continuation.Map.find cont new_conts with
+          match Continuation.Map.find old_cont new_conts with
           | exception Not_found -> []
           | existing_conts -> existing_conts
         in
         let new_conts =
-          Continuation.Map.add cont ((new_cont, handler) :: existing_conts)
+          Continuation.Map.add old_cont (new_handlers :: existing_conts)
             new_conts
         in
         let apply_cont_rewrites =
@@ -357,11 +398,10 @@ let insert_specialisations (expr : Flambda.expr) ~new_conts
         begin match Continuation.Map.find name new_conts with
         | exception Not_found -> expr
         | new_conts ->
-          List.fold_left (fun body (new_cont, handler) : Flambda.expr ->
+          List.fold_left (fun body handlers : Flambda.expr ->
               Let_cont {
-                name = new_cont;
                 body;
-                handler = Handler handler;
+                handlers = Recursive handlers;
               })
             expr
             new_conts
