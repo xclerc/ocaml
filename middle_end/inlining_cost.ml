@@ -93,7 +93,9 @@ let lambda_smaller' lam ~than:threshold =
       lambda_size body;
       begin match handlers with
       | Alias _ -> ()
-      | Handlers handlers ->
+      | Nonrecursive { name = _; handler = { handler; _ }; } ->
+        lambda_size handler
+      | Recursive handlers ->
         Continuation.Map.iter (fun _cont
                 (handler : Flambda.continuation_handler) ->
             lambda_size handler.handler)

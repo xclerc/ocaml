@@ -24,7 +24,11 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
     f body
   | Let_mutable { body; _ } ->
     f body
-  | Let_cont { body; handlers = Handlers handlers; } ->
+  | Let_cont { body; handlers =
+      Nonrecursive { handler = { handler; _ }; _ } } ->
+    f body;
+    f handler
+  | Let_cont { body; handlers = Recursive handlers; } ->
     f body;
     Continuation.Map.iter
       (fun _cont ({ handler; _ } : Flambda.continuation_handler) -> f handler)
@@ -55,7 +59,20 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
         tree
       else
         Let_cont { let_cont with body = new_body; }
-    | Handlers handlers ->
+    | Nonrecursive { name; handler =
+        ({ handler = handler_expr; _ } as handler); } ->
+      let new_handler_expr = f handler_expr in
+      if new_body == body && new_handler_expr == handler_expr then
+        tree
+      else
+        Let_cont {
+          body = new_body;
+          handlers = Nonrecursive {
+            name;
+            handler = { handler with handler = new_handler_expr; }
+          };
+        }
+    | Recursive handlers ->
       let something_changed = ref false in
       let candidate_handlers =
         Continuation.Map.map
@@ -70,7 +87,7 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       if !something_changed || not (new_body == body) then
         Let_cont {
           body = new_body;
-          handlers = Handlers candidate_handlers;
+          handlers = Recursive candidate_handlers;
         }
       else
         tree
@@ -223,7 +240,20 @@ let map_general ~toplevel f f_named tree =
               tree
             else
               Let_cont { let_cont with body = new_body; }
-          | Handlers handlers ->
+          | Nonrecursive { name; handler =
+              ({ handler = handler_expr; _ } as handler); } ->
+            let new_handler_expr = aux handler_expr in
+            if new_body == body && new_handler_expr == handler_expr then
+              tree
+            else
+              Let_cont {
+                body = new_body;
+                handlers = Nonrecursive {
+                  name;
+                  handler = { handler with handler = new_handler_expr; }
+                };
+              }
+          | Recursive handlers ->
             let something_changed = ref false in
             let candidate_handlers =
               Continuation.Map.map
@@ -238,7 +268,7 @@ let map_general ~toplevel f f_named tree =
             if !something_changed || not (new_body == body) then
               Let_cont {
                 body = new_body;
-                handlers = Handlers candidate_handlers;
+                handlers = Recursive candidate_handlers;
               }
             else
               tree

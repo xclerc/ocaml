@@ -117,22 +117,25 @@ and same_let_cont_handlers (handlers1 : Flambda.let_cont_handlers)
       Alias { name = name2; alias_of = alias_of2; } ->
     Continuation.equal name1 name2
       && Continuation.equal alias_of1 alias_of2
-  | Handlers handlers1, Handlers handlers2 ->
+  | Nonrecursive { name = name1; handler = handler1; },
+      Nonrecursive { name = name2; handler = handler2; } ->
+    Continuation.equal name1 name2
+      && same_continuation_handler handler1 handler2
+  | Recursive handlers1, Recursive handlers2 ->
     same_continuation_handlers handlers1 handlers2
-  | Alias _, Handlers _ | Handlers _, Alias _ -> false
+  | _, _ -> false
 
 and same_continuation_handlers handlers =
   Continuation.Map.equal same_continuation_handler handlers
 
 and same_continuation_handler
-      ({ params = params1; recursive = recursive1; stub = stub1;
+      ({ params = params1; stub = stub1;
          handler = handler1; specialised_args = specialised_args1; }
         : Flambda.continuation_handler)
-      ({ params = params2; recursive = recursive2; stub = stub2;
+      ({ params = params2; stub = stub2;
          handler = handler2; specialised_args = specialised_args2; }
         : Flambda.continuation_handler) =
   Variable.compare_lists params1 params2 = 0
-    && Pervasives.compare recursive1 recursive2 = 0
     && stub1 = stub2
     && same handler1 handler2
     && Variable.Map.equal Flambda.equal_specialised_to

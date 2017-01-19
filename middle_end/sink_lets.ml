@@ -17,16 +17,6 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module W = Flambda.With_free_variables
-(*
-let print_continuation_stack ppf stack =
-  match stack with
-  | [] -> Format.fprintf ppf "<empty stack>"
-  | _ ->
-    Format.fprintf ppf "%a"
-      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ";")
-        (fun ppf (cont, _) -> Continuation.print ppf cont))
-      stack
-*)
 
 let rec join_continuation_stacks stack1 stack2 =
   match stack1, stack2 with
@@ -125,11 +115,6 @@ end = struct
           if Variable.Set.mem var except then
             None
           else begin
-(*
-Format.eprintf "Variable %a coming out of handler, stack is now %a\n%!"
-Variable.print var
-  print_continuation_stack (current_continuation :: sink_to);
-*)
             Some (current_continuation :: sink_to)
           end)
     in
@@ -209,60 +194,19 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
       | Some sink_into
         when Effect_analysis.only_generative_effects_named
           (W.to_named defining_expr) ->
-(*
-Format.eprintf "binding for %a: sink_into not reversed is %a\n%!"
-  Variable.print var
-  (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
-    Continuation.print) (List.map fst sink_into);
-*)
         begin match List.rev sink_into with
         | [] -> state
-        | (sink_into, _recursive)::_  (* ) as s*) ->
-(*
-Format.eprintf "binding for %a: reversed being sunk to %a\n%!"
-  Variable.print var
-  (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
-    Continuation.print) (List.map fst s);
-*)
+        | (sink_into, _recursive)::_ ->
           State.sink_let state var ~sink_into ~defining_expr
         end
-      | _ ->
-(*
-Format.eprintf "binding for %a: not to be moved\n%!"
-  Variable.print var;
-*)
-        state
+      | _ -> state
     in
     let add_candidates ~sink_into =
-(*
-let var' = var in
-*)
       Variable.Set.fold (fun var state ->
-(*
-Format.eprintf "Considering fv %a of defining_expr of %a: "
-  Variable.print var Variable.print var';
-*)
           let sink_into =
             match State.is_candidate_to_sink state var with
-            | None ->
-(*
-Format.eprintf "not a candidate --> %a\n%!"
-  print_continuation_stack sink_into;
-*)
-              sink_into
-            | Some sink_into' ->
-(*
-let result =
-*)
-                join_continuation_stacks sink_into sink_into'
-(*
-in
-Format.eprintf "joining: already needed at %a now also needed at %a --> %a\n%!"
-  print_continuation_stack sink_into'
-  print_continuation_stack sink_into
-  print_continuation_stack result;
-result
-*)
+            | None -> sink_into
+            | Some sink_into' -> join_continuation_stacks sink_into sink_into'
           in
           State.add_candidates_to_sink state
             ~sink_into
@@ -286,15 +230,8 @@ result
       keep_let (), add_candidates ~sink_into:[]
     | None ->
       if only_generative_effects then begin
-(*
-Format.eprintf "deleting let %a\n%!" Variable.print var;
-*)
         body, state
       end else begin
-(*
-Format.eprintf "having to keep let %a, might have side effect\n%!"
-  Variable.print var;
-*)
         keep_let (), add_candidates ~sink_into:[]
       end
     end
@@ -306,49 +243,57 @@ Format.eprintf "having to keep let %a, might have side effect\n%!"
         ~candidates_to_sink:(Variable.Set.singleton initial_value)
     in
     Let_mutable { var; initial_value; contents_kind; body; }, state
-  | Let_cont { name; body; handler = (Alias _) as handler; } ->
+  | Let_cont { body; handlers = (Alias _) as handlers; } ->
     let body, state = sink_expr body ~state in
-    Let_cont { name; body; handler; }, state
-  | Let_cont { name; body; handler =
-      Handler { params; recursive = Recursive; stub; handler;
-        specialised_args; } } ->
-    (* We don't sink anything into a recursive continuation. *)
-    (* CR mshinwell: This is actually required for correctness at the moment
-       since e.g. mutable block creation is deemed as "no generative effects"
-       but cannot unconditionally be moved into loops. *)
+    Let_cont { body; handlers; }, state
+  | Let_cont { body; handlers = Recursive handlers; } ->
     let body = sink body in
-    let handler = sink handler in
-    let fvs =
-      Variable.Set.union
-        (Flambda.free_variables_of_specialised_args specialised_args)
-        (Variable.Set.union (Flambda.free_variables body)
-          (Flambda.free_variables handler))
+    let handlers, state =
+      Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
+              (handlers, state) ->
+          (* We don't sink anything into a recursive continuation. *)
+          (* CR mshinwell: This is actually required for correctness at the
+             moment since e.g. mutable block creation is deemed as "no
+             generative effects" but cannot unconditionally be moved into
+             loops. *)
+          let new_handler = sink handler.handler in
+          let fvs =
+            Variable.Set.union
+              (Flambda.free_variables_of_specialised_args
+                 handler.specialised_args)
+              (Flambda.free_variables new_handler)
+          in
+          let state =
+            State.add_candidates_to_sink state
+              ~sink_into:[]
+              ~candidates_to_sink:fvs
+          in
+          let handler =
+            { handler with
+              handler = new_handler;
+            }
+          in
+          Continuation.Map.add name handler handlers, state)
+        handlers
+        (Continuation.Map.empty, State.create ())
     in
     let state =
-      State.add_candidates_to_sink (State.create ())
+      State.add_candidates_to_sink state
         ~sink_into:[]
-        ~candidates_to_sink:fvs
+        ~candidates_to_sink:(Flambda.free_variables body)
     in
-    Let_cont { name; body; handler =
-        Handler { params; recursive = Recursive; stub; handler;
-          specialised_args; } },
-      state
-  | Let_cont { name; body; handler =
-      Handler { params; recursive; stub; handler; specialised_args; } } ->
+    Let_cont { body; handlers = Recursive handlers; }, state
+  | Let_cont { body; handlers =
+      Nonrecursive { name; handler = {
+        params; stub; handler; specialised_args; }; }; } ->
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
-(*
-Format.eprintf "Starting handler %a\n%!" Continuation.print name;
-*)
       sink_expr handler ~state:(State.create ())
     in
-(*
-Format.eprintf "Finished handler %a\n%!" Continuation.print name;
-*)
     let state =
       State.add_candidates_to_sink_from_handler_state state
-        ~current_continuation:(name, recursive)
+        ~current_continuation:(name, Nonrecursive)
         ~handler_state
         ~except:params_set
     in
@@ -359,8 +304,9 @@ Format.eprintf "Finished handler %a\n%!" Continuation.print name;
         ~candidates_to_sink:
           (Flambda.free_variables_of_specialised_args specialised_args)
     in
-    Let_cont { name; body; handler =
-      Handler { params; recursive; stub; handler; specialised_args; } }, state
+    Let_cont { body; handlers =
+      Nonrecursive { name; handler = {
+        params; stub; handler; specialised_args; }; }; }, state
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
     let state =
       State.add_candidates_to_sink state
@@ -407,40 +353,35 @@ and sink (expr : Flambda.t) =
     | Let_mutable { var; initial_value; contents_kind; body; } ->
       let body = sink body in
       Let_mutable { var; initial_value; contents_kind; body; }
-    | Let_cont { name; body; handler = (Alias _) as handler; } ->
+    | Let_cont { body; handlers = (Alias _) as handlers; } ->
       let body = sink body in
-      Let_cont { name; body; handler; }
-    | Let_cont { name; body; handler =
-        Handler { params; recursive; stub; handler; specialised_args; } } ->
+      Let_cont { body; handlers; }
+    | Let_cont { body; handlers = Nonrecursive { name; handler = {
+        params; stub; handler; specialised_args; }; }; } ->
       let body = sink body in
       let handler =
         let handler = sink handler in
         let bindings = State.sunken_lets_for_handler state name in
-(*
-Format.eprintf "New bindings for top of %a outermost first is %a\n%!"
-  Continuation.print name
-  (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " ")
-    Variable.print) (List.map fst bindings);
-*)
         List.fold_left (fun handler (var, defining_expr) ->
             W.create_let_reusing_defining_expr var defining_expr handler)
           handler
           (List.rev bindings)
       in
-      Let_cont { name; body; handler =
-        Handler { params; recursive; stub; handler; specialised_args; } }
+      Let_cont { body; handlers = Nonrecursive { name; handler =
+        { params; stub; handler; specialised_args; }; }; }
+    | Let_cont { body; handlers = Recursive handlers; } ->
+      let body = sink body in
+      let handlers =
+        Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
+            { handler with
+              handler = sink handler.handler;
+            })
+          handlers
+      in
+      Let_cont { body; handlers = Recursive handlers; }
     | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr
   in
-(*
-Format.eprintf "sink_lets starting with:@;%a\n" Flambda.print expr;
-*)
-let expr =
   sink expr
-in
-(*
-Format.eprintf "sink_lets returning:@;%a\n" Flambda.print expr;
-*)
-expr
 
 let run program =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:sink

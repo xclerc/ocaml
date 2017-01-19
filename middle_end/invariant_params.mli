@@ -41,29 +41,44 @@
      x -> { x; z }
 *)
 
-module type S = sig
-  type declarations
-
+module Functions : sig
   val invariant_params_in_recursion
-     : declarations
+     : Flambda.function_declarations
     -> backend:(module Backend_intf.S)
     -> Variable.Set.t Variable.Map.t
 
   val invariant_param_sources
-     : declarations
+     : Flambda.function_declarations
     -> backend:(module Backend_intf.S)
     -> Variable.Pair.Set.t Variable.Map.t
 
   (* CR-soon mshinwell: think about whether this function should
      be in this file.  Should it be called "unused_parameters"? *)
   val unused_arguments
-     : declarations
+     : Flambda.function_declarations
     -> backend:(module Backend_intf.S)
     -> Variable.Set.t
 end
 
-module Functions : S
-  with type declarations = Flambda.function_declarations
+module Continuations : sig
+  module Continuation_and_variable : sig
+    include Identifiable.S with type t = Continuation.t * Variable.t
+  end
 
-module Continuations : S
-  with type declarations = Flambda.continuation_handlers
+  val invariant_params_in_recursion
+     : Flambda.continuation_handlers
+    -> backend:(module Backend_intf.S)
+    -> Variable.Set.t Variable.Map.t
+
+  val invariant_param_sources
+     : Flambda.continuation_handlers
+    -> backend:(module Backend_intf.S)
+    -> Continuation_and_variable.Set.t Variable.Map.t
+
+  (* CR-soon mshinwell: think about whether this function should
+     be in this file.  Should it be called "unused_parameters"? *)
+  val unused_arguments
+     : Flambda.continuation_handlers
+    -> backend:(module Backend_intf.S)
+    -> Variable.Set.t
+end

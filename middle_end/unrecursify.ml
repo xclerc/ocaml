@@ -45,12 +45,11 @@ let unrecursify_function function_variable
     let body : Flambda.t =
       Let_cont
         { handlers =
-            Handlers (
+            Recursive (
               Continuation.Map.of_list [
                 loop_continuation,
                   { Flambda.
                     params = function_decl.params;
-                    recursive = Recursive;
                     stub = false;
                     handler;
                     specialised_args = Variable.Map.empty;

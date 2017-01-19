@@ -54,7 +54,6 @@ let ignore_tag (_ : Tag.t) = ()
 let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
 let ignore_specialise_attribute (_ : Lambda.specialise_attribute) = ()
 let ignore_value_kind (_ : Lambda.value_kind) = ()
-let ignore_rec_flag (_ : Asttypes.rec_flag) = ()
 
 exception Binding_occurrence_not_from_current_compilation_unit of Variable.t
 exception Mutable_binding_occurrence_not_from_current_compilation_unit of
@@ -186,24 +185,19 @@ module Push_pop_invariants = struct
           in
           unify_stack alias_of handler_stack cont_stack;
           define env name handler_stack
-        | Handlers handlers ->
+        | Nonrecursive { name; handler; } ->
+          loop env handler_stack handler.handler;
+          define env name handler_stack
+        | Recursive handlers ->
           let recursive_env =
-            Continuation.Map.fold (fun cont
-                    (handler : Flambda.continuation_handler) env ->
-                match handler.recursive with
-                | Nonrecursive -> env
-                | Recursive -> define env cont handler_stack)
+            Continuation.Map.fold (fun cont _handler env ->
+                define env cont handler_stack)
               handlers
               env
           in
           Continuation.Map.iter (fun _cont
                   (handler : Flambda.continuation_handler) ->
-              let env =
-                match handler.recursive with
-                | Nonrecursive -> env
-                | Recursive -> recursive_env
-              in
-              loop env handler_stack handler.handler)
+              loop recursive_env handler_stack handler.handler)
             handlers;
           Continuation.Map.fold (fun cont _handler env ->
               define env cont handler_stack)
@@ -307,28 +301,24 @@ module Continuation_scoping = struct
             raise (Continuation_not_caught (alias_of, "alias"))
           | arity -> Continuation.Map.add name arity env
           end
-        | Handlers handlers ->
+        | Nonrecursive { name; handler; } ->
+          let arity = List.length handler.params in
+          Continuation.Map.add name arity env
+        | Recursive handlers ->
           let recursive_env =
             Continuation.Map.fold (fun cont
                     (handler : Flambda.continuation_handler) env ->
                 let arity = List.length handler.params in
-                match handler.recursive with
-                | Nonrecursive -> env
-                | Recursive -> Continuation.Map.add cont arity env)
+                Continuation.Map.add cont arity env)
               handlers
               env
           in
           Continuation.Map.iter (fun name
-                  ({ params; recursive; stub; handler; specialised_args; }
+                  ({ params; stub; handler; specialised_args; }
                     : Flambda.continuation_handler) ->
               ignore_continuation name;
-              let env =
-                match recursive with
-                | Recursive -> recursive_env
-                | Nonrecursive -> env
-              in
               ignore_variable_list params;
-              loop env handler;
+              loop recursive_env handler;
               ignore_bool stub;
               ignore specialised_args (* CR mshinwell: fixme *) )
             handlers;
@@ -465,13 +455,18 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       | Alias { name; alias_of; } ->
         ignore_continuation name;
         ignore_continuation alias_of
-      | Handlers handlers ->
+      | Nonrecursive { name; handler = {
+          params; stub; handler; specialised_args; }; } ->
+        ignore_continuation name;
+        ignore_bool stub;
+        loop (add_binding_occurrences env params) handler;
+        ignore specialised_args (* CR mshinwell: fixme *)
+      | Recursive handlers ->
         Continuation.Map.iter (fun name
-                ({ params; recursive; stub; handler; specialised_args; }
+                ({ params; stub; handler; specialised_args; }
                   : Flambda.continuation_handler) ->
             ignore_continuation name;
             ignore_bool stub;
-            ignore_rec_flag recursive;
             loop (add_binding_occurrences env params) handler;
             ignore specialised_args (* CR mshinwell: fixme *) )
           handlers

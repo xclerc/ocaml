@@ -265,7 +265,8 @@ and let_cont = {
 *)
 
 and let_cont_handlers =
-  | Handlers of continuation_handler Continuation.Map.t
+  | Nonrecursive of { name : Continuation.t; handler : continuation_handler; }
+  | Recursive of continuation_handlers
   | Alias of { name : Continuation.t; alias_of : Continuation.t; }
 
 and continuation_handlers =
@@ -273,7 +274,6 @@ and continuation_handlers =
 
 and continuation_handler = {
   params : Variable.t list;
-  recursive : Asttypes.rec_flag;
   stub : bool;
   handler : t;
   (* CR-someday mshinwell: For the moment the [specialised_args] structure

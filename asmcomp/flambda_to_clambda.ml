@@ -484,55 +484,41 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     | None -> expr
     | Some trap_action -> Usequence (trap_action, expr)
     end
-  | Let_cont { body; handlers = Alias { name; alias_of; } } ->
+  | Let_cont { body; handlers = Alias { name; alias_of; }; } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
-  | Let_cont { body; handlers = Handlers handlers; } ->
-    let kind, conts =
+  | Let_cont { body; handlers = Nonrecursive { name; handler = {
+      params; handler; _ }; } ->
+    let env_handler, params =
+      List.fold_right (fun var (env, ids) ->
+          let id, env = Env.add_fresh_ident env var in
+          env, id :: ids)
+        handler.params (env, [])
+    in
+    let handler = to_clambda t env_handler handler.handler in
+    let name = Continuation.to_int name in
+    Ucatch (Normal Nonrecursive, [name, params, handler], to_clambda env body)
+  | Let_cont { body; handlers = Recursive handlers; } ->
+    let conts =
       Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
-              ((kind : Clambda.catch_kind option), conts) ->
+                conts ->
           let env_handler, ids =
             List.fold_right (fun var (env, ids) ->
                 let id, env = Env.add_fresh_ident env var in
                 env, id :: ids)
               handler.params (env, [])
           in
-          let uhandler = to_clambda t env_handler handler.handler in
-          let this_kind : Clambda.catch_kind =
-            if Continuation.Set.mem name t.exn_handlers then begin
-              assert (List.length handler.params = 1);
-              Exn_handler
-            end else begin
-              Normal handler.recursive
-            end
-          in
-          let kind : Clambda.catch_kind =
-            match kind with
-            | None -> this_kind
-            | Some kind ->
-              match kind, this_kind with
-              | Normal _, Exn_handler | Exn_handler, Normal _ ->
-                Misc.fatal_errorf "Let_cont involving continuation %a \
-                    contains both exception-handling and \
-                    non-exception-handling continuations"
-                  Continuation.print name
-              | Exn_handler, Exn_handler -> Exn_handler
-              | Normal Nonrecursive, Normal Nonrecursive -> Normal Nonrecursive
-              | Normal Recursive, Normal _
-              | Normal _, Normal Recursive -> Normal Recursive
-          in
-          let cont = Continuation.to_int name, ids, uhandler in
-          Some kind, cont::conts)
+          let handler = to_clambda t env_handler handler.handler in
+          if Continuation.Set.mem name t.exn_handlers then begin
+            Misc.fatal_errorf "Continuation %a is an exception handler, so \
+                it cannot be recursive"
+              Continuation.print name
+          end;
+          (Continuation.to_int name, ids, handler) :: conts)
         handlers
         (None, [])
     in
-    begin match kind with
-    | None ->
-      assert (Continuation.Map.cardinal handlers = 0);
-      to_clambda t env body
-    | Some kind ->
-      Ucatch (kind, conts, to_clambda t env body)
-    end
+    Ucatch (Normal Recursive, conts, to_clambda t env body)
   | Proved_unreachable -> Uunreachable
 
 and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =

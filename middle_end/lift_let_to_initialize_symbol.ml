@@ -23,45 +23,35 @@ let should_copy (named:Flambda.named) =
 
 let rec lift (expr : Flambda.expr) ~to_copy =
   match expr with
-  | Let_cont ({ body; handlers = Handlers handlers; } as let_cont) ->
-    if Continuation.Map.cardinal handlers <> 1 then
-      let free_conts = Flambda.free_continuations expr in
-      free_conts, [], expr
-    else
-      begin match Continuation.Map.bindings handlers with
-      | [(name, { params = [param]; recursive = Nonrecursive; handler; }
-            : Continuation.t * Flambda.continuation_handler)] ->
-        let free_conts, lifted, body = lift body ~to_copy in
-        let our_cont = Continuation.Set.singleton name in
-        if Continuation.Set.is_empty free_conts then begin
-          (* The continuation is unused; delete it. *)
-          free_conts, lifted, body
-        end else if Continuation.Set.equal free_conts our_cont then begin
-          (* The body of this [Let_cont] can only return through [cont], which
-             means that [handler] postdominates [body].  As such we can cut off
-             [body] and put it inside an [Initialize_symbol] whose continuation
-             is [handler].
-             We also augment [to_copy] to ensure that the binding of the existing
-             variable to the new symbol is restated at the top of each subsequent
-             lifted expression. *)
-          let symbol = Flambda_utils.make_variable_symbol param in
-          let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
-          let to_copy = (param, defining_expr)::to_copy in
-          let free_conts, lifted', handler = lift handler ~to_copy in
-          let lifted = lifted @ [name, param, symbol, body, to_copy] @ lifted' in
-          let expr = Flambda.create_let param defining_expr handler in
-          free_conts, lifted, expr
-        end else begin
-          let free_conts =
-            Continuation.Set.union free_conts
-              (Flambda.free_continuations handler)
-          in
-          let expr : Flambda.expr = Let_cont { let_cont with body; } in
-          free_conts, lifted, expr
-        end
-      | _ ->
-        let free_conts = Flambda.free_continuations expr in
-        free_conts, [], expr
+  | Let_cont (({ body; handlers = Nonrecursive { name; handler = {
+      params = [param]; handler; _ }; }; } as let_cont)) ->
+    let free_conts, lifted, body = lift body ~to_copy in
+    let our_cont = Continuation.Set.singleton name in
+    if Continuation.Set.is_empty free_conts then begin
+      (* The continuation is unused; delete it. *)
+      free_conts, lifted, body
+    end else if Continuation.Set.equal free_conts our_cont then begin
+      (* The body of this [Let_cont] can only return through [cont], which
+          means that [handler] postdominates [body].  As such we can cut off
+          [body] and put it inside an [Initialize_symbol] whose continuation
+          is [handler].
+          We also augment [to_copy] to ensure that the binding of the existing
+          variable to the new symbol is restated at the top of each subsequent
+          lifted expression. *)
+      let symbol = Flambda_utils.make_variable_symbol param in
+      let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
+      let to_copy = (param, defining_expr)::to_copy in
+      let free_conts, lifted', handler = lift handler ~to_copy in
+      let lifted = lifted @ [name, param, symbol, body, to_copy] @ lifted' in
+      let expr = Flambda.create_let param defining_expr handler in
+      free_conts, lifted, expr
+    end else begin
+      let free_conts =
+        Continuation.Set.union free_conts
+          (Flambda.free_continuations handler)
+      in
+      let expr : Flambda.expr = Let_cont { let_cont with body; } in
+      free_conts, lifted, expr
     end
   | Let { var; defining_expr; body; _ } when should_copy defining_expr ->
     (* This let-expression is not to be lifted, but instead restated at the

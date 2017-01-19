@@ -54,10 +54,17 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
     | Let_mutable { initial_value = v; body } ->
       set := Variable.Set.add v !set;
       loop body
-    | Let_cont { body; handler = Handler { handler; _ }; _ } ->
+    | Let_cont { body; handlers =
+        Nonrecursive { name = _; handler = { handler; _ }; }; } ->
       loop body;
       loop handler
-    | Let_cont { body; handler = Alias _; _ } ->
+    | Let_cont { body; handlers = Recursive handlers; } ->
+      loop body;
+      Continuation.Map.iter (fun _cont
+            (handler : Flambda.continuation_handler) ->
+          loop handler.handler)
+        handlers
+    | Let_cont { body; handlers = Alias _; _ } ->
       loop body
     | Apply _ | Apply_cont _ | Switch _ ->
       set := Variable.Set.union !set (Flambda.free_variables flam)

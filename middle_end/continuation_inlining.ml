@@ -242,7 +242,10 @@ let substitute (expr : Flambda.expr) ~inlinings ~new_shared_conts
       ~zero_uses =
   Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
       match expr with
-      | Let_cont { name; body; _ } ->
+      (* [Inline_and_simplify] will only put non-bottom continuation
+         approximations in the environment for non-recursive continuations
+         at present. *)
+      | Let_cont { body; handlers = Nonrecursive { name; _ }; } ->
         let expr =
           if Continuation.Set.mem name zero_uses then
             body
@@ -257,14 +260,15 @@ let substitute (expr : Flambda.expr) ~inlinings ~new_shared_conts
 Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
 *)
               Flambda.Let_cont {
-                name;
                 body = expr;
-                handler = Handler {
-                  params;
-                  recursive = Nonrecursive;
-                  stub = false;
-                  handler;
-                  specialised_args = Variable.Map.empty;
+                handlers = Nonrecursive {
+                  name;
+                  handler = {
+                    params;
+                    stub = false;
+                    handler;
+                    specialised_args = Variable.Map.empty;
+                  };
                 };
               })
             expr
@@ -285,7 +289,8 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
                fail here. *)
             expr
         end
-      | Apply _ | Let _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
+      | Apply _ | Let _ | Let_cont _ | Let_mutable _ | Switch _
+      | Proved_unreachable -> expr)
     expr
 
 let for_toplevel_expression expr r ~simplify =
