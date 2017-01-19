@@ -106,6 +106,16 @@ module Whether_sufficient_benefit : sig
     -> round:int
     -> t
 
+  val create_list
+     : originals:Flambda.t list
+    -> toplevel:bool
+    -> branch_depth:int
+    -> Flambda.t list
+    -> benefit:Benefit.t
+    -> lifting:bool
+    -> round:int
+    -> t
+
   val create_estimate
      : original_size:int
     -> toplevel:bool

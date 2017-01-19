@@ -25,4 +25,5 @@ val for_toplevel_expression
     -> Inline_and_simplify_aux.Result.t
     -> Flambda.expr
     -> Flambda.expr * Inline_and_simplify_aux.Result.t)
+  -> backend:(module Backend_intf.S)
   -> Flambda.expr

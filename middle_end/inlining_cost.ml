@@ -136,6 +136,9 @@ let lambda_size lam =
          memory. *)
       assert false
 
+let lambda_sizes lams =
+  List.fold_left (fun size lam -> size + lambda_size lam) 0 lams
+
 module Threshold = struct
 
   type t =
@@ -395,6 +398,16 @@ module Whether_sufficient_benefit = struct
     { round; benefit; toplevel; branch_depth; lifting;
       original_size = lambda_size original;
       new_size = lambda_size lam;
+      evaluated_benefit;
+      estimate = false;
+    }
+
+  let create_list ~originals ~toplevel ~branch_depth lams ~benefit ~lifting
+        ~round =
+    let evaluated_benefit = Benefit.evaluate benefit ~round in
+    { round; benefit; toplevel; branch_depth; lifting;
+      original_size = lambda_sizes originals;
+      new_size = lambda_sizes lams;
       evaluated_benefit;
       estimate = false;
     }

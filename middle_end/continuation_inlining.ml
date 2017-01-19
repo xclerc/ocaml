@@ -181,9 +181,9 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
             ((inlinings, new_shared_conts, zero_uses) as acc) ->
       assert ((not inline_unconditionally) || N.linear count);
       let inlining_result =
-        match Continuation_approx.handler approx with
-        | None -> Didn't_inline
-        | Some handler ->
+        match Continuation_approx.handlers approx with
+        | None | Some (Recursive _) -> Didn't_inline
+        | Some (Nonrecursive handler) ->
           let inline_unconditionally =
             (* CR-soon mshinwell: Stubs should probably just be immediately
                inlined by [Inline_and_simplify] upon the first traversal. *)

@@ -16,39 +16,44 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+type continuation_handlers =
+  | Nonrecursive of Flambda.continuation_handler
+  | Recursive of Flambda.continuation_handlers
+
 type t = {
   name : Continuation.t;
-  handler : Flambda.continuation_handler option;
+  handlers : continuation_handlers option;
   num_params : int;
 }
 
-let create ~name ~(handler : Flambda.continuation_handler) ~num_params =
+let create ~name ~(handlers : continuation_handlers) ~num_params =
   { name;
-    handler = Some handler;
+    handlers = Some handlers;
     num_params;
   }
 
 let create_unknown ~name ~num_params =
   { name;
-    handler = None;
+    handlers = None;
     num_params;
   }
 
 let name t = t.name
 let num_params t = t.num_params
-let handler t = t.handler
+let handlers t = t.handlers
 
 let print ppf t =
-  let print_handler ppf = function
-    | None -> Format.fprintf ppf "<handler not known>"
-    | Some handler ->
-      let handlers =
-        Continuation.Map.add t.name handler Continuation.Map.empty
-      in
-      Flambda.print_let_cont_handlers ppf
-        (Recursive handlers)
+  let print_handlers ppf = function
+    | None -> Format.fprintf ppf "<handlers not known>"
+    | Some handlers ->
+      match handlers with
+      | Nonrecursive handler ->
+        Flambda.print_let_cont_handlers ppf
+          (Nonrecursive { name = t.name; handler; })
+      | Recursive handlers ->
+        Flambda.print_let_cont_handlers ppf (Recursive handlers)
   in
   Format.fprintf ppf "@[(%a with %d params %a)@]"
     Continuation.print t.name
     t.num_params
-    print_handler t.handler
+    print_handlers t.handlers
