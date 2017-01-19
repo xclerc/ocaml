@@ -76,18 +76,14 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
     Invariant_params.Continuations.invariant_param_sources old_handlers
       ~backend
   in
-  let freshening = Freshening.activate (E.freshening env) in
-  let new_conts, freshening =
-    Continuation.Map.fold (fun cont _handler (new_conts, freshening) ->
-        let new_cont, freshening =
+  let freshening =
+    Continuation.Map.fold (fun cont _handler freshening ->
+        let _new_cont, freshening =
           Freshening.add_static_exception freshening cont
         in
-        let new_conts =
-          Continuation.Map.add cont new_cont new_conts
-        in
-        new_conts, freshening)
+        freshening)
       old_handlers
-      (Continuation.Map.empty, freshening)
+      (Freshening.activate (E.freshening env))
   in
   let env =
     E.set_freshening env freshening
@@ -400,18 +396,26 @@ let insert_specialisations (expr : Flambda.expr) ~new_conts
         ~apply_cont_rewrites =
   Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
       match expr with
-      | Let_cont { name; _ } ->
-        begin match Continuation.Map.find name new_conts with
-        | exception Not_found -> expr
-        | new_conts ->
-          List.fold_left (fun body handlers : Flambda.expr ->
-              Let_cont {
-                body;
-                handlers = Recursive handlers;
-              })
-            expr
-            new_conts
-        end
+      | Let_cont { handlers; } ->
+        let bound_by_expr =
+          match handlers with
+          | Alias { name; _ }
+          | Nonrecursive { name; _ } -> Continuation.Set.singleton name
+          | Recursive handlers -> Continuation.Map.keys handlers
+        in
+        Continuation.Set.fold (fun cont expr ->
+            match Continuation.Map.find cont new_conts with
+            | exception Not_found -> expr
+            | new_conts ->
+              List.fold_left (fun body handlers : Flambda.expr ->
+                  Let_cont {
+                    body;
+                    handlers = Recursive handlers;
+                  })
+                expr
+                new_conts)
+          bound_by_expr
+          expr
       | Apply_cont (cont, trap_action, args) ->
         let key = cont, args in
         begin match Continuation.With_args.Map.find key apply_cont_rewrites with
