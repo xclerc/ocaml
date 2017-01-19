@@ -181,11 +181,12 @@ type filtered_switch_branches =
   | Must_be_taken of Continuation.t
   | Can_be_taken of (Ilambda.switch_block_pattern * Continuation.t) list
 
-let inline_and_specialise_continuations body r ~simplify =
+let inline_and_specialise_continuations body r ~simplify ~backend =
   let body =
     Continuation_inlining.for_toplevel_expression body r ~simplify
   in
   Continuation_specialisation.for_toplevel_expression body r ~simplify
+    ~backend
 
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body
@@ -1067,7 +1068,7 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   let after_full_application = Continuation.create () in
   let after_full_application_approx =
     Continuation_approx.create ~name:after_full_application
-      ~handler ~num_params:1
+      ~handlers:(Nonrecursive handler) ~num_params:1
   in
   let full_application, r =
     let env =
@@ -1111,8 +1112,8 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let inlinable_position =
-    match Continuation_approx.handler cont_approx, trap_action with
-    | Some _handler, None -> true
+    match Continuation_approx.handlers cont_approx, trap_action with
+    | Some _, None -> true
     | _, Some _ -> false
     | None, None -> false
   in
@@ -1466,14 +1467,13 @@ and filter_defining_expr_of_let r var defining_expr free_vars_of_body =
   else
     r, var, Some defining_expr
 
-and simplify_let_cont_handler ~cont ~env ~r
+and simplify_let_cont_handler ~env ~r
       ~(handler : Flambda.continuation_handler) =
   let { Flambda. params = vars; stub; handler; specialised_args; } = handler in
   (* CR mshinwell: rename "vars" to "params" *)
   (* Note that [cont] may not be fresh for [handler] at the moment, since the
       latter may come from another compilation unit, and has not yet been
       freshened up. *)
-  let num_params = List.length vars in
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env) vars
   in
@@ -1546,23 +1546,29 @@ and simplify_let_cont_handler ~cont ~env ~r
       specialised_args;
     }
   in
-  let approx =
-    Continuation_approx.create ~name:cont ~handler ~num_params
-  in
-  r, approx
+  r, handler
 
 and simplify_let_cont_handlers ~env ~r ~body ~handlers 
       ~(recursive : Asttypes.rec_flag) : Flambda.expr * R.t =
   (* First we simplify the continuations themselves. *)
-  let r, approxs, handlers =
-    Continuation.Map.fold (fun cont handler (r, approxs, handlers) ->
-        let r, approx =
-          simplify_let_cont_handler ~cont ~env ~r ~handler
-        in
-        r, Continuation.Map.add cont approx approxs,
-          Continuation.Map.add cont handler handlers)
+  let r, handlers =
+    Continuation.Map.fold (fun cont handler (r, handlers) ->
+        let r, handler = simplify_let_cont_handler ~env ~r ~handler in
+        r, Continuation.Map.add cont handler handlers)
       handlers
-      (r, Continuation.Map.empty, Continuation.Map.empty)
+      (r, Continuation.Map.empty)
+  in
+  let approxs =
+    Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+            approxs ->
+        let num_params = List.length handler.params in
+        let approx =
+          Continuation_approx.create ~name:cont
+            ~handlers:(Recursive handlers) ~num_params
+        in
+        Continuation.Map.add cont approx approxs)
+      handlers
+      Continuation.Map.empty
   in
   (* Then we collect uses of the continuations and delete any unused ones.
      The usage information will subsequently be used by the continuation
@@ -1658,7 +1664,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             let approx =
               Continuation_approx.create_unknown ~name ~num_params
             in
-            assert (Continuation_approx.handler approx = None);
+            assert (Continuation_approx.handlers approx = None);
             let conts_and_approxs =
               Continuation.Map.add freshened_name (name, approx)
                 conts_and_approxs
@@ -1687,7 +1693,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             ~name:(Continuation_approx.name approx)
             ~num_params:(Continuation_approx.num_params approx)
         in
-        assert (Continuation_approx.handler approx = None);
+        assert (Continuation_approx.handlers approx = None);
         let conts_and_approxs =
           Continuation.Map.of_list [
             freshened_name, (name, approx);
@@ -2076,7 +2082,9 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
         let h', r = simplify env r h in
         let h =
           if E.never_inline env then h
-          else inline_and_specialise_continuations h r ~simplify
+          else
+            inline_and_specialise_continuations h r ~simplify
+              ~backend:(E.backend env)
         in
         let r, new_approxs, _uses =
           R.exit_scope_catch r env cont ~num_params:1
@@ -2121,7 +2129,9 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     let expr, r = simplify env r expr in
     let expr =
       if E.never_inline env then expr
-      else inline_and_specialise_continuations expr r ~simplify
+      else
+        inline_and_specialise_continuations expr r ~simplify
+          ~backend:(E.backend env)
     in
     let program, r = simplify_program_body env r program in
     let r, _approx, _uses = R.exit_scope_catch r env cont ~num_params:1 in
