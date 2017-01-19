@@ -728,6 +728,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
               body
             else
               inline_and_specialise_continuations body r ~simplify
+                ~backend:(E.backend env)
           in
           let r, _, _ =
             R.exit_scope_catch r env continuation_param ~num_params:1
