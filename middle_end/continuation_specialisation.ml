@@ -94,11 +94,13 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
   in
   let entry_point_cont = cont in
   let new_handlers, total_benefit =
-    Continuation.Map.fold (fun cont old_handler benefit ->
+    Continuation.Map.fold (fun cont (old_handler : Flambda.continuation_handler)
+            (new_handlers, total_benefit) ->
         let params, freshening =
           Freshening.add_variables' freshening old_handler.params
         in
         let env = E.set_freshening env freshening in
+        let new_cont = Freshening.apply_static_exception freshening cont in
         let new_cont_approx =
           Continuation_approx.create_unknown ~name:new_cont
             ~num_params:(List.length params)
@@ -163,14 +165,18 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
                   match Variable.Map.find param invariant_params_flow with
                   | exception Not_found -> newly_specialised_args
                   | flows_to ->
-                    Variable.Set.fold (fun (cont', param')
+                    let module CV =
+                      Invariant_params.Continuations.Continuation_and_variable
+                    in
+                    CV.Set.fold (fun (cont', param')
                             newly_specialised_args ->
                         if not (Continuation.equal cont cont') then
                           newly_specialised_args
                         else
                           Variable.Map.add param' spec_to
                             newly_specialised_args)
-                      flows_to)
+                      flows_to
+                      newly_specialised_args)
                 newly_specialised_args
                 Variable.Map.empty
           in
@@ -221,7 +227,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
         let new_handlers =
           Continuation.Map.add cont new_handler new_handlers
         in
-        new_handlers, total_inlining_benefit)
+        new_handlers, total_benefit)
     old_handlers
     (Continuation.Map.empty, B.zero)
   in
@@ -241,7 +247,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       ~toplevel:(E.at_toplevel env)
       ~branch_depth:(E.branch_depth env)
       new_handlers
-      ~benefit:inlining_benefit
+      ~benefit:total_benefit
       ~lifting:false
       ~round:(E.round env)
   in
