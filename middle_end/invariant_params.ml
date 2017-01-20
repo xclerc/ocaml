@@ -57,6 +57,10 @@ module type Continuations_or_functions = sig
 
     val params : t -> Variable.t list
     val body : t -> Flambda.expr
+
+    val free_variables_of_body_excluding_callees_and_args
+       : t
+      -> Variable.Set.t
   end
 
   module Declarations : sig
@@ -94,6 +98,10 @@ module For_functions = struct
     type t = Flambda.function_declaration
     let params (t : t) = t.params
     let body (t : t) = t.body
+
+    let free_variables_of_body_excluding_callees_and_args (t : t) =
+      Flambda.free_variables ~ignore_uses_as_callee:()
+        ~ignore_uses_as_argument:() t.body
   end
 
   module Declarations = struct
@@ -194,6 +202,10 @@ module For_continuations = struct
     type t = Flambda.continuation_handler
     let params (t : t) = t.params
     let body (t : t) = t.handler
+
+    let free_variables_of_body_excluding_callees_and_args (t : t) =
+      Flambda.free_variables ~ignore_uses_as_callee:()
+        ~ignore_uses_as_continuation_argument:() t.handler
   end
 
   module Declarations = struct
@@ -384,8 +396,8 @@ module Analyse (CF : Continuations_or_functions) = struct
           (* CR-soon mshinwell: we should avoid recomputing this, cache in
              [function_declaration].  See also comment on
              [only_via_symbols] in [Flambda_utils]. *)
-          (Flambda.free_variables ~ignore_uses_as_callee:()
-            ~ignore_uses_as_argument:() (CF.Declaration.body decl)))
+          (CF.Declaration.free_variables_of_body_excluding_callees_and_args
+            decl))
       (CF.Declarations.declarations decls);
     CF.Name.Map.iter
       (fun func_var decl ->

@@ -526,6 +526,7 @@ type program = {
 val free_variables
    : ?ignore_uses_as_callee:unit
   -> ?ignore_uses_as_argument:unit
+  -> ?ignore_uses_as_continuation_argument:unit
   -> ?ignore_uses_in_project_var:unit
   -> ?ignore_uses_in_apply_cont:unit
   -> t
@@ -549,6 +550,7 @@ val free_variables_of_specialised_args
 val used_variables
    : ?ignore_uses_as_callee:unit
   -> ?ignore_uses_as_argument:unit
+  -> ?ignore_uses_as_continuation_argument:unit
   -> ?ignore_uses_in_project_var:unit
   -> t
   -> Variable.Set.t

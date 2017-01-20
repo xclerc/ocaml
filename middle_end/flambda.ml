@@ -628,7 +628,8 @@ let free_variables_of_specialised_args specialised_args =
     specialised_args
     Variable.Set.empty
 
-let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
+let rec variables_usage ?ignore_uses_as_callee
+    ?ignore_uses_as_argument ?ignore_uses_as_continuation_argument
     ?ignore_uses_in_project_var ?ignore_uses_in_apply_cont
     ~all_used_variables tree =
   let free = ref Variable.Set.empty in
@@ -658,6 +659,7 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       if all_used_variables
           || ignore_uses_as_callee <> None
           || ignore_uses_as_argument <> None
+          || ignore_uses_as_continuation_argument <> None
           || ignore_uses_in_project_var <> None
           || ignore_uses_in_apply_cont <> None
       then begin
@@ -677,7 +679,7 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       begin match ignore_uses_in_apply_cont with
       | Some () -> ()
       | None ->
-        match ignore_uses_as_argument with
+        match ignore_uses_as_continuation_argument with
         | None -> List.iter free_variable es
         | Some () -> ()
       end
@@ -741,18 +743,20 @@ and variables_usage_named ?ignore_uses_in_project_var (named : named) =
     !free
 
 let free_variables ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ?ignore_uses_in_project_var ?ignore_uses_in_apply_cont tree =
+    ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var
+    ?ignore_uses_in_apply_cont tree =
   variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ?ignore_uses_in_project_var ?ignore_uses_in_apply_cont
-    ~all_used_variables:false tree
+    ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var
+    ?ignore_uses_in_apply_cont ~all_used_variables:false tree
 
 let free_variables_named ?ignore_uses_in_project_var named =
   variables_usage_named ?ignore_uses_in_project_var named
 
 let used_variables ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ?ignore_uses_in_project_var tree =
+    ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var tree =
   variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
-    ?ignore_uses_in_project_var ~all_used_variables:true tree
+    ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var
+    ~all_used_variables:true tree
 
 let used_variables_named ?ignore_uses_in_project_var named =
   variables_usage_named ?ignore_uses_in_project_var named
