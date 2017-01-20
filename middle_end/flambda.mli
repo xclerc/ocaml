@@ -270,9 +270,6 @@ and let_cont = {
     such continuations, so long as [Inline_and_simplify] is run afterwards
     to inline them out and turn the resulting single [Recursive] handler into
     a [Nonrecursive] one. *)
-(* XXX we need to think about this more: we cannot unbox exception ones either
-   since they may only have one argument.  Maybe they need to be specially
-   marked? *)
 and let_cont_handlers =
   | Nonrecursive of { name : Continuation.t; handler : continuation_handler; }
   | Recursive of continuation_handlers
