@@ -1471,9 +1471,6 @@ and simplify_let_cont_handler ~env ~r
       ~(handler : Flambda.continuation_handler) =
   let { Flambda. params = vars; stub; handler; specialised_args; } = handler in
   (* CR mshinwell: rename "vars" to "params" *)
-  (* Note that [cont] may not be fresh for [handler] at the moment, since the
-      latter may come from another compilation unit, and has not yet been
-      freshened up. *)
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env) vars
   in
@@ -1549,11 +1546,15 @@ and simplify_let_cont_handler ~env ~r
   r, handler
 
 and simplify_let_cont_handlers ~env ~r ~body ~handlers 
-      ~(recursive : Asttypes.rec_flag) : Flambda.expr * R.t =
+      ~(recursive : Asttypes.rec_flag) ~freshening : Flambda.expr * R.t =
   (* First we simplify the continuations themselves. *)
   let r, handlers =
     Continuation.Map.fold (fun cont handler (r, handlers) ->
+        (* Note that [cont] may not be fresh for [handler] at the moment, since
+           the latter may come from another compilation unit, and has not yet
+           been freshened up. *)
         let r, handler = simplify_let_cont_handler ~env ~r ~handler in
+        let cont = Freshening.apply_static_exception freshening cont in
         r, Continuation.Map.add cont handler handlers)
       handlers
       (r, Continuation.Map.empty)
@@ -1665,7 +1666,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
             in
             let num_params = List.length handler.params in
             let approx =
-              Continuation_approx.create_unknown ~name ~num_params
+              Continuation_approx.create_unknown ~name:freshened_name
+                ~num_params
             in
             assert (Continuation_approx.handlers approx = None);
             let conts_and_approxs =
@@ -1704,11 +1706,13 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         in
         conts_and_approxs, freshening
     in
+    let env = E.set_freshening env freshening in
+    (* CR mshinwell: Is _unfreshened_name redundant? *)
     let body_env =
       Continuation.Map.fold (fun name (_unfreshened_name, approx) env ->
           E.add_continuation env name approx)
         conts_and_approxs
-        (E.set_freshening env freshening)
+        env
     in
     let body, r = simplify body_env r body in
     begin match handlers with
@@ -1721,10 +1725,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         Continuation.Map.add name handler Continuation.Map.empty
       in
       simplify_let_cont_handlers ~env ~r ~body ~handlers
-        ~recursive:Asttypes.Nonrecursive
+        ~recursive:Asttypes.Nonrecursive ~freshening
     | Recursive handlers ->
       simplify_let_cont_handlers ~env:body_env ~r ~body ~handlers
-        ~recursive:Asttypes.Recursive
+        ~recursive:Asttypes.Recursive ~freshening
     | Alias { name; alias_of; } ->
       let name =
         Freshening.apply_static_exception freshening name
