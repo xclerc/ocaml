@@ -295,21 +295,9 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
           ~args_approxs:[approx]
       | _ -> r
     end
-  | Let_cont { body; handlers = Handlers handlers; } ->
-
-
-    let num_params = List.length params in
-    let r =
-      match recursive with
-      | Nonrecursive -> r
-      | Recursive ->
-        (* CR mshinwell: Do better than this? *)
-        let args_approxs =
-          Array.to_list (Array.make num_params Export_info.Value_unknown)
-        in
-        Result.add_continuation_use_approx r name ~args_approxs
-    in
+  | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
     let r = approx_of_expr env r body in
+    let num_params = List.length handler.params in
     let args_approxs =
       Result.find_continuation_use_args_approxs r name ~num_args:num_params
     in
@@ -318,9 +306,39 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
       List.fold_left (fun env (param, approx) ->
           Env.add_approx env param approx)
         env
-        (List.combine params args_approxs)
+        (List.combine handler.params args_approxs)
     in
-    approx_of_expr env r handler
+    approx_of_expr env r handler.handler
+  | Let_cont { body; handlers = Recursive handlers; } ->
+    let r =
+      Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+              r ->
+          let num_params = List.length handler.params in
+          (* CR mshinwell: Do better than this? *)
+          let args_approxs =
+            Array.to_list (Array.make num_params Export_info.Value_unknown)
+          in
+          Result.add_continuation_use_approx r cont ~args_approxs)
+        handlers
+        r
+    in
+    let r = approx_of_expr env r body in
+    Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+            r ->
+        let num_params = List.length handler.params in
+        let args_approxs =
+          Result.find_continuation_use_args_approxs r cont ~num_args:num_params
+        in
+        assert (List.length args_approxs = num_params);
+        let env =
+          List.fold_left (fun env (param, approx) ->
+              Env.add_approx env param approx)
+            env
+            (List.combine handler.params args_approxs)
+        in
+        approx_of_expr env r handler.handler)
+      handlers
+      r
   | Let_cont { body; handlers = Alias { name; alias_of; }; } ->
     let env = Env.add_continuation_alias env name ~alias_of in
     approx_of_expr env r body
@@ -644,7 +662,7 @@ Format.eprintf "EXPORT INFO@;%a@;%!" Flambda.print_program program;
     let invariant_params =
       Set_of_closures_id.Map.map
         (fun { Flambda. function_decls; _ } ->
-           Invariant_params.invariant_params_in_recursion
+           Invariant_params.Functions.invariant_params_in_recursion
              ~backend function_decls)
         (Flambda_utils.all_sets_of_closures_map program)
     in
