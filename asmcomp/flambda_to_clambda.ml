@@ -488,16 +488,16 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
   | Let_cont { body; handlers = Nonrecursive { name; handler = {
-      params; handler; _ }; } ->
+      params; handler; _ }; }; } ->
     let env_handler, params =
       List.fold_right (fun var (env, ids) ->
           let id, env = Env.add_fresh_ident env var in
           env, id :: ids)
-        handler.params (env, [])
+        params (env, [])
     in
-    let handler = to_clambda t env_handler handler.handler in
+    let handler = to_clambda t env_handler handler in
     let name = Continuation.to_int name in
-    Ucatch (Normal Nonrecursive, [name, params, handler], to_clambda env body)
+    Ucatch (Normal Nonrecursive, [name, params, handler], to_clambda t env body)
   | Let_cont { body; handlers = Recursive handlers; } ->
     let conts =
       Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
@@ -516,7 +516,7 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
           end;
           (Continuation.to_int name, ids, handler) :: conts)
         handlers
-        (None, [])
+        []
     in
     Ucatch (Normal Recursive, conts, to_clambda t env body)
   | Proved_unreachable -> Uunreachable

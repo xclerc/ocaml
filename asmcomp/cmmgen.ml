@@ -1539,7 +1539,7 @@ let rec is_unboxed_number ~strict env e =
       end
   | Ustaticfail _ -> No_result
   | Uifthenelse (_, e1, e2)
-  | Ucatch (Nonrecursive, [_, _, e1], e2) | Utrywith (e1, _, e2) ->
+  | Ucatch (Normal Nonrecursive, [_, _, e1], e2) | Utrywith (e1, _, e2) ->
       join (is_unboxed_number ~strict env e1) e2
   | _ -> No_unboxing
 
@@ -1818,11 +1818,10 @@ let rec transl env e =
       let dbg = Debuginfo.none in
       let raise_num = next_raise_count () in
       return_unit
-        (ccatch
-           (raise_num, Normal Asttypes.Nonrecursive, [],
+        (Ccatch
+           (Normal Asttypes.Nonrecursive, [raise_num, [], Ctuple []],
             Cloop(exit_if_false dbg env cond
-                    (remove_unit(transl env body)) raise_num),
-            Ctuple []))
+                    (remove_unit(transl env body)) raise_num)))
   | Ufor(id, low, high, dir, body) ->
       let dbg = Debuginfo.none in
       let tst = match dir with Upto -> Cgt   | Downto -> Clt in
@@ -1833,8 +1832,8 @@ let rec transl env e =
         (Clet
            (id, transl env low,
             bind_nonvar "bound" (transl env high) (fun high ->
-              ccatch
-                (raise_num, Normal Asttypes.Nonrecursive, [],
+              Ccatch
+                (Normal Asttypes.Nonrecursive, [raise_num, [], Ctuple []],
                  Cifthenelse
                    (Cop(Ccmpi tst, [Cvar id; high], dbg),
                     Cexit (raise_num, []),
@@ -1849,8 +1848,7 @@ let rec transl env e =
                              Cifthenelse
                                (Cop(Ccmpi Ceq, [Cvar id_prev; high],
                                   dbg),
-                                Cexit (raise_num,[]), Ctuple [])))))),
-                 Ctuple []))))
+                                Cexit (raise_num,[]), Ctuple []))))))))))
   | Uassign(id, exp) ->
       let dbg = Debuginfo.none in
       begin match is_unboxed_id id env with
@@ -2564,10 +2562,10 @@ and make_catch2 mk_body handler = match handler with
 *)
 | _ ->
     let nfail = next_raise_count () in
-    make_catch
-      (Normal Asttypes.Nonrecursive) (* CR mshinwell: pass as parameter? *)
-      [nfail, (), handler]
-      (mk_body (Cexit (nfail,[])))
+    Ccatch (
+      Normal Asttypes.Nonrecursive, (* CR mshinwell: pass as parameter? *)
+      [nfail, [], handler],
+      mk_body (Cexit (nfail,[])))
 
 and exit_if_true dbg env cond nfail otherwise =
   match cond with
@@ -3001,8 +2999,8 @@ let cache_public_method meths tag cache dbg =
   Clet (
   hi, Cop(Cload Word_int, [meths], dbg),
   Csequence(
-  ccatch
-    (raise_num, Normal Asttypes.Nonrecursive, [],
+  Ccatch
+    (Normal Asttypes.Nonrecursive, [raise_num, [], Ctuple []],
      Cloop
        (Clet(
         mi,
@@ -3024,8 +3022,7 @@ let cache_public_method meths tag cache dbg =
            Cassign(li, Cvar mi)),
         Cifthenelse
           (Cop(Ccmpi Cge, [Cvar li; Cvar hi], dbg), Cexit (raise_num, []),
-           Ctuple [])))),
-     Ctuple []),
+           Ctuple []))))),
   Clet (
     tagged,
       Cop(Cadda, [lsl_const (Cvar li) log2_size_addr dbg;
