@@ -1554,8 +1554,8 @@ and simplify_let_cont_handlers ~env ~r ~body ~handlers
            the latter may come from another compilation unit, and has not yet
            been freshened up. *)
         let r, handler = simplify_let_cont_handler ~env ~r ~handler in
-        let cont = Freshening.apply_static_exception freshening cont in
-        r, Continuation.Map.add cont handler handlers)
+        let cont' = Freshening.apply_static_exception freshening cont in
+        r, Continuation.Map.add cont' handler handlers)
       handlers
       (r, Continuation.Map.empty)
   in
@@ -1706,9 +1706,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         in
         conts_and_approxs, freshening
     in
-    let env = E.set_freshening env freshening in
     (* CR mshinwell: Is _unfreshened_name redundant? *)
     let body_env =
+      let env = E.set_freshening env freshening in
       Continuation.Map.fold (fun name (_unfreshened_name, approx) env ->
           E.add_continuation env name approx)
         conts_and_approxs
