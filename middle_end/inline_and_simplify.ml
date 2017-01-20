@@ -1469,7 +1469,9 @@ and filter_defining_expr_of_let r var defining_expr free_vars_of_body =
 
 and simplify_let_cont_handler ~env ~r
       ~(handler : Flambda.continuation_handler) =
-  let { Flambda. params = vars; stub; handler; specialised_args; } = handler in
+  let { Flambda. params = vars; stub; is_exn_handler; handler;
+    specialised_args; } = handler
+  in
   (* CR mshinwell: rename "vars" to "params" *)
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env) vars
@@ -1539,6 +1541,7 @@ and simplify_let_cont_handler ~env ~r
   let handler : Flambda.continuation_handler =
     { params = vars;
       stub;
+      is_exn_handler;
       handler;
       specialised_args;
     }

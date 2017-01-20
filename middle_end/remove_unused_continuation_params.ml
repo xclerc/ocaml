@@ -108,7 +108,7 @@ let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
           let to_remove =
             Variable.Set.inter unused (Variable.Set.of_list handler.params)
           in
-          if Variable.Set.is_empty to_remove then
+          if handler.is_exn_handler || Variable.Set.is_empty to_remove then
             Continuation.Map.add cont handler handlers
           else
             Continuation.Map.disjoint_union handlers

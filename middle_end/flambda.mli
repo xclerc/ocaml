@@ -264,6 +264,15 @@ and let_cont = {
       continuation.
 *)
 
+(** Note: any continuation used as an exception handler must be non-recursive
+    by the point it reaches [Flambda_to_clambda].  (This means that it is
+    permissible to introduce mutual recursion through stubs associated with
+    such continuations, so long as [Inline_and_simplify] is run afterwards
+    to inline them out and turn the resulting single [Recursive] handler into
+    a [Nonrecursive] one. *)
+(* XXX we need to think about this more: we cannot unbox exception ones either
+   since they may only have one argument.  Maybe they need to be specially
+   marked? *)
 and let_cont_handlers =
   | Nonrecursive of { name : Continuation.t; handler : continuation_handler; }
   | Recursive of continuation_handlers
@@ -275,6 +284,12 @@ and continuation_handlers =
 and continuation_handler = {
   params : Variable.t list;
   stub : bool;
+  is_exn_handler : bool;
+  (** Continuations used as exception handlers must always be [Nonrecursive]
+      and must have exactly one argument.  To enable identification of them
+      in passes not invoked from [Inline_and_simplify] (where they could be
+      identified by looking at the [Apply_cont]s that reference them) they
+      are marked explicitly. *)
   handler : t;
   (* CR-someday mshinwell: For the moment the [specialised_args] structure
      here matches that used for functions, even though for continuations
