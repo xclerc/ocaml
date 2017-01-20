@@ -174,7 +174,6 @@ module Push_pop_invariants = struct
       let env =
         match handlers with
         | Alias { name; alias_of; } ->
-          let env = define env name handler_stack in
           let cont_stack =
             match Continuation.Map.find alias_of env with
             | exception Not_found ->

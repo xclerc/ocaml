@@ -387,7 +387,7 @@ let rec lam ppf (flam : t) =
             params; stub; handler; specialised_args; }; } ->
           fprintf ppf "@[<v 2>where %a%s%s%a%s%a =@ %a@]"
             Continuation.print name
-            (if stub then "*stub* " else "")
+            (if stub then " *stub*" else "")
             (match params with [] -> "" | _ -> " (")
             Variable.print_list params
             (match params with [] -> "" | _ -> ")")
@@ -395,19 +395,21 @@ let rec lam ppf (flam : t) =
             lam handler
         | Recursive handlers ->
           let first = ref true in
+          fprintf ppf "@[<v 2>where ";
           Continuation.Map.iter (fun name
                   { params; stub; handler; specialised_args; } ->
-              fprintf ppf "@[<v 2>where %s %a%s%s%a%s%a =@ %a@]"
-                (if !first then "rec" else "and")
+              fprintf ppf "@[%s%a%s%s%a%s%a =@ %a@]@ "
+                (if !first then "" else "and ")
                 Continuation.print name
-                (if stub then "*stub* " else "")
+                (if stub then " *stub*" else "")
                 (match params with [] -> "" | _ -> " (")
                 Variable.print_list params
                 (match params with [] -> "" | _ -> ")")
                 print_specialised_args specialised_args
                 lam handler;
               first := false)
-            handlers
+            handlers;
+          fprintf ppf "@]"
         | Alias { name; alias_of; } ->
           fprintf ppf "@[<v 2>where %a = %a@]"
             Continuation.print name
@@ -673,8 +675,11 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       aux body
     | Apply_cont (_, _, es) ->
       begin match ignore_uses_in_apply_cont with
-      | None -> List.iter free_variable es
       | Some () -> ()
+      | None ->
+        match ignore_uses_as_argument with
+        | None -> List.iter free_variable es
+        | Some () -> ()
       end
     | Let_cont { handlers; body; } ->
       aux body;

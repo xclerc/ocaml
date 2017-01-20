@@ -22,6 +22,10 @@
 
 let remove_parameters ~cont ~(handler : Flambda.continuation_handler)
         ~to_remove =
+Format.eprintf "Removing parameters %a from continuation %a, handler %a\n%!"
+  Variable.Set.print to_remove Continuation.print cont
+  Flambda.print_let_cont_handlers (Flambda.Recursive (
+    Continuation.Map.of_list [cont, handler]));
   let freshened_params =
     List.map (fun param -> param, Variable.rename param) handler.params
   in

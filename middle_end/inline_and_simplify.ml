@@ -1588,22 +1588,25 @@ and simplify_let_cont_handlers ~env ~r ~body ~handlers
       approxs
       (r, handlers)
   in
-  match recursive with
-  | Nonrecursive ->
-    begin match Continuation.Map.bindings handlers with
-    | [name, handler] ->
+  if Continuation.Map.is_empty handlers then
+    body, r
+  else
+    match recursive with
+    | Nonrecursive ->
+      begin match Continuation.Map.bindings handlers with
+      | [name, handler] ->
+        Let_cont {
+          body;
+          handlers = Nonrecursive { name; handler; };
+        }, r
+      | _ ->
+        Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
+      end
+    | Recursive ->
       Let_cont {
         body;
-        handlers = Nonrecursive { name; handler; };
+        handlers = Recursive handlers;
       }, r
-    | _ ->
-      Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
-    end
-  | Recursive ->
-    Let_cont {
-      body;
-      handlers = Recursive handlers;
-    }, r
 
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
