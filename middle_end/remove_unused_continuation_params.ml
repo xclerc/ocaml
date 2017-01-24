@@ -127,6 +127,8 @@ let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
     in
     (* Note that the worker-wrapper transformation always produces
        mutually-recursive continuations. *)
+    (* CR mshinwell: this can stay as Nonrecursive if the original
+       continuation wasn't recursive *)
     Let_cont { body; handlers = Recursive handlers; }
 
 let run program ~backend =

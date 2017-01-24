@@ -107,7 +107,6 @@ Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
       ~round:(E.round env)
   in
   if inline_unconditionally || W.evaluate wsb then begin
-(*
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
   Variable.print_list args
@@ -116,7 +115,6 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
   (W.print_description ~subfunctions:false) wsb
   Flambda.print original
   Flambda.print expr;
-*)
     Inlined (params, expr)
   end else begin
 (*

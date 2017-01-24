@@ -142,9 +142,12 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
       in
       assert (num_free_vars_after > num_free_vars_before);
       (* Don't let the closure grow too large. *)
+(* CR mshinwell: This heuristic seems wrong (e.g. when you have one free
+   variable and want to split it into two).  We need to review this
       if num_free_vars_after > 2 * num_free_vars_before then
         None
       else
+*)
         let set_of_closures =
           Flambda.create_set_of_closures
             ~function_decls:set_of_closures.function_decls

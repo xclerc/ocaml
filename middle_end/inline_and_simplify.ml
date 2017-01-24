@@ -188,8 +188,12 @@ let inline_and_specialise_continuations env r ~body ~simplify ~backend =
     let body =
       Continuation_inlining.for_toplevel_expression body r ~simplify
     in
-    Continuation_specialisation.for_toplevel_expression body r ~simplify
-      ~backend
+    let body =
+      Continuation_specialisation.for_toplevel_expression body r ~simplify
+        ~backend
+    in
+    (* CR mshinwell: determine whether this should stay here *)
+    Unbox_continuation_params.run r body ~backend:(E.backend env)
 
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body
@@ -1599,6 +1603,8 @@ and simplify_let_cont_handlers ~env ~r ~body ~handlers ~approx_handlers
         R.continuation_unused r cont)
       handlers
   in
+  (* CR mshinwell: we should enhance the deletion of continuations so it
+     can get rid of stubs inside recursive bindings *)
   if all_unused then begin
 Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
   Continuation.Set.print (Continuation.Map.keys handlers)
@@ -1632,8 +1638,8 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
         Continuation.Map.empty
     in
     (* Then we collect uses of the continuations and delete any unused ones.
-      The usage information will subsequently be used by the continuation
-      inlining and specialisation transformations. *)
+       The usage information will subsequently be used by the continuation
+       inlining and specialisation transformations. *)
     let r, handlers =
       Continuation.Map.fold (fun cont approx (r, handlers) ->
           let r, uses =
@@ -1812,6 +1818,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       body, ret r A.value_bottom
     end
   | Switch (arg, sw) ->
+    (* CR mshinwell: Delete Switch when all the arms point to the same
+       place. *)
     (* When [arg] is known to be a variable whose approximation is that of a
        block with a fixed tag or a fixed integer, we can eliminate the
        [Switch].  (This should also make the [Let] that binds [arg] redundant,

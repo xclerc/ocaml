@@ -243,6 +243,11 @@ let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
   let params_to_approxs =
     Variable.Map.of_list (List.combine handler.params param_approxs)
   in
+(*
+Format.eprintf "params_to_approxs:\n@;%a\n"
+  (Variable.Map.print Simple_value_approx.print)
+  params_to_approxs;
+*)
   let get_approx from =
     match Variable.Map.find from params_to_approxs with
     | exception Not_found -> assert false
