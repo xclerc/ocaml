@@ -361,6 +361,14 @@ module Result : sig
 
   val roll_back_continuation_uses : t -> Continuation_usage_snapshot.t -> t
 
+  val continuation_unused : t -> Continuation.t -> bool
+
+  val continuation_args_approxs
+     : t
+    -> Continuation.t
+    -> num_params:int
+    -> Simple_value_approx.t list
+
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
   (* CR mshinwell: should this be combined with define_continuation? *)
@@ -368,8 +376,7 @@ module Result : sig
      : t
     -> Env.t
     -> Continuation.t
-    -> num_params:int
-    -> t * Simple_value_approx.t list * Continuation_uses.t
+    -> t * Continuation_uses.t
 
   (** Record the post-simplification definition of a continuation. *)
   val define_continuation

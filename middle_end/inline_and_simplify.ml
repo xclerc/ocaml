@@ -734,9 +734,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
               inline_and_specialise_continuations env r ~body ~simplify
                 ~backend:(E.backend env)
           in
-          let r, _, _ =
-            R.exit_scope_catch r env continuation_param ~num_params:1
-          in
+          let r, _ = R.exit_scope_catch r env continuation_param in
           body, r)
     in
     let inline : Lambda.inline_attribute =
@@ -1089,8 +1087,8 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
   (* CR mshinwell: Maybe it would be better just to build a proper term
      including the full application as a normal Apply node and call simplify
      on that? *)
-  let r, _, after_full_application_uses =
-    R.exit_scope_catch r env after_full_application ~num_params:1
+  let r, after_full_application_uses =
+    R.exit_scope_catch r env after_full_application
   in
   let r =
     R.define_continuation r after_full_application env Nonrecursive
@@ -1485,14 +1483,27 @@ and filter_defining_expr_of_let r var defining_expr free_vars_of_body =
   else
     r, var, Some defining_expr
 
-and simplify_let_cont_handler ~env ~r
-      ~(handler : Flambda.continuation_handler) =
+and simplify_let_cont_handler ~env ~r ~cont
+      ~(handler : Flambda.continuation_handler)
+      ~(recursive : Asttypes.rec_flag) =
+  let args_approxs =
+    R.continuation_args_approxs r cont ~num_params:(List.length handler.params)
+  in
   let { Flambda. params = vars; stub; is_exn_handler; handler;
     specialised_args; } = handler
   in
   (* CR mshinwell: rename "vars" to "params" *)
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env) vars
+  in
+  let freshened_params_to_args_approxs =
+    let params_to_args_approxs = List.combine vars args_approxs in
+    let freshened_params_to_args_approxs =
+      List.map (fun (param, approx) ->
+          Freshening.apply_variable sb param, approx)
+        params_to_args_approxs
+    in
+    Variable.Map.of_list freshened_params_to_args_approxs
   in
   let specialised_args =
     let specialised_args =
@@ -1531,11 +1542,24 @@ and simplify_let_cont_handler ~env ~r
   in
   let param_approxs =
     List.map (fun param ->
+        let not_specialised () =
+          (* Take the join of the approximations discovered whilst simplifying
+             the body, unless the continuation binding is recursive, in which
+             case we may not have seen all of the uses yet. *)
+          match recursive with
+          | Recursive -> A.value_unknown Other
+          | Nonrecursive ->
+            match Variable.Map.find param freshened_params_to_args_approxs with
+            | exception Not_found -> assert false  (* see above *)
+            | arg_approx -> arg_approx
+        in
         match Variable.Map.find param specialised_args with
-        | exception Not_found -> A.value_unknown Other
+        | exception Not_found -> not_specialised ()
         | spec_to ->
           match spec_to.var with
-          | None -> A.value_unknown Other
+          | None -> not_specialised ()
+          (* CR mshinwell: Maybe this should do a *meet* (not a join) with
+             the args_approxs, in the specialised args case *)
           | Some var -> E.find_exn env var)
       freshened_vars
   in
@@ -1568,67 +1592,81 @@ and simplify_let_cont_handler ~env ~r
 
 and simplify_let_cont_handlers ~env ~r ~body ~handlers ~approx_handlers
       ~(recursive : Asttypes.rec_flag) ~freshening : Flambda.expr * R.t =
-  (* First we simplify the continuations themselves. *)
-  let r, handlers =
-    Continuation.Map.fold (fun cont handler (r, handlers) ->
-        (* Note that [cont] may not be fresh for [handler] at the moment, since
-           the latter may come from another compilation unit, and has not yet
-           been freshened up. *)
-        let r, handler = simplify_let_cont_handler ~env ~r ~handler in
-        let cont' = Freshening.apply_static_exception freshening cont in
-        r, Continuation.Map.add cont' handler handlers)
+  (* If none of the handlers are used in the body, delete them all. *)
+  let all_unused =
+    Continuation.Map.for_all (fun cont _handler ->
+        let cont = Freshening.apply_static_exception freshening cont in
+        R.continuation_unused r cont)
       handlers
-      (r, Continuation.Map.empty)
   in
-  let approxs =
-    Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
-            approxs ->
-        let num_params = List.length handler.params in
-        let approx =
-          Continuation_approx.create ~name:cont
-            ~handlers:approx_handlers ~num_params
-        in
-        Continuation.Map.add cont approx approxs)
-      handlers
-      Continuation.Map.empty
-  in
-  (* Then we collect uses of the continuations and delete any unused ones.
-     The usage information will subsequently be used by the continuation
-     inlining and specialisation transformations. *)
-  let r, handlers =
-    Continuation.Map.fold (fun cont approx (r, handlers) ->
-        let r, _args_approxs, uses =
-          R.exit_scope_catch r env cont
-            ~num_params:(Continuation_approx.num_params approx)
-        in
-        if Inline_and_simplify_aux.Continuation_uses.unused uses then
-          let handlers = Continuation.Map.remove cont handlers in
-          r, handlers
-        else
-          let r = R.define_continuation r cont env recursive uses approx in
-          r, handlers)
-      approxs
-      (r, handlers)
-  in
-  if Continuation.Map.is_empty handlers then
+  if all_unused then begin
+Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
+  Continuation.Set.print (Continuation.Map.keys handlers)
+  Flambda.print body;
     body, r
-  else
-    match recursive with
-    | Nonrecursive ->
-      begin match Continuation.Map.bindings handlers with
-      | [name, handler] ->
+  end else
+    (* First we simplify the continuations themselves. *)
+    let r, handlers =
+      Continuation.Map.fold (fun cont handler (r, handlers) ->
+          (* Note that [cont] may not be fresh for [handler] at the moment,
+             since the latter may come from another compilation unit, and has
+             not yet been freshened up. *)
+          let r, handler =
+            simplify_let_cont_handler ~env ~r ~cont ~handler ~recursive
+          in
+          let cont' = Freshening.apply_static_exception freshening cont in
+          r, Continuation.Map.add cont' handler handlers)
+        handlers
+        (r, Continuation.Map.empty)
+    in
+    let approxs =
+      Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+              approxs ->
+          let num_params = List.length handler.params in
+          let approx =
+            Continuation_approx.create ~name:cont
+              ~handlers:approx_handlers ~num_params
+          in
+          Continuation.Map.add cont approx approxs)
+        handlers
+        Continuation.Map.empty
+    in
+    (* Then we collect uses of the continuations and delete any unused ones.
+      The usage information will subsequently be used by the continuation
+      inlining and specialisation transformations. *)
+    let r, handlers =
+      Continuation.Map.fold (fun cont approx (r, handlers) ->
+          let r, uses =
+            R.exit_scope_catch r env cont
+          in
+          if Inline_and_simplify_aux.Continuation_uses.unused uses then
+            let handlers = Continuation.Map.remove cont handlers in
+            r, handlers
+          else
+            let r = R.define_continuation r cont env recursive uses approx in
+            r, handlers)
+        approxs
+        (r, handlers)
+    in
+    if Continuation.Map.is_empty handlers then
+      body, r
+    else
+      match recursive with
+      | Nonrecursive ->
+        begin match Continuation.Map.bindings handlers with
+        | [name, handler] ->
+          Let_cont {
+            body;
+            handlers = Nonrecursive { name; handler; };
+          }, r
+        | _ ->
+          Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
+        end
+      | Recursive ->
         Let_cont {
           body;
-          handlers = Nonrecursive { name; handler; };
+          handlers = Recursive handlers;
         }, r
-      | _ ->
-        Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
-      end
-    | Recursive ->
-      Let_cont {
-        body;
-        handlers = Recursive handlers;
-      }, r
 
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
@@ -1764,29 +1802,14 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       in
       simplify_let_cont_handlers ~env:body_env ~r ~body ~handlers
         ~approx_handlers ~recursive:Asttypes.Recursive ~freshening
-    | Alias { name; alias_of; } ->
-      let name =
-        Freshening.apply_static_exception freshening name
-      in
-      let alias_of =
-        Freshening.apply_static_exception freshening alias_of
-      in
-      let let_cont : Flambda.let_cont =
-        { body;
-          handlers = Alias { name; alias_of; }
-        }
-      in
-      let approx =
-        match Continuation.Map.find name conts_and_approxs with
-        | (_, approx) -> approx
-        | exception Not_found -> assert false  (* see above *)
-      in
-      let r, _args_approxs, _uses =
-        R.exit_scope_catch r env name
-          ~num_params:(Continuation_approx.num_params approx)
-      in
+    | Alias { name; alias_of = _; } ->
+      (* As a result of adding the approximation of [name], above, to the
+         environment then all uses of it in the [body] should have been
+         replaced by [alias_of]. *)
+      assert (R.continuation_unused r name);
+      let r, _uses = R.exit_scope_catch r env name in
       assert (not (R.is_used_continuation r name));
-      Let_cont let_cont, ret r A.value_bottom
+      body, ret r A.value_bottom
     end
   | Switch (arg, sw) ->
     (* When [arg] is known to be a variable whose approximation is that of a
@@ -1925,8 +1948,8 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~dbg:function_decl.dbg
       ~f:(fun body_env -> simplify body_env r function_decl.body)
   in
-  let _r, _approx, _uses =
-    R.exit_scope_catch r env function_decl.continuation_param ~num_params:1
+  let _r, _uses =
+    R.exit_scope_catch r env function_decl.continuation_param
   in
   let function_decl =
     Flambda.create_function_declaration ~params:function_decl.params
@@ -2128,9 +2151,8 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
             inline_and_specialise_continuations env r ~body:h ~simplify
               ~backend:(E.backend env)
         in
-        let r, new_approxs, _uses =
-          R.exit_scope_catch r env cont ~num_params:1
-        in
+        let new_approxs = R.continuation_args_approxs r cont ~num_params:1 in
+        let r, _uses = R.exit_scope_catch r env cont in
         let approx =
           match new_approxs with
           | [approx] -> approx
@@ -2176,7 +2198,7 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
           ~backend:(E.backend env)
     in
     let program, r = simplify_program_body env r program in
-    let r, _approx, _uses = R.exit_scope_catch r env cont ~num_params:1 in
+    let r, _uses = R.exit_scope_catch r env cont in
     Effect (expr, cont, program), r
   | End root -> End root, r
 

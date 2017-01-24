@@ -661,19 +661,28 @@ module Result = struct
       used_continuations = snapshot.used_continuations;
     }
 
-  let exit_scope_catch t env i ~num_params =
+  let continuation_unused t cont =
+    not (Continuation.Map.mem cont t.used_continuations)
+
+  let continuation_args_approxs t i ~num_params =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->
-      let uses = Continuation_uses.create ~backend:(Env.backend env) in
       let approxs =
         Array.make num_params (Simple_value_approx.value_unknown Other)
       in
-      t, Array.to_list approxs, uses
+      Array.to_list approxs
     | uses ->
-      let approxs = Continuation_uses.meet_of_args_approxs uses ~num_params in
+      Continuation_uses.meet_of_args_approxs uses ~num_params
+
+  let exit_scope_catch t env i =
+    match Continuation.Map.find i t.used_continuations with
+    | exception Not_found ->
+      let uses = Continuation_uses.create ~backend:(Env.backend env) in
+      t, uses
+    | uses ->
       { t with
         used_continuations = Continuation.Map.remove i t.used_continuations;
-      }, approxs, uses
+      }, uses
 
   let define_continuation t cont env recursive uses approx =
     Env.invariant env;
