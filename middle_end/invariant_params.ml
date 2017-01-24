@@ -204,7 +204,7 @@ module For_continuations = struct
     let body (t : t) = t.handler
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =
-      Flambda.free_variables ~ignore_uses_as_callee:()
+      Flambda.free_variables
         ~ignore_uses_as_continuation_argument:() t.handler
   end
 

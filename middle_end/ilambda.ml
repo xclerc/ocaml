@@ -63,6 +63,7 @@ and function_declaration =
 and let_cont = {
   name : Continuation.t;
   administrative : bool;
+  is_exn_handler : bool;
   params : Ident.t list;
   recursive : Asttypes.rec_flag;
   body : t;
@@ -209,11 +210,12 @@ and lam ppf (t : t) =
     in
     let let_conts, body = gather_let_conts [] t in
     let print_let_cont ppf { name; administrative; params; recursive; handler;
-          body = _; } =
-      fprintf ppf "@[<v 2>where %a%s%s%s%a%s =@ %a@]"
+          body = _; is_exn_handler; } =
+      fprintf ppf "@[<v 2>where %a%s%s%s%s%a%s =@ %a@]"
         Continuation.print name
         (match recursive with Nonrecursive -> "" | Recursive -> "*")
         (if administrative then "<admin>" else "")
+        (if is_exn_handler then "<exn>" else "")
         (match params with [] -> "" | _ -> " (")
         Ident.print_list params
         (match params with [] -> "" | _ -> ")")

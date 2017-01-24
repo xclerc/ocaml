@@ -183,6 +183,10 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
       let inlining_result =
         match Continuation_approx.handlers approx with
         | None | Some (Recursive _) -> Didn't_inline
+        | Some (Nonrecursive { is_exn_handler = true; }) ->
+          (* This should be caught by handling of [Apply_cont] in
+             [Inline_and_simplify], but just to be on the safe side... *)
+          Didn't_inline
         | Some (Nonrecursive handler) ->
           let inline_unconditionally =
             (* CR-soon mshinwell: Stubs should probably just be immediately
@@ -194,15 +198,17 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
       in
       match inlining_result with
       | Didn't_inline -> acc
-      | Inlined (params, body) ->
+      | Inlined (_params, body) ->
         begin match (count : N.t) with
         | Zero ->
           inlinings, new_shared_conts, Continuation.Set.add cont zero_uses
-        | One ->
+        | One | Many ->
           let inlinings =
             Continuation.With_args.Map.add (cont, args) body inlinings
           in
           inlinings, new_shared_conts, zero_uses
+(* CR mshinwell: We need to revisit the shared continuation stuff.  Finding
+   the correct place to put such continuations is tricky.
         | Many ->
           let new_shared_cont = Continuation.create () in
 (*
@@ -230,6 +236,7 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
               new_shared_conts
           in
           inlinings, new_shared_conts, zero_uses
+*)
         end)
     definitions
     (Continuation.With_args.Map.empty, Continuation.Map.empty,
@@ -266,6 +273,7 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
                   handler = {
                     params;
                     stub = false;
+                    is_exn_handler = false;
                     handler;
                     specialised_args = Variable.Map.empty;
                   };
@@ -294,8 +302,8 @@ Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
     expr
 
 let for_toplevel_expression expr r ~simplify =
-(*
+  (* CR mshinwell: Shouldn't this check whether the environment is
+     "never inline"? *)
 Format.eprintf "Continuation inlining starting on:@;%a@;" Flambda.print expr;
-*)
   let inlinings, new_shared_conts, zero_uses = find_inlinings r ~simplify in
   substitute expr ~inlinings ~new_shared_conts ~zero_uses

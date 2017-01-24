@@ -45,7 +45,11 @@ module Continuation_with_specialised_args = struct
         Hashtbl.hash (Variable.Map.bindings (snd t)))
 
     let output _chan _t = Misc.fatal_error "not implemented"
-    let print _ppf _t = Misc.fatal_error "not implemented"
+
+    let print ppf (cont, spec_args) =
+      Format.fprintf ppf "@[(%a, %a)@]"
+        Continuation.print cont
+        Flambda.print_specialised_args spec_args
   end)
 end
 
@@ -209,19 +213,29 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
         let env = E.activate_freshening (E.set_never_inline env) in
         let new_handler, r = simplify env r old_handler.handler in
         let total_benefit = B.(+) (R.benefit r) total_benefit in
+        let newly_specialised_args =
+          Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
+                  newly_specialised_args ->
+              let param = Freshening.apply_variable freshening param in
+              Variable.Map.add param spec_to newly_specialised_args)
+            newly_specialised_args
+            Variable.Map.empty
+        in
         let specialised_args =
           Variable.Map.disjoint_union old_handler.specialised_args
             newly_specialised_args
         in
+        assert (not old_handler.is_exn_handler);
         let new_handler : Flambda.continuation_handler =
           { params;
             stub = old_handler.stub;
+            is_exn_handler = false;
             handler = new_handler;
             specialised_args;
           }
         in
         let new_handlers =
-          Continuation.Map.add cont new_handler new_handlers
+          Continuation.Map.add new_cont new_handler new_handlers
         in
         new_handlers, total_benefit)
     old_handlers
@@ -247,6 +261,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       ~lifting:false
       ~round:(E.round env)
   in
+Format.eprintf "Evaluating %a\n%!" (W.print_description ~subfunctions:false) wsb;
   if W.evaluate wsb then
     let old_cont = cont in
     let new_cont = Freshening.apply_static_exception freshening old_cont in
@@ -284,6 +299,7 @@ let find_specialisations r ~simplify ~backend =
           acc
         | Some (Nonrecursive _) -> acc
         | Some (Recursive handlers) ->
+Format.eprintf "Specialisation starting with %a\n%!" Continuation.print cont;
           let invariant_params =
             Invariant_params.Continuations.invariant_params_in_recursion
               handlers ~backend
@@ -296,6 +312,8 @@ let find_specialisations r ~simplify ~backend =
                   inside the approximation"
                 Continuation.print cont
           in
+Format.eprintf "Number of inlinable application points: %d\n%!"
+            (List.length (U.inlinable_application_points uses));
           List.fold_left (fun ((specialisations, conts_to_handlers) as acc)
                   (use : U.Use.t) ->
               assert (List.length handler.params = List.length use.args);
@@ -303,7 +321,15 @@ let find_specialisations r ~simplify ~backend =
                 Variable.Map.of_list (List.combine handler.params use.args)
               in
               let params_with_specialised_args =
-                Variable.Map.filter (fun param (_arg, arg_approx) ->
+                Variable.Map.filter (fun param (arg, arg_approx) ->
+Format.eprintf "Considering use of param %a as arg %a, approx %a: \
+    Invariant? %b New spec arg? %b Useful approx? %b\n%!"
+  Variable.print param
+  Variable.print arg
+  Simple_value_approx.print arg_approx
+  (Variable.Map.mem param invariant_params)
+  (not (Variable.Map.mem param handler.specialised_args))
+  (A.useful arg_approx);
                     Variable.Map.mem param invariant_params
                       && not (Variable.Map.mem param
                         handler.specialised_args)
@@ -349,6 +375,10 @@ let find_specialisations r ~simplify ~backend =
       (Continuation_with_specialised_args.Map.empty,
         Continuation.Map.empty)
   in
+Format.eprintf "Specialisation first stage result:\n%a\n%!"
+  (Continuation_with_specialised_args.Map.print
+    Continuation.With_args.Set.print)
+  specialisations;
   (* The second step takes the map from above and makes a decision for
      each proposed specialisation, returning two maps:
        continuation "k" -> new continuation(s) to be defined just before "k"
@@ -428,6 +458,8 @@ let insert_specialisations (expr : Flambda.expr) ~new_conts
     expr
 
 let for_toplevel_expression expr r ~simplify ~backend =
+Format.eprintf "Input to Continuation_specialisation:\n@;%a\n"
+  Flambda.print expr;
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify ~backend
   in

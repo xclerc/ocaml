@@ -286,7 +286,11 @@ and continuation_handler = {
       and must have exactly one argument.  To enable identification of them
       in passes not invoked from [Inline_and_simplify] (where they could be
       identified by looking at the [Apply_cont]s that reference them) they
-      are marked explicitly. *)
+      are marked explicitly.
+      (Relevant piece of background info: the backend cannot compile
+      simultaneously-defined continuations when one or more of them is an
+      exception handler.)
+  *)
   handler : t;
   (* CR-someday mshinwell: For the moment the [specialised_args] structure
      here matches that used for functions, even though for continuations

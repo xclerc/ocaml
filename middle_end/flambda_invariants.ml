@@ -313,12 +313,13 @@ module Continuation_scoping = struct
               env
           in
           Continuation.Map.iter (fun name
-                  ({ params; stub; handler; specialised_args; }
+                  ({ params; stub; is_exn_handler; handler; specialised_args; }
                     : Flambda.continuation_handler) ->
               ignore_continuation name;
               ignore_variable_list params;
               loop recursive_env handler;
               ignore_bool stub;
+              ignore_bool is_exn_handler;
               ignore specialised_args (* CR mshinwell: fixme *) )
             handlers;
           Continuation.Map.fold (fun cont
@@ -455,17 +456,22 @@ let variable_and_symbol_invariants (program : Flambda.program) =
         ignore_continuation name;
         ignore_continuation alias_of
       | Nonrecursive { name; handler = {
-          params; stub; handler; specialised_args; }; } ->
+          params; stub; is_exn_handler; handler; specialised_args; }; } ->
         ignore_continuation name;
         ignore_bool stub;
+        ignore_bool is_exn_handler;
         loop (add_binding_occurrences env params) handler;
         ignore specialised_args (* CR mshinwell: fixme *)
       | Recursive handlers ->
         Continuation.Map.iter (fun name
-                ({ params; stub; handler; specialised_args; }
+                ({ params; stub; is_exn_handler; handler; specialised_args; }
                   : Flambda.continuation_handler) ->
-            ignore_continuation name;
             ignore_bool stub;
+            if is_exn_handler then begin
+              Misc.fatal_errorf "Continuation %a is declared [Recursive] but \
+                  is an exception handler"
+                Continuation.print name
+            end;
             loop (add_binding_occurrences env params) handler;
             ignore specialised_args (* CR mshinwell: fixme *) )
           handlers

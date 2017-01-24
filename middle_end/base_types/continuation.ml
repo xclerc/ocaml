@@ -23,7 +23,7 @@ let raise_count = ref 0
 
 let next_raise_count () =
 (*
-if !raise_count = 18476 then begin
+if !raise_count = 26 then begin
 Format.eprintf "Creation of continuation %d:\n%s\n%!"
   (!raise_count + 1)
   (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10))
@@ -36,7 +36,8 @@ let reset () =
   raise_count := 0
 (* </> Imported from Lambda *)
 
-let create () = next_raise_count ()
+let create () =
+  next_raise_count ()
 let to_int t = t
 
 let print ppf t = Format.fprintf ppf "k%d" t
@@ -60,6 +61,10 @@ module With_args = struct
         List.map Variable.hash (snd t))
 
     let output _chan _t = Misc.fatal_error "not implemented"
-    let print _ppf _t = Misc.fatal_error "not implemented"
+
+    let print ppf (cont, vars) =
+      Format.fprintf ppf "@[(%a, %a)@]"
+        print cont
+        Variable.print_list vars
   end)
 end

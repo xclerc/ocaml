@@ -51,6 +51,7 @@ let unrecursify_function function_variable
                   { Flambda.
                     params = function_decl.params;
                     stub = false;
+                    is_exn_handler = false;
                     handler;
                     specialised_args = Variable.Map.empty;
                   };

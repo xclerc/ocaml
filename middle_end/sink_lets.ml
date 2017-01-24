@@ -285,7 +285,7 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
     Let_cont { body; handlers = Recursive handlers; }, state
   | Let_cont { body; handlers =
       Nonrecursive { name; handler = {
-        params; stub; handler; specialised_args; }; }; } ->
+        params; stub; is_exn_handler; handler; specialised_args; }; }; } ->
     let params_set = Variable.Set.of_list params in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
@@ -306,7 +306,7 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
     in
     Let_cont { body; handlers =
       Nonrecursive { name; handler = {
-        params; stub; handler; specialised_args; }; }; }, state
+        params; stub; is_exn_handler; handler; specialised_args; }; }; }, state
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
     let state =
       State.add_candidates_to_sink state
@@ -357,7 +357,7 @@ and sink (expr : Flambda.t) =
       let body = sink body in
       Let_cont { body; handlers; }
     | Let_cont { body; handlers = Nonrecursive { name; handler = {
-        params; stub; handler; specialised_args; }; }; } ->
+        params; stub; is_exn_handler; handler; specialised_args; }; }; } ->
       let body = sink body in
       let handler =
         let handler = sink handler in
@@ -368,7 +368,7 @@ and sink (expr : Flambda.t) =
           (List.rev bindings)
       in
       Let_cont { body; handlers = Nonrecursive { name; handler =
-        { params; stub; handler; specialised_args; }; }; }
+        { params; stub; is_exn_handler; handler; specialised_args; }; }; }
     | Let_cont { body; handlers = Recursive handlers; } ->
       let body = sink body in
       let handlers =

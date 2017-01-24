@@ -141,6 +141,7 @@ and continuation_handlers =
 and continuation_handler = {
   params : Variable.t list;
   stub : bool;
+  is_exn_handler : bool;
   handler : t;
   specialised_args : specialised_args;
 }
@@ -395,13 +396,15 @@ let rec lam ppf (flam : t) =
             lam handler
         | Recursive handlers ->
           let first = ref true in
-          fprintf ppf "@[<v 2>where ";
+          fprintf ppf "@[<v 2>where rec ";
           Continuation.Map.iter (fun name
-                  { params; stub; handler; specialised_args; } ->
-              fprintf ppf "@[%s%a%s%s%a%s%a =@ %a@]@ "
+                  { params; stub; is_exn_handler; handler;
+                    specialised_args; } ->
+              fprintf ppf "@[%s%a%s%s%s%a%s%a =@ %a@]@ "
                 (if !first then "" else "and ")
                 Continuation.print name
                 (if stub then " *stub*" else "")
+                (if is_exn_handler then "*exn* " else "")
                 (match params with [] -> "" | _ -> " (")
                 Variable.print_list params
                 (match params with [] -> "" | _ -> ")")
@@ -462,11 +465,16 @@ and print_let_cont_handlers ppf (handler : let_cont_handlers) =
   | Recursive handlers ->
     let first = ref true in
     Continuation.Map.iter (fun name
-            { params; stub; handler; specialised_args; } ->
-        fprintf ppf "%s %a@ %s%s%a%s%a=@ %a"
-          (if !first then "rec" else "and")
+            { params; stub; is_exn_handler; handler; specialised_args; } ->
+        if !first then begin
+          fprintf ppf "@;rec "
+        end else begin
+          fprintf ppf "@;and "
+        end;
+        fprintf ppf "%a@ %s%s%s%a%s%a=@ %a"
           Continuation.print name
           (if stub then "*stub* " else "")
+          (if is_exn_handler then "*exn* " else "")
           (match params with [] -> "" | _ -> "(")
           Variable.print_list params
           (match params with [] -> "" | _ -> ") ")
@@ -676,6 +684,7 @@ let rec variables_usage ?ignore_uses_as_callee
       free_variable var;
       aux body
     | Apply_cont (_, _, es) ->
+      (* CR mshinwell: why two variables? *)
       begin match ignore_uses_in_apply_cont with
       | Some () -> ()
       | None ->

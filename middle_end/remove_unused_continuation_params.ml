@@ -73,21 +73,30 @@ Format.eprintf "Removing parameters %a from continuation %a, handler %a\n%!"
           }
         in
         Variable.Map.add var spec_to wrapper_specialised_args)
-      new_specialised_args
+      handler.specialised_args
       Variable.Map.empty
   in
   let new_cont = Continuation.create () in
   let wrapper_handler : Flambda.continuation_handler =
     { params = wrapper_params;
       stub = true;
+      is_exn_handler = false;
       handler = Apply_cont (new_cont, None, wrapper_params_not_unused);
       specialised_args = wrapper_specialised_args;
     }
   in
+  assert (not handler.is_exn_handler);
+  let new_handler =
+    Variable.Set.fold (fun param body ->
+        Flambda.create_let param (Const (Const_pointer 0)) body)
+      to_remove
+      handler.handler
+  in
   let new_handler : Flambda.continuation_handler =
     { params = new_params;
       stub = handler.stub;
-      handler = handler.handler;
+      is_exn_handler = false;
+      handler = new_handler;
       specialised_args = new_specialised_args;
     }
   in
@@ -108,7 +117,7 @@ let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
           let to_remove =
             Variable.Set.inter unused (Variable.Set.of_list handler.params)
           in
-          if handler.is_exn_handler || Variable.Set.is_empty to_remove then
+          if Variable.Set.is_empty to_remove then
             Continuation.Map.add cont handler handlers
           else
             Continuation.Map.disjoint_union handlers
@@ -124,6 +133,8 @@ let run program ~backend =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:(fun expr ->
     Flambda_iterators.map_expr (fun (expr : Flambda.expr) ->
         match expr with
+        | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
+            is_exn_handler = true; _ }; }; } -> expr
         | Let_cont { body; handlers = Nonrecursive { name; handler; } } ->
           let handlers =
             Continuation.Map.add name handler Continuation.Map.empty

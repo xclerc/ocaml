@@ -207,6 +207,11 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
     in
     Flambda.create_let set_of_closures_var set_of_closures body
   | Let_cont let_cont ->
+    if let_cont.is_exn_handler then begin
+      assert (not let_cont.administrative);
+      assert (List.length let_cont.params = 1);
+      assert (let_cont.recursive = Asttypes.Nonrecursive);
+    end;
     (* Inline out administrative redexes. *)
     if let_cont.administrative then begin
       assert (let_cont.recursive = Asttypes.Nonrecursive);
@@ -220,6 +225,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
       let handler : Flambda.continuation_handler =
         { params;
           stub = false;
+          is_exn_handler = let_cont.is_exn_handler;
           handler = close t handler_env let_cont.handler;
           specialised_args = Variable.Map.empty;
         };

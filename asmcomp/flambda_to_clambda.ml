@@ -488,7 +488,17 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     let env = Env.add_continuation_alias env name ~alias_of in
     to_clambda t env body
   | Let_cont { body; handlers = Nonrecursive { name; handler = {
-      params; handler; _ }; }; } ->
+      params; is_exn_handler; handler; _ }; }; } ->
+    if Continuation.Set.mem name t.exn_handlers && not is_exn_handler then begin
+      Misc.fatal_errorf "Continuation %a is used in [Apply_cont] \
+          but is not marked as an exception handler"
+        Continuation.print name
+    end;
+    if is_exn_handler && List.length params <> 1 then begin
+      Misc.fatal_errorf "Continuation %a is an exception handler but does not \
+          have exactly one parameter"
+        Continuation.print name
+    end;
     let env_handler, params =
       List.fold_right (fun var (env, ids) ->
           let id, env = Env.add_fresh_ident env var in
@@ -497,7 +507,11 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     in
     let handler = to_clambda t env_handler handler in
     let name = Continuation.to_int name in
-    Ucatch (Normal Nonrecursive, [name, params, handler], to_clambda t env body)
+    let kind : Clambda.catch_kind =
+      if is_exn_handler then Exn_handler
+      else Normal Nonrecursive
+    in
+    Ucatch (kind, [name, params, handler], to_clambda t env body)
   | Let_cont { body; handlers = Recursive handlers; } ->
     let conts =
       Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
@@ -508,10 +522,13 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
                 env, id :: ids)
               handler.params (env, [])
           in
+          let is_exn_handler = handler.is_exn_handler in
           let handler = to_clambda t env_handler handler.handler in
-          if Continuation.Set.mem name t.exn_handlers then begin
+          (* We check both of these in case they are inconsistent. *)
+          if is_exn_handler || Continuation.Set.mem name t.exn_handlers
+          then begin
             Misc.fatal_errorf "Continuation %a is an exception handler, so \
-                it cannot be recursive"
+                it cannot be involved in a [Recursive] [Let_cont]"
               Continuation.print name
           end;
           (Continuation.to_int name, ids, handler) :: conts)
