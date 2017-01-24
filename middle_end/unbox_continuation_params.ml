@@ -41,10 +41,8 @@ let for_continuations r ~body ~handlers ~original ~backend =
   if Continuation.Map.is_empty projections_by_cont then begin
     original
   end else begin
-(*
     Format.eprintf "Projections:\n@;%a\n"
       (Continuation.Map.print Projection.Set.print) projections_by_cont;
-*)
     let invariant_params_flow =
       Invariant_params.Continuations.invariant_param_sources handlers ~backend
     in
@@ -107,13 +105,6 @@ Format.eprintf "Invariant params:\n@;%a\n"
           let params_freshening =
             List.map (fun param -> param, Variable.rename param) handler.params
           in
-          let wrapper_params = List.map fst params_freshening in
-          let params_freshening = Variable.Map.of_list params_freshening in
-          let freshen_param param =
-              match Variable.Map.find param params_freshening with
-              | exception Not_found -> assert false
-              | param -> param
-          in
           let unboxings, specialised_args =
             Projection.Set.fold (fun projection (unboxings, specialised_args) ->
                 let param = Projection.projecting_from projection in
@@ -130,6 +121,18 @@ Format.eprintf "Invariant params:\n@;%a\n"
                 unboxings, specialised_args)
               projections
               ([], handler.specialised_args)
+          in
+          let fresh_unboxings =
+            List.map (fun param ->Variable.rename param) unboxings
+          in
+          let wrapper_params =
+            (List.map fst params_freshening)
+          in
+          let params_freshening = Variable.Map.of_list params_freshening in
+          let freshen_param param =
+            match Variable.Map.find param params_freshening with
+            | exception Not_found -> assert false
+            | param -> param
           in
           let wrapper_specialised_args =
             Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
