@@ -147,8 +147,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         +-+ ("Inline_and_simplify",
              Inline_and_simplify.run ~never_inline:false ~backend
                ~prefixname ~round)
-        +-+ ("Remove_unused_continuation_params",
-              Remove_unused_continuation_params.run ~backend)
         +-+ ("Remove_unused_closure_vars 2",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
@@ -159,6 +157,8 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         +-+ ("Inline_and_simplify noinline",
              Inline_and_simplify.run ~never_inline:true ~backend
               ~prefixname ~round)
+        +-+ ("Remove_unused_continuation_params",
+              Remove_unused_continuation_params.run ~backend)
         +-+ ("Remove_unused_closure_vars 3",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
