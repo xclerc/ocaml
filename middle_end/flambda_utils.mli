@@ -212,3 +212,17 @@ val clean_specialised_args_projections
   -> Flambda.specialised_args
 
 val projection_to_named : Projection.t -> Flambda.named
+
+type with_wrapper =
+  | Unchanged of { handler : Flambda.continuation_handler; }
+  | With_wrapper of {
+      new_cont : Continuation.t;
+      new_handler : Flambda.continuation_handler;
+      wrapper_handler : Flambda.continuation_handler;
+    }
+
+val build_let_cont_with_wrappers
+   : body:Flambda.t
+  -> recursive:Asttypes.rec_flag
+  -> with_wrappers:with_wrapper Continuation.Map.t
+  -> Flambda.expr

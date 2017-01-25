@@ -781,4 +781,56 @@ let projection_to_named (projection : Projection.t) : Flambda.named =
   | Project_closure project_closure -> Project_closure project_closure
   | Move_within_set_of_closures move -> Move_within_set_of_closures move
   | Field (field_index, var) ->
+    (* CR mshinwell: this should not say Debuginfo.none *)
     Prim (Pfield field_index, [var], Debuginfo.none)
+
+type with_wrapper =
+  | Unchanged of { handler : Flambda.continuation_handler; }
+  | With_wrapper of {
+      new_cont : Continuation.t;
+      new_handler : Flambda.continuation_handler;
+      wrapper_handler : Flambda.continuation_handler;
+    }
+
+let build_let_cont_with_wrappers ~body ~(recursive : Asttypes.rec_flag)
+      ~with_wrappers : Flambda.expr =
+  match recursive with
+  | Nonrecursive ->
+    begin match Continuation.Map.bindings with_wrappers with
+    | [cont, Unchanged { handler; }] ->
+      Let_cont {
+        body;
+        handlers = Nonrecursive { name = cont; handler; };
+      }
+    | [cont, With_wrapper { new_cont; new_handler; wrapper_handler; }] ->
+      Let_cont {
+        body = Let_cont {
+          body;
+          handlers = Nonrecursive {
+            name = cont;
+            handler = wrapper_handler;
+          };
+        };
+        handlers = Nonrecursive {
+          name = new_cont;
+          handler = new_handler;
+        };
+      }
+    | _ -> assert false
+    end
+  | Recursive ->
+    let handlers =
+      Continuation.Map.fold (fun cont (with_wrapper : with_wrapper) handlers ->
+          match with_wrapper with
+          | Unchanged { handler; } ->
+            Continuation.Map.add cont handler handlers
+          | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
+            Continuation.Map.add new_cont new_handler
+              (Continuation.Map.add cont wrapper_handler handlers))
+        with_wrappers
+        Continuation.Map.empty
+    in
+    Let_cont {
+      body;
+      handlers = Recursive handlers;
+    }

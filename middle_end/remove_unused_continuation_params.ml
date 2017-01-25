@@ -20,8 +20,8 @@
    enough between functions and continuations then we can probably share
    code for doing remove-unused-parameters. *)
 
-let remove_parameters ~cont ~(handler : Flambda.continuation_handler)
-        ~to_remove =
+let remove_parameters ~(handler : Flambda.continuation_handler)
+        ~to_remove : Flambda_utils.with_wrapper =
 (*
 Format.eprintf "Removing parameters %a from continuation %a, handler %a\n%!"
   Variable.Set.print to_remove Continuation.print cont
@@ -100,11 +100,14 @@ Format.eprintf "Removing parameters %a from continuation %a, handler %a\n%!"
       specialised_args = new_specialised_args;
     }
   in
-  Continuation.Map.add new_cont new_handler
-    (Continuation.Map.add cont wrapper_handler Continuation.Map.empty)
+  With_wrapper {
+    new_cont;
+    new_handler;
+    wrapper_handler;
+  }
 
 let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
-      ~original ~backend : Flambda.expr =
+      ~original ~backend ~recursive : Flambda.expr =
   let unused =
     Invariant_params.Continuations.unused_arguments handlers ~backend
   in
@@ -117,19 +120,18 @@ let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
           let to_remove =
             Variable.Set.inter unused (Variable.Set.of_list handler.params)
           in
-          if Variable.Set.is_empty to_remove then
-            Continuation.Map.add cont handler handlers
-          else
-            Continuation.Map.disjoint_union handlers
-              (remove_parameters ~cont ~handler ~to_remove))
+          let with_wrapper : Flambda_utils.with_wrapper =
+            if Variable.Set.is_empty to_remove then
+              Unchanged { handler; }
+            else
+              remove_parameters ~handler ~to_remove
+          in
+          Continuation.Map.add cont with_wrapper handlers)
         handlers
         Continuation.Map.empty
     in
-    (* Note that the worker-wrapper transformation always produces
-       mutually-recursive continuations. *)
-    (* CR mshinwell: this can stay as Nonrecursive if the original
-       continuation wasn't recursive *)
-    Let_cont { body; handlers = Recursive handlers; }
+    Flambda_utils.build_let_cont_with_wrappers ~body ~recursive
+      ~with_wrappers:handlers
 
 let run program ~backend =
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:(fun expr ->
@@ -142,8 +144,10 @@ let run program ~backend =
             Continuation.Map.add name handler Continuation.Map.empty
           in
           for_continuation ~body ~handlers ~original:expr ~backend
+            ~recursive:Asttypes.Nonrecursive
         | Let_cont { body; handlers = Recursive handlers; } ->
           for_continuation ~body ~handlers ~original:expr ~backend
+            ~recursive:Asttypes.Recursive
         | Let_cont { handlers = Alias _; _ }
         | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
         | Proved_unreachable -> expr)
