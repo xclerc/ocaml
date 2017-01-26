@@ -119,7 +119,6 @@ module rec T : sig
 
   and descr = private 
     | Union of Unionable.Set.t
-    (* CR-soon mshinwell: remove "Value_" prefixes *)
     | Float of float option
     | Boxed_int : 'a boxed_int * 'a -> descr
     | Set_of_closures of value_set_of_closures

@@ -100,28 +100,15 @@ end = struct
     rewriting [Project_var] and [Project_closure] constructions
     in [Inline_and_simplify].
   *)
-  let rec join_descr ~really_import_approx d1 d2 = match d1, d2 with
+  let rec join_descr ~really_import_approx d1 d2 =
+    match d1, d2 with
     | Union approxs1, Union approxs2 ->
-
-    | Int i, Int j when i = j ->
-        d1
-    | Constptr i, Constptr j when i = j ->
-        d1
-    | Symbol s1, Symbol s2 when Symbol.equal s1 s2 ->
-        d1
-    | Extern e1, Extern e2 when Export_id.equal e1 e2 ->
-        d1
-    | Float i, Float j when i = j ->
-        d1
-    | Boxed_int (bi1, i1), Boxed_int (bi2, i2) when
-        equal_boxed_int bi1 i1 bi2 i2 ->
-        d1
-    | Block (tag1, a1), Block (tag2, a2)
-      when tag1 = tag2 && Array.length a1 = Array.length a2 ->
-      let fields =
-        Array.mapi (fun i v -> join ~really_import_approx v a2.(i)) a1
-      in
-      Block (tag1, fields)
+      Union (Unionable.Set.union approxs1 approxs2)
+    | Symbol s1, Symbol s2 when Symbol.equal s1 s2 -> d1
+    | Extern e1, Extern e2 when Export_id.equal e1 e2 -> d1
+    | Float i, Float j when i = j -> d1
+    | Boxed_int (bi1, i1), Boxed_int (bi2, i2)
+        when equal_boxed_int bi1 i1 bi2 i2 -> d1
     | Closure { potential_closures = map1 },
       Closure { potential_closures = map2 } ->
       let potential_closures =
@@ -167,25 +154,24 @@ end = struct
           match a1.var, a2.var with
           | None, _ | _, None -> None
           | Some v1, Some v2 ->
-              if Variable.equal v1 v2
-              then Some v1
-              else None
+            if Variable.equal v1 v2 then Some v1
+            else None
         in
         let symbol =
           match a1.symbol, a2.symbol with
           | None, _ | _, None -> None
           | Some (v1, field1), Some (v2, field2) ->
-              if Symbol.equal v1 v2
-              then match field1, field2 with
-                | None, None -> a1.symbol
-                | Some f1, Some f2 when f1 = f2 ->
-                    a1.symbol
-                | _ -> None
-              else None
+            if Symbol.equal v1 v2 then
+              match field1, field2 with
+              | None, None -> a1.symbol
+              | Some f1, Some f2 when f1 = f2 -> a1.symbol
+              | _ -> None
+            else None
         in
         { descr = join_descr ~really_import_approx a1.descr a2.descr;
           var;
-          symbol }
+          symbol;
+        }
 end and Unionable : sig
   type t =
     | Block of Tag.t * T.t array
@@ -773,8 +759,7 @@ let check_approx_for_closure_singleton t
   match check_approx_for_closure_allowing_unresolved t with
   | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) -> begin
     match Closure_id.Map.get_singleton value_closures with
-    | None ->
-      Wrong
+    | None -> Wrong
     | Some (closure_id, value_set_of_closures) ->
       Ok (closure_id, set_of_closures_var, set_of_closures_symbol,
           value_set_of_closures)
@@ -783,10 +768,8 @@ let check_approx_for_closure_singleton t
     Wrong
 
 let approx_for_bound_var value_set_of_closures var =
-  try
-    Var_within_closure.Map.find var value_set_of_closures.bound_vars
-  with
-  | Not_found ->
+  try Var_within_closure.Map.find var value_set_of_closures.bound_vars
+  with Not_found ->
     Misc.fatal_errorf "The set-of-closures approximation %a@ does not \
         bind the variable %a@.%s@."
       print_value_set_of_closures value_set_of_closures
@@ -804,17 +787,15 @@ let float_array_as_constant (t:value_float_array) : float list option =
   | Unknown_or_mutable -> None
   | Contents contents ->
     Array.fold_right (fun elt acc ->
-      match acc, elt.descr with
-      | Some acc, Float (Some f) ->
-        Some (f :: acc)
-      | None, _
-      | Some _,
-        (Float None | Unresolved _
-        | Unknown _ | String _ | Float_array _
-        | Bottom | Block _ | Int _ | Char _
-        | Constptr _ | Set_of_closures _ | Closure _
-        | Extern _ | Boxed_int _ | Symbol _)
-        -> None)
+        match acc, elt.descr with
+        | Some acc, Float (Some f) ->
+          Some (f :: acc)
+        | None, _
+        | Some _,
+          (Float None | Unresolved _ | Unknown _ | String _ | Float_array _
+            | Bottom | Union _ | Set_of_closures _ | Closure _ | Extern _
+            | Boxed_int _ | Symbol _)
+          -> None)
       contents (Some [])
 
 let check_approx_for_string t : string option =
@@ -830,21 +811,35 @@ type switch_branch_selection =
 
 let potentially_taken_const_switch_branch t branch =
   match t.descr with
+  | Union union ->
+    let must_be_taken =
+      Unionable.Set.exists (fun (t : Unionable.t) ->
+          match t with
+          | Block _ -> false
+          | Int i | Constptr i -> i = branch
+          | Char c -> Char.code c = branch)
+        union
+    in
+    if must_be_taken then Must_be_taken else Cannot_be_taken
   | Unresolved _ | Unknown _ | Extern _ | Symbol _ ->
-    (* In theory symbol cannot contain integers but this shouldn't
+    (* In theory symbols cannot contain integers but this shouldn't
        matter as this will always be an imported approximation *)
     Can_be_taken
-  | Constptr i | Int i when i = branch -> Must_be_taken
-  | Char c when Char.code c = branch -> Must_be_taken
-  | Constptr _ | Int _ | Char _ -> Cannot_be_taken
-  | Block _ | Float _ | Float_array _ | String _ | Closure _
-  | Set_of_closures _ | Boxed_int _ | Bottom -> Cannot_be_taken
+  | Float _ | Float_array _ | String _ | Closure _ | Set_of_closures _
+  | Boxed_int _ | Bottom -> Cannot_be_taken
 
 let potentially_taken_block_switch_branch_tag t tag =
   match t.descr with
+  | Union union ->
+    let must_be_taken =
+      Unionable.Set.exists (fun (t : Unionable.t) ->
+          match t with
+          | Block (block_tag, _) -> Tag.to_int block_tag = tag
+          | Int _ | Char _ | Constptr _ -> false)
+        union
+    in
+    if must_be_taken then Must_be_taken else Cannot_be_taken
   | (Unresolved _ | Unknown _ | Extern _ | Symbol _) -> Can_be_taken
-  | (Constptr _ | Int _| Char _) -> Cannot_be_taken
-  | Block (block_tag, _) when Tag.to_int block_tag = tag -> Must_be_taken
   | Float _ when tag = Obj.double_tag -> Must_be_taken
   | Float_array _ when tag = Obj.double_array_tag -> Must_be_taken
   | String _ when tag = Obj.string_tag -> Must_be_taken
