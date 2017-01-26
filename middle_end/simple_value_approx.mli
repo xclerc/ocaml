@@ -70,8 +70,8 @@ type unknown_because_of =
 
     Note about mutable blocks:
 
-    Mutable blocks are always represented by [Value_unknown] or
-    [Value_bottom].  Any other approximation could leave the door open to
+    Mutable blocks are always represented by [Unknown] or
+    [Bottom].  Any other approximation could leave the door open to
     a miscompilation.   Such bad scenarios are most likely a user using
     [Obj.magic] or [Obj.set_field] in an inappropriate situation.
     Such a situation might be:
@@ -82,7 +82,7 @@ type unknown_because_of =
     compiler could in fact propagate the value of [x] across the
     [Obj.set_field].
 
-    Insisting that mutable blocks have [Value_unknown] or [Value_bottom]
+    Insisting that mutable blocks have [Unknown] or [Value_bottom]
     approximations certainly won't always prevent this kind of error, but
     should help catch many of them.
 
@@ -120,21 +120,21 @@ module rec T : sig
   and descr = private 
     | Union of Unionable.Set.t
     (* CR-soon mshinwell: remove "Value_" prefixes *)
-    | Value_float of float option
-    | Value_boxed_int : 'a boxed_int * 'a -> descr
-    | Value_set_of_closures of value_set_of_closures
-    | Value_closure of value_closure
-    | Value_string of value_string
-    | Value_float_array of value_float_array
-    | Value_unknown of unknown_because_of
-    | Value_bottom
-    | Value_extern of Export_id.t
-    | Value_symbol of Symbol.t
-    | Value_unresolved of Symbol.t
+    | Float of float option
+    | Boxed_int : 'a boxed_int * 'a -> descr
+    | Set_of_closures of value_set_of_closures
+    | Closure of value_closure
+    | String of value_string
+    | Float_array of value_float_array
+    | Unknown of unknown_because_of
+    | Bottom
+    | Extern of Export_id.t
+    | Symbol of Symbol.t
+    | Unresolved of Symbol.t
       (** No description was found for this symbol *)
 
   and value_closure = {
-    potential_closure : t Closure_id.Map.t;
+    potential_closures : t Closure_id.Map.t;
     (** Map of closures ids to set of closures *)
   } [@@unboxed]
 
@@ -161,16 +161,18 @@ module rec T : sig
     contents : value_float_array_contents;
     size : int;
   }
+
+  (* CR-soon mshinwell for pchambart: Add comment describing semantics.  (Maybe
+     we should move the comment from the .ml file into here.) *)
+  val join : really_import_approx:(t -> t) -> t -> t -> t
 end and Unionable : sig
   type t = private
-    | Value_block of Tag.t * T.t array
-    | Value_int of int
-    | Value_char of char
-    | Value_constptr of int
+    | Block of Tag.t * T.t array
+    | Int of int
+    | Char of char
+    | Constptr of int
 
   include Identifiable.S with type t := t
-
-  val join_set : Set.t -> t
 end
 
 include T
@@ -269,11 +271,7 @@ val augment_kind_with_approx : t -> Lambda.value_kind -> Lambda.value_kind
 
 val equal_boxed_int : 'a boxed_int -> 'a -> 'b boxed_int -> 'b -> bool
 
-(* CR-soon mshinwell for pchambart: Add comment describing semantics.  (Maybe
-   we should move the comment from the .ml file into here.) *)
-val meet : really_import_approx:(t -> t) -> t -> t -> t
-
-(** An approximation is "known" iff it is not [Value_unknown]. *)
+(** An approximation is "known" iff it is not [Unknown]. *)
 val known : t -> bool
 
 (** An approximation is "useful" iff it is neither unknown nor bottom. *)
@@ -283,8 +281,8 @@ val useful : t -> bool
 val all_not_useful : t list -> bool
 
 (** A value is certainly immutable if its approximation is known and not bottom.
-    It must have been resolved (it cannot be [Value_extern] or
-    [Value_symbol]).  (See comment above for further explanation.) *)
+    It must have been resolved (it cannot be [Extern] or
+    [Symbol]).  (See comment above for further explanation.) *)
 val is_definitely_immutable : t -> bool
 
 type simplification_summary =

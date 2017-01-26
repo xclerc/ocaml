@@ -40,20 +40,20 @@ module rec T : sig
 
   and descr =
     | Union of unionable list
-    | Value_float of float option
-    | Value_boxed_int : 'a boxed_int * 'a -> descr
-    | Value_set_of_closures of value_set_of_closures
-    | Value_closure of value_closure
-    | Value_string of value_string
-    | Value_float_array of value_float_array
-    | Value_unknown of unknown_because_of
-    | Value_bottom
-    | Value_extern of Export_id.t
-    | Value_symbol of Symbol.t
-    | Value_unresolved of Symbol.t
+    | Float of float option
+    | Boxed_int : 'a boxed_int * 'a -> descr
+    | Set_of_closures of value_set_of_closures
+    | Closure of value_closure
+    | String of value_string
+    | Float_array of value_float_array
+    | Unknown of unknown_because_of
+    | Bottom
+    | Extern of Export_id.t
+    | Symbol of Symbol.t
+    | Unresolved of Symbol.t
 
   and value_closure = {
-    potential_closure : t Closure_id.Map.t;
+    potential_closures : t Closure_id.Map.t;
   } [@@unboxed]
 
   and value_set_of_closures = {
@@ -74,27 +74,169 @@ module rec T : sig
     contents : value_float_array_contents;
     size : int;
   }
+
+  val join : really_import_approx:(t -> t) -> t -> t -> t
 end = struct
   include T
+
+  (* Closures and set of closures descriptions cannot be merged.
+
+    let f x =
+      let g y -> x + y in
+      g
+    in
+    let v =
+      if ...
+      then f 1
+      else f 2
+    in
+    v 3
+
+    The approximation for [f 1] and [f 2] could both contain the
+    description of [g]. But if [f] where inlined, a new [g] would
+    be created in each branch, leading to incompatible description.
+    And we must never make the descrition for a function less
+    precise that it used to be: its information are needed for
+    rewriting [Project_var] and [Project_closure] constructions
+    in [Inline_and_simplify].
+  *)
+  let rec join_descr ~really_import_approx d1 d2 = match d1, d2 with
+    | Union approxs1, Union approxs2 ->
+
+    | Int i, Int j when i = j ->
+        d1
+    | Constptr i, Constptr j when i = j ->
+        d1
+    | Symbol s1, Symbol s2 when Symbol.equal s1 s2 ->
+        d1
+    | Extern e1, Extern e2 when Export_id.equal e1 e2 ->
+        d1
+    | Float i, Float j when i = j ->
+        d1
+    | Boxed_int (bi1, i1), Boxed_int (bi2, i2) when
+        equal_boxed_int bi1 i1 bi2 i2 ->
+        d1
+    | Block (tag1, a1), Block (tag2, a2)
+      when tag1 = tag2 && Array.length a1 = Array.length a2 ->
+      let fields =
+        Array.mapi (fun i v -> join ~really_import_approx v a2.(i)) a1
+      in
+      Block (tag1, fields)
+    | Closure { potential_closures = map1 },
+      Closure { potential_closures = map2 } ->
+      let potential_closures =
+        Closure_id.Map.union_merge
+          (* CR pchambart:
+            merging the closure value might loose information in the
+            case of one branch having the approximation and the other
+            having 'Unknown'. We could imagine such as
+
+            {[if ... then M1.f else M2.f]}
+
+            where M1 is where the function is defined and M2 is
+
+            {[let f = M3.f]}
+
+            and M3 is
+
+            {[let f = M1.f]}
+
+            with the cmx for M3 missing
+
+            Since we know that the approximation comes from the same
+            value, we know that both version provide additional
+            information on the value. Hence what we really want is an
+            approximation intersection, not an union (that this join
+            is). *)
+          (join ~really_import_approx)
+          map1 map2
+      in
+      Closure { potential_closures }
+    | _ -> Unknown Other
+
+  and join ~really_import_approx a1 a2 =
+    match a1, a2 with
+    | { descr = Bottom }, a
+    | a, { descr = Bottom } -> a
+    | { descr = (Symbol _ | Extern _) }, _
+    | _, { descr = (Symbol _ | Extern _) } ->
+      join ~really_import_approx
+        (really_import_approx a1) (really_import_approx a2)
+    | _ ->
+        let var =
+          match a1.var, a2.var with
+          | None, _ | _, None -> None
+          | Some v1, Some v2 ->
+              if Variable.equal v1 v2
+              then Some v1
+              else None
+        in
+        let symbol =
+          match a1.symbol, a2.symbol with
+          | None, _ | _, None -> None
+          | Some (v1, field1), Some (v2, field2) ->
+              if Symbol.equal v1 v2
+              then match field1, field2 with
+                | None, None -> a1.symbol
+                | Some f1, Some f2 when f1 = f2 ->
+                    a1.symbol
+                | _ -> None
+              else None
+        in
+        { descr = join_descr ~really_import_approx a1.descr a2.descr;
+          var;
+          symbol }
 end and Unionable : sig
   type t =
-    | Value_block of Tag.t * T.t array
-    | Value_int of int
-    | Value_char of char
-    | Value_constptr of int
+    | Block of Tag.t * T.t array
+    | Int of int
+    | Char of char
+    | Constptr of int
 
   include Identifiable.S with type t := t
+
+  type join =
+    | Ok of t
+    | Bottom
+
+  val join_set : Set.t -> join
 end = struct
   include Identifiable.Make (struct
     type t =
-      | Value_block of Tag.t * T.t array
-      | Value_int of int
-      | Value_char of char
-      | Value_constptr of int
+      | Block of Tag.t * T.t array
+      | Int of int
+      | Char of char
+      | Constptr of int
   end)
+
+  type join =
+    | Ok of t
+    | Bottom
+
+  let join_set ts ~really_import_approx : join =
+    let t = Set.choose ts in
+    let ts = Set.remove t ts in
+    Set.fold (fun t join ->
+        match join with
+        | Bottom -> Bottom
+        | Ok join ->
+          match t, join with
+          | Block (tag1, a1), Block (tag2, a2)
+              when tag1 = tag2 && Array.length a1 = Array.length a2 ->
+            let fields =
+              Array.mapi (fun i v -> join ~really_import_approx v a2.(i)) a1
+            in
+            Ok (Block (tag1, fields))
+          | Int i1, Int i2 when i1 = i2 -> Ok join
+          | Char c1, Char c2 when c1 = c2 -> Ok join
+          | Constptr p1, Constptr p2 when p1 = p2 -> Ok join
+          | _, _ -> Bottom)
+      ts
+      (Ok t)
 end
 
 let descr t = t.descr
+let descrs ts = List.map (fun t -> t.descr) ts
 
 let print_value_set_of_closures ppf
       { function_decls = { funs }; invariant_params; freshening; _ } =
@@ -104,37 +246,37 @@ let print_value_set_of_closures ppf
     Freshening.Project_var.print freshening
 
 let rec print_descr ppf = function
-  | Value_int i -> Format.pp_print_int ppf i
-  | Value_char c -> Format.fprintf ppf "%c" c
-  | Value_constptr i -> Format.fprintf ppf "%ia" i
-  | Value_block (tag,fields) ->
+  | Int i -> Format.pp_print_int ppf i
+  | Char c -> Format.fprintf ppf "%c" c
+  | Constptr i -> Format.fprintf ppf "%ia" i
+  | Block (tag,fields) ->
     let p ppf fields =
       Array.iter (fun v -> Format.fprintf ppf "%a@ " print v) fields in
     Format.fprintf ppf "[%i:@ @[<1>%a@]]" (Tag.to_int tag) p fields
-  | Value_unknown reason ->
+  | Unknown reason ->
     begin match reason with
     | Unresolved_symbol symbol ->
       Format.fprintf ppf "?(due to unresolved symbol '%a')" Symbol.print symbol
     | Other -> Format.fprintf ppf "?"
     end;
-  | Value_bottom -> Format.fprintf ppf "bottom"
-  | Value_extern id -> Format.fprintf ppf "_%a_" Export_id.print id
-  | Value_symbol sym -> Format.fprintf ppf "%a" Symbol.print sym
-  | Value_closure { potential_closure } ->
+  | Bottom -> Format.fprintf ppf "bottom"
+  | Extern id -> Format.fprintf ppf "_%a_" Export_id.print id
+  | Symbol sym -> Format.fprintf ppf "%a" Symbol.print sym
+  | Closure { potential_closures } ->
     Format.fprintf ppf "(closure:@ @[<2>[@ ";
     Closure_id.Map.iter (fun closure_id set_of_closures ->
       Format.fprintf ppf "%a @[<2>from@ %a@];@ "
         Closure_id.print closure_id
         print set_of_closures)
-      potential_closure;
+      potential_closures;
     Format.fprintf ppf "]@])";
-  | Value_set_of_closures set_of_closures ->
+  | Set_of_closures set_of_closures ->
     print_value_set_of_closures ppf set_of_closures
-  | Value_unresolved sym ->
+  | Unresolved sym ->
     Format.fprintf ppf "(unresolved %a)" Symbol.print sym
-  | Value_float (Some f) -> Format.pp_print_float ppf f
-  | Value_float None -> Format.pp_print_string ppf "float"
-  | Value_string { contents; size } -> begin
+  | Float (Some f) -> Format.pp_print_float ppf f
+  | Float None -> Format.pp_print_string ppf "float"
+  | String { contents; size } -> begin
       match contents with
       | None ->
           Format.fprintf ppf "string %i" size
@@ -146,14 +288,14 @@ let rec print_descr ppf = function
           in
           Format.fprintf ppf "string %i %S" size s
     end
-  | Value_float_array float_array ->
+  | Float_array float_array ->
     begin match float_array.contents with
     | Unknown_or_mutable ->
       Format.fprintf ppf "float_array %i" float_array.size
     | Contents _ ->
       Format.fprintf ppf "float_array_imm %i" float_array.size
     end
-  | Value_boxed_int (t, i) ->
+  | Boxed_int (t, i) ->
     match t with
     | Int32 -> Format.fprintf ppf "%li" i
     | Int64 -> Format.fprintf ppf "%Li" i
@@ -186,23 +328,23 @@ let augment_with_kind t (kind:Lambda.value_kind) =
   | Pgenval -> t
   | Pfloatval ->
     begin match t.descr with
-    | Value_float _ ->
+    | Float _ ->
       t
-    | Value_unknown _ | Value_unresolved _ ->
-      { t with descr = Value_float None }
-    | Value_block _
-    | Value_int _
-    | Value_char _
-    | Value_constptr _
-    | Value_boxed_int _
-    | Value_set_of_closures _
-    | Value_closure _
-    | Value_string _
-    | Value_float_array _
-    | Value_bottom ->
+    | Unknown _ | Unresolved _ ->
+      { t with descr = Float None }
+    | Block _
+    | Int _
+    | Char _
+    | Constptr _
+    | Boxed_int _
+    | Set_of_closures _
+    | Closure _
+    | String _
+    | Float_array _
+    | Bottom ->
       (* Unreachable *)
-      { t with descr = Value_bottom }
-    | Value_extern _ | Value_symbol _ ->
+      { t with descr = Bottom }
+    | Extern _ | Symbol _ ->
       (* We don't know yet *)
       t
     end
@@ -210,33 +352,33 @@ let augment_with_kind t (kind:Lambda.value_kind) =
 
 let augment_kind_with_approx t (kind:Lambda.value_kind) : Lambda.value_kind =
   match t.descr with
-  | Value_float _ -> Pfloatval
-  | Value_int _ -> Pintval
-  | Value_boxed_int (Int32, _) -> Pboxedintval Pint32
-  | Value_boxed_int (Int64, _) -> Pboxedintval Pint64
-  | Value_boxed_int (Nativeint, _) -> Pboxedintval Pnativeint
+  | Float _ -> Pfloatval
+  | Int _ -> Pintval
+  | Boxed_int (Int32, _) -> Pboxedintval Pint32
+  | Boxed_int (Int64, _) -> Pboxedintval Pint64
+  | Boxed_int (Nativeint, _) -> Pboxedintval Pnativeint
   | _ -> kind
 
-let value_unknown reason = approx (Value_unknown reason)
-let value_int i = approx (Value_int i)
-let value_char i = approx (Value_char i)
-let value_constptr i = approx (Value_constptr i)
-let value_float f = approx (Value_float (Some f))
-let value_any_float = approx (Value_float None)
-let value_boxed_int bi i = approx (Value_boxed_int (bi,i))
+let value_unknown reason = approx (Unknown reason)
+let value_int i = approx (Int i)
+let value_char i = approx (Char i)
+let value_constptr i = approx (Constptr i)
+let value_float f = approx (Float (Some f))
+let value_any_float = approx (Float None)
+let value_boxed_int bi i = approx (Boxed_int (bi,i))
 
 let value_closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
       closures =
   let approx_set_of_closures value_set_of_closures =
-    { descr = Value_set_of_closures value_set_of_closures;
+    { descr = Set_of_closures value_set_of_closures;
       var = set_of_closures_var;
       symbol = Misc.may_map (fun s -> s, None) set_of_closures_symbol;
     }
   in
-  let potential_closure =
+  let potential_closures =
     Closure_id.Map.map approx_set_of_closures closures
   in
-  { descr = Value_closure { potential_closure };
+  { descr = Closure { potential_closures };
     var = closure_var;
     symbol = None;
   }
@@ -279,27 +421,27 @@ let update_freshening_of_value_set_of_closures value_set_of_closures
   { value_set_of_closures with freshening; }
 
 let value_set_of_closures ?set_of_closures_var value_set_of_closures =
-  { descr = Value_set_of_closures value_set_of_closures;
+  { descr = Set_of_closures value_set_of_closures;
     var = set_of_closures_var;
     symbol = None;
   }
 
-let value_block t b = approx (Value_block (t, b))
-let value_extern ex = approx (Value_extern ex)
+let value_block t b = approx (Block (t, b))
+let value_extern ex = approx (Extern ex)
 let value_symbol sym =
-  { (approx (Value_symbol sym)) with symbol = Some (sym, None) }
-let value_bottom = approx Value_bottom
-let value_unresolved sym = approx (Value_unresolved sym)
+  { (approx (Symbol sym)) with symbol = Some (sym, None) }
+let value_bottom = approx Bottom
+let value_unresolved sym = approx (Unresolved sym)
 
-let value_string size contents = approx (Value_string {size; contents })
+let value_string size contents = approx (String {size; contents })
 let value_mutable_float_array ~size =
-  approx (Value_float_array { contents = Unknown_or_mutable; size; } )
+  approx (Float_array { contents = Unknown_or_mutable; size; } )
 let value_immutable_float_array (contents:t array) =
   let size = Array.length contents in
   let contents =
     Array.map (fun t -> augment_with_kind t Pfloatval) contents
   in
-  approx (Value_float_array { contents = Contents contents; size; } )
+  approx (Float_array { contents = Contents contents; size; } )
 
 let make_const_int_named n : Flambda.named * t =
   Const (Int n), value_int n
@@ -335,26 +477,26 @@ type simplification_result_named = Flambda.named * simplification_summary * t
 let simplify_named t (named : Flambda.named) : simplification_result_named =
   if Effect_analysis.no_effects_named named then
     match t.descr with
-    | Value_int n ->
+    | Int n ->
       let const, approx = make_const_int_named n in
       const, Replaced_term, approx
-    | Value_char n ->
+    | Char n ->
       let const, approx = make_const_char_named n in
       const, Replaced_term, approx
-    | Value_constptr n ->
+    | Constptr n ->
       let const, approx = make_const_ptr_named n in
       const, Replaced_term, approx
-    | Value_float (Some f) ->
+    | Float (Some f) ->
       let const, approx = make_const_float_named f in
       const, Replaced_term, approx
-    | Value_boxed_int (t, i) ->
+    | Boxed_int (t, i) ->
       let const, approx = make_const_boxed_int_named t i in
       const, Replaced_term, approx
-    | Value_symbol sym ->
+    | Symbol sym ->
       Symbol sym, Replaced_term, t
-    | Value_string _ | Value_float_array _ | Value_float None
-    | Value_block _ | Value_set_of_closures _ | Value_closure _
-    | Value_unknown _ | Value_bottom | Value_extern _ | Value_unresolved _ ->
+    | String _ | Float_array _ | Float None
+    | Block _ | Set_of_closures _ | Closure _
+    | Unknown _ | Bottom | Extern _ | Unresolved _ ->
       named, Nothing_done, t
   else
     named, Nothing_done, t
@@ -363,16 +505,16 @@ let simplify_named t (named : Flambda.named) : simplification_result_named =
    [Inline_and_simplify] is also messy. *)
 let simplify_var t : (Flambda.named * t) option =
   match t.descr with
-  | Value_int n -> Some (make_const_int_named n)
-  | Value_char n -> Some (make_const_char_named n)
-  | Value_constptr n -> Some (make_const_ptr_named n)
-  | Value_float (Some f) -> Some (make_const_float_named f)
-  | Value_boxed_int (t, i) -> Some (make_const_boxed_int_named t i)
-  | Value_symbol sym -> Some (Symbol sym, t)
-  | Value_string _ | Value_float_array _ | Value_float None
-  | Value_block _ | Value_set_of_closures _ | Value_closure _
-  | Value_unknown _ | Value_bottom | Value_extern _
-  | Value_unresolved _ ->
+  | Int n -> Some (make_const_int_named n)
+  | Char n -> Some (make_const_char_named n)
+  | Constptr n -> Some (make_const_ptr_named n)
+  | Float (Some f) -> Some (make_const_float_named f)
+  | Boxed_int (t, i) -> Some (make_const_boxed_int_named t i)
+  | Symbol sym -> Some (Symbol sym, t)
+  | String _ | Float_array _ | Float None
+  | Block _ | Set_of_closures _ | Closure _
+  | Unknown _ | Bottom | Extern _
+  | Unresolved _ ->
     match t.symbol with
     | Some (sym, None) -> Some (Symbol sym, t)
     | Some (sym, Some field) -> Some (Read_symbol_field (sym, field), t)
@@ -407,32 +549,26 @@ let simplify_var_to_var_using_env t ~is_present_in_env =
 
 let known t =
   match t.descr with
-  | Value_unresolved _
-  | Value_unknown _ -> false
-  | Value_string _ | Value_float_array _
-  | Value_bottom | Value_block _ | Value_int _ | Value_char _
-  | Value_constptr _ | Value_set_of_closures _ | Value_closure _
-  | Value_extern _ | Value_float _ | Value_boxed_int _ | Value_symbol _ -> true
+  | Unresolved _ | Unknown _ -> false
+  | String _ | Float_array _ | Bottom | Union _ | Set_of_closures _ | Closure _
+  | Extern _ | Float _ | Boxed_int _ | Symbol _ -> true
 
 let useful t =
   match t.descr with
-  | Value_unresolved _ | Value_unknown _ | Value_bottom -> false
-  | Value_string _ | Value_float_array _ | Value_block _ | Value_int _
-  | Value_char _ | Value_constptr _ | Value_set_of_closures _
-  | Value_float _ | Value_boxed_int _ | Value_closure _ | Value_extern _
-  | Value_symbol _ -> true
+  | Unresolved _ | Unknown _ | Bottom -> false
+  | Union union -> not (Set.is_empty union)
+  | String _ | Float_array _ | Set_of_closures _ | Float _ | Boxed_int _
+  | Closure _ | Extern _ | Symbol _ -> true
 
 let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 
 let is_definitely_immutable t =
   match t.descr with
-  | Value_string { contents = Some _ }
-  | Value_block _ | Value_int _ | Value_char _ | Value_constptr _
-  | Value_set_of_closures _ | Value_float _ | Value_boxed_int _
-  | Value_closure _ -> true
-  | Value_string { contents = None } | Value_float_array _
-  | Value_unresolved _ | Value_unknown _ | Value_bottom -> false
-  | Value_extern _ | Value_symbol _ -> assert false
+  | String { contents = Some _ } | Union _ | Set_of_closures _ | Float _
+  | Boxed_int _ | Closure _ -> true
+  | String { contents = None } | Float_array _ | Unresolved _ | Unknown _
+  | Bottom -> false
+  | Extern _ | Symbol _ -> assert false
 
 type get_field_result =
   | Ok of t
@@ -440,41 +576,44 @@ type get_field_result =
 
 let get_field t ~field_index:i : get_field_result =
   match t.descr with
-  | Value_block (_tag, fields) ->
-    if i >= 0 && i < Array.length fields then begin
-      Ok fields.(i)
-    end else begin
-      (* This (unfortunately) cannot be a fatal error; it can happen if a
-         .cmx file is missing.  However for debugging the compiler this can
-         be a useful point to put a [Misc.fatal_errorf]. *)
+  | Union union ->
+    begin match Unionable.join_set union with
+    | Ok (Block (_tag, fields)) ->
+      if i >= 0 && i < Array.length fields then begin
+        Ok fields.(i)
+      end else begin
+        (* This (unfortunately) cannot be a fatal error; it can happen if a
+           .cmx file is missing or with GADT code.  However for debugging the
+           compiler this can be a useful point to put a [Misc.fatal_errorf]. *)
+        Unreachable
+      end
+    | Ok (Int _ | Char _ | Constptr _) | Bottom ->
+      (* Something seriously wrong is happening: either the user is doing
+         something exceptionally unsafe, or it is an unreachable branch.
+         We consider this as unreachable and mark the result accordingly. *)
       Unreachable
     end
   (* CR-someday mshinwell: This should probably return Unreachable in more
      cases.  I added a couple more. *)
-  | Value_bottom
-  | Value_int _ | Value_char _ | Value_constptr _ ->
-    (* Something seriously wrong is happening: either the user is doing
-       something exceptionally unsafe, or it is an unreachable branch.
-       We consider this as unreachable and mark the result accordingly. *)
-    Ok value_bottom
-  | Value_float_array _ ->
+  | Bottom -> Unreachable
+  | Float_array _ ->
     (* For the moment we return "unknown" even for immutable arrays, since
        it isn't possible for user code to project from an immutable array. *)
     (* CR-someday mshinwell: If Leo's array's patch lands, then we can
        change this, although it's probably not Pfield that is used to
        do the projection. *)
     Ok (value_unknown Other)
-  | Value_string _ | Value_float _ | Value_boxed_int _ ->
+  | String _ | Float _ | Boxed_int _ ->
     (* The user is doing something unsafe. *)
     Unreachable
-  | Value_set_of_closures _ | Value_closure _
+  | Set_of_closures _ | Closure _
     (* This is used by [CamlinternalMod]. *)
-  | Value_symbol _ | Value_extern _ ->
+  | Symbol _ | Extern _ ->
     (* These should have been resolved. *)
     Ok (value_unknown Other)
-  | Value_unknown reason ->
+  | Unknown reason ->
     Ok (value_unknown reason)
-  | Value_unresolved sym ->
+  | Unresolved sym ->
     (* We don't know anything, but we must remember that it comes
        from another compilation unit in case it contains a closure. *)
     Ok (value_unresolved sym)
@@ -483,136 +622,25 @@ type checked_approx_for_block =
   | Wrong
   | Ok of Tag.t * t array
 
-let check_approx_for_block t =
+let check_approx_for_block t : checked_approx_for_block =
   match t.descr with
-  | Value_block (tag, fields) ->
-    Ok (tag, fields)
-  | Value_bottom
-  | Value_int _ | Value_char _ | Value_constptr _
-  | Value_float_array _
-  | Value_string _ | Value_float _ | Value_boxed_int _
-  | Value_set_of_closures _ | Value_closure _
-  | Value_symbol _ | Value_extern _
-  | Value_unknown _
-  | Value_unresolved _ ->
-    Wrong
-
-let descrs approxs = List.map (fun v -> v.descr) approxs
+  | Block (tag, fields) ->
+    begin match Unionable.join_set union with
+    | Ok (Block (_tag, fields)) -> Ok (tag, fields)
+    | Ok (Int _ | Char _ | Constptr _) | Bottom -> Wrong
+    end
+  | Bottom | Float_array _ | String _ | Float _ | Boxed_int _
+  | Set_of_closures _ | Closure _ | Symbol _ | Extern _
+  | Unknown _ | Unresolved _ -> Wrong
 
 let equal_boxed_int (type t1) (type t2)
-    (bi1:t1 boxed_int) (i1:t1)
-    (bi2:t2 boxed_int) (i2:t2) =
+      (bi1 : t1 boxed_int) (i1 : t1)
+      (bi2 : t2 boxed_int) (i2 : t2) =
   match bi1, bi2 with
   | Int32, Int32 -> Int32.equal i1 i2
   | Int64, Int64 -> Int64.equal i1 i2
   | Nativeint, Nativeint -> Nativeint.equal i1 i2
   | _ -> false
-
-(* Closures and set of closures descriptions cannot be merged.
-
-   let f x =
-     let g y -> x + y in
-     g
-   in
-   let v =
-     if ...
-     then f 1
-     else f 2
-   in
-   v 3
-
-   The approximation for [f 1] and [f 2] could both contain the
-   description of [g]. But if [f] where inlined, a new [g] would
-   be created in each branch, leading to incompatible description.
-   And we must never make the descrition for a function less
-   precise that it used to be: its information are needed for
-   rewriting [Project_var] and [Project_closure] constructions
-   in [Flambdainline.loop]
-*)
-let rec meet_descr ~really_import_approx d1 d2 = match d1, d2 with
-  | Value_int i, Value_int j when i = j ->
-      d1
-  | Value_constptr i, Value_constptr j when i = j ->
-      d1
-  | Value_symbol s1, Value_symbol s2 when Symbol.equal s1 s2 ->
-      d1
-  | Value_extern e1, Value_extern e2 when Export_id.equal e1 e2 ->
-      d1
-  | Value_float i, Value_float j when i = j ->
-      d1
-  | Value_boxed_int (bi1, i1), Value_boxed_int (bi2, i2) when
-      equal_boxed_int bi1 i1 bi2 i2 ->
-      d1
-  | Value_block (tag1, a1), Value_block (tag2, a2)
-    when tag1 = tag2 && Array.length a1 = Array.length a2 ->
-    let fields =
-      Array.mapi (fun i v -> meet ~really_import_approx v a2.(i)) a1
-    in
-    Value_block (tag1, fields)
-  | Value_closure { potential_closure = map1 },
-    Value_closure { potential_closure = map2 } ->
-    let potential_closure =
-      Closure_id.Map.union_merge
-        (* CR pchambart:
-           merging the closure value might loose information in the
-           case of one branch having the approximation and the other
-           having 'Value_unknown'. We could imagine such as
-
-           {[if ... then M1.f else M2.f]}
-
-           where M1 is where the function is defined and M2 is
-
-           {[let f = M3.f]}
-
-           and M3 is
-
-           {[let f = M1.f]}
-
-           with the cmx for M3 missing
-
-           Since we know that the approximation comes from the same
-           value, we know that both version provide additional
-           information on the value. Hence what we really want is an
-           approximation intersection, not an union (that this meet
-           is). *)
-        (meet ~really_import_approx)
-        map1 map2
-    in
-    Value_closure { potential_closure }
-  | _ -> Value_unknown Other
-
-and meet ~really_import_approx a1 a2 =
-  match a1, a2 with
-  | { descr = Value_bottom }, a
-  | a, { descr = Value_bottom } -> a
-  | { descr = (Value_symbol _ | Value_extern _) }, _
-  | _, { descr = (Value_symbol _ | Value_extern _) } ->
-    meet ~really_import_approx
-      (really_import_approx a1) (really_import_approx a2)
-  | _ ->
-      let var =
-        match a1.var, a2.var with
-        | None, _ | _, None -> None
-        | Some v1, Some v2 ->
-            if Variable.equal v1 v2
-            then Some v1
-            else None
-      in
-      let symbol =
-        match a1.symbol, a2.symbol with
-        | None, _ | _, None -> None
-        | Some (v1, field1), Some (v2, field2) ->
-            if Symbol.equal v1 v2
-            then match field1, field2 with
-              | None, None -> a1.symbol
-              | Some f1, Some f2 when f1 = f2 ->
-                  a1.symbol
-              | _ -> None
-            else None
-      in
-      { descr = meet_descr ~really_import_approx a1.descr a2.descr;
-        var;
-        symbol }
 
 (* Given a set-of-closures approximation and a closure ID, apply any
    freshening specified in the approximation to the closure ID, and return
@@ -647,18 +675,18 @@ type checked_approx_for_set_of_closures =
 
 let check_approx_for_set_of_closures t : checked_approx_for_set_of_closures =
   match t.descr with
-  | Value_unresolved symbol -> Unresolved symbol
-  | Value_unknown (Unresolved_symbol symbol) ->
+  | Unresolved symbol -> Unresolved symbol
+  | Unknown (Unresolved_symbol symbol) ->
     Unknown_because_of_unresolved_symbol symbol
-  | Value_set_of_closures value_set_of_closures ->
+  | Set_of_closures value_set_of_closures ->
     (* Note that [var] might be [None]; we might be reaching the set of
        closures via approximations only, with the variable originally bound
        to the set now out of scope. *)
     Ok (t.var, value_set_of_closures)
-  | Value_closure _ | Value_block _ | Value_int _ | Value_char _
-  | Value_constptr _ | Value_float _ | Value_boxed_int _ | Value_unknown _
-  | Value_bottom | Value_extern _ | Value_string _ | Value_float_array _
-  | Value_symbol _ ->
+  | Closure _ | Block _ | Int _ | Char _
+  | Float _ | Boxed_int _ | Unknown _
+  | Bottom | Extern _ | String _ | Float_array _
+  | Symbol _ ->
     Wrong
 
 type strict_checked_approx_for_set_of_closures =
@@ -669,67 +697,59 @@ let strict_check_approx_for_set_of_closures t
       : strict_checked_approx_for_set_of_closures =
   match check_approx_for_set_of_closures t with
   | Ok (var, value_set_of_closures) -> Ok (var, value_set_of_closures)
-  | Wrong | Unresolved _
-  | Unknown | Unknown_because_of_unresolved_symbol _ -> Wrong
+  | Wrong | Unresolved _ | Unknown | Unknown_because_of_unresolved_symbol _ ->
+    Wrong
 
 type checked_approx_for_closure_allowing_unresolved =
   | Wrong
   | Unresolved of Symbol.t
   | Unknown
   | Unknown_because_of_unresolved_symbol of Symbol.t
-  | Ok of value_set_of_closures Closure_id.Map.t
-          * Variable.t option * Symbol.t option
+  | Ok of value_set_of_closures Closure_id.Map.t * Variable.t option
+      * Symbol.t option
 
 let check_approx_for_closure_allowing_unresolved t
       : checked_approx_for_closure_allowing_unresolved =
   match t.descr with
-  | Value_closure value_closure -> begin
-    match Closure_id.Map.get_singleton value_closure.potential_closure with
+  | Closure value_closure -> begin
+    match Closure_id.Map.get_singleton value_closure.potential_closures with
     | None -> begin
       try
         let closures =
           Closure_id.Map.map (fun set_of_closures ->
             match set_of_closures.descr with
-            | Value_set_of_closures value_set_of_closures ->
+            | Set_of_closures value_set_of_closures ->
               value_set_of_closures
-            | Value_unresolved _
-            | Value_closure _ | Value_block _ | Value_int _ | Value_char _
-            | Value_constptr _ | Value_float _ | Value_boxed_int _
-            | Value_unknown _ | Value_bottom | Value_extern _ | Value_string _
-            | Value_float_array _ | Value_symbol _ ->
+            | Unresolved _
+            | Closure _ | Union _ | Float _ | Boxed_int _ | Unknown _
+            | Bottom | Extern _ | String _ | Float_array _ | Symbol _ ->
               raise Exit)
-            value_closure.potential_closure
+            value_closure.potential_closures
         in
         Ok (closures, None, None)
       with Exit -> Wrong
       end
     | Some (closure_id, set_of_closures) ->
       match set_of_closures.descr with
-      | Value_set_of_closures value_set_of_closures ->
+      | Set_of_closures value_set_of_closures ->
         let symbol = match set_of_closures.symbol with
           | Some (symbol, None) -> Some symbol
           | None | Some (_, Some _) -> None
         in
         Ok (Closure_id.Map.singleton closure_id value_set_of_closures,
             set_of_closures.var, symbol)
-      | Value_unresolved _
-      | Value_closure _ | Value_block _ | Value_int _ | Value_char _
-      | Value_constptr _ | Value_float _ | Value_boxed_int _ | Value_unknown _
-      | Value_bottom | Value_extern _ | Value_string _ | Value_float_array _
-      | Value_symbol _ ->
-        Wrong
+      | Unresolved _
+      | Closure _ | Float _ | Boxed_int _ | Unknown _ | Bottom | Extern _
+      | String _ | Float_array _ | Symbol _ -> Wrong
     end
-  | Value_unknown (Unresolved_symbol symbol) ->
+  | Unknown (Unresolved_symbol symbol) ->
     Unknown_because_of_unresolved_symbol symbol
-  | Value_unresolved symbol -> Unresolved symbol
-  | Value_set_of_closures _ | Value_block _ | Value_int _ | Value_char _
-  | Value_constptr _ | Value_float _ | Value_boxed_int _
-  | Value_bottom | Value_extern _ | Value_string _ | Value_float_array _
-  | Value_symbol _ ->
-    Wrong
+  | Unresolved symbol -> Unresolved symbol
+  | Set_of_closures _ | Union _ | Float _ | Boxed_int _ | Bottom | Extern _
+  | String _ | Float_array _ | Symbol _ -> Wrong
   (* CR-soon mshinwell: This should be unwound once the reason for a value
      being unknown can be correctly propagated through the export info. *)
-  | Value_unknown Other -> Unknown
+  | Unknown Other -> Unknown
 
 type checked_approx_for_closure =
   | Wrong
@@ -775,13 +795,9 @@ let approx_for_bound_var value_set_of_closures var =
 
 let check_approx_for_float t : float option =
   match t.descr with
-  | Value_float f -> f
-  | Value_unresolved _
-  | Value_unknown _ | Value_string _ | Value_float_array _
-  | Value_bottom | Value_block _ | Value_int _ | Value_char _
-  | Value_constptr _ | Value_set_of_closures _ | Value_closure _
-  | Value_extern _ | Value_boxed_int _ | Value_symbol _ ->
-      None
+  | Float f -> f
+  | Union _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
+  | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
 
 let float_array_as_constant (t:value_float_array) : float list option =
   match t.contents with
@@ -789,28 +805,23 @@ let float_array_as_constant (t:value_float_array) : float list option =
   | Contents contents ->
     Array.fold_right (fun elt acc ->
       match acc, elt.descr with
-      | Some acc, Value_float (Some f) ->
+      | Some acc, Float (Some f) ->
         Some (f :: acc)
       | None, _
       | Some _,
-        (Value_float None | Value_unresolved _
-        | Value_unknown _ | Value_string _ | Value_float_array _
-        | Value_bottom | Value_block _ | Value_int _ | Value_char _
-        | Value_constptr _ | Value_set_of_closures _ | Value_closure _
-        | Value_extern _ | Value_boxed_int _ | Value_symbol _)
+        (Float None | Unresolved _
+        | Unknown _ | String _ | Float_array _
+        | Bottom | Block _ | Int _ | Char _
+        | Constptr _ | Set_of_closures _ | Closure _
+        | Extern _ | Boxed_int _ | Symbol _)
         -> None)
       contents (Some [])
 
 let check_approx_for_string t : string option =
   match t.descr with
-  | Value_string { contents } -> contents
-  | Value_float _
-  | Value_unresolved _
-  | Value_unknown _ | Value_float_array _
-  | Value_bottom | Value_block _ | Value_int _ | Value_char _
-  | Value_constptr _ | Value_set_of_closures _ | Value_closure _
-  | Value_extern _ | Value_boxed_int _ | Value_symbol _ ->
-      None
+  | String { contents } -> contents
+  | Union _ | Float _ | Unresolved _ | Unknown _ | Float_array _ | Bottom
+  | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
 
 type switch_branch_selection =
   | Cannot_be_taken
@@ -819,66 +830,44 @@ type switch_branch_selection =
 
 let potentially_taken_const_switch_branch t branch =
   match t.descr with
-  | Value_unresolved _
-  | Value_unknown _
-  | Value_extern _
-  | Value_symbol _ ->
+  | Unresolved _ | Unknown _ | Extern _ | Symbol _ ->
     (* In theory symbol cannot contain integers but this shouldn't
        matter as this will always be an imported approximation *)
     Can_be_taken
-  | Value_constptr i | Value_int i when i = branch ->
-    Must_be_taken
-  | Value_char c when Char.code c = branch ->
-    Must_be_taken
-  | Value_constptr _ | Value_int _ | Value_char _ ->
-    Cannot_be_taken
-  | Value_block _ | Value_float _ | Value_float_array _
-  | Value_string _ | Value_closure _ | Value_set_of_closures _
-  | Value_boxed_int _ | Value_bottom ->
-    Cannot_be_taken
+  | Constptr i | Int i when i = branch -> Must_be_taken
+  | Char c when Char.code c = branch -> Must_be_taken
+  | Constptr _ | Int _ | Char _ -> Cannot_be_taken
+  | Block _ | Float _ | Float_array _ | String _ | Closure _
+  | Set_of_closures _ | Boxed_int _ | Bottom -> Cannot_be_taken
 
 let potentially_taken_block_switch_branch_tag t tag =
   match t.descr with
-  | (Value_unresolved _
-    | Value_unknown _
-    | Value_extern _
-    | Value_symbol _) ->
-    Can_be_taken
-  | (Value_constptr _ | Value_int _| Value_char _) ->
-    Cannot_be_taken
-  | Value_block (block_tag, _) when Tag.to_int block_tag = tag ->
-    Must_be_taken
-  | Value_float _ when tag = Obj.double_tag ->
-    Must_be_taken
-  | Value_float_array _ when tag = Obj.double_array_tag ->
-    Must_be_taken
-  | Value_string _ when tag = Obj.string_tag ->
-    Must_be_taken
-  | (Value_closure _ | Value_set_of_closures _)
-    when tag = Obj.closure_tag || tag = Obj.infix_tag ->
-    Can_be_taken
-  | Value_boxed_int _ when tag = Obj.custom_tag ->
-    Must_be_taken
-  | Value_block _ | Value_float _ | Value_set_of_closures _ | Value_closure _
-  | Value_string _ | Value_float_array _ | Value_boxed_int _ ->
-    Cannot_be_taken
-  | Value_bottom ->
-    Cannot_be_taken
+  | (Unresolved _ | Unknown _ | Extern _ | Symbol _) -> Can_be_taken
+  | (Constptr _ | Int _| Char _) -> Cannot_be_taken
+  | Block (block_tag, _) when Tag.to_int block_tag = tag -> Must_be_taken
+  | Float _ when tag = Obj.double_tag -> Must_be_taken
+  | Float_array _ when tag = Obj.double_array_tag -> Must_be_taken
+  | String _ when tag = Obj.string_tag -> Must_be_taken
+  | (Closure _ | Set_of_closures _)
+      when tag = Obj.closure_tag || tag = Obj.infix_tag -> Can_be_taken
+  | Boxed_int _ when tag = Obj.custom_tag -> Must_be_taken
+  | Block _ | Float _ | Set_of_closures _ | Closure _
+  | String _ | Float_array _ | Boxed_int _ -> Cannot_be_taken
+  | Bottom -> Cannot_be_taken
 
 let potentially_taken_block_switch_branch_string t s =
   match t.descr with
-  | Value_unresolved _ | Value_unknown _ | Value_extern _ | Value_symbol _ ->
-    Can_be_taken
-  | Value_string { contents = Some s'; _ } when s = s' -> Must_be_taken
-  | Value_string { contents = Some _; _ } -> Cannot_be_taken
-  | Value_string { contents = None; } -> Can_be_taken
-  | Value_block (tag, _) when Tag.to_int tag = Obj.string_tag ->
+  | Unresolved _ | Unknown _ | Extern _ | Symbol _ -> Can_be_taken
+  | String { contents = Some s'; _ } when s = s' -> Must_be_taken
+  | String { contents = Some _; _ } -> Cannot_be_taken
+  | String { contents = None; } -> Can_be_taken
+  | Block (tag, _) when Tag.to_int tag = Obj.string_tag ->
     (* This case seems unlikely, so we don't write the logic to determine
        [Must_be_taken]. *)
     Can_be_taken
-  | Value_constptr _ | Value_int _| Value_char _ | Value_block _
-  | Value_float _ | Value_set_of_closures _ | Value_closure _
-  | Value_float_array _ | Value_boxed_int _ | Value_bottom -> Cannot_be_taken
+  | Constptr _ | Int _| Char _ | Block _
+  | Float _ | Set_of_closures _ | Closure _
+  | Float_array _ | Boxed_int _ | Bottom -> Cannot_be_taken
 
 let potentially_taken_block_switch_branch t pattern =
   match (pattern : Ilambda.switch_block_pattern) with
