@@ -192,6 +192,8 @@ let from_expr ~get_approx ~which_variables expr =
      not from an environment, but the usage information collected during
      simplification. *)
   let projections = known_valid_projections ~get_approx ~projections in
+  (* CR mshinwell: The following behaviour should not apply for
+     continuations *)
   (* Don't extract projections whose [projecting_from] variable is also
      used boxed.  We could in the future consider being more sophisticated
      about this based on the uses in the body, but given we are not doing

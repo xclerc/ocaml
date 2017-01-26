@@ -31,51 +31,68 @@ type unknown_because_of =
   | Unresolved_symbol of Symbol.t
   | Other
 
-type t = {
-  descr : descr;
-  var : Variable.t option;
-  symbol : (Symbol.t * int option) option;
-}
+module rec T : sig
+  type t = {
+    descr : descr;
+    var : Variable.t option;
+    symbol : (Symbol.t * int option) option;
+  }
 
-and descr =
-  | Value_block of Tag.t * t array
-  | Value_int of int
-  | Value_char of char
-  | Value_constptr of int
-  | Value_float of float option
-  | Value_boxed_int : 'a boxed_int * 'a -> descr
-  | Value_set_of_closures of value_set_of_closures
-  | Value_closure of value_closure
-  | Value_string of value_string
-  | Value_float_array of value_float_array
-  | Value_unknown of unknown_because_of
-  | Value_bottom
-  | Value_extern of Export_id.t
-  | Value_symbol of Symbol.t
-  | Value_unresolved of Symbol.t (* No description was found for this symbol *)
+  and descr =
+    | Union of unionable list
+    | Value_float of float option
+    | Value_boxed_int : 'a boxed_int * 'a -> descr
+    | Value_set_of_closures of value_set_of_closures
+    | Value_closure of value_closure
+    | Value_string of value_string
+    | Value_float_array of value_float_array
+    | Value_unknown of unknown_because_of
+    | Value_bottom
+    | Value_extern of Export_id.t
+    | Value_symbol of Symbol.t
+    | Value_unresolved of Symbol.t
 
-and value_closure = {
-  potential_closure : t Closure_id.Map.t;
-} [@@unboxed]
+  and value_closure = {
+    potential_closure : t Closure_id.Map.t;
+  } [@@unboxed]
 
-and value_set_of_closures = {
-  function_decls : Flambda.function_declarations;
-  bound_vars : t Var_within_closure.Map.t;
-  invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-  size : int option Variable.Map.t lazy_t;
-  specialised_args : Flambda.specialised_args;
-  freshening : Freshening.Project_var.t;
-  direct_call_surrogates : Closure_id.t Closure_id.Map.t;
-}
+  and value_set_of_closures = {
+    function_decls : Flambda.function_declarations;
+    bound_vars : t Var_within_closure.Map.t;
+    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
+    size : int option Variable.Map.t lazy_t;
+    specialised_args : Flambda.specialised_args;
+    freshening : Freshening.Project_var.t;
+    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
+  }
 
-and value_float_array_contents =
-  | Contents of t array
-  | Unknown_or_mutable
+  and value_float_array_contents =
+    | Contents of t array
+    | Unknown_or_mutable
 
-and value_float_array = {
-  contents : value_float_array_contents;
-  size : int;
-}
+  and value_float_array = {
+    contents : value_float_array_contents;
+    size : int;
+  }
+end = struct
+  include T
+end and Unionable : sig
+  type t =
+    | Value_block of Tag.t * T.t array
+    | Value_int of int
+    | Value_char of char
+    | Value_constptr of int
+
+  include Identifiable.S with type t := t
+end = struct
+  include Identifiable.Make (struct
+    type t =
+      | Value_block of Tag.t * T.t array
+      | Value_int of int
+      | Value_char of char
+      | Value_constptr of int
+  end)
+end
 
 let descr t = t.descr
 

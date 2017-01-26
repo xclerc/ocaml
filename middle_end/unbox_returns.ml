@@ -20,10 +20,10 @@ module A = Simple_value_approx
 module R = Inline_and_simplify_aux.Result
 module U = R.Continuation_uses
 
-let wrapper_returning_boxed_result ~params ~new_function ~return_arity =
+let wrapper_returning_boxed_result ~params ~new_fun_var
+      ~(return_arity : Flambda.unboxed_return_arity) =
   match return_arity with
-  | Singleton -> None
-  | Unboxed (Block_like { tag; size; }) ->
+  | Block_like { tag; size; } ->
     let stub_return_cont = Continuation.create () in
     let stub_params = List.map (fun param -> Variable.rename param) params in
     let new_closure_id = ... in
@@ -40,7 +40,7 @@ let wrapper_returning_boxed_result ~params ~new_function ~return_arity =
           Debuginfo.none))
         (Apply {
           kind = Function;
-          func = new_function;
+          func = new_fun_var;
           continuation = stub_return_cont;
           args = [boxed_result];
           call_kind = Direct { closure_id = ...; return_arity = Singleton; };
@@ -85,7 +85,7 @@ let wrapper_returning_boxed_result ~params ~new_function ~return_arity =
         ~is_a_functor:false
     in
     Some function_decl
-  | Unboxed (Variant_like { has_constant_ctors = _; tags_and_sizes = _; }) ->
+  | Variant_like { has_constant_ctors = _; tags_and_sizes = _; } ->
     Misc.fatal_error "Not yet implemented"
 
 type return_approx =
@@ -189,7 +189,18 @@ let how_to_unbox r ~backend ~function_decl =
           in
           Some arity
 
-let for_function_decl r ~backend ~function_decl =
+let for_function_decl r ~backend ~fun_var ~function_decl =
   match how_to_unbox r ~backend ~function_decl with
   | None -> None
   | Some return_arity ->
+    let new_fun_var = Variable.rename fun_var in
+    let wrapper_decl =
+      wrapper_returning_boxed_result ~params ~new_fun_var ~return_arity
+    in
+
+      let function_decls =
+        Flambda.update_function_declarations set_of_closures.function_decls
+          ~funs
+      in
+
+(* k must not escape *)

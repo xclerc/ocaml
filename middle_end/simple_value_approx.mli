@@ -110,57 +110,70 @@ type unknown_because_of =
     When inlining [f], the B branch is unreachable, yet the compiler
     cannot prove it and must therefore keep it.
 *)
-type t = private {
-  descr : descr;
-  var : Variable.t option;
-  symbol : (Symbol.t * int option) option;
-}
+module rec T : sig
+  type t = private {
+    descr : descr;
+    var : Variable.t option;
+    symbol : (Symbol.t * int option) option;
+  }
 
-and descr = private
-  | Value_block of Tag.t * t array
-  | Value_int of int
-  | Value_char of char
-  | Value_constptr of int
-  | Value_float of float option
-  | Value_boxed_int : 'a boxed_int * 'a -> descr
-  | Value_set_of_closures of value_set_of_closures
-  | Value_closure of value_closure
-  | Value_string of value_string
-  | Value_float_array of value_float_array
-  | Value_unknown of unknown_because_of
-  | Value_bottom
-  | Value_extern of Export_id.t
-  | Value_symbol of Symbol.t
-  | Value_unresolved of Symbol.t (* No description was found for this symbol *)
+  and descr = private 
+    | Union of Unionable.Set.t
+    (* CR-soon mshinwell: remove "Value_" prefixes *)
+    | Value_float of float option
+    | Value_boxed_int : 'a boxed_int * 'a -> descr
+    | Value_set_of_closures of value_set_of_closures
+    | Value_closure of value_closure
+    | Value_string of value_string
+    | Value_float_array of value_float_array
+    | Value_unknown of unknown_because_of
+    | Value_bottom
+    | Value_extern of Export_id.t
+    | Value_symbol of Symbol.t
+    | Value_unresolved of Symbol.t
+      (** No description was found for this symbol *)
 
-and value_closure = {
-  (* Map of closures ids to set of closures *)
-  potential_closure : t Closure_id.Map.t;
-} [@@unboxed]
+  and value_closure = {
+    potential_closure : t Closure_id.Map.t;
+    (** Map of closures ids to set of closures *)
+  } [@@unboxed]
 
-(* CR-soon mshinwell: add support for the approximations of the results, so we
-   can do all of the tricky higher-order cases. *)
-and value_set_of_closures = private {
-  function_decls : Flambda.function_declarations;
-  bound_vars : t Var_within_closure.Map.t;
-  invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-  size : int option Variable.Map.t lazy_t;
-  (** For functions that are very likely to be inlined, the size of the
-      function's body. *)
-  specialised_args : Flambda.specialised_args;
-  (* Any freshening that has been applied to [function_decls]. *)
-  freshening : Freshening.Project_var.t;
-  direct_call_surrogates : Closure_id.t Closure_id.Map.t;
-}
+  (* CR-soon mshinwell: add support for the approximations of the results, so we
+    can do all of the tricky higher-order cases. *)
+  and value_set_of_closures = private {
+    function_decls : Flambda.function_declarations;
+    bound_vars : t Var_within_closure.Map.t;
+    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
+    size : int option Variable.Map.t lazy_t;
+    (** For functions that are very likely to be inlined, the size of the
+        function's body. *)
+    specialised_args : Flambda.specialised_args;
+    freshening : Freshening.Project_var.t;
+    (** Any freshening that has been applied to [function_decls]. *)
+    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
+  }
 
-and value_float_array_contents =
-  | Contents of t array
-  | Unknown_or_mutable
+  and value_float_array_contents =
+    | Contents of t array
+    | Unknown_or_mutable
 
-and value_float_array = {
-  contents : value_float_array_contents;
-  size : int;
-}
+  and value_float_array = {
+    contents : value_float_array_contents;
+    size : int;
+  }
+end and Unionable : sig
+  type t = private
+    | Value_block of Tag.t * T.t array
+    | Value_int of int
+    | Value_char of char
+    | Value_constptr of int
+
+  include Identifiable.S with type t := t
+
+  val join_set : Set.t -> t
+end
+
+include T
 
 (** Extraction of the description of approximation(s). *)
 val descr : t -> descr
