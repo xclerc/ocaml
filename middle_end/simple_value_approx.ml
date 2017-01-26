@@ -857,10 +857,17 @@ let potentially_taken_block_switch_branch_string t s =
   | String { contents = Some _; _ } -> Cannot_be_taken
   | String { contents = None; } -> Can_be_taken
   | Block (tag, _) when Tag.to_int tag = Obj.string_tag ->
+  | Union union ->
     (* This case seems unlikely, so we don't write the logic to determine
        [Must_be_taken]. *)
-    Can_be_taken
-  | Constptr _ | Int _| Char _ | Block _
+    let can_be_taken =
+      Unionable.Set.exists (fun (t : Unionable.t) ->
+          match t with
+          | Block (block_tag, _) -> Tag.to_int block_tag = Obj.string_tag
+          | Int _ | Char _ | Constptr _ -> false)
+        union
+    in
+    if can_be_taken then Can_be_taken else Cannot_be_taken
   | Float _ | Set_of_closures _ | Closure _
   | Float_array _ | Boxed_int _ | Bottom -> Cannot_be_taken
 
