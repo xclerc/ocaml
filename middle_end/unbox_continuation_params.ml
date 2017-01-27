@@ -48,39 +48,18 @@ module Unboxing = struct
         let is_int = Variable.create "is_int" in
         let max_tag = Obj.last_non_constant_constructor_tag in
         let max_tag_var = Variable.create "max_tag" in
-        let isint_projection =
-          Projection.create_replace_with
-            ~pattern:(Prim (Pisint, [being_unboxed]))
-            ~replace_with:
+(*
               (Flambda.create_let max_tag (Const (Int max_tag))
                 (Prim (Pintcomp Cgt, [discriminant; max_tag], dbg)))
+*)
+        let isint_projection : Projection.t * Variable.t =
+           Prim (Pisint, [being_unboxed]), is_constant_ctor
         in
-        let switch_projection =
-          Projection.create_map
-            ~pattern:(Switch being_unboxed)
-            ~f:(fun (expr : Flambda.expr) ->
-              match expr with
-              | Switch (arg, switch) ->
-                let numconsts =
-                  Variable.Set.fold (fun num numconsts ->
-                      Variable.Set.add (num + max_tag) numconsts)
-                    switch.numconsts
-                in
-                let consts =
-                  List.map (fun (num, cont) -> num + max_tag, cont)
-                    switch.consts
-                in
-                Switch (arg, {
-                  switch with
-                  numconsts;
-                  consts;
-                })
-              | _ -> assert false)
+        let switch_projection : Projection.t * Variable.t =
+          Switch being_unboxed, discriminant
         in
-        let make_field_projection ~index =
-          Projection.create_replace_with
-            ~pattern:(Prim (Pfield index, [being_unboxed]))
-            ~replace_with:(Var fields.(index))
+        let make_field_projection ~index : Projection.t * Variable.t =
+          Prim (Pfield index, [being_unboxed]), fields.(index)
         in
         let field_projections =
           Array.to_list (Array.init (fun index ->

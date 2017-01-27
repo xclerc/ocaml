@@ -468,6 +468,7 @@ and switch = {
   numconsts : Numbers.Int.Set.t; (** Integer cases *)
   consts : (int * Continuation.t) list; (** Integer cases *)
   numblocks : Numbers.Int.Set.t; (** Number of tag block cases *)
+  (* CR mshinwell: Shouldn't the above line be Tag.Set.t? *)
   blocks :
     (Ilambda.switch_block_pattern * Continuation.t) list; (** Tag block cases *)
   failaction : Continuation.t option; (** Action to take if none matched *)

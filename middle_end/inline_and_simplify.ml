@@ -1831,14 +1831,54 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       body, ret r A.value_bottom
     end
   | Switch (arg, sw) ->
-    let arg =
-      (* Repoint the scrutinee of the [Switch] if required (used when unboxing
-         continuation arguments and function results of variant type). *)
+    let arg, sw =
+      (* Support for unboxing values of variant type. *)
       (* CR mshinwell: check if this should be inside
          [simplify_free_variable] *)
       match E.find_projection ~projection:(Switch arg) with
-      | Some var -> var
-      | None -> arg
+      | None -> arg, sw
+      | Some discriminant ->
+        let switch : Flambda.switch =
+          (* The encoding of the discriminant is:
+             0...Obj.first_non_constant_constructor_tag: the block's tag
+             Obj.first_non_constant_constructor_tag + 1 onwards: the number of
+               the constant constructor (i.e. as usual, but shifted up).
+             This transformation turns the [Switch] into one that only matches
+             on constants rather than looking at block tags.
+          *)
+          let max_tag_plus_one = Obj.first_non_constant_constructor_tag + 1 in
+          let numconsts =
+            Variable.Set.fold (fun num numconsts ->
+                Variable.Set.add (num + max_tag_plus_one) numconsts)
+              switch.numconsts
+          in
+          assert (Variable.Set.is_empty (
+            Variable.Set.inter numconsts switch.numblocks));
+          let numconsts =
+            Variable.Set.union numconsts switch.numblocks
+          in
+          let consts =
+            List.map (fun (num, cont) -> num + max_tag_plus_one, cont)
+              switch.consts
+          in
+          let new_consts =
+            List.map (fun ((pat : Ilambda.switch_block_pattern), cont) ->
+                match pat with
+                | Tag tag -> Tag.to_int tag, cont
+                | String _ ->
+                  Misc.fatal_errorf "Cannot transform [Switch] on strings \
+                      to use unboxed discriminant: %a"
+                    Flambda.print tree)
+              switch.blocks
+          in
+          { numconsts;
+            consts = new_consts @ consts;
+            numblocks = 0;
+            blocks = [];
+            failaction = switch.failaction;
+          }
+        in
+        discriminant, switch
     in
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->
       let rec filter_branches filter branches compatible_branches ~add =
