@@ -88,6 +88,37 @@ module Unboxing = struct
             max_size)
         in
 
+(*
+Insert at the top of the function:
+  let is_constant_ctor = discriminant > max_tag in
+which means that CSE can be used to rewrite
+  Pisint being_unboxed
+to
+  is_constant_ctor
+
+For the other case:
+  let boxed_being_unboxed =
+    if is_constant_ctor then discriminant - (max_tag + 1)
+    else Pmakeblock [discriminant: () .. ()]  (* "n" units *)
+  in
+which means that CSE can be used to rewrite
+  switch being_unboxed
+to
+  switch boxed_being_unboxed
+
+Might the allocation not be removed?
+
+Ah: we need to turn the "tag" switch into a "constant" switch, with the
+constant being the discriminant.
+  switch being_unboxed
+  | const 0 -> <k1>
+  | tag 0 -> <k2>
+-->
+  switch discriminant
+  | const (max_tag + 1) -> <k1>
+  | const 0 -> <k2>
+
+*)
 
     in
 
