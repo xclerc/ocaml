@@ -812,15 +812,15 @@ type switch_branch_selection =
 let potentially_taken_const_switch_branch t branch =
   match t.descr with
   | Union union ->
-    let must_be_taken =
-      Unionable.Set.exists (fun (t : Unionable.t) ->
-          match t with
-          | Block _ -> false
-          | Int i | Constptr i -> i = branch
-          | Char c -> Char.code c = branch)
-        union
+    let must_be_taken (t : Unionable.t) =
+      match t with
+      | Block _ -> false
+      | Int i | Constptr i -> i = branch
+      | Char c -> Char.code c = branch
     in
-    if must_be_taken then Must_be_taken else Cannot_be_taken
+    if Unionable.Set.for_all must_be_taken union then Must_be_taken
+    else if Unionable.Set.exists must_be_taken union then Can_be_taken
+    else Cannot_be_taken
   | Unresolved _ | Unknown _ | Extern _ | Symbol _ ->
     (* In theory symbols cannot contain integers but this shouldn't
        matter as this will always be an imported approximation *)
@@ -831,14 +831,14 @@ let potentially_taken_const_switch_branch t branch =
 let potentially_taken_block_switch_branch_tag t tag =
   match t.descr with
   | Union union ->
-    let must_be_taken =
-      Unionable.Set.exists (fun (t : Unionable.t) ->
-          match t with
-          | Block (block_tag, _) -> Tag.to_int block_tag = tag
-          | Int _ | Char _ | Constptr _ -> false)
-        union
+    let must_be_taken (t : Unionable.t) =
+        match t with
+        | Block (block_tag, _) -> Tag.to_int block_tag = tag
+        | Int _ | Char _ | Constptr _ -> false
     in
-    if must_be_taken then Must_be_taken else Cannot_be_taken
+    if Unionable.Set.for_all must_be_taken union then Must_be_taken
+    else if Unionable.Set.exists must_be_taken union then Can_be_taken
+    else Cannot_be_taken
   | (Unresolved _ | Unknown _ | Extern _ | Symbol _) -> Can_be_taken
   | Float _ when tag = Obj.double_tag -> Must_be_taken
   | Float_array _ when tag = Obj.double_array_tag -> Must_be_taken
@@ -860,14 +860,13 @@ let potentially_taken_block_switch_branch_string t s =
   | Union union ->
     (* This case seems unlikely, so we don't write the logic to determine
        [Must_be_taken]. *)
-    let can_be_taken =
-      Unionable.Set.exists (fun (t : Unionable.t) ->
-          match t with
-          | Block (block_tag, _) -> Tag.to_int block_tag = Obj.string_tag
-          | Int _ | Char _ | Constptr _ -> false)
-        union
+    let can_be_taken (t : Unionable.t) =
+      match t with
+      | Block (block_tag, _) -> Tag.to_int block_tag = Obj.string_tag
+      | Int _ | Char _ | Constptr _ -> false
     in
-    if can_be_taken then Can_be_taken else Cannot_be_taken
+    if Unionable.Set.exists can_be_taken union then Can_be_taken
+    else Cannot_be_taken
   | Float _ | Set_of_closures _ | Closure _
   | Float_array _ | Boxed_int _ | Bottom -> Cannot_be_taken
 

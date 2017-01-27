@@ -22,6 +22,77 @@ module R = Inline_and_simplify_aux.Result
 (* CR mshinwell: Once working, consider sharing code with
    [Unbox_specialised_args]. *)
 
+module Unboxing = struct
+  type t = {
+    has_constant_ctors : bool;
+    tags_and_sizes : (Tag.t * int) list;
+  }
+
+  let parameters_to_unbox t ~being_unboxed =
+    let dbg = Debuginfo.none in
+    let discriminant =
+      if not t.has_constant_ctors then None
+      else
+        let discriminant = Variable.rename ~append:"_discr" being_unboxed in
+        let max_size =
+          let sizes = List.map (fun (_tag, size) -> size) t.tags_and_sizes in
+          List.fold_left (fun max_size size -> max size max_size) sizes
+        in
+        let fields =
+          Array.init max_size (fun index ->
+            let name = Printf.sprintf "_field%d" index in
+            Variable.rename ~append:name being_unboxed)
+        in
+        let true_branch = Continuation.create () in
+        let false_branch = Continuation.create () in
+        let is_int = Variable.create "is_int" in
+        let max_tag = Obj.last_non_constant_constructor_tag in
+        let max_tag_var = Variable.create "max_tag" in
+        let isint_projection =
+          Projection.create_replace_with
+            ~pattern:(Prim (Pisint, [being_unboxed]))
+            ~replace_with:
+              (Flambda.create_let max_tag (Const (Int max_tag))
+                (Prim (Pintcomp Cgt, [discriminant; max_tag], dbg)))
+        in
+        let switch_projection =
+          Projection.create_map
+            ~pattern:(Switch being_unboxed)
+            ~f:(fun (expr : Flambda.expr) ->
+              match expr with
+              | Switch (arg, switch) ->
+                let numconsts =
+                  Variable.Set.fold (fun num numconsts ->
+                      Variable.Set.add (num + max_tag) numconsts)
+                    switch.numconsts
+                in
+                let consts =
+                  List.map (fun (num, cont) -> num + max_tag, cont)
+                    switch.consts
+                in
+                Switch (arg, {
+                  switch with
+                  numconsts;
+                  consts;
+                })
+              | _ -> assert false)
+        in
+        let make_field_projection ~index =
+          Projection.create_replace_with
+            ~pattern:(Prim (Pfield index, [being_unboxed]))
+            ~replace_with:(Var fields.(index))
+        in
+        let field_projections =
+          Array.to_list (Array.init (fun index ->
+              make_field_projection ~index)
+            max_size)
+        in
+
+
+    in
+
+end
+
 let for_continuations r ~body ~handlers ~original ~backend
       ~(recursive : Asttypes.rec_flag) =
   let definitions_with_uses = R.continuation_definitions_with_uses r in

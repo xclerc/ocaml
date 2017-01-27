@@ -14,6 +14,8 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(* CR mshinwell: enhance to proper CSE of pure primitives *)
+
 (** Representation of projections from closures and blocks. *)
 
 (** The selection of one closure given a set of closures, required before
@@ -77,6 +79,8 @@ type t =
   | Project_closure of project_closure
   | Move_within_set_of_closures of move_within_set_of_closures
   | Field of int * Variable.t
+  | Prim of Lambda.primitive * Variable.t list
+  | Switch of Variable.t
 
 include Identifiable.S with type t := t
 

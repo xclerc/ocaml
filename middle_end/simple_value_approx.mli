@@ -166,7 +166,7 @@ module rec T : sig
   val join : really_import_approx:(t -> t) -> t -> t -> t
 end and Unionable : sig
   type t = private
-    | Block of Tag.t * T.t array
+    | Block of T.t * T.t array
     | Int of int
     | Char of char
     | Constptr of int

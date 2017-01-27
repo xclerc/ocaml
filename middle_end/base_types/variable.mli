@@ -34,6 +34,8 @@ val create_with_same_name_as_ident : Ident.t -> t
 val clambda_name : t -> string
 (* CR-someday pchambart: Should we propagate Variable.t into clambda ??? *)
 
+(* CR mshinwell: check on gdb branch if this preserves the "original ident".
+   Sometimes it should and other times it should not (eg unboxing) *)
 val rename
    : ?current_compilation_unit:Compilation_unit.t
   -> ?append:string

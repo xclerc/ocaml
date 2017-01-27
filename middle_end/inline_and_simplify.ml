@@ -1320,94 +1320,107 @@ and simplify_named env r (tree : Flambda.named)
     let dbg = E.add_inlined_debuginfo env ~dbg in
     simplify_free_variables_named env args ~f:(fun env args args_approxs ->
       let tree = Flambda.Prim (prim, args, dbg) in
-      begin match prim, args, args_approxs with
-      | Pgetglobal _, _, _ ->
-        Misc.fatal_error "Pgetglobal is forbidden in Inline_and_simplify"
-      | Pfield field_index, [arg], [arg_approx] ->
-        let projection : Projection.t = Field (field_index, arg) in
-        begin match E.find_projection env ~projection with
-        | Some var ->
-          simplify_free_variable_named env var ~f:(fun _env var var_approx ->
-            let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_approx)
-        | None ->
-          begin match A.get_field arg_approx ~field_index with
-          | Unreachable -> [], Unreachable, r
-          | Ok approx ->
-            let tree, approx =
-              match arg_approx.symbol with
-              (* If the [Pfield] is projecting directly from a symbol, rewrite
-                 the expression to [Read_symbol_field]. *)
-              | Some (symbol, None) ->
-                let approx =
-                  A.augment_with_symbol_field approx symbol field_index
-                in
-                Flambda.Read_symbol_field (symbol, field_index), approx
-              | None | Some (_, Some _ ) ->
-                (* This [Pfield] is either not projecting from a symbol at all,
-                   or it is the projection of a projection from a symbol. *)
-                let approx' = E.really_import_approx env approx in
-                tree, approx'
-            in
-            simplify_named_using_approx_and_env env r tree approx
+      let projection : Projection.t = Prim (prim, args) in
+      begin match Env.find_projection env ~projection with
+      | Some var ->
+        (* CSE of pure primitives.
+           The [Pisint] case in particular is also used when unboxing
+           continuation parameters and function return values of variant
+           type. *)
+        simplify_free_variable_named env var ~f:(fun _env var var_approx ->
+          let r = R.map_benefit r (B.remove_projection projection) in
+          [], Reachable (Var var), ret r var_approx)
+      | None ->
+        begin match prim, args, args_approxs with
+        | Pgetglobal _, _, _ ->
+          Misc.fatal_error "Pgetglobal is forbidden in Inline_and_simplify"
+        | Pfield field_index, [arg], [arg_approx] ->
+          let projection : Projection.t = Field (field_index, arg) in
+          begin match E.find_projection env ~projection with
+          | Some var ->
+            simplify_free_variable_named env var ~f:(fun _env var var_approx ->
+              let r = R.map_benefit r (B.remove_projection projection) in
+              [], Reachable (Var var), ret r var_approx)
+          | None ->
+            begin match A.get_field arg_approx ~field_index with
+            | Unreachable -> [], Unreachable, r
+            | Ok approx ->
+              let tree, approx =
+                match arg_approx.symbol with
+                (* If the [Pfield] is projecting directly from a symbol, rewrite
+                   the expression to [Read_symbol_field]. *)
+                | Some (symbol, None) ->
+                  let approx =
+                    A.augment_with_symbol_field approx symbol field_index
+                  in
+                  Flambda.Read_symbol_field (symbol, field_index), approx
+                | None | Some (_, Some _ ) ->
+                  (* This [Pfield] is either not projecting from a symbol at
+                     all, or it is the projection of a projection from a
+                     symbol. *)
+                  let approx' = E.really_import_approx env approx in
+                  tree, approx'
+              in
+              simplify_named_using_approx_and_env env r tree approx
+            end
           end
+        | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
+        | (Parraysetu kind | Parraysets kind),
+            [_block; _field; _value],
+            [block_approx; _field_approx; value_approx] ->
+          if A.is_definitely_immutable block_approx then begin
+            Location.prerr_warning (Debuginfo.to_location dbg)
+              Warnings.Assignment_to_non_mutable_value
+          end;
+          let kind =
+            match A.descr block_approx, A.descr value_approx with
+            | (Value_float_array _, _)
+            | (_, Value_float _) ->
+              begin match kind with
+              | Pfloatarray | Pgenarray -> ()
+              | Paddrarray | Pintarray ->
+                (* CR pchambart: Do a proper warning here *)
+                Misc.fatal_errorf "Assignment of a float to a specialised \
+                                  non-float array: %a"
+                  Flambda.print_named tree
+              end;
+              Lambda.Pfloatarray
+              (* CR pchambart: This should be accounted by the benefit *)
+            | _ ->
+              kind
+          in
+          let prim : Lambda.primitive =
+            match prim with
+            | Parraysetu _ -> Parraysetu kind
+            | Parraysets _ -> Parraysets kind
+            | _ -> assert false
+          in
+          [], Reachable (Prim (prim, args, dbg)), ret r (A.value_unknown Other)
+        | Psetfield _, _block::_, block_approx::_ ->
+          if A.is_definitely_immutable block_approx then begin
+            Location.prerr_warning (Debuginfo.to_location dbg)
+              Warnings.Assignment_to_non_mutable_value
+          end;
+          [], Reachable tree, ret r (A.value_unknown Other)
+        | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
+          Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
+        | (Psequand | Psequor), _, _ ->
+          Misc.fatal_error "Psequand and Psequor must be expanded (see \
+              handling in closure_conversion.ml)"
+        | p, args, args_approxs ->
+          let expr, approx, benefit =
+            let module Backend = (val (E.backend env) : Backend_intf.S) in
+            Simplify_primitives.primitive p (args, args_approxs) tree dbg
+              ~size_int:Backend.size_int ~big_endian:Backend.big_endian
+          in
+          let r = R.map_benefit r (B.(+) benefit) in
+          let approx =
+            match p with
+            | Popaque -> A.value_unknown Other
+            | _ -> approx
+          in
+          [], Reachable expr, ret r approx
         end
-      | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
-      | (Parraysetu kind | Parraysets kind),
-          [_block; _field; _value],
-          [block_approx; _field_approx; value_approx] ->
-        if A.is_definitely_immutable block_approx then begin
-          Location.prerr_warning (Debuginfo.to_location dbg)
-            Warnings.Assignment_to_non_mutable_value
-        end;
-        let kind =
-          match A.descr block_approx, A.descr value_approx with
-          | (Value_float_array _, _)
-          | (_, Value_float _) ->
-            begin match kind with
-            | Pfloatarray | Pgenarray -> ()
-            | Paddrarray | Pintarray ->
-              (* CR pchambart: Do a proper warning here *)
-              Misc.fatal_errorf "Assignment of a float to a specialised \
-                                 non-float array: %a"
-                Flambda.print_named tree
-            end;
-            Lambda.Pfloatarray
-            (* CR pchambart: This should be accounted by the benefit *)
-          | _ ->
-            kind
-        in
-        let prim : Lambda.primitive =
-          match prim with
-          | Parraysetu _ -> Parraysetu kind
-          | Parraysets _ -> Parraysets kind
-          | _ -> assert false
-        in
-        [], Reachable (Prim (prim, args, dbg)), ret r (A.value_unknown Other)
-      | Psetfield _, _block::_, block_approx::_ ->
-        if A.is_definitely_immutable block_approx then begin
-          Location.prerr_warning (Debuginfo.to_location dbg)
-            Warnings.Assignment_to_non_mutable_value
-        end;
-        [], Reachable tree, ret r (A.value_unknown Other)
-      | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
-        Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
-      | (Psequand | Psequor), _, _ ->
-        Misc.fatal_error "Psequand and Psequor must be expanded (see handling \
-            in closure_conversion.ml)"
-      | p, args, args_approxs ->
-        let expr, approx, benefit =
-          let module Backend = (val (E.backend env) : Backend_intf.S) in
-          Simplify_primitives.primitive p (args, args_approxs) tree dbg
-            ~size_int:Backend.size_int ~big_endian:Backend.big_endian
-        in
-        let r = R.map_benefit r (B.(+) benefit) in
-        let approx =
-          match p with
-          | Popaque -> A.value_unknown Other
-          | _ -> approx
-        in
-        [], Reachable expr, ret r approx
       end)
 
 (** Simplify a set of [Let]-bindings introduced by a pass such as
@@ -1818,12 +1831,15 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       body, ret r A.value_bottom
     end
   | Switch (arg, sw) ->
-    (* CR mshinwell: Delete Switch when all the arms point to the same
-       place. *)
-    (* When [arg] is known to be a variable whose approximation is that of a
-       block with a fixed tag or a fixed integer, we can eliminate the
-       [Switch].  (This should also make the [Let] that binds [arg] redundant,
-       meaning that it too can be eliminated.) *)
+    let arg =
+      (* Repoint the scrutinee of the [Switch] if required (used when unboxing
+         continuation arguments and function results of variant type). *)
+      (* CR mshinwell: check if this should be inside
+         [simplify_free_variable] *)
+      match E.find_projection ~projection:(Switch arg) with
+      | Some var -> var
+      | None -> arg
+    in
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->
       let rec filter_branches filter branches compatible_branches ~add =
         match branches with
@@ -1838,6 +1854,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           | A.Must_be_taken ->
             Must_be_taken cont
       in
+      (* Use approximation information to determine which branches definitely
+         will be taken, or may be taken.  (Note that the "Union" case in
+         [Simple_value_approx] helps here.) *)
       let filtered_consts =
         filter_branches A.potentially_taken_const_switch_branch sw.consts []
           (* CR mshinwell: This use of "Tag" is a hack; needs fixing *)
