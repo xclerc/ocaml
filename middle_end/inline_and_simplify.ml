@@ -1331,6 +1331,20 @@ and simplify_named env r (tree : Flambda.named)
           let r = R.map_benefit r (B.remove_projection projection) in
           [], Reachable (Var var), ret r var_approx)
       | None ->
+        let default () =
+          let expr, approx, benefit =
+            let module Backend = (val (E.backend env) : Backend_intf.S) in
+            Simplify_primitives.primitive p (args, args_approxs) tree dbg
+              ~size_int:Backend.size_int ~big_endian:Backend.big_endian
+          in
+          let r = R.map_benefit r (B.(+) benefit) in
+          let approx =
+            match p with
+            | Popaque -> A.value_unknown Other
+            | _ -> approx
+          in
+          [], Reachable expr, ret r approx
+        in
         begin match prim, args, args_approxs with
         | Pgetglobal _, _, _ ->
           Misc.fatal_error "Pgetglobal is forbidden in Inline_and_simplify"
@@ -1404,22 +1418,35 @@ and simplify_named env r (tree : Flambda.named)
           [], Reachable tree, ret r (A.value_unknown Other)
         | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
           Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
+        | Pisint, [arg], [arg_approx] ->
+          begin match A.check_approx_for_block_or_immediate arg_approx with
+          | Wrong -> default ()
+          | Immediate ->
+            let r = R.map_benefit r (B.(+) B.remove_prim) in
+            let const_true = Variable.create "true" in
+            [const_true, Const (Int 1)], Reachable (Var const_true),
+              ret r (A.value_int 1)
+          | Block ->
+            let r = R.map_benefit r (B.(+) B.remove_prim) in
+            let const_false = Variable.create "false" in
+            [const_false, Const (Int 0)], Reachable (Var const_false),
+              ret r (A.value_int 0)
+          end
+        | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
+        | Pgettag, [arg], [arg_approx] ->
+          begin match A.check_approx_for_block arg_approx with
+          | Wrong -> default ()
+          | Ok (tag, _fields) ->
+            let r = R.map_benefit r (B.(+) B.remove_prim) in
+            let const_tag = Variable.create "tag" in
+            [const_tag, Const (Int tag)], Reachable (Var const_tag),
+              ret r (A.value_int tag)
+          end
+        | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
         | (Psequand | Psequor), _, _ ->
           Misc.fatal_error "Psequand and Psequor must be expanded (see \
               handling in closure_conversion.ml)"
-        | p, args, args_approxs ->
-          let expr, approx, benefit =
-            let module Backend = (val (E.backend env) : Backend_intf.S) in
-            Simplify_primitives.primitive p (args, args_approxs) tree dbg
-              ~size_int:Backend.size_int ~big_endian:Backend.big_endian
-          in
-          let r = R.map_benefit r (B.(+) benefit) in
-          let approx =
-            match p with
-            | Popaque -> A.value_unknown Other
-            | _ -> approx
-          in
-          [], Reachable expr, ret r approx
+        | p, args, args_approxs -> default ()
         end
       end)
 
