@@ -26,21 +26,10 @@
     describe the overall structure of a compilation unit.
 *)
 
-type unboxed_return_arity =
-  | Block_like of { tag : Tag.t; size : int; }
-  | Variant_like of {
-      has_constant_ctors : bool;
-      tags_and_sizes : (Tag.t * int) list;
-    }
-
-type return_arity =
-  | Singleton
-  | Unboxed of unboxed_return_arity
-
 (** Whether the callee in a function application is known at compile time. *)
 type call_kind =
   | Indirect
-  | Direct of { closure_id : Closure_id.t; return_arity : return_arity; }
+  | Direct of Closure_id.t
 
 (** Simple constants.  ("Structured constants" are rewritten to invocations
     of [Pmakeblock] so that they easily take part in optimizations.) *)

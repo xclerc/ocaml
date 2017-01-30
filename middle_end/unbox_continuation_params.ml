@@ -47,6 +47,8 @@ let find_unboxings ~definitions_with_uses ~handlers =
             if Variable.Map.is_empty unboxings then None
             else Some unboxings)
 
+(* CR mshinwell: If we get everything using [Unbox_one_variable] then
+   this function should be able to move to [Invariant_params] *)
 let propagate_invariant_params_flow ~handlers ~backend ~unboxings_by_cont =
   let invariant_params_flow =
     Invariant_params.Continuations.invariant_param_sources handlers ~backend
@@ -144,15 +146,7 @@ let for_continuations r ~body ~handlers ~original ~backend
             in
             List.fold_left (fun wrapper_body f -> f wrapper_body)
               initial_body
-              how_to_unbox.add_bindings_in_wrapper;
-          in
-          let wrapper_handler : Flambda.continuation_handler =
-            { params = wrapper_params;
-              stub = true;
-              is_exn_handler = false;
-              handler = wrapper_body;
-              specialised_args = wrapper_specialised_args;
-            }
+              how_to_unbox.add_bindings_in_wrapper
           in
           assert (not handler.is_exn_handler);
           let body =
@@ -160,19 +154,23 @@ let for_continuations r ~body ~handlers ~original ~backend
               handler.handler
               how_to_unbox.wrap_body
           in
-          let new_handler : Flambda.continuation_handler =
-            { params = how_to_unbox.new_params;
-              stub = handler.stub;
-              is_exn_handler = false;
-              handler = body;
-              specialised_args;
-            }
-          in
           let with_wrapper : Flambda_utils.with_wrapper =
             With_wrapper {
               new_cont;
-              new_handler;
-              wrapper_handler;
+              new_handler = {
+                params = how_to_unbox.new_params;
+                stub = handler.stub;
+                is_exn_handler = false;
+                handler = body;
+                specialised_args;
+              };
+              wrapper_handler = {
+                params = wrapper_params;
+                stub = true;
+                is_exn_handler = false;
+                handler = wrapper_body;
+                specialised_args = wrapper_specialised_args;
+              };
             }
           in
           Continuation.Map.add cont with_wrapper new_handlers)

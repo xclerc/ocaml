@@ -775,6 +775,7 @@ let clean_specialised_args_projections specialised_args =
           ({ spec_to with projection = None; } : Flambda.specialised_to))
     specialised_args
 
+(* CR mshinwell: Review this; maybe it can go? *)
 let projection_to_named (projection : Projection.t) : Flambda.named =
   match projection with
   | Project_var project_var -> Project_var project_var
@@ -783,6 +784,7 @@ let projection_to_named (projection : Projection.t) : Flambda.named =
   | Field (field_index, var) ->
     (* CR mshinwell: this should not say Debuginfo.none *)
     Prim (Pfield field_index, [var], Debuginfo.none)
+  | Prim _ | Switch _ -> Misc.fatal_error "Unsupported"
 
 type with_wrapper =
   | Unchanged of { handler : Flambda.continuation_handler; }
@@ -835,9 +837,9 @@ let build_let_cont_with_wrappers ~body ~(recursive : Asttypes.rec_flag)
       handlers = Recursive handlers;
     }
 
-let create_wrapper_params ~params =
+let create_wrapper_params ~params ~specialised_args =
   let renaming =
-    List.map (fun param -> Variable.rename param) params
+    List.map (fun param -> param, Variable.rename param) params
   in
   let renaming_map = Variable.Map.of_list renaming in
   let freshen_param param =
@@ -849,23 +851,20 @@ let create_wrapper_params ~params =
   let wrapper_specialised_args =
     Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
             wrapper_specialised_args ->
-        if not (Variable.Set.mem param original_params) then
-          wrapper_specialised_args
-        else
-          let param = freshen_param param in
-          let projection =
-            match spec_to.projection with
-            | None -> None
-            | Some projection ->
-              Some (Projection.map_projecting_from projection
-                ~f:(fun param -> freshen_param param))
-          in
-          let spec_to : Flambda.specialised_to =
-            { var = Misc.Stdlib.Option.map freshen_param spec_to.var;
-              projection;
-            }
-          in
-          Variable.Map.add param spec_to wrapper_specialised_args)
+        let param = freshen_param param in
+        let projection =
+          match spec_to.projection with
+          | None -> None
+          | Some projection ->
+            Some (Projection.map_projecting_from projection
+              ~f:(fun param -> freshen_param param))
+        in
+        let spec_to : Flambda.specialised_to =
+          { var = Misc.Stdlib.Option.map freshen_param spec_to.var;
+            projection;
+          }
+        in
+        Variable.Map.add param spec_to wrapper_specialised_args)
       specialised_args
       Variable.Map.empty
   in

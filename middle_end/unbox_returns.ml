@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-
+(*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module A = Simple_value_approx
@@ -160,3 +160,4 @@ let for_function_decl r ~backend ~fun_var ~function_decl =
       in
 
 (* k must not escape *)
+*)

@@ -494,6 +494,10 @@ let freshen_projection (projection : Projection.t) ~freshening
     }
   | Field (field_index, var) ->
     Field (field_index, apply_variable freshening var)
+  | Prim (prim, args) ->
+    Prim (prim, List.map (fun arg -> apply_variable freshening arg) args)
+  | Switch var ->
+    Switch (apply_variable freshening var)
 
 let freshen_free_vars_projection_relation relation ~freshening
       ~closure_freshening =

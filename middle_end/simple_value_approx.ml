@@ -39,7 +39,9 @@ module rec T : sig
   }
 
   and descr =
-    | Union of unionable list
+    | Union of Unionable.Set.t
+    (* CR mshinwell: These next two should presumably go into [Union] so we
+       can unbox them *)
     | Float of float option
     | Boxed_int : 'a boxed_int * 'a -> descr
     | Set_of_closures of value_set_of_closures
@@ -78,6 +80,15 @@ module rec T : sig
   val join : really_import_approx:(t -> t) -> t -> t -> t
 end = struct
   include T
+
+  let equal_boxed_int (type t1) (type t2)
+        (bi1 : t1 boxed_int) (i1 : t1)
+        (bi2 : t2 boxed_int) (i2 : t2) =
+    match bi1, bi2 with
+    | Int32, Int32 -> Int32.equal i1 i2
+    | Int64, Int64 -> Int64.equal i1 i2
+    | Nativeint, Nativeint -> Nativeint.equal i1 i2
+    | _ -> false
 
   (* Closures and set of closures descriptions cannot be merged.
 
@@ -172,6 +183,78 @@ end = struct
           var;
           symbol;
         }
+
+  let print_value_set_of_closures ppf
+        { function_decls = { funs }; invariant_params; freshening; _ } =
+    Format.fprintf ppf
+      "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
+      (fun ppf -> Variable.Map.iter (fun id _ -> Variable.print ppf id)) funs
+      (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
+      Freshening.Project_var.print freshening
+
+  let rec print_descr ppf = function
+    | Union union ->
+      Format.fprintf ppf "@[(union %a)@]" Unionable.Set.print union
+    | Unknown reason ->
+      begin match reason with
+      | Unresolved_symbol symbol ->
+        Format.fprintf ppf "?(due to unresolved symbol '%a')"
+          Symbol.print symbol
+      | Other -> Format.fprintf ppf "?"
+      end;
+    | Bottom -> Format.fprintf ppf "bottom"
+    | Extern id -> Format.fprintf ppf "_%a_" Export_id.print id
+    | Symbol sym -> Format.fprintf ppf "%a" Symbol.print sym
+    | Closure { potential_closures } ->
+      Format.fprintf ppf "(closure:@ @[<2>[@ ";
+      Closure_id.Map.iter (fun closure_id set_of_closures ->
+        Format.fprintf ppf "%a @[<2>from@ %a@];@ "
+          Closure_id.print closure_id
+          print set_of_closures)
+        potential_closures;
+      Format.fprintf ppf "]@])";
+    | Set_of_closures set_of_closures ->
+      print_value_set_of_closures ppf set_of_closures
+    | Unresolved sym ->
+      Format.fprintf ppf "(unresolved %a)" Symbol.print sym
+    | Float (Some f) -> Format.pp_print_float ppf f
+    | Float None -> Format.pp_print_string ppf "float"
+    | String { contents; size } -> begin
+        match contents with
+        | None ->
+            Format.fprintf ppf "string %i" size
+        | Some s ->
+            let s =
+              if size > 10
+              then String.sub s 0 8 ^ "..."
+              else s
+            in
+            Format.fprintf ppf "string %i %S" size s
+      end
+    | Float_array float_array ->
+      begin match float_array.contents with
+      | Unknown_or_mutable ->
+        Format.fprintf ppf "float_array %i" float_array.size
+      | Contents _ ->
+        Format.fprintf ppf "float_array_imm %i" float_array.size
+      end
+    | Boxed_int (t, i) ->
+      match t with
+      | Int32 -> Format.fprintf ppf "%li" i
+      | Int64 -> Format.fprintf ppf "%Li" i
+      | Nativeint -> Format.fprintf ppf "%ni" i
+
+  and print ppf { descr; var; symbol; } =
+    let print ppf = function
+      | None -> Symbol.print_opt ppf None
+      | Some (sym, None) -> Symbol.print ppf sym
+      | Some (sym, Some field) ->
+          Format.fprintf ppf "%a.(%i)" Symbol.print sym field
+    in
+    Format.fprintf ppf "{ descr=%a var=%a symbol=%a }"
+      print_descr descr
+      Variable.print_opt var
+      print symbol
 end and Unionable : sig
   type t =
     | Block of Tag.t * T.t array
@@ -193,6 +276,45 @@ end = struct
       | Int of int
       | Char of char
       | Constptr of int
+
+    let hash _ = Misc.fatal_error "Not yet implemented"
+    (* Sketch (requires [T.hash] though...):
+      match t with
+      | Block (tag, ts) ->
+        Hashtbl.hash (Tag.hash tag, List.map T.hash (Array.to_list ts))
+      | Int i -> Hashtbl.hash (0, i)
+      | Char c -> Hashtbl.hash (1, c)
+      | Constptr p -> Hashtbl.hash (1, p) *)
+
+    let compare t1 t2 =
+      match t1, t2 with
+      | Block (tag1, ts1), Block (tag2, ts2) ->
+        let c = Tag.compare tag1 tag2 in
+        if c <> 0 then c
+        else Misc.Stdlib.List.compare T.compare ts1 ts2
+      | Int i1, Int i2 -> Pervasives.compare i1 i2
+      | Char c1, Char c2 -> Pervasives.compare c1 c2
+      | Constptr p1, Constptr p2 -> Pervasives.compare p1 p2
+      | Block _, _ -> -1
+      | _, Block _ -> 1
+      | Int _, _ -> -1
+      | _, Int _ -> 1
+      | Char _, _ -> -1
+      | _, Char _ -> 1
+      | Constptr _, _ -> -1
+      | _, Constptr _ -> 1
+
+    let print ppf t =
+      match t with
+      | Int i -> Format.pp_print_int ppf i
+      | Char c -> Format.fprintf ppf "%c" c
+      | Constptr i -> Format.fprintf ppf "%ia" i
+      | Block (tag,fields) ->
+        let p ppf fields =
+          Array.iter (fun v -> Format.fprintf ppf "%a@ " T.print v) fields in
+        Format.fprintf ppf "[%i:@ @[<1>%a@]]" (Tag.to_int tag) p fields
+
+    let output _ _ = Misc.fatal_error "Not yet implemented"
   end)
 
   type join =
@@ -223,81 +345,6 @@ end
 
 let descr t = t.descr
 let descrs ts = List.map (fun t -> t.descr) ts
-
-let print_value_set_of_closures ppf
-      { function_decls = { funs }; invariant_params; freshening; _ } =
-  Format.fprintf ppf "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
-    (fun ppf -> Variable.Map.iter (fun id _ -> Variable.print ppf id)) funs
-    (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
-    Freshening.Project_var.print freshening
-
-let rec print_descr ppf = function
-  | Int i -> Format.pp_print_int ppf i
-  | Char c -> Format.fprintf ppf "%c" c
-  | Constptr i -> Format.fprintf ppf "%ia" i
-  | Block (tag,fields) ->
-    let p ppf fields =
-      Array.iter (fun v -> Format.fprintf ppf "%a@ " print v) fields in
-    Format.fprintf ppf "[%i:@ @[<1>%a@]]" (Tag.to_int tag) p fields
-  | Unknown reason ->
-    begin match reason with
-    | Unresolved_symbol symbol ->
-      Format.fprintf ppf "?(due to unresolved symbol '%a')" Symbol.print symbol
-    | Other -> Format.fprintf ppf "?"
-    end;
-  | Bottom -> Format.fprintf ppf "bottom"
-  | Extern id -> Format.fprintf ppf "_%a_" Export_id.print id
-  | Symbol sym -> Format.fprintf ppf "%a" Symbol.print sym
-  | Closure { potential_closures } ->
-    Format.fprintf ppf "(closure:@ @[<2>[@ ";
-    Closure_id.Map.iter (fun closure_id set_of_closures ->
-      Format.fprintf ppf "%a @[<2>from@ %a@];@ "
-        Closure_id.print closure_id
-        print set_of_closures)
-      potential_closures;
-    Format.fprintf ppf "]@])";
-  | Set_of_closures set_of_closures ->
-    print_value_set_of_closures ppf set_of_closures
-  | Unresolved sym ->
-    Format.fprintf ppf "(unresolved %a)" Symbol.print sym
-  | Float (Some f) -> Format.pp_print_float ppf f
-  | Float None -> Format.pp_print_string ppf "float"
-  | String { contents; size } -> begin
-      match contents with
-      | None ->
-          Format.fprintf ppf "string %i" size
-      | Some s ->
-          let s =
-            if size > 10
-            then String.sub s 0 8 ^ "..."
-            else s
-          in
-          Format.fprintf ppf "string %i %S" size s
-    end
-  | Float_array float_array ->
-    begin match float_array.contents with
-    | Unknown_or_mutable ->
-      Format.fprintf ppf "float_array %i" float_array.size
-    | Contents _ ->
-      Format.fprintf ppf "float_array_imm %i" float_array.size
-    end
-  | Boxed_int (t, i) ->
-    match t with
-    | Int32 -> Format.fprintf ppf "%li" i
-    | Int64 -> Format.fprintf ppf "%Li" i
-    | Nativeint -> Format.fprintf ppf "%ni" i
-
-and print ppf { descr; var; symbol; } =
-  let print ppf = function
-    | None -> Symbol.print_opt ppf None
-    | Some (sym, None) -> Symbol.print ppf sym
-    | Some (sym, Some field) ->
-        Format.fprintf ppf "%a.(%i)" Symbol.print sym field
-  in
-  Format.fprintf ppf "{ descr=%a var=%a symbol=%a }"
-    print_descr descr
-    Variable.print_opt var
-    print symbol
 
 let approx descr = { descr; var = None; symbol = None }
 
@@ -619,15 +666,6 @@ let check_approx_for_block t : checked_approx_for_block =
   | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong
 
-let equal_boxed_int (type t1) (type t2)
-      (bi1 : t1 boxed_int) (i1 : t1)
-      (bi2 : t2 boxed_int) (i2 : t2) =
-  match bi1, bi2 with
-  | Int32, Int32 -> Int32.equal i1 i2
-  | Int64, Int64 -> Int64.equal i1 i2
-  | Nativeint, Nativeint -> Nativeint.equal i1 i2
-  | _ -> false
-
 (* Given a set-of-closures approximation and a closure ID, apply any
    freshening specified in the approximation to the closure ID, and return
    that new closure ID.  A fatal error is produced if the new closure ID
@@ -856,7 +894,6 @@ let potentially_taken_block_switch_branch_string t s =
   | String { contents = Some s'; _ } when s = s' -> Must_be_taken
   | String { contents = Some _; _ } -> Cannot_be_taken
   | String { contents = None; } -> Can_be_taken
-  | Block (tag, _) when Tag.to_int tag = Obj.string_tag ->
   | Union union ->
     (* This case seems unlikely, so we don't write the logic to determine
        [Must_be_taken]. *)

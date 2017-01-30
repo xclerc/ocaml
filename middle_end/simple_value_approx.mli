@@ -174,7 +174,7 @@ end and Unionable : sig
   include Identifiable.S with type t := t
 end
 
-include T
+include (module type of T)
 
 (** Extraction of the description of approximation(s). *)
 val descr : t -> descr
