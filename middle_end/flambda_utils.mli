@@ -226,3 +226,7 @@ val build_let_cont_with_wrappers
   -> recursive:Asttypes.rec_flag
   -> with_wrappers:with_wrapper Continuation.Map.t
   -> Flambda.expr
+
+val create_wrapper_params
+   : params:Variable.t list
+  -> Variable.t Variable.Map.t * Variable.t list * Flambda.specialised_args

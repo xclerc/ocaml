@@ -21,183 +21,130 @@ module CAV = Invariant_params.Continuations.Continuation_and_variable
 module R = Inline_and_simplify_aux.Result
 module U = Unbox_one_variable
 
+let find_unboxings ~definitions_with_uses ~handlers =
+  Continuation.Map.filter_map handlers
+    ~f:(fun cont (handler : Flambda.continuation_handler) ->
+      if handler.stub then
+        None
+      else
+        match handler.params with
+        | [] -> None
+        | params ->
+          match Continuation.Map.find cont definitions_with_uses with
+          | exception Not_found -> None
+          | (uses, _approx, _env, _recursive) ->
+            let num_params = List.length params in
+            let args_approxs =
+              Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+            in
+            let params_to_approxs =
+              Variable.Map.of_list (List.combine params args_approxs)
+            in
+            let unboxings =
+              Variable.Map.filter_map params_to_approxs
+                ~f:(fun _param approx -> Unboxing.create approx)
+            in
+            if Variable.Map.is_empty unboxings then None
+            else Some unboxings)
+
+let propagate_invariant_params_flow ~handlers ~backend ~unboxings_by_cont =
+  let invariant_params_flow =
+    Invariant_params.Continuations.invariant_param_sources handlers ~backend
+  in
+(*
+Format.eprintf "Invariant params:\n@;%a\n"
+(Variable.Map.print
+  Invariant_params.Continuations.Continuation_and_variable.Set.print)
+  invariant_params_flow;
+*)
+  let unboxings_by_cont' =
+    Continuation.Map.fold (fun cont unboxings_by_param unboxings_by_cont' ->
+        Variable.Map.fold (fun param unboxing unboxings_by_cont' ->
+            match Variable.Map.find param invariant_params_flow with
+            | exception Not_found -> unboxings_by_cont'
+            | flow ->
+              CAV.Set.fold (fun (target_cont, target_param)
+                      unboxings_by_cont' ->
+                  if Continuation.equal cont target_cont then
+                    unboxings_by_cont'
+                  else
+                    let target_unboxings =
+                      match
+                        Continuation.Map.find target_cont unboxings_by_cont'
+                      with
+                      | exception Not_found -> Variable.Map.empty
+                      | target_unboxings -> target_unboxings
+                    in
+                    Continuation.Map.add target_cont
+                      (Variable.Map.add target_param unboxing
+                        target_unboxings))
+                flow
+                unboxings_by_cont')
+          unboxings_by_param
+          unboxings_by_cont')
+      unboxings_by_cont
+      Continuation.Map.empty
+  in
+  Continuation.Map.union (fun _cont unboxings1 unboxings2 ->
+      Some (Variable.Map.disjoint_union unboxings1 unboxings2))
+    unboxings_by_cont unboxings_by_cont'
+
 let for_continuations r ~body ~handlers ~original ~backend
       ~(recursive : Asttypes.rec_flag) =
   let definitions_with_uses = R.continuation_definitions_with_uses r in
-  let unboxings_by_cont =
-    Continuation.Map.filter_map handlers
-      ~f:(fun cont (handler : Flambda.continuation_handler) ->
-        if handler.stub then
-          None
-        else
-          match handler.params with
-          | [] -> None
-          | params ->
-            match Continuation.Map.find cont definitions_with_uses with
-            | exception Not_found -> None
-            | (uses, _approx, _env, _recursive) ->
-              let num_params = List.length params in
-              let args_approxs =
-                Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
-              in
-              let params_to_approxs =
-                Variable.Map.of_list (List.combine params args_approxs)
-              in
-              let unboxings =
-                Variable.Map.filter_map params_to_approxs
-                  ~f:(fun _param approx -> Unboxing.create approx)
-              in
-              if Variable.Map.is_empty unboxings then None
-              else Some unboxings)
-  in
+  let unboxings_by_cont = find_unboxings ~definitions_with_uses ~handlers in
   if Continuation.Map.is_empty unboxings_by_cont then begin
     original
   end else begin
     Format.eprintf "Unboxings:\n@;%a\n"
       (Continuation.Map.print Unboxing.Set.print) unboxings_by_cont;
-    let invariant_params_flow =
-      Invariant_params.Continuations.invariant_param_sources handlers ~backend
+    let unboxings_by_cont =
+      propagate_invariant_params_flow ~handlers ~backend ~unboxings_by_cont
     in
-(*
-Format.eprintf "Invariant params:\n@;%a\n"
-  (Variable.Map.print
-    Invariant_params.Continuations.Continuation_and_variable.Set.print)
-    invariant_params_flow;
-*)
-
-
-    let projections_by_cont' =
-      Continuation.Map.fold (fun cont projections projections_by_cont' ->
-          Projection.Set.fold (fun projection projections_by_cont' ->
-              let projecting_from = Projection.projecting_from projection in
-              match Variable.Map.find projecting_from invariant_params_flow with
-              | exception Not_found -> projections_by_cont'
-              | flow ->
-                CAV.Set.fold (fun (target_cont, target_arg)
-                          projections_by_cont' ->
-                    if Continuation.equal cont target_cont then
-                      projections_by_cont'
-                    else
-                      let projection =
-                        Projection.map_projecting_from projection
-                          ~f:(fun var ->
-                            assert (Variable.equal var projecting_from);
-                            target_arg)
-                      in
-                      let new_args =
-                        match
-                          Continuation.Map.find target_cont projections_by_cont'
-                        with
-                        | exception Not_found -> Projection.Set.empty
-                        | new_args -> new_args
-                      in
-                      let new_args =
-                        Projection.Set.add projection new_args
-                      in
-                      Continuation.Map.add target_cont new_args
-                        projections_by_cont')
-                  flow
-                  projections_by_cont')
-            projections
-            projections_by_cont')
-        projections_by_cont
-        Continuation.Map.empty
-    in
-    let projections_by_cont =
-      Continuation.Map.union (fun _cont projs1 projs2 ->
-          Some (Projection.Set.union projs1 projs2))
-        projections_by_cont projections_by_cont'
-    in
-
-
     let with_wrappers =
-      Continuation.Map.fold (fun cont projections new_handlers ->
+      Continuation.Map.fold (fun cont unboxings_by_param new_handlers ->
           let handler : Flambda.continuation_handler =
             match Continuation.Map.find cont handlers with
             | exception Not_found -> assert false
             | handler -> handler
           in
-          let new_cont = Continuation.create () in
-          let unboxings, specialised_args =
-            Projection.Set.fold (fun projection
-                      (unboxings, specialised_args) ->
-                let param = Projection.projecting_from projection in
-                let spec_to : Flambda.specialised_to =
-                  { var = None;
-                    projection = Some projection;
-                  }
-                in
-                let new_param = Variable.rename ~append:"_unboxed" param in
-                let unboxings = (new_param, projection)::unboxings in
-                let specialised_args =
-                  Variable.Map.add new_param spec_to specialised_args
-                in
-                unboxings, specialised_args)
-              projections
-              ([], handler.specialised_args)
+          let wrapper_params_map, wrapper_params, wrapper_specialised_args =
+            Flambda_utils.create_wrapper_params ~params:handler.params
           in
-          let unboxing_params =
-            List.map (fun (param, _projection) -> param) unboxings
-          in
-          let new_params = handler.params @ unboxing_params in
-          let params_freshening =
-            List.map (fun param -> param, Variable.rename param) new_params
-          in
-          let params_freshening = Variable.Map.of_list params_freshening in
           let freshen_param param =
-            match Variable.Map.find param params_freshening with
+            match Variable.Map.find param wrapper_params_map with
             | exception Not_found -> assert false
             | param -> param
           in
-          let wrapper_params =
-            List.map (fun param -> freshen_param param) handler.params
+          let new_cont = Continuation.create () in
+          let how_to_unbox =
+            Variable.Map.fold (fun param unboxing how_to_unbox' ->
+                let wrapper_param_being_unboxed = freshen_param param in
+                let how_to_unbox =
+                  Unbox_one_variable.how_to_unbox unboxing
+                    ~being_unboxed:param
+                    ~wrapper_param_being_unboxed
+                in
+                Unbox_one_variable.merge_how_to_unbox how1 how2)
+              unboxings_by_param
+              Unbox_one_variable.empty_how_to_unbox
           in
-          let original_params = Variable.Set.of_list handler.params in
-          let wrapper_specialised_args =
-            Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
-                    wrapper_specialised_args ->
-                if not (Variable.Set.mem param original_params) then
-                  wrapper_specialised_args
-                else
-                  let param = freshen_param param in
-                  let projection =
-                    match spec_to.projection with
-                    | None -> None
-                    | Some projection ->
-                      Some (Projection.map_projecting_from projection
-                        ~f:(fun param -> freshen_param param))
-                  in
-                  let spec_to : Flambda.specialised_to =
-                    { var = Misc.Stdlib.Option.map freshen_param spec_to.var;
-                      projection;
-                    }
-                  in
-                  Variable.Map.add param spec_to wrapper_specialised_args)
-              specialised_args
-              Variable.Map.empty
+          let new_specialised_args =
+            Unbox_one_variable.new_specialised_args how_to_unbox
           in
-          let wrapper_unboxings =
-            List.map (fun (unboxing, projection) ->
-                freshen_param unboxing, projection)
-              unboxings
+          let specialised_args =
+            Variable.Map.disjoint_union handler.specialised_args
+              new_specialised_args
           in
           let wrapper_body =
             let initial_body : Flambda.t =
-              let wrapper_unboxings =
-                List.map (fun (unboxing, _projection) -> unboxing)
-                  wrapper_unboxings
-              in
-              Apply_cont (new_cont, None, wrapper_params @ wrapper_unboxings)
+              Apply_cont (new_cont, None,
+                wrapper_params
+                  @ how_to_unbox.new_arguments_for_call_in_wrapper)
             in
-            List.fold_left (fun wrapper_body (unboxing, projection) ->
-                let projection =
-                  Projection.map_projecting_from projection
-                    ~f:(fun param -> freshen_param param)
-                in
-                let named = Flambda_utils.projection_to_named projection in
-                Flambda.create_let unboxing named wrapper_body)
+            List.fold_left (fun wrapper_body f -> f wrapper_body)
               initial_body
-              wrapper_unboxings
+              how_to_unbox.add_bindings_in_wrapper;
           in
           let wrapper_handler : Flambda.continuation_handler =
             { params = wrapper_params;
@@ -208,11 +155,16 @@ Format.eprintf "Invariant params:\n@;%a\n"
             }
           in
           assert (not handler.is_exn_handler);
+          let body =
+            List.fold_left (fun body f -> f body)
+              handler.handler
+              how_to_unbox.wrap_body
+          in
           let new_handler : Flambda.continuation_handler =
-            { params = new_params;
+            { params = how_to_unbox.new_params;
               stub = handler.stub;
               is_exn_handler = false;
-              handler = handler.handler;
+              handler = body;
               specialised_args;
             }
           in

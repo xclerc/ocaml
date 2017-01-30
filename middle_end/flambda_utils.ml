@@ -834,3 +834,39 @@ let build_let_cont_with_wrappers ~body ~(recursive : Asttypes.rec_flag)
       body;
       handlers = Recursive handlers;
     }
+
+let create_wrapper_params ~params =
+  let renaming =
+    List.map (fun param -> Variable.rename param) params
+  in
+  let renaming_map = Variable.Map.of_list renaming in
+  let freshen_param param =
+    match Variable.Map.find param renaming_map with
+    | exception Not_found -> assert false
+    | param -> param
+  in
+  let wrapper_params = List.map freshen_param params in
+  let wrapper_specialised_args =
+    Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
+            wrapper_specialised_args ->
+        if not (Variable.Set.mem param original_params) then
+          wrapper_specialised_args
+        else
+          let param = freshen_param param in
+          let projection =
+            match spec_to.projection with
+            | None -> None
+            | Some projection ->
+              Some (Projection.map_projecting_from projection
+                ~f:(fun param -> freshen_param param))
+          in
+          let spec_to : Flambda.specialised_to =
+            { var = Misc.Stdlib.Option.map freshen_param spec_to.var;
+              projection;
+            }
+          in
+          Variable.Map.add param spec_to wrapper_specialised_args)
+      specialised_args
+      Variable.Map.empty
+  in
+  renaming_map, wrapper_params, wrapper_specialised_args

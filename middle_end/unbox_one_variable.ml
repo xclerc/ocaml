@@ -98,30 +98,48 @@ type how_to_unbox = {
   wrap_body : Flambda.expr -> Flambda.expr;
 }
 
-let merge_how_to_unbox (how1 : how_to_unbox option)
+let empty_how_to_unbox : how_to_unboxed =
+  { add_bindings_in_wrapper = (fun expr -> expr);
+    new_arguments_for_call_in_wrapper = [];
+    new_params = [];
+    new_projections = [];
+    wrap_body = (fun expr -> expr);
+  }
+
+let new_specialised_args (how : how_to_unbox) =
+  List.fold_left2 (fun new_specialised_args param projection ->
+      let spec_to : Flambda.specialised_to =
+        { var = None;
+          projection;
+        }
+      in
+      Variable.Map.add param spec_to new_specialised_args)
+    how.new_params
+    how.new_projections
+
+let merge_how_to_unbox (how1 : how_to_unbox) (how2 : how_to_unbox)
+      : how_to_unbox =
+  { add_bindings_in_wrapper = (fun expr ->
+      how2.add_bindings_in_wrapper (
+        how1.add_bindings_in_wrapper expr));
+    new_arguments_for_call_in_wrapper =
+      how1.new_arguments_for_call_in_wrapper
+        @ how2.new_arguments_for_call_in_wrapper;
+    new_params = how1.new_params @ how2.new_params;
+    new_projections = how1.new_projections @ how2.new_projections;
+    wrap_body = (fun expr -> how2.wrap_body (how1.wrap_body expr));
+  }
+
+let merge_how_to_unbox_option (how1 : how_to_unbox option)
       (how2 : how_to_unbox option) : how_to_unbox option =
   match how1, how2 with
   | None, None -> None
   | Some how1, None -> Some how1
   | None, Some how2 -> Some how2
-  | Some how1, Some how2 ->
-    assert (Variable.equal how1.wrapper_param_being_unboxed
-      how2.wrapper_param_being_unboxed);
-    { wrapper_param_being_unboxed = how1.wrapper_param_being_unboxed;
-      add_bindings_in_wrapper = (fun expr ->
-        how2.add_bindings_in_wrapper (
-          how1.add_bindings_in_wrapper expr));
-      new_arguments_for_call_in_wrapper =
-        how1.new_arguments_for_call_in_wrapper
-          @ how2.new_arguments_for_call_in_wrapper;
-      new_params = how1.new_params @ how2.new_params;
-      new_projections = how1.new_projections @ how2.new_projections;
-      wrap_body = (fun expr -> how2.wrap_body (how1.wrap_body expr));
-    }
+  | Some how1, Some how2 -> Some (merge_how_to_unbox how1 how2)
 
-let how_to_unbox t ~being_unboxed =
+let how_to_unbox t ~being_unboxed ~wrapper_param_being_unboxed =
   let dbg = Debuginfo.none in
-  let wrapper_param_being_unboxed = Variable.rename being_unboxed in
   let for_discriminant : how_to_unbox option =
     (* See the [Switch] case in [Inline_and_simplify] for details of the
        encoding of the variant discriminant. *)
@@ -140,14 +158,13 @@ let how_to_unbox t ~being_unboxed =
         Switch being_unboxed, discriminant
       in
       let add_bindings_in_wrapper expr =
-        let max_tag_plus_one_var = Variable.create "max_tag" in
+        let max_tag_plus_one = Variable.create "max_tag" in
         let is_int_cont = Continuation.create () in
         let is_block_cont = Continuation.create () in
         let join_cont = Continuation.create () in
-        let max_tag_var = Variable.create "max_tag" in
-        let shifted_tag_var = Variable.create "shifted_tag" in
-        let tag_var = Variable.create "tag" in
-        let is_int_var = Variable.create "is_int" in
+        let shifted_tag = Variable.create "shifted_tag" in
+        let tag = Variable.create "tag" in
+        let is_int = Variable.create "is_int" in
         let switch : Flambda.switch =
           { numconsts = Numbers.Int.Set.singleton 0;
             consts = [0, is_block_cont];
@@ -156,12 +173,14 @@ let how_to_unbox t ~being_unboxed =
             failaction = Some is_int_cont;
           }
         in
-        Flambda.create_let max_tag_plus_one_var (Const (Int (max_tag + 1)))
+        (* The following examines the value in [wrapper_param_being_unboxed]
+           and creates the discriminant from it. *)
+        Flambda.create_let max_tag_plus_one (Const (Int (max_tag + 1)))
           (Let_cont {
             body = Let_cont {
               body = Let_cont {
                 body =
-                  Flambda.create_let is_int_var
+                  Flambda.create_let is_int
                     (Prim (Pisint, [wrapper_param_being_unboxed], dbg))
                     (Switch switch);
                 handlers = Nonrecursive {
@@ -169,11 +188,11 @@ let how_to_unbox t ~being_unboxed =
                   handler = {
                     params = [];
                     body =
-                      Flambda.create_let shifted_tag_var
+                      Flambda.create_let shifted_tag
                         (Prim (Paddint,
-                          [wrapper_param_being_unboxed; max_tag_plus_one_var],
+                          [wrapper_param_being_unboxed; max_tag_plus_one],
                           dbg))
-                        (Apply_cont (join_cont, None, [shifted_tag_var]));
+                        (Apply_cont (join_cont, None, [shifted_tag]));
                     stub = false;
                     specialised_args = Variable.Map.empty;
                   };
@@ -189,9 +208,9 @@ let how_to_unbox t ~being_unboxed =
                      a nuisance to construct, requiring one continuation per
                      tag.) *)
                   body =
-                    Flambda.create_let tag_var
+                    Flambda.create_let tag
                       (Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
-                      (Apply_cont (join_cont, None, [tag_var]));
+                      (Apply_cont (join_cont, None, [tag]));
                   stub = false;
                   specialised_args = Variable.Map.empty;
                 };
@@ -209,15 +228,14 @@ let how_to_unbox t ~being_unboxed =
           })
       in
       let wrap_body expr =
-        let max_tag_var = Variable.create "max_tag" in
+        let max_tag = Variable.create "max_tag" in
         Flambda.create_let max_tag (Const (Int max_tag))
           (Flambda.create_let is_constant_ctor
             (Prim (Pintcomp Cgt, [discriminant; max_tag], dbg))
             expr)
       in
       let how_to_unbox : how_to_unbox =
-        { wrapper_param_being_unboxed;
-          add_bindings_in_wrapper;
+        { add_bindings_in_wrapper;
           new_arguments_for_call_in_wrapper = [discriminant_in_wrapper];
           new_params = [discriminant];
           new_projections = [isint_projection; switch_projection];
@@ -264,8 +282,7 @@ let how_to_unbox t ~being_unboxed =
         max_size)
     in
     let how_to_unbox : how_to_unbox =
-      { wrapper_param_being_unboxed;
-        add_bindings_in_wrapper;
+      { add_bindings_in_wrapper;
         new_arguments_for_call_in_wrapper = fields_in_wrapper;
         new_params = Array.to_list fields;
         new_projections = field_projections;
