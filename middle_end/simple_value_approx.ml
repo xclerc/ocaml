@@ -256,19 +256,26 @@ end = struct
       Variable.print_opt var
       print symbol
 end and Unionable : sig
+  module Immediates : sig
+    type t =
+      | Int of int
+      | Char of char
+      | Constptr of int
+
+    include Identifiable with type t := t
+  end
+
+  type blocks_only = T.t array Tag.Map.t
+
+  (* Move Unboxable.create to here, basically *)
+  (* Make sure that if we have one tag mapping to different T.t array lengths
+     then we get bottom *)
   type t =
-    | Block of Tag.t * T.t array
-    | Int of int
-    | Char of char
-    | Constptr of int
+    | Blocks_only of blocks_only
+    | Blocks_and_immediates of blocks_only * Immediates.Set.t
+    | Immediates of Immediates.Set.t
 
-  include Identifiable.S with type t := t
-
-  type join =
-    | Ok of t
-    | Bottom
-
-  val join_set : Set.t -> join
+  val print : Format.formatter -> t -> unit
 end = struct
   include Identifiable.Make (struct
     type t =
