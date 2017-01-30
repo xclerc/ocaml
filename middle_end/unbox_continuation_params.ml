@@ -16,97 +16,236 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module A = Simple_value_approx
 module CAV = Invariant_params.Continuations.Continuation_and_variable
 module R = Inline_and_simplify_aux.Result
+
+module Tag_and_int = struct
+  include Identifiable.Make (struct
+    type t = Tag.t * int
+
+    let compare ((tag1, i1) : t) (tag2, i2) =
+      let c = Tag.compare tag1 tag2 in
+      if c <> 0 then c
+      else Pervasives.compare i1 i2
+
+    let hash (tag, i) = Hashtbl.hash (Tag.hash tag, i)
+
+    let output _ _ = Misc.fatal_error "Not implemented"
+    let print _ _ = Misc.fatal_error "Not implemented"
+  end)
+end
 
 (* CR mshinwell: Once working, consider sharing code with
    [Unbox_specialised_args]. *)
 
-module Unboxing = struct
-  type t = {
-    has_constant_ctors : bool;
-    tags_and_sizes : (Tag.t * int) list;
+module Unboxing : sig
+  type t
+
+  include Identifiable with type t := t
+
+  val create : A.t -> t option
+
+  type how_to_unbox = {
+    wrapper_param_being_unboxed : Variable.t;
+    bindings_in_wrapper : Flambda.expr Variable.Map.t;
+    new_arguments_for_call_in_wrapper : Variable.t list;
+    new_params : Variable.t list;
+    new_projections : Projection.t list;
+    wrap_body : Flambda.expr -> Flambda.expr;
   }
 
-  let parameters_to_unbox t ~being_unboxed =
+  val how_to_unbox : t -> being_unboxed:Variable.t -> how_to_unbox
+end = struct
+  include Identifiable.Make (struct
+    type t = {
+      has_constant_ctors : bool;
+      tags_and_sizes : Tag_and_int.Set.t;
+    }
+
+    let compare t1 t2 =
+      let c = Pervasives.compare t1.has_constant_ctors t2.has_constant_ctors in
+      if c <> 0 then c
+      else Tag_and_int.Set.compare t1.tags_and_sizes t2.tags_and_sizes
+
+    let hash t =
+      Hashtbl.hash (t.has_constant_ctors, Tag_and_int.Set.hash t.tags_and_sizes)
+
+    let print ppf t =
+      Format.fprintf ppf "@[((has_constant_ctors %b)@ (tags_and_sizes %a)}@]"
+        t.has_constant_ctors
+        Tag_and_int.Set.print t.tags_and_sizes
+
+    let output _ _ = Misc.fatal_error "Not implemented"
+  end)
+
+  let create (approx : A.t) =
+    match A.descr approx with
+    | Float _ | Boxed_int _ | Set_of_closures _ | Closure _ | String _
+    | Float_array _ | Unknown _ | Bottom | Extern _ | Symbol _
+    | Unresolved _ -> None
+    | Union approx_set ->
+      A.Unionable.Set.fold (fun (approx : A.Unionable.t) t : t option ->
+          match t with
+          | None ->
+            begin match approx with
+            | Block (tag, fields) ->
+              let size = Array.length fields in
+              Some {
+                has_constant_ctors = false;
+                tags_and_sizes = Tag_and_int.Set.singleton (tag, size);
+              }
+            | Int _ | Char _ | Constptr _ ->
+              Some {
+                has_constant_ctors = true;
+                tags_and_sizes = Tag_and_int.Set.empty;
+              }
+            end
+          | Some t ->
+            begin match approx with
+            | Block (tag, fields) ->
+              let size = Array.length fields in
+              let tags_and_sizes =
+                Tag_and_int.Set.add (tag, size) t.tags_and_sizes
+              in
+              Some { t with tags_and_sizes; }
+            | Int _ | Char _ | Constptr _ ->
+              Some { t with has_constant_ctors = true; }
+            end)
+        approx_set
+        None
+
+  type how_to_unbox = {
+    add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
+    new_arguments_for_call_in_wrapper : Variable.t list;
+    new_params : Variable.t list;
+    new_projections : Projection.t list;
+    wrap_body : Flambda.expr -> Flambda.expr;
+  }
+
+  let merge_how_to_unbox (how1 : how_to_unbox option)
+        (how2 : how_to_unbox option) : how_to_unbox option =
+    match how1, how2 with
+    | None, None -> None
+    | Some how1, None -> Some how1
+    | None, Some how2 -> Some how2
+    | Some how1, Some how2 ->
+      assert (Variable.equal how1.wrapper_param_being_unboxed
+        how2.wrapper_param_being_unboxed);
+      { wrapper_param_being_unboxed = how1.wrapper_param_being_unboxed;
+        add_bindings_in_wrapper = (fun expr ->
+          how2.add_bindings_in_wrapper (
+            how1.add_bindings_in_wrapper expr));
+        new_arguments_for_call_in_wrapper =
+          how1.new_arguments_for_call_in_wrapper
+            @ how2.new_arguments_for_call_in_wrapper;
+        new_params = how1.new_params @ how2.new_params;
+        new_projections = how1.new_projections @ how2.new_projections;
+        wrap_body = (fun expr -> how2.wrap_body (how1.wrap_body expr));
+      }
+
+  let how_to_unbox t ~being_unboxed =
     let dbg = Debuginfo.none in
-    let discriminant =
+    let wrapper_param_being_unboxed = Variable.rename being_unboxed in
+    let for_discriminant : how_to_unbox option =
+      (* See the [Switch] case in [Inline_and_simplify] for details of the
+         encoding of the variant discriminant. *)
       if not t.has_constant_ctors then None
       else
-        let discriminant = Variable.rename ~append:"_discr" being_unboxed in
-        let max_size =
-          let sizes = List.map (fun (_tag, size) -> size) t.tags_and_sizes in
-          List.fold_left (fun max_size size -> max size max_size) sizes
-        in
-        let fields =
-          Array.init max_size (fun index ->
-            let name = Printf.sprintf "_field%d" index in
-            Variable.rename ~append:name being_unboxed)
-        in
-        let true_branch = Continuation.create () in
-        let false_branch = Continuation.create () in
-        let is_int = Variable.create "is_int" in
         let max_tag = Obj.last_non_constant_constructor_tag in
-        let max_tag_var = Variable.create "max_tag" in
-(*
-              (Flambda.create_let max_tag (Const (Int max_tag))
-                (Prim (Pintcomp Cgt, [discriminant; max_tag], dbg)))
-*)
+        let discriminant = Variable.rename ~append:"_discr" being_unboxed in
+        let discriminant_in_wrapper = Variable.rename discriminant in
+        let is_constant_ctor =
+          Variable.rename ~append:"_is_const" begin_unboxed
+        in
         let isint_projection : Projection.t * Variable.t =
-           Prim (Pisint, [being_unboxed]), is_constant_ctor
+         Prim (Pisint, [being_unboxed]), is_constant_ctor
         in
         let switch_projection : Projection.t * Variable.t =
           Switch being_unboxed, discriminant
         in
-        let make_field_projection ~index : Projection.t * Variable.t =
-          Prim (Pfield index, [being_unboxed]), fields.(index)
+        let add_bindings_in_wrapper expr =
+          let max_tag_var = Variable.create "max_tag" in
+          let is_int_cont = Continuation.create () in
+          let is_block_cont = Continuation.create () in
+          Let_cont {
+            body = Let_cont {
+              body =
+                Flambda.create_let create_discriminant_in_wrapper
         in
-        let field_projections =
-          Array.to_list (Array.init (fun index ->
-              make_field_projection ~index)
-            max_size)
+        let wrap_body expr =
+          let max_tag_var = Variable.create "max_tag" in
+          Flambda.create_let max_tag (Const (Int max_tag))
+            (Flambda.create_let is_constant_ctor
+              (Prim (Pintcomp Cgt, [discriminant; max_tag], dbg))
+              expr)
         in
-
-(*
-Insert at the top of the function:
-  let is_constant_ctor = discriminant > max_tag in
-which means that CSE can be used to rewrite
-  Pisint being_unboxed
-to
-  is_constant_ctor
-
-For the other case:
-  let boxed_being_unboxed =
-    if is_constant_ctor then discriminant - (max_tag + 1)
-    else Pmakeblock [discriminant: () .. ()]  (* "n" units *)
-  in
-which means that CSE can be used to rewrite
-  switch being_unboxed
-to
-  switch boxed_being_unboxed
-
-Might the allocation not be removed?
-
-Ah: we need to turn the "tag" switch into a "constant" switch, with the
-constant being the discriminant.
-  switch being_unboxed
-  | const 0 -> <k1>
-  | tag 0 -> <k2>
--->
-  switch discriminant
-  | const (max_tag + 1) -> <k1>
-  | const 0 -> <k2>
-
-*)
-
+        let how_to_unbox : how_to_unbox =
+          { wrapper_param_being_unboxed;
+            add_bindings_in_wrapper;
+            new_arguments_for_call_in_wrapper = [discriminant_in_wrapper];
+            new_params = [discriminant];
+            new_projections = [isint_projection; switch_projection];
+            wrap_body;
+          }
+        in
+        Some how_to_unbox
     in
-
+    let for_fields : how_to_unbox option =
+      let max_size =
+        Tag_and_int.Set.fold (fun (_tag, size) max_size -> max size max_size)
+          t.tags_and_sizes 0
+      in
+      let fields =
+        Array.init max_size (fun index ->
+          let name = Printf.sprintf "_field%d" index in
+          Variable.rename ~append:name being_unboxed)
+      in
+      let fields_in_wrapper_with_bindings =
+        Array.to_list (Array.init max_size
+          (fun index ->
+            let field_in_wrapper = Variable.rename fields.(index) in
+            let binding : Flambda.named =
+              Prim (Pfield index, [wrapper_param_being_unboxed], dbg)
+            in
+            field_in_wrapper, binding))
+      in
+      let add_bindings_in_wrapper body =
+        List.fold_left (fun body (field, binding) ->
+            Flambda.create_let field binding body)
+          body
+          fields_in_wrapper_with_bindings
+      in
+      let fields_in_wrapper =
+        List.map (fun (field_in_wrapper, _) -> field_in_wrapper)
+          fields_in_wrapper_with_bindings
+      in
+      let make_field_projection ~index : Projection.t * Variable.t =
+        Prim (Pfield index, [being_unboxed]), fields.(index)
+      in
+      let field_projections =
+        Array.to_list (Array.init (fun index ->
+            make_field_projection ~index)
+          max_size)
+      in
+      let how_to_unbox : how_to_unbox =
+        { wrapper_param_being_unboxed;
+          add_bindings_in_wrapper;
+          new_arguments_for_call_in_wrapper = fields_in_wrapper;
+          new_params = Array.to_list fields;
+          new_projections = field_projections;
+          wrap_body = (fun expr -> expr);
+        }
+      in
+      Some how_to_unbox
+    in
+    merge_how_to_unbox for_discriminant for_fields
 end
 
 let for_continuations r ~body ~handlers ~original ~backend
       ~(recursive : Asttypes.rec_flag) =
   let definitions_with_uses = R.continuation_definitions_with_uses r in
-  let projections_by_cont =
+  let unboxings_by_cont =
     Continuation.Map.filter_map handlers
       ~f:(fun cont (handler : Flambda.continuation_handler) ->
         if handler.stub then
@@ -114,17 +253,29 @@ let for_continuations r ~body ~handlers ~original ~backend
         else
           match handler.params with
           | [] -> None
-          | _ ->
+          | params ->
             match Continuation.Map.find cont definitions_with_uses with
             | exception Not_found -> None
             | (uses, _approx, _env, _recursive) ->
-              Some (Extract_projections.from_continuation ~uses ~handler))
+              let num_params = List.length params in
+              let args_approxs =
+                Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+              in
+              let params_to_approxs =
+                Variable.Map.of_list (List.combine params args_approxs)
+              in
+              let unboxings =
+                Variable.Map.filter_map params_to_approxs
+                  ~f:(fun _param approx -> Unboxing.create approx)
+              in
+              if Variable.Map.is_empty unboxings then None
+              else Some unboxings)
   in
-  if Continuation.Map.is_empty projections_by_cont then begin
+  if Continuation.Map.is_empty unboxings_by_cont then begin
     original
   end else begin
-    Format.eprintf "Projections:\n@;%a\n"
-      (Continuation.Map.print Projection.Set.print) projections_by_cont;
+    Format.eprintf "Unboxings:\n@;%a\n"
+      (Continuation.Map.print Unboxing.Set.print) unboxings_by_cont;
     let invariant_params_flow =
       Invariant_params.Continuations.invariant_param_sources handlers ~backend
     in
@@ -134,6 +285,8 @@ Format.eprintf "Invariant params:\n@;%a\n"
     Invariant_params.Continuations.Continuation_and_variable.Set.print)
     invariant_params_flow;
 *)
+
+
     let projections_by_cont' =
       Continuation.Map.fold (fun cont projections projections_by_cont' ->
           Projection.Set.fold (fun projection projections_by_cont' ->
@@ -176,6 +329,8 @@ Format.eprintf "Invariant params:\n@;%a\n"
           Some (Projection.Set.union projs1 projs2))
         projections_by_cont projections_by_cont'
     in
+
+
     let with_wrappers =
       Continuation.Map.fold (fun cont projections new_handlers ->
           let handler : Flambda.continuation_handler =

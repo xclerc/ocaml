@@ -98,52 +98,6 @@ type return_approx =
       tags_and_sizes : (Tag.t * int) list;
     }
 
-let merge_in_block_return_approx (approx : return_approx) ~tag ~size
-      return_approx =
-  match approx with
-  | Top -> Block_like { tag; size; }
-  | Bottom -> Bottom
-  | Int ->
-    Variant_like {
-      has_constant_ctors = true;
-      tags_and_sizes = [
-        tag, size;
-      ];
-    }
-  | Block_like { tag = existing_tag; size = existing_size; } ->
-    if Tag.equal tag existing_tag && size = existing_size then
-      approx
-    else
-      Variant_like {
-        has_constant_ctors = false;
-        tags_and_sizes = [
-          existing_tag, existing_size;
-          tag, size;
-        ];
-      }
-  | Variant_like { has_constant_ctors; tags_and_sizes; } ->
-    Variant_like {
-      has_constant_ctors;
-      tags_and_sizes = (tag, size) :: tags_and_sizes;
-    }
-
-let merge_in_int_return_approx (approx : return_approx) _i =
-  | Top -> Int
-  | Bottom -> Bottom
-  | Int -> Int
-  | Some (Block_like { tag = existing_tag; size = existing_size; }) ->
-    Some (Variant_like {
-      has_constant_ctors = true;
-      tags_and_sizes = [
-        existing_tag, existing_size;
-      ];
-    })
-  | Some (Variant_like { has_constant_ctors = _; tags_and_sizes; }) ->
-    Some (Variant_like {
-      has_constant_ctors = true;
-      tags_and_sizes = (tag, size) :: tags_and_sizes;
-    })
-
 let how_to_unbox r ~backend ~function_decl =
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   match function_decl.return_arity function_decl with
@@ -156,6 +110,7 @@ let how_to_unbox r ~backend ~function_decl =
       if U.has_non_inlinable_uses uses then None
       else
         let uses = U.inlinable_application_points uses in
+(*
         let approx : return_approx option =
           List.fold_left (fun approx (use : Inline_and_simplify_aux.Use.t) ->
               match use.args with
@@ -188,6 +143,7 @@ let how_to_unbox r ~backend ~function_decl =
             Unboxed (Variant_like { has_constant_ctors; tags_and_sizes; })
           in
           Some arity
+*)
 
 let for_function_decl r ~backend ~fun_var ~function_decl =
   match how_to_unbox r ~backend ~function_decl with
