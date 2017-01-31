@@ -256,7 +256,7 @@ end = struct
       Variable.print_opt var
       print symbol
 end and Unionable : sig
-  module Immediates : sig
+  module Immediate : sig
     type t =
       | Int of int
       | Char of char
@@ -271,83 +271,150 @@ end and Unionable : sig
   (* Make sure that if we have one tag mapping to different T.t array lengths
      then we get bottom *)
   type t =
-    | Blocks_only of blocks_only
-    | Blocks_and_immediates of blocks_only * Immediates.Set.t
-    | Immediates of Immediates.Set.t
+    | Blocks of blocks
+    | Blocks_and_immediates of blocks * Immediate.Set.t
+    | Immediates of Immediate.Set.t
 
   val print : Format.formatter -> t -> unit
-end = struct
-  include Identifiable.Make (struct
-    type t =
-      | Block of Tag.t * T.t array
-      | Int of int
-      | Char of char
-      | Constptr of int
 
-    let hash _ = Misc.fatal_error "Not yet implemented"
-    (* Sketch (requires [T.hash] though...):
-      match t with
-      | Block (tag, ts) ->
-        Hashtbl.hash (Tag.hash tag, List.map T.hash (Array.to_list ts))
-      | Int i -> Hashtbl.hash (0, i)
-      | Char c -> Hashtbl.hash (1, c)
-      | Constptr p -> Hashtbl.hash (1, p) *)
+  type singleton =
+    | Block of Tag.t * T.t array
+    | Int of int
+    | Char of char
+    | Constptr of int
 
-    let compare t1 t2 =
-      match t1, t2 with
-      | Block (tag1, ts1), Block (tag2, ts2) ->
-        let c = Tag.compare tag1 tag2 in
-        if c <> 0 then c
-        else Misc.Stdlib.List.compare T.compare ts1 ts2
-      | Int i1, Int i2 -> Pervasives.compare i1 i2
-      | Char c1, Char c2 -> Pervasives.compare c1 c2
-      | Constptr p1, Constptr p2 -> Pervasives.compare p1 p2
-      | Block _, _ -> -1
-      | _, Block _ -> 1
-      | Int _, _ -> -1
-      | _, Int _ -> 1
-      | Char _, _ -> -1
-      | _, Char _ -> 1
-      | Constptr _, _ -> -1
-      | _, Constptr _ -> 1
-
-    let print ppf t =
-      match t with
-      | Int i -> Format.pp_print_int ppf i
-      | Char c -> Format.fprintf ppf "%c" c
-      | Constptr i -> Format.fprintf ppf "%ia" i
-      | Block (tag,fields) ->
-        let p ppf fields =
-          Array.iter (fun v -> Format.fprintf ppf "%a@ " T.print v) fields in
-        Format.fprintf ppf "[%i:@ @[<1>%a@]]" (Tag.to_int tag) p fields
-
-    let output _ _ = Misc.fatal_error "Not yet implemented"
-  end)
-
-  type join =
-    | Ok of t
+  type 'a or_bottom =
+    | Ok of 'a
     | Bottom
 
-  let join_set ts ~really_import_approx : join =
-    let t = Set.choose ts in
-    let ts = Set.remove t ts in
-    Set.fold (fun t join ->
-        match join with
-        | Bottom -> Bottom
-        | Ok join ->
-          match t, join with
-          | Block (tag1, a1), Block (tag2, a2)
-              when tag1 = tag2 && Array.length a1 = Array.length a2 ->
-            let fields =
-              Array.mapi (fun i v -> join ~really_import_approx v a2.(i)) a1
-            in
-            Ok (Block (tag1, fields))
-          | Int i1, Int i2 when i1 = i2 -> Ok join
-          | Char c1, Char c2 when c1 = c2 -> Ok join
-          | Constptr p1, Constptr p2 when p1 = p2 -> Ok join
-          | _, _ -> Bottom)
-      ts
-      (Ok t)
+  val join : t -> singleton or_bottom
+  val union : t -> t -> t or_bottom
+end = struct
+  module Immediate = struct
+    include Identifiable.Make (struct
+      type t =
+        | Int of int
+        | Char of char
+        | Constptr of int
+
+      let compare = Pervasives.compare
+      let equal t1 t2 = (compare t1 t2 = 0)
+      let hash = Pervasives.hash
+
+      let print ppf t =
+        match t with
+        | Int i -> Format.pp_print_int ppf i
+        | Char c -> Format.fprintf ppf "%c" c
+        | Constptr i -> Format.fprintf ppf "%ia" i
+
+      let output _ _ = Misc.fatal_error "Not implemented"
+    end)
+
+    let join t1 t2 =
+      if equal t1 t2 then Ok t1
+      else None
+
+    let join_set ts =
+      let t = Set.choose ts in
+      let ts = Set.remove t ts in
+      Set.fold (fun t ts -> join t ts) ts t
+  end
+
+  type blocks = T.t array Tag.Map.t
+
+  let print_blocks ppf (by_tag : blocks) =
+    let print_binding ppf (tag, fields) =
+      Format.fprintf ppf "@[[|%a: %a|]@]"
+        Tag.print tag
+        (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
+          T.print)
+        (Array.to_list fields)
+    in
+    Format.fprintf ppf "@[%a@]"
+      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " U ")
+        print_binding)
+      (Tag.Map.bindings by_tag)
+
+  type t =
+    | Blocks of blocks
+    | Blocks_and_immediates of blocks * Immediate.Set.t
+    | Immediates of Immediate.Set.t
+
+  let print ppf t =
+    match t with
+    | Blocks by_tag ->
+      Format.fprintf ppf "@[(blocks (%a))@]"
+        print_blocks by_tag
+    | Blocks_and_immediates (by_tag, imms) ->
+      Format.fprintf ppf "@[(blocks (%a)) U (immediates (%a))@]"
+        print_blocks by_tag
+        Immediate.Set.print imms
+    | Immediate imms ->
+      Format.fprintf ppf "@[(immediates (%a))@]"
+        Immediate.Set.print imms
+
+  type singleton =
+    | Block of Tag.t * T.t array
+    | Int of int
+    | Char of char
+    | Constptr of int
+
+  type 'a or_bottom =
+    | Ok of 'a
+    | Bottom
+
+  let rec join t : singleton or_bottom =
+    match t with
+    | Blocks by_tag ->
+      begin match Tag.Map.bindings by_tag with
+      | [tag, fields] -> Ok (Block (tag, fields))
+      | _ -> Bottom
+      end
+    | Blocks_and_immediates (by_tag, imms) ->
+      if Tag.Map.is_empty by_tag then join (Immediate imms)
+      else if Immediate.Set.is_empty imms then join (Blocks by_tag)
+      else Bottom
+    | Immediate imms ->
+      match Immediate.join_set imms with
+      | None -> Bottom
+      | Some (Int i) -> Ok (Int i)
+      | Some (Char c) -> Ok (Char c)
+      | Some (Constptr p) -> Ok (Constptr p)
+
+  let union (t1 : t) (t2 : t) : t_or_bottom =
+    let get_immediates t =
+      match t with
+      | Blocks _ -> Immediate.Set.empty
+      | Blocks_and_immediates (_, imms) | Immediates imms -> imms
+    in
+    let immediates_t1 = get_immediates t1 in
+    let immediates_t2 = get_immediates t2 in
+    let immediates = Immediate.Set.union immediates_t1 immediates_t2 in
+    let get_blocks t =
+      match t with
+      | Blocks by_tag | Blocks_and_immediates (by_tag, _) -> by_tag
+      | Immediates _ -> Tag.Map.empty
+    in
+    let blocks_t1 = get_blocks t1 in
+    let blocks_t2 = get_blocks t2 in
+    let ill_typed_code = ref false in
+    let blocks =
+      Tag.Map.union (fun fields1 fields2 ->
+          if Array.length fields1 <> Array.length fields2 then begin
+            (* Two blocks with the same tag but different sizes! *)
+            ill_typed_code := true;
+            [| |]  (* arbitrary *)
+          end else begin
+            Array.map2 (fun field existing_field ->
+                T.join field existing_field)
+              fields existing_fields
+          end)
+        blocks_t1 blocks_t2
+    in
+    if !ill_typed code then Bottom
+    else if Immediate.Set.is_empty immediates then Ok (Blocks blocks)
+    else if Tag.Map.is_empty blocks then Ok (Immediates immediates)
+    else Ok (Blocks_and_immediates (blocks, immediates))
 end
 
 let descr t = t.descr
