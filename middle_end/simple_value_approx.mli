@@ -118,7 +118,7 @@ module rec T : sig
   }
 
   and descr = private 
-    | Union of Unionable.Set.t
+    | Union of Unionable.t
     | Float of float option
     | Boxed_int : 'a boxed_int * 'a -> descr
     | Set_of_closures of value_set_of_closures
@@ -164,22 +164,29 @@ module rec T : sig
   (* CR-soon mshinwell for pchambart: Add comment describing semantics.  (Maybe
      we should move the comment from the .ml file into here.) *)
   val join : really_import_approx:(t -> t) -> t -> t -> t
+
+  val print : Format.formatter -> t -> unit
+  val print_descr : Format.formatter -> descr -> unit
+  val print_value_set_of_closures
+    : Format.formatter
+    -> value_set_of_closures
+    -> unit
 end and Unionable : sig
   module Immediate : sig
-    type t =
+    type t = private
       | Int of int
       | Char of char
       | Constptr of int
 
-    include Identifiable with type t := t
+    include Identifiable.S with type t := t
   end
 
-  type blocks_only = T.t array Tag.Map.t
+  type blocks = T.t array Tag.Map.t
 
   (** Values of type [t] represent unions of approximations, that is to say,
       disjunctions of properties known to hold of a value at one or more of
       its use points. *)
-  type t =
+  type t = private
     | Blocks of blocks
     | Blocks_and_immediates of blocks * Immediate.Set.t
     | Immediates of Immediate.Set.t
@@ -190,9 +197,9 @@ end and Unionable : sig
     | Ok of 'a
     | Bottom
 
-  val union : t -> t -> t or_bottom
+  val union : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
 
-  type singleton =
+  type singleton = private
     | Block of Tag.t * T.t array
     | Int of int
     | Char of char
@@ -208,14 +215,6 @@ include (module type of T)
 (** Extraction of the description of approximation(s). *)
 val descr : t -> descr
 val descrs : t list -> descr list
-
-(** Pretty-printing of approximations to a formatter. *)
-val print : Format.formatter -> t -> unit
-val print_descr : Format.formatter -> descr -> unit
-val print_value_set_of_closures
-   : Format.formatter
-  -> value_set_of_closures
-  -> unit
 
 val create_value_set_of_closures
    : function_decls:Flambda.function_declarations
@@ -365,6 +364,15 @@ type checked_approx_for_block =
 (** Try to prove that a value with the given approximation may be used
     as a block. *)
 val check_approx_for_block : t -> checked_approx_for_block
+
+type checked_approx_for_variant =
+  | Wrong
+  | Ok of Unionable.t
+
+(** Try to prove that a value with the given approximation may be used
+    as a variant (with any combination of constant and non-constant
+    constructors). *)
+val check_approx_for_variant : t -> checked_approx_for_variant
 
 (** Find the approximation for a bound variable in a set-of-closures
     approximation.  A fatal error is produced if the variable is not bound in
