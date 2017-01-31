@@ -1858,57 +1858,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       body, ret r A.value_bottom
     end
   | Switch (arg, sw) ->
-    let arg, sw =
-      (* Support for unboxing values of variant type. *)
-      (* CR mshinwell: check if this should be inside
-         [simplify_free_variable] *)
-      match E.find_projection ~projection:(Switch arg) with
-      | None -> arg, sw
-      | Some discriminant ->
-        let switch : Flambda.switch =
-          (* The encoding of the discriminant is:
-             0...Obj.first_non_constant_constructor_tag: the block's tag
-             Obj.first_non_constant_constructor_tag + 1 onwards: the number of
-               the constant constructor (i.e. as usual, but shifted up).
-             This transformation turns the [Switch] into one that only matches
-             on constants rather than looking at block tags.
-          *)
-          let max_tag_plus_one = Obj.first_non_constant_constructor_tag + 1 in
-          let numconsts =
-            Variable.Set.fold (fun num numconsts ->
-                Variable.Set.add (num + max_tag_plus_one) numconsts)
-              switch.numconsts
-          in
-          assert (Variable.Set.is_empty (
-            Variable.Set.inter numconsts switch.numblocks));
-          let numconsts =
-            Variable.Set.union numconsts switch.numblocks
-          in
-          let consts =
-            List.map (fun (num, cont) -> num + max_tag_plus_one, cont)
-              switch.consts
-          in
-          let new_consts =
-            List.map (fun ((pat : Ilambda.switch_block_pattern), cont) ->
-                match pat with
-                | Tag tag -> Tag.to_int tag, cont
-                | String _ ->
-                  Misc.fatal_errorf "Cannot transform [Switch] on strings \
-                      to use unboxed discriminant: %a"
-                    Flambda.print tree)
-              switch.blocks
-          in
-          { numconsts;
-            consts = new_consts @ consts;
-            numblocks = 0;
-            blocks = [];
-            failaction = switch.failaction;
-          }
-        in
-        discriminant, switch
-    in
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->
-      let rec filter_branches filter branches compatible_branches ~add =
+      let rec filter_branches filter branches compatible_branches =
         match branches with
         | [] -> Can_be_taken compatible_branches
         | (c, cont) as branch :: branches ->
@@ -1916,8 +1867,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           | A.Cannot_be_taken ->
             filter_branches filter branches compatible_branches ~add
           | A.Can_be_taken ->
-            filter_branches filter branches (add branch :: compatible_branches)
-              ~add
+            filter_branches filter branches (branch :: compatible_branches)
           | A.Must_be_taken ->
             Must_be_taken cont
       in
@@ -1926,12 +1876,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
          [Simple_value_approx] helps here.) *)
       let filtered_consts =
         filter_branches A.potentially_taken_const_switch_branch sw.consts []
-          (* CR mshinwell: This use of "Tag" is a hack; needs fixing *)
-          ~add:(fun (tag, cont) -> Ilambda.Tag tag, cont)
       in
       let filtered_blocks =
         filter_branches A.potentially_taken_block_switch_branch sw.blocks []
-          ~add:(fun branch -> branch)
       in
       begin match filtered_consts, filtered_blocks with
       | Must_be_taken _, Must_be_taken _ ->
@@ -1985,13 +1932,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                 simplify_apply_cont_to_cont env r cont ~args_approxs:[]
               in
               Some cont, r
-          in
-          let consts =
-            List.map (fun ((pat : Ilambda.switch_block_pattern), cont) ->
-                match pat with
-                | Tag tag -> tag, cont
-                | String _ -> assert false)
-              consts
           in
           let sw = { sw with failaction; consts; blocks; } in
           Switch (arg, sw), r

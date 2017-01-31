@@ -241,17 +241,19 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     cps_non_tail_list args (fun args ->
       I.Let (result_var, Prim (prim, args, loc), k result_var))
   | Lswitch (scrutinee, switch) ->
+    begin match switch.sw_blocks with
+    | [] -> ()
+    | _ -> Misc.fatal_error "Lswitch `block' cases are forbidden"
+    end;
     let after_switch = Continuation.create () in
     let result_var = Ident.create "switch_result" in
     let after = k result_var in
-    let block_nums, blocks = List.split switch.sw_blocks in
-    let block_pats = List.map (fun tag -> I.Tag tag) block_nums in
     let proto_switch : proto_switch =
       { numconsts = switch.sw_numconsts;
         consts = switch.sw_consts;
-        numblocks = switch.sw_numblocks;
-        block_pats;
-        blocks;
+        numblocks = 0;
+        block_pats = [];
+        blocks = [];
         failaction = switch.sw_failaction;
       }
     in
@@ -512,14 +514,16 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
         Apply_cont (k, None, [result_var]))),
     N.One
   | Lswitch (scrutinee, switch) ->
-    let block_nums, blocks = List.split switch.sw_blocks in
-    let block_pats = List.map (fun tag -> I.Tag tag) block_nums in
+    begin match switch.sw_blocks with
+    | [] -> ()
+    | _ -> Misc.fatal_error "Lswitch `block' cases are forbidden"
+    end;
     let proto_switch : proto_switch =
       { numconsts = switch.sw_numconsts;
         consts = switch.sw_consts;
-        numblocks = switch.sw_numblocks;
-        block_pats;
-        blocks;
+        numblocks = 0;
+        block_pats = [];
+        blocks = [];
         failaction = switch.sw_failaction;
       }
     in

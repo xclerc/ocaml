@@ -23,8 +23,7 @@ module How_to_unbox : sig
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
     bindings_in_wrapper : Flambda.expr Variable.Map.t;
     new_arguments_for_call_in_wrapper : Variable.t list;
-    new_params : Variable.t list;
-    new_projections : Projection.t list;
+    new_params : (Variable.t * Projection.t) list;
     wrap_body : Flambda.expr -> Flambda.expr;
   }
 

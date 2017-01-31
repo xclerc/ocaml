@@ -1096,29 +1096,6 @@ let potentially_taken_const_switch_branch t branch =
   | Float _ | Float_array _ | String _ | Closure _ | Set_of_closures _
   | Boxed_int _ | Bottom -> Cannot_be_taken
 
-let potentially_taken_block_switch_branch_tag t tag =
-  match t.descr with
-  | Union union ->
-    let tag = Tag.create_exn tag in
-    let must_be_taken =
-      match Unionable.flatten union with
-      | Bottom -> false
-      | Ok (Block (block_tag, _)) -> Tag.equal block_tag tag
-      | Ok (Int _ | Char _ | Constptr _) -> false
-    in
-    if must_be_taken then Must_be_taken
-    else if Unionable.maybe_is_block_with_tag union tag then Can_be_taken
-    else Cannot_be_taken
-  | (Unresolved _ | Unknown _ | Extern _ | Symbol _) -> Can_be_taken
-  | Float _ when tag = Obj.double_tag -> Must_be_taken
-  | Float_array _ when tag = Obj.double_array_tag -> Must_be_taken
-  | String _ when tag = Obj.string_tag -> Must_be_taken
-  | (Closure _ | Set_of_closures _)
-      when tag = Obj.closure_tag || tag = Obj.infix_tag -> Can_be_taken
-  | Boxed_int _ when tag = Obj.custom_tag -> Must_be_taken
-  | Float _ | Set_of_closures _ | Closure _ | String _ | Float_array _
-  | Boxed_int _ -> Cannot_be_taken | Bottom -> Cannot_be_taken
-
 let potentially_taken_block_switch_branch_string t s =
   match t.descr with
   | Unresolved _ | Unknown _ | Extern _ | Symbol _ -> Can_be_taken
@@ -1136,5 +1113,4 @@ let potentially_taken_block_switch_branch_string t s =
 
 let potentially_taken_block_switch_branch t pattern =
   match (pattern : Ilambda.switch_block_pattern) with
-  | Tag tag -> potentially_taken_block_switch_branch_tag t tag
   | String s -> potentially_taken_block_switch_branch_string t s

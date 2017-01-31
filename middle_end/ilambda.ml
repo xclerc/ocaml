@@ -19,7 +19,6 @@
 module L = Lambda
 
 type switch_block_pattern =
-  | Tag of int
   | String of string
 
 type trap_action =
@@ -94,7 +93,6 @@ and switch =
   }
 
 let print_switch_block_pattern ppf = function
-  | Tag t -> Format.fprintf ppf "tag %i" t
   | String s -> Format.fprintf ppf "string \"%S\"" s
 
 let rec print_function ppf

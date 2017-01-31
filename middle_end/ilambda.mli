@@ -20,8 +20,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42-49"]
 
+(** Tag block switches must be encoded as [Pgettag] followed by a switch
+    on constants. *)
+(* CR-someday mshinwell: Pull the string-switch compilation code forward so
+   we can delete this entirely. *)
 type switch_block_pattern =
-  | Tag of int  (* CR mshinwell: Use [Tag.t] *)
   | String of string
 
 type trap_action =

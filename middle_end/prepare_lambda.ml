@@ -72,7 +72,7 @@ type block_type = Normal | Float
 
 type letrec = {
   blocks : (Ident.t * block_type * int) list;
-  (* Should we preallocate with the tag ?
+  (* CR pchambart: Should we preallocate with the tag ?
      How to get the tag for cases involving duprecord ? *)
   consts : (Ident.t * L.structured_constant) list;
   pre : Lambda.lambda -> Lambda.lambda;
@@ -476,18 +476,54 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
     prepare env scrutinee (fun scrutinee ->
       let const_nums, sw_consts = List.split switch.sw_consts in
       let block_nums, sw_blocks = List.split switch.sw_blocks in
+      let tag = Ident.create "tag" in
       prepare_option env switch.sw_failaction (fun sw_failaction ->
         prepare_list env sw_consts (fun sw_consts ->
           prepare_list env sw_blocks (fun sw_blocks ->
-            let switch : L.lambda_switch =
+            let sw_failaction, wrap_switch =
+              match sw_failaction with
+              | None -> None, (fun lam -> lam)
+              | Some failaction ->
+                let failaction_cont = L.next_raise_count () in
+                let wrap_switch lam =
+                  Lstaticcatch (lam, (failaction_cont, []), failaction)
+                in
+                Some (Lstaticraise (failaction_cont, [])), wrap_switch
+            in
+            let consts_switch : L.lambda_switch =
               { sw_numconsts = switch.sw_numconsts;
                 sw_consts = List.combine const_nums sw_consts;
-                sw_numblocks = switch.sw_numblocks;
-                sw_blocks = List.combine block_nums sw_blocks;
+                sw_numblocks = 0;
+                sw_blocks = [];
                 sw_failaction;
               }
             in
-            k (L.Lswitch (scrutinee, switch))))))
+            let blocks_switch : L.lambda_switch =
+              { sw_numconsts = switch.sw_numblocks;
+                sw_consts = List.combine block_nums sw_blocks;
+                sw_numblocks = 0;
+                sw_blocks = [];
+                sw_failaction;
+              }
+            in
+            let consts_switch : L.lambda =
+              L.Lswitch (scrutinee, consts_switch)
+            in
+            let blocks_switch : L.lambda =
+              L.Lswitch (Lprim (Pgettag, [scrutinee], Location.none),
+               blocks_switch)
+            in
+            let isint_switch : L.lambda_switch =
+              { sw_numconsts = 2;
+                sw_consts = [0, blocks_switch; 1, consts_switch];
+                sw_numblocks = 0;
+                sw_blocks = [];
+                sw_failaction = None;
+              }
+            in
+            k (wrap_switch (
+              L.Lswitch (Lprim (Pisint, [scrutinee], Location.none),
+                isint_switch)))
   | Lstringswitch (scrutinee, cases, default, loc) ->
     prepare env scrutinee (fun scrutinee ->
       let patterns, cases = List.split cases in

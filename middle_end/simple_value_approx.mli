@@ -174,6 +174,7 @@ module rec T : sig
 end and Unionable : sig
   module Immediate : sig
     type t = private
+      (* CR mshinwell: We could consider splitting these again *)
       | Int of int
       | Char of char
       | Constptr of int
