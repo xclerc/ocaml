@@ -282,7 +282,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
           ()
         else
           match (Backend.import_symbol symbol).descr with
-          | Value_unresolved _ ->
+          | Unresolved _ ->
             (* Constant when 'for_clambda' means: can be a symbol (which is
                obviously the case here) with a known approximation.  If this
                condition is not satisfied we mark as inconstant to reflect

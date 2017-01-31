@@ -55,7 +55,7 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
     expr, A.value_bottom, C.Benefit.zero
   | Pignore -> begin
       match args, A.descrs approxs with
-      | [arg], [(Value_int 0 | Value_constptr 0)] ->
+      | [arg], [(Int 0 | Constptr 0)] ->
         S.const_ptr_expr (Flambda.Var arg) 0
       | _ -> S.const_ptr_expr expr 0
     end
@@ -96,7 +96,7 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
        invalid. *)
   | _ ->
     match A.descrs approxs with
-    | [Value_int x] ->
+    | [Int x] ->
       begin match p with
       | Pidentity -> S.const_int_expr expr x
       | Pnot -> S.const_bool_expr expr (x = 0)
@@ -110,7 +110,7 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       | Pbintofint Pint64 -> S.const_boxed_int_expr expr Int64 (Int64.of_int x)
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [(Value_int x | Value_constptr x); (Value_int y | Value_constptr y)] ->
+    | [(Int x | Constptr x); (Int y | Constptr y)] ->
       let shift_precond = 0 <= y && y < 8 * size_int in
       begin match p with
       | Paddint -> S.const_int_expr expr (x + y)
@@ -128,12 +128,12 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       | Pisout -> S.const_bool_expr expr (y > x || y < 0)
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [Value_char x; Value_char y] ->
+    | [Char x; Char y] ->
       begin match p with
       | Pintcomp cmp -> S.const_comparison_expr expr cmp x y
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [Value_constptr x] ->
+    | [Constptr x] ->
       begin match p with
       (* [Pidentity] should probably never appear, but is here for
          completeness. *)
@@ -157,14 +157,14 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
         end
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [Value_float (Some x)] when fpc ->
+    | [Float (Some x)] when fpc ->
       begin match p with
       | Pintoffloat -> S.const_int_expr expr (int_of_float x)
       | Pnegfloat -> S.const_float_expr expr (-. x)
       | Pabsfloat -> S.const_float_expr expr (abs_float x)
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [Value_float (Some n1); Value_float (Some n2)] when fpc ->
+    | [Float (Some n1); Float (Some n2)] when fpc ->
       begin match p with
       | Paddfloat -> S.const_float_expr expr (n1 +. n2)
       | Psubfloat -> S.const_float_expr expr (n1 -. n2)
@@ -173,35 +173,35 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       | Pfloatcomp c  -> S.const_comparison_expr expr c n1 n2
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [A.Value_boxed_int(A.Nativeint, n)] ->
+    | [A.Boxed_int(A.Nativeint, n)] ->
       I.Simplify_boxed_nativeint.simplify_unop p Nativeint expr n
-    | [A.Value_boxed_int(A.Int32, n)] ->
+    | [A.Boxed_int(A.Int32, n)] ->
       I.Simplify_boxed_int32.simplify_unop p Int32 expr n
-    | [A.Value_boxed_int(A.Int64, n)] ->
+    | [A.Boxed_int(A.Int64, n)] ->
       I.Simplify_boxed_int64.simplify_unop p Int64 expr n
-    | [A.Value_boxed_int(A.Nativeint, n1);
-       A.Value_boxed_int(A.Nativeint, n2)] ->
+    | [A.Boxed_int(A.Nativeint, n1);
+       A.Boxed_int(A.Nativeint, n2)] ->
       I.Simplify_boxed_nativeint.simplify_binop p Nativeint expr n1 n2
-    | [A.Value_boxed_int(A.Int32, n1); A.Value_boxed_int(A.Int32, n2)] ->
+    | [A.Boxed_int(A.Int32, n1); A.Boxed_int(A.Int32, n2)] ->
       I.Simplify_boxed_int32.simplify_binop p Int32 expr n1 n2
-    | [A.Value_boxed_int(A.Int64, n1); A.Value_boxed_int(A.Int64, n2)] ->
+    | [A.Boxed_int(A.Int64, n1); A.Boxed_int(A.Int64, n2)] ->
       I.Simplify_boxed_int64.simplify_binop p Int64 expr n1 n2
-    | [A.Value_boxed_int(A.Nativeint, n1); Value_int n2] ->
+    | [A.Boxed_int(A.Nativeint, n1); Int n2] ->
       I.Simplify_boxed_nativeint.simplify_binop_int p Nativeint expr n1 n2
         ~size_int
-    | [A.Value_boxed_int(A.Int32, n1); Value_int n2] ->
+    | [A.Boxed_int(A.Int32, n1); Int n2] ->
       I.Simplify_boxed_int32.simplify_binop_int p Int32 expr n1 n2
         ~size_int
-    | [A.Value_boxed_int(A.Int64, n1); Value_int n2] ->
+    | [A.Boxed_int(A.Int64, n1); Int n2] ->
       I.Simplify_boxed_int64.simplify_binop_int p Int64 expr n1 n2
         ~size_int
-    | [Value_block _] when p = Lambda.Pisint ->
+    | [Block _] when p = Lambda.Pisint ->
       S.const_bool_expr expr false
-    | [Value_string { size }]
+    | [String { size }]
       when (p = Lambda.Pstringlength || p = Lambda.Pbyteslength) ->
       S.const_int_expr expr size
-    | [Value_string { size; contents = Some s };
-       (Value_int x | Value_constptr x)] when x >= 0 && x < size ->
+    | [String { size; contents = Some s };
+       (Int x | Constptr x)] when x >= 0 && x < size ->
         begin match p with
         | Pstringrefu
         | Pstringrefs
@@ -210,22 +210,22 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
           S.const_char_expr (Prim(Pstringrefu, args, dbg)) s.[x]
         | _ -> expr, A.value_unknown Other, C.Benefit.zero
         end
-    | [Value_string { size; contents = None };
-       (Value_int x | Value_constptr x)]
+    | [String { size; contents = None };
+       (Int x | Constptr x)]
       when x >= 0 && x < size && p = Lambda.Pstringrefs ->
         Flambda.Prim (Pstringrefu, args, dbg),
           A.value_unknown Other,
           (* we improved it, but there is no way to account for that: *)
           C.Benefit.zero
-    | [Value_string { size; contents = None };
-       (Value_int x | Value_constptr x)]
+    | [String { size; contents = None };
+       (Int x | Constptr x)]
       when x >= 0 && x < size && p = Lambda.Pbytesrefs ->
         Flambda.Prim (Pbytesrefu, args, dbg),
           A.value_unknown Other,
           (* we improved it, but there is no way to account for that: *)
           C.Benefit.zero
 
-    | [Value_float_array { size; contents }] ->
+    | [Float_array { size; contents }] ->
         begin match p with
         | Parraylength _ -> S.const_int_expr expr size
         | Pfloatfield i ->

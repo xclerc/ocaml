@@ -1205,7 +1205,7 @@ and simplify_named env r (tree : Flambda.named)
   | Read_symbol_field (symbol, field_index) ->
     let approx = E.find_or_load_symbol env symbol in
     begin match A.get_field approx ~field_index with
-    (* CR-someday mshinwell: Think about [Unreachable] vs. [Value_bottom]. *)
+    (* CR-someday mshinwell: Think about [Unreachable] vs. [Bottom]. *)
     | Unreachable -> [], Unreachable, r
     | Ok approx ->
       let approx = A.augment_with_symbol_field approx symbol field_index in
@@ -1388,8 +1388,8 @@ and simplify_named env r (tree : Flambda.named)
           end;
           let kind =
             match A.descr block_approx, A.descr value_approx with
-            | (Value_float_array _, _)
-            | (_, Value_float _) ->
+            | (Float_array _, _)
+            | (_, Float _) ->
               begin match kind with
               | Pfloatarray | Pgenarray -> ()
               | Paddrarray | Pintarray ->

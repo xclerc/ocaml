@@ -420,13 +420,13 @@ let translate_definition_and_resolve_alias inconstants
         | exception Not_found ->
           let module Backend = (val backend) in
           match (Backend.import_symbol sym).descr with
-          | Value_unresolved _ ->
+          | Unresolved _ ->
             Misc.fatal_errorf
               "Lift_constants.translate_definition_and_resolve_alias: \
                Duplicate Pfloatarray %a with unknown symbol: %a"
               Variable.print var
               Alias_analysis.print_constant_defining_value definition
-          | Value_float_array value_float_array ->
+          | Float_array value_float_array ->
             let contents =
               Simple_value_approx.float_array_as_constant value_float_array
             in
