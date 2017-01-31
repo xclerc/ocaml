@@ -837,9 +837,14 @@ let build_let_cont_with_wrappers ~body ~(recursive : Asttypes.rec_flag)
       handlers = Recursive handlers;
     }
 
-let create_wrapper_params ~params ~specialised_args =
+let create_wrapper_params ~params ~specialised_args
+      ~freshening_already_assigned =
   let renaming =
-    List.map (fun param -> param, Variable.rename param) params
+    List.map (fun param ->
+        match Variable.Map.find param freshening_already_assigned with
+        | exception Not_found -> param, Variable.rename param
+        | renamed_param -> param, renamed_param)
+      params
   in
   let renaming_map = Variable.Map.of_list renaming in
   let freshen_param param =

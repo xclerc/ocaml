@@ -17,6 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module A = Simple_value_approx
+module H = Unbox_one_variable.How_to_unbox
 module CAV = Invariant_params.Continuations.Continuation_and_variable
 module R = Inline_and_simplify_aux.Result
 module U = Unbox_one_variable
@@ -42,7 +43,9 @@ let find_unboxings ~definitions_with_uses ~handlers =
             in
             let unboxings =
               Variable.Map.filter_map params_to_approxs
-                ~f:(fun _param approx -> Unboxing.create approx)
+                ~f:(fun param approx ->
+                  Unbox_one_variable.how_to_unbox ~being_unboxed:param
+                    ~being_unboxed_approx:approx)
             in
             if Variable.Map.is_empty unboxings then None
             else Some unboxings)
@@ -110,30 +113,24 @@ let for_continuations r ~body ~handlers ~original ~backend
             | exception Not_found -> assert false
             | handler -> handler
           in
+          let new_cont = Continuation.create () in
+          let how_to_unbox =
+            Variable.Map.fold (fun _param how1 how2 -> H.merge how1 how2)
+              unboxings_by_param
+              (H.create ())
+          in
           let wrapper_params_map, wrapper_params, wrapper_specialised_args =
             Flambda_utils.create_wrapper_params ~params:handler.params
+              ~specialised_args:handler.specialised_args
+              ~freshening_already_assigned:(how_to_unbox.
+                being_unboxed_to_wrapper_params_being_unboxed)
           in
           let freshen_param param =
             match Variable.Map.find param wrapper_params_map with
             | exception Not_found -> assert false
             | param -> param
           in
-          let new_cont = Continuation.create () in
-          let how_to_unbox =
-            Variable.Map.fold (fun param unboxing how_to_unbox' ->
-                let wrapper_param_being_unboxed = freshen_param param in
-                let how_to_unbox =
-                  Unbox_one_variable.how_to_unbox unboxing
-                    ~being_unboxed:param
-                    ~wrapper_param_being_unboxed
-                in
-                Unbox_one_variable.merge_how_to_unbox how1 how2)
-              unboxings_by_param
-              Unbox_one_variable.empty_how_to_unbox
-          in
-          let new_specialised_args =
-            Unbox_one_variable.new_specialised_args how_to_unbox
-          in
+          let new_specialised_args = H.new_specialised_args how_to_unbox in
           let specialised_args =
             Variable.Map.disjoint_union handler.specialised_args
               new_specialised_args

@@ -14,21 +14,22 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** Given a variable and its approximation, devise a strategy to unbox it. *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type t
+module How_to_unbox : sig
+  type t = private {
+    being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
+    bindings_in_wrapper : Flambda.expr Variable.Map.t;
+    new_arguments_for_call_in_wrapper : Variable.t list;
+    new_params : Variable.t list;
+    new_projections : Projection.t list;
+    wrap_body : Flambda.expr -> Flambda.expr;
+  }
+end
 
-include Identifiable with type t := t
-
-val create : A.t -> t option
-
-type how_to_unbox = {
-  wrapper_param_being_unboxed : Variable.t;
-  bindings_in_wrapper : Flambda.expr Variable.Map.t;
-  new_arguments_for_call_in_wrapper : Variable.t list;
-  new_params : Variable.t list;
-  new_projections : Projection.t list;
-  wrap_body : Flambda.expr -> Flambda.expr;
-}
-
-val how_to_unbox : t -> being_unboxed:Variable.t -> how_to_unbox
+val how_to_unbox
+  -> being_unboxed:Variable.t
+  -> being_unboxed_approx:Simple_value_approx.t
+  -> How_to_unbox.t option

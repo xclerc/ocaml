@@ -230,4 +230,5 @@ val build_let_cont_with_wrappers
 val create_wrapper_params
    : params:Variable.t list
   -> specialised_args:Flambda.specialised_args
+  -> freshening_already_assigned:Variable.t Variable.Map.t
   -> Variable.t Variable.Map.t * Variable.t list * Flambda.specialised_args

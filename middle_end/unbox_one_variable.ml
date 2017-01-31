@@ -16,60 +16,73 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type how_to_unbox = {
-  add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
-  new_arguments_for_call_in_wrapper : Variable.t list;
-  new_params : Variable.t list;
-  new_projections : Projection.t list;
-  wrap_body : Flambda.expr -> Flambda.expr;
-}
-
-let empty_how_to_unbox : how_to_unboxed =
-  { add_bindings_in_wrapper = (fun expr -> expr);
-    new_arguments_for_call_in_wrapper = [];
-    new_params = [];
-    new_projections = [];
-    wrap_body = (fun expr -> expr);
+module How_to_unbox = struct
+  type how_to_unbox = {
+    being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
+    add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
+    new_arguments_for_call_in_wrapper : Variable.t list;
+    new_params : Variable.t list;
+    new_projections : Projection.t list;
+    wrap_body : Flambda.expr -> Flambda.expr;
   }
 
-let new_specialised_args (how : how_to_unbox) =
-  List.fold_left2 (fun new_specialised_args param projection ->
-      let spec_to : Flambda.specialised_to =
-        { var = None;
-          projection;
-        }
-      in
-      Variable.Map.add param spec_to new_specialised_args)
-    how.new_params
-    how.new_projections
+  let create () =
+    { being_unboxed_to_wrapper_params_being_unboxed = Variable.Map.empty;
+      add_bindings_in_wrapper = (fun expr -> expr);
+      new_arguments_for_call_in_wrapper = [];
+      new_params = [];
+      new_projections = [];
+      wrap_body = (fun expr -> expr);
+    }
 
-let merge_how_to_unbox (how1 : how_to_unbox) (how2 : how_to_unbox)
-      : how_to_unbox =
-  { add_bindings_in_wrapper = (fun expr ->
-      how2.add_bindings_in_wrapper (
-        how1.add_bindings_in_wrapper expr));
-    new_arguments_for_call_in_wrapper =
-      how1.new_arguments_for_call_in_wrapper
-        @ how2.new_arguments_for_call_in_wrapper;
-    new_params = how1.new_params @ how2.new_params;
-    new_projections = how1.new_projections @ how2.new_projections;
-    wrap_body = (fun expr -> how2.wrap_body (how1.wrap_body expr));
-  }
+  let new_specialised_args t =
+    List.fold_left2 (fun new_specialised_args param projection ->
+        let spec_to : Flambda.specialised_to =
+          { var = None;
+            projection;
+          }
+        in
+        Variable.Map.add param spec_to new_specialised_args)
+      t.new_params
+      t.new_projections
 
-let merge_how_to_unbox_option (how1 : how_to_unbox option)
-      (how2 : how_to_unbox option) : how_to_unbox option =
-  match how1, how2 with
-  | None, None -> None
-  | Some how1, None -> Some how1
-  | None, Some how2 -> Some how2
-  | Some how1, Some how2 -> Some (merge_how_to_unbox how1 how2)
+  let merge t1 t2 =
+    { being_unboxed_to_wrapper_params_being_unboxed =
+        Variable.Map.union (fun _ param1 param2 ->
+            assert (Variable.equal param1 param2);
+            param1)
+          t1.being_unboxed_to_wrapper_params_being_unboxed
+          t2.being_unboxed_to_wrapper_params_being_unboxed;
+      add_bindings_in_wrapper = (fun expr ->
+        t2.add_bindings_in_wrapper (
+          t1.add_bindings_in_wrapper expr));
+      new_arguments_for_call_in_wrapper =
+        t1.new_arguments_for_call_in_wrapper
+          @ t2.new_arguments_for_call_in_wrapper;
+      new_params = t1.new_params @ t2.new_params;
+      new_projections = t1.new_projections @ t2.new_projections;
+      wrap_body = (fun expr -> t2.wrap_body (t1.wrap_body expr));
+    }
 
-let how_to_unbox t ~being_unboxed ~wrapper_param_being_unboxed =
+  let merge_option t1 t2 =
+    match t1, t2 with
+    | None, None -> None
+    | Some t1, None -> Some t1
+    | None, Some t2 -> Some t2
+    | Some t1, Some t2 -> Some (merge t1 t2)
+end
+
+let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
   let dbg = Debuginfo.none in
-  let for_discriminant : how_to_unbox option =
+  let wrapper_param_being_unboxed = Variable.rename being_unboxed in
+  let being_unboxed_to_wrapper_param_being_unboxed =
+    Variable.Map.add being_unboxed wrapper_param_being_unboxed
+      Variable.Map.empty
+  in
+  let for_discriminant =
     (* See the [Switch] case in [Inline_and_simplify] for details of the
        encoding of the variant discriminant. *)
-    if not t.has_constant_ctors then None
+    if not has_constant_ctors then None
     else
       let max_tag = Obj.last_non_constant_constructor_tag in
       let discriminant = Variable.rename ~append:"_discr" being_unboxed in
@@ -160,8 +173,9 @@ let how_to_unbox t ~being_unboxed ~wrapper_param_being_unboxed =
             (Prim (Pintcomp Cgt, [discriminant; max_tag], dbg))
             expr)
       in
-      let how_to_unbox : how_to_unbox =
-        { add_bindings_in_wrapper;
+      let how_to_unbox : How_to_unbox.t =
+        { being_unboxed_to_wrapper_param_being_unboxed;
+          add_bindings_in_wrapper;
           new_arguments_for_call_in_wrapper = [discriminant_in_wrapper];
           new_params = [discriminant];
           new_projections = [isint_projection; switch_projection];
@@ -170,10 +184,11 @@ let how_to_unbox t ~being_unboxed ~wrapper_param_being_unboxed =
       in
       Some how_to_unbox
   in
-  let for_fields : how_to_unbox option =
+  let for_fields =
     let max_size =
-      Tag_and_int.Set.fold (fun (_tag, size) max_size -> max size max_size)
-        t.tags_and_sizes 0
+      Tag.Map.fold (fun _tag fields max_size ->
+          max (Array.length size) max_size)
+        blocks 0
     in
     let fields =
       Array.init max_size (fun index ->
@@ -207,8 +222,9 @@ let how_to_unbox t ~being_unboxed ~wrapper_param_being_unboxed =
           make_field_projection ~index)
         max_size)
     in
-    let how_to_unbox : how_to_unbox =
-      { add_bindings_in_wrapper;
+    let how_to_unbox : How_to_unbox.t =
+      { being_unboxed_to_wrapper_param_being_unboxed;
+        add_bindings_in_wrapper;
         new_arguments_for_call_in_wrapper = fields_in_wrapper;
         new_params = Array.to_list fields;
         new_projections = field_projections;
@@ -217,4 +233,21 @@ let how_to_unbox t ~being_unboxed ~wrapper_param_being_unboxed =
     in
     Some how_to_unbox
   in
-  merge_how_to_unbox for_discriminant for_fields
+  How_to_unbox.merge_option for_discriminant for_fields
+
+let how_to_unbox ~begin_unboxed ~being_unboxed_approx =
+  match A.check_approx_for_variant being_unboxed_approx with
+  | Wrong -> None
+  | Some approx ->
+    let has_constant_ctors =
+      match approx with
+      | Blocks _ -> false
+      | Blocks_and_immediates (_, imms) | Immediates imms ->
+        not (Immediate.Set.is_empty imms)
+    in
+    let blocks =
+      match approx with
+      | Blocks blocks | Blocks_and_immediates (blocks, _) -> blocks
+      | Immediates _ -> Tag.Map.empty
+    in
+    how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed
