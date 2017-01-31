@@ -165,13 +165,42 @@ module rec T : sig
      we should move the comment from the .ml file into here.) *)
   val join : really_import_approx:(t -> t) -> t -> t -> t
 end and Unionable : sig
-  type t = private
+  module Immediate : sig
+    type t =
+      | Int of int
+      | Char of char
+      | Constptr of int
+
+    include Identifiable with type t := t
+  end
+
+  type blocks_only = T.t array Tag.Map.t
+
+  (** Values of type [t] represent unions of approximations, that is to say,
+      disjunctions of properties known to hold of a value at one or more of
+      its use points. *)
+  type t =
+    | Blocks of blocks
+    | Blocks_and_immediates of blocks * Immediate.Set.t
+    | Immediates of Immediate.Set.t
+
+  val print : Format.formatter -> t -> unit
+
+  type 'a or_bottom =
+    | Ok of 'a
+    | Bottom
+
+  val union : t -> t -> t or_bottom
+
+  type singleton =
     | Block of Tag.t * T.t array
     | Int of int
     | Char of char
     | Constptr of int
 
-  include Identifiable.S with type t := t
+  (** Find the properties that are guaranteed to hold of a value with union
+      approximation at every point it is used. *)
+  val join : t -> singleton or_bottom
 end
 
 include (module type of T)

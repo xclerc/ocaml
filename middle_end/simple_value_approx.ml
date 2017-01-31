@@ -265,11 +265,12 @@ end and Unionable : sig
     include Identifiable with type t := t
   end
 
-  type blocks_only = T.t array Tag.Map.t
+  type blocks = T.t array Tag.Map.t
 
-  (* Move Unboxable.create to here, basically *)
-  (* Make sure that if we have one tag mapping to different T.t array lengths
-     then we get bottom *)
+  (* Other representations are possible, but this one has two nice properties:
+     1. It doesn't involve any comparison on values of type [T.t].
+     2. It lines up with the classification of approximations required when
+        unboxing (cf. [Unbox_one_variable]). *)
   type t =
     | Blocks of blocks
     | Blocks_and_immediates of blocks * Immediate.Set.t
@@ -277,18 +278,19 @@ end and Unionable : sig
 
   val print : Format.formatter -> t -> unit
 
+  type 'a or_bottom =
+    | Ok of 'a
+    | Bottom
+
+  val union : t -> t -> t or_bottom
+
   type singleton =
     | Block of Tag.t * T.t array
     | Int of int
     | Char of char
     | Constptr of int
 
-  type 'a or_bottom =
-    | Ok of 'a
-    | Bottom
-
   val join : t -> singleton or_bottom
-  val union : t -> t -> t or_bottom
 end = struct
   module Immediate = struct
     include Identifiable.Make (struct
@@ -353,33 +355,9 @@ end = struct
       Format.fprintf ppf "@[(immediates (%a))@]"
         Immediate.Set.print imms
 
-  type singleton =
-    | Block of Tag.t * T.t array
-    | Int of int
-    | Char of char
-    | Constptr of int
-
   type 'a or_bottom =
     | Ok of 'a
     | Bottom
-
-  let rec join t : singleton or_bottom =
-    match t with
-    | Blocks by_tag ->
-      begin match Tag.Map.bindings by_tag with
-      | [tag, fields] -> Ok (Block (tag, fields))
-      | _ -> Bottom
-      end
-    | Blocks_and_immediates (by_tag, imms) ->
-      if Tag.Map.is_empty by_tag then join (Immediate imms)
-      else if Immediate.Set.is_empty imms then join (Blocks by_tag)
-      else Bottom
-    | Immediate imms ->
-      match Immediate.join_set imms with
-      | None -> Bottom
-      | Some (Int i) -> Ok (Int i)
-      | Some (Char c) -> Ok (Char c)
-      | Some (Constptr p) -> Ok (Constptr p)
 
   let union (t1 : t) (t2 : t) : t_or_bottom =
     let get_immediates t =
@@ -415,6 +393,30 @@ end = struct
     else if Immediate.Set.is_empty immediates then Ok (Blocks blocks)
     else if Tag.Map.is_empty blocks then Ok (Immediates immediates)
     else Ok (Blocks_and_immediates (blocks, immediates))
+
+  type singleton =
+    | Block of Tag.t * T.t array
+    | Int of int
+    | Char of char
+    | Constptr of int
+
+  let rec join t : singleton or_bottom =
+    match t with
+    | Blocks by_tag ->
+      begin match Tag.Map.bindings by_tag with
+      | [tag, fields] -> Ok (Block (tag, fields))
+      | _ -> Bottom
+      end
+    | Blocks_and_immediates (by_tag, imms) ->
+      if Tag.Map.is_empty by_tag then join (Immediate imms)
+      else if Immediate.Set.is_empty imms then join (Blocks by_tag)
+      else Bottom
+    | Immediate imms ->
+      match Immediate.join_set imms with
+      | None -> Bottom
+      | Some (Int i) -> Ok (Int i)
+      | Some (Char c) -> Ok (Char c)
+      | Some (Constptr p) -> Ok (Constptr p)
 end
 
 let descr t = t.descr
