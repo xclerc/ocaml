@@ -126,7 +126,7 @@ end = struct
   let rec join_descr ~really_import_approx d1 d2 =
     match d1, d2 with
     | Union union1, Union union2 ->
-      begin match Unionable.union union1 union2 ~really_import_approx with
+      begin match Unionable.join union1 union2 ~really_import_approx with
       | Ok union -> Union union
       | Bottom -> Bottom
       end
@@ -303,7 +303,7 @@ end and Unionable : sig
     | Ok of 'a
     | Bottom
 
-  val union : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
+  val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
 
   type singleton = private
     | Block of Tag.t * T.t array
@@ -311,7 +311,7 @@ end and Unionable : sig
     | Char of char
     | Constptr of int
 
-  val join : t -> singleton or_bottom
+  val flatten : t -> singleton or_bottom
 
   val maybe_is_immediate_value : t -> int -> bool
   val maybe_is_block_with_tag : t -> Tag.t -> bool
@@ -421,7 +421,7 @@ end = struct
       Tag.Map.exists (fun tag' _ -> Tag.equal tag tag') by_tag
     | Immediates _imms -> false
 
-  let union (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
+  let join (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
     let get_immediates t =
       match t with
       | Blocks _ -> Immediate.Set.empty
@@ -470,7 +470,7 @@ end = struct
     | Char of char
     | Constptr of int
 
-  let rec join t : singleton or_bottom =
+  let rec flatten t : singleton or_bottom =
     match t with
     | Blocks by_tag ->
       begin match Tag.Map.bindings by_tag with
@@ -478,8 +478,8 @@ end = struct
       | _ -> Bottom
       end
     | Blocks_and_immediates (by_tag, imms) ->
-      if Tag.Map.is_empty by_tag then join (Immediates imms)
-      else if Immediate.Set.is_empty imms then join (Blocks by_tag)
+      if Tag.Map.is_empty by_tag then flatten (Immediates imms)
+      else if Immediate.Set.is_empty imms then flatten (Blocks by_tag)
       else Bottom
     | Immediates imms ->
       match Immediate.join_set imms with
@@ -593,7 +593,7 @@ let augment_kind_with_approx t (kind:Lambda.value_kind) : Lambda.value_kind =
   match t.descr with
   | Float _ -> Pfloatval
   | Union union ->
-    begin match Unionable.join union with
+    begin match Unionable.flatten union with
     | Ok (Int _) -> Pintval
     | _ -> kind
     end
@@ -722,7 +722,7 @@ let simplify_named t (named : Flambda.named) : simplification_result_named =
   if Effect_analysis.no_effects_named named then
     match t.descr with
     | Union union ->
-      begin match Unionable.join union with
+      begin match Unionable.flatten union with
       | Ok (Block _) | Bottom ->
         named, Nothing_done, t
       | Ok (Int n) ->
@@ -761,8 +761,7 @@ let simplify_var t : (Flambda.named * t) option =
   in
   match t.descr with
   | Union union ->
-    begin match Unionable.join union with
-    (* CR mshinwell: Why is "Bottom" not returning "None"? *)
+    begin match Unionable.flatten union with
     | Ok (Block _) | Bottom -> try_symbol ()
     | Ok (Int n) -> Some (make_const_int_named n)
     | Ok (Char n) -> Some (make_const_char_named n)
@@ -832,7 +831,7 @@ type get_field_result =
 let get_field t ~field_index:i : get_field_result =
   match t.descr with
   | Union union ->
-    begin match Unionable.join union with
+    begin match Unionable.flatten union with
     | Ok (Block (_tag, fields)) ->
       if i >= 0 && i < Array.length fields then begin
         Ok fields.(i)
@@ -880,7 +879,7 @@ type checked_approx_for_block =
 let check_approx_for_block t : checked_approx_for_block =
   match t.descr with
   | Union union ->
-    begin match Unionable.join union with
+    begin match Unionable.flatten union with
     | Ok (Block (tag, fields)) -> Ok (tag, fields)
     | Ok (Int _ | Char _ | Constptr _) | Bottom -> Wrong
     end
@@ -1081,7 +1080,7 @@ let potentially_taken_const_switch_branch t branch =
   match t.descr with
   | Union union ->
     let must_be_taken =
-      match Unionable.join union with
+      match Unionable.flatten union with
       | Bottom -> false
       | Ok (Block _) -> false
       | Ok (Int i) | Ok (Constptr i) -> i = branch
@@ -1102,7 +1101,7 @@ let potentially_taken_block_switch_branch_tag t tag =
   | Union union ->
     let tag = Tag.create_exn tag in
     let must_be_taken =
-      match Unionable.join union with
+      match Unionable.flatten union with
       | Bottom -> false
       | Ok (Block (block_tag, _)) -> Tag.equal block_tag tag
       | Ok (Int _ | Char _ | Constptr _) -> false

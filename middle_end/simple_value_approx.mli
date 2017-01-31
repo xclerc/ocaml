@@ -197,7 +197,7 @@ end and Unionable : sig
     | Ok of 'a
     | Bottom
 
-  val union : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
+  val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
 
   type singleton = private
     | Block of Tag.t * T.t array
@@ -207,7 +207,7 @@ end and Unionable : sig
 
   (** Find the properties that are guaranteed to hold of a value with union
       approximation at every point it is used. *)
-  val join : t -> singleton or_bottom
+  val flatten : t -> singleton or_bottom
 end
 
 include (module type of T)
