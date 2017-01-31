@@ -55,8 +55,12 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
     expr, A.value_bottom, C.Benefit.zero
   | Pignore -> begin
       match args, A.descrs approxs with
-      | [arg], [(Int 0 | Constptr 0)] ->
-        S.const_ptr_expr (Flambda.Var arg) 0
+      | [arg], [Union union] ->
+        begin match A.Unionable.flatten union with
+        | Ok (Int 0) | Ok (Constptr 0) ->
+          S.const_ptr_expr (Flambda.Var arg) 0
+        | _ -> S.const_ptr_expr expr 0
+        end
       | _ -> S.const_ptr_expr expr 0
     end
   | Pmakearray (Pfloatarray, Mutable) ->
@@ -96,66 +100,80 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
        invalid. *)
   | _ ->
     match A.descrs approxs with
-    | [Int x] ->
-      begin match p with
-      | Pidentity -> S.const_int_expr expr x
-      | Pnot -> S.const_bool_expr expr (x = 0)
-      | Pnegint -> S.const_int_expr expr (-x)
-      | Pbswap16 -> S.const_int_expr expr (S.swap16 x)
-      | Poffsetint y -> S.const_int_expr expr (x + y)
-      | Pfloatofint when fpc -> S.const_float_expr expr (float_of_int x)
-      | Pbintofint Pnativeint ->
-        S.const_boxed_int_expr expr Nativeint (Nativeint.of_int x)
-      | Pbintofint Pint32 -> S.const_boxed_int_expr expr Int32 (Int32.of_int x)
-      | Pbintofint Pint64 -> S.const_boxed_int_expr expr Int64 (Int64.of_int x)
-      | _ -> expr, A.value_unknown Other, C.Benefit.zero
+    | [Union union] when p = Lambda.Pisint ->
+      begin match A.Unionable.flatten union with
+      | Ok (Int _ | Char _ | Constptr _) -> S.const_bool_expr expr true
+      | Ok (Block _) -> S.const_bool_expr expr false
+      | Bottom -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [(Int x | Constptr x); (Int y | Constptr y)] ->
-      let shift_precond = 0 <= y && y < 8 * size_int in
-      begin match p with
-      | Paddint -> S.const_int_expr expr (x + y)
-      | Psubint -> S.const_int_expr expr (x - y)
-      | Pmulint -> S.const_int_expr expr (x * y)
-      | Pdivint _ when y <> 0 -> S.const_int_expr expr (x / y)
-      | Pmodint _ when y <> 0 -> S.const_int_expr expr (x mod y)
-      | Pandint -> S.const_int_expr expr (x land y)
-      | Porint -> S.const_int_expr expr (x lor y)
-      | Pxorint -> S.const_int_expr expr (x lxor y)
-      | Plslint when shift_precond -> S.const_int_expr expr (x lsl y)
-      | Plsrint when shift_precond -> S.const_int_expr expr (x lsr y)
-      | Pasrint when shift_precond -> S.const_int_expr expr (x asr y)
-      | Pintcomp cmp -> S.const_comparison_expr expr cmp x y
-      | Pisout -> S.const_bool_expr expr (y > x || y < 0)
-      | _ -> expr, A.value_unknown Other, C.Benefit.zero
-      end
-    | [Char x; Char y] ->
-      begin match p with
-      | Pintcomp cmp -> S.const_comparison_expr expr cmp x y
-      | _ -> expr, A.value_unknown Other, C.Benefit.zero
-      end
-    | [Constptr x] ->
-      begin match p with
-      (* [Pidentity] should probably never appear, but is here for
-         completeness. *)
-      | Pidentity -> S.const_ptr_expr expr x
-      | Pnot -> S.const_bool_expr expr (x = 0)
-      | Pisint -> S.const_bool_expr expr true
-      | Poffsetint y -> S.const_ptr_expr expr (x + y)
-      | Pctconst c ->
-        begin match c with
-        | Big_endian -> S.const_bool_expr expr big_endian
-        | Word_size -> S.const_int_expr expr (8*size_int)
-        | Int_size -> S.const_int_expr expr (8*size_int - 1)
-        | Max_wosize ->
-          (* CR-someday mshinwell: this function should maybe not live here. *)
-          S.const_int_expr expr ((1 lsl ((8*size_int) - 10)) - 1)
-        | Ostype_unix -> S.const_bool_expr expr (Sys.os_type = "Unix")
-        | Ostype_win32 -> S.const_bool_expr expr (Sys.os_type = "Win32")
-        | Ostype_cygwin -> S.const_bool_expr expr (Sys.os_type = "Cygwin")
-        | Backend_type ->
-          S.const_ptr_expr expr 0 (* tag 0 is the same as Native *)
+    | [Union union] ->
+      begin match A.Unionable.flatten union with
+      | Ok (Int x) ->
+        begin match p with
+        | Pidentity -> S.const_int_expr expr x
+        | Pnot -> S.const_bool_expr expr (x = 0)
+        | Pnegint -> S.const_int_expr expr (-x)
+        | Pbswap16 -> S.const_int_expr expr (S.swap16 x)
+        | Poffsetint y -> S.const_int_expr expr (x + y)
+        | Pfloatofint when fpc -> S.const_float_expr expr (float_of_int x)
+        | Pbintofint Pnativeint ->
+          S.const_boxed_int_expr expr Nativeint (Nativeint.of_int x)
+        | Pbintofint Pint32 -> S.const_boxed_int_expr expr Int32 (Int32.of_int x)
+        | Pbintofint Pint64 -> S.const_boxed_int_expr expr Int64 (Int64.of_int x)
+        | _ -> expr, A.value_unknown Other, C.Benefit.zero
+        end
+      | Ok (Constptr x) ->
+        begin match p with
+        (* [Pidentity] should probably never appear, but is here for
+          completeness. *)
+        | Pidentity -> S.const_ptr_expr expr x
+        | Pnot -> S.const_bool_expr expr (x = 0)
+        | Pisint -> S.const_bool_expr expr true
+        | Poffsetint y -> S.const_ptr_expr expr (x + y)
+        | Pctconst c ->
+          begin match c with
+          | Big_endian -> S.const_bool_expr expr big_endian
+          | Word_size -> S.const_int_expr expr (8*size_int)
+          | Int_size -> S.const_int_expr expr (8*size_int - 1)
+          | Max_wosize ->
+            (* CR-someday mshinwell: this function should maybe not live here. *)
+            S.const_int_expr expr ((1 lsl ((8*size_int) - 10)) - 1)
+          | Ostype_unix -> S.const_bool_expr expr (Sys.os_type = "Unix")
+          | Ostype_win32 -> S.const_bool_expr expr (Sys.os_type = "Win32")
+          | Ostype_cygwin -> S.const_bool_expr expr (Sys.os_type = "Cygwin")
+          | Backend_type ->
+            S.const_ptr_expr expr 0 (* tag 0 is the same as Native *)
+          end
+        | _ -> expr, A.value_unknown Other, C.Benefit.zero
         end
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
+      end
+    | [Union union1; Union union2] ->
+      begin match A.Unionable.flatten union1, A.Unionable.flatten union2 with
+      | Ok (Int x | Constptr x), Ok (Int y | Constptr y) ->
+        let shift_precond = 0 <= y && y < 8 * size_int in
+        begin match p with
+        | Paddint -> S.const_int_expr expr (x + y)
+        | Psubint -> S.const_int_expr expr (x - y)
+        | Pmulint -> S.const_int_expr expr (x * y)
+        | Pdivint _ when y <> 0 -> S.const_int_expr expr (x / y)
+        | Pmodint _ when y <> 0 -> S.const_int_expr expr (x mod y)
+        | Pandint -> S.const_int_expr expr (x land y)
+        | Porint -> S.const_int_expr expr (x lor y)
+        | Pxorint -> S.const_int_expr expr (x lxor y)
+        | Plslint when shift_precond -> S.const_int_expr expr (x lsl y)
+        | Plsrint when shift_precond -> S.const_int_expr expr (x lsr y)
+        | Pasrint when shift_precond -> S.const_int_expr expr (x asr y)
+        | Pintcomp cmp -> S.const_comparison_expr expr cmp x y
+        | Pisout -> S.const_bool_expr expr (y > x || y < 0)
+        | _ -> expr, A.value_unknown Other, C.Benefit.zero
+        end
+      | Ok (Char x), Ok (Char y) ->
+        begin match p with
+        | Pintcomp cmp -> S.const_comparison_expr expr cmp x y
+        | _ -> expr, A.value_unknown Other, C.Benefit.zero
+        end
+      | _, _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
     | [Float (Some x)] when fpc ->
       begin match p with
@@ -186,22 +204,33 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       I.Simplify_boxed_int32.simplify_binop p Int32 expr n1 n2
     | [A.Boxed_int(A.Int64, n1); A.Boxed_int(A.Int64, n2)] ->
       I.Simplify_boxed_int64.simplify_binop p Int64 expr n1 n2
-    | [A.Boxed_int(A.Nativeint, n1); Int n2] ->
-      I.Simplify_boxed_nativeint.simplify_binop_int p Nativeint expr n1 n2
-        ~size_int
-    | [A.Boxed_int(A.Int32, n1); Int n2] ->
-      I.Simplify_boxed_int32.simplify_binop_int p Int32 expr n1 n2
-        ~size_int
-    | [A.Boxed_int(A.Int64, n1); Int n2] ->
-      I.Simplify_boxed_int64.simplify_binop_int p Int64 expr n1 n2
-        ~size_int
-    | [Block _] when p = Lambda.Pisint ->
-      S.const_bool_expr expr false
+    | [A.Boxed_int(A.Nativeint, n1); Union union2] ->
+      begin match A.Unionable.flatten union2 with
+      | Ok (Int n2) ->
+        I.Simplify_boxed_nativeint.simplify_binop_int p Nativeint expr n1 n2
+          ~size_int
+      | _ -> expr, A.value_unknown Other, C.Benefit.zero
+      end
+    | [A.Boxed_int(A.Int32, n1); Union union2] ->
+      begin match A.Unionable.flatten union2 with
+      | Ok (Int n2) ->
+        I.Simplify_boxed_int32.simplify_binop_int p Int32 expr n1 n2
+          ~size_int
+      | _ -> expr, A.value_unknown Other, C.Benefit.zero
+      end
+    | [A.Boxed_int(A.Int64, n1); Union union2] ->
+      begin match A.Unionable.flatten union2 with
+      | Ok (Int n2) ->
+        I.Simplify_boxed_int64.simplify_binop_int p Int64 expr n1 n2
+          ~size_int
+      | _ -> expr, A.value_unknown Other, C.Benefit.zero
+      end
     | [String { size }]
       when (p = Lambda.Pstringlength || p = Lambda.Pbyteslength) ->
       S.const_int_expr expr size
-    | [String { size; contents = Some s };
-       (Int x | Constptr x)] when x >= 0 && x < size ->
+    | [String { size; contents = Some s }; Union union2] ->
+      begin match A.Unionable.flatten union2 with
+      | Ok (Int x) | Ok (Constptr x) when x >= 0 && x < size ->
         begin match p with
         | Pstringrefu
         | Pstringrefs
@@ -210,21 +239,24 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
           S.const_char_expr (Prim(Pstringrefu, args, dbg)) s.[x]
         | _ -> expr, A.value_unknown Other, C.Benefit.zero
         end
-    | [String { size; contents = None };
-       (Int x | Constptr x)]
-      when x >= 0 && x < size && p = Lambda.Pstringrefs ->
+      | _ -> expr, A.value_unknown Other, C.Benefit.zero
+      end
+    | [String { size; contents = None }; Union union2] ->
+      begin match A.Unionable.flatten union2 with
+      | Ok (Int x) | Ok (Constptr x)
+          when x >= 0 && x < size && p = Lambda.Pstringrefs ->
         Flambda.Prim (Pstringrefu, args, dbg),
           A.value_unknown Other,
           (* we improved it, but there is no way to account for that: *)
           C.Benefit.zero
-    | [String { size; contents = None };
-       (Int x | Constptr x)]
-      when x >= 0 && x < size && p = Lambda.Pbytesrefs ->
+      | Ok (Int x) | Ok (Constptr x)
+          when x >= 0 && x < size && p = Lambda.Pbytesrefs ->
         Flambda.Prim (Pbytesrefu, args, dbg),
           A.value_unknown Other,
           (* we improved it, but there is no way to account for that: *)
           C.Benefit.zero
-
+      | _ -> expr, A.value_unknown Other, C.Benefit.zero
+      end
     | [Float_array { size; contents }] ->
         begin match p with
         | Parraylength _ -> S.const_int_expr expr size
