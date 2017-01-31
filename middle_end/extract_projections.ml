@@ -76,10 +76,12 @@ let known_valid_projections ~get_approx ~projections =
         | Wrong -> false
         end
       | Field (field_index, _) ->
-        match A.check_approx_for_block approx with
+        begin match A.check_approx_for_block approx with
         | Wrong -> false
         | Ok (_tag, fields) ->
-          field_index >= 0 && field_index < Array.length fields)
+          field_index >= 0 && field_index < Array.length fields
+        end
+      | Prim _ | Switch _ -> true (* CR mshinwell: FIXME *) )
     projections
 
 let rec analyse_expr ~which_variables expr =

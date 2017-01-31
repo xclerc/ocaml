@@ -549,7 +549,7 @@ module Continuation_uses = struct
       List.fold_left (fun args_approxs use ->
         List.map2 (fun approx1 approx2 ->
           let module Backend = (val (t.backend) : Backend_intf.S) in
-          A.meet approx1 approx2
+          A.join approx1 approx2
             ~really_import_approx:Backend.really_import_approx)
           args_approxs use)
         use
@@ -604,7 +604,7 @@ module Result = struct
   let meet_approx t env approx =
     let really_import_approx = Env.really_import_approx env in
     let meet =
-      Simple_value_approx.meet ~really_import_approx t.approx approx
+      Simple_value_approx.join ~really_import_approx t.approx approx
     in
     set_approx t meet
 

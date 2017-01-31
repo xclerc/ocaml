@@ -129,7 +129,7 @@ let for_continuations r ~body ~handlers ~original ~backend
                 wrapper_params
                   @ how_to_unbox.new_arguments_for_call_in_wrapper)
             in
-            H.add_bindings_in_wrapper how_to_unbox initial_body
+            how_to_unbox.add_bindings_in_wrapper initial_body
           in
           assert (not handler.is_exn_handler);
           let with_wrapper : Flambda_utils.with_wrapper =
@@ -139,7 +139,7 @@ let for_continuations r ~body ~handlers ~original ~backend
                 params = how_to_unbox.new_params;
                 stub = handler.stub;
                 is_exn_handler = false;
-                handler = H.wrap_body how_to_unbox handler.handler;
+                handler = how_to_unbox.wrap_body handler.handler;
                 specialised_args;
               };
               wrapper_handler = {

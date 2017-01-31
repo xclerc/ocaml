@@ -553,7 +553,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
               let set_approx =
                 let approx = A.approx_for_bound_var value_set_of_closures var in
                 let really_import_approx = E.really_import_approx env in
-                A.meet ~really_import_approx approx set_approx
+                A.join ~really_import_approx approx set_approx
               in
               Closure_id.Map.add closure_id var project_var_var,
               set_approx)

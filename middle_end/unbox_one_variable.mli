@@ -31,12 +31,9 @@ module How_to_unbox : sig
   val merge : t -> t -> t
 
   val merge_variable_map : t Variable.Map.t -> t
-
-  val add_bindings_in_wrapper : t -> Flambda.expr -> Flambda.expr
-  val wrap_body : t -> Flambda.expr -> Flambda.expr
 end
 
 val how_to_unbox
-  -> being_unboxed:Variable.t
+   : being_unboxed:Variable.t
   -> being_unboxed_approx:Simple_value_approx.t
   -> How_to_unbox.t option
