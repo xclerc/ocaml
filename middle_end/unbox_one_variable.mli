@@ -27,6 +27,13 @@ module How_to_unbox : sig
     new_projections : Projection.t list;
     wrap_body : Flambda.expr -> Flambda.expr;
   }
+
+  val merge : t -> t -> t
+
+  val merge_variable_map : t Variable.Map.t -> t
+
+  val add_bindings_in_wrapper : t -> Flambda.expr -> Flambda.expr
+  val wrap_body : t -> Flambda.expr -> Flambda.expr
 end
 
 val how_to_unbox

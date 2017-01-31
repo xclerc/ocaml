@@ -70,6 +70,17 @@ module How_to_unbox = struct
     | Some t1, None -> Some t1
     | None, Some t2 -> Some t2
     | Some t1, Some t2 -> Some (merge t1 t2)
+
+  let merge_variable_map t_map =
+    Variable.Map.fold (fun _param t1 t2 -> merge t1 t2) t_map (create ())
+
+  let add_bindings_in_wrapper t body =
+    List.fold_left (fun wrapper_body f -> f wrapper_body)
+      body
+      t.add_bindings_in_wrapper
+
+  let wrap_body t body =
+    List.fold_left (fun body f -> f body) body t.wrap_body
 end
 
 let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =

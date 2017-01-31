@@ -33,7 +33,7 @@ let find_unboxings ~definitions_with_uses ~handlers =
         | params ->
           match Continuation.Map.find cont definitions_with_uses with
           | exception Not_found -> None
-          | (uses, _approx, _env, _recursive) ->
+          | (uses, approx, _env, _recursive) ->
             let num_params = List.length params in
             let args_approxs =
               Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
@@ -48,7 +48,7 @@ let find_unboxings ~definitions_with_uses ~handlers =
                     ~being_unboxed_approx:approx)
             in
             if Variable.Map.is_empty unboxings then None
-            else Some unboxings)
+            else Some (handler, unboxings))
 
 (* CR mshinwell: If we get everything using [Unbox_one_variable] then
    this function should be able to move to [Invariant_params] *)
@@ -101,39 +101,27 @@ let for_continuations r ~body ~handlers ~original ~backend
   if Continuation.Map.is_empty unboxings_by_cont then begin
     original
   end else begin
-    Format.eprintf "Unboxings:\n@;%a\n"
-      (Continuation.Map.print Unboxing.Set.print) unboxings_by_cont;
     let unboxings_by_cont =
       propagate_invariant_params_flow ~handlers ~backend ~unboxings_by_cont
     in
     let with_wrappers =
-      Continuation.Map.fold (fun cont unboxings_by_param new_handlers ->
+      Continuation.Map.fold (fun cont (handler, unboxings) new_handlers ->
           let handler : Flambda.continuation_handler =
             match Continuation.Map.find cont handlers with
             | exception Not_found -> assert false
             | handler -> handler
           in
           let new_cont = Continuation.create () in
-          let how_to_unbox =
-            Variable.Map.fold (fun _param how1 how2 -> H.merge how1 how2)
-              unboxings_by_param
-              (H.create ())
-          in
+          let how_to_unbox = H.merge_variable_map unboxings in
           let wrapper_params_map, wrapper_params, wrapper_specialised_args =
             Flambda_utils.create_wrapper_params ~params:handler.params
               ~specialised_args:handler.specialised_args
               ~freshening_already_assigned:(how_to_unbox.
                 being_unboxed_to_wrapper_params_being_unboxed)
           in
-          let freshen_param param =
-            match Variable.Map.find param wrapper_params_map with
-            | exception Not_found -> assert false
-            | param -> param
-          in
-          let new_specialised_args = H.new_specialised_args how_to_unbox in
           let specialised_args =
             Variable.Map.disjoint_union handler.specialised_args
-              new_specialised_args
+              (H.new_specialised_args how_to_unbox)
           in
           let wrapper_body =
             let initial_body : Flambda.t =
@@ -141,16 +129,9 @@ let for_continuations r ~body ~handlers ~original ~backend
                 wrapper_params
                   @ how_to_unbox.new_arguments_for_call_in_wrapper)
             in
-            List.fold_left (fun wrapper_body f -> f wrapper_body)
-              initial_body
-              how_to_unbox.add_bindings_in_wrapper
+            H.add_bindings_in_wrapper how_to_unbox initial_body
           in
           assert (not handler.is_exn_handler);
-          let body =
-            List.fold_left (fun body f -> f body)
-              handler.handler
-              how_to_unbox.wrap_body
-          in
           let with_wrapper : Flambda_utils.with_wrapper =
             With_wrapper {
               new_cont;
@@ -158,7 +139,7 @@ let for_continuations r ~body ~handlers ~original ~backend
                 params = how_to_unbox.new_params;
                 stub = handler.stub;
                 is_exn_handler = false;
-                handler = body;
+                handler = H.wrap_body how_to_unbox handler.handler;
                 specialised_args;
               };
               wrapper_handler = {
