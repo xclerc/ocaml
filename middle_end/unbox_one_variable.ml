@@ -32,7 +32,7 @@ module How_to_unbox = struct
     }
 
   let new_specialised_args t =
-    List.fold_left2 (fun new_specialised_args param projection ->
+    List.fold_left (fun new_specialised_args (param, projection) ->
         let spec_to : Flambda.specialised_to =
           { var = None;
             projection = Some projection;
@@ -41,7 +41,6 @@ module How_to_unbox = struct
         Variable.Map.add param spec_to new_specialised_args)
       Variable.Map.empty
       t.new_params
-      t.new_projections
 
   let merge t1 t2 =
     { being_unboxed_to_wrapper_params_being_unboxed =
@@ -86,25 +85,24 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
   let discriminant_in_wrapper = Variable.rename discriminant in
   let max_size =
     Tag.Map.fold (fun _tag fields max_size ->
-        max (Array.length size) max_size)
+        max (Array.length fields) max_size)
       blocks 0
   in
   let field_arguments_for_call_in_wrapper =
-    Array.to_list (Array.init (fun index ->
-        Variable.create (Printf.sprintf "field%d" index))
-     max_size)
+    Array.to_list (Array.init max_size (fun index ->
+        Variable.create (Printf.sprintf "field%d" index)))
   in
   let tags_to_sizes = Tag.Map.map (fun fields -> Array.length fields) blocks in
   let all_tags = Tag.Map.keys blocks in
   let sizes_to_filler_conts =
-    Tag.Set.fold (fun size sizes_to_filler_conts ->
-        Tag.Map.add size (Continuation.create ()) sizes_to_filler_conts)
+    List.fold_left (fun sizes_to_filler_conts size ->
+        Numbers.Int.Map.add size (Continuation.create ()) sizes_to_filler_conts)
+      Numbers.Int.Map.empty
       (Tag.Map.data tags_to_sizes)
-      Tag.Map.empty
   in
   let unit_value = Variable.create "unit" in
   let n_units n =
-    Array.to_list (Array.init (fun _ -> Var unit_value) n)
+    Array.to_list (Array.init n (fun _ -> Var unit_value))
   in
   let all_units = n_units max_size in
   let add_bindings_in_wrapper expr =
