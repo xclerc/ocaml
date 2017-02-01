@@ -177,9 +177,9 @@ let approx_for_allocated_const (const : Allocated_const.t) =
       A.value_immutable_float_array
         (Array.map A.value_float (Array.of_list a))
 
-type filtered_switch_branches =
+type 'a filtered_switch_branches =
   | Must_be_taken of Continuation.t
-  | Can_be_taken of (Ilambda.switch_block_pattern * Continuation.t) list
+  | Can_be_taken of ('a * Continuation.t) list
 
 let inline_and_specialise_continuations env r ~body ~simplify ~backend =
   if E.never_inline env then
@@ -1419,7 +1419,7 @@ and simplify_named env r (tree : Flambda.named)
           [], Reachable tree, ret r (A.value_unknown Other)
         | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
           Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
-        | Pisint, [arg], [arg_approx] ->
+        | Pisint, [_arg], [arg_approx] ->
           begin match A.check_approx_for_block_or_immediate arg_approx with
           | Wrong -> default ()
           | Immediate ->
@@ -1434,12 +1434,13 @@ and simplify_named env r (tree : Flambda.named)
               ret r (A.value_int 0)
           end
         | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
-        | Pgettag, [arg], [arg_approx] ->
+        | Pgettag, [_arg], [arg_approx] ->
           begin match A.check_approx_for_block arg_approx with
           | Wrong -> default ()
           | Ok (tag, _fields) ->
             let r = R.map_benefit r B.remove_prim in
             let const_tag = Variable.create "tag" in
+            let tag = Tag.to_int tag in
             [const_tag, Const (Int tag)], Reachable (Var const_tag),
               ret r (A.value_int tag)
           end
@@ -1447,7 +1448,7 @@ and simplify_named env r (tree : Flambda.named)
         | (Psequand | Psequor), _, _ ->
           Misc.fatal_error "Psequand and Psequor must be expanded (see \
               handling in closure_conversion.ml)"
-        | p, args, args_approxs -> default ()
+        | _, _, _ -> default ()
         end
       end)
 
@@ -1866,7 +1867,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         | (c, cont) as branch :: branches ->
           match filter arg_approx c with
           | A.Cannot_be_taken ->
-            filter_branches filter branches compatible_branches ~add
+            filter_branches filter branches compatible_branches
           | A.Can_be_taken ->
             filter_branches filter branches (branch :: compatible_branches)
           | A.Must_be_taken ->
