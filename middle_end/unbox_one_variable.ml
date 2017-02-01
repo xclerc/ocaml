@@ -88,9 +88,11 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
     Array.to_list (Array.init max_size (fun index ->
         Variable.create (Printf.sprintf "field%d" index)))
   in
+  let is_int_in_wrapper' = Variable.rename is_int_in_wrapper in
+  let discriminant_in_wrapper' = Variable.rename discriminant_in_wrapper in
   let new_arguments_for_call_in_wrapper = [
-      is_int_in_wrapper;
-      discriminant_in_wrapper;
+      is_int_in_wrapper';
+      discriminant_in_wrapper';
     ] @ field_arguments_for_call_in_wrapper
   in
   let tags_to_sizes = Tag.Map.map (fun fields -> Array.length fields) blocks in
@@ -108,7 +110,6 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
     let is_block_cont = Continuation.create () in
     let join_cont = Continuation.create () in
     let tag = Variable.create "tag" in
-    let is_int = Variable.create "is_int" in
     let is_int_switch : Flambda.switch =
       { numconsts = Numbers.Int.Set.singleton 0;
         consts = [0, is_block_cont];
@@ -144,7 +145,7 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
                       filler)
               fields
               (Flambda.Apply_cont (join_cont, None,
-                [is_int; tag] @ fields_for_apply))
+                [is_int_in_wrapper; tag] @ fields_for_apply))
           in
           Let_cont {
             body = expr;
@@ -189,18 +190,19 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
       }
     in
     Flambda.create_let unit_value (Const (Int 0))
-      (Flambda.create_let is_int
+      (Flambda.create_let is_int_in_wrapper
         (Prim (Pisint, [wrapper_param_being_unboxed], dbg))
         (Let_cont {
           body = Let_cont {
             body = Let_cont {
-              body = Switch (is_int, is_int_switch);
+              body = Switch (is_int_in_wrapper, is_int_switch);
               handlers = Nonrecursive {
                 name = is_int_cont;
                 handler = {
                   params = [];
                   handler = Apply_cont (join_cont, None,
-                    [is_int; wrapper_param_being_unboxed] @ all_units);
+                    [is_int_in_wrapper; wrapper_param_being_unboxed]
+                      @ all_units);
                   stub = false;
                   is_exn_handler = false;
                   specialised_args = Variable.Map.empty;
@@ -212,10 +214,10 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
               handler = {
                 params = [];
                 handler =
-                  add_fill_fields_conts (
-                    Flambda.create_let tag
-                      (Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
-                      (Switch (tag, fill_fields_switch)));
+                  Flambda.create_let tag
+                    (Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
+                    (add_fill_fields_conts (
+                      (Switch (tag, fill_fields_switch))));
                 stub = false;
                 is_exn_handler = false;
                 specialised_args = Variable.Map.empty;

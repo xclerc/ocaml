@@ -134,7 +134,9 @@ let for_continuations r ~body ~handlers ~original ~backend
           assert (not handler.is_exn_handler);
           let with_wrapper : Flambda_utils.with_wrapper =
             let params =
-              List.map (fun (param, _proj) -> param) how_to_unbox.new_params
+              handler.params
+                @ (List.map (fun (param, _proj) -> param)
+                  how_to_unbox.new_params)
             in
             With_wrapper {
               new_cont;
