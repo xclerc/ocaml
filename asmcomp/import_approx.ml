@@ -168,8 +168,8 @@ let import_symbol sym =
 
 let rec really_import (approx : A.descr) =
   match approx with
-  | Value_extern ex -> really_import_ex ex
-  | Value_symbol sym -> really_import_symbol sym
+  | Extern ex -> really_import_ex ex
+  | Symbol sym -> really_import_symbol sym
   | r -> r
 
 and really_import_ex ex =

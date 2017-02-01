@@ -323,6 +323,7 @@ type tag_switch_or_string_switch =
   | Tag of (int * Continuation.t) list
   | String of (string * Continuation.t) list
 
+(* CR mshinwell: this function can be dramatically simplified now *)
 let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
   match switch.consts, switch.blocks with
   | [], [] ->
@@ -333,21 +334,18 @@ let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
     let tags, strings =
       List.partition (fun ((pat : Ilambda.switch_block_pattern), _case) ->
           match pat with
-          | Tag _ -> true
           | String _ -> false)
         switch.blocks
     in
     let tags =
-      List.map (fun ((pat : Ilambda.switch_block_pattern), case) ->
+      List.map (fun ((pat : Ilambda.switch_block_pattern), _case) ->
           match pat with
-          | Tag tag -> tag, case
           | String _ -> assert false)
         tags
     in
     let strings =
       List.map (fun ((pat : Ilambda.switch_block_pattern), case) ->
           match pat with
-          | Tag _ -> assert false
           | String str -> str, case)
         strings
     in
