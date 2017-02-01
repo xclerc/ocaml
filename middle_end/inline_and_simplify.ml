@@ -1125,6 +1125,8 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
     (* Stubs are unconditionally inlined out now so that we don't need to run
        the second [Continuation_inlining] pass when doing a "noinline" run
        of [Inline_and_simplify]. *)
+    let env = E.activate_freshening env in
+    let env = E.set_never_inline env in
     let params, freshening =
       Freshening.add_variables' (E.freshening env) handler.params
     in

@@ -151,7 +151,12 @@ let projecting_from t =
   | Field (_, var) -> var
   | Prim (Pisint, [var]) -> var
   | Prim (Pisint, _) -> Misc.fatal_error "Pisint with wrong number of arguments"
-  | Prim (_, _) -> Misc.fatal_error "Unsupported pure primitive for CSE"
+  | Prim (Pgettag, [var]) -> var
+  | Prim (Pgettag, _) ->
+    Misc.fatal_error "Pgettag with wrong number of arguments"
+  | Prim (p, _) ->
+    Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
+      Printlambda.primitive p
   | Switch var -> var
 
 let map_projecting_from t ~f : t =
@@ -180,5 +185,10 @@ let map_projecting_from t ~f : t =
   | Field (field_index, var) -> Field (field_index, f var)
   | Prim (Pisint, [var]) -> Prim (Pisint, [f var])
   | Prim (Pisint, _) -> Misc.fatal_error "Pisint with wrong number of arguments"
-  | Prim (_, _) -> Misc.fatal_error "Unsupported pure primitive for CSE"
+  | Prim (Pgettag, [var]) -> Prim (Pgettag, [f var])
+  | Prim (Pgettag, _) ->
+    Misc.fatal_error "Pgettag with wrong number of arguments"
+  | Prim (p, _) ->
+    Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
+      Printlambda.primitive p
   | Switch var -> Switch (f var)

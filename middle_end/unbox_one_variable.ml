@@ -240,7 +240,7 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
     Array.to_list (Array.init max_size (fun index ->
         let append = string_of_int index in
         let var = Variable.rename ~append being_unboxed in
-        let projection : Projection.t = Prim (Pfield index, [being_unboxed]) in
+        let projection : Projection.t = Field (index, being_unboxed) in
         var, projection))
   in
   { being_unboxed_to_wrapper_params_being_unboxed;
