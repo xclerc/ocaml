@@ -77,62 +77,124 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
     Variable.Map.add being_unboxed wrapper_param_being_unboxed
       Variable.Map.empty
   in
-  let for_discriminant =
-    if not has_constant_ctors then
-      None
-    else
-      let is_int = Variable.rename ~append:"_is_int" being_unboxed in
-      let is_int_in_wrapper = Variable.rename is_int in
-      (* CR-soon mshinwell: On [discriminant] add information that tells us
-         about the individual unboxed field parameters _given that_ we are
-         in some particular case of a match on [discriminant] (GADT-style). *)
-      let discriminant = Variable.rename ~append:"_discr" being_unboxed in
-      let discriminant_in_wrapper = Variable.rename discriminant in
-      let add_bindings_in_wrapper expr =
-        let is_int_cont = Continuation.create () in
-        let is_block_cont = Continuation.create () in
-        let join_cont = Continuation.create () in
-        let new_arguments_for_call_in_wrapper = [
-            is_int_in_wrapper;
-            discriminant_in_wrapper;
-          ]
-        in
-        let tag = Variable.create "tag" in
-        let is_int = Variable.create "is_int" in
-        let is_int_switch : Flambda.switch =
-          { numconsts = Numbers.Int.Set.singleton 0;
-            consts = [0, is_block_cont];
-            numblocks = Numbers.Int.Set.empty;
-            blocks = [];
-            failaction = Some is_int_cont;
-          }
-        in
-        Flambda.create_let is_int
-          (Prim (Pisint, [wrapper_param_being_unboxed], dbg))
-          (Let_cont {
-            body = Let_cont {
-              body = Let_cont {
-                body = Switch (is_int, is_int_switch);
-                handlers = Nonrecursive {
-                  name = is_int_cont;
-                  handler = {
-                    params = [];
-                    handler = Apply_cont (join_cont, None,
-                      [is_int; wrapper_param_being_unboxed]);
-                    stub = false;
-                    is_exn_handler = false;
-                    specialised_args = Variable.Map.empty;
-                  };
-                };
+  let is_int = Variable.rename ~append:"_is_int" being_unboxed in
+  let is_int_in_wrapper = Variable.rename is_int in
+  (* CR-soon mshinwell: On [discriminant] add information that tells us
+      about the individual unboxed field parameters _given that_ we are
+      in some particular case of a match on [discriminant] (GADT-style). *)
+  let discriminant = Variable.rename ~append:"_discr" being_unboxed in
+  let discriminant_in_wrapper = Variable.rename discriminant in
+  let max_size =
+    Tag.Map.fold (fun _tag fields max_size ->
+        max (Array.length size) max_size)
+      blocks 0
+  in
+  let tags_to_sizes = Tag.Map.map (fun fields -> Array.length fields) blocks in
+  let all_tags = Tag.Map.keys blocks in
+  let sizes_to_filler_conts =
+    Tag.Set.fold (fun size sizes_to_filler_conts ->
+        Tag.Map.add size (Continuation.create ()) sizes_to_filler_conts)
+      (Tag.Map.data tags_to_sizes)
+      Tag.Map.empty
+  in
+  let unit_value = Variable.create "unit" in
+  let n_units n =
+    Array.to_list (Array.init (fun _ -> Var unit_value) n)
+  in
+  let all_units = n_units max_size in
+  let add_bindings_in_wrapper expr =
+    let is_int_cont = Continuation.create () in
+    let is_block_cont = Continuation.create () in
+    let join_cont = Continuation.create () in
+    let new_arguments_for_call_in_wrapper = [
+        is_int_in_wrapper;
+        discriminant_in_wrapper;
+      ]
+    in
+    let tag = Variable.create "tag" in
+    let is_int = Variable.create "is_int" in
+    let is_int_switch : Flambda.switch =
+      { numconsts = Numbers.Int.Set.singleton 0;
+        consts = [0, is_block_cont];
+        numblocks = Numbers.Int.Set.empty;
+        blocks = [];
+        failaction = Some is_int_cont;
+      }
+    in
+    let add_fill_fields_conts expr =
+      Tag.Map.fold (fun size filler_cont expr ->
+          let fields =
+            Array.init max_size (fun index ->
+              if index < size then
+                let name = Printf.sprintf "_field%d" index in
+                index, Some (Variable.rename ~append:name being_unboxed)
+              else
+                index, None)
+          in
+          let fields_for_apply =
+            List.map (fun (_index, var_opt) ->
+                match var_opt with
+                | None -> unit_value
+                | Some var -> var)
+              (Array.to_list fields)
+          in
+          let filler : Flambda.expr =
+            Array.fold_right (fun (index, var_opt) filler ->
+                match var_opt with
+                | None -> filler
+                | Some var ->
+                    Flambda.create_let var
+                      (Prim (Pfield index, [wrapper_param_being_unboxed], dbg))
+                      filler)
+              fields
+              (Apply_cont (join_cont, None, [is_int; tag] @ fields_for_apply))
+          in
+          Let_cont {
+            body =
+            handler = Nonrecursive {
+              name = filler_cont;
+              handler = {
+                params = [];
+                stub = false;
+                is_exn_handler = false;
+                handler = filler;
+                specialised_args = Variable.Map.empty;
               };
+            }
+          })
+        sizes_to_filler_conts
+        expr      
+    in
+    let fill_fields_switch : Flambda.switch =
+      let all_tags =
+        List.map (fun tag -> Tag.to_int tag) (Tag.Set.to_list all_tags)
+      in
+      let consts =
+        Tag.Map.fold (fun _size filler_cont consts ->
+            (Tag.to_int tag, filler_cont) :: consts)
+          sizes_to_filler_conts
+          []
+      in
+      { numconsts = all_tags;
+        consts = List.rev consts;
+        numblocks = Numbers.Int.Set.empty;
+        blocks = [];
+        failaction = None;
+      }
+    in
+    Flambda.create_let unit_value (Const (Int 0))
+      (Flambda.create_let is_int
+        (Prim (Pisint, [wrapper_param_being_unboxed], dbg))
+        (Let_cont {
+          body = Let_cont {
+            body = Let_cont {
+              body = Switch (is_int, is_int_switch);
               handlers = Nonrecursive {
-                name = is_block_cont;
+                name = is_int_cont;
                 handler = {
                   params = [];
-                  handler =
-                    Flambda.create_let tag
-                      (Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
-                      (Apply_cont (join_cont, None, [is_int; tag]));
+                  handler = Apply_cont (join_cont, None,
+                    [is_int; wrapper_param_being_unboxed] @ all_units);
                   stub = false;
                   is_exn_handler = false;
                   specialised_args = Variable.Map.empty;
@@ -140,81 +202,65 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
               };
             };
             handlers = Nonrecursive {
-              name = join_cont;
+              name = is_block_cont;
               handler = {
-                params = new_arguments_for_call_in_wrapper;
-                handler = expr;
+                params = [];
+                handler =
+                  add_fill_fields_conts (
+                    Flambda.create_let tag
+                      (Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
+                      (Switch (tag, fill_fields_switch)));
                 stub = false;
                 is_exn_handler = false;
                 specialised_args = Variable.Map.empty;
               };
-            }
-          })
-      in
-      let how_to_unbox : How_to_unbox.t =
-        { being_unboxed_to_wrapper_params_being_unboxed;
-          add_bindings_in_wrapper;
-          new_arguments_for_call_in_wrapper;
-          new_params = [
-            is_int, Prim (Pisint, [being_unboxed]);
-            discriminant, Prim (Pgettag, [being_unboxed]);
-          ];
-          wrap_body;
-        }
-      in
-      Some how_to_unbox
+            };
+          };
+          handlers = Nonrecursive {
+            name = join_cont;
+            handler = {
+              params = new_arguments_for_call_in_wrapper;
+              handler = expr;
+              stub = false;
+              is_exn_handler = false;
+              specialised_args = Variable.Map.empty;
+            };
+          }
+        }))
   in
-  let for_fields =
-    let max_size =
-      Tag.Map.fold (fun _tag fields max_size ->
-          max (Array.length size) max_size)
-        blocks 0
-    in
-    let fields =
-      Array.init max_size (fun index ->
-        let name = Printf.sprintf "_field%d" index in
-        Variable.rename ~append:name being_unboxed)
-    in
-    let fields_in_wrapper_with_bindings =
-      Array.to_list (Array.init max_size
-        (fun index ->
-          let field_in_wrapper = Variable.rename fields.(index) in
-          let binding : Flambda.named =
-(* need unit arguments when the variant isn't long enough *)
-            Prim (Pfield index, [wrapper_param_being_unboxed], dbg)
-          in
-          field_in_wrapper, binding))
-    in
-    let add_bindings_in_wrapper body =
-(* have switch here *)
-      List.fold_left (fun body (field, binding) ->
-          Flambda.create_let field binding body)
-        body
-        fields_in_wrapper_with_bindings
-    in
-    let fields_in_wrapper =
-      List.map (fun (field_in_wrapper, _) -> field_in_wrapper)
-        fields_in_wrapper_with_bindings
-    in
-    let make_field_projection ~index : Projection.t * Variable.t =
-      Prim (Pfield index, [being_unboxed]), fields.(index)
-    in
-    let field_projections =
-      Array.to_list (Array.init (fun index ->
-          make_field_projection ~index)
-        max_size)
-    in
-    let how_to_unbox : How_to_unbox.t =
-      { being_unboxed_to_wrapper_params_being_unboxed;
-        add_bindings_in_wrapper;
-        new_arguments_for_call_in_wrapper = fields_in_wrapper;
-        new_params = List.combine (Array.to_list fields) field_projections;
-        new_projections = field_projections;
-      }
-    in
-    Some how_to_unbox
+  let how_to_unbox : How_to_unbox.t =
+    { being_unboxed_to_wrapper_params_being_unboxed;
+      add_bindings_in_wrapper;
+      new_arguments_for_call_in_wrapper;
+      new_params = [
+        is_int, Prim (Pisint, [being_unboxed]);
+        discriminant, Prim (Pgettag, [being_unboxed]);
+      ];
+      wrap_body;
+    }
   in
-  How_to_unbox.merge_option for_discriminant for_fields
+  let make_field_projection ~index : Projection.t * Variable.t =
+    Prim (Pfield index, [being_unboxed]), fields.(index)
+  in
+  let field_projections =
+    Array.to_list (Array.init (fun index ->
+        make_field_projection ~index)
+      max_size)
+  in
+  let how_to_unbox : How_to_unbox.t =
+    { being_unboxed_to_wrapper_params_being_unboxed;
+      add_bindings_in_wrapper;
+      new_arguments_for_call_in_wrapper = [
+        is_int_in_wrapper;
+        discriminant_in_wrapper;
+      ] @ ...;
+      new_params = [
+        is_int, is_int_projection;
+        discriminant, discriminant_projection;
+      ] @ (List.combine (Array.to_list fields) field_projections);
+    }
+  in
+  Some how_to_unbox
 
 let how_to_unbox ~begin_unboxed ~being_unboxed_approx =
   match A.check_approx_for_variant being_unboxed_approx with

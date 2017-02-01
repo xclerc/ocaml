@@ -476,7 +476,6 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
     prepare env scrutinee (fun scrutinee ->
       let const_nums, sw_consts = List.split switch.sw_consts in
       let block_nums, sw_blocks = List.split switch.sw_blocks in
-      let tag = Ident.create "tag" in
       prepare_option env switch.sw_failaction (fun sw_failaction ->
         prepare_list env sw_consts (fun sw_consts ->
           prepare_list env sw_blocks (fun sw_blocks ->
@@ -485,10 +484,10 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
               | None -> None, (fun lam -> lam)
               | Some failaction ->
                 let failaction_cont = L.next_raise_count () in
-                let wrap_switch lam =
+                let wrap_switch lam : L.lambda =
                   Lstaticcatch (lam, (failaction_cont, []), failaction)
                 in
-                Some (Lstaticraise (failaction_cont, [])), wrap_switch
+                Some (L.Lstaticraise (failaction_cont, [])), wrap_switch
             in
             let consts_switch : L.lambda_switch =
               { sw_numconsts = switch.sw_numconsts;
@@ -523,7 +522,7 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
             in
             k (wrap_switch (
               L.Lswitch (Lprim (Pisint, [scrutinee], Location.none),
-                isint_switch)))
+                isint_switch)))))))
   | Lstringswitch (scrutinee, cases, default, loc) ->
     prepare env scrutinee (fun scrutinee ->
       let patterns, cases = List.split cases in
