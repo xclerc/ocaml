@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module A = Simple_value_approx
+
 module How_to_unbox = struct
   type t = {
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
@@ -58,18 +60,12 @@ module How_to_unbox = struct
       new_params = t1.new_params @ t2.new_params;
     }
 
-  let merge_option t1 t2 =
-    match t1, t2 with
-    | None, None -> None
-    | Some t1, None -> Some t1
-    | None, Some t2 -> Some t2
-    | Some t1, Some t2 -> Some (merge t1 t2)
-
   let merge_variable_map t_map =
     Variable.Map.fold (fun _param t1 t2 -> merge t1 t2) t_map (create ())
 end
 
-let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
+let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
+      : How_to_unbox.t =
   let dbg = Debuginfo.none in
   let wrapper_param_being_unboxed = Variable.rename being_unboxed in
   let being_unboxed_to_wrapper_params_being_unboxed =
@@ -92,6 +88,11 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
     Array.to_list (Array.init max_size (fun index ->
         Variable.create (Printf.sprintf "field%d" index)))
   in
+  let new_arguments_for_call_in_wrapper = [
+      is_int_in_wrapper;
+      discriminant_in_wrapper;
+    ] @ field_arguments_for_call_in_wrapper
+  in
   let tags_to_sizes = Tag.Map.map (fun fields -> Array.length fields) blocks in
   let all_tags = Tag.Map.keys blocks in
   let sizes_to_filler_conts =
@@ -101,19 +102,11 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
       (Tag.Map.data tags_to_sizes)
   in
   let unit_value = Variable.create "unit" in
-  let n_units n =
-    Array.to_list (Array.init n (fun _ -> Var unit_value))
-  in
-  let all_units = n_units max_size in
+  let all_units = Array.to_list (Array.init max_size (fun _ -> unit_value)) in
   let add_bindings_in_wrapper expr =
     let is_int_cont = Continuation.create () in
     let is_block_cont = Continuation.create () in
     let join_cont = Continuation.create () in
-    let new_arguments_for_call_in_wrapper = [
-        is_int_in_wrapper;
-        discriminant_in_wrapper;
-      ] @ field_arguments_for_call_in_wrapper;
-    in
     let tag = Variable.create "tag" in
     let is_int = Variable.create "is_int" in
     let is_int_switch : Flambda.switch =
@@ -125,7 +118,7 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
       }
     in
     let add_fill_fields_conts expr =
-      Tag.Map.fold (fun size filler_cont expr ->
+      Numbers.Int.Map.fold (fun size filler_cont expr : Flambda.expr ->
           let fields =
             Array.init max_size (fun index ->
               if index < size then
@@ -150,11 +143,12 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
                       (Prim (Pfield index, [wrapper_param_being_unboxed], dbg))
                       filler)
               fields
-              (Apply_cont (join_cont, None, [is_int; tag] @ fields_for_apply))
+              (Flambda.Apply_cont (join_cont, None,
+                [is_int; tag] @ fields_for_apply))
           in
           Let_cont {
-            body =
-            handler = Nonrecursive {
+            body = expr;
+            handlers = Nonrecursive {
               name = filler_cont;
               handler = {
                 params = [];
@@ -169,16 +163,25 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
         expr      
     in
     let fill_fields_switch : Flambda.switch =
-      let all_tags =
-        List.map (fun tag -> Tag.to_int tag) (Tag.Set.to_list all_tags)
+      let numconsts =
+        Tag.Set.fold (fun tag numconsts ->
+            Numbers.Int.Set.add (Tag.to_int tag) numconsts)
+          all_tags
+          Numbers.Int.Set.empty
       in
       let consts =
-        Tag.Map.fold (fun _size filler_cont consts ->
-            (Tag.to_int tag, filler_cont) :: consts)
+        Numbers.Int.Map.fold (fun size filler_cont consts ->
+            Tag.Map.fold (fun tag fields consts ->
+                if Array.length fields = size then
+                  (Tag.to_int tag, filler_cont) :: consts
+                else
+                  consts)
+              blocks
+              consts)
           sizes_to_filler_conts
           []
       in
-      { numconsts = all_tags;
+      { numconsts;
         consts = List.rev consts;
         numblocks = Numbers.Int.Set.empty;
         blocks = [];
@@ -231,42 +234,35 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
           }
         }))
   in
-  let make_field_projection ~index : Projection.t * Variable.t =
-    Prim (Pfield index, [being_unboxed]), fields.(index)
-  in
   let fields_with_projections =
-    Array.to_list (Array.init (fun index ->
+    Array.to_list (Array.init max_size (fun index ->
         let append = string_of_int index in
         let var = Variable.rename ~append being_unboxed in
-        let projection = make_field_projection ~index in
-        var, projection)
-      max_size)
+        let projection : Projection.t = Prim (Pfield index, [being_unboxed]) in
+        var, projection))
   in
-  let how_to_unbox : How_to_unbox.t =
-    { being_unboxed_to_wrapper_params_being_unboxed;
-      add_bindings_in_wrapper;
-      new_arguments_for_call_in_wrapper;
-      new_params = [
-        is_int, Prim (Pisint, [being_unboxed]);
-        discriminant, Prim (Pgettag, [being_unboxed]);
-      ] @ fields_with_projections;
-    }
-  in
-  Some how_to_unbox
+  { being_unboxed_to_wrapper_params_being_unboxed;
+    add_bindings_in_wrapper;
+    new_arguments_for_call_in_wrapper;
+    new_params = [
+      is_int, Projection.Prim (Pisint, [being_unboxed]);
+      discriminant, Projection.Prim (Pgettag, [being_unboxed]);
+    ] @ fields_with_projections;
+  }
 
-let how_to_unbox ~begin_unboxed ~being_unboxed_approx =
+let how_to_unbox ~being_unboxed ~being_unboxed_approx =
   match A.check_approx_for_variant being_unboxed_approx with
   | Wrong -> None
-  | Some approx ->
+  | Ok approx ->
     let has_constant_ctors =
       match approx with
       | Blocks _ -> false
       | Blocks_and_immediates (_, imms) | Immediates imms ->
-        not (Immediate.Set.is_empty imms)
+        not (A.Unionable.Immediate.Set.is_empty imms)
     in
     let blocks =
       match approx with
       | Blocks blocks | Blocks_and_immediates (blocks, _) -> blocks
       | Immediates _ -> Tag.Map.empty
     in
-    how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed
+    Some (how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed)

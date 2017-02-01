@@ -21,14 +21,14 @@
 module How_to_unbox : sig
   type t = private {
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
-    bindings_in_wrapper : Flambda.expr Variable.Map.t;
+    add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
     new_arguments_for_call_in_wrapper : Variable.t list;
     new_params : (Variable.t * Projection.t) list;
-    wrap_body : Flambda.expr -> Flambda.expr;
   }
 
-  val merge : t -> t -> t
+  val new_specialised_args : t -> Flambda.specialised_args
 
+  val merge : t -> t -> t
   val merge_variable_map : t Variable.Map.t -> t
 end
 
