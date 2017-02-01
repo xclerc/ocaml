@@ -1423,12 +1423,12 @@ and simplify_named env r (tree : Flambda.named)
           begin match A.check_approx_for_block_or_immediate arg_approx with
           | Wrong -> default ()
           | Immediate ->
-            let r = R.map_benefit r (B.(+) B.remove_prim) in
+            let r = R.map_benefit r B.remove_prim in
             let const_true = Variable.create "true" in
             [const_true, Const (Int 1)], Reachable (Var const_true),
               ret r (A.value_int 1)
           | Block ->
-            let r = R.map_benefit r (B.(+) B.remove_prim) in
+            let r = R.map_benefit r B.remove_prim in
             let const_false = Variable.create "false" in
             [const_false, Const (Int 0)], Reachable (Var const_false),
               ret r (A.value_int 0)
@@ -1438,7 +1438,7 @@ and simplify_named env r (tree : Flambda.named)
           begin match A.check_approx_for_block arg_approx with
           | Wrong -> default ()
           | Ok (tag, _fields) ->
-            let r = R.map_benefit r (B.(+) B.remove_prim) in
+            let r = R.map_benefit r B.remove_prim in
             let const_tag = Variable.create "tag" in
             [const_tag, Const (Int tag)], Reachable (Var const_tag),
               ret r (A.value_int tag)
