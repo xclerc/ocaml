@@ -1321,7 +1321,7 @@ and simplify_named env r (tree : Flambda.named)
     simplify_free_variables_named env args ~f:(fun env args args_approxs ->
       let tree = Flambda.Prim (prim, args, dbg) in
       let projection : Projection.t = Prim (prim, args) in
-      begin match Env.find_projection env ~projection with
+      begin match E.find_projection env ~projection with
       | Some var ->
         (* CSE of pure primitives.
            The [Pisint] case in particular is also used when unboxing
@@ -1331,15 +1331,16 @@ and simplify_named env r (tree : Flambda.named)
           let r = R.map_benefit r (B.remove_projection projection) in
           [], Reachable (Var var), ret r var_approx)
       | None ->
-        let default () =
+        let default () : (Variable.t * Flambda.named) list
+              * Flambda.named_reachable * R.t =
           let expr, approx, benefit =
             let module Backend = (val (E.backend env) : Backend_intf.S) in
-            Simplify_primitives.primitive p (args, args_approxs) tree dbg
+            Simplify_primitives.primitive prim (args, args_approxs) tree dbg
               ~size_int:Backend.size_int ~big_endian:Backend.big_endian
           in
           let r = R.map_benefit r (B.(+) benefit) in
           let approx =
-            match p with
+            match prim with
             | Popaque -> A.value_unknown Other
             | _ -> approx
           in

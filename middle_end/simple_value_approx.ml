@@ -887,6 +887,24 @@ let check_approx_for_block t : checked_approx_for_block =
   | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong
 
+type checked_approx_for_block_or_immediate =
+  | Wrong
+  | Immediate
+  | Block
+
+let check_approx_for_block_or_immediate t
+      : checked_approx_for_block_or_immediate =
+  match t.descr with
+  | Union union ->
+    begin match Unionable.flatten union with
+    | Bottom -> Wrong
+    | Ok (Block _) -> Block
+    | Ok (Int _ | Char _ | Constptr _) -> Immediate
+    end
+  | Bottom | Float_array _ | String _ | Float _ | Boxed_int _
+  | Set_of_closures _ | Closure _ | Symbol _ | Extern _
+  | Unknown _ | Unresolved _ -> Wrong
+
 type checked_approx_for_variant =
   | Wrong
   | Ok of Unionable.t

@@ -16,11 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
 module H = Unbox_one_variable.How_to_unbox
 module CAV = Invariant_params.Continuations.Continuation_and_variable
 module R = Inline_and_simplify_aux.Result
-module U = Unbox_one_variable
 
 let find_unboxings ~definitions_with_uses ~handlers =
   Continuation.Map.filter_map handlers
@@ -33,10 +31,11 @@ let find_unboxings ~definitions_with_uses ~handlers =
         | params ->
           match Continuation.Map.find cont definitions_with_uses with
           | exception Not_found -> None
-          | (uses, approx, _env, _recursive) ->
+          | (uses, _approx, _env, _recursive) ->
             let num_params = List.length params in
             let args_approxs =
               Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+                uses ~num_params
             in
             let params_to_approxs =
               Variable.Map.of_list (List.combine params args_approxs)
@@ -48,7 +47,7 @@ let find_unboxings ~definitions_with_uses ~handlers =
                     ~being_unboxed_approx:approx)
             in
             if Variable.Map.is_empty unboxings then None
-            else Some (handler, unboxings))
+            else Some unboxings)
 
 (* CR mshinwell: If we get everything using [Unbox_one_variable] then
    this function should be able to move to [Invariant_params] *)
@@ -82,7 +81,8 @@ Format.eprintf "Invariant params:\n@;%a\n"
                     in
                     Continuation.Map.add target_cont
                       (Variable.Map.add target_param unboxing
-                        target_unboxings))
+                        target_unboxings)
+                      unboxings_by_cont')
                 flow
                 unboxings_by_cont')
           unboxings_by_param
@@ -105,7 +105,7 @@ let for_continuations r ~body ~handlers ~original ~backend
       propagate_invariant_params_flow ~handlers ~backend ~unboxings_by_cont
     in
     let with_wrappers =
-      Continuation.Map.fold (fun cont (handler, unboxings) new_handlers ->
+      Continuation.Map.fold (fun cont unboxings new_handlers ->
           let handler : Flambda.continuation_handler =
             match Continuation.Map.find cont handlers with
             | exception Not_found -> assert false
@@ -113,7 +113,7 @@ let for_continuations r ~body ~handlers ~original ~backend
           in
           let new_cont = Continuation.create () in
           let how_to_unbox = H.merge_variable_map unboxings in
-          let wrapper_params_map, wrapper_params, wrapper_specialised_args =
+          let _wrapper_params_map, wrapper_params, wrapper_specialised_args =
             Flambda_utils.create_wrapper_params ~params:handler.params
               ~specialised_args:handler.specialised_args
               ~freshening_already_assigned:(how_to_unbox.
@@ -133,13 +133,16 @@ let for_continuations r ~body ~handlers ~original ~backend
           in
           assert (not handler.is_exn_handler);
           let with_wrapper : Flambda_utils.with_wrapper =
+            let params =
+              List.map (fun (param, _proj) -> param) how_to_unbox.new_params
+            in
             With_wrapper {
               new_cont;
               new_handler = {
-                params = how_to_unbox.new_params;
+                params;
                 stub = handler.stub;
                 is_exn_handler = false;
-                handler = how_to_unbox.wrap_body handler.handler;
+                handler = handler.handler;
                 specialised_args;
               };
               wrapper_handler = {
@@ -152,7 +155,7 @@ let for_continuations r ~body ~handlers ~original ~backend
             }
           in
           Continuation.Map.add cont with_wrapper new_handlers)
-        projections_by_cont
+        unboxings_by_cont
         Continuation.Map.empty
     in
     let output =

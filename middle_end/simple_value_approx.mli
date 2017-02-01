@@ -375,6 +375,18 @@ type checked_approx_for_variant =
     constructors). *)
 val check_approx_for_variant : t -> checked_approx_for_variant
 
+type checked_approx_for_block_or_immediate =
+  | Wrong
+  | Immediate
+  | Block
+
+(** Try to prove that a value with the given approximation may be used
+    as a block_or_immediate (with any combination of constant and non-constant
+    constructors). *)
+val check_approx_for_block_or_immediate
+   : t
+  -> checked_approx_for_block_or_immediate
+
 (** Find the approximation for a bound variable in a set-of-closures
     approximation.  A fatal error is produced if the variable is not bound in
     the given approximation. *)

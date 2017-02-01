@@ -1558,7 +1558,7 @@ middle_end/inline_and_simplify.cmo : utils/warnings.cmi \
     middle_end/inlining_decision.cmi middle_end/inlining_cost.cmi \
     middle_end/inline_and_simplify_aux.cmi middle_end/ilambda.cmi \
     typing/ident.cmi middle_end/freshening.cmi middle_end/flambda_utils.cmi \
-    middle_end/flambda.cmi typing/env.cmi middle_end/effect_analysis.cmi \
+    middle_end/flambda.cmi middle_end/effect_analysis.cmi \
     middle_end/debuginfo.cmi middle_end/continuation_specialisation.cmi \
     middle_end/continuation_inlining.cmi middle_end/continuation_approx.cmi \
     middle_end/base_types/continuation.cmi \
@@ -1580,7 +1580,7 @@ middle_end/inline_and_simplify.cmx : utils/warnings.cmx \
     middle_end/inlining_decision.cmx middle_end/inlining_cost.cmx \
     middle_end/inline_and_simplify_aux.cmx middle_end/ilambda.cmx \
     typing/ident.cmx middle_end/freshening.cmx middle_end/flambda_utils.cmx \
-    middle_end/flambda.cmx typing/env.cmx middle_end/effect_analysis.cmx \
+    middle_end/flambda.cmx middle_end/effect_analysis.cmx \
     middle_end/debuginfo.cmx middle_end/continuation_specialisation.cmx \
     middle_end/continuation_inlining.cmx middle_end/continuation_approx.cmx \
     middle_end/base_types/continuation.cmx \
@@ -2004,18 +2004,16 @@ middle_end/unbox_closures.cmi : middle_end/base_types/variable.cmi \
     middle_end/flambda.cmi
 middle_end/unbox_continuation_params.cmo : \
     middle_end/base_types/variable.cmi middle_end/unbox_one_variable.cmi \
-    middle_end/simple_value_approx.cmi middle_end/invariant_params.cmi \
-    middle_end/inline_and_simplify_aux.cmi middle_end/flambda_utils.cmi \
-    middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
-    middle_end/base_types/continuation.cmi parsing/asttypes.cmi \
-    middle_end/unbox_continuation_params.cmi
+    middle_end/invariant_params.cmi middle_end/inline_and_simplify_aux.cmi \
+    middle_end/flambda_utils.cmi middle_end/flambda_iterators.cmi \
+    middle_end/flambda.cmi middle_end/base_types/continuation.cmi \
+    parsing/asttypes.cmi middle_end/unbox_continuation_params.cmi
 middle_end/unbox_continuation_params.cmx : \
     middle_end/base_types/variable.cmx middle_end/unbox_one_variable.cmx \
-    middle_end/simple_value_approx.cmx middle_end/invariant_params.cmx \
-    middle_end/inline_and_simplify_aux.cmx middle_end/flambda_utils.cmx \
-    middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
-    middle_end/base_types/continuation.cmx parsing/asttypes.cmi \
-    middle_end/unbox_continuation_params.cmi
+    middle_end/invariant_params.cmx middle_end/inline_and_simplify_aux.cmx \
+    middle_end/flambda_utils.cmx middle_end/flambda_iterators.cmx \
+    middle_end/flambda.cmx middle_end/base_types/continuation.cmx \
+    parsing/asttypes.cmi middle_end/unbox_continuation_params.cmi
 middle_end/unbox_continuation_params.cmi : \
     middle_end/inline_and_simplify_aux.cmi middle_end/flambda.cmi \
     middle_end/backend_intf.cmi
@@ -2035,17 +2033,18 @@ middle_end/unbox_free_vars_of_closures.cmi : \
     middle_end/base_types/variable.cmi middle_end/inlining_cost.cmi \
     middle_end/inline_and_simplify_aux.cmi middle_end/flambda.cmi
 middle_end/unbox_one_variable.cmo : middle_end/base_types/variable.cmi \
-    middle_end/base_types/tag.cmi middle_end/projection.cmi utils/numbers.cmi \
-    utils/misc.cmi utils/identifiable.cmi middle_end/flambda.cmi \
+    middle_end/base_types/tag.cmi middle_end/simple_value_approx.cmi \
+    middle_end/projection.cmi utils/numbers.cmi middle_end/flambda.cmi \
     middle_end/debuginfo.cmi middle_end/base_types/continuation.cmi \
     middle_end/unbox_one_variable.cmi
 middle_end/unbox_one_variable.cmx : middle_end/base_types/variable.cmx \
-    middle_end/base_types/tag.cmx middle_end/projection.cmx utils/numbers.cmx \
-    utils/misc.cmx utils/identifiable.cmx middle_end/flambda.cmx \
+    middle_end/base_types/tag.cmx middle_end/simple_value_approx.cmx \
+    middle_end/projection.cmx utils/numbers.cmx middle_end/flambda.cmx \
     middle_end/debuginfo.cmx middle_end/base_types/continuation.cmx \
     middle_end/unbox_one_variable.cmi
 middle_end/unbox_one_variable.cmi : middle_end/base_types/variable.cmi \
-    middle_end/projection.cmi middle_end/flambda.cmi
+    middle_end/simple_value_approx.cmi middle_end/projection.cmi \
+    middle_end/flambda.cmi
 middle_end/unbox_returns.cmo :
 middle_end/unbox_returns.cmx :
 middle_end/unbox_specialised_args.cmo : middle_end/base_types/variable.cmi \
