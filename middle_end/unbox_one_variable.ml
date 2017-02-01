@@ -89,6 +89,11 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
         max (Array.length size) max_size)
       blocks 0
   in
+  let field_arguments_for_call_in_wrapper =
+    Array.to_list (Array.init (fun index ->
+        Variable.create (Printf.sprintf "field%d" index))
+     max_size)
+  in
   let tags_to_sizes = Tag.Map.map (fun fields -> Array.length fields) blocks in
   let all_tags = Tag.Map.keys blocks in
   let sizes_to_filler_conts =
@@ -109,7 +114,7 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
     let new_arguments_for_call_in_wrapper = [
         is_int_in_wrapper;
         discriminant_in_wrapper;
-      ]
+      ] @ field_arguments_for_call_in_wrapper;
     in
     let tag = Variable.create "tag" in
     let is_int = Variable.create "is_int" in
@@ -228,6 +233,17 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
           }
         }))
   in
+  let make_field_projection ~index : Projection.t * Variable.t =
+    Prim (Pfield index, [being_unboxed]), fields.(index)
+  in
+  let fields_with_projections =
+    Array.to_list (Array.init (fun index ->
+        let append = string_of_int index in
+        let var = Variable.rename ~append being_unboxed in
+        let projection = make_field_projection ~index in
+        var, projection)
+      max_size)
+  in
   let how_to_unbox : How_to_unbox.t =
     { being_unboxed_to_wrapper_params_being_unboxed;
       add_bindings_in_wrapper;
@@ -235,29 +251,7 @@ let how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed =
       new_params = [
         is_int, Prim (Pisint, [being_unboxed]);
         discriminant, Prim (Pgettag, [being_unboxed]);
-      ];
-      wrap_body;
-    }
-  in
-  let make_field_projection ~index : Projection.t * Variable.t =
-    Prim (Pfield index, [being_unboxed]), fields.(index)
-  in
-  let field_projections =
-    Array.to_list (Array.init (fun index ->
-        make_field_projection ~index)
-      max_size)
-  in
-  let how_to_unbox : How_to_unbox.t =
-    { being_unboxed_to_wrapper_params_being_unboxed;
-      add_bindings_in_wrapper;
-      new_arguments_for_call_in_wrapper = [
-        is_int_in_wrapper;
-        discriminant_in_wrapper;
-      ] @ ...;
-      new_params = [
-        is_int, is_int_projection;
-        discriminant, discriminant_projection;
-      ] @ (List.combine (Array.to_list fields) field_projections);
+      ] @ fields_with_projections;
     }
   in
   Some how_to_unbox
