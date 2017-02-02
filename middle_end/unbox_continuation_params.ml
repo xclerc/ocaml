@@ -94,12 +94,12 @@ Format.eprintf "Invariant params:\n@;%a\n"
       Some (Variable.Map.disjoint_union unboxings1 unboxings2))
     unboxings_by_cont unboxings_by_cont'
 
-let for_continuations r ~body ~handlers ~original ~backend
+let for_continuations r ~body ~handlers ~original:_ ~backend
       ~(recursive : Asttypes.rec_flag) =
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   let unboxings_by_cont = find_unboxings ~definitions_with_uses ~handlers in
   if Continuation.Map.is_empty unboxings_by_cont then begin
-    original
+    None
   end else begin
     let unboxings_by_cont =
       propagate_invariant_params_flow ~handlers ~backend ~unboxings_by_cont
@@ -165,26 +165,45 @@ let for_continuations r ~body ~handlers ~original ~backend
         ~with_wrappers
     in
     Format.eprintf "After unboxing:\n@;%a\n%!" Flambda.print output;
-    output
+    Some output
   end
 
 let run r ~(set_of_closures : Flambda.set_of_closures) ~backend =
 Format.eprintf "Ready to unbox:\n@;%a\n%!" Flambda.print_set_of_closures
   set_of_closures;
-  Flambda_iterators.map_function_bodies set_of_closures
-    ~f:(fun (expr : Flambda.expr) ->
-      match expr with
-      | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
-          is_exn_handler = true; _ }; }; } -> expr
-      | Let_cont { body; handlers = Nonrecursive { name; handler; } } ->
-        let handlers =
-          Continuation.Map.add name handler Continuation.Map.empty
-        in
-        for_continuations r ~body ~handlers ~original:expr ~backend
-          ~recursive:Asttypes.Nonrecursive
-      | Let_cont { body; handlers = Recursive handlers; } ->
-        for_continuations r ~body ~handlers ~original:expr ~backend
-          ~recursive:Asttypes.Recursive
-      | Let_cont { handlers = Alias _; _ }
-      | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
-      | Proved_unreachable -> expr)
+  let something_changed = ref false in
+  let expr =
+    Flambda_iterators.map_function_bodies set_of_closures
+      ~f:(fun (expr : Flambda.expr) ->
+        match expr with
+        | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
+            is_exn_handler = true; _ }; }; } -> expr
+        | Let_cont { body; handlers = Nonrecursive { name; handler; } } ->
+          let handlers =
+            Continuation.Map.add name handler Continuation.Map.empty
+          in
+          begin match
+            for_continuations r ~body ~handlers ~original:expr ~backend
+              ~recursive:Asttypes.Nonrecursive
+          with
+          | None -> expr
+          | Some expr ->
+            something_changed := true;
+            expr
+          end
+        | Let_cont { body; handlers = Recursive handlers; } ->
+          begin match
+            for_continuations r ~body ~handlers ~original:expr ~backend
+              ~recursive:Asttypes.Recursive
+          with
+          | None -> expr
+          | Some expr ->
+            something_changed := true;
+            expr
+          end
+        | Let_cont { handlers = Alias _; _ }
+        | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
+        | Proved_unreachable -> expr)
+  in
+  if !something_changed then Some expr
+  else None
