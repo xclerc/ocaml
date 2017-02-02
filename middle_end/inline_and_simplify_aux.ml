@@ -536,15 +536,14 @@ module Continuation_uses = struct
     | _::_ -> true
 
   (* CR mshinwell: this should be called "join" *)
-  let meet_of_args_approxs t ~num_params =
+  let meet_of_args_approxs_opt t =
     let application_points =
       List.map (fun ({ args } : Use.t) -> List.map snd args)
         t.inlinable_application_points
       @ t.non_inlinable_application_points
     in
     match application_points with
-    | [] ->
-      Array.to_list (Array.make num_params (A.value_bottom))
+    | [] -> None
     | use::uses ->
       List.fold_left (fun args_approxs use ->
         List.map2 (fun approx1 approx2 ->
@@ -554,6 +553,11 @@ module Continuation_uses = struct
           args_approxs use)
         use
         uses
+
+  let meet_of_args_approxs t ~num_params =
+    match meet_of_args_approxs_opt t with
+    | None -> Array.to_list (Array.make num_params (A.value_bottom))
+    | Some join -> join
 
   let inlinable_application_points t = t.inlinable_application_points
 

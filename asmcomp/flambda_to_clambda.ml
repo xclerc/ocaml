@@ -461,14 +461,10 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
       | Normal cont -> Ustaticfail (Continuation.to_int cont, args)
       | Return_continuation ->
         match args with
-        | [arg] ->
-          Uprim (Preturn, [arg], Debuginfo.none)
         | [] ->
           Uprim (Preturn, [Clambda.Uconst (Uconst_int 0)], Debuginfo.none)
-        | _ ->
-          Misc.fatal_errorf "Apply_cont of return continuation with more than \
-              one argument: %a"
-            Flambda.print flam
+        | args ->
+          Uprim (Preturn, args, Debuginfo.none)
     in
     let trap_action : Clambda.ulambda option =
       match trap_action with

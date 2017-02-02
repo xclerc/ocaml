@@ -421,7 +421,9 @@ and function_declarations = private {
 and function_declaration = private {
   continuation_param : Continuation.t;
   (** The continuation parameter of the function, i.e. to where we must jump
-      once the result of the function has been computed. *)
+      once the result of the function has been computed.  If the continuation
+      takes more than one argument then the backend will compile the function
+      so that it does an unboxed return of multiple values. *)
   params : Variable.t list;
   (** The normal parameters of the function. *)
   body : t;

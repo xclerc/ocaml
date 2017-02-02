@@ -310,6 +310,8 @@ module Continuation_uses : sig
      : t
     -> num_params:int
     -> Simple_value_approx.t list
+
+  val meet_of_args_approxs_opt : t -> Simple_value_approx.t list option
 end
 
 module Continuation_usage_snapshot : sig

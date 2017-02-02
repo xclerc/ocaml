@@ -36,6 +36,6 @@ let foo x y z f c =
     match i with
     | A -> 42
     | B i -> i + 4
-    | C (x, y) -> x + y
+    | C x -> x + 3
   in
   block, a

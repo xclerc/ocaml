@@ -14,13 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Unbox parameters of continuations based on the approximations at the use
-    points of such continuations. *)
+(** Unbox the return values of functions, such that they can return multiple
+    results at once without allocation. *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
-
-val run
-   : Inline_and_simplify_aux.Result.t
-  -> Flambda.expr
-  -> backend:(module Backend_intf.S)
-  -> Flambda.expr
