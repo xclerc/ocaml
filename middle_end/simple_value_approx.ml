@@ -841,11 +841,13 @@ let get_field t ~field_index:i : get_field_result =
            compiler this can be a useful point to put a [Misc.fatal_errorf]. *)
         Unreachable
       end
-    | Ok (Int _ | Char _ | Constptr _) | Bottom ->
+    | Ok (Int _ | Char _ | Constptr _) ->
       (* Something seriously wrong is happening: either the user is doing
          something exceptionally unsafe, or it is an unreachable branch.
          We consider this as unreachable and mark the result accordingly. *)
       Unreachable
+    | Bottom ->
+      Ok (value_unknown Other)
     end
   (* CR-someday mshinwell: This should probably return Unreachable in more
      cases.  I added a couple more. *)

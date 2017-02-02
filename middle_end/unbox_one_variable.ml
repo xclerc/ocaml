@@ -267,4 +267,5 @@ let how_to_unbox ~being_unboxed ~being_unboxed_approx =
       | Blocks blocks | Blocks_and_immediates (blocks, _) -> blocks
       | Immediates _ -> Tag.Map.empty
     in
-    Some (how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed)
+    if Tag.Map.is_empty blocks then None
+    else Some (how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed)
