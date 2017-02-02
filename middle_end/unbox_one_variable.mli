@@ -24,6 +24,8 @@ module How_to_unbox : sig
     add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
     new_arguments_for_call_in_wrapper : Variable.t list;
     new_params : (Variable.t * Projection.t) list;
+    build_boxed_value_from_new_params :
+      (Variable.t * (Flambda.expr -> Flambda.expr)) list;
   }
 
   val new_specialised_args : t -> Flambda.specialised_args

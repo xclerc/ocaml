@@ -19,9 +19,6 @@
 module A = Simple_value_approx
 
 module How_to_unbox = struct
-  (* CR mshinwell: We need a comment about ordering (e.g. when two of these
-     are composed).  Relevant for [Unbox_returns] in particular.  We should
-     maybe try to statically enforce the right ordering. *)
   type t = {
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
     add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
@@ -51,7 +48,10 @@ module How_to_unbox = struct
       t.new_params
 
   let merge t1 t2 =
-    { being_unboxed_to_wrapper_params_being_unboxed =
+    { build_boxed_value_from_new_params =
+        t1.build_boxed_value_from_new_params
+          @ t2.build_boxed_value_from_new_params;
+      being_unboxed_to_wrapper_params_being_unboxed =
         Variable.Map.union (fun _ param1 param2 ->
             assert (Variable.equal param1 param2);
             Some param1)
@@ -272,15 +272,9 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
         Numbers.Int.Set.empty
     in
     let consts =
-      Numbers.Int.Map.fold (fun size boxing_cont consts ->
-          Tag.Map.fold (fun tag fields consts ->
-              if Array.length fields = size then
-                (Tag.to_int tag, boxing_cont) :: consts
-              else
-                consts)
-            blocks
-            consts)
-        sizes_to_boxing_conts
+      Tag.Map.fold (fun tag (_size, boxing_cont) consts ->
+          (Tag.to_int tag, boxing_cont) :: consts)
+        tags_to_sizes_and_boxing_conts
         []
     in
     { numconsts;
@@ -295,23 +289,40 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
     let join_cont = Continuation.create () in
     let build (expr : Flambda.expr) : Flambda.expr =
       let add_boxing_conts expr =
-        Numbers.Int.Map.fold (fun tag (size, boxing_cont) expr : Flambda.expr ->
+        Tag.Map.fold (fun tag (size, boxing_cont) expr : Flambda.expr ->
             let boxed = Variable.rename boxed in
             let fields =
-              List.rev (List.fold_left (fun (fields, index) (field, _proj) ->
-                  if index >= size then fields, index + 1
-                  else (field :: fields), index + 1)
-                ([], 0)
-                fields_with_projections)
+              let fields, _index =
+                List.fold_left (fun (fields, index) (field, _proj) ->
+                    if index >= size then fields, index + 1
+                    else (field :: fields), index + 1)
+                  ([], 0)
+                  fields_with_projections
+              in
+              List.rev fields
             in
-            Flambda.create_let boxed
-              (Prim (Pmakeblock (tag, Immutable, Pgenval), fields, dbg))
-              (Flambda.Apply_cont (join_cont, None, [boxed])))
-          tags_to_sizes_and_boxing_consts
+            let handler : Flambda.expr =
+              Flambda.create_let boxed
+                (Prim (Pmakeblock (Tag.to_int tag, Immutable, None),
+                  fields, dbg))
+                (Flambda.Apply_cont (join_cont, None, [boxed]))
+            in
+            Let_cont {
+              body = expr;
+              handlers = Nonrecursive {
+                name = boxing_cont;
+                handler = {
+                  params = [];
+                  handler;
+                  stub = false;
+                  is_exn_handler = false;
+                  specialised_args = Variable.Map.empty;
+                };
+              };
+            })
+          tags_to_sizes_and_boxing_conts
           expr
       in
-      (* CR mshinwell: This structure of code is kind of the same as that
-         above---maybe we can share something. *)
       Let_cont {
         body = Let_cont {
           body = Let_cont {
@@ -342,7 +353,7 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
         handlers = Nonrecursive {
           name = join_cont;
           handler = {
-            params = boxed;
+            params = [boxed];
             handler = expr;
             stub = false;
             is_exn_handler = false;

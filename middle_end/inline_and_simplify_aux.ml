@@ -545,14 +545,14 @@ module Continuation_uses = struct
     match application_points with
     | [] -> None
     | use::uses ->
-      List.fold_left (fun args_approxs use ->
-        List.map2 (fun approx1 approx2 ->
-          let module Backend = (val (t.backend) : Backend_intf.S) in
-          A.join approx1 approx2
-            ~really_import_approx:Backend.really_import_approx)
-          args_approxs use)
+      Some (List.fold_left (fun args_approxs use ->
+          List.map2 (fun approx1 approx2 ->
+              let module Backend = (val (t.backend) : Backend_intf.S) in
+              A.join approx1 approx2
+                ~really_import_approx:Backend.really_import_approx)
+            args_approxs use)
         use
-        uses
+        uses)
 
   let meet_of_args_approxs t ~num_params =
     match meet_of_args_approxs_opt t with
