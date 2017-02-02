@@ -546,6 +546,11 @@ module Continuation_uses = struct
     | [] -> None
     | use::uses ->
       Some (List.fold_left (fun args_approxs use ->
+          if List.length args_approxs <> List.length use then begin
+            Misc.fatal_errorf "meet_of_args_approx_opt: approx length %d, \
+                use length %d"
+              (List.length args_approxs) (List.length use)
+          end;
           List.map2 (fun approx1 approx2 ->
               let module Backend = (val (t.backend) : Backend_intf.S) in
               A.join approx1 approx2

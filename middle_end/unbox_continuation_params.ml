@@ -173,7 +173,7 @@ Format.eprintf "Ready to unbox:\n@;%a\n%!" Flambda.print_set_of_closures
   set_of_closures;
   let something_changed = ref false in
   let expr =
-    Flambda_iterators.map_function_bodies set_of_closures
+    Flambda_iterators.map_function_bodies ~ignore_stubs:() set_of_closures
       ~f:(fun (expr : Flambda.expr) ->
         match expr with
         | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {

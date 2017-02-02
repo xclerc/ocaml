@@ -447,11 +447,16 @@ let map_project_var_to_named_opt tree ~f =
         named)
     tree
 
-let map_function_bodies (set_of_closures : Flambda.set_of_closures) ~f =
+let map_function_bodies ?ignore_stubs
+      (set_of_closures : Flambda.set_of_closures) ~f =
   let done_something = ref false in
   let funs =
     Variable.Map.map (fun (function_decl : Flambda.function_declaration) ->
-        let new_body = f function_decl.body in
+        let new_body =
+          match ignore_stubs, function_decl.stub with
+          | Some (), true -> function_decl.body
+          | _, _ -> f function_decl.body
+        in
         if new_body == function_decl.body then
           function_decl
         else begin

@@ -178,7 +178,8 @@ val map_apply
   -> Flambda.t
 
 val map_function_bodies
-   : Flambda.set_of_closures
+   : ?ignore_stubs:unit
+  -> Flambda.set_of_closures
   -> f:(Flambda.t -> Flambda.t)
   -> Flambda.set_of_closures
 
