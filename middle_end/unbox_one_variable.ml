@@ -81,8 +81,8 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
   let is_int = Variable.rename ~append:"_is_int" being_unboxed in
   let is_int_in_wrapper = Variable.rename is_int in
   (* CR-soon mshinwell: On [discriminant] add information that tells us
-      about the individual unboxed field parameters _given that_ we are
-      in some particular case of a match on [discriminant] (GADT-style). *)
+     about the individual unboxed field parameters _given that_ we are
+     in some particular case of a match on [discriminant] (GADT-style). *)
   let discriminant = Variable.rename ~append:"_discr" being_unboxed in
   let discriminant_in_wrapper = Variable.rename discriminant in
   let max_size =
@@ -108,6 +108,9 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
         Numbers.Int.Map.add size (Continuation.create ()) sizes_to_filler_conts)
       Numbers.Int.Map.empty
       (Tag.Map.data tags_to_sizes)
+  in
+  let tags_to_sizes_and_boxing_conts =
+    Tag.Map.map (fun size -> size, Continuation.create ()) tags_to_sizes
   in
   let unit_value = Variable.create "unit" in
   let all_units = Array.to_list (Array.init max_size (fun _ -> unit_value)) in
@@ -244,13 +247,111 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
   in
   let fields_with_projections =
     Array.to_list (Array.init max_size (fun index ->
-        let append = string_of_int index in
-        let var = Variable.rename ~append being_unboxed in
-        let projection : Projection.t = Field (index, being_unboxed) in
-        var, projection))
+      let append = string_of_int index in
+      let var = Variable.rename ~append being_unboxed in
+      let projection : Projection.t = Field (index, being_unboxed) in
+      var, projection))
+  in
+  (* CR mshinwell: This next section is only needed for [Unbox_returns] at
+     present; we shouldn't run it unless required. *)
+  let boxing_is_int_cont = Continuation.create () in
+  let boxing_is_block_cont = Continuation.create () in
+  let boxing_is_int_switch : Flambda.switch =
+    { numconsts = Numbers.Int.Set.singleton 0;
+      consts = [0, boxing_is_block_cont];
+      numblocks = Numbers.Int.Set.empty;
+      blocks = [];
+      failaction = Some boxing_is_int_cont;
+    }
+  in
+  let boxing_switch : Flambda.switch =
+    let numconsts =
+      Tag.Set.fold (fun tag numconsts ->
+          Numbers.Int.Set.add (Tag.to_int tag) numconsts)
+        all_tags
+        Numbers.Int.Set.empty
+    in
+    let consts =
+      Numbers.Int.Map.fold (fun size boxing_cont consts ->
+          Tag.Map.fold (fun tag fields consts ->
+              if Array.length fields = size then
+                (Tag.to_int tag, boxing_cont) :: consts
+              else
+                consts)
+            blocks
+            consts)
+        sizes_to_boxing_conts
+        []
+    in
+    { numconsts;
+      consts = List.rev consts;
+      numblocks = Numbers.Int.Set.empty;
+      blocks = [];
+      failaction = None;
+    }
   in
   let build_boxed_value_from_new_params =
-
+    let boxed = Variable.rename ~append:"_boxed" being_unboxed in
+    let join_cont = Continuation.create () in
+    let build (expr : Flambda.expr) : Flambda.expr =
+      let add_boxing_conts expr =
+        Numbers.Int.Map.fold (fun tag (size, boxing_cont) expr : Flambda.expr ->
+            let boxed = Variable.rename boxed in
+            let fields =
+              List.rev (List.fold_left (fun (fields, index) (field, _proj) ->
+                  if index >= size then fields, index + 1
+                  else (field :: fields), index + 1)
+                ([], 0)
+                fields_with_projections)
+            in
+            Flambda.create_let boxed
+              (Prim (Pmakeblock (tag, Immutable, Pgenval), fields, dbg))
+              (Flambda.Apply_cont (join_cont, None, [boxed])))
+          tags_to_sizes_and_boxing_consts
+          expr
+      in
+      (* CR mshinwell: This structure of code is kind of the same as that
+         above---maybe we can share something. *)
+      Let_cont {
+        body = Let_cont {
+          body = Let_cont {
+            body = Switch (is_int, boxing_is_int_switch);
+            handlers = Nonrecursive {
+              name = boxing_is_block_cont;
+              handler = {
+                params = [];
+                handler =
+                  add_boxing_conts (Switch (discriminant, boxing_switch));
+                stub = false;
+                is_exn_handler = false;
+                specialised_args = Variable.Map.empty;
+              };
+            };
+          };
+          handlers = Nonrecursive {
+            name = boxing_is_int_cont;
+            handler = {
+              params = [];
+              handler = Apply_cont (join_cont, None, [discriminant]);
+              stub = false;
+              is_exn_handler = false;
+              specialised_args = Variable.Map.empty;
+            };
+          };
+        };
+        handlers = Nonrecursive {
+          name = join_cont;
+          handler = {
+            params = boxed;
+            handler = expr;
+            stub = false;
+            is_exn_handler = false;
+            specialised_args = Variable.Map.empty;
+          };
+        };
+      }
+    in
+    [boxed, build]
   in
   { being_unboxed_to_wrapper_params_being_unboxed;
     add_bindings_in_wrapper;
