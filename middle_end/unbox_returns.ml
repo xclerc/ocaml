@@ -16,14 +16,13 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
 module R = Inline_and_simplify_aux.Result
-module U = R.Continuation_uses
+module U = Inline_and_simplify_aux.Continuation_uses
 
 let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
-      ~how_to_unbox ~return_cont_param =
+      ~(how_to_unbox : Unbox_one_variable.How_to_unbox.t) ~return_cont_param
+      ~(set_of_closures : Flambda.set_of_closures) =
   let dbg = Debuginfo.none in
-  let new_fun_var = Variable.rename fun_var in
   (* There are two steps:
      1. Build a stub continuation that is called by the function instead of
         its existing return continuation.  This stub breaks apart the boxed
@@ -52,7 +51,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
   let new_function_body : Flambda.expr =
     Let_cont {
       body = function_decl.body;
-      handler = Nonrecursive {
+      handlers = Nonrecursive {
         name = function_decl.continuation_param;
         handler = {
           params = cont_wrapper_params;
@@ -79,7 +78,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
   let _fun_wrapper_params_map, fun_wrapper_params,
       fun_wrapper_specialised_args =
     Flambda_utils.create_wrapper_params ~params:function_decl.params
-      ~specialised_args:function_decl.specialised_args
+      ~specialised_args:set_of_closures.specialised_args
       ~freshening_already_assigned:Variable.Map.empty
   in
   let function_stub_body : Flambda.expr =
@@ -88,11 +87,11 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
     let box_results_and_call_return_cont : Flambda.expr =
       let args_to_return_cont =
         List.map (fun (var, _) -> var)
-          how_to_unbox.being_unboxed_to_wrapper_params_being_unboxed
+          how_to_unbox.build_boxed_value_from_new_params
       in
       List.fold_right (fun (_var, add_binding) expr -> add_binding expr)
-        how_to_unbox.being_unboxed_to_wrapper_params_being_unboxed
-        (Apply_cont (wrapper_return_cont, None, results))
+        how_to_unbox.build_boxed_value_from_new_params
+        (Flambda.Apply_cont (wrapper_return_cont, None, args_to_return_cont))
     in
     Let_cont {
       body = Apply {
@@ -105,7 +104,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
         inline = Lambda.Default_inline;
         specialise = Lambda.Default_specialise;
       };
-      handler = Nonrecursive {
+      handlers = Nonrecursive {
         name = receive_results;
         handler = {
           params = results;
@@ -133,12 +132,12 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
     fun_wrapper_specialised_args
 
 let for_function_decl r ~fun_var
-        ~(function_decl : Flambda.function_declaration) =
+        ~(function_decl : Flambda.function_declaration) ~set_of_closures =
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   let return_cont = function_decl.continuation_param in
   match Continuation.Map.find return_cont definitions_with_uses with
   | exception Not_found -> None
-  | (uses, approx, env, recursive) ->
+  | (uses, _approx, _env, _recursive) ->
     match U.meet_of_args_approxs_opt uses with
     | None -> None
     | Some args_approxs ->
@@ -147,6 +146,9 @@ let for_function_decl r ~fun_var
         (* For the moment, don't apply this transformation more than once
            to any given function. *)
         None
+      | [] ->
+        Misc.fatal_errorf "Function %a has zero return arity"
+          Variable.print fun_var
       | [arg_approx] ->
         let return_cont_param = Variable.create "return_cont_param" in
         let how_to_unbox =
@@ -158,15 +160,15 @@ let for_function_decl r ~fun_var
         | Some how_to_unbox ->
           let function_decls, new_specialised_args =
             unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
-              ~return_cont_param
+              ~return_cont_param ~set_of_closures
           in
           Some (function_decls, new_specialised_args)
 
 let run r ~(set_of_closures : Flambda.set_of_closures) =
   let something_changed = ref false in
-  let funs, new_specialised_args =
+  let funs, specialised_args =
     Variable.Map.fold (fun fun_var function_decl (funs, new_specialised_args) ->
-        match for_function_decl r ~fun_var ~function_decl with
+        match for_function_decl r ~fun_var ~function_decl ~set_of_closures with
         | None ->
           let funs = Variable.Map.add fun_var function_decl funs in
           funs, new_specialised_args
@@ -187,6 +189,6 @@ let run r ~(set_of_closures : Flambda.set_of_closures) =
   else
     let new_function_decls = Flambda.create_function_declarations ~funs in
     Flambda.create_set_of_closures ~function_decls:new_function_decls
-      ~free_vars:function_decls.free_vars
+      ~free_vars:set_of_closures.free_vars
       ~specialised_args
       ~direct_call_surrogates:set_of_closures.direct_call_surrogates
