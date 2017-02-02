@@ -185,10 +185,13 @@ let run r ~(set_of_closures : Flambda.set_of_closures) =
   in
   (* CR-soon mshinwell: Use direct call surrogates *)
   if not !something_changed then
-    set_of_closures
+    None
   else
     let new_function_decls = Flambda.create_function_declarations ~funs in
-    Flambda.create_set_of_closures ~function_decls:new_function_decls
-      ~free_vars:set_of_closures.free_vars
-      ~specialised_args
-      ~direct_call_surrogates:set_of_closures.direct_call_surrogates
+    let set_of_closures =
+      Flambda.create_set_of_closures ~function_decls:new_function_decls
+        ~free_vars:set_of_closures.free_vars
+        ~specialised_args
+        ~direct_call_surrogates:set_of_closures.direct_call_surrogates
+    in
+    Some set_of_closures
