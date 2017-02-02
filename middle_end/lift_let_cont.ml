@@ -359,7 +359,9 @@ and lift (expr : Flambda.t) =
         let new_var, constants =
           match Constant_or_symbol.Map.find const constants with
           | exception Not_found ->
-            let var = Variable.rename var in
+          (* CR mshinwell: I've called everything "const" for the moment as
+             otherwise it's confusing *)
+            let var = Variable.create "const" in
             var, Constant_or_symbol.Map.add const var constants
           | var ->
             var, constants

@@ -117,12 +117,10 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
   Flambda.print expr;
     Inlined (params, expr)
   end else begin
-(*
 Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
   Continuation.print cont
   Variable.print_list args
   B.print inlining_benefit;
-*)
     Didn't_inline
   end
 

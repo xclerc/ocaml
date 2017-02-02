@@ -564,7 +564,9 @@ module Continuation_uses = struct
        the "join" function *)
     let inlinable_application_points =
       List.filter (fun (use : Use.t) ->
-          List.exists (fun (_var, approx) -> A.useful approx) use.args)
+          match use.args with
+          | [] -> true
+          | _ -> List.exists (fun (_var, approx) -> A.useful approx) use.args)
         t.inlinable_application_points
     in
     { t with inlinable_application_points; }
