@@ -809,6 +809,26 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
       ~specialised_args
       ~direct_call_surrogates
   in
+  (* CR mshinwell: We need to think about this next bit.  In particular [r]
+     won't have been updated to say anything about continuations that might
+     have been introduced by [Unbox_continuation_params].  This is tied up
+     with the whole unboxing pass invocation problem below, which never
+     applies at toplevel (which this one does, and must). *)
+  let set_of_closures =
+    match Unbox_continuation_params.run r ~set_of_closures
+      ~backend:(E.backend env)
+    with
+    | Some set_of_closures -> set_of_closures
+      (* CR mshinwell: think about benefit with respect to these
+         continuation unboxing and function return unboxing
+         transformations *)
+    | None -> set_of_closures
+  in
+  let set_of_closures =
+    match Unbox_returns.run r ~set_of_closures with
+    | Some set_of_closures -> set_of_closures
+    | None -> set_of_closures
+  in
   let r = ret r (A.value_set_of_closures value_set_of_closures) in
   set_of_closures, r, value_set_of_closures.freshening
 
@@ -1299,21 +1319,6 @@ and simplify_named env r (tree : Flambda.named)
             simplify env r ~bindings:[] ~set_of_closures
               ~pass_name:"Remove_unused_arguments"
           | None ->
-            match Unbox_continuation_params.run r ~set_of_closures
-              ~backend:(E.backend env)
-            with
-            | Some set_of_closures ->
-              (* CR mshinwell: think about benefit with respect to these
-                 continuation unboxing and function return unboxing
-                 transformations *)
-              simplify env r ~bindings:[] ~set_of_closures
-                ~pass_name:"Unbox_continuation_params"
-            | None ->
-              match Unbox_returns.run r ~set_of_closures with
-              | Some set_of_closures ->
-                simplify env r ~bindings:[] ~set_of_closures
-                  ~pass_name:"Unbox_returns"
-              | None ->
                 [], Reachable (Set_of_closures set_of_closures), r
     end
   | Project_closure project_closure ->

@@ -2046,16 +2046,16 @@ middle_end/unbox_one_variable.cmi : middle_end/base_types/variable.cmi \
     middle_end/simple_value_approx.cmi middle_end/projection.cmi \
     middle_end/flambda.cmi
 middle_end/unbox_returns.cmo : middle_end/base_types/variable.cmi \
-    middle_end/unbox_one_variable.cmi middle_end/simple_value_approx.cmi \
-    bytecomp/lambda.cmi middle_end/inline_and_simplify_aux.cmi \
-    middle_end/flambda_utils.cmi middle_end/flambda.cmi \
-    middle_end/debuginfo.cmi middle_end/base_types/continuation.cmi \
+    middle_end/unbox_one_variable.cmi utils/misc.cmi bytecomp/lambda.cmi \
+    middle_end/inline_and_simplify_aux.cmi middle_end/flambda_utils.cmi \
+    middle_end/flambda.cmi middle_end/debuginfo.cmi \
+    middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi middle_end/unbox_returns.cmi
 middle_end/unbox_returns.cmx : middle_end/base_types/variable.cmx \
-    middle_end/unbox_one_variable.cmx middle_end/simple_value_approx.cmx \
-    bytecomp/lambda.cmx middle_end/inline_and_simplify_aux.cmx \
-    middle_end/flambda_utils.cmx middle_end/flambda.cmx \
-    middle_end/debuginfo.cmx middle_end/base_types/continuation.cmx \
+    middle_end/unbox_one_variable.cmx utils/misc.cmx bytecomp/lambda.cmx \
+    middle_end/inline_and_simplify_aux.cmx middle_end/flambda_utils.cmx \
+    middle_end/flambda.cmx middle_end/debuginfo.cmx \
+    middle_end/base_types/continuation.cmx \
     middle_end/base_types/closure_id.cmx middle_end/unbox_returns.cmi
 middle_end/unbox_returns.cmi : middle_end/inline_and_simplify_aux.cmi \
     middle_end/flambda.cmi

@@ -136,13 +136,18 @@ let for_function_decl r ~fun_var
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   let return_cont = function_decl.continuation_param in
   match Continuation.Map.find return_cont definitions_with_uses with
-  | exception Not_found -> None
+  | exception Not_found ->
+Format.eprintf "exit 1";
+    None
   | (uses, _approx, _env, _recursive) ->
     match U.meet_of_args_approxs_opt uses with
-    | None -> None
+    | None ->
+Format.eprintf "exit 2";
+      None
     | Some args_approxs ->
       match args_approxs with
       | _::_::_ ->
+Format.eprintf "exit 3";
         (* For the moment, don't apply this transformation more than once
            to any given function. *)
         None
@@ -156,7 +161,9 @@ let for_function_decl r ~fun_var
             ~being_unboxed_approx:arg_approx
         in
         match how_to_unbox with
-        | None -> None
+        | None ->
+Format.eprintf "exit 4";
+          None
         | Some how_to_unbox ->
           let function_decls, new_specialised_args =
             unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
@@ -166,6 +173,8 @@ let for_function_decl r ~fun_var
 
 let run r ~(set_of_closures : Flambda.set_of_closures) =
   let something_changed = ref false in
+Format.eprintf "Unbox_returns on:\n@ %a\n%!"
+  Flambda.print_set_of_closures set_of_closures;
   let funs, specialised_args =
     Variable.Map.fold (fun fun_var function_decl (funs, new_specialised_args) ->
         match for_function_decl r ~fun_var ~function_decl ~set_of_closures with
