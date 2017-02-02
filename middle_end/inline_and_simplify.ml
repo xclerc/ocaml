@@ -188,12 +188,8 @@ let inline_and_specialise_continuations env r ~body ~simplify ~backend =
     let body =
       Continuation_inlining.for_toplevel_expression body r ~simplify
     in
-    let body =
-      Continuation_specialisation.for_toplevel_expression body r ~simplify
-        ~backend
-    in
-    (* CR mshinwell: determine whether this should stay here *)
-    Unbox_continuation_params.run r body ~backend:(E.backend env)
+    Continuation_specialisation.for_toplevel_expression body r ~simplify
+      ~backend
 
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body
@@ -1283,7 +1279,8 @@ and simplify_named env r (tree : Flambda.named)
         simplify env r ~bindings ~set_of_closures
           ~pass_name:"Unbox_free_vars_of_closures"
       | None ->
-        (* CR-soon mshinwell: should maybe add one allocation for the stub *)
+        (* CR-soon mshinwell: should maybe add one allocation for the
+           stub *)
         match
           Unbox_specialised_args.rewrite_set_of_closures ~env
             ~duplicate_function ~set_of_closures
@@ -1302,7 +1299,22 @@ and simplify_named env r (tree : Flambda.named)
             simplify env r ~bindings:[] ~set_of_closures
               ~pass_name:"Remove_unused_arguments"
           | None ->
-            [], Reachable (Set_of_closures set_of_closures), r
+            match Unbox_continuation_params.run r ~set_of_closures
+              ~backend:(E.backend env)
+            with
+            | Some set_of_closures ->
+              (* CR mshinwell: think about benefit with respect to these
+                 continuation unboxing and function return unboxing
+                 transformations *)
+              simplify env r ~bindings:[] ~set_of_closures
+                ~pass_name:"Unbox_continuation_params"
+            | None ->
+              match Unbox_returns.run r ~set_of_closures with
+              | Some set_of_closures ->
+                simplify env r ~bindings:[] ~set_of_closures
+                  ~pass_name:"Unbox_returns"
+              | None ->
+                [], Reachable (Set_of_closures set_of_closures), r
     end
   | Project_closure project_closure ->
     simplify_project_closure env r ~project_closure
@@ -1329,8 +1341,7 @@ and simplify_named env r (tree : Flambda.named)
       | Some var ->
         (* CSE of pure primitives.
            The [Pisint] case in particular is also used when unboxing
-           continuation parameters and function return values of variant
-           type. *)
+           continuation parameters of variant type. *)
         simplify_free_variable_named env var ~f:(fun _env var var_approx ->
           let r = R.map_benefit r (B.remove_projection projection) in
           [], Reachable (Var var), ret r var_approx)

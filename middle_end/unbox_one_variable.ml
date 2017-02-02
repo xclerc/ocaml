@@ -19,11 +19,16 @@
 module A = Simple_value_approx
 
 module How_to_unbox = struct
+  (* CR mshinwell: We need a comment about ordering (e.g. when two of these
+     are composed).  Relevant for [Unbox_returns] in particular.  We should
+     maybe try to statically enforce the right ordering. *)
   type t = {
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
     add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
     new_arguments_for_call_in_wrapper : Variable.t list;
     new_params : (Variable.t * Projection.t) list;
+    build_boxed_value_from_new_params :
+      (Variable.t * (Flambda.expr -> Flambda.expr)) list;
   }
 
   let create () =
@@ -31,6 +36,7 @@ module How_to_unbox = struct
       add_bindings_in_wrapper = (fun expr -> expr);
       new_arguments_for_call_in_wrapper = [];
       new_params = [];
+      build_boxed_value_from_new_params = [];
     }
 
   let new_specialised_args t =
@@ -243,6 +249,9 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
         let projection : Projection.t = Field (index, being_unboxed) in
         var, projection))
   in
+  let build_boxed_value_from_new_params =
+
+  in
   { being_unboxed_to_wrapper_params_being_unboxed;
     add_bindings_in_wrapper;
     new_arguments_for_call_in_wrapper;
@@ -250,6 +259,7 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
       is_int, Projection.Prim (Pisint, [being_unboxed]);
       discriminant, Projection.Prim (Pgettag, [being_unboxed]);
     ] @ fields_with_projections;
+    build_boxed_value_from_new_params;
   }
 
 let how_to_unbox ~being_unboxed ~being_unboxed_approx =

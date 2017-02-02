@@ -20,70 +20,6 @@ module A = Simple_value_approx
 module R = Inline_and_simplify_aux.Result
 module U = R.Continuation_uses
 
-let wrapper_returning_boxed_result ~params ~new_fun_var ... =
-  let stub_return_cont = Continuation.create () in
-  let stub_params = List.map (fun param -> Variable.rename param) params in
-  let new_closure_id = ... in
-  let return_cont = Continuation.create () in
-  let unboxed_results =
-    Array.to_list (Array.init size (fun index ->
-      Variable.create (Printf.sprintf "unboxed_result%d" index)))
-  in
-  let dbg = Debuginfo.none in
-  let box_results =
-    let boxed_result = Variable.create "boxed_result" in
-    Flambda.create_let boxed_result
-      (Prim (Pmakeblock (tag, Immutable, None), unboxed_results,
-        Debuginfo.none))
-      (Apply {
-        kind = Function;
-        func = new_fun_var;
-        continuation = stub_return_cont;
-        args = [boxed_result];
-        call_kind = Direct { closure_id = ...; return_arity = Singleton; };
-        dbg;
-        inline = Lambda.Default_inline;
-        specialise = Lambda.Default_specialise;
-      })
-  in
-  let body : Flambda.expr =
-    Let_cont {
-      body = Apply {
-        kind = Function;
-        func = ...;
-        continuation = return_cont;
-        args = stub_params;
-        call_kind = Direct { closure_id = new_closure_id; return_arity; };
-        dbg;
-        inline = Lambda.Default_inline;
-        specialise = Lambda.Default_specialise;
-      };
-      handler = Nonrecursive {
-        name = return_cont;
-        handler = {
-          params = unboxed_results;
-          stub = false;
-          is_exn_handler = false;
-          handler = box_results;
-          specialised_args = Variable.Map.empty;
-        };
-      }
-    }
-  in
-  let function_decl =
-    Flambda.create_function_declaration ~params:stub_params
-      ~continuation_param:stub_return_cont
-      ~return_arity:Singleton
-      ~body
-      ~stub:true
-      ~dbg
-      ~inline:Lambda.Default_inline
-      ~specialise:Lambda.Default_specialise
-      ~is_a_functor:false
-  in
-  Some function_decl
-
-
 let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~how_to_unbox ~return_cont_param =
   let dbg = Debuginfo.none in
@@ -148,14 +84,15 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
   in
   let function_stub_body : Flambda.expr =
     let receive_results = Continuation.create () in
-    let results =
-      Array.to_list (Array.create (List.length how_to_unbox.params)
-        (fun index ->
-          let name = Printf.sprintf "result%d" index in
-          Variable.create name))
-    in
+    let results = List.map (fun (var, _proj) -> var) how_to_unbox.new_params in
     let box_results_and_call_return_cont : Flambda.expr =
-
+      let args_to_return_cont =
+        List.map (fun (var, _) -> var)
+          how_to_unbox.being_unboxed_to_wrapper_params_being_unboxed
+      in
+      List.fold_right (fun (_var, add_binding) expr -> add_binding expr)
+        how_to_unbox.being_unboxed_to_wrapper_params_being_unboxed
+        (Apply_cont (wrapper_return_cont, None, results))
     in
     Let_cont {
       body = Apply {
@@ -195,7 +132,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       Variable.Map.empty),
     fun_wrapper_specialised_args
 
-let for_function_decl r ~backend:_ ~fun_var
+let for_function_decl r ~fun_var
         ~(function_decl : Flambda.function_declaration) =
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   let return_cont = function_decl.continuation_param in
@@ -225,9 +162,31 @@ let for_function_decl r ~backend:_ ~fun_var
           in
           Some (function_decls, new_specialised_args)
 
-let run r ... =
-
-      let function_decls =
-        Flambda.update_function_declarations set_of_closures.function_decls
-          ~funs
-      in
+let run r ~(set_of_closures : Flambda.set_of_closures) =
+  let something_changed = ref false in
+  let funs, new_specialised_args =
+    Variable.Map.fold (fun fun_var function_decl (funs, new_specialised_args) ->
+        match for_function_decl r ~fun_var ~function_decl with
+        | None ->
+          let funs = Variable.Map.add fun_var function_decl funs in
+          funs, new_specialised_args
+        | Some (function_decls, new_specialised_args') ->
+          something_changed := true;
+          let funs = Variable.Map.disjoint_union funs function_decls in
+          let new_specialised_args =
+            Variable.Map.disjoint_union new_specialised_args
+              new_specialised_args'
+          in
+          funs, new_specialised_args)
+      set_of_closures.function_decls.funs
+      (Variable.Map.empty, set_of_closures.specialised_args)
+  in
+  (* CR-soon mshinwell: Use direct call surrogates *)
+  if not !something_changed then
+    set_of_closures
+  else
+    let new_function_decls = Flambda.create_function_declarations ~funs in
+    Flambda.create_set_of_closures ~function_decls:new_function_decls
+      ~free_vars:function_decls.free_vars
+      ~specialised_args
+      ~direct_call_surrogates:set_of_closures.direct_call_surrogates

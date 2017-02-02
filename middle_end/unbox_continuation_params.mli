@@ -21,6 +21,6 @@
 
 val run
    : Inline_and_simplify_aux.Result.t
-  -> Flambda.expr
+  -> set_of_closures:Flambda.set_of_closures
   -> backend:(module Backend_intf.S)
-  -> Flambda.expr
+  -> Flambda.set_of_closures

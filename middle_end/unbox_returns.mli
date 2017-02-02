@@ -18,3 +18,8 @@
     results at once without allocation. *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
+
+val run
+   : Inline_and_simplify_aux.Result.t
+  -> set_of_closures:Flambda.set_of_closures
+  -> Flambda.set_of_closures
