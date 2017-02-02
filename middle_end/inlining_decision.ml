@@ -536,6 +536,10 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       Array.to_list (Array.init function_decl.return_arity (fun _index ->
         A.value_unknown Other))
     in
+(*
+Format.eprintf "for_call_site: use of continuation %a has %d args\n%!"
+Continuation.print continuation (List.length args_approxs);
+*)
     R.use_continuation r env continuation ~inlinable_position:false ~args:[]
       ~args_approxs
   in

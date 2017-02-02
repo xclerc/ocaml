@@ -696,7 +696,7 @@ and simplify_set_of_closures original_env r
         ~free_vars ~specialised_args ~parameter_approximations
         ~set_of_closures_env
     in
-    let continuation_param, cont_approx, closure_env =
+    let continuation_param, closure_env =
       let continuation_param, freshening =
         Freshening.add_static_exception (E.freshening closure_env)
           function_decl.continuation_param
@@ -714,7 +714,7 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
   Continuation.print function_decl.continuation_param
   Continuation.print continuation_param;
 *)
-      continuation_param, cont_approx, closure_env
+      continuation_param, closure_env
     in
     let body, r =
       E.enter_closure closure_env ~closure_id:(Closure_id.wrap fun_var)
@@ -733,13 +733,6 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
             else
               inline_and_specialise_continuations env r ~body ~simplify
                 ~backend:(E.backend env)
-          in
-          let r, uses = R.exit_scope_catch r env continuation_param in
-          let r =
-(* XXX also, we probably need the arity when doing a normal Apply to an
-   unbox-returned function *)
-            R.define_continuation r continuation_param env Nonrecursive
-              uses cont_approx
           in
           body, r)
     in
@@ -835,6 +828,21 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     match Unbox_returns.run r ~set_of_closures with
     | Some set_of_closures -> set_of_closures
     | None -> set_of_closures
+  in
+  let r =
+    Variable.Map.fold (fun _fun_var
+            (function_decl : Flambda.function_declaration)
+            r ->
+        let continuation_param = function_decl.continuation_param in
+        let r, uses = R.exit_scope_catch r env continuation_param in
+        let cont_approx =
+          Continuation_approx.create_unknown ~name:continuation_param
+            ~num_params:function_decl.return_arity
+        in
+        R.define_continuation r continuation_param env Nonrecursive
+          uses cont_approx)
+      set_of_closures.function_decls.funs
+      r
   in
   let r = ret r (A.value_set_of_closures value_set_of_closures) in
   set_of_closures, r, value_set_of_closures.freshening
@@ -1560,6 +1568,10 @@ and simplify_let_cont_handler ~env ~r ~cont
       ~(handler : Flambda.continuation_handler)
       ~(recursive : Asttypes.rec_flag) =
   let args_approxs =
+(*
+Format.eprintf "simplify_let_cont_handler %a (num_params %d)\n%!"
+  Continuation.print cont (List.length handler.params);
+*)
     R.continuation_args_approxs r cont ~num_params:(List.length handler.params)
   in
   let { Flambda. params = vars; stub; is_exn_handler; handler;

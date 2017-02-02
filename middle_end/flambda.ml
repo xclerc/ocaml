@@ -495,6 +495,10 @@ and print_function_declaration ppf var (f : function_declaration) =
     else
       ""
   in
+  let arity =
+    if f.return_arity < 2 then ""
+    else Printf.sprintf " (return arity %d)" f.return_arity
+  in
   let is_a_functor =
     if f.is_a_functor then
       " *functor*"
@@ -514,8 +518,8 @@ and print_function_declaration ppf var (f : function_declaration) =
     | Never_specialise -> " *never_specialise*"
     | Default_specialise -> ""
   in
-  fprintf ppf "@[<2>(%a%s%s%s%s@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
-    Variable.print var stub is_a_functor inline specialise
+  fprintf ppf "@[<2>(%a%s%s%s%s%s@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
+    Variable.print var stub arity is_a_functor inline specialise
     Continuation.print f.continuation_param
     idents f.params lam f.body
 
