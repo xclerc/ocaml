@@ -1319,6 +1319,8 @@ and simplify_named env r (tree : Flambda.named)
       [], Reachable (Assign { being_assigned; new_value; }),
         ret r (A.value_unknown Other))
   | Prim (prim, args, dbg) ->
+    (* CR mshinwell: It appears that dead code after "raise" is not being
+       deleted *)
     let dbg = E.add_inlined_debuginfo env ~dbg in
     simplify_free_variables_named env args ~f:(fun env args args_approxs ->
       let tree = Flambda.Prim (prim, args, dbg) in
@@ -1628,6 +1630,13 @@ and simplify_let_cont_handler ~env ~r ~cont
       env
   in
   let handler, r = simplify (E.inside_branch env) r handler in
+  let specialised_args =
+    Variable.Map.filter_map specialised_args
+      ~f:(fun _param (spec_to : Flambda.specialised_to) ->
+        match spec_to.var, spec_to.projection with
+        | None, None -> None
+        | _ -> Some spec_to)
+  in
   let handler : Flambda.continuation_handler =
     { params = vars;
       stub;
