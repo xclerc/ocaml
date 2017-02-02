@@ -161,6 +161,7 @@ and function_declarations = {
 
 and function_declaration = {
   continuation_param : Continuation.t;
+  return_arity : int;
   params : Variable.t list;
   body : t;
   free_variables : Variable.Set.t;
@@ -1154,7 +1155,8 @@ let free_symbols_program (program : program) =
   loop program.program_body;
   !symbols
 
-let create_function_declaration ~params ~continuation_param ~body ~stub ~dbg
+let create_function_declaration ~params ~continuation_param ~return_arity
+      ~body ~stub ~dbg
       ~(inline : Lambda.inline_attribute)
       ~(specialise : Lambda.specialise_attribute) ~is_a_functor
       : function_declaration =
@@ -1174,8 +1176,12 @@ let create_function_declaration ~params ~continuation_param ~body ~stub ~dbg
       "Stubs may not be annotated as [Always_specialise]: %a"
       print body
   end;
+  if return_arity < 1 then begin
+    Misc.fatal_errorf "Illegal return arity %d" return_arity
+  end;
   { params;
     continuation_param;
+    return_arity;
     body;
     free_variables = free_variables body;
     free_symbols = free_symbols body;

@@ -696,14 +696,14 @@ and simplify_set_of_closures original_env r
         ~free_vars ~specialised_args ~parameter_approximations
         ~set_of_closures_env
     in
-    let continuation_param, closure_env =
+    let continuation_param, cont_approx, closure_env =
       let continuation_param, freshening =
         Freshening.add_static_exception (E.freshening closure_env)
           function_decl.continuation_param
       in
       let cont_approx =
         Continuation_approx.create_unknown ~name:continuation_param
-          ~num_params:1
+          ~num_params:function_decl.return_arity
       in
       let closure_env =
         E.add_continuation (E.set_freshening closure_env freshening)
@@ -714,7 +714,7 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
   Continuation.print function_decl.continuation_param
   Continuation.print continuation_param;
 *)
-      continuation_param, closure_env
+      continuation_param, cont_approx, closure_env
     in
     let body, r =
       E.enter_closure closure_env ~closure_id:(Closure_id.wrap fun_var)
@@ -736,15 +736,10 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
           in
           let r, uses = R.exit_scope_catch r env continuation_param in
           let r =
-            let approx =
-              Continuation_approx.create_unknown
-                ~name:continuation_param
-                ~num_params:1  (* XXX not always right! *)
 (* XXX also, we probably need the arity when doing a normal Apply to an
    unbox-returned function *)
-            in
             R.define_continuation r continuation_param env Nonrecursive
-              uses approx
+              uses cont_approx
           in
           body, r)
     in
@@ -772,6 +767,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     let function_decl =
       Flambda.create_function_declaration ~params:function_decl.params
         ~continuation_param:continuation_param
+        ~return_arity:function_decl.return_arity
         ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
         ~inline ~specialise:function_decl.specialise
         ~is_a_functor:function_decl.is_a_functor
@@ -1573,6 +1569,13 @@ and simplify_let_cont_handler ~env ~r ~cont
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env) vars
   in
+  if List.length vars <> List.length args_approxs then begin
+    Misc.fatal_errorf "simplify_let_cont_handler (%a): params are %a but \
+        args_approxs has length %d"
+      Continuation.print cont
+      Variable.print_list vars
+      (List.length args_approxs)
+  end;
   let freshened_params_to_args_approxs =
     let params_to_args_approxs = List.combine vars args_approxs in
     let freshened_params_to_args_approxs =
@@ -2028,6 +2031,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
   let function_decl =
     Flambda.create_function_declaration ~params:function_decl.params
       ~continuation_param:function_decl.continuation_param
+      ~return_arity:function_decl.return_arity
       ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
       ~inline:function_decl.inline ~specialise:function_decl.specialise
       ~is_a_functor:function_decl.is_a_functor

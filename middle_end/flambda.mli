@@ -424,6 +424,8 @@ and function_declaration = private {
       once the result of the function has been computed.  If the continuation
       takes more than one argument then the backend will compile the function
       so that it does an unboxed return of multiple values. *)
+  return_arity : int;
+  (** The number of parameters of the [continuation_param] continuation. *)
   params : Variable.t list;
   (** The normal parameters of the function. *)
   body : t;
@@ -701,6 +703,7 @@ end
 val create_function_declaration
    : params:Variable.t list
   -> continuation_param:Continuation.t
+  -> return_arity:int
   -> body:t
   -> stub:bool
   -> dbg:Debuginfo.t

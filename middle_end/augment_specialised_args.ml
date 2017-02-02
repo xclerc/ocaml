@@ -547,6 +547,7 @@ module Make (T : S) = struct
     let new_function_decl =
       Flambda.create_function_declaration
         ~continuation_param:wrapper_continuation_param
+        ~return_arity:1
         ~params:wrapper_params
         ~body:wrapper_body
         ~stub:true
@@ -629,6 +630,7 @@ module Make (T : S) = struct
       let rewritten_function_decl =
         Flambda.create_function_declaration
           ~continuation_param:function_decl.continuation_param
+          ~return_arity:function_decl.return_arity
           ~params:all_params
           ~body:function_decl.body
           ~stub:function_decl.stub

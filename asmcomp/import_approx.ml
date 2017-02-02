@@ -46,6 +46,7 @@ let import_set_of_closures =
           in
           Flambda.create_function_declaration ~params:function_decl.params
             ~continuation_param:function_decl.continuation_param
+            ~return_arity:function_decl.return_arity
             ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
             ~inline:function_decl.inline
             ~specialise:function_decl.specialise

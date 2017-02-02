@@ -56,6 +56,7 @@ let rewrite_one_function_decl ~(function_decl : Flambda.function_declaration)
     Flambda.create_function_declaration
       ~params:function_decl.params
       ~continuation_param:function_decl.continuation_param
+      ~return_arity:function_decl.return_arity
       ~body:body
       ~stub:function_decl.stub
       ~dbg:function_decl.dbg

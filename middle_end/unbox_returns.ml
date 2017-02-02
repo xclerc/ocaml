@@ -47,11 +47,6 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
     in
     how_to_unbox.add_bindings_in_wrapper initial_body
   in
-  let cont_wrapper_params = (* XXX hack *)
-    match cont_wrapper_params with
-    | _::params -> params
-    | _ -> assert false
-  in
   let new_function_body : Flambda.expr =
     Let_cont {
       body = function_decl.body;
@@ -67,8 +62,12 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       };
     }
   in
+  let return_arity =
+    function_decl.return_arity - 1 + List.length how_to_unbox.new_params
+  in
   let function_decl =
     Flambda.create_function_declaration ~continuation_param:new_return_cont
+      ~return_arity
       ~params:function_decl.params
       ~body:new_function_body
       ~stub:function_decl.stub
@@ -122,6 +121,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
   in
   let function_stub_decl =
     Flambda.create_function_declaration ~continuation_param:wrapper_return_cont
+      ~return_arity:1
       ~params:fun_wrapper_params
       ~body:function_stub_body
       ~stub:true
@@ -154,6 +154,7 @@ let for_function_decl r ~fun_var
         Misc.fatal_errorf "Function %a has zero return arity"
           Variable.print fun_var
       | [arg_approx] ->
+        assert (function_decl.return_arity = 1);
         let return_cont_param = Variable.create "return_cont_param" in
         let how_to_unbox =
           Unbox_one_variable.how_to_unbox ~being_unboxed:return_cont_param
@@ -200,4 +201,6 @@ Format.eprintf "Unbox_returns on:\n@ %a\n%!"
         ~specialised_args
         ~direct_call_surrogates:set_of_closures.direct_call_surrogates
     in
+Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
+  Flambda.print_set_of_closures set_of_closures;
     Some set_of_closures

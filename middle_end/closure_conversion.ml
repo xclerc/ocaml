@@ -62,6 +62,7 @@ let tupled_function_call_stub original_params unboxed_version
       (0, call) params
   in
   Flambda.create_function_declaration ~params:[tuple_param] ~continuation_param
+    ~return_arity:1
     ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
     ~specialise:Default_specialise ~is_a_functor:false
 
@@ -365,7 +366,7 @@ and close_functions t external_env function_declarations : Flambda.named =
     let fun_decl =
       Flambda.create_function_declaration ~params
         ~continuation_param:(Function_decl.continuation_param decl)
-        ~body ~stub ~dbg
+        ~return_arity:1 ~body ~stub ~dbg
         ~inline:(Function_decl.inline decl)
         ~specialise:(Function_decl.specialise decl)
         ~is_a_functor:(Function_decl.is_a_functor decl)

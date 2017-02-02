@@ -295,6 +295,7 @@ let map_general ~toplevel f f_named tree =
                   Flambda.create_function_declaration
                     ~params:func_decl.params
                     ~continuation_param:func_decl.continuation_param
+                    ~return_arity:func_decl.return_arity
                     ~body:new_body
                     ~stub:func_decl.stub
                     ~dbg:func_decl.dbg
@@ -376,6 +377,7 @@ let map_symbols_on_set_of_closures
         Flambda.create_function_declaration
           ~params:func_decl.params
           ~continuation_param:func_decl.continuation_param
+          ~return_arity:func_decl.return_arity
           ~body
           ~stub:func_decl.stub
           ~dbg:func_decl.dbg
@@ -457,6 +459,7 @@ let map_function_bodies (set_of_closures : Flambda.set_of_closures) ~f =
           Flambda.create_function_declaration ~body:new_body
             ~params:function_decl.params
             ~continuation_param:function_decl.continuation_param
+            ~return_arity:function_decl.return_arity
             ~stub:function_decl.stub
             ~dbg:function_decl.dbg
             ~inline:function_decl.inline
@@ -494,6 +497,7 @@ let map_sets_of_closures_of_program (program : Flambda.program)
                 Flambda.create_function_declaration ~body
                   ~params:function_decl.params
                   ~continuation_param:function_decl.continuation_param
+                  ~return_arity:function_decl.return_arity
                   ~stub:function_decl.stub
                   ~dbg:function_decl.dbg
                   ~inline:function_decl.inline
@@ -596,6 +600,7 @@ let map_exprs_at_toplevel_of_program (program : Flambda.program)
               Flambda.create_function_declaration ~body
                 ~params:function_decl.params
                 ~continuation_param:function_decl.continuation_param
+                ~return_arity:function_decl.return_arity
                 ~stub:function_decl.stub
                 ~dbg:function_decl.dbg
                 ~inline:function_decl.inline

@@ -321,7 +321,7 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
   let subst id = Variable.Map.find id sb in
   let function_declaration =
     Flambda.create_function_declaration ~params:(List.map subst params)
-      ~continuation_param
+      ~continuation_param ~return_arity:1
       ~body ~stub ~dbg:Debuginfo.none ~inline:Default_inline
       ~specialise:Default_specialise ~is_a_functor:false
   in

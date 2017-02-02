@@ -98,6 +98,7 @@ let import_function_declarations_for_pack units pack
         Flambda.create_function_declaration ~params:function_decl.params
           ~body:(import_code_for_pack units pack function_decl.body)
           ~continuation_param:function_decl.continuation_param
+          ~return_arity:function_decl.return_arity
           ~stub:function_decl.stub ~dbg:function_decl.dbg
           ~inline:function_decl.inline
           ~specialise:function_decl.specialise

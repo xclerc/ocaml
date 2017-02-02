@@ -62,6 +62,7 @@ let unrecursify_function function_variable
     Flambda.create_function_declaration
       ~params:new_params
       ~continuation_param:function_decl.continuation_param
+      ~return_arity:function_decl.return_arity
       ~body
       ~stub:function_decl.stub
       ~dbg:function_decl.dbg

@@ -730,6 +730,7 @@ let introduce_free_variables_in_set_of_closures
                Flambda.create_function_declaration
                  ~params:func_decl.params
                  ~continuation_param:func_decl.continuation_param
+                 ~return_arity:func_decl.return_arity
                  ~body
                  ~stub:func_decl.stub
                  ~dbg:func_decl.dbg

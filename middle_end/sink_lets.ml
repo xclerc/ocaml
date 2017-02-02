@@ -322,6 +322,7 @@ and sink_set_of_closures (set_of_closures : Flambda.set_of_closures) =
         Flambda.create_function_declaration
           ~params:function_decl.params
           ~continuation_param:function_decl.continuation_param
+          ~return_arity:function_decl.return_arity
           ~body:(sink function_decl.body)
           ~stub:function_decl.stub
           ~dbg:function_decl.dbg
