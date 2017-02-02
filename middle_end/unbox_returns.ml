@@ -43,10 +43,14 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
   let wrapper_body =
     let initial_body : Flambda.t =
       Apply_cont (new_return_cont, None,
-        cont_wrapper_params
-          @ how_to_unbox.new_arguments_for_call_in_wrapper)
+        how_to_unbox.new_arguments_for_call_in_wrapper)
     in
     how_to_unbox.add_bindings_in_wrapper initial_body
+  in
+  let cont_wrapper_params = (* XXX hack *)
+    match cont_wrapper_params with
+    | _::params -> params
+    | _ -> assert false
   in
   let new_function_body : Flambda.expr =
     Let_cont {
@@ -136,18 +140,13 @@ let for_function_decl r ~fun_var
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   let return_cont = function_decl.continuation_param in
   match Continuation.Map.find return_cont definitions_with_uses with
-  | exception Not_found ->
-Format.eprintf "exit 1";
-    None
+  | exception Not_found -> None
   | (uses, _approx, _env, _recursive) ->
     match U.meet_of_args_approxs_opt uses with
-    | None ->
-Format.eprintf "exit 2";
-      None
+    | None -> None
     | Some args_approxs ->
       match args_approxs with
       | _::_::_ ->
-Format.eprintf "exit 3";
         (* For the moment, don't apply this transformation more than once
            to any given function. *)
         None
@@ -161,9 +160,7 @@ Format.eprintf "exit 3";
             ~being_unboxed_approx:arg_approx
         in
         match how_to_unbox with
-        | None ->
-Format.eprintf "exit 4";
-          None
+        | None -> None
         | Some how_to_unbox ->
           let function_decls, new_specialised_args =
             unbox_function_decl ~fun_var ~function_decl ~how_to_unbox

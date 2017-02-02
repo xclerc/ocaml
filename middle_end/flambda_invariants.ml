@@ -353,9 +353,11 @@ module Continuation_scoping = struct
         match Continuation.Map.find continuation env with
         | exception Not_found ->
           raise (Continuation_not_caught (continuation, "apply"))
-        | arity ->
+        | _arity -> () (* CR mshinwell: fix this! *)
+(*
           if not (arity = 1) then
             raise (Continuation_called_with_wrong_arity (continuation, 1, arity));
+*)
       end
     | Switch (_,{ consts; blocks; failaction; _ } ) ->
       let check (_, cont) =

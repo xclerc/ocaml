@@ -373,7 +373,9 @@ module Result : sig
 
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
-  (* CR mshinwell: should this be combined with define_continuation? *)
+  (* CR mshinwell: should this be combined with define_continuation?
+     (one error already due to the fact this is separate)
+   *)
   val exit_scope_catch
      : t
     -> Env.t

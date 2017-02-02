@@ -734,7 +734,18 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
               inline_and_specialise_continuations env r ~body ~simplify
                 ~backend:(E.backend env)
           in
-          let r, _ = R.exit_scope_catch r env continuation_param in
+          let r, uses = R.exit_scope_catch r env continuation_param in
+          let r =
+            let approx =
+              Continuation_approx.create_unknown
+                ~name:continuation_param
+                ~num_params:1  (* XXX not always right! *)
+(* XXX also, we probably need the arity when doing a normal Apply to an
+   unbox-returned function *)
+            in
+            R.define_continuation r continuation_param env Nonrecursive
+              uses approx
+          in
           body, r)
     in
     let inline : Lambda.inline_attribute =
