@@ -357,11 +357,38 @@ let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
     | _consts, tags, [] -> Tag tags
     | _consts, [], strings -> String strings
 
-let apply_cont env cont arg : Clambda.ulambda =
+let to_clambda_apply env cont ~continuation_arity arg : Clambda.ulambda =
+  let dbg = Debuginfo.none in
   let cont = Env.expand_continuation_aliases env cont in
-  match cont with
-  | Normal cont -> Ustaticfail (Continuation.to_int cont, [arg])
-  | Return_continuation -> Uprim (Preturn, [arg], Debuginfo.none)
+  (* Detect when a function that returns multiple results is being called. *)
+  assert (continuation_arity >= 1);
+  if continuation_arity < 2 then
+    match cont with
+    | Normal cont -> Ustaticfail (Continuation.to_int cont, [arg])
+    | Return_continuation -> Uprim (Preturn, [arg], dbg)
+  else
+    match cont with
+    | Normal cont ->
+      let vars_and_indexes =
+        Array.to_list (Array.init continuation_arity (fun index ->
+          let var = Variable.create (Printf.sprintf "result%d" index) in
+          var, index))
+      in
+      let call_cont : Clambda.ulambda =
+        let vars = List.map (fun (var, _index) -> var) vars_and_indexes in
+        Ustaticfail (Continuation.to_int cont, vars)
+      in
+      List.fold_right (fun (var, index) expr : Clambda.ulambda ->
+          Ulet (Immutable, Pgenval, var,
+            Uprim (Punboxed_tuple_field index, [arg], dbg),
+            expr))
+        vars_and_indexes
+        call_cont
+    | Return_continuation ->
+      (* If a multiple-result set is going straight to the return continuation
+         of the current function, there's no point in fishing out all the
+         results and then packaging them up again. *)
+      Uprim (Preturn, [arg], Debuginfo.none)
 
 let apply_cont_returning_unit env cont : Clambda.ulambda =
   let cont = Env.expand_continuation_aliases env cont in
@@ -381,8 +408,9 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     let id, env_body = Env.add_fresh_mutable_ident env mut_var in
     let def = subst_var env var in
     Ulet (Mutable, contents_kind, id, def, to_clambda t env_body body)
-  | Apply { kind = Function; func; continuation; args;
-      call_kind = Direct direct_func; dbg = dbg } ->
+  | Apply { kind = Function; func; continuation; return_arity; args;
+      call_kind = Direct { closure_id = direct_func; return_arity; };
+      dbg = dbg; } ->
     (* The closure _parameter_ of the function is added by cmmgen.
        At the call site, for a direct call, the closure argument must be
        explicitly added (by [to_clambda_direct_apply]); there is no special
@@ -393,7 +421,7 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     let ulam =
       to_clambda_direct_apply t func args direct_func dbg env
     in
-    apply_cont env continuation ulam
+    to_clambda_apply env continuation ~continuation_arity:return_arity ulam
   | Apply { kind = Function; func; continuation; args; call_kind = Indirect;
       dbg = dbg } ->
     let callee = subst_var env func in
@@ -401,14 +429,14 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
       Ugeneric_apply (check_closure callee (Flambda.Var func),
         subst_vars env args, dbg)
     in
-    apply_cont env continuation ulam
-  | Apply { kind = Method { kind; obj; }; func; continuation; args;
-      call_kind = _; dbg = dbg; } ->
+    to_clambda_apply env continuation ~continuation_arity:1 ulam
+  | Apply { kind = Method { kind; obj; }; func; continuation;
+      args; call_kind = _; dbg = dbg; } ->
     let ulam : Clambda.ulambda =
       Usend (kind, subst_var env func, subst_var env obj,
         subst_vars env args, dbg)
     in
-    apply_cont env continuation ulam
+    to_clambda_apply env continuation ~continuation_arity:1 ulam
   | Switch (scrutinee, sw) ->
     let arg = subst_var env scrutinee in
     (* CR mshinwell: More transformations here to satisfy Cmmgen? *)
@@ -460,11 +488,15 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
       match cont with
       | Normal cont -> Ustaticfail (Continuation.to_int cont, args)
       | Return_continuation ->
+        let dbg = Debuginfo.none in
         match args with
-        | [] ->
-          Uprim (Preturn, [Clambda.Uconst (Uconst_int 0)], Debuginfo.none)
+        | [] -> Uprim (Preturn, [Clambda.Uconst (Uconst_int 0)], dbg)
+        | [arg] -> Uprim (Preturn, [arg], dbg)
         | args ->
-          Uprim (Preturn, args, Debuginfo.none)
+          let unboxed_tuple = Ident.create "multi_result" in
+          Ulet (Immutable, Pgenval, unboxed_tuple,
+            Uprim (Pmake_unboxed_tuple, args, dbg),
+            Uprim (Preturn, unboxed_tuple, dbg))
     in
     let trap_action : Clambda.ulambda option =
       match trap_action with

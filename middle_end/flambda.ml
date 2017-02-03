@@ -18,7 +18,10 @@
 
 type call_kind =
   | Indirect
-  | Direct of Closure_id.t
+  | Direct of {
+      closure_id : Closure_id.t;
+      return_arity : int;
+    }
 
 module Const = struct
   type t =
@@ -272,7 +275,8 @@ let print_trap_action ppf trap_action =
 (** CR-someday lwhite: use better name than this *)
 let rec lam ppf (flam : t) =
   match flam with
-  | Apply({kind; func; continuation; args; call_kind; inline; dbg}) ->
+  | Apply({kind; func; continuation; args; call_kind; inline;
+      dbg}) ->
     let print_func_and_kind ppf func =
       match kind with
       | Function -> Variable.print ppf func
@@ -285,7 +289,8 @@ let rec lam ppf (flam : t) =
     let direct ppf () =
       match call_kind with
       | Indirect -> ()
-      | Direct closure_id -> fprintf ppf "*[%a]" Closure_id.print closure_id
+      | Direct { closure_id; _ } ->
+        fprintf ppf "*[%a]" Closure_id.print closure_id
     in
     let inline ppf () =
       match inline with
@@ -294,8 +299,16 @@ let rec lam ppf (flam : t) =
       | Unroll i -> fprintf ppf "<unroll %i>" i
       | Default_inline -> ()
     in
-    fprintf ppf "@[<2>(apply%a%a<%s>@ <%a> %a %a)@]" direct () inline ()
+    let return_arity =
+      match call_kind with
+      | Indirect -> ""
+      | Direct { return_arity; _ } ->
+        if return_arity < 2 then ""
+        else Printf.sprintf " (return arity %d)" return_arity
+    in
+    fprintf ppf "@[<2>(apply%a%a<%s>%s@ <%a> %a %a)@]" direct () inline ()
       (Debuginfo.to_string dbg)
+      return_arity
       Continuation.print continuation
       print_func_and_kind func
       Variable.print_list args

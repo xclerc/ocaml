@@ -735,16 +735,6 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
               inline_and_specialise_continuations env r ~body ~simplify
                 ~backend:(E.backend env)
           in
-          (* [Unbox_continuation_params] doesn't currently update continuation
-             usage information, but that doesn't matter: we've done inlining
-             and specialisation now, and [Unbox_returns] (below) which uses the
-             usage information is only interested in functions' return
-             continuations (which [Unbox_continuation_params] will never
-             touch). *)
-          let body =
-            Unbox_continuation_params.run r ~function_body:body
-              ~backend:(E.backend env)
-          in
           let r, uses = R.exit_scope_catch r env continuation_param in
           Continuation.Tbl.add continuation_uses continuation_param uses;
           body, r)
@@ -798,7 +788,10 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     Flambda.update_function_declarations function_decls ~funs
   in
   let function_decls, new_specialised_args =
-    Unbox_returns.run ~continuation_uses ~function_decls ~specialised_args
+    if E.never_inline env then
+      function_decls, Variable.Map.empty
+    else
+      Unbox_returns.run ~continuation_uses ~function_decls ~specialised_args
   in
   let specialised_args =
     Variable.Map.disjoint_union specialised_args new_specialised_args
@@ -1581,12 +1574,21 @@ and simplify_let_cont_handler ~env ~r ~cont
       ~(handler : Flambda.continuation_handler)
       ~(recursive : Asttypes.rec_flag) =
   let args_approxs =
+(*
 Format.eprintf "simplify_let_cont_handler %a (num_params %d)\n%!"
   Continuation.print cont (List.length handler.params);
+*)
     R.continuation_args_approxs r cont ~num_params:(List.length handler.params)
   in
   let { Flambda. params = vars; stub; is_exn_handler; handler;
     specialised_args; } = handler
+  in
+  let handler =
+    (* Unboxing of continuation parameters is done now so that in one pass of
+       [Inline_and_simplify] such unboxing will go all the way down the
+       control flow. *)
+    if stub || E.never_inline env then handler
+    else Unbox_continuation_params.run r handler ~backend:(E.backend env)
   in
   (* CR mshinwell: rename "vars" to "params" *)
   let freshened_vars, sb =

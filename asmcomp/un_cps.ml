@@ -227,13 +227,9 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
       begin match E.action_at_apply_cont env ~cont with
       | Unchanged -> Ustaticfail (cont, inline_list env args)
       | Return ->
-        begin match args with
-        | [arg] -> arg
-        | _ ->
-          Misc.fatal_errorf "Ustaticfail %d has the wrong number of \
-              arguments"
-            cont
-        end
+        Misc.fatal_errorf "Ustaticfail %d calls a return continuation; use \
+            Preturn instead (probable bug in Flambda_to_clambda)"
+          cont
       | Let_bind_args_and_substitute (params, handler) ->
         if List.length params <> List.length args then begin
           Misc.fatal_errorf "Ustaticfail %d has the wrong number of \

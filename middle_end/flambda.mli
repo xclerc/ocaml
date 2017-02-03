@@ -29,7 +29,12 @@
 (** Whether the callee in a function application is known at compile time. *)
 type call_kind =
   | Indirect
-  | Direct of Closure_id.t
+  | Direct of {
+      closure_id : Closure_id.t;
+      return_arity : int;
+      (** How many unboxed results are returned by the callee (equal to the
+          arity of [continuation] in the enclosing [apply] record). *)
+    }
 
 (** Simple constants.  ("Structured constants" are rewritten to invocations
     of [Pmakeblock] so that they easily take part in optimizations.) *)
@@ -60,6 +65,7 @@ type apply = {
      lhs_of_application -> callee *)
   func : Variable.t;
   continuation : Continuation.t;
+  (** Where to send the result of the application. *)
   args : Variable.t list;
   call_kind : call_kind;
   dbg : Debuginfo.t;

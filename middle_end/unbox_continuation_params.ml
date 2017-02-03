@@ -168,8 +168,8 @@ let for_continuations r ~body ~handlers ~original:_ ~backend
     Some output
   end
 
-let run r ~function_body ~backend =
-Format.eprintf "Ready to unbox:\n@;%a\n%!" Flambda.print function_body;
+let run r expr ~backend =
+Format.eprintf "Ready to unbox:\n@;%a\n%!" Flambda.print expr;
   Flambda_iterators.map_expr (fun (expr : Flambda.expr) ->
       match expr with
       | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
@@ -196,4 +196,4 @@ Format.eprintf "Ready to unbox:\n@;%a\n%!" Flambda.print function_body;
       | Let_cont { handlers = Alias _; _ }
       | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
       | Proved_unreachable -> expr)
-    function_body
+    expr

@@ -21,6 +21,6 @@
 
 val run
    : Inline_and_simplify_aux.Result.t
-  -> function_body:Flambda.expr
+  -> Flambda.expr
   -> backend:(module Backend_intf.S)
   -> Flambda.expr
