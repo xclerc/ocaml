@@ -373,19 +373,18 @@ let to_clambda_apply env cont ~continuation_arity arg : Clambda.ulambda =
     | Normal cont ->
       let vars_and_indexes =
         Array.to_list (Array.init continuation_arity (fun index ->
-          let var = Variable.create (Printf.sprintf "result%d" index) in
+          let var = Ident.create (Printf.sprintf "result%d" index) in
           var, index))
       in
       let call_cont : Clambda.ulambda =
         let vars =
-          List.map (fun (var, _index) : Clambda.ulambda ->
-              Uvar (find_var env var))
+          List.map (fun (var, _index) : Clambda.ulambda -> Uvar var)
             vars_and_indexes
         in
         Ustaticfail (Continuation.to_int cont, vars)
       in
       List.fold_right (fun (var, index) expr : Clambda.ulambda ->
-          Ulet (Immutable, Pgenval, find_var env var,
+          Ulet (Immutable, Pgenval, var,
             Uprim (Punboxed_tuple_field index, [arg], dbg),
             expr))
         vars_and_indexes
