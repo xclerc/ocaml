@@ -18,9 +18,9 @@
 
 type environment
 
-val env_add : Ident.t -> Reg.t array -> environment -> environment
+val env_add : Ident.t -> Reg.t array array -> environment -> environment
 
-val env_find : Ident.t -> environment -> Reg.t array
+val env_find : Ident.t -> environment -> Reg.t array array
 
 val size_expr : environment -> Cmm.expression -> int
 

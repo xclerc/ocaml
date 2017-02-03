@@ -254,7 +254,7 @@ class virtual instruction_selection = object (self)
     (* [callee] is a pseudoregister, so we have to bind it in the environment
        and reference the variable to which it is bound. *)
     let callee_ident = Ident.create "callee" in
-    let env = Selectgen.env_add callee_ident [| callee |] env in
+    let env = Selectgen.env_add callee_ident [| [| callee |] |] env in
     let instrumentation =
       code_for_call
         ~node:(Lazy.force !spacetime_node)
@@ -321,7 +321,7 @@ class virtual instruction_selection = object (self)
       disable_instrumentation <- false;
       let node = Lazy.force !spacetime_node_ident in
       let node_reg = Selectgen.env_find node env in
-      self#insert_moves node_temp_reg node_reg
+      self#insert_moves node_temp_reg node_reg.(0)
     end
 
   method! emit_blockheader env n dbg =
@@ -358,7 +358,7 @@ class virtual instruction_selection = object (self)
     if self#can_instrument () then begin
       let regs = Selectgen.env_find (Lazy.force !spacetime_node_ident) env in
       match regs with
-      | [| reg |] -> [| reg |]
+      | [| [| reg |] |] -> [| reg |]
       | _ -> failwith "Expected one register only for spacetime_node_ident"
     end else begin
       super#select_allocation_args env
@@ -395,7 +395,7 @@ class virtual instruction_selection = object (self)
     let env = super#initial_env () in
     if Config.spacetime then
       Selectgen.env_add (Lazy.force !spacetime_node_ident)
-        (self#regs_for Cmm.typ_int) env
+        [| self#regs_for Cmm.typ_int |] env
     else
       env
 

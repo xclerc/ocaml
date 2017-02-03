@@ -1650,9 +1650,9 @@ let rec transl env e =
       | (Pmakeblock(tag, _mut, _kind), args) ->
           make_alloc dbg tag (List.map (transl env) args)
       | (Pmake_unboxed_tuple, args) ->
-          Cop(Cmultistore, (List.map transl args))
+          Cop(Cmultistore, List.map (transl env) args, dbg)
       | (Punboxed_tuple_field i, args) ->
-          Cop(Cmultiload i, (List.map transl args))
+          Cop(Cmultiload i, List.map (transl env) args, dbg)
       | (Pccall prim, args) ->
           transl_ccall env prim args dbg
       | (Pduparray (kind, _), [Uprim (Pmakearray (kind', _), args, _dbg)]) ->

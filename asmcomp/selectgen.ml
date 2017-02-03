@@ -47,8 +47,8 @@ let env_empty = {
 
 (* Infer the type of the result of an operation *)
 
-let oper_result_type = function
-    Capply ty -> [| ty |]
+let oper_result_type n = function
+    Capply tys -> tys
   | Cextcall(_s, ty, _alloc, _) -> [| ty |]
   | Cload c ->
       begin match c with
@@ -58,6 +58,8 @@ let oper_result_type = function
       end
   | Calloc -> [| typ_val |]
   | Cstore (_c, _) -> [| typ_void |]
+  | Cmultistore -> Array.init n (fun _ -> typ_val)
+  | Cmultiload _ -> [| typ_val |]
   | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi |
     Cand | Cor | Cxor | Clsl | Clsr | Casr |
     Ccmpi _ | Ccmpa _ | Ccmpf _ -> [| typ_int |]
@@ -288,7 +290,7 @@ method select_operation op args _dbg =
   | (Capply _, Cconst_symbol func :: rem) ->
     let label_after = Cmm.new_label () in
     (Icall_imm { func; label_after; trap_stack = []; }, rem)
-  | (Capply tys, dbg) ->
+  | (Capply tys, _) ->
     if Array.length tys <> 1 then begin
       Misc.fatal_error "Indirect Capply with non-unity return arity"
     end;
@@ -583,11 +585,7 @@ method emit_expr (env:environment) exp =
       begin match self#emit_parts_list env args with
         None -> None
       | Some(simple_args, env) ->
-          let ty =
-            match op with
-            | Capply (ty, _) -> ty
-            | _ -> oper_result_type (List.length simple_args) op
-          in
+          let ty = oper_result_type (List.length simple_args) op in
           let (new_op, new_args) = self#select_operation op simple_args dbg in
           match new_op with
             Icall_ind _ ->
@@ -666,7 +664,7 @@ method emit_expr (env:environment) exp =
               Some rd
           | op ->
               let r1 = self#emit_tuple env new_args in
-              let rd = self#regs_for ty in
+              let rd = self#regs_for ty.(0) in
               Some (self#insert_op_debug op dbg r1 rd)
       end
   | Csequence(e1, e2) ->
@@ -800,7 +798,7 @@ method private bind_let (env:environment) v r1 =
     let rv = Reg.createv_like r1 in
     name_regs v rv;
     self#insert_moves r1 rv;
-    env_add v rv env
+    env_add v [| rv |] env
   end
 
 method private emit_parts (env:environment) exp =
