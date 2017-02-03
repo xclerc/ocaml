@@ -106,11 +106,13 @@ type memory_chunk =
   | Double_u                           (* word-aligned 64-bit float *)
 
 and operation =
-    Capply of machtype
+    Capply of machtype array
   | Cextcall of string * machtype * bool * label option
   | Cload of memory_chunk
   | Calloc
   | Cstore of memory_chunk * Lambda.initialization_or_assignment
+  | Cmultistore
+  | Cmultiload of int
   | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi
   | Cand | Cor | Cxor | Clsl | Clsr | Casr
   | Ccmpi of comparison

@@ -60,7 +60,7 @@ let occurs_var var u =
   let rec occurs = function
       Uvar v -> v = var
     | Uconst _ -> false
-    | Udirect_apply(_lbl, args, _) -> List.exists occurs args
+    | Udirect_apply(_lbl, args, _, _) -> List.exists occurs args
     | Ugeneric_apply(funct, args, _) -> occurs funct || List.exists occurs args
     | Uclosure(_fundecls, clos) -> List.exists occurs clos
     | Uoffset(u, _ofs) -> occurs u
@@ -147,7 +147,7 @@ let lambda_smaller lam threshold =
     match lam with
       Uvar _ -> ()
     | Uconst _ -> incr size
-    | Udirect_apply(_, args, _) ->
+    | Udirect_apply(_, args, _, _) ->
         size := !size + 4; lambda_list_size args
     | Ugeneric_apply(fn, args, _) ->
         size := !size + 6; lambda_size fn; lambda_list_size args
@@ -531,9 +531,10 @@ let rec substitute loc fpc sb ulam =
     Uvar v ->
       begin try Tbl.find v sb with Not_found -> ulam end
   | Uconst _ -> ulam
-  | Udirect_apply(lbl, args, dbg) ->
+  | Udirect_apply(lbl, args, return_arity, dbg) ->
       let dbg = subst_debuginfo loc dbg in
-      Udirect_apply(lbl, List.map (substitute loc fpc sb) args, dbg)
+      Udirect_apply(lbl, List.map (substitute loc fpc sb) args,
+        return_arity, dbg)
   | Ugeneric_apply(fn, args, dbg) ->
       let dbg = subst_debuginfo loc dbg in
       Ugeneric_apply(substitute loc fpc sb fn,
@@ -722,7 +723,7 @@ let direct_apply fundesc funct ufunct uargs ~loc ~attribute =
       let dbg = Debuginfo.from_location loc in
         warning_if_forced_inline ~loc ~attribute
           "Function information unavailable";
-        Udirect_apply(fundesc.fun_label, app_args, dbg)
+        Udirect_apply(fundesc.fun_label, app_args, 1, dbg)
     | Some(params, body), _  ->
         bind_params loc fundesc.fun_float_const_prop params app_args body
   in
@@ -1319,7 +1320,7 @@ let collect_exported_structured_constants a =
   and ulam = function
     | Uvar _ -> ()
     | Uconst c -> const c
-    | Udirect_apply (_, ul, _) -> List.iter ulam ul
+    | Udirect_apply (_, ul, _, _) -> List.iter ulam ul
     | Ugeneric_apply (u, ul, _) -> ulam u; List.iter ulam ul
     | Uclosure (fl, ul) ->
         List.iter (fun f -> ulam f.body) fl;

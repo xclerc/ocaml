@@ -36,6 +36,9 @@ let machtype ppf mty =
            fprintf ppf "*%a" machtype_component mty.(i)
          done
 
+let machtype_list ppf mty_list =
+  Array.iter (fprintf ppf "%a " machtype) mty_list
+
 let comparison = function
   | Ceq -> "=="
   | Cne -> "!="
@@ -74,6 +77,8 @@ let operation d = function
       | Lambda.Assignment -> ""
     in
     Printf.sprintf "store %s%s" (chunk c) init
+  | Cmultiload n -> Printf.sprintf "multiload %d" n
+  | Cmultistore -> "multistore"
   | Caddi -> "+"
   | Csubi -> "-"
   | Cmuli -> "*"
@@ -146,7 +151,7 @@ let rec expr ppf = function
       fprintf ppf "@[<2>(%s" (operation dbg op);
       List.iter (fun e -> fprintf ppf "@ %a" expr e) el;
       begin match op with
-      | Capply mty -> fprintf ppf "@ %a" machtype mty
+      | Capply mty -> fprintf ppf "@ %a" machtype_list mty
       | Cextcall(_, mty, _, _) -> fprintf ppf "@ %a" machtype mty
       | _ -> ()
       end;

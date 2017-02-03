@@ -1003,7 +1003,8 @@ and simplify_full_application env r ~function_decls ~lhs_of_application
     ~inline_requested ~specialise_requested
 
 and simplify_partial_application env r ~lhs_of_application
-      ~closure_id_being_applied ~function_decl ~args ~continuation ~dbg
+      ~closure_id_being_applied
+      ~(function_decl : Flambda.function_declaration) ~args ~continuation ~dbg
       ~inline_requested ~specialise_requested =
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity > List.length args);
@@ -1046,7 +1047,10 @@ and simplify_partial_application env r ~lhs_of_application
         continuation = wrapper_continuation_param;
         func = lhs_of_application;
         args = freshened_params;
-        call_kind = Direct closure_id_being_applied;
+        call_kind = Direct {
+          closure_id = closure_id_being_applied;
+          return_arity = function_decl.return_arity;
+        };
         dbg;
         inline = Default_inline;
         specialise = Default_specialise;

@@ -47,7 +47,10 @@ let tupled_function_call_stub original_params unboxed_version
         args = params;
         (* CR-someday mshinwell for mshinwell: investigate if there is some
            redundancy here (func is also unboxed_version) *)
-        call_kind = Direct (Closure_id.wrap unboxed_version);
+        call_kind = Direct {
+          closure_id = Closure_id.wrap unboxed_version;
+          return_arity = 1;
+        };
         dbg = Debuginfo.none;
         inline = Default_inline;
         specialise = Default_specialise;

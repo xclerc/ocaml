@@ -483,7 +483,10 @@ module Make (T : S) = struct
           func = new_fun_var;
           continuation = wrapper_continuation_param;
           args = wrapper_params @ spec_args_bound_in_the_wrapper;
-          call_kind = Direct (Closure_id.wrap new_fun_var);
+          call_kind = Direct {
+            closure_id = Closure_id.wrap new_fun_var;
+            return_arity = function_decl.return_arity;
+          };
           dbg = Debuginfo.none;
           inline = Default_inline;
           specialise = Default_specialise;

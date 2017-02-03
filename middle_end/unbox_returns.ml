@@ -106,7 +106,10 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
         func = new_fun_var;
         continuation = receive_results;
         args = fun_wrapper_params;
-        call_kind = Direct (Closure_id.wrap new_fun_var);
+        call_kind = Direct {
+          closure_id = Closure_id.wrap new_fun_var;
+          return_arity = function_decl.return_arity;
+        };
         dbg;
         inline = Lambda.Default_inline;
         specialise = Lambda.Default_specialise;

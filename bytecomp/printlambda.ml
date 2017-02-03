@@ -313,6 +313,8 @@ let primitive ppf = function
   | Popaque -> fprintf ppf "opaque"
   | Pread_mutable i -> fprintf ppf "read_mutable %a" Ident.print i
   | Preturn -> fprintf ppf "return"
+  | Pmake_unboxed_tuple -> fprintf ppf "make_unboxed_tuple"
+  | Punboxed_tuple_field i -> fprintf ppf "unboxed_tuple_field %d" i
 
 let name_of_primitive = function
   | Pidentity -> "Pidentity"
@@ -417,6 +419,8 @@ let name_of_primitive = function
   | Popaque -> "Popaque"
   | Pread_mutable _ -> "Pread_mutable"
   | Preturn -> "Preturn"
+  | Pmake_unboxed_tuple -> "Pmake_unboxed_tuple"
+  | Punboxed_tuple_field _ -> "Punboxed_tuple_field"
 
 let function_attribute ppf { inline; specialise; is_a_functor } =
   if is_a_functor then

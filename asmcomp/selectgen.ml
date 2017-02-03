@@ -22,7 +22,7 @@ open Reg
 open Mach
 
 type environment =
-  { vars : (Ident.t, Reg.t array) Tbl.t;
+  { vars : (Ident.t, Reg.t array array) Tbl.t;
     static_exceptions : (int, Reg.t array list) Tbl.t;
     (** Which registers must be populated when jumping to the given
         handler. *)
@@ -48,27 +48,27 @@ let env_empty = {
 (* Infer the type of the result of an operation *)
 
 let oper_result_type = function
-    Capply ty -> ty
-  | Cextcall(_s, ty, _alloc, _) -> ty
+    Capply ty -> [| ty |]
+  | Cextcall(_s, ty, _alloc, _) -> [| ty |]
   | Cload c ->
       begin match c with
-      | Word_val -> typ_val
-      | Single | Double | Double_u -> typ_float
-      | _ -> typ_int
+      | Word_val -> [| typ_val |]
+      | Single | Double | Double_u -> [| typ_float |]
+      | _ -> [| typ_int |]
       end
-  | Calloc -> typ_val
-  | Cstore (_c, _) -> typ_void
+  | Calloc -> [| typ_val |]
+  | Cstore (_c, _) -> [| typ_void |]
   | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi |
     Cand | Cor | Cxor | Clsl | Clsr | Casr |
-    Ccmpi _ | Ccmpa _ | Ccmpf _ -> typ_int
-  | Caddv -> typ_val
-  | Cadda -> typ_addr
-  | Cnegf | Cabsf | Caddf | Csubf | Cmulf | Cdivf -> typ_float
-  | Cfloatofint -> typ_float
-  | Cintoffloat -> typ_int
-  | Craise _ -> typ_void
-  | Ccheckbound -> typ_void
-  | Cpushtrap _ | Cpoptrap _ -> typ_void
+    Ccmpi _ | Ccmpa _ | Ccmpf _ -> [| typ_int |]
+  | Caddv -> [| typ_val |]
+  | Cadda -> [| typ_addr |]
+  | Cnegf | Cabsf | Caddf | Csubf | Cmulf | Cdivf -> [| typ_float |]
+  | Cfloatofint -> [| typ_float |]
+  | Cintoffloat -> [| typ_int |]
+  | Craise _ -> [| typ_void |]
+  | Ccheckbound -> [| typ_void |]
+  | Cpushtrap _ | Cpoptrap _ -> [| typ_void |]
 
 (* Infer the size in bytes of the result of a simple expression *)
 
@@ -84,7 +84,7 @@ let size_expr (env:environment) exp =
           Tbl.find id localenv
         with Not_found ->
         try
-          let regs = env_find id env in
+          let regs = (env_find id env).(0) in
           size_machtype (Array.map (fun r -> r.typ) regs)
         with Not_found ->
           fatal_error("Selection.size_expr: unbound var " ^
@@ -92,8 +92,9 @@ let size_expr (env:environment) exp =
         end
     | Ctuple el ->
         List.fold_right (fun e sz -> size localenv e + sz) el 0
-    | Cop(op, _, _) ->
-        size_machtype(oper_result_type op)
+    | Cop(op, args, _) ->
+        size_machtype((oper_result_type (List.length args) op).(0))
+        (* TODO(wcrichton): what here? *)
     | Clet(id, arg, body) ->
         size (Tbl.add id (size localenv arg) localenv) body
     | Csequence(_e1, e2) ->
@@ -287,7 +288,10 @@ method select_operation op args _dbg =
   | (Capply _, Cconst_symbol func :: rem) ->
     let label_after = Cmm.new_label () in
     (Icall_imm { func; label_after; trap_stack = []; }, rem)
-  | (Capply _, _) ->
+  | (Capply tys, dbg) ->
+    if Array.length tys <> 1 then begin
+      Misc.fatal_error "Indirect Capply with non-unity return arity"
+    end;
     let label_after = Cmm.new_label () in
     (Icall_ind { label_after; trap_stack = []; }, args)
   | (Cextcall(func, _ty, alloc, label_after), _) ->
@@ -315,6 +319,8 @@ method select_operation op args _dbg =
         (* Inversion addr/datum in Istore *)
       end
   | (Calloc, _) -> (self#select_allocation 0), args
+  | (Cmultistore, _) -> (Imultistore, args)
+  | (Cmultiload i, _) -> (Imultiload i, args)
   | (Caddi, _) -> self#select_arith_comm Iadd args
   | (Csubi, _) -> self#select_arith Isub args
   | (Cmuli, _) -> self#select_arith_comm Imul args
@@ -421,6 +427,8 @@ method select_condition = function
    in pairs of integer registers. *)
 
 method regs_for tys = Reg.createv tys
+
+method regs_for_multi tys = Array.map self#regs_for tys
 
 (* Buffering of instruction sequences *)
 
@@ -533,7 +541,7 @@ method emit_expr (env:environment) exp =
       self#emit_blockheader env n dbg
   | Cvar v ->
       begin try
-        Some(env_find v env)
+        Some((env_find v env).(0))
       with Not_found ->
         fatal_error("Selection.emit_expr: unbound var " ^ Ident.unique_name v)
       end
@@ -545,7 +553,7 @@ method emit_expr (env:environment) exp =
   | Cassign(v, e1) ->
       let rv =
         try
-          env_find v env
+          (env_find v env).(0)
         with Not_found ->
           fatal_error ("Selection.emit_expr: unbound var " ^ Ident.name v) in
       begin match self#emit_expr env e1 with
@@ -575,49 +583,62 @@ method emit_expr (env:environment) exp =
       begin match self#emit_parts_list env args with
         None -> None
       | Some(simple_args, env) ->
-          let ty = oper_result_type op in
+          let ty =
+            match op with
+            | Capply (ty, _) -> ty
+            | _ -> oper_result_type (List.length simple_args) op
+          in
           let (new_op, new_args) = self#select_operation op simple_args dbg in
           match new_op with
             Icall_ind _ ->
-              let r1 = self#emit_tuple env new_args in
-              let rarg = Array.sub r1 1 (Array.length r1 - 1) in
-              let rd = self#regs_for ty in
-              let (loc_arg, stack_ofs) = Proc.loc_arguments rarg in
-              let loc_res = Proc.loc_results rd in
-              let spacetime_reg =
-                self#about_to_emit_call env (Iop new_op) [| r1.(0) |]
-              in
-              self#insert_move_args rarg loc_arg stack_ofs;
-              self#maybe_emit_spacetime_move ~spacetime_reg;
-              self#insert_debug (Iop new_op) dbg
-                          (Array.append [|r1.(0)|] loc_arg) loc_res;
-              self#insert_move_results loc_res rd stack_ofs;
-              Some rd
+              if Array.length ty > 1 then begin
+                Misc.fatal_error "Icall_ind with non-unity return arity"
+              end else begin
+                let r1 = self#emit_tuple env new_args in
+                let rarg = Array.sub r1 1 (Array.length r1 - 1) in
+                let rd = self#regs_for_multi ty in
+                let (loc_arg, stack_ofs) = Proc.loc_arguments rarg in
+                let loc_res = Proc.loc_results rd.(0) in
+                let spacetime_reg =
+                  self#about_to_emit_call env (Iop new_op) [| r1.(0) |]
+                in
+                self#insert_move_args rarg loc_arg stack_ofs;
+                self#maybe_emit_spacetime_move ~spacetime_reg;
+                self#insert_debug (Iop new_op) dbg
+                            (Array.append [|r1.(0)|] loc_arg) loc_res;
+                self#insert_move_results loc_res rd.(0) stack_ofs;
+                Some rd.(0)
+              end
           | Icall_imm _ ->
               let r1 = self#emit_tuple env new_args in
-              let rd = self#regs_for ty in
+              let rd = self#regs_for_multi ty in
+              let rd_flat = Array.concat (Array.to_list rd) in
               let (loc_arg, stack_ofs) = Proc.loc_arguments r1 in
-              let loc_res = Proc.loc_results rd in
+              let loc_res = Proc.loc_results rd_flat in
               let spacetime_reg =
                 self#about_to_emit_call env (Iop new_op) [| |]
               in
               self#insert_move_args r1 loc_arg stack_ofs;
               self#maybe_emit_spacetime_move ~spacetime_reg;
               self#insert_debug (Iop new_op) dbg loc_arg loc_res;
-              self#insert_move_results loc_res rd stack_ofs;
-              Some rd
+              self#insert_move_results loc_res rd_flat stack_ofs;
+              Some rd_flat
           | Iextcall _ ->
-              let spacetime_reg =
-                self#about_to_emit_call env (Iop new_op) [| |]
-              in
-              let (loc_arg, stack_ofs) = self#emit_extcall_args env new_args in
-              self#maybe_emit_spacetime_move ~spacetime_reg;
-              let rd = self#regs_for ty in
-              let loc_res =
-                self#insert_op_debug new_op dbg
-                  loc_arg (Proc.loc_external_results rd) in
-              self#insert_move_results loc_res rd stack_ofs;
-              Some rd
+              if Array.length ty > 1 then begin
+                Misc.fatal_error "Iextcall with non-unity return arity"
+              end else begin
+                let spacetime_reg =
+                  self#about_to_emit_call env (Iop new_op) [| |]
+                in
+                let (loc_arg, stack_ofs) = self#emit_extcall_args env new_args in
+                self#maybe_emit_spacetime_move ~spacetime_reg;
+                let rd = self#regs_for_multi ty in
+                let loc_res =
+                  self#insert_op_debug new_op dbg
+                    loc_arg (Proc.loc_external_results rd.(0)) in
+                self#insert_move_results loc_res rd.(0) stack_ofs;
+                Some rd.(0)
+              end
           | Ialloc { words = _; spacetime_index; label_after_call_gc; } ->
               let rd = self#regs_for typ_val in
               let size = size_expr env (Ctuple new_args) in
@@ -627,6 +648,21 @@ method emit_expr (env:environment) exp =
               let args = self#select_allocation_args env in
               self#insert_debug (Iop op) dbg args rd;
               self#emit_stores env new_args rd;
+              Some rd
+          | Imultistore ->
+              let r1 = self#emit_tuple env new_args in
+              let rd = self#regs_for_multi ty in
+              Array.iteri (fun i r -> self#insert_move r rd.(i).(0)) r1;
+                (* TODO(wcrichton): ^ this doesn't look platform-independent *)
+              Some (Array.concat (Array.to_list rd))
+          | Imultiload index ->
+              let r1 = self#emit_tuple env new_args in
+              let rd = self#regs_for ty.(0) in
+              if Array.length r1 <= index && false then
+                Misc.fatal_error "Selectgen.emit_expr: \
+                  Imultiload index larger than multireturn length"
+              else
+              self#insert_move r1.(index) rd.(0);
               Some rd
           | op ->
               let r1 = self#emit_tuple env new_args in
@@ -695,7 +731,7 @@ method emit_expr (env:environment) exp =
       let translate_one_handler (nfail, ids, rs, e2) =
         assert(List.length ids = List.length rs);
         let new_env =
-          List.fold_left (fun env (id, r) -> env_add id r env)
+          List.fold_left (fun env (id, r) -> env_add id [| r |] env)
             env (List.combine ids rs)
         in
         let (r, s) =
@@ -759,7 +795,7 @@ method private emit_sequence ?at_start env exp =
 method private bind_let (env:environment) v r1 =
   if all_regs_anonymous r1 then begin
     name_regs v r1;
-    env_add v r1 env
+    env_add v [| r1 |] env
   end else begin
     let rv = Reg.createv_like r1 in
     name_regs v rv;
@@ -781,12 +817,12 @@ method private emit_parts (env:environment) exp =
           let id = Ident.create "bind" in
           if all_regs_anonymous r then
             (* r is an anonymous, unshared register; use it directly *)
-            Some (Cvar id, env_add id r env)
+            Some (Cvar id, env_add id [| r |] env)
           else begin
             (* Introduce a fresh temp to hold the result *)
             let tmp = Reg.createv_like r in
             self#insert_moves r tmp;
-            Some (Cvar id, env_add id tmp env)
+            Some (Cvar id, env_add id [| tmp |] env)
           end
         end
   end
@@ -861,8 +897,8 @@ method emit_stores env data regs_addr =
 method private emit_return (env:environment) exp =
   match self#emit_expr env exp with
     None -> ()
-  | Some r ->
-      let loc = Proc.loc_results r in
+  | Some r ->                         (* modify *)
+      let loc = Proc.loc_results r in (* this is where to put the results *)
       self#insert_moves r loc;
       self#insert Ireturn loc [||]
 
@@ -893,7 +929,7 @@ method emit_tail (env:environment) exp =
                 self#insert_debug call dbg
                             (Array.append [|r1.(0)|] loc_arg) [||];
               end else begin
-                let rd = self#regs_for ty in
+                let rd = self#regs_for ty.(0) in
                 let loc_res = Proc.loc_results rd in
                 let spacetime_reg =
                   self#about_to_emit_call env (Iop new_op) [| r1.(0) |]
@@ -926,7 +962,7 @@ method emit_tail (env:environment) exp =
                 self#maybe_emit_spacetime_move ~spacetime_reg;
                 self#insert_debug call dbg loc_arg' [||];
               end else begin
-                let rd = self#regs_for ty in
+                let rd = self#regs_for ty.(0) in
                 let loc_res = Proc.loc_results rd in
                 let spacetime_reg =
                   self#about_to_emit_call env (Iop new_op) [| |]
@@ -985,7 +1021,7 @@ method emit_tail (env:environment) exp =
         assert(List.length ids = List.length rs);
         let new_env =
           List.fold_left
-            (fun env (id,r) -> env_add id r env)
+            (fun env (id,r) -> env_add id [| r |] env)
             env (List.combine ids rs) in
         nfail, [],
           self#emit_tail_sequence new_env e2 ~at_start:(fun seq ->
@@ -1043,14 +1079,14 @@ method emit_fundecl f =
      together is then simply prepended to the body. *)
   let env =
     List.fold_right2
-      (fun (id, _ty) r env -> env_add id r env)
+      (fun (id, _ty) r env -> env_add id [| r |] env)
       f.Cmm.fun_args rargs (self#initial_env ()) in
   let spacetime_node_hole, env =
     if not Config.spacetime then None, env
     else begin
       let reg = self#regs_for typ_int in
       let node_hole = Ident.create "spacetime_node_hole" in
-      Some (node_hole, reg), env_add node_hole reg env
+      Some (node_hole, reg), env_add node_hole [| reg |] env
     end
   in
   self#emit_tail env f.Cmm.fun_body;

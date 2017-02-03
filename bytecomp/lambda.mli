@@ -162,6 +162,9 @@ type primitive =
   (* Marking of return points: only used between [Flambda_to_clambda] and
      [Un_anf]. *)
   | Preturn
+  (* Construction and destruction of groups of multiple function results *)
+  | Pmake_unboxed_tuple
+  | Punboxed_tuple_field of int
 
 and comparison =
     Ceq | Cneq | Clt | Cgt | Cle | Cge

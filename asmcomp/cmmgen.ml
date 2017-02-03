@@ -501,7 +501,7 @@ let rec remove_unit = function
   | Clet(id, c1, c2) ->
       Clet(id, c1, remove_unit c2)
   | Cop(Capply _mty, args, dbg) ->
-      Cop(Capply typ_void, args, dbg)
+      Cop(Capply [| typ_void |], args, dbg)
   | Cop(Cextcall(proc, _mty, alloc, label_after), args, dbg) ->
       Cop(Cextcall(proc, typ_void, alloc, label_after), args, dbg)
   | Cexit (_,_) as c -> c
@@ -656,7 +656,7 @@ let call_cached_method obj tag cache pos args dbg =
   let arity = List.length args in
   let cache = array_indexing log2_size_addr cache pos dbg in
   Compilenv.need_send_fun arity;
-  Cop(Capply typ_val,
+  Cop(Capply [| typ_val |],
       Cconst_symbol("caml_send" ^ string_of_int arity) ::
         obj :: tag :: cache :: args,
       dbg)
@@ -1601,26 +1601,27 @@ let rec transl env e =
       if offset = 0
       then ptr
       else Cop(Caddv, [ptr; Cconst_int(offset * size_addr)], Debuginfo.none)
-  | Udirect_apply(lbl, args, dbg) ->
-      Cop(Capply typ_val, Cconst_symbol lbl :: List.map (transl env) args, dbg)
+  | Udirect_apply(lbl, args, dbg, return_arity) ->
+      let results = Array.init return_arity (fun _ -> typ_val) in
+      Cop(Capply results, Cconst_symbol lbl :: List.map (transl env) args, dbg)
   | Ugeneric_apply(clos, [arg], dbg) ->
       bind "fun" (transl env clos) (fun clos ->
-        Cop(Capply typ_val, [get_field clos 0 dbg; transl env arg; clos],
+        Cop(Capply [| typ_val |], [get_field clos 0 dbg; transl env arg; clos],
           dbg))
   | Ugeneric_apply(clos, args, dbg) ->
       let arity = List.length args in
       let cargs = Cconst_symbol(apply_function arity) ::
         List.map (transl env) (args @ [clos]) in
-      Cop(Capply typ_val, cargs, dbg)
+      Cop(Capply [| typ_val |], cargs, dbg)
   | Usend(kind, met, obj, args, dbg) ->
       let call_met obj args clos =
         if args = [] then
-          Cop(Capply typ_val, [get_field clos 0 dbg; obj; clos], dbg)
+          Cop(Capply [| typ_val |], [get_field clos 0 dbg; obj; clos], dbg)
         else
           let arity = List.length args + 1 in
           let cargs = Cconst_symbol(apply_function arity) :: obj ::
             (List.map (transl env) args) @ [clos] in
-          Cop(Capply typ_val, cargs, dbg)
+          Cop(Capply [| typ_val |], cargs, dbg)
       in
       bind "obj" (transl env obj) (fun obj ->
         match kind, args with
@@ -1648,6 +1649,10 @@ let rec transl env e =
           assert false
       | (Pmakeblock(tag, _mut, _kind), args) ->
           make_alloc dbg tag (List.map (transl env) args)
+      | (Pmake_unboxed_tuple, args) ->
+          Cop(Cmultistore, (List.map transl args))
+      | (Punboxed_tuple_field i, args) ->
+          Cop(Cmultiload i, (List.map transl args))
       | (Pccall prim, args) ->
           transl_ccall env prim args dbg
       | (Pduparray (kind, _), [Uprim (Pmakearray (kind', _), args, _dbg)]) ->
@@ -1913,7 +1918,7 @@ and transl_prim_1 env p arg dbg =
   match p with
   (* Generic operations *)
     Preturn | Pidentity | Pbytes_to_string | Pbytes_of_string | Popaque ->
-    transl env arg
+      transl env arg
   | Pignore ->
       return_unit(remove_unit (transl env arg))
   (* Heap operations *)
@@ -3048,12 +3053,12 @@ let apply_function_body arity =
   let clos = Ident.create "clos" in
   let rec app_fun clos n =
     if n = arity-1 then
-      Cop(Capply typ_val,
+      Cop(Capply [| typ_val |],
           [get_field (Cvar clos) 0 dbg; Cvar arg.(n); Cvar clos], dbg)
     else begin
       let newclos = Ident.create "clos" in
       Clet(newclos,
-           Cop(Capply typ_val,
+           Cop(Capply [| typ_val |],
                [get_field (Cvar clos) 0 dbg; Cvar arg.(n); Cvar clos], dbg),
            app_fun newclos (n+1))
     end in
@@ -3063,7 +3068,7 @@ let apply_function_body arity =
    if arity = 1 then app_fun clos 0 else
    Cifthenelse(
    Cop(Ccmpi Ceq, [get_field (Cvar clos) 1 dbg; int_const arity], dbg),
-   Cop(Capply typ_val,
+   Cop(Capply [| typ_val |],
        get_field (Cvar clos) 2 dbg :: List.map (fun s -> Cvar s) all_args,
        dbg),
    app_fun clos 0))
@@ -3139,7 +3144,7 @@ let tuplify_function arity =
    {fun_name;
     fun_args = [arg, typ_val; clos, typ_val];
     fun_body =
-      Cop(Capply typ_val,
+      Cop(Capply [| typ_val |],
           get_field (Cvar clos) 2 dbg :: access_components 0 @ [Cvar clos],
           dbg);
     fun_fast = true;
@@ -3181,7 +3186,7 @@ let final_curry_function arity =
   let last_clos = Ident.create "clos" in
   let rec curry_fun args clos n =
     if n = 0 then
-      Cop(Capply typ_val,
+      Cop(Capply [| typ_val |],
           get_field (Cvar clos) 2 dbg ::
             args @ [Cvar last_arg; Cvar clos],
           dbg)
@@ -3246,7 +3251,7 @@ let rec intermediate_curry_functions arity num =
           let direct_args = iter (num+2) in
           let rec iter i args clos =
             if i = 0 then
-              Cop(Capply typ_val,
+              Cop(Capply [| typ_val |],
                   (get_field (Cvar clos) 2 dbg) :: args @ [Cvar clos],
                   dbg)
             else
@@ -3317,7 +3322,7 @@ let entry_point namelist =
     List.fold_right
       (fun name next ->
         let entry_sym = Compilenv.make_symbol ~unitname:name (Some "entry") in
-        Csequence(Cop(Capply typ_void,
+        Csequence(Cop(Capply [| typ_void |],
                          [Cconst_symbol entry_sym], dbg),
                   Csequence(incr_global_inited, next)))
       namelist (Cconst_int 1) in

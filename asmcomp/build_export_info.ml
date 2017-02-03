@@ -284,13 +284,22 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
   | Apply { kind = Function; continuation; func; call_kind; _ } ->
     begin match call_kind with
     | Indirect -> r
-    | Direct closure_id' ->
+    | Direct { closure_id = closure_id'; return_arity; } ->
       match Env.get_descr env (Env.find_approx env func) with
       | Some (Value_closure
           { closure_id; set_of_closures = { results; _ }; }) ->
         assert (Closure_id.equal closure_id closure_id');
         assert (Closure_id.Map.mem closure_id results);
         let args_approxs = Closure_id.Map.find closure_id results in
+        if return_arity <> List.length args_approxs then begin
+          Misc.fatal_errorf "Direct application of closure ID %a \
+              claims return arity to be %d, but continuation %a is \
+              expecting %d arguments"
+            Closure_id.print closure_id
+            return_arity
+            Continuation.print continuation
+            (List.length args_approxs)
+        end;
         Result.add_continuation_use_approx r continuation ~args_approxs
       | _ -> r
     end

@@ -155,6 +155,8 @@ let for_primitive (prim : Lambda.primitive) =
         [Closure_conversion] pass."
       Printlambda.primitive prim
   | Preturn -> Arbitrary_effects, Has_coeffects
+  | Pmake_unboxed_tuple | Punboxed_tuple_field _ ->
+    No_effects, No_coeffects
 
 type return_type =
   | Float

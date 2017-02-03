@@ -32,7 +32,11 @@ let unrecursify_function function_variable
         | Apply { kind = Function;
                   continuation;
                   args;
-                  call_kind = Direct call_closure_id; }
+                  call_kind = Direct {
+                    closure_id = call_closure_id;
+                    return_arity = 1;
+                  };
+                }
           when Continuation.equal continuation function_decl.continuation_param
             && Closure_id.equal call_closure_id closure_id ->
           did_something := true;

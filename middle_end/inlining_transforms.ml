@@ -386,7 +386,10 @@ let inline_by_copying_function_declaration ~env ~r
               continuation;
               func;
               args;
-              call_kind = Direct closure_id_being_applied;
+              call_kind = Direct {
+                closure_id = closure_id_being_applied;
+                return_arity = function_decl.return_arity;
+              };
               dbg;
               inline = inline_requested;
               specialise = Default_specialise;

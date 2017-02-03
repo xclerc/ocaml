@@ -522,7 +522,10 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       continuation;
       func = lhs_of_application;
       args;
-      call_kind = Direct closure_id_being_applied;
+      call_kind = Direct {
+        closure_id = closure_id_being_applied;
+        return_arity = function_decl.return_arity;
+      };
       dbg;
       inline = inline_requested;
       specialise = specialise_requested;

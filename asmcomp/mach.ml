@@ -65,6 +65,8 @@ type operation =
   | Ipushtrap of int
   | Ipoptrap of int
   | Ispecific of Arch.specific_operation
+  | Imultiload of int
+  | Imultistore
 
 type instruction =
   { desc: instruction_desc;
@@ -181,6 +183,7 @@ let spacetime_node_hole_pointer_is_live_before insn =
       Arch.spacetime_node_hole_pointer_is_live_before specific_op
     | Imove | Ispill | Ireload | Iconst_int _ | Iconst_float _
     | Iconst_symbol _ | Istackoffset _ | Iload _ | Istore _
+    | Imultiload _ | Imultistore
     | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
     | Ifloatofint | Iintoffloat | Ipushtrap _ | Ipoptrap _ -> false
     end

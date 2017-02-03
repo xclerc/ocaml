@@ -762,6 +762,8 @@ let emit_instr fallthrough i =
       assert false
   | Lop(Ipoptrap _cont) ->
       assert false
+  | Lop(Imultiload _ | Imultistore) ->
+      assert false
   | Lreloadretaddr ->
       ()
   | Lreturn ->

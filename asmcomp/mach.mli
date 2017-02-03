@@ -78,6 +78,8 @@ type operation =
   | Ipushtrap of int
   | Ipoptrap of int
   | Ispecific of Arch.specific_operation
+  | Imultiload of int
+  | Imultistore
 
 type instruction =
   { desc: instruction_desc;

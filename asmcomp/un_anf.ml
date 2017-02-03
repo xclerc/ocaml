@@ -76,7 +76,7 @@ let make_ident_info (clam : Clambda.ulambda) : ident_info =
          of the closures will be traversed when this function is called from
          [Cmmgen.transl_function].) *)
       ignore_uconstant const
-    | Udirect_apply (label, args, dbg, return_arity) ->
+    | Udirect_apply (label, args, return_arity, dbg) ->
       ignore_function_label label;
       List.iter loop args;
       ignore_debuginfo dbg;
@@ -244,7 +244,7 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
       end
     | Uconst const ->
       ignore_uconstant const
-    | Udirect_apply (label, args, dbg, return_arity) ->
+    | Udirect_apply (label, args, return_arity, dbg) ->
       ignore_function_label label;
       examine_argument_list args;
       (* We don't currently traverse [args]; they should all be variables

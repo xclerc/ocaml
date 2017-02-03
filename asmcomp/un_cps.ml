@@ -40,7 +40,7 @@ let rec count_uses (ulam : Clambda.ulambda) =
   (* CR mshinwell: short-circuit once we get to [Many] *)
   match ulam with
   | Uvar _ | Uconst _ | Uunreachable -> zero_uses
-  | Udirect_apply (_, args, _) -> count_uses_list args
+  | Udirect_apply (_, args, _, _) -> count_uses_list args
   | Ugeneric_apply (func, args, _) -> count_uses func + count_uses_list args
   | Uclosure (funcs, vars) ->
     count_uses_list
@@ -189,8 +189,8 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
   let rec inline env (ulam : Clambda.ulambda) : Clambda.ulambda =
     match ulam with
     | Uvar _ | Uconst _ | Uunreachable -> ulam
-    | Udirect_apply (func_label, args, dbg) ->
-      Udirect_apply (func_label, inline_list env args, dbg)
+    | Udirect_apply (func_label, args, dbg, return_arity) ->
+      Udirect_apply (func_label, inline_list env args, dbg, return_arity)
     | Ugeneric_apply (func, args, dbg) ->
       Ugeneric_apply (inline env func, inline_list env args, dbg)
     | Uclosure (funcs, vars) ->

@@ -78,7 +78,12 @@ let make_stub unused var (fun_decl : Flambda.function_declaration)
       additional_specialised_args args'
   in
   let args = List.map (fun (_, var) -> var) used_args' in
-  let call_kind = Flambda.Direct (Closure_id.wrap renamed) in
+  let call_kind : Flambda.call_kind =
+    Direct {
+      closure_id = Closure_id.wrap renamed;
+      return_arity = fun_decl.return_arity;
+    }
+  in
   let continuation_param = Continuation.create () in
   let body : Flambda.t =
     Apply {

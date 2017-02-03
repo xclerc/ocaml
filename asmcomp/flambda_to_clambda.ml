@@ -236,13 +236,15 @@ end = struct
     }
 end
 
+let find_var env var =
+  try Env.ident_for_var_exn env var
+  with Not_found ->
+    Misc.fatal_errorf "Flambda_to_clambda: unbound variable %a@."
+      Variable.print var
+
 let subst_var env var : Clambda.ulambda =
   try Env.find_subst_exn env var
-  with Not_found ->
-    try Uvar (Env.ident_for_var_exn env var)
-    with Not_found ->
-      Misc.fatal_errorf "Flambda_to_clambda: unbound variable %a@."
-        Variable.print var
+  with Not_found -> Uvar (find_var env var)
 
 let subst_vars env vars = List.map (subst_var env) vars
 
@@ -375,11 +377,15 @@ let to_clambda_apply env cont ~continuation_arity arg : Clambda.ulambda =
           var, index))
       in
       let call_cont : Clambda.ulambda =
-        let vars = List.map (fun (var, _index) -> var) vars_and_indexes in
+        let vars =
+          List.map (fun (var, _index) : Clambda.ulambda ->
+              Uvar (find_var env var))
+            vars_and_indexes
+        in
         Ustaticfail (Continuation.to_int cont, vars)
       in
       List.fold_right (fun (var, index) expr : Clambda.ulambda ->
-          Ulet (Immutable, Pgenval, var,
+          Ulet (Immutable, Pgenval, find_var env var,
             Uprim (Punboxed_tuple_field index, [arg], dbg),
             expr))
         vars_and_indexes
@@ -408,7 +414,7 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
     let id, env_body = Env.add_fresh_mutable_ident env mut_var in
     let def = subst_var env var in
     Ulet (Mutable, contents_kind, id, def, to_clambda t env_body body)
-  | Apply { kind = Function; func; continuation; return_arity; args;
+  | Apply { kind = Function; func; continuation; args;
       call_kind = Direct { closure_id = direct_func; return_arity; };
       dbg = dbg; } ->
     (* The closure _parameter_ of the function is added by cmmgen.
@@ -497,7 +503,7 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
           let unboxed_tuple = Ident.create "multi_result" in
           Ulet (Immutable, Pgenval, unboxed_tuple,
             Uprim (Pmake_unboxed_tuple, args, dbg),
-            Uprim (Preturn, unboxed_tuple, dbg))
+            Uprim (Preturn, [Clambda.Uvar unboxed_tuple], dbg))
     in
     let trap_action : Clambda.ulambda option =
       match trap_action with
