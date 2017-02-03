@@ -420,6 +420,7 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
        call to [caml_apply]. *)
     let ulam =
       to_clambda_direct_apply t func args direct_func dbg env
+        ~return_arity
     in
     to_clambda_apply env continuation ~continuation_arity:return_arity ulam
   | Apply { kind = Function; func; continuation; args; call_kind = Indirect;
@@ -759,7 +760,8 @@ and to_clambda_switch _t env cases num_keys default =
   | [| |] -> [| |], [| |]  (* May happen when [default] is [None]. *)
   | _ -> index, actions
 
-and to_clambda_direct_apply t func args direct_func dbg env : Clambda.ulambda =
+and to_clambda_direct_apply t func args direct_func dbg env
+      ~return_arity : Clambda.ulambda =
   let closed = is_function_constant t direct_func in
   let label = Compilenv.function_label direct_func in
   let uargs =
@@ -769,7 +771,7 @@ and to_clambda_direct_apply t func args direct_func dbg env : Clambda.ulambda =
        dropping any side effects.) *)
     if closed then uargs else uargs @ [subst_var env func]
   in
-  Udirect_apply (label, uargs, dbg)
+  Udirect_apply (label, uargs, return_arity, dbg)
 
 (* Describe how to build a runtime closure block that corresponds to the
    given Flambda set of closures.
