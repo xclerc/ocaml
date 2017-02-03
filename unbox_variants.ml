@@ -13,7 +13,7 @@ type 'a variant =
 let foo x y z f c =
   let i =
     if x < 42 then A
-    else if x > 100 then C (3, 4)
+(*    else if x > 100 then C (3, 4) *)
     else B (y + z)
   in
   (* start of arbitrary large block of code *)
@@ -36,6 +36,6 @@ let foo x y z f c =
     match i with
     | A -> 42
     | B i -> i + 4
-    | C x -> x + 3
+    | C (x, y) -> x + y
   in
   block, a

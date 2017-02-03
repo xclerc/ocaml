@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
+(*module A = Simple_value_approx*)
 module B = Inlining_cost.Benefit
 module E = Inline_and_simplify_aux.Env
 module R = Inline_and_simplify_aux.Result
@@ -27,7 +27,7 @@ type inlining_result =
 
 let try_inlining ~cont ~args ~args_approxs ~env
         ~(handler : Flambda.continuation_handler)
-      ~inline_unconditionally ~count ~simplify =
+      ~inline_unconditionally ~count:_ ~simplify =
   if List.length handler.params <> List.length args then begin
     Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
       Continuation.print cont
@@ -37,7 +37,10 @@ let try_inlining ~cont ~args ~args_approxs ~env
     (* If there are multiple uses of the continuation with the same arguments,
        we will create a new shared continuation (see comment below); the
        parameters of that continuation must be fresh. *)
+    (* XXX sharing is current disabled *)
+(*
     if Num_continuation_uses.linear count then
+*)
       let params = handler.params in
       let expr =
         List.fold_left2 (fun expr param arg ->
@@ -53,6 +56,7 @@ let try_inlining ~cont ~args ~args_approxs ~env
           params args
       in
       params, env, expr
+(*
     else
       let freshening =
         List.map (fun param -> param, Variable.rename param) handler.params
@@ -75,6 +79,7 @@ let try_inlining ~cont ~args ~args_approxs ~env
           params args_approxs
       in
       params, env, handler
+*)
   in
   let r = R.create () in
   let original : Flambda.t = Apply_cont (cont, None, args) in
@@ -137,7 +142,7 @@ let find_inlinings r ~simplify =
      In preparation for this transformation we count up, for each continuation,
      how many uses it has with distinct sets of arguments. *)
   let definitions =
-    Continuation.Map.fold (fun cont (uses, approx, env, recursive)
+    Continuation.Map.fold (fun cont (uses, approx, _env, recursive)
           definitions ->
         match (recursive : Asttypes.rec_flag) with
         | Recursive -> definitions
@@ -166,8 +171,10 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
                    always that immediately prior to the continuation whose
                    body will be simplified to form the body of the shared
                    continuation. *)
+                (* XXX Shared continuations are currently disabled.
+                   (For those it used to say "env" not "use.env" below *)
                 Continuation.With_args.Map.add key
-                  (false, N.(+) count N.One, env, approx, args_approxs)
+                  (false, N.(+) count N.One, use.env, approx, args_approxs)
                   definitions)
             definitions
             (U.inlinable_application_points uses))

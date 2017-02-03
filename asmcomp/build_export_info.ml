@@ -290,9 +290,8 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
           { closure_id; set_of_closures = { results; _ }; }) ->
         assert (Closure_id.equal closure_id closure_id');
         assert (Closure_id.Map.mem closure_id results);
-        let approx = Closure_id.Map.find closure_id results in
-        Result.add_continuation_use_approx r continuation
-          ~args_approxs:[approx]
+        let args_approxs = Closure_id.Map.find closure_id results in
+        Result.add_continuation_use_approx r continuation ~args_approxs
       | _ -> r
     end
   | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
@@ -475,7 +474,13 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
         bound_vars = Var_within_closure.wrap_map bound_vars_approx;
         results =
           Closure_id.wrap_map
-            (Variable.Map.map (fun _ -> Export_info.Value_unknown)
+            (Variable.Map.map (fun
+                    (function_decl : Flambda.function_declaration) ->
+                let approxs =
+                  Array.init function_decl.return_arity (fun _ ->
+                    Export_info.Value_unknown)
+                in
+                Array.to_list approxs)
               set.function_decls.funs);
         aliased_symbol = None;
       }
@@ -496,8 +501,12 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
   in
   let results =
     let result_approx _var (function_decl : Flambda.function_declaration) =
-      approx_of_continuation_uses_in_expr closure_env function_decl.body
-        ~continuation:function_decl.continuation_param
+      let r =
+        approx_of_expr closure_env (Result.create ()) function_decl.body
+      in
+      Result.find_continuation_use_args_approxs r
+        function_decl.continuation_param
+        ~num_args:function_decl.return_arity
     in
     Variable.Map.mapi result_approx set.function_decls.funs
   in

@@ -55,7 +55,7 @@ and value_closure = {
 and value_set_of_closures = {
   set_of_closures_id : Set_of_closures_id.t;
   bound_vars : approx Var_within_closure.Map.t;
-  results : approx Closure_id.Map.t;
+  results : approx list Closure_id.Map.t;
   aliased_symbol : Symbol.t option;
 }
 
@@ -75,6 +75,10 @@ let equal_approx (a1:approx) (a2:approx) =
   | (Value_unknown | Value_symbol _ | Value_id _),
     (Value_unknown | Value_symbol _ | Value_id _) ->
     false
+
+let equal_approx_list a1s a2s =
+  try List.for_all2 equal_approx a1s a2s
+  with Invalid_argument _ -> false
 
 let join_approx (a1 : approx) (a2 : approx) : approx =
   if equal_approx a1 a2 then a1
@@ -97,7 +101,7 @@ let equal_set_of_closures (s1:value_set_of_closures)
       (s2:value_set_of_closures) =
   Set_of_closures_id.equal s1.set_of_closures_id s2.set_of_closures_id &&
   Var_within_closure.Map.equal equal_approx s1.bound_vars s2.bound_vars &&
-  Closure_id.Map.equal equal_approx s1.results s2.results &&
+  Closure_id.Map.equal equal_approx_list s1.results s2.results &&
   equal_option Symbol.equal s1.aliased_symbol s2.aliased_symbol
 
 let equal_descr (d1:descr) (d2:descr) : bool =

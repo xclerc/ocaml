@@ -812,9 +812,13 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
             ~num_params:function_decl.return_arity
         in
         let uses =
-          match Continuation.Map.find return_cont continuation_uses with
-          | exception Not_found -> assert false
-          | uses -> uses
+          (* Since we're about to finish simplifying a set of closures, and
+             continuation use-def pairs cannot cross closure boundaries, the
+             usage information can just be empty. *)
+          (* CR mshinwell: Make sure [Flambda_invariants] checks this use-def
+             invariant. *)
+          Inline_and_simplify_aux.Continuation_uses.create
+            ~backend:(E.backend env)
         in
         R.define_continuation r return_cont env Nonrecursive
           uses cont_approx)
