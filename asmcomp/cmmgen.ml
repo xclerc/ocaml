@@ -1601,8 +1601,8 @@ let rec transl env e =
       if offset = 0
       then ptr
       else Cop(Caddv, [ptr; Cconst_int(offset * size_addr)], Debuginfo.none)
-  | Udirect_apply(lbl, args, dbg, return_arity) ->
-      let results = Array.init return_arity (fun _ -> typ_val) in
+  | Udirect_apply(lbl, args, return_arity, dbg) ->
+     let results = Array.init return_arity (fun _ -> typ_val) in
       Cop(Capply results, Cconst_symbol lbl :: List.map (transl env) args, dbg)
   | Ugeneric_apply(clos, [arg], dbg) ->
       bind "fun" (transl env clos) (fun clos ->
