@@ -359,6 +359,7 @@ let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
     | _consts, tags, [] -> Tag tags
     | _consts, [], strings -> String strings
 
+(* CR mshinwell: combine with to_clambda_direct_apply? *)
 let to_clambda_apply env cont ~continuation_arity arg : Clambda.ulambda =
   let dbg = Debuginfo.none in
   let cont = Env.expand_continuation_aliases env cont in
@@ -383,12 +384,15 @@ let to_clambda_apply env cont ~continuation_arity arg : Clambda.ulambda =
         in
         Ustaticfail (Continuation.to_int cont, vars)
       in
-      List.fold_right (fun (var, index) expr : Clambda.ulambda ->
-          Ulet (Immutable, Pgenval, var,
-            Uprim (Punboxed_tuple_field index, [arg], dbg),
-            expr))
-        vars_and_indexes
-        call_cont
+      let apply_result = Ident.create "result" in
+      Ulet (Immutable, Pgenval, apply_result, arg,
+        List.fold_right (fun (var, index) expr : Clambda.ulambda ->
+            Ulet (Immutable, Pgenval, var,
+              Uprim (Punboxed_tuple_field index, [Clambda.Uvar apply_result],
+                dbg),
+              expr))
+          vars_and_indexes
+          call_cont)
     | Return_continuation ->
       (* If a multiple-result set is going straight to the return continuation
          of the current function, there's no point in fishing out all the
