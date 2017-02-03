@@ -183,9 +183,9 @@ type 'a filtered_switch_branches =
 
 let inline_and_specialise_continuations env r ~body ~simplify ~backend =
   if E.never_inline env then
-    body
+    body, r
   else
-    let body =
+    let body, r =
       Continuation_inlining.for_toplevel_expression body r ~simplify
     in
     Continuation_specialisation.for_toplevel_expression body r ~simplify
@@ -688,6 +688,7 @@ and simplify_set_of_closures original_env r
       ~set_of_closures ~function_decls ~only_for_function_decl:None
       ~freshen:true
   in
+  let continuation_uses = Continuation.Tbl.create 42 in
   let simplify_function fun_var (function_decl : Flambda.function_declaration)
         (funs, used_params, r)
         : Flambda.function_declaration Variable.Map.t * Variable.Set.t * R.t =
@@ -696,7 +697,7 @@ and simplify_set_of_closures original_env r
         ~free_vars ~specialised_args ~parameter_approximations
         ~set_of_closures_env
     in
-    let continuation_param, cont_approx, closure_env =
+    let continuation_param, closure_env =
       let continuation_param, freshening =
         Freshening.add_static_exception (E.freshening closure_env)
           function_decl.continuation_param
@@ -714,7 +715,7 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
   Continuation.print function_decl.continuation_param
   Continuation.print continuation_param;
 *)
-      continuation_param, cont_approx, closure_env
+      continuation_param, closure_env
     in
     let body, r =
       E.enter_closure closure_env ~closure_id:(Closure_id.wrap fun_var)
@@ -727,18 +728,25 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
   Flambda.print function_decl.body E.print body_env;
 *)
           let body, r = simplify body_env r function_decl.body in
-          let body =
+          let body, r =
             if E.never_inline body_env then
-              body
+              body, r
             else
               inline_and_specialise_continuations env r ~body ~simplify
                 ~backend:(E.backend env)
           in
-          let r, uses = R.exit_scope_catch r env continuation_param in
-          let r =
-            R.define_continuation r continuation_param env Nonrecursive
-              uses cont_approx
+          (* [Unbox_continuation_params] doesn't currently update continuation
+             usage information, but that doesn't matter: we've done inlining
+             and specialisation now, and [Unbox_returns] (below) which uses the
+             usage information is only interested in functions' return
+             continuations (which [Unbox_continuation_params] will never
+             touch). *)
+          let body =
+            Unbox_continuation_params.run r ~function_body:body
+              ~backend:(E.backend env)
           in
+          let r, uses = R.exit_scope_catch r env continuation_param in
+          Continuation.Tbl.add continuation_uses continuation_param uses;
           body, r)
     in
     let inline : Lambda.inline_attribute =
@@ -785,8 +793,33 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     Variable.Map.fold simplify_function function_decls.funs
       (Variable.Map.empty, Variable.Set.empty, r)
   in
+  let continuation_uses = Continuation.Tbl.to_map continuation_uses in
   let function_decls =
     Flambda.update_function_declarations function_decls ~funs
+  in
+  let function_decls, new_specialised_args =
+    Unbox_returns.run ~continuation_uses ~function_decls ~specialised_args
+  in
+  let specialised_args =
+    Variable.Map.disjoint_union specialised_args new_specialised_args
+  in
+  let r =
+    Variable.Map.fold (fun _fun_var
+            (function_decl : Flambda.function_declaration) r ->
+        let return_cont = function_decl.continuation_param in
+        let cont_approx =
+          Continuation_approx.create_unknown ~name:return_cont
+            ~num_params:function_decl.return_arity
+        in
+        let uses =
+          match Continuation.Map.find return_cont continuation_uses with
+          | exception Not_found -> assert false
+          | uses -> uses
+        in
+        R.define_continuation r return_cont env Nonrecursive
+          uses cont_approx)
+      function_decls.funs
+      r
   in
   let invariant_params =
     lazy (Invariant_params.Functions.invariant_params_in_recursion
@@ -813,47 +846,6 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
       ~free_vars:(Variable.Map.map fst free_vars)
       ~specialised_args
       ~direct_call_surrogates
-  in
-  (* CR mshinwell: We need to think about this next bit.  In particular [r]
-     won't have been updated to say anything about continuations that might
-     have been introduced by [Unbox_continuation_params].  This is tied up
-     with the whole unboxing pass invocation problem below, which never
-     applies at toplevel (which this one does, and must). *)
-  let set_of_closures =
-    match Unbox_continuation_params.run r ~set_of_closures
-      ~backend:(E.backend env)
-    with
-    | Some set_of_closures -> set_of_closures
-      (* CR mshinwell: think about benefit with respect to these
-         continuation unboxing and function return unboxing
-         transformations *)
-    | None -> set_of_closures
-  in
-  let set_of_closures =
-    match Unbox_returns.run r ~set_of_closures with
-    | Some set_of_closures -> set_of_closures
-    | None -> set_of_closures
-  in
-  let r =
-    (* XXX think again about this part *)
-    Variable.Map.fold (fun _fun_var
-            (function_decl : Flambda.function_declaration)
-            r ->
-        let continuation_param = function_decl.continuation_param in
-        let cont_approx =
-          Continuation_approx.create_unknown ~name:continuation_param
-            ~num_params:function_decl.return_arity
-        in
-        let uses =
-          Inline_and_simplify_aux.Continuation_uses.create
-            ~backend:(E.backend env)
-        in
-Format.eprintf "Re-defining %a with empty uses, %d params\n%!"
-  Continuation.print continuation_param function_decl.return_arity;
-        R.define_continuation r continuation_param env Nonrecursive
-          uses cont_approx)
-      set_of_closures.function_decls.funs
-      r
   in
   let r = ret r (A.value_set_of_closures value_set_of_closures) in
   set_of_closures, r, value_set_of_closures.freshening
@@ -1170,7 +1162,9 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   | Some (Nonrecursive handler) when handler.stub ->
     (* Stubs are unconditionally inlined out now so that we don't need to run
        the second [Continuation_inlining] pass when doing a "noinline" run
-       of [Inline_and_simplify]. *)
+       of [Inline_and_simplify].
+       Note that we don't call [R.use_continuation] here, because we're going
+       to eliminate the use. *)
     let env = E.activate_freshening env in
     let env = E.set_never_inline env in
     let params, freshening =
@@ -1815,7 +1809,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     simplify_free_variables env args ~f:(fun env args args_approxs ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_approxs)
   | Let_cont { body; handlers = Nonrecursive { name; handler = {
-      params = []; handler = Apply_cont (alias_of, None, []); }; }; } ->
+      params; handler = Apply_cont (alias_of, None, params'); }; }; }
+    when Variable.compare_lists params params' = 0 ->
     (* Introduction of continuation aliases. *)
     let expr : Flambda.t =
       Let_cont { body; handlers = Alias { name; alias_of; }; }
@@ -2248,12 +2243,14 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
   Flambda.print h;
 *)
         let h', r = simplify env r h in
+(*
         let h =
           if E.never_inline env then h
           else
             inline_and_specialise_continuations env r ~body:h ~simplify
               ~backend:(E.backend env)
         in
+*)
         let new_approxs = R.continuation_args_approxs r cont ~num_params:1 in
         let r, _uses = R.exit_scope_catch r env cont in
         let approx =
@@ -2294,12 +2291,14 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     in
     let env = E.add_continuation env cont cont_approx in
     let expr, r = simplify env r expr in
+(*
     let expr =
       if E.never_inline env then expr
       else
         inline_and_specialise_continuations env r ~body:expr ~simplify
           ~backend:(E.backend env)
     in
+*)
     let program, r = simplify_program_body env r program in
     let r, _uses = R.exit_scope_catch r env cont in
     Effect (expr, cont, program), r

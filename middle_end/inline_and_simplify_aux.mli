@@ -359,6 +359,14 @@ module Result : sig
     -> args_approxs:Simple_value_approx.t list
     -> t
 
+  (** Forget usage information for the given (continuation, arguments) pair
+      (for example after replacing an [Apply_cont] with an inlined body). *)
+  val forget_inlinable_continuation_uses
+     : t
+    -> Continuation.t
+    -> args:Variable.t list
+    -> t
+
   val snapshot_continuation_uses : t -> Continuation_usage_snapshot.t
 
   val roll_back_continuation_uses : t -> Continuation_usage_snapshot.t -> t
@@ -373,9 +381,6 @@ module Result : sig
 
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
-  (* CR mshinwell: should this be combined with define_continuation?
-     (one error already due to the fact this is separate)
-   *)
   val exit_scope_catch
      : t
     -> Env.t

@@ -498,6 +498,15 @@ module Continuation_uses = struct
         { Use. env; args; } :: t.inlinable_application_points;
     }
 
+  let remove_inlinable_uses t ~args =
+    let inlinable_application_points =
+      List.filter (fun { Use. env = _; args = args'; } ->
+          let args' = List.map (fun (arg, _approx) -> arg) args' in
+          Variable.compare_lists args args' <> 0)
+        t.inlinable_application_points
+    in
+    { t with inlinable_application_points; }
+
   let add_non_inlinable_use t _env ~args_approxs =
     { t with
       non_inlinable_application_points =
@@ -644,6 +653,16 @@ module Result = struct
       used_continuations =
         Continuation.Map.add cont uses t.used_continuations;
     }
+
+  let forget_inlinable_continuation_uses t cont ~args =
+    match Continuation.Map.find cont t.used_continuations with
+    | exception Not_found -> t
+    | uses ->
+      let uses = Continuation_uses.remove_inlinable_uses uses ~args in
+      { t with
+        used_continuations =
+          Continuation.Map.add cont uses t.used_continuations;
+      }
 
   let is_used_continuation t i =
     Continuation.Map.mem i t.used_continuations

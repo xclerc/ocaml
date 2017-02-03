@@ -20,6 +20,8 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val run
-   : Inline_and_simplify_aux.Result.t
-  -> set_of_closures:Flambda.set_of_closures
-  -> Flambda.set_of_closures option
+   : continuation_uses:
+       Inline_and_simplify_aux.Continuation_uses.t Continuation.Map.t
+  -> function_decls:Flambda.function_declarations
+  -> specialised_args:Flambda.specialised_args
+  -> Flambda.function_declarations * Flambda.specialised_args

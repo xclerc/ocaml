@@ -16,12 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module R = Inline_and_simplify_aux.Result
 module U = Inline_and_simplify_aux.Continuation_uses
 
 let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~(how_to_unbox : Unbox_one_variable.How_to_unbox.t) ~return_cont_param
-      ~(set_of_closures : Flambda.set_of_closures) =
+      ~specialised_args =
   let dbg = Debuginfo.none in
   (* There are two steps:
      1. Build a stub continuation that is called by the function instead of
@@ -81,7 +80,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
   let _fun_wrapper_params_map, fun_wrapper_params,
       fun_wrapper_specialised_args =
     Flambda_utils.create_wrapper_params ~params:function_decl.params
-      ~specialised_args:set_of_closures.specialised_args
+      ~specialised_args
       ~freshening_already_assigned:Variable.Map.empty
   in
   let function_stub_body : Flambda.expr =
@@ -135,13 +134,13 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       Variable.Map.empty),
     fun_wrapper_specialised_args
 
-let for_function_decl r ~fun_var
-        ~(function_decl : Flambda.function_declaration) ~set_of_closures =
-  let definitions_with_uses = R.continuation_definitions_with_uses r in
+let for_function_decl ~continuation_uses ~fun_var
+        ~(function_decl : Flambda.function_declaration)
+        ~specialised_args =
   let return_cont = function_decl.continuation_param in
-  match Continuation.Map.find return_cont definitions_with_uses with
+  match Continuation.Map.find return_cont continuation_uses with
   | exception Not_found -> None
-  | (uses, _approx, _env, _recursive) ->
+  | uses ->
     match U.meet_of_args_approxs_opt uses with
     | None -> None
     | Some args_approxs ->
@@ -163,44 +162,36 @@ let for_function_decl r ~fun_var
         match how_to_unbox with
         | None -> None
         | Some how_to_unbox ->
+Format.eprintf "Unbox_returns on:\n@ %a\n%!"
+  Flambda.print_function_declaration (fun_var, function_decl);
           let function_decls, new_specialised_args =
             unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
-              ~return_cont_param ~set_of_closures
+              ~return_cont_param ~specialised_args
           in
+Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
+  Flambda.print_function_declarations
+    (Flambda.create_function_declarations ~funs:function_decls);
           Some (function_decls, new_specialised_args)
 
-let run r ~(set_of_closures : Flambda.set_of_closures) =
-  let something_changed = ref false in
-Format.eprintf "Unbox_returns on:\n@ %a\n%!"
-  Flambda.print_set_of_closures set_of_closures;
-  let funs, specialised_args =
+let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
+      ~specialised_args =
+  let funs, new_specialised_args =
     Variable.Map.fold (fun fun_var function_decl (funs, new_specialised_args) ->
-        match for_function_decl r ~fun_var ~function_decl ~set_of_closures with
+        match
+          for_function_decl ~continuation_uses ~fun_var ~function_decl
+            ~specialised_args
+        with
         | None ->
           let funs = Variable.Map.add fun_var function_decl funs in
           funs, new_specialised_args
         | Some (function_decls, new_specialised_args') ->
-          something_changed := true;
           let funs = Variable.Map.disjoint_union funs function_decls in
           let new_specialised_args =
             Variable.Map.disjoint_union new_specialised_args
               new_specialised_args'
           in
           funs, new_specialised_args)
-      set_of_closures.function_decls.funs
-      (Variable.Map.empty, set_of_closures.specialised_args)
+      function_decls.funs
+      (Variable.Map.empty, specialised_args)
   in
-  (* CR-soon mshinwell: Use direct call surrogates *)
-  if not !something_changed then
-    None
-  else
-    let new_function_decls = Flambda.create_function_declarations ~funs in
-    let set_of_closures =
-      Flambda.create_set_of_closures ~function_decls:new_function_decls
-        ~free_vars:set_of_closures.free_vars
-        ~specialised_args
-        ~direct_call_surrogates:set_of_closures.direct_call_surrogates
-    in
-Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
-  Flambda.print_set_of_closures set_of_closures;
-    Some set_of_closures
+  Flambda.create_function_declarations ~funs, new_specialised_args

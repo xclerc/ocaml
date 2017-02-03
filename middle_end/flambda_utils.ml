@@ -853,23 +853,30 @@ let create_wrapper_params ~params ~specialised_args
     | param -> param
   in
   let wrapper_params = List.map freshen_param params in
+  let params = Variable.Set.of_list params in
   let wrapper_specialised_args =
     Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
             wrapper_specialised_args ->
-        let param = freshen_param param in
-        let projection =
-          match spec_to.projection with
-          | None -> None
-          | Some projection ->
-            Some (Projection.map_projecting_from projection
-              ~f:(fun param -> freshen_param param))
-        in
-        let spec_to : Flambda.specialised_to =
-          { var = Misc.Stdlib.Option.map freshen_param spec_to.var;
-            projection;
-          }
-        in
-        Variable.Map.add param spec_to wrapper_specialised_args)
+        if not (Variable.Set.mem param params) then begin
+          (* A specialised argument of one of the other functions in the set
+             of closures / continuations. *)
+          wrapper_specialised_args
+        end else begin
+          let param = freshen_param param in
+          let projection =
+            match spec_to.projection with
+            | None -> None
+            | Some projection ->
+              Some (Projection.map_projecting_from projection
+                ~f:(fun param -> freshen_param param))
+          in
+          let spec_to : Flambda.specialised_to =
+            { var = Misc.Stdlib.Option.map freshen_param spec_to.var;
+              projection;
+            }
+          in
+          Variable.Map.add param spec_to wrapper_specialised_args
+        end)
       specialised_args
       Variable.Map.empty
   in

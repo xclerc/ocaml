@@ -243,65 +243,78 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
 (* At the moment this doesn't apply the substitution to handlers as we
    discover inlinings (unlike what happens for function inlining).  Let's
    see how it goes. *)
-let substitute (expr : Flambda.expr) ~inlinings ~new_shared_conts
+let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
       ~zero_uses =
-  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
-      match expr with
-      (* [Inline_and_simplify] will only put non-bottom continuation
-         approximations in the environment for non-recursive continuations
-         at present. *)
-      | Let_cont { body; handlers = Nonrecursive { name; _ }; } ->
-        let expr =
-          if Continuation.Set.mem name zero_uses then
-            body
-          else
-            expr
-        in
-        begin match Continuation.Map.find name new_shared_conts with
-        | exception Not_found -> expr
-        | new_shared_conts ->
-          List.fold_left (fun expr (name, params, handler) ->
-(*
-Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
-*)
-              Flambda.Let_cont {
-                body = expr;
-                handlers = Nonrecursive {
-                  name;
-                  handler = {
-                    params;
-                    stub = false;
-                    is_exn_handler = false;
-                    handler;
-                    specialised_args = Variable.Map.empty;
+  let r = ref r in
+  let expr =
+    Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
+        match expr with
+        (* [Inline_and_simplify] will only put non-bottom continuation
+          approximations in the environment for non-recursive continuations
+          at present. *)
+        | Let_cont { body; handlers = Nonrecursive { name; _ }; } ->
+          let expr =
+            if Continuation.Set.mem name zero_uses then
+              body
+            else
+              expr
+          in
+          begin match Continuation.Map.find name new_shared_conts with
+          | exception Not_found -> expr
+          | new_shared_conts ->
+            List.fold_left (fun expr (name, params, handler) ->
+  (*
+  Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
+  *)
+                (* CR mshinwell: If the shared continuation code is resurrected
+                   then we need to adjust "r" accordingly to record the new
+                   uses. *)
+                Flambda.Let_cont {
+                  body = expr;
+                  handlers = Nonrecursive {
+                    name;
+                    handler = {
+                      params;
+                      stub = false;
+                      is_exn_handler = false;
+                      handler;
+                      specialised_args = Variable.Map.empty;
+                    };
                   };
-                };
-              })
-            expr
-            new_shared_conts
-        end
-      | Apply_cont (cont, trap_action, args) ->
-        begin match Continuation.With_args.Map.find (cont, args) inlinings with
-        | exception Not_found -> expr
-        | inlined_body ->
-          match trap_action with
-          | None -> inlined_body
-          | Some _ ->
-            (* Uses like this, with a trap action, will not have been
-               counted as inlinable
-               (cf. [Inline_and_simplify.simplify_apply_cont]).  However
-               there might be other uses with the same continuation and
-               arguments and no trap action, which is why we cannot
-               fail here. *)
-            expr
-        end
-      | Apply _ | Let _ | Let_cont _ | Let_mutable _ | Switch _
-      | Proved_unreachable -> expr)
-    expr
+                })
+              expr
+              new_shared_conts
+          end
+        | Apply_cont (cont, trap_action, args) ->
+          begin match Continuation.With_args.Map.find (cont, args) inlinings with
+          | exception Not_found -> expr
+          | inlined_body ->
+            match trap_action with
+            | None ->
+              (* CR mshinwell: I wonder if we should have an invariant check
+                 that could be used to validate the usage information in [r].
+                 It's not as straightforward as it used to be now that we
+                 subtract from that information here. *)
+              r := R.forget_inlinable_continuation_uses !r cont ~args;
+              inlined_body
+            | Some _ ->
+              (* Uses like this, with a trap action, will not have been
+                counted as inlinable
+                (cf. [Inline_and_simplify.simplify_apply_cont]).  However
+                there might be other uses with the same continuation and
+                arguments and no trap action, which is why we cannot
+                fail here. *)
+              expr
+          end
+        | Apply _ | Let _ | Let_cont _ | Let_mutable _ | Switch _
+        | Proved_unreachable -> expr)
+      expr
+  in
+  expr, !r
 
 let for_toplevel_expression expr r ~simplify =
   (* CR mshinwell: Shouldn't this check whether the environment is
      "never inline"? *)
 Format.eprintf "Continuation inlining starting on:@;%a@;" Flambda.print expr;
   let inlinings, new_shared_conts, zero_uses = find_inlinings r ~simplify in
-  substitute expr ~inlinings ~new_shared_conts ~zero_uses
+  substitute r expr ~inlinings ~new_shared_conts ~zero_uses

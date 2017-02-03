@@ -422,40 +422,48 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
     specialisations
     (Continuation.Map.empty, Continuation.With_args.Map.empty)
 
-let insert_specialisations (expr : Flambda.expr) ~new_conts
+let insert_specialisations r (expr : Flambda.expr) ~new_conts
         ~apply_cont_rewrites =
-  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
-      match expr with
-      | Let_cont { handlers; } ->
-        let bound_by_expr =
-          match handlers with
-          | Alias { name; _ }
-          | Nonrecursive { name; _ } -> Continuation.Set.singleton name
-          | Recursive handlers -> Continuation.Map.keys handlers
-        in
-        Continuation.Set.fold (fun cont expr ->
-            match Continuation.Map.find cont new_conts with
-            | exception Not_found -> expr
-            | new_conts ->
-              List.fold_left (fun body handlers : Flambda.expr ->
-                  Let_cont {
-                    body;
-                    handlers = Recursive handlers;
-                  })
-                expr
-                new_conts)
-          bound_by_expr
-          expr
-      | Apply_cont (cont, trap_action, args) ->
-        let key = cont, args in
-        begin match Continuation.With_args.Map.find key apply_cont_rewrites with
-        | exception Not_found -> expr
-        | new_cont ->
-          assert (trap_action = None);
-          Apply_cont (new_cont, None, args)
-        end
-      | Apply _ | Let _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
-    expr
+  let r = ref r in
+  let expr =
+    Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
+        match expr with
+        | Let_cont { handlers; } ->
+          let bound_by_expr =
+            match handlers with
+            | Alias { name; _ }
+            | Nonrecursive { name; _ } -> Continuation.Set.singleton name
+            | Recursive handlers -> Continuation.Map.keys handlers
+          in
+          Continuation.Set.fold (fun cont expr ->
+              match Continuation.Map.find cont new_conts with
+              | exception Not_found -> expr
+              | new_conts ->
+                List.fold_left (fun body handlers : Flambda.expr ->
+                    Let_cont {
+                      body;
+                      handlers = Recursive handlers;
+                    })
+                  expr
+                  new_conts)
+            bound_by_expr
+            expr
+        | Apply_cont (cont, trap_action, args) ->
+          let key = cont, args in
+          begin match
+            Continuation.With_args.Map.find key apply_cont_rewrites
+          with
+          | exception Not_found -> expr
+          | new_cont ->
+            assert (trap_action = None);
+            r := R.forget_inlinable_continuation_uses !r cont ~args;
+            Apply_cont (new_cont, None, args)
+          end
+        | Apply _ | Let _ | Let_mutable _ | Switch _ | Proved_unreachable ->
+          expr)
+      expr
+  in
+  expr, !r
 
 let for_toplevel_expression expr r ~simplify ~backend =
 Format.eprintf "Input to Continuation_specialisation:\n@;%a\n"
@@ -463,4 +471,4 @@ Format.eprintf "Input to Continuation_specialisation:\n@;%a\n"
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify ~backend
   in
-  insert_specialisations expr ~new_conts ~apply_cont_rewrites
+  insert_specialisations r expr ~new_conts ~apply_cont_rewrites
