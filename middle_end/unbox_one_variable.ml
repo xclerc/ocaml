@@ -287,19 +287,40 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
     let boxed = Variable.rename ~append:"_boxed" being_unboxed in
     let join_cont = Continuation.create () in
     let build (expr : Flambda.expr) : Flambda.expr =
+      let consts =
+        Numbers.Int.Set.fold (fun ctor_index consts ->
+            let cont = Continuation.create () in
+            (ctor_index, cont) :: consts)
+          constant_ctors
+          []
+      in
       let constant_ctor_switch : Flambda.switch =
-        let consts =
-          Numbers.Int.Set.fold (fun ctor_index consts ->
-              (ctor_index, join_cont) :: consts)
-            constant_ctors
-            []
-        in
         { numconsts = constant_ctors;
           consts;
           numblocks = Numbers.Int.Set.empty;
           blocks = [];
           failaction = None;
         }
+      in
+      let add_constant_ctor_conts expr =
+        List.fold_left (fun expr (ctor_index, cont) ->
+            let ctor_index_var = Variable.create "ctor_index" in
+            Flambda.create_let ctor_index_var (Const (Int ctor_index))
+              (Let_cont {
+                body = expr;
+                handlers = Nonrecursive {
+                  name = cont;
+                  handler = {
+                    handler = Apply_cont (join_cont, None, [ctor_index_var]);
+                    params = [];
+                    stub = false;
+                    is_exn_handler = false;
+                    specialised_args = Variable.Map.empty;
+                  };
+                };
+              }))
+          expr
+          consts
       in
       let add_boxing_conts expr =
         Tag.Map.fold (fun tag (size, boxing_cont) expr : Flambda.expr ->
@@ -362,7 +383,9 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                  is an integer. *)
               (* CR-someday mshinwell: Maybe adding some kind of support for
                  coercions would help here. *)
-              handler = Switch (discriminant, constant_ctor_switch);
+              handler =
+                add_constant_ctor_conts
+                  (Switch (discriminant, constant_ctor_switch));
               stub = false;
               is_exn_handler = false;
               specialised_args = Variable.Map.empty;
