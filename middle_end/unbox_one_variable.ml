@@ -70,8 +70,7 @@ module How_to_unbox = struct
     Variable.Map.fold (fun _param t1 t2 -> merge t1 t2) t_map (create ())
 end
 
-let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
-      : How_to_unbox.t =
+let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
   let dbg = Debuginfo.none in
   let wrapper_param_being_unboxed = Variable.rename being_unboxed in
   let being_unboxed_to_wrapper_params_being_unboxed =
@@ -288,6 +287,20 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
     let boxed = Variable.rename ~append:"_boxed" being_unboxed in
     let join_cont = Continuation.create () in
     let build (expr : Flambda.expr) : Flambda.expr =
+      let constant_ctor_switch : Flambda.switch =
+        let consts =
+          Numbers.Int.Set.fold (fun ctor_index consts ->
+              (ctor_index, join_cont) :: consts)
+            constant_ctors
+            []
+        in
+        { numconsts = constant_ctors;
+          consts;
+          numblocks = Numbers.Int.Set.empty;
+          blocks = [];
+          failaction = None;
+        }
+      in
       let add_boxing_conts expr =
         Tag.Map.fold (fun tag (size, boxing_cont) expr : Flambda.expr ->
             let boxed = Variable.rename boxed in
@@ -343,7 +356,13 @@ let how_to_unbox_core ~has_constant_ctors:_ ~blocks ~being_unboxed
             name = boxing_is_int_cont;
             handler = {
               params = [];
-              handler = Apply_cont (join_cont, None, [discriminant]);
+              (* We could just call [join_cont] with [discriminant] as the
+                 argument, but that wouldn't pass on the knowledge to the
+                 place in which this stub gets inlined that [discriminant]
+                 is an integer. *)
+              (* CR-someday mshinwell: Maybe adding some kind of support for
+                 coercions would help here. *)
+              handler = Switch (discriminant, constant_ctor_switch);
               stub = false;
               is_exn_handler = false;
               specialised_args = Variable.Map.empty;
@@ -378,11 +397,21 @@ let how_to_unbox ~being_unboxed ~being_unboxed_approx =
   match A.check_approx_for_variant being_unboxed_approx with
   | Wrong -> None
   | Ok approx ->
-    let has_constant_ctors =
+    let constant_ctors =
       match approx with
-      | Blocks _ -> false
+      | Blocks _ -> Numbers.Int.Set.empty
       | Blocks_and_immediates (_, imms) | Immediates imms ->
-        not (A.Unionable.Immediate.Set.is_empty imms)
+        let module I = A.Unionable.Immediate in
+        I.Set.fold (fun (approx : I.t) ctor_indexes ->
+            let ctor_index =
+              match approx with
+              | Int i -> i
+              | Char c -> Char.code c
+              | Constptr p -> p
+            in
+            Numbers.Int.Set.add ctor_index ctor_indexes)
+          imms
+          Numbers.Int.Set.empty
     in
     let blocks =
       match approx with
@@ -390,4 +419,4 @@ let how_to_unbox ~being_unboxed ~being_unboxed_approx =
       | Immediates _ -> Tag.Map.empty
     in
     if Tag.Map.is_empty blocks then None
-    else Some (how_to_unbox_core ~has_constant_ctors ~blocks ~being_unboxed)
+    else Some (how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed)
