@@ -72,6 +72,11 @@ end
 
 let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
   let dbg = Debuginfo.none in
+  let num_constant_ctors = Numbers.Int.Set.cardinal constant_ctors in
+  assert (num_constant_ctors >= 0);
+  let no_constant_ctors = (num_constant_ctors = 0) in
+  let num_tags = Tag.Map.cardinal blocks in
+  assert (num_tags >= 1);  (* see below *)
   let wrapper_param_being_unboxed = Variable.rename being_unboxed in
   let being_unboxed_to_wrapper_params_being_unboxed =
     Variable.Map.add being_unboxed wrapper_param_being_unboxed
@@ -79,11 +84,35 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
   in
   let is_int = Variable.rename ~append:"_is_int" being_unboxed in
   let is_int_in_wrapper = Variable.rename is_int in
+  let is_int_known_value =
+    if no_constant_ctors then Some ((Const (Int 0)) : Flambda.named)
+    else None
+  in
   (* CR-soon mshinwell: On [discriminant] add information that tells us
      about the individual unboxed field parameters _given that_ we are
      in some particular case of a match on [discriminant] (GADT-style). *)
   let discriminant = Variable.rename ~append:"_discr" being_unboxed in
   let discriminant_in_wrapper = Variable.rename discriminant in
+  let discriminant_known_value =
+    let discriminant_possible_values =
+      let all_tags =
+        Tag.Map.fold (fun tag _ all_tags ->
+            Numbers.Int.Set.add (Tag.to_int tag) all_tags)
+          blocks
+          Numbers.Int.Set.empty
+      in
+      Numbers.Int.Set.union constant_ctors all_tags
+    in
+    match Numbers.Int.Set.elements discriminant_possible_values with
+    | [] -> assert false  (* see the bottom of [how_to_unbox], below *)
+    | [tag] -> Some ((Const (Int tag)) : Flambda.named)
+    | _tags -> None
+  in
+  let needs_discriminant =
+    match discriminant_known_value with
+    | None -> true
+    | Some _ -> false
+  in
   let max_size =
     Tag.Map.fold (fun _tag fields max_size ->
         max (Array.length fields) max_size)
@@ -95,10 +124,14 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
   in
   let is_int_in_wrapper' = Variable.rename is_int_in_wrapper in
   let discriminant_in_wrapper' = Variable.rename discriminant_in_wrapper in
-  let new_arguments_for_call_in_wrapper = [
-      is_int_in_wrapper';
-      discriminant_in_wrapper';
-    ] @ field_arguments_for_call_in_wrapper
+  let new_arguments_for_call_in_wrapper =
+    let is_int =
+      if no_constant_ctors then [] else [is_int_in_wrapper']
+    in
+    let discriminant =
+      if not needs_discriminant then [] else [discriminant_in_wrapper']
+    in
+    is_int @ discriminant @ field_arguments_for_call_in_wrapper
   in
   let tags_to_sizes = Tag.Map.map (fun fields -> Array.length fields) blocks in
   let all_tags = Tag.Map.keys blocks in
@@ -144,6 +177,16 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
               (Array.to_list fields)
           in
           let filler : Flambda.expr =
+            let filler : Flambda.expr =
+              let is_int_in_wrapper =
+                if no_constant_ctors then [] else [is_int_in_wrapper]
+              in
+              let tag =
+                if not needs_discriminant then [] else [tag]
+              in
+              Apply_cont (join_cont, None,
+                is_int_in_wrapper @ tag @ fields_for_apply)
+            in
             Array.fold_right (fun (index, var_opt) filler ->
                 match var_opt with
                 | None -> filler
@@ -152,8 +195,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                       (Prim (Pfield index, [wrapper_param_being_unboxed], dbg))
                       filler)
               fields
-              (Flambda.Apply_cont (join_cont, None,
-                [is_int_in_wrapper; tag] @ fields_for_apply))
+              filler
           in
           Let_cont {
             body = expr;
@@ -199,7 +241,10 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
     in
     Flambda.create_let unit_value (Const (Int 0))
       (Flambda.create_let is_int_in_wrapper
-        (Prim (Pisint, [wrapper_param_being_unboxed], dbg))
+        (if no_constant_ctors then
+           Const (Int 0)
+         else
+           Prim (Pisint, [wrapper_param_being_unboxed], dbg))
         (Let_cont {
           body = Let_cont {
             body = Let_cont {
@@ -208,9 +253,17 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                 name = is_int_cont;
                 handler = {
                   params = [];
-                  handler = Apply_cont (join_cont, None,
-                    [is_int_in_wrapper; wrapper_param_being_unboxed]
-                      @ all_units);
+                  handler =
+                    (let is_int_in_wrapper =
+                      if no_constant_ctors then [] else [is_int_in_wrapper]
+                    in
+                    let wrapper_param_being_unboxed =
+                      if not needs_discriminant then []
+                      else [wrapper_param_being_unboxed]
+                    in
+                    Apply_cont (join_cont, None,
+                      is_int_in_wrapper @ wrapper_param_being_unboxed
+                        @ all_units));
                   stub = false;
                   is_exn_handler = false;
                   specialised_args = Variable.Map.empty;
@@ -223,7 +276,10 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                 params = [];
                 handler =
                   Flambda.create_let tag
-                    (Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
+                    (match discriminant_known_value with
+                     | Some known -> known
+                     | None ->
+                       Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
                     (add_fill_fields_conts (
                       (Switch (tag, fill_fields_switch))));
                 stub = false;
@@ -357,16 +413,41 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
           tags_to_sizes_and_boxing_conts
           expr
       in
-      Let_cont {
-        body = Let_cont {
+      let body : Flambda.expr =
+        Let_cont {
           body = Let_cont {
-            body = Switch (is_int, boxing_is_int_switch);
+            body = Let_cont {
+              body = Switch (is_int, boxing_is_int_switch);
+              handlers = Nonrecursive {
+                name = boxing_is_block_cont;
+                handler = {
+                  params = [];
+                  handler =
+                    add_boxing_conts (Switch (discriminant, boxing_switch));
+                  stub = false;
+                  is_exn_handler = false;
+                  specialised_args = Variable.Map.empty;
+                };
+              };
+            };
             handlers = Nonrecursive {
-              name = boxing_is_block_cont;
+              name = boxing_is_int_cont;
               handler = {
                 params = [];
+                (* We could just call [join_cont] with [discriminant] as the
+                   argument, but that wouldn't pass on the knowledge to the
+                   place in which this stub gets inlined that [discriminant]
+                   is an integer. *)
+                (* CR-someday mshinwell: Maybe adding some kind of support for
+                   coercions would help here.  Perhaps another approach would be
+                   to do CSE on "Pisint discriminant" (which would rewrite to
+                   the "is_int" variable returned from the callee).  This would
+                   require propagation of the projection information from the
+                   stub function generated by Unbox_returns to the place it's
+                   being inlined. *)
                 handler =
-                  add_boxing_conts (Switch (discriminant, boxing_switch));
+                  add_constant_ctor_conts
+                    (Switch (discriminant, constant_ctor_switch));
                 stub = false;
                 is_exn_handler = false;
                 specialised_args = Variable.Map.empty;
@@ -374,45 +455,40 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
             };
           };
           handlers = Nonrecursive {
-            name = boxing_is_int_cont;
+            name = join_cont;
             handler = {
-              params = [];
-              (* We could just call [join_cont] with [discriminant] as the
-                 argument, but that wouldn't pass on the knowledge to the
-                 place in which this stub gets inlined that [discriminant]
-                 is an integer. *)
-              (* CR-someday mshinwell: Maybe adding some kind of support for
-                 coercions would help here. *)
-              handler =
-                add_constant_ctor_conts
-                  (Switch (discriminant, constant_ctor_switch));
+              params = [boxed];
+              handler = expr;
               stub = false;
               is_exn_handler = false;
               specialised_args = Variable.Map.empty;
             };
           };
-        };
-        handlers = Nonrecursive {
-          name = join_cont;
-          handler = {
-            params = [boxed];
-            handler = expr;
-            stub = false;
-            is_exn_handler = false;
-            specialised_args = Variable.Map.empty;
-          };
-        };
-      }
+        }
+      in
+      let body =
+        match is_int_known_value with
+        | None -> body
+        | Some named -> Flambda.create_let is_int named body
+      in
+      match discriminant_known_value with
+      | None -> body
+      | Some named -> Flambda.create_let discriminant named body
     in
     [boxed, build]
+  in
+  let is_int =
+    if no_constant_ctors then []
+    else [is_int, Projection.Prim (Pisint, [being_unboxed])]
+  in
+  let discriminant =
+    if not needs_discriminant then []
+    else [discriminant, Projection.Prim (Pgettag, [being_unboxed])]
   in
   { being_unboxed_to_wrapper_params_being_unboxed;
     add_bindings_in_wrapper;
     new_arguments_for_call_in_wrapper;
-    new_params = [
-      is_int, Projection.Prim (Pisint, [being_unboxed]);
-      discriminant, Projection.Prim (Pgettag, [being_unboxed]);
-    ] @ fields_with_projections;
+    new_params = is_int @ discriminant @ fields_with_projections;
     build_boxed_value_from_new_params;
   }
 

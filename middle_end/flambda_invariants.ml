@@ -349,15 +349,21 @@ module Continuation_scoping = struct
           if not (arity = 1) then
             raise (Continuation_called_with_wrong_arity (cont, 1, arity));
       end
-    | Apply { continuation; _ } -> begin
+    | Apply { continuation; call_kind; _ } -> begin
         match Continuation.Map.find continuation env with
         | exception Not_found ->
           raise (Continuation_not_caught (continuation, "apply"))
-        | _arity -> () (* CR mshinwell: fix this! *)
-(*
-          if not (arity = 1) then
-            raise (Continuation_called_with_wrong_arity (continuation, 1, arity));
-*)
+        | arity ->
+          (* CR mshinwell: This doesn't seem to be catching all that it should *)
+          let expected_arity =
+            match call_kind with
+            | Direct { return_arity; _ } -> return_arity
+            | Indirect -> 1
+          in
+          if not (arity = expected_arity) then begin
+            raise (Continuation_called_with_wrong_arity
+              (continuation, expected_arity, arity))
+          end
       end
     | Switch (_,{ consts; blocks; failaction; _ } ) ->
       let check (_, cont) =
