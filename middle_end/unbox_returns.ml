@@ -146,45 +146,48 @@ let for_function_decl ~continuation_uses ~fun_var
         ~(function_decl : Flambda.function_declaration)
         ~specialised_args =
   let return_cont = function_decl.continuation_param in
-  match Continuation.Map.find return_cont continuation_uses with
-  | exception Not_found -> None
-  | uses ->
-    match U.meet_of_args_approxs_opt uses with
-    | None -> None
-    | Some args_approxs ->
-      match args_approxs with
-      | _::_::_ ->
-        (* For the moment, don't apply this transformation more than once
-           to any given function. *)
-        None
-      | [] ->
-        Misc.fatal_errorf "Function %a has zero return arity"
-          Variable.print fun_var
-      | [arg_approx] ->
-        assert (function_decl.return_arity = 1);
-        let return_cont_param = Variable.create "return_cont_param" in
-        let how_to_unbox =
-          Unbox_one_variable.how_to_unbox ~being_unboxed:return_cont_param
-            ~being_unboxed_approx:arg_approx
-        in
-        match how_to_unbox with
-        | None -> None
-        | Some how_to_unbox ->
-          (* For the moment, don't go too overboard... *)
-          if List.length how_to_unbox.new_params > 4 then begin
-            None
-          end else begin
-  Format.eprintf "Unbox_returns on:\n@ %a\n%!"
-    Flambda.print_function_declaration (fun_var, function_decl);
-            let function_decls, new_specialised_args =
-              unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
-                ~return_cont_param ~specialised_args
-            in
-  Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
-    Flambda.print_function_declarations
-      (Flambda.create_function_declarations ~funs:function_decls);
-            Some (function_decls, new_specialised_args)
-          end
+  if function_decl.stub then
+    None
+  else
+    match Continuation.Map.find return_cont continuation_uses with
+    | exception Not_found -> None
+    | uses ->
+      match U.meet_of_args_approxs_opt uses with
+      | None -> None
+      | Some args_approxs ->
+        match args_approxs with
+        | _::_::_ ->
+          (* For the moment, don't apply this transformation more than once
+            to any given function. *)
+          None
+        | [] ->
+          Misc.fatal_errorf "Function %a has zero return arity"
+            Variable.print fun_var
+        | [arg_approx] ->
+          assert (function_decl.return_arity = 1);
+          let return_cont_param = Variable.create "return_cont_param" in
+          let how_to_unbox =
+            Unbox_one_variable.how_to_unbox ~being_unboxed:return_cont_param
+              ~being_unboxed_approx:arg_approx
+          in
+          match how_to_unbox with
+          | None -> None
+          | Some how_to_unbox ->
+            (* For the moment, don't go too overboard... *)
+            if List.length how_to_unbox.new_params > 4 then begin
+              None
+            end else begin
+    Format.eprintf "Unbox_returns on:\n@ %a\n%!"
+      Flambda.print_function_declaration (fun_var, function_decl);
+              let function_decls, new_specialised_args =
+                unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
+                  ~return_cont_param ~specialised_args
+              in
+    Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
+      Flambda.print_function_declarations
+        (Flambda.create_function_declarations ~funs:function_decls);
+              Some (function_decls, new_specialised_args)
+            end
 
 let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
       ~specialised_args =

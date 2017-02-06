@@ -121,7 +121,7 @@ let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
             Variable.Set.inter unused (Variable.Set.of_list handler.params)
           in
           let with_wrapper : Flambda_utils.with_wrapper =
-            if Variable.Set.is_empty to_remove then
+            if handler.stub || Variable.Set.is_empty to_remove then
               Unchanged { handler; }
             else
               remove_parameters ~handler ~to_remove
