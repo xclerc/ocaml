@@ -1160,7 +1160,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
     | Some _ -> false
   in
   match Continuation_approx.handlers cont_approx with
-  | Some (Nonrecursive handler) when handler.stub ->
+  | Some (Nonrecursive handler) when handler.stub && trap_action = None ->
     (* Stubs are unconditionally inlined out now so that we don't need to run
        the second [Continuation_inlining] pass when doing a "noinline" run
        of [Inline_and_simplify].
