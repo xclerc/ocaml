@@ -1934,6 +1934,8 @@ and transl_prim_1 env p arg dbg =
   | Pint_as_pointer ->
      Cop(Caddi, [transl env arg; Cconst_int (-1)], dbg)
      (* always a pointer outside the heap *)
+  | Pgettag ->
+     get_tag (transl env arg) dbg
   (* Exceptions *)
   | Praise _ when not (!Clflags.debug) ->
       Cop(Craise Cmm.Raise_notrace, [transl env arg], dbg)
