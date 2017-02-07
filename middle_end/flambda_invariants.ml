@@ -166,8 +166,17 @@ module Push_pop_invariants = struct
 
   let rec loop (env:env) current_stack (expr : Flambda.t) =
     match expr with
-    | Let_mutable { body; _ }
-    | Let { body; _ } ->
+    | Let_mutable { body; _ } -> loop env current_stack body
+    | Let { defining_expr; body; _ } ->
+      begin match defining_expr with
+      | Set_of_closures set_of_closures ->
+        Variable.Map.iter
+          (fun _ (function_decl : Flambda.function_declaration) ->
+            well_formed_trap function_decl.continuation_param
+              function_decl.body)
+          set_of_closures.function_decls.funs
+      | _ -> ()
+      end;
       loop env current_stack body
     | Let_cont { body; handlers; } ->
       let handler_stack = var () in
@@ -275,7 +284,7 @@ module Push_pop_invariants = struct
       end
     | Proved_unreachable -> ()
 
-  let well_formed_trap k (expr : Flambda.t) =
+  and well_formed_trap k (expr : Flambda.t) =
     let root = ref Root in
     let env = Continuation.Map.singleton k root in
     loop env root expr
@@ -288,8 +297,17 @@ end
 module Continuation_scoping = struct
   let rec loop env (expr : Flambda.t) =
     match expr with
-    | Let_mutable { body; _ }
-    | Let { body; _ } ->
+    | Let_mutable { body; _ } -> loop env body
+    | Let { defining_expr; body; _ } ->
+      begin match defining_expr with
+      | Set_of_closures set_of_closures ->
+        Variable.Map.iter
+          (fun _ (function_decl : Flambda.function_declaration) ->
+            check_expr function_decl.continuation_param
+              function_decl.body)
+          set_of_closures.function_decls.funs
+      | _ -> ()
+      end;
       loop env body
     | Let_cont { body; handlers; } ->
       let env =
@@ -383,7 +401,7 @@ module Continuation_scoping = struct
       end
     | Proved_unreachable -> ()
 
-  let check_expr k (expr : Flambda.t) =
+  and check_expr k (expr : Flambda.t) =
     let env = Continuation.Map.singleton k 1 in
     loop env expr
 
