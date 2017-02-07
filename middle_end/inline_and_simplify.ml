@@ -990,6 +990,17 @@ Format.eprintf "...freshened cont is %a\n%!"
           in
           wrap result, r
         | Wrong ->  (* Insufficient approximation information to simplify. *)
+          (* CR mshinwell: Fish out the improvements to continuation use
+             recording from the reverted patch, so we can have
+             Opaque { num_args; } *)
+          let args_approxs = [A.value_unknown Other] in
+          let continuation, r =
+            simplify_apply_cont_to_cont env r continuation ~args_approxs
+          in
+          let r =
+            R.use_continuation r env continuation ~inlinable_position:false
+              ~args:[] ~args_approxs
+          in
           Apply ({ kind; func = lhs_of_application; args; call_kind = Indirect;
               dbg; inline = inline_requested; specialise = specialise_requested;
               continuation; }),
@@ -1181,6 +1192,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       let new_cont = Continuation.create () in
       let expr : Flambda.t =
         Let_cont {
+          (* CR mshinwell: This should call [use_continuation] on [new_cont] *)
           body = Apply_cont (new_cont, Some trap_action, []);
           handlers = Nonrecursive {
             name = new_cont;

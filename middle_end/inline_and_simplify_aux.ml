@@ -670,6 +670,10 @@ module Result = struct
     match Continuation.Map.find cont t.used_continuations with
     | exception Not_found -> t
     | uses ->
+      (* CR mshinwell: This should presumably remove the entry from
+         [used_continuations] if no more uses (inlinable or non-inlinable)
+         remain---otherwise e.g. [continuation_unused], below, won't be
+         correct *)
       let uses = Continuation_uses.remove_inlinable_uses uses ~args in
       { t with
         used_continuations =
