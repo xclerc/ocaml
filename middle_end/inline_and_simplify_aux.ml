@@ -177,7 +177,9 @@ module Env = struct
   let find_continuation t cont =
     match Continuation.Map.find cont t.continuations with
     | exception Not_found ->
-      Misc.fatal_errorf "Unbound continuation %a" Continuation.print cont
+      Misc.fatal_errorf "Unbound continuation %a.\n@ \n%a\n%!"
+        Continuation.print cont
+        print t
     | approx -> approx
 
   let does_not_bind t vars =
@@ -588,6 +590,16 @@ module Continuation_uses = struct
         t.inlinable_application_points
     in
     { t with inlinable_application_points; }
+
+  let map_use_environments t ~f =
+    let inlinable_application_points =
+      List.map (fun (use : Use.t) ->
+          { use with
+            env = f use.env;
+          })
+        t.inlinable_application_points
+    in
+    { t with inlinable_application_points; }
 end
 
 module Continuation_usage_snapshot = struct
@@ -670,6 +682,8 @@ module Result = struct
   let used_continuations t =
     Continuation.Map.keys t.used_continuations
 
+  let continuation_uses t = t.used_continuations
+
   let no_continuations_in_scope t =
     Continuation.Map.is_empty t.used_continuations
 
@@ -704,12 +718,18 @@ module Result = struct
     | uses ->
       Continuation_uses.meet_of_args_approxs uses ~num_params
 
-  let exit_scope_catch t env i =
+  let exit_scope_catch ?update_use_env t env i =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->
       let uses = Continuation_uses.create ~backend:(Env.backend env) in
       t, uses
     | uses ->
+      let uses =
+        match update_use_env with
+        | None -> uses
+        | Some f ->
+          Continuation_uses.map_use_environments uses ~f
+      in
       { t with
         used_continuations = Continuation.Map.remove i t.used_continuations;
       }, uses

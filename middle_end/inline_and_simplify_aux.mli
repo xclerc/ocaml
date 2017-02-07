@@ -379,10 +379,15 @@ module Result : sig
     -> num_params:int
     -> Simple_value_approx.t list
 
+  (** Continuation usage information for use after examining the body of
+      a [Let_cont] but before [define_continuation] has been called. *)
+  val continuation_uses : t -> Continuation_uses.t Continuation.Map.t
+
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
   val exit_scope_catch
-     : t
+     : ?update_use_env:(Env.t -> Env.t)
+    -> t
     -> Env.t
     -> Continuation.t
     -> t * Continuation_uses.t

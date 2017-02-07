@@ -20,7 +20,7 @@ module H = Unbox_one_variable.How_to_unbox
 module CAV = Invariant_params.Continuations.Continuation_and_variable
 module R = Inline_and_simplify_aux.Result
 
-let find_unboxings ~definitions_with_uses ~handlers =
+let find_unboxings ~continuation_uses ~handlers =
   Continuation.Map.filter_map handlers
     ~f:(fun cont (handler : Flambda.continuation_handler) ->
       if handler.stub then
@@ -29,9 +29,11 @@ let find_unboxings ~definitions_with_uses ~handlers =
         match handler.params with
         | [] -> None
         | params ->
-          match Continuation.Map.find cont definitions_with_uses with
-          | exception Not_found -> None
-          | (uses, _approx, _env, _recursive) ->
+          match Continuation.Map.find cont continuation_uses with
+          | exception Not_found ->
+Format.eprintf "No definition for %a\n%!" Continuation.print cont;
+            None
+          | uses ->
             let num_params = List.length params in
             let args_approxs =
               Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
@@ -95,8 +97,10 @@ Format.eprintf "Invariant params:\n@;%a\n"
     unboxings_by_cont unboxings_by_cont'
 
 let for_continuations r ~handlers ~backend =
-  let definitions_with_uses = R.continuation_definitions_with_uses r in
-  let unboxings_by_cont = find_unboxings ~definitions_with_uses ~handlers in
+Format.eprintf "Unbox_continuation_params starting on:\n@;%a\n%!"
+  Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
+  let continuation_uses = R.continuation_uses r in
+  let unboxings_by_cont = find_unboxings ~continuation_uses ~handlers in
   if Continuation.Map.is_empty unboxings_by_cont then begin
     None
   end else begin
@@ -137,6 +141,12 @@ let for_continuations r ~handlers ~backend =
                 @ (List.map (fun (param, _proj) -> param)
                   how_to_unbox.new_params)
             in
+Format.eprintf "Unboxed version has \
+    wrapper\n@ %a = %a\n@ and new handler:\n@ %a = %a\n%!"
+  Continuation.print cont
+  Flambda.print wrapper_body
+  Continuation.print new_cont
+  Flambda.print handler.handler;
             With_wrapper {
               new_cont;
               new_handler = {

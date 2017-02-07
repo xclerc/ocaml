@@ -1717,7 +1717,8 @@ Format.eprintf "simplify_let_cont_handler %a (num_params %d)\n%!"
   r, handler
 
 and simplify_let_cont_handlers ~env ~r ~body ~handlers ~approx_handlers
-      ~(recursive : Asttypes.rec_flag) ~freshening : Flambda.expr * R.t =
+      ~(recursive : Asttypes.rec_flag) ~freshening ~update_use_env
+      : Flambda.expr * R.t =
   (* If none of the handlers are used in the body, delete them all. *)
   let all_unused =
     Continuation.Map.for_all (fun cont _handler ->
@@ -1740,6 +1741,8 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
              since the latter may come from another compilation unit, and has
              not yet been freshened up. *)
           let r, handler =
+Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
+  Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
             simplify_let_cont_handler ~env ~r ~cont ~handler ~recursive
           in
           let cont' = Freshening.apply_static_exception freshening cont in
@@ -1765,7 +1768,7 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
     let r, handlers =
       Continuation.Map.fold (fun cont approx (r, handlers) ->
           let r, uses =
-            R.exit_scope_catch r env cont
+            R.exit_scope_catch ~update_use_env r env cont
           in
           if Inline_and_simplify_aux.Continuation_uses.unused uses then
             let handlers = Continuation.Map.remove cont handlers in
@@ -1914,6 +1917,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     begin match handlers with
     | Nonrecursive { name; handler; } ->
       let with_wrapper : Flambda_utils.with_wrapper =
+        (* CR mshinwell: Tidy all this up somehow. *)
         (* Unboxing of continuation parameters is done now so that in one pass
            of [Inline_and_simplify] such unboxing will go all the way down the
            control flow. *)
@@ -1922,7 +1926,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           Unbox_continuation_params.for_non_recursive_continuation r ~handler
             ~name ~backend:(E.backend env)
       in
-      let simplify_one_handler r ~name ~handler ~body =
+      let simplify_one_handler ?update_use_env env r ~name ~handler ~body =
         (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
            non-recursive ones before simplifying their body.  I'm not sure we
            need to, since we already ensure such continuations aren't in the
@@ -1933,20 +1937,41 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         let handlers =
           Continuation.Map.add name handler Continuation.Map.empty
         in
+        let update_use_env =
+          match update_use_env with
+          | None -> (fun env -> env)
+          | Some f -> f
+        in
         simplify_let_cont_handlers ~env ~r ~body ~handlers ~approx_handlers
-          ~recursive:Asttypes.Nonrecursive ~freshening
+          ~recursive:Asttypes.Nonrecursive ~freshening ~update_use_env
       in
       begin match with_wrapper with
-      | Unchanged _ -> simplify_one_handler r ~name ~handler ~body
+      | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
       | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
         let body, r =
-          simplify_one_handler r ~name ~handler:wrapper_handler ~body
+          let approx =
+            Continuation_approx.create_unknown ~name:new_cont
+              ~num_params:(List.length new_handler.params)
+          in
+          let update_use_env env =
+            E.add_continuation env new_cont approx
+          in
+          let env = update_use_env env in
+Format.eprintf "Adding %a to the environment to simplify the wrapper\n%!"
+  Continuation.print new_cont;
+          simplify_one_handler ~update_use_env env r ~name
+            ~handler:wrapper_handler ~body
         in
-        simplify_one_handler r ~name:new_cont ~handler:new_handler ~body
+let body, r =
+        simplify_one_handler env r ~name:new_cont ~handler:new_handler ~body
+in
+Format.eprintf "With wrappers applied:\n@ %a\n%!"
+  Flambda.print body;
+body, r
       end
     | Recursive handlers ->
-      let handlers =
-        if E.never_inline env then handlers
+      let handlers, env, update_use_env =
+        if E.never_inline env then handlers, body_env, (fun env -> env)
         else
           let with_wrappers =
             Unbox_continuation_params.for_recursive_continuations r ~handlers
@@ -1954,21 +1979,35 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           in
           (* CR mshinwell: move to Flambda_utils, probably *)
           Continuation.Map.fold (fun cont
-                  (with_wrapper : Flambda_utils.with_wrapper) handlers ->
+                  (with_wrapper : Flambda_utils.with_wrapper)
+                  (handlers, env, update_use_env) ->
               match with_wrapper with
               | Unchanged { handler; } ->
-                Continuation.Map.add cont handler handlers
+                Continuation.Map.add cont handler handlers, env,
+                  update_use_env
               | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
-                Continuation.Map.add new_cont new_handler
-                  (Continuation.Map.add cont wrapper_handler handlers))
+                let handlers =
+                  Continuation.Map.add new_cont new_handler
+                    (Continuation.Map.add cont wrapper_handler handlers)
+                in
+                let approx =
+                  Continuation_approx.create_unknown ~name:new_cont
+                    ~num_params:(List.length new_handler.params)
+                in
+                let env = E.add_continuation env new_cont approx in
+                let update_use_env env =
+                  update_use_env (E.add_continuation env new_cont approx)
+                in
+                handlers, env, update_use_env)
             with_wrappers
-            Continuation.Map.empty
+            (Continuation.Map.empty, body_env, (fun env -> env))
       in
       let approx_handlers : Continuation_approx.continuation_handlers =
         Recursive handlers
       in
-      simplify_let_cont_handlers ~env:body_env ~r ~body ~handlers
+      simplify_let_cont_handlers ~env ~r ~body ~handlers
         ~approx_handlers ~recursive:Asttypes.Recursive ~freshening
+        ~update_use_env
     | Alias { name; alias_of = _; } ->
       (* As a result of adding the approximation of [name], above, to the
          environment then all uses of it in the [body] should have been
