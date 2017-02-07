@@ -140,7 +140,7 @@ let assign_symbols_and_collect_constant_definitions
           var; })
     end
   in
-  let assign_symbol_program _cont expr =
+  let assign_symbol_program ~continuation_arity:_ _cont expr =
     Flambda_iterators.iter_all_immutable_let_and_let_rec_bindings expr
       ~f:assign_symbol
   in

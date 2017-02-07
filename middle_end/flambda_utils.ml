@@ -240,7 +240,33 @@ let toplevel_substitution sb tree =
     | Apply_cont (static_exn, trap_action, args) ->
       let args = List.map sb args in
       Apply_cont (static_exn, trap_action, args)
-    | Let_cont _ | Let _ | Proved_unreachable -> flam
+    | Let _ | Proved_unreachable -> flam
+    | Let_cont { body = _; handlers = Alias _; } -> flam
+    | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+      let handler =
+        { handler with
+          (* CR mshinwell: share with below *)
+          specialised_args =
+            (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
+                { spec_to with var = sb_opt spec_to.var; })
+              handler.specialised_args);
+        }
+      in
+      Let_cont { body; handlers = Nonrecursive { name; handler; }; }
+    | Let_cont { body; handlers = Recursive handlers; } ->
+      let handlers =
+        Continuation.Map.map (fun (handler : Flambda.continuation_handler)
+                : Flambda.continuation_handler ->
+            { handler with
+              (* CR mshinwell: share with below *)
+              specialised_args =
+                (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
+                    { spec_to with var = sb_opt spec_to.var; })
+                  handler.specialised_args);
+            })
+          handlers
+      in
+      Let_cont { body; handlers = Recursive handlers; }
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with

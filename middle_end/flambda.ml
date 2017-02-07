@@ -646,8 +646,8 @@ let print_program ppf program =
 let free_variables_of_specialised_args specialised_args =
   Variable.Map.fold (fun _ (spec_to : specialised_to) fvs ->
       (* We don't need to do anything with [spec_to.projectee.var], if
-          it is present, since it would only be another specialised arg
-          in the same set of closures or continuation. *)
+         it is present, since it would only be another specialised arg
+         in the same set of closures or continuation. *)
       match spec_to.var with
       | None -> fvs
       | Some var -> Variable.Set.add var fvs)
@@ -714,12 +714,18 @@ let rec variables_usage ?ignore_uses_as_callee
       aux body;
       begin match handlers with
       | Alias _ -> ()
-      | Nonrecursive { name = _; handler = { params; handler; _ }; } ->
+      | Nonrecursive { name = _; handler = {
+          params; handler; specialised_args; _ }; } ->
         List.iter bound_variable params;
+        free_variables
+          (free_variables_of_specialised_args specialised_args);
         aux handler
       | Recursive handlers ->
-        Continuation.Map.iter (fun _name { params; handler; _ } ->
+        Continuation.Map.iter (fun _name { params; handler;
+                specialised_args; _ } ->
             List.iter bound_variable params;
+            free_variables
+              (free_variables_of_specialised_args specialised_args);
             aux handler)
           handlers
       end

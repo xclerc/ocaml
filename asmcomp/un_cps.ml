@@ -290,7 +290,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
           match can_turn_into_let_or_sequence with
           | Nothing ->
             Ucatch (Normal Nonrecursive, [cont, params, inline env handler],
-              inline env handler)
+              inline env body)
           | Sequence ->
             let env = E.continuation_will_turn_into_sequence env ~cont in
             Usequence (inline env body, inline env handler)

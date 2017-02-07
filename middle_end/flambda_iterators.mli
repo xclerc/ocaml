@@ -107,7 +107,7 @@ val iter_all_toplevel_immutable_let_and_let_rec_bindings
 
 val iter_exprs_at_toplevel_of_program
    : Flambda.program
-  -> f:(Continuation.t -> Flambda.t -> unit)
+  -> f:(continuation_arity:int -> Continuation.t -> Flambda.t -> unit)
   -> unit
 
 val iter_named_of_program

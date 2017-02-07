@@ -172,8 +172,8 @@ module Push_pop_invariants = struct
       | Set_of_closures set_of_closures ->
         Variable.Map.iter
           (fun _ (function_decl : Flambda.function_declaration) ->
-            well_formed_trap function_decl.continuation_param
-              function_decl.body)
+            well_formed_trap ~continuation_arity:function_decl.return_arity
+              function_decl.continuation_param function_decl.body)
           set_of_closures.function_decls.funs
       | _ -> ()
       end;
@@ -284,7 +284,7 @@ module Push_pop_invariants = struct
       end
     | Proved_unreachable -> ()
 
-  and well_formed_trap k (expr : Flambda.t) =
+  and well_formed_trap ~continuation_arity:_ k (expr : Flambda.t) =
     let root = ref Root in
     let env = Continuation.Map.singleton k root in
     loop env root expr
@@ -304,6 +304,7 @@ module Continuation_scoping = struct
         Variable.Map.iter
           (fun _ (function_decl : Flambda.function_declaration) ->
             check_expr function_decl.continuation_param
+              ~continuation_arity:function_decl.return_arity
               function_decl.body)
           set_of_closures.function_decls.funs
       | _ -> ()
@@ -372,7 +373,6 @@ module Continuation_scoping = struct
         | exception Not_found ->
           raise (Continuation_not_caught (continuation, "apply"))
         | arity ->
-          (* CR mshinwell: This doesn't seem to be catching all that it should *)
           let expected_arity =
             match call_kind with
             | Direct { return_arity; _ } -> return_arity
@@ -401,8 +401,8 @@ module Continuation_scoping = struct
       end
     | Proved_unreachable -> ()
 
-  and check_expr k (expr : Flambda.t) =
-    let env = Continuation.Map.singleton k 1 in
+  and check_expr ~continuation_arity k (expr : Flambda.t) =
+    let env = Continuation.Map.singleton k continuation_arity in
     loop env expr
 
   let check program =
@@ -986,7 +986,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
     (* every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
         flam; *)
     Flambda_iterators.iter_exprs_at_toplevel_of_program flam
-      ~f:(fun _cont flam ->
+      ~f:(fun ~continuation_arity:_ _cont flam ->
         primitive_invariants flam
           ~no_access_to_global_module_identifiers:cmxfile;
         every_declared_closure_is_from_current_compilation_unit flam);
