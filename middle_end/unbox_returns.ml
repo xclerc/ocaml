@@ -144,9 +144,9 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
 
 let for_function_decl ~continuation_uses ~fun_var
         ~(function_decl : Flambda.function_declaration)
-        ~specialised_args =
+        ~specialised_args ~recursively_used =
   let return_cont = function_decl.continuation_param in
-  if function_decl.stub then
+  if function_decl.stub || Variable.Set.mem fun_var recursively_used then
     None
   else
     match Continuation.Map.find return_cont continuation_uses with
@@ -158,7 +158,7 @@ let for_function_decl ~continuation_uses ~fun_var
         match args_approxs with
         | _::_::_ ->
           (* For the moment, don't apply this transformation more than once
-            to any given function. *)
+             to any given function. *)
           None
         | [] ->
           Misc.fatal_errorf "Function %a has zero return arity"
@@ -190,12 +190,15 @@ let for_function_decl ~continuation_uses ~fun_var
             end
 
 let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
-      ~specialised_args =
+      ~specialised_args ~backend =
+  let recursively_used =
+    Find_recursive_functions.in_function_declarations function_decls ~backend
+  in
   let funs, new_specialised_args =
     Variable.Map.fold (fun fun_var function_decl (funs, new_specialised_args) ->
         match
           for_function_decl ~continuation_uses ~fun_var ~function_decl
-            ~specialised_args
+            ~specialised_args ~recursively_used
         with
         | None ->
           let funs = Variable.Map.add fun_var function_decl funs in

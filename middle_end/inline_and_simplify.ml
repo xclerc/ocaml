@@ -792,6 +792,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
       function_decls, Variable.Map.empty
     else
       Unbox_returns.run ~continuation_uses ~function_decls ~specialised_args
+        ~backend:(E.backend env)
   in
   let specialised_args =
     Variable.Map.disjoint_union specialised_args new_specialised_args
@@ -1956,6 +1957,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           let update_use_env env =
             E.add_continuation env new_cont approx
           in
+          (* CR mshinwell: See if we can cut down the continuation information
+             in the environment (probably just to stub definitions and
+             alias definitions) so we don't need [update_use_env]. *)
           let env = update_use_env env in
 Format.eprintf "Adding %a to the environment to simplify the wrapper\n%!"
   Continuation.print new_cont;
