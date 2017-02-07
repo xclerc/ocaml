@@ -628,6 +628,10 @@ let rec un_anf_and_moveable ident_info env (clam : Clambda.ulambda)
     Uoffset (clam, n), moveable
   | Ulet (_let_kind, _value_kind, id, def, Uvar id') when Ident.same id id' ->
     un_anf_and_moveable ident_info env def
+  | Ulet (_let_kind, _value_kind, id, Uconst cst, body) ->
+    (* CR mshinwell: figure out why this is needed *)
+    let env = Ident.Map.add id (Moveable, Clambda.Uconst cst) env in
+    un_anf_and_moveable ident_info env body
   | Ulet (let_kind, value_kind, id, def, body) ->
     let def, def_moveable = un_anf_and_moveable ident_info env def in
     let is_linear = Ident.Set.mem id ident_info.linear in

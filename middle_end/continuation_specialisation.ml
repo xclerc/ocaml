@@ -298,6 +298,9 @@ let find_specialisations r ~simplify ~backend =
              in [Inlining_decision]. *)
           acc
         | Some (Nonrecursive _) -> acc
+        (* CR mshinwell: decide what to do about this deficiency *)
+        | Some (Recursive handlers)
+            when Continuation.Map.cardinal handlers > 1 -> acc
         | Some (Recursive handlers) ->
 Format.eprintf "Specialisation starting with %a\n%!" Continuation.print cont;
           let invariant_params =
