@@ -1154,13 +1154,8 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
-  let inlinable_position =
-    match trap_action with
-    | None -> true
-    | Some _ -> false
-  in
   match Continuation_approx.handlers cont_approx with
-  | Some (Nonrecursive handler) when handler.stub && trap_action = None ->
+  | Some (Nonrecursive handler) when handler.stub ->
     (* Stubs are unconditionally inlined out now so that we don't need to run
        the second [Continuation_inlining] pass when doing a "noinline" run
        of [Inline_and_simplify].
@@ -1178,10 +1173,32 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
         (E.set_freshening env freshening)
         params_and_approxs
     in
-    simplify env r handler.handler
+    let handler, r = simplify env r handler.handler in
+    begin match trap_action with
+    | None -> handler, r
+    | Some trap_action ->
+      let new_cont = Continuation.create () in
+      let expr : Flambda.t =
+        Let_cont {
+          body = Apply_cont (new_cont, Some trap_action, []);
+          handlers = Nonrecursive {
+            name = new_cont;
+            handler = {
+              handler;
+              params = [];
+              stub = false;
+              is_exn_handler = false;
+              specialised_args = Variable.Map.empty;
+            };
+          };
+        }
+      in
+      expr, r
+    end
   | Some _ | None ->
     let r =
-      R.use_continuation r env cont ~inlinable_position ~args ~args_approxs
+      R.use_continuation r env cont ~inlinable_position:true ~args
+        ~args_approxs
     in
     let trap_action, r =
       match trap_action with
@@ -1587,13 +1604,6 @@ Format.eprintf "simplify_let_cont_handler %a (num_params %d)\n%!"
   let { Flambda. params = vars; stub; is_exn_handler; handler;
     specialised_args; } = handler
   in
-  let handler =
-    (* Unboxing of continuation parameters is done now so that in one pass of
-       [Inline_and_simplify] such unboxing will go all the way down the
-       control flow. *)
-    if stub || E.never_inline env then handler
-    else Unbox_continuation_params.run r handler ~backend:(E.backend env)
-  in
   (* CR mshinwell: rename "vars" to "params" *)
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env) vars
@@ -1723,6 +1733,13 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
   Flambda.print body;
     body, r
   end else
+    let handlers =
+      (* Unboxing of continuation parameters is done now so that in one pass of
+         [Inline_and_simplify] such unboxing will go all the way down the
+         control flow. *)
+      if stub || E.never_inline env then handler
+      else Unbox_continuation_params.run r handler ~backend:(E.backend env)
+    in
     (* First we simplify the continuations themselves. *)
     let r, handlers =
       Continuation.Map.fold (fun cont handler (r, handlers) ->

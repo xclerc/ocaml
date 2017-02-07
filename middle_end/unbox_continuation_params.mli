@@ -19,8 +19,17 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+val for_continuations
+   : Inline_and_simplify_aux.Result.t
+  -> body:Flambda.expr
+  -> handlers:Flambda.let_cont_handlers
+  -> backend:(module Backend_intf.S)
+  -> Flambda_utils.with_wrapper Continuation.Map.t
+
+(*
 val run
    : Inline_and_simplify_aux.Result.t
   -> Flambda.expr
   -> backend:(module Backend_intf.S)
   -> Flambda.expr
+*)

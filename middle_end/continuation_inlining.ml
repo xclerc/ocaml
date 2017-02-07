@@ -304,14 +304,23 @@ let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
                  subtract from that information here. *)
               r := R.forget_inlinable_continuation_uses !r cont ~args;
               inlined_body
-            | Some _ ->
-              (* Uses like this, with a trap action, will not have been
-                counted as inlinable
-                (cf. [Inline_and_simplify.simplify_apply_cont]).  However
-                there might be other uses with the same continuation and
-                arguments and no trap action, which is why we cannot
-                fail here. *)
-              expr
+            | Some trap_action ->
+              (* We have to make a new continuation as we must preserve the
+                 trap. *)
+              let new_cont = Continuation.create () in
+              Let_cont {
+                body = Apply_cont (new_cont, Some trap_action, []);
+                handlers = Nonrecursive {
+                  name = new_cont;
+                  handler = {
+                    params = [];
+                    handler = inlined_body;
+                    stub = false;
+                    is_exn_handler = false;
+                    specialised_args = Variable.Map.empty;
+                  };
+                };
+              }
           end
         | Apply _ | Let _ | Let_cont _ | Let_mutable _ | Switch _
         | Proved_unreachable -> expr)

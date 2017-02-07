@@ -94,7 +94,7 @@ Format.eprintf "Invariant params:\n@;%a\n"
       Some (Variable.Map.disjoint_union unboxings1 unboxings2))
     unboxings_by_cont unboxings_by_cont'
 
-let for_continuations r ~body ~handlers ~original:_ ~backend
+let for_continuations r ~handlers ~backend
       ~(recursive : Asttypes.rec_flag) =
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   let unboxings_by_cont = find_unboxings ~definitions_with_uses ~handlers in
@@ -160,14 +160,33 @@ let for_continuations r ~body ~handlers ~original:_ ~backend
         unboxings_by_cont
         Continuation.Map.empty
     in
-    let output =
+(*
+    let output body =
       Flambda_utils.build_let_cont_with_wrappers ~body ~recursive
         ~with_wrappers
     in
     Format.eprintf "After unboxing:\n@;%a\n%!" Flambda.print output;
-    Some output
+*)
+    Some with_wrappers
   end
 
+let for_continuations r ~body ~handlers ~backend =
+  let handlers_and_recursive =
+    match handlers with
+    | Nonrecursive { name; handler; } ->
+      let handlers =
+        Continuation.Map.add name handler Continuation.Map.empty
+      in
+      Some (handlers, Asttypes.Nonrecursive)
+    | Recursive handlers -> Some (handlers, Asttypes.Recursive)
+    | Alias _ -> None
+  in
+  match handlers_and_recursive with
+  | None -> None
+  | Some (handlers, recursive) ->
+    for_continuations r ~body ~handlers ~backend ~recursive
+
+(*
 let run r expr ~backend =
 Format.eprintf "Ready to unbox:\n@;%a\n%!" Flambda.print expr;
   Flambda_iterators.map_expr (fun (expr : Flambda.expr) ->
@@ -197,3 +216,4 @@ Format.eprintf "Ready to unbox:\n@;%a\n%!" Flambda.print expr;
       | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
       | Proved_unreachable -> expr)
     expr
+*)
