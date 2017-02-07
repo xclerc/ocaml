@@ -19,17 +19,15 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-val for_continuations
+val for_non_recursive_continuation
    : Inline_and_simplify_aux.Result.t
-  -> body:Flambda.expr
-  -> handlers:Flambda.let_cont_handlers
+  -> name:Continuation.t
+  -> handler:Flambda.continuation_handler
+  -> backend:(module Backend_intf.S)
+  -> Flambda_utils.with_wrapper
+
+val for_recursive_continuations
+   : Inline_and_simplify_aux.Result.t
+  -> handlers:Flambda.continuation_handlers
   -> backend:(module Backend_intf.S)
   -> Flambda_utils.with_wrapper Continuation.Map.t
-
-(*
-val run
-   : Inline_and_simplify_aux.Result.t
-  -> Flambda.expr
-  -> backend:(module Backend_intf.S)
-  -> Flambda.expr
-*)
