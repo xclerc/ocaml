@@ -234,11 +234,8 @@ module type S = sig
     val data : 'a t -> 'a list
     val of_set : (key -> 'a) -> Make_set (T).t -> 'a t
     val transpose_keys_and_data : key t -> key t
-<<<<<<< HEAD
     val get_singleton : 'a t -> (key * 'a) option
-=======
     val transpose_keys_and_data_set : key t -> Set.t t
->>>>>>> ocaml/trunk
     val print :
       (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
   end

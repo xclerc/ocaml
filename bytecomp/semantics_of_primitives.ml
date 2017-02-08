@@ -154,6 +154,9 @@ let for_primitive (prim : Lambda.primitive) =
   | Psequor ->
       (* Removed by [Prepare_lambda] in the Flambda pipeline. *)
       No_effects, No_coeffects
+  | Pread_mutable _ ->
+      Misc.fatal_error "Pread_mutable should only exist between \
+        Prepare_lambda and Closure_conversion"
   | Preturn -> Arbitrary_effects, Has_coeffects
   | Pmake_unboxed_tuple | Punboxed_tuple_field _ ->
     No_effects, No_coeffects

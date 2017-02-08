@@ -145,11 +145,6 @@ module Function_decls = struct
     let is_a_functor t = t.attr.is_a_functor
     let stub t = t.attr.stub
     let loc t = t.loc
-<<<<<<< HEAD
-    let stub t = t.stub
-=======
-
->>>>>>> ocaml/trunk
   end
 
   type t = {
