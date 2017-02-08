@@ -116,6 +116,18 @@ module Make_map (T : Thing) = struct
           | Some _ -> raise Exit)
         s None
     with Exit -> None
+
+  let transpose_keys_and_data_set map =
+    fold (fun k v m ->
+        let set =
+          match find v m with
+          | exception Not_found ->
+            T_set.singleton k
+          | set ->
+            T_set.add k set
+        in
+        add v set m)
+      map empty
 end
 
 module Make_set (T : Thing) = struct
@@ -222,7 +234,11 @@ module type S = sig
     val data : 'a t -> 'a list
     val of_set : (key -> 'a) -> Make_set (T).t -> 'a t
     val transpose_keys_and_data : key t -> key t
+<<<<<<< HEAD
     val get_singleton : 'a t -> (key * 'a) option
+=======
+    val transpose_keys_and_data_set : key t -> Set.t t
+>>>>>>> ocaml/trunk
     val print :
       (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
   end

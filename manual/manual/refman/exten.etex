@@ -7,7 +7,7 @@ that are implemented in OCaml, but not described in the
 OCaml reference manual.
 
 \section{Integer literals for types \texttt{int32}, \texttt{int64}
-         and \texttt{nativeint}}
+         and \texttt{nativeint}} \label{s:ext-integer}
 
 (Introduced in Objective Caml 3.07)
 
@@ -105,6 +105,8 @@ An expression @@e@@ is said to be {\em immediately linked to} the variable
 
 \section{Lazy patterns} \label{s:lazypat}
 
+\ikwd{lazy\@\texttt{lazy}}
+
 (Introduced in Objective Caml 3.11)
 
 \begin{syntax}
@@ -131,7 +133,7 @@ standard library (
 
 \section{Recursive modules} \label{s-recursive-modules}
 \ikwd{module\@\texttt{module}}
-\ikwd{rec\@\texttt{rec}}
+\ikwd{and\@\texttt{and}}
 
 (Introduced in Objective Caml 3.07)
 
@@ -202,7 +204,7 @@ function component of a safe module is applied during this computation
 Note that, in the @specification@ case, the @module-type@s must be
 parenthesized if they use the @'with' mod-constraint@ construct.
 
-\section{Private types}
+\section{Private types}\label{s:private-types}
 \ikwd{private\@\texttt{private}}
 
 Private type declarations in module signatures, of the form
@@ -379,7 +381,7 @@ is not inferred, and must be given explicitly.
 
 \section{Local opens}
 \ikwd{let\@\texttt{let}}
-\ikwd{open\@\texttt{open}}
+\ikwd{open\@\texttt{open}} \label{s:local-opens}
 
 (Introduced in OCaml 3.12, extended to patterns in 4.04)
 
@@ -434,7 +436,8 @@ For example, @module-path'.['expr']'@ is equivalent to
 @module-path'.(['expr'])'@, and @module-path'.[|' pattern '|]'@ is
 equivalent to @module-path'.([|' pattern '|])'@.
 
-\section{Record and object notations}
+\section{Record and object notations} \label{s:record-and-object-notations}
+\ikwd{with\@\texttt{with}}
 
 (Introduced in OCaml 3.12, object copy notation added in Ocaml 4.03)
 
@@ -497,7 +500,7 @@ Continuing the "point" example above,
 record patterns may need to be modified after new fields are added to a
 record type.
 
-\section{Explicit polymorphic type annotations}
+\section{Explicit polymorphic type annotations} \label{s:explicit-polymorphic-type}
 \ikwd{let\@\texttt{let}}
 
 (Introduced in OCaml 3.12)
@@ -534,7 +537,7 @@ let id: 'a. 'a -> 'a = fun x -> x + 1;;
 
 \section{Locally abstract types}
 \ikwd{type\@\texttt{type}}
-\ikwd{fun\@\texttt{fun}}
+\ikwd{fun\@\texttt{fun}} \label{s:locally-abstract}
 
 (Introduced in OCaml 3.12, short syntax added in 4.03)
 
@@ -597,7 +600,7 @@ section~\ref{s-first-class-modules}) and generalized algebraic datatypes
 \begin{syntax}
 let-binding:
        ...
-     | value-name ":" "type" {{ typeconstr-name }} "." typexpr "=" expr
+     | value-name ':' 'type' {{ typeconstr-name }} '.' typexpr '=' expr
 ;
 class-field:
           ...
@@ -632,9 +635,11 @@ section~\ref{s:explicit-overriding}.
 \ikwd{module\@\texttt{module}}
 \ikwd{val\@\texttt{val}}
 \ikwd{with\@\texttt{with}}
+\ikwd{and\@\texttt{and}}
 
 (Introduced in OCaml 3.12; pattern syntax and package type inference
-introduced in 4.00; structural comparison of package types introduced in 4.02.)
+introduced in 4.00; structural comparison of package types introduced in 4.02.;
+fewer parens required starting from 4.05)
 
 \begin{syntax}
 typexpr:
@@ -678,6 +683,8 @@ evaluates the core language expression @expr@ to a value, which must
 have type @'module' package-type@, and extracts the module that was
 encapsulated in this value. Again @package-type@ can be omitted if the
 type of @expr@ is known.
+If the module expression is already parenthesized, like the arguments
+of functors are, no additional parens are needed: "Map.Make(val key)".
 
 The pattern @'(' 'module' module-name ':' package-type ')'@ matches a
 package with type @package-type@ and binds it to @module-name@.
@@ -850,10 +857,11 @@ Note that this function uses an explicit polymorphic annotation to obtain
 polymorphic recursion.
 \fi
 
-\section{Recovering the type of a module}
+\section{Recovering the type of a module} \label{s:module-type-of}
 
 \ikwd{module\@\texttt{module}}
 \ikwd{type\@\texttt{type}}
+\ikwd{of\@\texttt{of}}
 \ikwd{include\@\texttt{include}}
 
 (Introduced in OCaml 3.12)
@@ -907,6 +915,7 @@ it to represent sets internally in a different way.
 \ikwd{with\@\texttt{with}}
 \ikwd{module\@\texttt{module}}
 \ikwd{type\@\texttt{type}}
+\label{s:signature-substitution}
 
 (Introduced in OCaml 3.12)
 
@@ -1473,6 +1482,8 @@ The last two entries are valid for any $n > 3$.
 
 \section{Attributes}\label{s:attributes}
 
+\ikwd{when\@\texttt{when}}
+
 (Introduced in OCaml 4.02,
 infix notations for constructs other than expressions added in 4.03)
 
@@ -1803,7 +1814,9 @@ end
 \section{Extension nodes}\label{s:extension-nodes}
 
 (Introduced in OCaml 4.02,
-infix notations for constructs other than expressions added in 4.03)
+infix notations for constructs other than expressions added in 4.03,
+infix notation (e1 ;\%ext e2) added in 4.04.
+)
 
 Extension nodes are generic placeholders in the syntax tree. They are
 rejected by the type-checker and are intended to be ``expanded'' by external
@@ -1871,6 +1884,7 @@ Examples:
 \begin{verbatim}
 let%foo x = 2 in x + 1     === [%foo let x = 2 in x + 1]
 begin%foo ... end          === [%foo begin ... end]
+x ;%foo 2                  === [%foo x; 2]
 module%foo M = ..          === [%%foo module M = ... ]
 val%foo x : t              === [%%foo: val x : t]
 \end{verbatim}
@@ -2095,7 +2109,7 @@ infix-symbol:
 Operator names starting with a "#" character and containing more than
 one "#" character are reserved for extensions.
 
-\subsection{Extension literals}
+\subsection{Extension literals} \label{s:extension-literals}
 (Introduced in OCaml 4.03)
 \begin{syntax}
 float-literal:
@@ -2125,7 +2139,7 @@ int-literal:
 Int and float literals followed by an one-letter identifier in the
 range @["g".."z"||"G".."Z"]@ are extension-only literals.
 
-\section{Inline records}
+\section{Inline records} \label{s:inline-records}
 (Introduced in OCaml 4.03)
 \begin{syntax}
   constr-args:
@@ -2154,7 +2168,7 @@ type t =
 let v = Point {width = 10; x = 0.; y = 0.}
 
 let scale l = function
-  | Point p -> Point {p with x = l * p.x; y = l * p.y}
+  | Point p -> Point {p with x = l *. p.x; y = l *. p.y}
   | ....
 
 let print = function
@@ -2173,7 +2187,7 @@ let invalid = function
 
 \section{Local exceptions}
 \ikwd{let\@\texttt{let}}
-\ikwd{exception\@\texttt{exception}}
+\ikwd{exception\@\texttt{exception}} \label{s:local-exceptions}
 
 (Introduced in OCaml 4.04)
 

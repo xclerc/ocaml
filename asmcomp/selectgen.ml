@@ -310,7 +310,8 @@ method select_operation op args _dbg =
       let (addr, eloc) = self#select_addressing chunk arg1 in
       let is_assign =
         match init with
-        | Lambda.Initialization -> false
+        | Lambda.Root_initialization -> false
+        | Lambda.Heap_initialization -> false
         | Lambda.Assignment -> true
       in
       if chunk = Word_int || chunk = Word_val then begin
@@ -1077,7 +1078,7 @@ method emit_fundecl f =
      together is then simply prepended to the body. *)
   let env =
     List.fold_right2
-      (fun (id, _ty) r env -> env_add id [| r |] env)
+        (fun (id, _ty) r env -> env_add id [| r |] env)
       f.Cmm.fun_args rargs (self#initial_env ()) in
   let spacetime_node_hole, env =
     if not Config.spacetime then None, env

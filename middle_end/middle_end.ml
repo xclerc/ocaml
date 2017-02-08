@@ -114,11 +114,11 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
       +-+ ("Inline_and_simplify",
            Inline_and_simplify.run ~never_inline:false ~backend
              ~prefixname ~round)
-      +-+ ("Ref_to_variables",
-           Ref_to_variables.eliminate_ref)
       +-+ ("Remove_unused_closure_vars 2",
            Remove_unused_closure_vars.remove_unused_closure_variables
              ~remove_direct_call_surrogates:false)
+      +-+ ("Ref_to_variables",
+           Ref_to_variables.eliminate_ref)
       +-+ ("Initialize_symbol_to_let_symbol",
            Initialize_symbol_to_let_symbol.run)
     in
@@ -152,8 +152,6 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
               ~remove_direct_call_surrogates:false)
         +-+ ("Lift_let_cont 3", Lift_let_cont.run)
         +-+ ("Sink_lets 3", Sink_lets.run)
-        +-+ ("Ref_to_variables",
-             Ref_to_variables.eliminate_ref)
         +-+ ("Inline_and_simplify noinline",
              Inline_and_simplify.run ~never_inline:true ~backend
               ~prefixname ~round)
@@ -162,6 +160,8 @@ let middle_end ppf ~source_provenance ~prefixname ~backend
         +-+ ("Remove_unused_closure_vars 3",
              Remove_unused_closure_vars.remove_unused_closure_variables
               ~remove_direct_call_surrogates:false)
+        +-+ ("Ref_to_variables",
+             Ref_to_variables.eliminate_ref)
         +-+ ("Initialize_symbol_to_let_symbol",
              Initialize_symbol_to_let_symbol.run)
         |> loop

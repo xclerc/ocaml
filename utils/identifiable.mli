@@ -84,6 +84,8 @@ module type S = sig
         [value]. Otherwise it is [None] *)
     val get_singleton : 'a t -> (key * 'a) option
 
+    val transpose_keys_and_data_set : key t -> Set.t t
+
     val print :
       (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
   end

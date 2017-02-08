@@ -109,16 +109,13 @@ module Function_decls = struct
       continuation_param : Continuation.t;
       body : Ilambda.t;
       free_idents_of_body : IdentSet.t;
-      inline : Lambda.inline_attribute;
-      specialise : Lambda.specialise_attribute;
-      is_a_functor : bool;
+      attr : Lambda.function_attribute;
       loc : Location.t;
       stub : bool;
     }
 
     let create ~let_rec_ident ~closure_bound_var ~kind ~params
-        ~continuation_param ~body ~inline
-        ~specialise ~is_a_functor ~loc ~free_idents_of_body ~stub =
+        ~continuation_param ~body ~attr ~loc ~free_idents_of_body ~stub =
       let let_rec_ident =
         match let_rec_ident with
         | None -> Ident.create "unnamed_function"
@@ -131,9 +128,7 @@ module Function_decls = struct
         continuation_param;
         body;
         free_idents_of_body;
-        inline;
-        specialise;
-        is_a_functor;
+        attr;
         loc;
         stub;
       }
@@ -145,11 +140,16 @@ module Function_decls = struct
     let continuation_param t = t.continuation_param
     let body t = t.body
     let free_idents t = t.free_idents_of_body
-    let inline t = t.inline
-    let specialise t = t.specialise
-    let is_a_functor t = t.is_a_functor
+    let inline t = t.attr.inline
+    let specialise t = t.attr.specialise
+    let is_a_functor t = t.attr.is_a_functor
+    let stub t = t.attr.stub
     let loc t = t.loc
+<<<<<<< HEAD
     let stub t = t.stub
+=======
+
+>>>>>>> ocaml/trunk
   end
 
   type t = {

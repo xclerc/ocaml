@@ -115,13 +115,15 @@ partialclean:
 	rm -f *.cm*
 
 clean: partialclean
-	rm -f *.$(A) *.$(O)
+	rm -f dllthreads*$(EXT_DLL) *.$(A) *.$(O)
 
 INSTALL_LIBDIR=$(DESTDIR)$(LIBDIR)
 THREADS_LIBDIR=$(INSTALL_LIBDIR)/$(LIBNAME)
 INSTALL_STUBLIBDIR=$(DESTDIR)$(STUBLIBDIR)
 
 install:
+	if test -f dllthreads$(EXT_DLL); then \
+	  cp dllthreads$(EXT_DLL) "$(INSTALL_STUBLIBDIR)/dllthreads$(EXT_DLL)"; fi
 	cp libthreads.$(A) "$(INSTALL_LIBDIR)"
 	cd "$(INSTALL_LIBDIR)"; $(RANLIB) libthreads.$(A)
 	mkdir -p "$(THREADS_LIBDIR)"

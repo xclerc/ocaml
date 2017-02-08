@@ -73,9 +73,7 @@ module Function_decls : sig
       -> params:Ident.t list
       -> continuation_param:Continuation.t
       -> body:Ilambda.t
-      -> inline:Lambda.inline_attribute
-      -> specialise:Lambda.specialise_attribute
-      -> is_a_functor:bool
+      -> attr:Lambda.function_attribute
       -> loc:Location.t
       -> free_idents_of_body:Lambda.IdentSet.t
       -> stub:bool
@@ -90,8 +88,8 @@ module Function_decls : sig
     val inline : t -> Lambda.inline_attribute
     val specialise : t -> Lambda.specialise_attribute
     val is_a_functor : t -> bool
-    val loc : t -> Location.t
     val stub : t -> bool
+    val loc : t -> Location.t
 
     (* Like [all_free_idents], but for just one function. *)
     val free_idents : t -> Lambda.IdentSet.t

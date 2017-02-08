@@ -928,7 +928,7 @@ let to_clambda_initialize_symbol t env symbol fields
   let build_setfield index id : Clambda.ulambda =
     (* Note that this will never cause a write barrier hit, owing to
        the [Initialization]. *)
-    Uprim (Psetfield (index, Pointer, Initialization),
+    Uprim (Psetfield (index, Pointer, Root_initialization),
       [to_clambda_symbol env symbol; Clambda.Uvar id],
       Debuginfo.none)
   in
