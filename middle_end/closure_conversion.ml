@@ -163,9 +163,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
             let function_declaration =
               Function_decl.create ~let_rec_ident:(Some let_rec_ident)
                 ~closure_bound_var ~kind ~params ~continuation_param ~body
-                ~inline:attr.inline ~specialise:attr.specialise
-                ~is_a_functor:attr.is_a_functor ~loc ~free_idents_of_body
-                ~stub
+                ~attr ~loc ~free_idents_of_body ~stub
             in
             function_declaration)
         defs

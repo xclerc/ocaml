@@ -26,13 +26,6 @@ let add_default_argument_wrappers lam =
      as stubs.  Other possibilities:
      1. Change L.inline_attribute to add another ("stub") case;
      2. Add a "stub" field to the Lfunction record. *)
-  let stubify body : L.lambda =
-    let stub_prim =
-      Primitive.simple ~name:stub_hack_prim_name
-        ~arity:1 ~alloc:false
-    in
-    Lprim (Pccall stub_prim, [body], Location.none)
-  in
   let defs_are_all_functions (defs : (_ * L.lambda) list) =
     List.for_all (function (_, L.Lfunction _) -> true | _ -> false) defs
   in
@@ -41,8 +34,7 @@ let add_default_argument_wrappers lam =
     | Llet (( Strict | Alias | StrictOpt), _k, id,
         Lfunction {kind; params; body = fbody; attr; loc}, body) ->
       begin match
-        Simplif.split_default_wrapper id kind params fbody attr loc
-          ~create_wrapper_body:stubify
+        Simplif.split_default_wrapper ~id ~kind ~params ~body:fbody ~attr ~loc
       with
       | [fun_id, def] -> Llet (Alias, Pgenval, fun_id, def, body)
       | [fun_id, def; inner_fun_id, def_inner] ->
@@ -57,8 +49,8 @@ let add_default_argument_wrappers lam =
             (List.map
                (function
                  | (id, L.Lfunction {kind; params; body; attr; loc}) ->
-                   Simplif.split_default_wrapper id kind params body attr loc
-                     ~create_wrapper_body:stubify
+                   Simplif.split_default_wrapper ~id ~kind ~params ~body
+                     ~attr ~loc
                  | _ -> assert false)
                defs)
         in

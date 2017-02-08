@@ -823,16 +823,19 @@ let parameters_specialised_to_the_same_variable
     (* For each external variable involved in a specialisation, which
        internal variable(s) it maps to via that specialisation. *)
     Variable.Map.transpose_keys_and_data_set
-      (Variable.Map.map (fun ({ var; _ } : Flambda.specialised_to) -> var)
-        specialised_args)
+      (Variable.Map.filter_map specialised_args
+        ~f:(fun _param ({ var; _ } : Flambda.specialised_to) -> var))
   in
   Variable.Map.map (fun ({ params; _ } : Flambda.function_declaration) ->
       List.map (fun param ->
           match Variable.Map.find param specialised_args with
           | exception Not_found -> Not_specialised
           | { var; _ } ->
-            Specialised_and_aliased_to
-              (Variable.Map.find var specialised_arg_aliasing))
+            match var with
+            | None -> Not_specialised
+            | Some var ->
+              Specialised_and_aliased_to
+                (Variable.Map.find var specialised_arg_aliasing))
         params)
     function_decls.funs
 

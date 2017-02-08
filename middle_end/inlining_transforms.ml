@@ -315,13 +315,14 @@ let inline_by_copying_function_declaration ~env ~r
           let original_closure : Flambda.named =
             Move_within_set_of_closures
               { closure = lhs_of_application;
-                start_from = closure_id_being_applied;
-                move_to = Closure_id.wrap fun_var;
+                move = Closure_id.Map.add (Closure_id.wrap fun_var)
+                  closure_id_being_applied Closure_id.Map.empty;
               }
           in
           let internal_var = Variable.rename ~append:"_original" fun_var in
           let free_vars =
-            Variable.Map.add internal_var { Flambda. var; projection = None }
+            Variable.Map.add internal_var
+              ({ var; projection = None; } : Flambda.free_var)
               free_vars
           in
           free_vars,
@@ -451,9 +452,9 @@ let inline_by_copying_function_declaration ~env ~r
         Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
             match expr with
             | Apply apply ->
-              begin match apply.kind with
+              begin match apply.call_kind with
               | Indirect -> expr
-              | Direct closure_id ->
+              | Direct { closure_id; return_arity; } ->
                 (* We recognize the potential recursive calls using the
                    closure ID rather than [apply.func] because the latter can be
                    aliases to the function (through a symbol for instance; the
@@ -488,7 +489,7 @@ let inline_by_copying_function_declaration ~env ~r
                     Flambda.Apply
                       { apply with
                         func = closure_var;
-                        kind = Direct closure_id;
+                        call_kind = Direct { closure_id; return_arity; };
                       }
                   else
                     expr
@@ -498,12 +499,14 @@ let inline_by_copying_function_declaration ~env ~r
           body_substituted
       in
       Flambda.create_function_declaration
+        ~continuation_param:fun_decl.continuation_param
         ~params:fun_decl.params
         ~stub:fun_decl.stub
         ~dbg:fun_decl.dbg
         ~inline:fun_decl.inline
         ~specialise:fun_decl.specialise
         ~is_a_functor:fun_decl.is_a_functor
+        ~return_arity:fun_decl.return_arity
         ~body
     in
     let funs =
