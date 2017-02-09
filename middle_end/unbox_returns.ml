@@ -211,6 +211,6 @@ let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
           in
           funs, new_specialised_args)
       function_decls.funs
-      (Variable.Map.empty, specialised_args)
+      (Variable.Map.empty, Variable.Map.empty)
   in
   Flambda.create_function_declarations ~funs, new_specialised_args
