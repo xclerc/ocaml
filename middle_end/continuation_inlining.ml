@@ -23,15 +23,21 @@ module R = Inline_and_simplify_aux.Result
 
 type inlining_result =
   | Didn't_inline
-  | Inlined of Variable.t list * Flambda.expr
+  | Inlined of Variable.t list * (Flambda.expr array)
+
+type num_uses = {
+  has_non_inlinable_uses : bool;
+  inlinable_uses : int;
+}
 
 let try_inlining ~cont ~args ~args_approxs ~env
         ~(handler : Flambda.continuation_handler)
-      ~inline_unconditionally ~count:_ ~simplify =
+      ~inline_unconditionally ~(count : num_uses) ~simplify =
   if List.length handler.params <> List.length args then begin
     Misc.fatal_errorf "Continuation %a applied with wrong number of arguments"
       Continuation.print cont
   end;
+  assert (count.inlinable_uses >= 1);
   assert (List.length args = List.length args_approxs);
   let params, env, expr =
     (* If there are multiple uses of the continuation with the same arguments,
@@ -112,6 +118,7 @@ Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
       ~round:(E.round env)
   in
   if inline_unconditionally || W.evaluate wsb then begin
+(*
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
   Variable.print_list args
@@ -120,7 +127,21 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
   (W.print_description ~subfunctions:false) wsb
   Flambda.print original
   Flambda.print expr;
-    Inlined (params, expr)
+*)
+    let exprs =
+      (* For a given (continuation, arguments) pair we need as many
+         freshened copies of the continuation as there are occurrences of that
+         pair in the overall expression. *)
+      Array.init count.inlinable_uses (fun index ->
+        if index < 1 then expr
+        else
+          let r = R.create () in
+          let expr, _r =
+            simplify (E.activate_freshening (E.set_never_inline env)) r expr
+          in
+          expr)
+    in
+    Inlined (params, exprs)
   end else begin
 (*
 Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
@@ -158,9 +179,10 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
               let key : Continuation.With_args.t = cont, args in
               match Continuation.With_args.Map.find key definitions with
               | exception Not_found ->
-                let count =
-                  if has_non_inlinable_uses then N.Many
-                  else N.One
+                let count : num_uses =
+                  { has_non_inlinable_uses;
+                    inlinable_uses = 1;
+                  }
                 in
                 Continuation.With_args.Map.add key
                   (inline_unconditionally, count, use.env, approx, args_approxs)
@@ -172,12 +194,14 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
                    body will be simplified to form the body of the shared
                    continuation. *)
                 (* XXX Shared continuations are currently disabled.
-                   (For those it used to say "env" not "use.env" below.
-                   In fact we can't do non-linear inlinings here at all at
-                   present; we need to be able to freshen the continuation's
-                   handler for each substitution. *)
+                   (For those it used to say "env" not "use.env" below. *)
+                let count =
+                  { count with
+                    inlinable_uses = count.inlinable_uses + 1;
+                  }
+                in
                 Continuation.With_args.Map.add key
-                  (false, N.(+) count N.One, use.env, approx, args_approxs)
+                  (false, count, use.env, approx, args_approxs)
                   definitions)
             definitions
             (U.inlinable_application_points uses))
@@ -187,38 +211,33 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
   Continuation.With_args.Map.fold (fun (cont, args)
             (inline_unconditionally, count, env, approx, args_approxs)
             ((inlinings, new_shared_conts, zero_uses) as acc) ->
-      assert ((not inline_unconditionally) || N.linear count);
-      let inlining_result =
-        match Continuation_approx.handlers approx with
-        | None | Some (Recursive _) -> Didn't_inline
-        | Some (Nonrecursive { is_exn_handler = true; }) ->
-          (* This should be caught by handling of [Apply_cont] in
-             [Inline_and_simplify], but just to be on the safe side... *)
-          Didn't_inline
-        | Some (Nonrecursive handler) ->
-          let inline_unconditionally =
-            (* CR-soon mshinwell: Stubs should probably just be immediately
-               inlined by [Inline_and_simplify] upon the first traversal. *)
-            inline_unconditionally || handler.stub
-          in
-          try_inlining ~cont ~args ~args_approxs ~env ~handler
-            ~inline_unconditionally ~count ~simplify
-      in
-      match inlining_result with
-      | Didn't_inline -> acc
-      | Inlined (_params, body) ->
-        begin match (count : N.t) with
-        | Many -> (* CR mshinwell: see above *)
-          acc
-        | Zero ->
-          inlinings, new_shared_conts, Continuation.Set.add cont zero_uses
-        | One (* | Many *) ->
+      if count.inlinable_uses < 1 && not count.has_non_inlinable_uses then acc
+      else
+        let inlining_result =
+          match Continuation_approx.handlers approx with
+          | None | Some (Recursive _) -> Didn't_inline
+          | Some (Nonrecursive { is_exn_handler = true; }) ->
+            (* This should be caught by handling of [Apply_cont] in
+              [Inline_and_simplify], but just to be on the safe side... *)
+            Didn't_inline
+          | Some (Nonrecursive handler) ->
+            let inline_unconditionally =
+              (* CR-soon mshinwell: Stubs should probably just be immediately
+                inlined by [Inline_and_simplify] upon the first traversal. *)
+              inline_unconditionally || handler.stub
+            in
+            try_inlining ~cont ~args ~args_approxs ~env ~handler
+              ~inline_unconditionally ~count ~simplify
+        in
+        match inlining_result with
+        | Didn't_inline -> acc
+        | Inlined (_params, bodies) ->
           let inlinings =
-            Continuation.With_args.Map.add (cont, args) body inlinings
+            Continuation.With_args.Map.add (cont, args) bodies inlinings
           in
-          inlinings, new_shared_conts, zero_uses
+          inlinings, new_shared_conts, zero_uses)
 (* CR mshinwell: We need to revisit the shared continuation stuff.  Finding
-   the correct place to put such continuations is tricky.
+  the correct place to put such continuations is tricky.
         | Many ->
           let new_shared_cont = Continuation.create () in
 (*
@@ -234,7 +253,7 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
               apply_shared_cont inlinings
           in
           (* [cont] is recorded because it's the place where the binding of the
-             [new_shared_cont] is going to be inserted. *)
+            [new_shared_cont] is going to be inserted. *)
           let new_shared_conts =
             let existing =
               match Continuation.Map.find cont new_shared_conts with
@@ -247,7 +266,6 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
           in
           inlinings, new_shared_conts, zero_uses
 *)
-        end)
     definitions
     (Continuation.With_args.Map.empty, Continuation.Map.empty,
       Continuation.Set.empty)
@@ -258,12 +276,13 @@ Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
 let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
       ~zero_uses =
   let r = ref r in
+  let counts = Continuation.With_args.Tbl.create 42 in
   let expr =
     Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
         match expr with
         (* [Inline_and_simplify] will only put non-bottom continuation
-          approximations in the environment for non-recursive continuations
-          at present. *)
+           approximations in the environment for non-recursive continuations
+           at present. *)
         | Let_cont { body; handlers = Nonrecursive { name; _ }; } ->
           let expr =
             if Continuation.Set.mem name zero_uses then
@@ -300,7 +319,22 @@ let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
         | Apply_cont (cont, trap_action, args) ->
           begin match Continuation.With_args.Map.find (cont, args) inlinings with
           | exception Not_found -> expr
-          | inlined_body ->
+          | inlined_bodies ->
+            let count =
+              (* Find out how many of this (cont, args) pair we've seen so far,
+                 so we can select the correct freshened body. *)
+              match Continuation.With_args.Tbl.find counts (cont, args) with
+              | exception Not_found -> 0
+              | count -> count
+            in
+            if count >= Array.length inlined_bodies then begin
+              Misc.fatal_errorf "Not enough copies of the freshened inlined \
+                  body to substitute out all applications of %a to %a"
+                Continuation.print cont
+                Variable.print_list args
+            end;
+            Continuation.With_args.Tbl.replace counts (cont, args) (count + 1);
+            let inlined_body = inlined_bodies.(count) in
             match trap_action with
             | None ->
               (* CR mshinwell: I wonder if we should have an invariant check
@@ -334,8 +368,8 @@ let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
   expr, !r
 
 let for_toplevel_expression expr r ~simplify =
-  (* CR mshinwell: Shouldn't this check whether the environment is
-     "never inline"? *)
+(*
 Format.eprintf "Continuation inlining starting on:@;%a@;" Flambda.print expr;
+*)
   let inlinings, new_shared_conts, zero_uses = find_inlinings r ~simplify in
   substitute r expr ~inlinings ~new_shared_conts ~zero_uses
