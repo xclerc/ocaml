@@ -172,7 +172,10 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
                    body will be simplified to form the body of the shared
                    continuation. *)
                 (* XXX Shared continuations are currently disabled.
-                   (For those it used to say "env" not "use.env" below *)
+                   (For those it used to say "env" not "use.env" below.
+                   In fact we can't do non-linear inlinings here at all at
+                   present; we need to be able to freshen the continuation's
+                   handler for each substitution. *)
                 Continuation.With_args.Map.add key
                   (false, N.(+) count N.One, use.env, approx, args_approxs)
                   definitions)
@@ -205,9 +208,11 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
       | Didn't_inline -> acc
       | Inlined (_params, body) ->
         begin match (count : N.t) with
+        | Many -> (* CR mshinwell: see above *)
+          acc
         | Zero ->
           inlinings, new_shared_conts, Continuation.Set.add cont zero_uses
-        | One | Many ->
+        | One (* | Many *) ->
           let inlinings =
             Continuation.With_args.Map.add (cont, args) body inlinings
           in
