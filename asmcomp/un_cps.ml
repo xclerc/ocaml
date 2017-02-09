@@ -226,10 +226,15 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
     | Ustaticfail (cont, args) ->
       begin match E.action_at_apply_cont env ~cont with
       | Unchanged -> Ustaticfail (cont, inline_list env args)
+      (* CR mshinwell: "Return" is a bit misleading.  Maybe "Tail_position" or
+         something (in the context of the defining expression of a "let")? *)
       | Return ->
-        Misc.fatal_errorf "Ustaticfail %d calls a return continuation; use \
-            Preturn instead (probable bug in Flambda_to_clambda)"
-          cont
+        begin match args with
+        | [arg] -> inline env arg
+        | _ ->
+          Misc.fatal_errorf "Expected exactly one argument for Ustaticfail %d"
+            cont
+        end
       | Let_bind_args_and_substitute (params, handler) ->
         if List.length params <> List.length args then begin
           Misc.fatal_errorf "Ustaticfail %d has the wrong number of \

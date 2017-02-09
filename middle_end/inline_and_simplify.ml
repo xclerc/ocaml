@@ -1635,8 +1635,10 @@ and simplify_let_cont_handler ~env ~r ~cont
       ~(handler : Flambda.continuation_handler)
       ~(recursive : Asttypes.rec_flag) =
   let args_approxs =
+(*
 Format.eprintf "simplify_let_cont_handler %a (num_params %d)\n%!"
   Continuation.print cont (List.length handler.params);
+*)
     R.continuation_args_approxs r cont ~num_params:(List.length handler.params)
   in
   let { Flambda. params = vars; stub; is_exn_handler; handler;
@@ -1767,9 +1769,11 @@ and simplify_let_cont_handlers ~env ~r ~body ~handlers ~approx_handlers
   (* CR mshinwell: we should enhance the deletion of continuations so it
      can get rid of stubs inside recursive bindings *)
   if all_unused then begin
+(*
 Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
   Continuation.Set.print (Continuation.Map.keys handlers)
   Flambda.print body;
+*)
     body, r
   end else
     (* First we simplify the continuations themselves. *)
@@ -1779,8 +1783,10 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
              since the latter may come from another compilation unit, and has
              not yet been freshened up. *)
           let r, handler =
+(*
 Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
+*)
             simplify_let_cont_handler ~env ~r ~cont ~handler ~recursive
           in
           let cont' = Freshening.apply_static_exception freshening cont in
@@ -1951,9 +1957,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         conts_and_approxs
         env
     in
-Format.eprintf "Simplifying body:\n%a" Flambda.print body;
+(*Format.eprintf "Simplifying body:\n%a" Flambda.print body;*)
     let body, r = simplify body_env r body in
-Format.eprintf "Simplifying body finished.\n";
+(*Format.eprintf "Simplifying body finished.\n";*)
     begin match handlers with
     | Nonrecursive { name; handler; } ->
       let with_wrapper : Flambda_utils.with_wrapper =

@@ -116,6 +116,7 @@ Format.eprintf "Couldn't unrecursivise %a\n%!" Variable.print fun_var;
         else
           Try_it (function_decl, function_decls, remaining_inlining_threshold)
       | Some function_decl ->
+(*
         assert (Variable.Map.mem fun_var function_decls.funs);
         let funs =
           Variable.Map.add fun_var function_decl function_decls.funs
@@ -123,6 +124,8 @@ Format.eprintf "Couldn't unrecursivise %a\n%!" Variable.print fun_var;
         let function_decls =
           Flambda.update_function_declarations function_decls ~funs
         in
+*)
+        (* CR mshinwell: review the above. *)
         let remaining_inlining_threshold = 
           if always_inline then inlining_threshold
           else fun_cost ~body:function_decl.body ~params:function_decl.params
@@ -487,8 +490,10 @@ let specialise env r ~lhs_of_application
               E.set_never_inline_outside_closures env
           in
           let application_env = E.set_never_inline_inside_closures env in
+(*
 Format.eprintf "Simplifying for specialisation:\n%a%!"
   Flambda.print expr;
+*)
           let expr, r = simplify closure_env r expr in
           let res = simplify application_env r expr in
           let decision =
