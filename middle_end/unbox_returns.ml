@@ -191,14 +191,17 @@ let for_function_decl ~continuation_uses ~fun_var
 
 let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
       ~specialised_args ~backend =
-  let recursively_used =
+  (* CR mshinwell: We should think some more about this.  One option would
+     be to only run this pass for functions where the recursive uses are
+     all tail. *)
+  let _recursively_used =
     Find_recursive_functions.in_function_declarations function_decls ~backend
   in
   let funs, new_specialised_args =
     Variable.Map.fold (fun fun_var function_decl (funs, new_specialised_args) ->
         match
           for_function_decl ~continuation_uses ~fun_var ~function_decl
-            ~specialised_args ~recursively_used
+            ~specialised_args ~recursively_used:Variable.Set.empty
         with
         | None ->
           let funs = Variable.Map.add fun_var function_decl funs in

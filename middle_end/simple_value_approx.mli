@@ -126,6 +126,7 @@ module rec T : sig
     | String of value_string
     | Float_array of value_float_array
     | Unknown of unknown_because_of
+      (* CR mshinwell: Need to think about this whole unknown/bottom thing *)
     | Bottom
     | Extern of Export_id.t
     | Symbol of Symbol.t

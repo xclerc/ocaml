@@ -286,18 +286,9 @@ module Continuation_uses : sig
 
   type t
 
-  val create : backend:(module Backend_intf.S) -> t
-
-  val add_inlinable_use
-     : t
-    -> Env.t
-    -> args:(Variable.t * Simple_value_approx.t) list
-    -> t
-
-  val add_non_inlinable_use
-     : t
-    -> Env.t
-    -> args_approxs:Simple_value_approx.t list
+  val create
+     : continuation:Continuation.t
+    -> backend:(module Backend_intf.S)
     -> t
 
   val inlinable_application_points : t -> Use.t list
@@ -365,6 +356,11 @@ module Result : sig
      : t
     -> Continuation.t
     -> args:Variable.t list
+    -> t
+
+  val forget_continuation_uses
+     : t
+    -> Continuation.t
     -> t
 
   val snapshot_continuation_uses : t -> Continuation_usage_snapshot.t

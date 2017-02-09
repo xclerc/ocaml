@@ -365,13 +365,15 @@ let simplify_move_within_set_of_closures env r
               try Closure_id.Map.find start_from freshened_move with
               | Not_found ->
                 Misc.fatal_errorf "Move %a freshened to %a does not contain \
-                                   projection for %a@. Approximation is:@ %a@."
+                                   projection for %a@. Approximation is:@ %a@.\
+                                   Environment:@ %a@."
                   Projection.print_move_within_set_of_closures
                     move_within_set_of_closures
                   (Closure_id.Map.print Closure_id.print) freshened_move
                   Closure_id.print start_from
                   (Closure_id.Map.print A.print_value_set_of_closures)
                     value_closures
+                  E.print env
             in
             assert(not (Closure_id.Map.mem start_from move));
             Closure_id.Map.add start_from move_to move,
@@ -805,6 +807,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
           (* CR mshinwell: Make sure [Flambda_invariants] checks this use-def
              invariant. *)
           Inline_and_simplify_aux.Continuation_uses.create
+            ~continuation:return_cont
             ~backend:(E.backend env)
         in
         R.define_continuation r return_cont env Nonrecursive
@@ -871,7 +874,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
 
 and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
   let {
-    Flambda. func = lhs_of_application; args; call_kind = _; dbg;
+    Flambda. func = lhs_of_application; args; call_kind; dbg;
     inline = inline_requested; specialise = specialise_requested;
     continuation; kind;
   } = apply in
@@ -945,10 +948,33 @@ Format.eprintf "...freshened cont is %a\n%!"
                   approximation references non-existent closure %a@."
                 Closure_id.print closure_id_being_applied
           in
+          let self_call =
+            E.inside_set_of_closures_declaration
+              function_decls.set_of_closures_origin env
+          in
+          let arity_of_application =
+            match apply.call_kind with
+            | Direct { return_arity; } -> return_arity
+            | Indirect -> 1
+          in
+          if arity_of_application <> function_decl.return_arity then begin
+            Misc.fatal_errorf "Application of %a (%a):\n@,function has return \
+                arity %d but the application expression is expecting it \
+                to have arity %d"
+              Variable.print lhs_of_application
+              Variable.print_list args
+              function_decl.return_arity
+              arity_of_application
+          end;
           let continuation, r =
+Format.eprintf "Application of %a: function_decl %a\n%!"
+  Variable.print lhs_of_application
+  Flambda.print_function_declaration (lhs_of_application, function_decl);
             let args_approxs =
               Array.to_list (Array.init function_decl.return_arity
-                (fun _index -> A.value_unknown Other))
+                (fun _index ->
+                  if self_call then A.value_bottom
+                  else A.value_unknown Other))
             in
             simplify_apply_cont_to_cont env r continuation
               ~args_approxs
@@ -986,6 +1012,15 @@ Format.eprintf "...freshened cont is %a\n%!"
           (* CR mshinwell: Fish out the improvements to continuation use
              recording from the reverted patch, so we can have
              Opaque { num_args; } *)
+          begin match call_kind with
+          | Indirect -> ()
+          | Direct _ ->
+            Misc.fatal_errorf "Application of function %a (%a) is marked as \
+                a direct call but the approximation of the function was \
+                wrong"
+              Variable.print lhs_of_application
+              Variable.print_list args
+          end;
           let args_approxs = [A.value_unknown Other] in
           let continuation, r =
             simplify_apply_cont_to_cont env r continuation ~args_approxs
@@ -1601,10 +1636,8 @@ and simplify_let_cont_handler ~env ~r ~cont
       ~(handler : Flambda.continuation_handler)
       ~(recursive : Asttypes.rec_flag) =
   let args_approxs =
-(*
 Format.eprintf "simplify_let_cont_handler %a (num_params %d)\n%!"
   Continuation.print cont (List.length handler.params);
-*)
     R.continuation_args_approxs r cont ~num_params:(List.length handler.params)
   in
   let { Flambda. params = vars; stub; is_exn_handler; handler;
@@ -1919,7 +1952,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         conts_and_approxs
         env
     in
+Format.eprintf "Simplifying body:\n%a" Flambda.print body;
     let body, r = simplify body_env r body in
+Format.eprintf "Simplifying body finished.\n";
     begin match handlers with
     | Nonrecursive { name; handler; } ->
       let with_wrapper : Flambda_utils.with_wrapper =

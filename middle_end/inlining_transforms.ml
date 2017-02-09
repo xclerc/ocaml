@@ -315,8 +315,8 @@ let inline_by_copying_function_declaration ~env ~r
           let original_closure : Flambda.named =
             Move_within_set_of_closures
               { closure = lhs_of_application;
-                move = Closure_id.Map.add (Closure_id.wrap fun_var)
-                  closure_id_being_applied Closure_id.Map.empty;
+                move = Closure_id.Map.add closure_id_being_applied
+                  (Closure_id.wrap fun_var) Closure_id.Map.empty;
               }
           in
           let internal_var = Variable.rename ~append:"_original" fun_var in

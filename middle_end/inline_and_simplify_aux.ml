@@ -483,12 +483,14 @@ module Continuation_uses = struct
 
   type t = {
     backend : (module Backend_intf.S);
+    continuation : Continuation.t;
     inlinable_application_points : Use.t list;
     non_inlinable_application_points : Use.non_inlinable list;
   }
 
-  let create ~backend =
+  let create ~continuation ~backend =
     { backend;
+      continuation;
       inlinable_application_points = [];
       non_inlinable_application_points = [];
     }
@@ -556,14 +558,21 @@ module Continuation_uses = struct
     match application_points with
     | [] -> None
     | use::uses ->
+(*
+Format.eprintf "STARTING JOIN (num uses %d)\n%!" (List.length application_points);
+*)
       Some (List.fold_left (fun args_approxs use ->
           if List.length args_approxs <> List.length use then begin
-            Misc.fatal_errorf "meet_of_args_approx_opt: approx length %d, \
+            Misc.fatal_errorf "meet_of_args_approx_opt %a: approx length %d, \
                 use length %d"
+              Continuation.print t.continuation
               (List.length args_approxs) (List.length use)
           end;
           List.map2 (fun approx1 approx2 ->
               let module Backend = (val (t.backend) : Backend_intf.S) in
+(*
+Format.eprintf "Joining %a and %a\n%!" A.print approx1 A.print approx2;
+*)
               A.join approx1 approx2
                 ~really_import_approx:Backend.really_import_approx)
             args_approxs use)
@@ -648,10 +657,17 @@ module Result = struct
         Variable.print_list args
         Env.print env
     end;
+let k = 39 in
+if Continuation.to_int cont = k then begin
+  Format.eprintf "Adding use of continuation k%d, num_args %d:\n%s\n%!"
+    k
+    (List.length args_approxs)
+    (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10))
+end;
     let uses =
       match Continuation.Map.find cont t.used_continuations with
       | exception Not_found ->
-        Continuation_uses.create ~backend:(Env.backend env)
+        Continuation_uses.create ~continuation:cont ~backend:(Env.backend env)
       | uses -> uses
     in
     let uses =
@@ -679,6 +695,11 @@ module Result = struct
         used_continuations =
           Continuation.Map.add cont uses t.used_continuations;
       }
+
+  let forget_continuation_uses t cont =
+    { t with
+      used_continuations = Continuation.Map.remove cont t.used_continuations;
+    }
 
   let is_used_continuation t i =
     Continuation.Map.mem i t.used_continuations
@@ -725,7 +746,9 @@ module Result = struct
   let exit_scope_catch ?update_use_env t env i =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->
-      let uses = Continuation_uses.create ~backend:(Env.backend env) in
+      let uses =
+        Continuation_uses.create ~continuation:i ~backend:(Env.backend env)
+      in
       t, uses
     | uses ->
       let uses =

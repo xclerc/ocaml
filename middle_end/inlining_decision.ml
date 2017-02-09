@@ -487,6 +487,8 @@ let specialise env r ~lhs_of_application
               E.set_never_inline_outside_closures env
           in
           let application_env = E.set_never_inline_inside_closures env in
+Format.eprintf "Simplifying for specialisation:\n%a%!"
+  Flambda.print expr;
           let expr, r = simplify closure_env r expr in
           let res = simplify application_env r expr in
           let decision =
@@ -555,9 +557,6 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       end
     | Always_inline | Default_inline | Never_inline -> inline_requested
   in
-Format.eprintf "Application of %a: inline_requested=%a\n%!"
-  Closure_id.print closure_id_being_applied
-  Printlambda.apply_inlined_attribute inline_requested;
   let original =
     Flambda.Apply {
       kind = Function;
@@ -573,13 +572,22 @@ Format.eprintf "Application of %a: inline_requested=%a\n%!"
       specialise = specialise_requested;
     }
   in
+  let self_call =
+    E.inside_set_of_closures_declaration
+      function_decls.set_of_closures_origin env
+  in
+Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
+  Closure_id.print closure_id_being_applied
+  Variable.print_list args
+  Printlambda.apply_inlined_attribute inline_requested self_call;
   let original_r =
     let r =
       R.set_approx (R.seen_direct_application r) (A.value_unknown Other)
     in
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity (fun _index ->
-        A.value_unknown Other))
+        if self_call then A.value_bottom
+        else A.value_unknown Other))
     in
 (*
 Format.eprintf "for_call_site: use of continuation %a has %d args\n%!"
@@ -640,10 +648,6 @@ Continuation.print continuation (List.length args_approxs);
       else if E.inlining_level env >= max_level then
         Original (D.Prevented Level_exceeded)
       else begin
-        let self_call =
-          E.inside_set_of_closures_declaration
-            function_decls.set_of_closures_origin env
-        in
         let fun_cost ~body ~params =
           Inlining_cost.can_try_inlining body
             inlining_threshold
