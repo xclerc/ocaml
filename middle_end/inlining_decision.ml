@@ -29,8 +29,8 @@ type ('a, 'b) inlining_result =
   | Changed of (Flambda.t * R.t) * 'a
   | Original of 'b
 
-type 'b good_idea =
-  | Try_it
+type 'b good_idea_inline =
+  | Try_it of Flambda.function_declaration * Flambda.function_declarations
   | Don't_try_it of 'b
 
 let inline env r ~lhs_of_application
@@ -84,20 +84,39 @@ let inline env r ~lhs_of_application
   in
   let try_inlining =
     if unrolling then
-      Try_it
+      Try_it (function_decl, function_decls)
     else if self_call then
       Don't_try_it S.Not_inlined.Self_call
     else if not (E.inlining_allowed env closure_id_being_applied) then
       Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
     else if only_use_of_function || always_inline then
-      Try_it
+      Try_it (function_decl, function_decls)
     else if never_inline then
       Don't_try_it S.Not_inlined.Annotation
     else if !Clflags.classic_inlining then
       Don't_try_it S.Not_inlined.Classic_mode
     else if not (E.unrolling_allowed env function_decls.set_of_closures_origin)
-         && (Lazy.force recursive) then
-      Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
+         && (Lazy.force recursive)
+    then
+      let fun_var = Closure_id.unwrap closure_id_being_applied in
+      let unrec_function_decl =
+        (* CR mshinwell: In the inlining report functions that are obviously
+           recursive now say "nonrecursive" due to this transformation.  We
+           should try to fix that.
+           Also: various other issues re. attribute propagation *)
+        Unrecursify.unrecursify_function ~fun_var ~function_decl
+      in
+      match unrec_function_decl with
+      | None -> Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
+      | Some function_decl ->
+        assert (Variable.Map.mem fun_var function_decls.funs);
+        let funs =
+          Variable.Map.add fun_var function_decl function_decls.funs
+        in
+        let function_decls =
+          Flambda.update_function_declarations function_decls ~funs
+        in
+        Try_it (function_decl, function_decls)
     else if remaining_inlining_threshold = T.Never_inline then
       let threshold =
         match inlining_threshold with
@@ -166,7 +185,9 @@ let inline env r ~lhs_of_application
         if (not (W.evaluate wsb)) then begin
           Don't_try_it
             (S.Not_inlined.Without_subfunctions wsb)
-        end else Try_it
+        end else begin
+          Try_it (function_decl, function_decls)
+        end
       | None ->
         (* The function is definitely too large to inline given that we don't
            have any approximations for its arguments.  Further, the body
@@ -176,12 +197,12 @@ let inline env r ~lhs_of_application
         Don't_try_it S.Not_inlined.No_useful_approximations
     else begin
       (* There are useful approximations, so we should simplify. *)
-      Try_it
+      Try_it (function_decl, function_decls)
     end
   in
   match try_inlining with
   | Don't_try_it decision -> Original decision
-  | Try_it ->
+  | Try_it (function_decl, function_decls) ->
     let r =
       R.set_inlining_threshold r (Some remaining_inlining_threshold)
     in
@@ -299,6 +320,10 @@ let inline env r ~lhs_of_application
         end
       end
     end
+
+type 'b good_idea_specialise =
+  | Try_it
+  | Don't_try_it of 'b
 
 let specialise env r ~lhs_of_application
       ~(function_decls : Flambda.function_declarations)

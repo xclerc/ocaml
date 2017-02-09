@@ -768,13 +768,6 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
         ~inline ~specialise:function_decl.specialise
         ~is_a_functor:function_decl.is_a_functor
     in
-    let function_decl =
-      (* CR mshinwell: In the inlining report functions that are obviously
-         recursive now say "nonrecursive" due to this transformation.  We
-         should try to fix that.
-         Also: various other issues re. attribute propagation *)
-      Unrecursify.unrecursify_function fun_var function_decl
-    in
     let used_params' = Flambda.used_params function_decl in
     Variable.Map.add fun_var function_decl funs,
       Variable.Set.union used_params used_params', r

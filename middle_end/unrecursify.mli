@@ -18,6 +18,6 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val unrecursify_function
-   : Variable.t
-  -> Flambda.function_declaration
-  -> Flambda.function_declaration
+   : fun_var:Variable.t
+  -> function_decl:Flambda.function_declaration
+  -> Flambda.function_declaration option
