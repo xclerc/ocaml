@@ -958,18 +958,17 @@ Format.eprintf "...freshened cont is %a\n%!"
             | Indirect -> 1
           in
           if arity_of_application <> function_decl.return_arity then begin
-            Misc.fatal_errorf "Application of %a (%a):\n@,function has return \
+            Misc.fatal_errorf "Application of %a (%a):@,function has return \
                 arity %d but the application expression is expecting it \
-                to have arity %d"
+                to have arity %d.  Function declaration is:@,%a"
               Variable.print lhs_of_application
               Variable.print_list args
               function_decl.return_arity
               arity_of_application
+              Flambda.print_function_declaration
+              (lhs_of_application, function_decl)
           end;
           let continuation, r =
-Format.eprintf "Application of %a: function_decl %a\n%!"
-  Variable.print lhs_of_application
-  Flambda.print_function_declaration (lhs_of_application, function_decl);
             let args_approxs =
               Array.to_list (Array.init function_decl.return_arity
                 (fun _index ->

@@ -37,7 +37,8 @@ let remove_params unused (fun_decl: Flambda.function_declaration) =
       unused_params
   in
   Flambda.create_function_declaration ~params:used_params ~body
-    ~continuation_param:fun_decl.continuation_param ~return_arity:1
+    ~continuation_param:fun_decl.continuation_param
+    ~return_arity:fun_decl.return_arity
     ~stub:fun_decl.stub ~dbg:fun_decl.dbg ~inline:fun_decl.inline
     ~specialise:fun_decl.specialise ~is_a_functor:fun_decl.is_a_functor
 
@@ -99,7 +100,7 @@ let make_stub unused var (fun_decl : Flambda.function_declaration)
   in
   let function_decl =
     Flambda.create_function_declaration ~continuation_param
-      ~params:(List.map snd args') ~return_arity:1 ~body
+      ~params:(List.map snd args') ~return_arity:fun_decl.return_arity ~body
       ~stub:true ~dbg:fun_decl.dbg ~inline:Default_inline
       ~specialise:Default_specialise ~is_a_functor:fun_decl.is_a_functor
   in
