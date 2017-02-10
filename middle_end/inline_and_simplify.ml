@@ -1622,12 +1622,19 @@ and for_defining_expr_of_let (env, r) var defining_expr =
   let env = E.add env var (R.approx r) in
   (env, r), new_bindings, var, defining_expr
 
-and filter_defining_expr_of_let r var defining_expr free_vars_of_body =
+and filter_defining_expr_of_let r var (defining_expr : Flambda.named)
+      free_vars_of_body =
   if Variable.Set.mem var free_vars_of_body then
     r, var, Some defining_expr
   else if Effect_analysis.no_effects_named defining_expr then
-    let r = R.map_benefit r (B.remove_code_named defining_expr) in
-    r, var, None
+    match defining_expr with
+    | Set_of_closures _ ->
+      (* Don't delete closure definitions: there might be a reference to them
+         (propagated through approximations) that is not in scope. *)
+      r, var, Some defining_expr
+    | _ ->
+      let r = R.map_benefit r (B.remove_code_named defining_expr) in
+      r, var, None
   else
     r, var, Some defining_expr
 
