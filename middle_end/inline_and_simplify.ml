@@ -1023,7 +1023,7 @@ Format.eprintf "...freshened cont is %a\n%!"
                camlinternalOO. *)
             Format.eprintf "Application of function %a (%a) is marked as \
                 a direct call but the approximation of the function was \
-                wrong"
+                wrong\n%!"
               Variable.print lhs_of_application
               Variable.print_list args
           end;
