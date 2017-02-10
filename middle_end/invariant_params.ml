@@ -193,7 +193,11 @@ module For_continuations = struct
       let hash (cont, var) =
         Hashtbl.hash (Continuation.hash cont, Variable.hash var)
 
-      let print _ _ = Misc.fatal_error "Not implemented"
+      let print ppf (cont, var) =
+        Format.fprintf ppf "(%a, %a)"
+          Continuation.print cont
+          Variable.print var
+
       let output _ _ = Misc.fatal_error "Not implemented"
     end)
   end

@@ -1002,7 +1002,14 @@ let fold_lets_option t ~init ~for_defining_expr ~for_last_body
             filter_defining_expr acc var defining_expr free_vars_of_body
           in
           match defining_expr with
-          | None -> acc, t
+          | None ->
+(*
+Format.eprintf "Deleting binding of %a.  FVs of body %a.  Body:\n%a\n\
+    Backtrace:\n%s%!"
+  Variable.print var Variable.Set.print free_vars_of_body W.print t
+  (Printexc.raw_backtrace_to_string (Printexc.get_callstack 100));
+*)
+            acc, t
           | Some defining_expr ->
             let let_expr =
               W.create_let_reusing_body var defining_expr t

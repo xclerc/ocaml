@@ -169,7 +169,6 @@ type t =
   | Apply of apply
   | Apply_cont of Continuation.t * trap_action option * Variable.t list
   | Switch of Variable.t * switch
-  (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
   | Proved_unreachable
 
 (** Values of type [named] will always be [let]-bound to a [Variable.t]. *)

@@ -57,12 +57,10 @@ let propagate_invariant_params_flow ~handlers ~backend ~unboxings_by_cont =
   let invariant_params_flow =
     Invariant_params.Continuations.invariant_param_sources handlers ~backend
   in
-(*
 Format.eprintf "Invariant params:\n@;%a\n"
 (Variable.Map.print
   Invariant_params.Continuations.Continuation_and_variable.Set.print)
   invariant_params_flow;
-*)
   let unboxings_by_cont' =
     Continuation.Map.fold (fun cont unboxings_by_param unboxings_by_cont' ->
         Variable.Map.fold (fun param unboxing unboxings_by_cont' ->
@@ -97,8 +95,8 @@ Format.eprintf "Invariant params:\n@;%a\n"
     unboxings_by_cont unboxings_by_cont'
 
 let for_continuations r ~handlers ~backend =
-Format.eprintf "Unbox_continuation_params starting on:\n@;%a\n%!"
-  Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
+Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
+  Continuation.Set.print (Continuation.Map.keys handlers);
   let continuation_uses = R.continuation_uses r in
   let unboxings_by_cont = find_unboxings ~continuation_uses ~handlers in
   if Continuation.Map.is_empty unboxings_by_cont then begin
@@ -141,10 +139,15 @@ Format.eprintf "Unbox_continuation_params starting on:\n@;%a\n%!"
                 @ (List.map (fun (param, _proj) -> param)
                   how_to_unbox.new_params)
             in
+Format.eprintf "Unbox_continuation_params has unboxed:\n@;%a\n%!"
+  Flambda.print_let_cont_handlers (Flambda.Recursive
+    (Continuation.Map.add cont handler Continuation.Map.empty));
 Format.eprintf "Unboxed version has \
-    wrapper\n@ %a = %a\n@ and new handler:\n@ %a = %a\n%!"
+    wrapper (params %a)\n@ %a = %a\n@ and new handler (params %a):\n@ %a = %a\n%!"
+  Variable.print_list wrapper_params
   Continuation.print cont
   Flambda.print wrapper_body
+  Variable.print_list params
   Continuation.print new_cont
   Flambda.print handler.handler;
             With_wrapper {

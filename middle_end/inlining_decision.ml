@@ -29,9 +29,8 @@ type ('a, 'b) inlining_result =
   | Changed of (Flambda.t * R.t) * 'a
   | Original of 'b
 
-type 'b good_idea_inline =
-  | Try_it of Flambda.function_declaration * Flambda.function_declarations
-      * Inlining_cost.Threshold.t
+type 'b good_idea =
+  | Try_it
   | Don't_try_it of 'b
 
 let inline env r ~lhs_of_application
@@ -57,83 +56,48 @@ let inline env r ~lhs_of_application
         in
         true, true, false, env
       else false, false, true, env
-    | None ->
-      let inline_annotation =
-        (* Merge call site annotation and function annotation.
-           The call site annotation takes precedence. *)
-        match (inline_requested : Lambda.inline_attribute) with
-        | Always_inline | Never_inline | Unroll _ -> inline_requested
-        | Default_inline -> function_decl.inline
-      in
-      begin match inline_annotation with
-      | Always_inline -> false, true, false, env
-      | Never_inline -> false, false, true, env
-      | Default_inline -> false, false, false, env
-      | Unroll count ->
-        if count > 0 then
-          let env =
-            E.start_actively_unrolling
-              env function_decls.set_of_closures_origin (count - 1)
-          in
-          true, true, false, env
-        else false, false, true, env
+    | None -> begin
+        let inline_annotation =
+          (* Merge call site annotation and function annotation.
+             The call site annotation takes precedence *)
+          match (inline_requested : Lambda.inline_attribute) with
+          | Always_inline | Never_inline | Unroll _ -> inline_requested
+          | Default_inline -> function_decl.inline
+        in
+        match inline_annotation with
+        | Always_inline -> false, true, false, env
+        | Never_inline -> false, false, true, env
+        | Default_inline -> false, false, false, env
+        | Unroll count ->
+          if count > 0 then
+            let env =
+              E.start_actively_unrolling
+                env function_decls.set_of_closures_origin (count - 1)
+            in
+            true, true, false, env
+          else false, false, true, env
       end
   in
   let remaining_inlining_threshold : Inlining_cost.Threshold.t =
     if always_inline then inlining_threshold
-    else fun_cost ~body:function_decl.body ~params:function_decl.params
+    else Lazy.force fun_cost
   in
   let try_inlining =
     if unrolling then
-      Try_it (function_decl, function_decls, remaining_inlining_threshold)
+      Try_it
     else if self_call then
       Don't_try_it S.Not_inlined.Self_call
     else if not (E.inlining_allowed env closure_id_being_applied) then
       Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
-    else if only_use_of_function
-      || (always_inline && not (Lazy.force recursive))
-    then
-      Try_it (function_decl, function_decls, remaining_inlining_threshold)
+    else if only_use_of_function || always_inline then
+      Try_it
     else if never_inline then
       Don't_try_it S.Not_inlined.Annotation
     else if !Clflags.classic_inlining then
       Don't_try_it S.Not_inlined.Classic_mode
-    else if Lazy.force recursive then
-      let fun_var = Closure_id.unwrap closure_id_being_applied in
-      let unrec_function_decl =
-        (* CR mshinwell: In the inlining report functions that are obviously
-           recursive now say "nonrecursive" due to this transformation.  We
-           should try to fix that.
-           Also: various other issues re. attribute propagation *)
-        Unrecursify.unrecursify_function ~fun_var ~function_decl
-      in
-      match unrec_function_decl with
-      | None ->
-Format.eprintf "Couldn't unrecursivise %a\n%!" Variable.print fun_var;
-        if not (E.unrolling_allowed env function_decls.set_of_closures_origin)
-        then
-          Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
-        else
-          Try_it (function_decl, function_decls, remaining_inlining_threshold)
-      | Some function_decl ->
-(*
-        assert (Variable.Map.mem fun_var function_decls.funs);
-        let funs =
-          Variable.Map.add fun_var function_decl function_decls.funs
-        in
-        let function_decls =
-          Flambda.update_function_declarations function_decls ~funs
-        in
-*)
-        (* CR mshinwell: review the above. *)
-        let remaining_inlining_threshold = 
-          if always_inline then inlining_threshold
-          else fun_cost ~body:function_decl.body ~params:function_decl.params
-        in
-Format.eprintf "Unrecursivised declaration (always_inline %b unrolling %b):\n@ %a\n"
-  always_inline unrolling
-  Flambda.print_function_declarations function_decls;
-        Try_it (function_decl, function_decls, remaining_inlining_threshold)
+    else if not (E.unrolling_allowed env function_decls.set_of_closures_origin)
+         && (Lazy.force recursive) then
+      Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
     else if remaining_inlining_threshold = T.Never_inline then
       let threshold =
         match inlining_threshold with
@@ -202,9 +166,7 @@ Format.eprintf "Unrecursivised declaration (always_inline %b unrolling %b):\n@ %
         if (not (W.evaluate wsb)) then begin
           Don't_try_it
             (S.Not_inlined.Without_subfunctions wsb)
-        end else begin
-          Try_it (function_decl, function_decls, remaining_inlining_threshold)
-        end
+        end else Try_it
       | None ->
         (* The function is definitely too large to inline given that we don't
            have any approximations for its arguments.  Further, the body
@@ -338,10 +300,6 @@ Format.eprintf "Unrecursivised declaration (always_inline %b unrolling %b):\n@ %
       end
     end
 
-type 'b good_idea_specialise =
-  | Try_it
-  | Don't_try_it of 'b
-
 let specialise env r ~lhs_of_application
       ~(function_decls : Flambda.function_declarations)
       ~(function_decl : Flambda.function_declaration)
@@ -397,7 +355,7 @@ let specialise env r ~lhs_of_application
   in
   let remaining_inlining_threshold : Inlining_cost.Threshold.t =
     if always_specialise then inlining_threshold
-    else fun_cost ~body:function_decl.body ~params:function_decl.params
+    else Lazy.force fun_cost
   in
   let try_specialising =
     (* Try specialising if the function:
@@ -490,10 +448,6 @@ let specialise env r ~lhs_of_application
               E.set_never_inline_outside_closures env
           in
           let application_env = E.set_never_inline_inside_closures env in
-(*
-Format.eprintf "Simplifying for specialisation:\n%a%!"
-  Flambda.print expr;
-*)
           let expr, r = simplify closure_env r expr in
           let res = simplify application_env r expr in
           let decision =
@@ -653,14 +607,19 @@ Continuation.print continuation (List.length args_approxs);
       else if E.inlining_level env >= max_level then
         Original (D.Prevented Level_exceeded)
       else begin
-        let fun_cost ~body ~params =
-          Inlining_cost.can_try_inlining body
-            inlining_threshold
-            ~number_of_arguments:(List.length params)
-            (* CR-someday mshinwell: for the moment, this is None, since
-               the Inlining_cost code isn't checking sizes up to the max
-               inlining threshold---this seems to take too long. *)
-            ~size_from_approximation:None
+        let self_call =
+          E.inside_set_of_closures_declaration
+            function_decls.set_of_closures_origin env
+        in
+        let fun_cost =
+          lazy
+            (Inlining_cost.can_try_inlining function_decl.body
+                inlining_threshold
+                ~number_of_arguments:(List.length function_decl.params)
+                (* CR-someday mshinwell: for the moment, this is None, since
+                   the Inlining_cost code isn't checking sizes up to the max
+                   inlining threshold---this seems to take too long. *)
+                ~size_from_approximation:None)
         in
         let fun_var =
           U.find_declaration_variable closure_id_being_applied function_decls
@@ -681,7 +640,6 @@ Continuation.print continuation (List.length args_approxs);
         in
         match specialise_result with
         | Changed (res, spec_reason) ->
-Format.eprintf "Specialised %a\n%!" Variable.print fun_var;
           Changed (res, D.Specialised spec_reason)
         | Original spec_reason ->
           let only_use_of_function = false in
@@ -707,7 +665,6 @@ Format.eprintf "Specialised %a\n%!" Variable.print fun_var;
           in
           match inline_result with
           | Changed (res, inl_reason) ->
-Format.eprintf "Inlined %a\n%!" Closure_id.print closure_id_being_applied;
             Changed (res, D.Inlined (spec_reason, inl_reason))
           | Original inl_reason ->
             Original (D.Unchanged (spec_reason, inl_reason))
@@ -725,7 +682,6 @@ Format.eprintf "Inlined %a\n%!" Closure_id.print closure_id_being_applied;
         res, decision
     in
     E.record_decision env decision;
-Format.eprintf "Inlining result:\n@ %a\n" Flambda.print (fst res);
     res
   end
 

@@ -261,7 +261,9 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       ~lifting:false
       ~round:(E.round env)
   in
+(*
 Format.eprintf "Evaluating %a\n%!" (W.print_description ~subfunctions:false) wsb;
+*)
   if W.evaluate wsb then
     let old_cont = cont in
     let new_cont = Freshening.apply_static_exception freshening old_cont in
@@ -302,7 +304,9 @@ let find_specialisations r ~simplify ~backend =
         | Some (Recursive handlers)
             when Continuation.Map.cardinal handlers > 1 -> acc
         | Some (Recursive handlers) ->
+(*
 Format.eprintf "Specialisation starting with %a\n%!" Continuation.print cont;
+*)
           let invariant_params =
             Invariant_params.Continuations.invariant_params_in_recursion
               handlers ~backend
@@ -315,8 +319,10 @@ Format.eprintf "Specialisation starting with %a\n%!" Continuation.print cont;
                   inside the approximation"
                 Continuation.print cont
           in
+(*
 Format.eprintf "Number of inlinable application points: %d\n%!"
             (List.length (U.inlinable_application_points uses));
+*)
           List.fold_left (fun ((specialisations, conts_to_handlers) as acc)
                   (use : U.Use.t) ->
               assert (List.length handler.params = List.length use.args);
@@ -324,7 +330,8 @@ Format.eprintf "Number of inlinable application points: %d\n%!"
                 Variable.Map.of_list (List.combine handler.params use.args)
               in
               let params_with_specialised_args =
-                Variable.Map.filter (fun param (arg, arg_approx) ->
+                Variable.Map.filter (fun param (_arg, arg_approx) ->
+(*
 Format.eprintf "Considering use of param %a as arg %a, approx %a: \
     Invariant? %b New spec arg? %b Useful approx? %b\n%!"
   Variable.print param
@@ -333,6 +340,7 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
   (Variable.Map.mem param invariant_params)
   (not (Variable.Map.mem param handler.specialised_args))
   (A.useful arg_approx);
+*)
                     Variable.Map.mem param invariant_params
                       && not (Variable.Map.mem param
                         handler.specialised_args)
@@ -378,10 +386,12 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
       (Continuation_with_specialised_args.Map.empty,
         Continuation.Map.empty)
   in
+(*
 Format.eprintf "Specialisation first stage result:\n%a\n%!"
   (Continuation_with_specialised_args.Map.print
     Continuation.With_args.Set.print)
   specialisations;
+*)
   (* The second step takes the map from above and makes a decision for
      each proposed specialisation, returning two maps:
        continuation "k" -> new continuation(s) to be defined just before "k"
@@ -469,8 +479,10 @@ let insert_specialisations r (expr : Flambda.expr) ~new_conts
   expr, !r
 
 let for_toplevel_expression expr r ~simplify ~backend =
+(*
 Format.eprintf "Input to Continuation_specialisation:\n@;%a\n"
   Flambda.print expr;
+*)
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify ~backend
   in
