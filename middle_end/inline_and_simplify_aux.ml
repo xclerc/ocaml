@@ -34,9 +34,10 @@ module Env = struct
     (* Number of times "inline" has been called recursively *)
     inside_branch : int;
     freshening : Freshening.t;
-    never_inline : bool ;
+    never_inline : bool;
     never_inline_inside_closures : bool;
     never_inline_outside_closures : bool;
+    allow_continuation_inlining : bool;
     unroll_counts : int Set_of_closures_origin.Map.t;
     inlining_counts : int Closure_id.Map.t;
     actively_unrolling : int Set_of_closures_origin.Map.t;
@@ -45,7 +46,7 @@ module Env = struct
     inlined_debuginfo : Debuginfo.t;
   }
 
-  let create ~never_inline ~backend ~round =
+  let create ~never_inline ~allow_continuation_inlining ~backend ~round =
     { backend;
       round;
       approx = Variable.Map.empty;
@@ -60,6 +61,7 @@ module Env = struct
       never_inline;
       never_inline_inside_closures = false;
       never_inline_outside_closures = false;
+      allow_continuation_inlining = allow_continuation_inlining;
       unroll_counts = Set_of_closures_origin.Map.empty;
       inlining_counts = Closure_id.Map.empty;
       actively_unrolling = Set_of_closures_origin.Map.empty;
@@ -368,6 +370,12 @@ module Env = struct
   let inlining_level t = t.inlining_level
   let freshening t = t.freshening
   let never_inline t = t.never_inline || t.never_inline_outside_closures
+
+  let allow_continuation_inlining t =
+    { t with allow_continuation_inlining = true; }
+
+  let never_inline_continuations t =
+    never_inline t && not t.allow_continuation_inlining
 
   let note_entering_closure t ~closure_id ~dbg =
     if t.never_inline then t

@@ -182,7 +182,7 @@ type filtered_switch_branches =
   | Can_be_taken of (int * Continuation.t) list
 
 let inline_and_specialise_continuations env r ~body ~simplify ~backend =
-  if E.never_inline env then
+  if E.never_inline_continuations env then
     body, r
   else
     let body, r =
@@ -1986,10 +1986,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         (* Unboxing of continuation parameters is done now so that in one pass
            of [Inline_and_simplify] such unboxing will go all the way down the
            control flow. *)
-        (* CR mshinwell: Add something to the environment perhaps so that
-           we can do a third run of Inline_and_simplify, controlling whether
-           proper continuation inlining and unboxing happens *)
-        if handler.stub then Unchanged { handler; }
+        if handler.stub || E.never_inline_continuations env
+        then Unchanged { handler; }
         else
           Unbox_continuation_params.for_non_recursive_continuation r ~handler
             ~name ~backend:(E.backend env)
@@ -2042,8 +2040,9 @@ body, r
       end
     | Recursive handlers ->
       let handlers, env, update_use_env =
-(*        if E.never_inline env then handlers, body_env, (fun env -> env)
-        else*)
+        if E.never_inline_continuations env then
+          handlers, body_env, (fun env -> env)
+        else
           let with_wrappers =
             Unbox_continuation_params.for_recursive_continuations r ~handlers
               ~backend:(E.backend env)
@@ -2506,13 +2505,14 @@ let add_predef_exns_to_environment ~env ~backend =
     env
     Predef.all_predef_exns
 
-let run ~never_inline ~backend ~prefixname ~round program =
+let run ~never_inline ~allow_continuation_inlining ~backend ~prefixname ~round
+      program =
   let r = R.create () in
   let report = !Clflags.inlining_report in
   if never_inline then Clflags.inlining_report := false;
   let initial_env =
     add_predef_exns_to_environment
-      ~env:(E.create ~never_inline ~backend ~round)
+      ~env:(E.create ~never_inline ~allow_continuation_inlining ~backend ~round)
       ~backend
   in
   let result, r = simplify_program initial_env r program in

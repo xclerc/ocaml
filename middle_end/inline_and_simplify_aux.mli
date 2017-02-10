@@ -33,6 +33,7 @@ module Env : sig
       not initially hold any approximation information. *)
   val create
      : never_inline:bool
+    -> allow_continuation_inlining:bool
     -> backend:(module Backend_intf.S)
     -> round:int
     -> t
@@ -179,6 +180,10 @@ module Env : sig
   (** Return whether [set_never_inline] is currently in effect on the given
       environment. *)
   val never_inline : t -> bool
+
+  val never_inline_continuations : t -> bool
+
+  val allow_continuation_inlining : t -> t
 
   val inlining_level : t -> int
 
