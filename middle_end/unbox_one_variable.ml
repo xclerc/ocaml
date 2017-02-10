@@ -154,8 +154,6 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
     let is_int_switch : Flambda.switch =
       { numconsts = Numbers.Int.Set.of_list [0; 1];
         consts = [0, is_block_cont];
-        numblocks = Numbers.Int.Set.empty;
-        blocks = [];
         failaction = Some is_int_cont;
       }
     in
@@ -234,8 +232,6 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
       in
       { numconsts;
         consts = List.rev consts;
-        numblocks = Numbers.Int.Set.empty;
-        blocks = [];
         failaction = None;
       }
     in
@@ -314,8 +310,6 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
   let boxing_is_int_switch : Flambda.switch =
     { numconsts = Numbers.Int.Set.of_list [0; 1];
       consts = [0, boxing_is_block_cont];
-      numblocks = Numbers.Int.Set.empty;
-      blocks = [];
       failaction = Some boxing_is_int_cont;
     }
   in
@@ -334,8 +328,6 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
     in
     { numconsts;
       consts = List.rev consts;
-      numblocks = Numbers.Int.Set.empty;
-      blocks = [];
       failaction = None;
     }
   in
@@ -353,8 +345,6 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
       let constant_ctor_switch : Flambda.switch =
         { numconsts = constant_ctors;
           consts;
-          numblocks = Numbers.Int.Set.empty;
-          blocks = [];
           failaction = None;
         }
       in

@@ -39,7 +39,6 @@ let ignore_meth_kind (_ : Lambda.meth_kind) = ()
 let ignore_int (_ : int) = ()
 let ignore_int_set (_ : Numbers.Int.Set.t) = ()
 let ignore_bool (_ : bool) = ()
-let ignore_switch_block_pattern (_ : Ilambda.switch_block_pattern) = ()
 let ignore_continuation (_ : Continuation.t) = ()
 let ignore_primitive ( _ : Lambda.primitive) = ()
 let ignore_const (_ : Flambda.const) = ()
@@ -247,7 +246,7 @@ module Push_pop_invariants = struct
         | cont_stack -> cont_stack
       in
       unify_stack continuation stack cont_stack
-    | Switch (_,{ consts; blocks; failaction; _ } ) ->
+    | Switch (_,{ consts; failaction; _ } ) ->
       List.iter (fun (_, cont) ->
         let cont_stack =
           match Continuation.Map.find cont env with
@@ -259,17 +258,6 @@ module Push_pop_invariants = struct
         in
         unify_stack cont cont_stack current_stack)
         consts;
-      List.iter (fun (_, cont) ->
-        let cont_stack =
-          match Continuation.Map.find cont env with
-          | exception Not_found ->
-            Misc.fatal_errorf "Unbound continuation %a in switch %a"
-              Continuation.print cont
-              Flambda.print expr
-          | cont_stack -> cont_stack
-        in
-        unify_stack cont cont_stack current_stack)
-        blocks;
       begin match failaction with
       | None -> ()
       | Some cont ->
@@ -384,7 +372,7 @@ module Continuation_scoping = struct
               (continuation, expected_arity, arity))
           end
       end
-    | Switch (_,{ consts; blocks; failaction; _ } ) ->
+    | Switch (_,{ consts; failaction; _ } ) ->
       let check (_, cont) =
         match Continuation.Map.find cont env with
         | exception Not_found ->
@@ -394,7 +382,6 @@ module Continuation_scoping = struct
             raise (Continuation_called_with_wrong_arity (cont, 0, arity));
       in
       List.iter check consts;
-      List.iter check blocks;
       begin match failaction with
       | None -> ()
       | Some cont ->
@@ -525,18 +512,13 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_debuginfo dbg;
       ignore_inline_attribute inline;
       ignore_specialise_attribute specialise
-    | Switch (arg, { numconsts; consts; numblocks; blocks; failaction; }) ->
+    | Switch (arg, { numconsts; consts; failaction; }) ->
       check_variable_is_bound env arg;
       ignore_int_set numconsts;
-      ignore_int_set numblocks;
       List.iter (fun (n, e) ->
           ignore_int n;
           ignore_continuation e)
         consts;
-      List.iter (fun (n, e) ->
-          ignore_switch_block_pattern n;
-          ignore_continuation e)
-        blocks;
       Misc.may ignore_continuation failaction
     | Apply_cont (static_exn, trap_action, es) ->
       begin match trap_action with

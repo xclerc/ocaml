@@ -20,13 +20,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42-49"]
 
-(** Tag block switches must be encoded as [Pgettag] followed by a switch
-    on constants. *)
-(* CR-someday mshinwell: Pull the string-switch compilation code forward so
-   we can delete this entirely. *)
-type switch_block_pattern =
-  | String of string
-
 type trap_action =
   | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
   | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
@@ -94,17 +87,12 @@ and apply_kind =
   | Function
   | Method of { kind : Lambda.meth_kind; obj : Ident.t; }
 
+(** Tag block switches must be encoded as [Pgettag] followed by a switch
+    on constants.  String switches must be expanded out. *)
 and switch =
   { numconsts : int;
     consts : (int * Continuation.t) list;
-    numblocks : int;
-    blocks : (switch_block_pattern * Continuation.t) list;
     failaction : Continuation.t option;
   }
 
 val print : Format.formatter -> t -> unit
-
-val print_switch_block_pattern
-   : Format.formatter
-  -> switch_block_pattern
-  -> unit

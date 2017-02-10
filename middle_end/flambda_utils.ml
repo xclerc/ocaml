@@ -203,9 +203,7 @@ and same_move_within_set_of_closures (m1 : Flambda.move_within_set_of_closures)
 and sameswitch (fs1 : Flambda.switch) (fs2 : Flambda.switch) =
   let samecase (n1, a1) (n2, a2) = n1 = n2 && Continuation.equal a1 a2 in
   fs1.numconsts = fs2.numconsts
-    && fs1.numblocks = fs2.numblocks
     && Misc.Stdlib.List.equal samecase fs1.consts fs2.consts
-    && Misc.Stdlib.List.equal samecase fs1.blocks fs2.blocks
     && Misc.Stdlib.Option.equal Continuation.equal fs1.failaction fs2.failaction
 
 let can_be_merged = same

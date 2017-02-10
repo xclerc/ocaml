@@ -476,8 +476,3 @@ val potentially_taken_const_switch_branch
    : t
   -> int
   -> switch_branch_selection
-
-val potentially_taken_block_switch_branch
-   : t
-  -> Ilambda.switch_block_pattern
-  -> switch_branch_selection

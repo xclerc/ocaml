@@ -26,9 +26,6 @@ module L = Lambda
 type proto_switch = {
   numconsts : int;
   consts : (int * L.lambda) list;
-  numblocks : int;
-  block_pats : I.switch_block_pattern list;
-  blocks : L.lambda list;
   failaction : L.lambda option;
 }
 
@@ -251,9 +248,6 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let proto_switch : proto_switch =
       { numconsts = switch.sw_numconsts;
         consts = switch.sw_consts;
-        numblocks = 0;
-        block_pats = [];
-        blocks = [];
         failaction = switch.sw_failaction;
       }
     in
@@ -267,32 +261,8 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
       body;
       handler = after;
     }
-  | Lstringswitch (scrutinee, cases, default, _loc) ->
-    (* CR mshinwell: don't discard [loc] *)
-    let after_switch = Continuation.create () in
-    let result_var = Ident.create "stringswitch_result" in
-    let after = k result_var in
-    let strs, cases = List.split cases in
-    let pats = List.map (fun str -> I.String str) strs in
-    let proto_switch : proto_switch =
-      { numconsts = 0;
-        consts = [];
-        numblocks = List.length pats;
-        block_pats = pats;
-        blocks = cases;
-        failaction = default;
-      }
-    in
-    let body, k_count = cps_switch proto_switch ~scrutinee after_switch in
-    Let_cont {
-      name = after_switch;
-      administrative = N.linear k_count;
-      is_exn_handler = false;
-      params = [result_var];
-      recursive = Nonrecursive;
-      body;
-      handler = after;
-    }
+  | Lstringswitch _ ->
+    Misc.fatal_error "Lstringswitch must be expanded prior to CPS conversion"
   | Lstaticraise (static_exn, args) ->
     let continuation =
       match Numbers.Int.Map.find static_exn !static_exn_env with
@@ -521,26 +491,12 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
     let proto_switch : proto_switch =
       { numconsts = switch.sw_numconsts;
         consts = switch.sw_consts;
-        numblocks = 0;
-        block_pats = [];
-        blocks = [];
         failaction = switch.sw_failaction;
       }
     in
     cps_switch proto_switch ~scrutinee k
-  | Lstringswitch (scrutinee, cases, default, _loc) ->
-    let strs, cases = List.split cases in
-    let pats = List.map (fun str -> I.String str) strs in
-    let proto_switch : proto_switch =
-      { numconsts = 0;
-        consts = [];
-        numblocks = List.length pats;
-        block_pats = pats;
-        blocks = cases;
-        failaction = default;
-      }
-    in
-    cps_switch proto_switch ~scrutinee k
+  | Lstringswitch _ ->
+    Misc.fatal_error "Lstringswitch must be expanded prior to CPS conversion"
   | Lstaticraise (static_exn, args) ->
     let continuation =
       match Numbers.Int.Map.find static_exn !static_exn_env with
@@ -679,9 +635,7 @@ and cps_function (func : Lambda.lfunction) : Ilambda.function_declaration =
 and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
   let const_nums, consts = List.split switch.consts in
   let const_conts = List.map (fun _ -> Continuation.create ()) consts in
-  let block_conts = List.map (fun _ -> Continuation.create ()) switch.blocks in
   let consts = List.combine consts const_conts in
-  let blocks = List.combine switch.blocks block_conts in
   let failaction_cont, failaction =
     match switch.failaction with
     | None -> None, None
@@ -692,8 +646,6 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
   let switch : Ilambda.switch =
     { numconsts = switch.numconsts;
       consts = List.combine const_nums const_conts;
-      numblocks = switch.numblocks;
-      blocks = List.combine switch.block_pats block_conts;
       failaction = failaction_cont;
     }
   in
@@ -744,7 +696,7 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
             handler;
           }
       in
-      make_continuations consts ~init:(make_continuations blocks ~init))
+      make_continuations consts ~init)
   in
   ilam, !k_count_ref
 

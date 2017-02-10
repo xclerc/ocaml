@@ -18,9 +18,6 @@
 
 module L = Lambda
 
-type switch_block_pattern =
-  | String of string
-
 type trap_action =
   | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
   | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
@@ -87,13 +84,8 @@ and apply_kind =
 and switch =
   { numconsts : int;
     consts : (int * Continuation.t) list;
-    numblocks : int;
-    blocks : (switch_block_pattern * Continuation.t) list;
     failaction : Continuation.t option;
   }
-
-let print_switch_block_pattern ppf = function
-  | String s -> Format.fprintf ppf "string \"%S\"" s
 
 let rec print_function ppf
       ({ continuation_param; kind; params; body; attr; }
@@ -183,12 +175,6 @@ and lam ppf (t : t) =
           fprintf ppf "@[<hv 1>case int %i:@ apply_cont %a@]"
             n Continuation.print l)
         sw.consts;
-      List.iter (fun (n, l) ->
-          if !spc then fprintf ppf "@ " else spc := true;
-          fprintf ppf "@[<hv 1>case %a:@ apply_cont %a@]"
-            print_switch_block_pattern n
-            Continuation.print l)
-        sw.blocks;
       begin match sw.failaction with
       | None  -> ()
       | Some l ->

@@ -287,8 +287,6 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
     Switch (Env.find_var env scrutinee,
       { numconsts = zero_to_n (sw.numconsts - 1);
         consts = sw.consts;
-        numblocks = zero_to_n (sw.numblocks - 1);
-        blocks = sw.blocks;
         failaction = sw.failaction;
       })
   | Event (ilam, _) -> close t env ilam

@@ -179,8 +179,6 @@ and function_declaration = {
 and switch = {
   numconsts : Numbers.Int.Set.t;
   consts : (int * Continuation.t) list;
-  numblocks : Numbers.Int.Set.t;
-  blocks : (Ilambda.switch_block_pattern * Continuation.t) list;
   failaction : Continuation.t option;
 }
 
@@ -344,12 +342,6 @@ let rec lam ppf (flam : t) =
              fprintf ppf "@[<hv 1>case int %i:@ goto %a@]"
                n Continuation.print l)
           sw.consts;
-        List.iter
-          (fun (n, l) ->
-             if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<hv 1>case %a:@ goto %a@]"
-               Ilambda.print_switch_block_pattern n Continuation.print l)
-          sw.blocks;
         begin match sw.failaction with
         | None  -> ()
         | Some l ->
@@ -358,10 +350,9 @@ let rec lam ppf (flam : t) =
               Continuation.print l
         end in
       fprintf ppf
-        "@[<1>(%s (%i, %i) %a@ @[<v 0>%a@])@]"
+        "@[<1>(%s (%i) %a@ @[<v 0>%a@])@]"
         (match sw.failaction with None -> "switch*" | _ -> "switch")
         (Int.Set.cardinal sw.numconsts)
-        (Int.Set.cardinal sw.numblocks)
         Variable.print larg switch sw
   | Apply_cont (i, trap_action, []) ->
     fprintf ppf "@[<2>(%agoto@ %a)@]"
@@ -1065,15 +1056,12 @@ let rec free_continuations (expr : expr) =
   | Apply { continuation; } -> Continuation.Set.singleton continuation
   | Switch (_scrutinee, switch) ->
     let consts = List.map (fun (_int, cont) -> cont) switch.consts in
-    let blocks = List.map (fun (_pat, cont) -> cont) switch.blocks in
     let failaction =
       match switch.failaction with
       | None -> Continuation.Set.empty
       | Some cont -> Continuation.Set.singleton cont
     in
-    Continuation.Set.union failaction
-      (Continuation.Set.union (Continuation.Set.of_list consts)
-        (Continuation.Set.of_list blocks))
+    Continuation.Set.union failaction (Continuation.Set.of_list consts)
   | Proved_unreachable -> Continuation.Set.empty
 
 and free_continuations_of_let_cont_handlers ~(handlers : let_cont_handlers) =

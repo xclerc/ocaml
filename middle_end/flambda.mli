@@ -466,12 +466,12 @@ and function_declaration = private {
 (** Equivalent to the similar type in [Ilambda]. *)
 (* CR mshinwell: change this type as per Pierre's suggestion? *)
 and switch = {
-  numconsts : Numbers.Int.Set.t; (** Integer cases *)
-  consts : (int * Continuation.t) list; (** Integer cases *)
-  numblocks : Numbers.Int.Set.t; (** Number of string cases *)
-  blocks :
-    (Ilambda.switch_block_pattern * Continuation.t) list; (** String cases *)
-  failaction : Continuation.t option; (** Action to take if none matched *)
+  numconsts : Numbers.Int.Set.t;
+  (** All possible values that the scrutinee might have. *)
+  consts : (int * Continuation.t) list;
+  (** Branches for specific values of the scrutinee. *)
+  failaction : Continuation.t option;
+  (** Action to take if none of the [consts] matched. *)
 }
 
 (** Like a subset of [Flambda.named], except that instead of [Variable.t]s we

@@ -306,9 +306,7 @@ let test_closure_code_pointer t uclosure closure_id : Clambda.ulambda =
 let switch_numconsts_for_if = Numbers.Int.Set.of_list [0; 1]
 
 let switch_looks_like_if ~scrutinee ~(switch : Flambda.switch) =
-  if not (Numbers.Int.Set.equal switch.numconsts switch_numconsts_for_if
-    && Numbers.Int.Set.equal switch.numblocks Numbers.Int.Set.empty)
-  then
+  if not (Numbers.Int.Set.equal switch.numconsts switch_numconsts_for_if) then
     None
   else
     match switch.consts, switch.failaction with
@@ -320,44 +318,6 @@ let switch_looks_like_if ~scrutinee ~(switch : Flambda.switch) =
     | _ ->
       Misc.fatal_errorf "Malformed Flambda.switch: %a"
         Flambda.print (Flambda.Switch (scrutinee, switch))
-
-type tag_switch_or_string_switch =
-  | Tag of (int * Continuation.t) list
-  | String of (string * Continuation.t) list
-
-(* CR mshinwell: this function can be dramatically simplified now *)
-let tag_switch_or_string_switch ~scrutinee ~(switch : Flambda.switch) =
-  match switch.consts, switch.blocks with
-  | [], [] ->
-    Misc.fatal_errorf "Flambda.switch with no cases: %a"
-      Flambda.print (Flambda.Switch (scrutinee, switch))
-  | _, _ ->
-    (* CR mshinwell: If this code stays, add [List.partition_map] *)
-    let tags, strings =
-      List.partition (fun ((pat : Ilambda.switch_block_pattern), _case) ->
-          match pat with
-          | String _ -> false)
-        switch.blocks
-    in
-    let tags =
-      List.map (fun ((pat : Ilambda.switch_block_pattern), _case) ->
-          match pat with
-          | String _ -> assert false)
-        tags
-    in
-    let strings =
-      List.map (fun ((pat : Ilambda.switch_block_pattern), case) ->
-          match pat with
-          | String str -> str, case)
-        strings
-    in
-    match switch.consts, tags, strings with
-    | _, _::_, _::_ ->
-      Misc.fatal_errorf "Flambda.switch with both tag and string cases: %a"
-        Flambda.print (Flambda.Switch (scrutinee, switch))
-    | [], [], [] -> assert false  (* see above *)
-    | _consts, tags, [] -> Tag tags
-    | _consts, [], strings -> String strings
 
 (* CR mshinwell: combine with to_clambda_direct_apply? *)
 let to_clambda_apply env cont ~continuation_arity arg : Clambda.ulambda =
@@ -456,35 +416,15 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
       let ifnot = apply_cont_returning_unit env ifnot_cont in
       Uifthenelse (arg, ifso, ifnot)
     | None ->
-      match tag_switch_or_string_switch ~scrutinee ~switch:sw with
-      | Tag blocks ->
-        (* Note that the [failaction] may always be duplicated, since it's
-           just a jump to a continuation.  ([Uswitch] doesn't have the notion
-           of a default case.) *)
-        let const_index, const_actions =
-          to_clambda_switch t env sw.consts sw.numconsts sw.failaction
-        in
-        let block_index, block_actions =
-          to_clambda_switch t env blocks sw.numblocks sw.failaction
-        in
-        Uswitch (arg,
-          { us_index_consts = const_index;
-            us_actions_consts = const_actions;
-            us_index_blocks = block_index;
-            us_actions_blocks = block_actions;
-          })
-      | String cases ->
-        let cases =
-          List.map (fun (str, cont) ->
-              str, apply_cont_returning_unit env cont)
-            cases
-        in
-        let failaction =
-          match sw.failaction with
-          | None -> None
-          | Some cont -> Some (apply_cont_returning_unit env cont)
-        in
-        Ustringswitch (arg, cases, failaction)
+      let const_index, const_actions =
+        to_clambda_switch t env sw.consts sw.numconsts sw.failaction
+      in
+      Uswitch (arg,
+        { us_index_consts = const_index;
+          us_actions_consts = const_actions;
+          us_index_blocks = [| |];
+          us_actions_blocks = [| |];
+        })
     end
   | Apply_cont (cont, trap_action, args) ->
     if Continuation.Set.mem cont t.exn_handlers then begin

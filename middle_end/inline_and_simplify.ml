@@ -177,9 +177,9 @@ let approx_for_allocated_const (const : Allocated_const.t) =
       A.value_immutable_float_array
         (Array.map A.value_float (Array.of_list a))
 
-type 'a filtered_switch_branches =
+type filtered_switch_branches =
   | Must_be_taken of Continuation.t
-  | Can_be_taken of ('a * Continuation.t) list
+  | Can_be_taken of (int * Continuation.t) list
 
 let inline_and_specialise_continuations env r ~body ~simplify ~backend =
   if E.never_inline env then
@@ -2086,22 +2086,16 @@ body, r
       let filtered_consts =
         filter_branches A.potentially_taken_const_switch_branch sw.consts []
       in
-      let filtered_blocks =
-        filter_branches A.potentially_taken_block_switch_branch sw.blocks []
-      in
-      begin match filtered_consts, filtered_blocks with
-      | Must_be_taken _, Must_be_taken _ ->
-        assert false
-      | Must_be_taken cont, _
-      | _, Must_be_taken cont ->
+      begin match filtered_consts with
+      | Must_be_taken cont ->
         let expr, r =
           simplify_apply_cont env r cont ~trap_action:None
             ~args:[] ~args_approxs:[]
         in
         expr, R.map_benefit r B.remove_branch
-      | Can_be_taken consts, Can_be_taken blocks ->
-        match consts, blocks, sw.failaction with
-        | [], [], None ->
+      | Can_be_taken consts ->
+        match consts, sw.failaction with
+        | [], None ->
           (* If the switch is applied to a statically-known value that does not
             match any case:
             * if there is a default action take that case;
@@ -2115,9 +2109,8 @@ body, r
                   | Float f -> ...]
           *)
           Proved_unreachable, r
-        | [_, cont], [], None
-        | [], [_, cont], None
-        | [], [], Some cont ->
+        | [_, cont], None
+        | [], Some cont ->
           let cont, r =
             simplify_apply_cont_to_cont env r cont ~args_approxs:[]
           in
@@ -2132,7 +2125,6 @@ body, r
           in
           let r = R.set_approx r A.value_bottom in
           let consts, r = List.fold_right f consts ([], r) in
-          let blocks, r = List.fold_right f blocks ([], r) in
           let failaction, r =
             match sw.failaction with
             | None -> None, r
@@ -2142,7 +2134,7 @@ body, r
               in
               Some cont, r
           in
-          let sw = { sw with failaction; consts; blocks; } in
+          let sw = { sw with failaction; consts; } in
           Switch (arg, sw), r
       end)
   | Proved_unreachable -> Proved_unreachable, ret r A.value_bottom

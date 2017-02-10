@@ -86,7 +86,7 @@ let lambda_smaller' lam ~than:threshold =
     | Let_mutable { body } -> lambda_size body
     | Switch (_, sw) ->
       let aux = function _::_::_ -> size := !size + 5 | _ -> () in
-      aux sw.consts; aux sw.blocks
+      aux sw.consts
     | Apply_cont _ -> incr size
     | Let_cont { body; handlers; } ->
       incr size;

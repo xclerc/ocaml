@@ -314,7 +314,6 @@ end and Unionable : sig
   val flatten : t -> singleton or_bottom
 
   val maybe_is_immediate_value : t -> int -> bool
-  val maybe_is_block_with_tag : t -> Tag.t -> bool
 end = struct
   type 'a or_bottom =
     | Ok of 'a
@@ -414,12 +413,6 @@ end = struct
           | Constptr p when i = p -> true
           | Constptr _ -> false)
         imms
-
-  let maybe_is_block_with_tag t tag =
-    match t with
-    | Blocks by_tag | Blocks_and_immediates (by_tag, _) ->
-      Tag.Map.exists (fun tag' _ -> Tag.equal tag tag') by_tag
-    | Immediates _imms -> false
 
   let join (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
     let get_immediates t =
@@ -1115,22 +1108,3 @@ let potentially_taken_const_switch_branch t branch =
     Can_be_taken
   | Float _ | Float_array _ | String _ | Closure _ | Set_of_closures _
   | Boxed_int _ | Bottom -> Cannot_be_taken
-
-let potentially_taken_block_switch_branch_string t s =
-  match t.descr with
-  | Unresolved _ | Unknown _ | Extern _ | Symbol _ -> Can_be_taken
-  | String { contents = Some s'; _ } when s = s' -> Must_be_taken
-  | String { contents = Some _; _ } -> Cannot_be_taken
-  | String { contents = None; } -> Can_be_taken
-  | Union union ->
-    (* This case seems unlikely, so we don't write the logic to determine
-       [Must_be_taken]. *)
-    let string_tag = Tag.create_exn Obj.string_tag in
-    if Unionable.maybe_is_block_with_tag union string_tag then Can_be_taken
-    else Cannot_be_taken
-  | Float _ | Set_of_closures _ | Closure _
-  | Float_array _ | Boxed_int _ | Bottom -> Cannot_be_taken
-
-let potentially_taken_block_switch_branch t pattern =
-  match (pattern : Ilambda.switch_block_pattern) with
-  | String s -> potentially_taken_block_switch_branch_string t s
