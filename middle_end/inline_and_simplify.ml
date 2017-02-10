@@ -1986,7 +1986,10 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         (* Unboxing of continuation parameters is done now so that in one pass
            of [Inline_and_simplify] such unboxing will go all the way down the
            control flow. *)
-        if handler.stub || E.never_inline env then Unchanged { handler; }
+        (* CR mshinwell: Add something to the environment perhaps so that
+           we can do a third run of Inline_and_simplify, controlling whether
+           proper continuation inlining and unboxing happens *)
+        if handler.stub then Unchanged { handler; }
         else
           Unbox_continuation_params.for_non_recursive_continuation r ~handler
             ~name ~backend:(E.backend env)
@@ -2039,8 +2042,8 @@ body, r
       end
     | Recursive handlers ->
       let handlers, env, update_use_env =
-        if E.never_inline env then handlers, body_env, (fun env -> env)
-        else
+(*        if E.never_inline env then handlers, body_env, (fun env -> env)
+        else*)
           let with_wrappers =
             Unbox_continuation_params.for_recursive_continuations r ~handlers
               ~backend:(E.backend env)
