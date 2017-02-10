@@ -202,8 +202,8 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
                 Flambda.free_variables_of_let_cont_handlers handlers
               in
               (* Note that we don't have to check any uses of mutable variables
-                in [handler], since any such uses would prevent [handler] from
-                being in [to_be_lifted]. *)
+                 in [handler], since any such uses would prevent [handler] from
+                 being in [to_be_lifted]. *)
               if State.can_lift_if_using_continuations state fcs
                 && State.can_lift_if_using_variables state fvs
               then
@@ -281,6 +281,9 @@ and lift_expr (expr : Flambda.expr) ~state =
           Flambda.With_free_variables.of_named defining_expr, state
         | Read_mutable mut_var ->
           let state = State.use_mutable_variable state mut_var in
+          Flambda.With_free_variables.of_defining_expr_of_let let_expr, state
+        | Assign { being_assigned; new_value = _; } ->
+          let state = State.use_mutable_variable state being_assigned in
           Flambda.With_free_variables.of_defining_expr_of_let let_expr, state
         | _ ->
           Flambda.With_free_variables.of_defining_expr_of_let let_expr, state
