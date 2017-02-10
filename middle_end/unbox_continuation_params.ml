@@ -31,7 +31,9 @@ let find_unboxings ~continuation_uses ~handlers =
         | params ->
           match Continuation.Map.find cont continuation_uses with
           | exception Not_found ->
+(*
 Format.eprintf "No definition for %a\n%!" Continuation.print cont;
+*)
             None
           | uses ->
             let num_params = List.length params in
@@ -98,8 +100,10 @@ Format.eprintf "Invariant params:\n@;%a\n"
 *)
 
 let for_continuations r ~handlers ~backend =
+(*
 Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
   Continuation.Set.print (Continuation.Map.keys handlers);
+*)
   let continuation_uses = R.continuation_uses r in
   let unboxings_by_cont = find_unboxings ~continuation_uses ~handlers in
   if Continuation.Map.is_empty unboxings_by_cont then begin
@@ -149,6 +153,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
                   @ (List.map (fun (param, _proj) -> param)
                     how_to_unbox.new_params)
               in
+(*
   Format.eprintf "Unbox_continuation_params has unboxed:\n@;%a\n%!"
     Flambda.print_let_cont_handlers (Flambda.Recursive
       (Continuation.Map.add cont handler Continuation.Map.empty));
@@ -160,6 +165,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
     Variable.print_list params
     Continuation.print new_cont
     Flambda.print handler.handler;
+*)
               With_wrapper {
                 new_cont;
                 new_handler = {

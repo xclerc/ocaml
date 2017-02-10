@@ -541,10 +541,12 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
     E.inside_set_of_closures_declaration
       function_decls.set_of_closures_origin env
   in
+(*
 Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
   Closure_id.print closure_id_being_applied
   Variable.print_list args
   Printlambda.apply_inlined_attribute inline_requested self_call;
+*)
   let original_r =
     let r =
       R.set_approx (R.seen_direct_application r) (A.value_unknown Other)

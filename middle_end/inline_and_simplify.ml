@@ -1656,10 +1656,12 @@ and simplify_let_cont_handler ~env ~r ~cont
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env) vars
   in
+(*
 Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%!"
   Continuation.print cont
   Variable.print_list vars
   Variable.print_list freshened_vars;
+*)
   if List.length vars <> List.length args_approxs then begin
     Misc.fatal_errorf "simplify_let_cont_handler (%a): params are %a but \
         args_approxs has length %d"
@@ -1793,12 +1795,16 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
              since the latter may come from another compilation unit, and has
              not yet been freshened up. *)
           let r, handler =
+(*
 Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
+*)
             simplify_let_cont_handler ~env ~r ~cont ~handler ~recursive
           in
+(*
 Format.eprintf "New handler for %a is:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
+*)
           let cont' = Freshening.apply_static_exception freshening cont in
           r, Continuation.Map.add cont' handler handlers)
         handlers
@@ -2072,8 +2078,10 @@ body, r
             with_wrappers
             (Continuation.Map.empty, body_env, (fun env -> env))
       in
+(*
 Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
   Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
+*)
       simplify_let_cont_handlers ~env ~r ~body ~handlers
         ~recursive:Asttypes.Recursive ~freshening
         ~update_use_env

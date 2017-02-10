@@ -177,15 +177,19 @@ let for_function_decl ~continuation_uses ~fun_var
             if List.length how_to_unbox.new_params > 4 then begin
               None
             end else begin
+(*
     Format.eprintf "Unbox_returns on:\n@ %a\n%!"
       Flambda.print_function_declaration (fun_var, function_decl);
+*)
               let function_decls, new_specialised_args =
                 unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
                   ~return_cont_param ~specialised_args
               in
+(*
     Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
       Flambda.print_function_declarations
         (Flambda.create_function_declarations ~funs:function_decls);
+*)
               Some (function_decls, new_specialised_args)
             end
 
