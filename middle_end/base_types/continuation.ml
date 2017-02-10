@@ -16,8 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-include Numbers.Int
-
 (* Imported from Lambda *)
 let raise_count = ref 0
 
@@ -36,11 +34,47 @@ let reset () =
   raise_count := 0
 (* </> Imported from Lambda *)
 
-let create () =
-  next_raise_count ()
-let to_int t = t
+type t = {
+  id : int;
+  (** [id]s are unique within any given compilation unit. *)
+  compilation_unit : Compilation_unit.t
+}
 
-let print ppf t = Format.fprintf ppf "k%d" t
+include Identifiable.Make (struct
+  type nonrec t = t
+
+  let compare t1 t2 =
+    let c = Pervasives.compare t1.id t2.id in
+    if c <> 0 then c
+    else Compilation_unit.compare t1.compilation_unit t2.compilation_unit
+
+  let equal t1 t2 =
+    t1.id = t2.id
+      && Compilation_unit.equal t1.compilation_unit t2.compilation_unit
+
+  let hash t =
+    Hashtbl.hash (t.id, Compilation_unit.hash t.compilation_unit)
+
+  let print ppf t =
+    if Compilation_unit.equal t.compilation_unit
+        (Compilation_unit.get_current_exn ())
+    then begin
+      Format.fprintf ppf "k%d" t.id
+    end else begin
+      Format.fprintf ppf "%a.k%d"
+        Compilation_unit.print t.compilation_unit
+        t.id
+    end
+
+  let output _ _ = Misc.fatal_error "Not implemented"
+end)
+
+let create () : t =
+  { id = next_raise_count ();
+    compilation_unit = Compilation_unit.get_current_exn ();
+  }
+
+let to_int t = t.id
 
 module With_args = struct
   type nonrec t = t * Variable.t list

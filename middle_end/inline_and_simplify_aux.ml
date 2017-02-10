@@ -665,15 +665,13 @@ module Result = struct
         Variable.print_list args
         Env.print env
     end;
-(*
-let k = 39 in
+let k = 128 in
 if Continuation.to_int cont = k then begin
   Format.eprintf "Adding use of continuation k%d, num_args %d:\n%s\n%!"
     k
     (List.length args_approxs)
     (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10))
 end;
-*)
     let uses =
       match Continuation.Map.find cont t.used_continuations with
       | exception Not_found ->
