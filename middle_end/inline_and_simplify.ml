@@ -1019,7 +1019,9 @@ Format.eprintf "...freshened cont is %a\n%!"
           begin match call_kind with
           | Indirect -> ()
           | Direct _ ->
-            Misc.fatal_errorf "Application of function %a (%a) is marked as \
+            (* CR mshinwell: Should this be a fatal error?  It fails in
+               camlinternalOO. *)
+            Format.eprintf "Application of function %a (%a) is marked as \
                 a direct call but the approximation of the function was \
                 wrong"
               Variable.print lhs_of_application
