@@ -176,12 +176,12 @@ let inline env r ~lhs_of_application
         Don't_try_it S.Not_inlined.No_useful_approximations
     else begin
       (* There are useful approximations, so we should simplify. *)
-      Try_it (function_decl, function_decls, remaining_inlining_threshold)
+      Try_it
     end
   in
   match try_inlining with
   | Don't_try_it decision -> Original decision
-  | Try_it (function_decl, function_decls, remaining_inlining_threshold) ->
+  | Try_it ->
     let r =
       R.set_inlining_threshold r (Some remaining_inlining_threshold)
     in

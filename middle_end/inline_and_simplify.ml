@@ -770,6 +770,11 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
         ~inline ~specialise:function_decl.specialise
         ~is_a_functor:function_decl.is_a_functor
     in
+    let function_decl =
+      match Unrecursify.unrecursify_function ~fun_var ~function_decl with
+      | None -> function_decl
+      | Some function_decl -> function_decl
+    in
     let used_params' = Flambda.used_params function_decl in
     Variable.Map.add fun_var function_decl funs,
       Variable.Set.union used_params used_params', r
