@@ -331,7 +331,16 @@ let specialise env r ~lhs_of_application
            Variable.Set.mem (Var_within_closure.unwrap var) bound_vars_required)
          value_set_of_closures.bound_vars)
   in
-  let invariant_params = value_set_of_closures.invariant_params in
+  let invariant_params =
+    if Lazy.force recursive then
+      value_set_of_closures.invariant_params
+    else
+      lazy (List.fold_left (fun invariant_params param ->
+          Variable.Map.add param (Variable.Set.singleton param)
+            invariant_params)
+        Variable.Map.empty
+        function_decl.params)
+  in
   let has_no_useful_approxes =
     lazy
       (List.for_all2
@@ -359,7 +368,6 @@ let specialise env r ~lhs_of_application
   in
   let try_specialising =
     (* Try specialising if the function:
-       - is recursive; and
        - is closed (it and all other members of the set of closures on which
          it depends); and
        - has useful approximations for some invariant parameters. *)
@@ -380,8 +388,6 @@ let specialise env r ~lhs_of_application
       Don't_try_it (S.Not_specialised.Above_threshold threshold)
     else if not (Var_within_closure.Map.is_empty (Lazy.force bound_vars)) then
       Don't_try_it S.Not_specialised.Not_closed
-    else if not (Lazy.force recursive) then
-      Don't_try_it S.Not_specialised.Not_recursive
     else if Variable.Map.is_empty (Lazy.force invariant_params) then
       Don't_try_it S.Not_specialised.No_invariant_parameters
     else if Lazy.force has_no_useful_approxes then
