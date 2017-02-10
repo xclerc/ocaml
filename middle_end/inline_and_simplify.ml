@@ -1198,6 +1198,23 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
+  let freshen_trap_action env r (trap_action : Flambda.trap_action) =
+    match trap_action with
+    | Push { id; exn_handler; } ->
+      let id = Freshening.apply_trap (E.freshening env) id in
+      let exn_handler, r =
+        simplify_apply_cont_to_cont env r exn_handler
+          ~args_approxs:[A.value_unknown Other]
+      in
+      Flambda.Push { id; exn_handler; }, r
+    | Pop { id; exn_handler; } ->
+      let id = Freshening.apply_trap (E.freshening env) id in
+      let exn_handler, r =
+        simplify_apply_cont_to_cont env r exn_handler
+          ~args_approxs:[A.value_unknown Other]
+      in
+      Flambda.Pop { id; exn_handler; }, r
+  in
   match Continuation_approx.handlers cont_approx with
   | Some (Nonrecursive handler) when handler.stub ->
     (* Stubs are unconditionally inlined out now so that we don't need to run
@@ -1222,6 +1239,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
     | None -> handler, r
     | Some trap_action ->
       let new_cont = Continuation.create () in
+      let trap_action, r = freshen_trap_action env r trap_action in
       let expr : Flambda.t =
         Let_cont {
           (* CR mshinwell: This should call [use_continuation] on [new_cont] *)
@@ -1248,20 +1266,9 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
     let trap_action, r =
       match trap_action with
       | None -> None, r
-      | Some (Push { id; exn_handler; }) ->
-        let id = Freshening.apply_trap (E.freshening env) id in
-        let exn_handler, r =
-          simplify_apply_cont_to_cont env r exn_handler
-            ~args_approxs:[A.value_unknown Other]
-        in
-        Some (Flambda.Push { id; exn_handler; }), r
-      | Some (Pop { id; exn_handler; }) ->
-        let id = Freshening.apply_trap (E.freshening env) id in
-        let exn_handler, r =
-          simplify_apply_cont_to_cont env r exn_handler
-            ~args_approxs:[A.value_unknown Other]
-        in
-        Some (Flambda.Pop { id; exn_handler; }), r
+      | Some trap_action ->
+        let trap_action, r = freshen_trap_action env r trap_action in
+        Some trap_action, r
     in
     Apply_cont (cont, trap_action, args), ret r A.value_bottom
 
@@ -1863,10 +1870,29 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
           Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
         end
       | Recursive ->
-        Let_cont {
-          body;
-          handlers = Recursive handlers;
-        }, r
+        let is_non_recursive =
+          if Continuation.Map.cardinal handlers > 1 then None
+          else
+            match Continuation.Map.bindings handlers with
+            | [name, (handler : Flambda.continuation_handler)] ->
+              let fcs = Flambda.free_continuations handler.handler in
+              if not (Continuation.Set.mem name fcs) then
+                Some (name, handler)
+              else
+                None
+            | _ -> None
+        in
+        match is_non_recursive with
+        | Some (name, handler) ->
+          Let_cont {
+            body;
+            handlers = Nonrecursive { name; handler; };
+          }, r
+        | None ->
+          Let_cont {
+            body;
+            handlers = Recursive handlers;
+          }, r
 
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with

@@ -271,9 +271,9 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
       (* [expr] should usually be a variable. *)
       examine_argument_list [expr];
       ignore_int offset
-    | Ulet (_let_kind, _value_kind, ident, def, body) ->
+    | Ulet (let_kind, _value_kind, ident, def, body) ->
       begin match def with
-      | Uconst _ ->
+      | Uconst _ when let_kind = Asttypes.Immutable ->
         (* The defining expression is obviously constant, so we don't
            have to put this [let] on the stack, and we don't have to
            traverse the defining expression either. *)
@@ -636,7 +636,7 @@ let rec un_anf_and_moveable ident_info env (clam : Clambda.ulambda)
     Uoffset (clam, n), both_moveable Moveable moveable
   | Ulet (_let_kind, _value_kind, id, def, Uvar id') when Ident.same id id' ->
     un_anf_and_moveable ident_info env def
-  | Ulet (_let_kind, _value_kind, id, Uconst cst, body) ->
+  | Ulet (Immutable, _value_kind, id, Uconst cst, body) ->
     (* CR mshinwell: figure out why this is needed *)
     let env = Ident.Map.add id (Moveable, Clambda.Uconst cst) env in
     un_anf_and_moveable ident_info env body
