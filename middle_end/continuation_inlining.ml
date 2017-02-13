@@ -335,13 +335,13 @@ let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
             end;
             Continuation.With_args.Tbl.replace counts (cont, args) (count + 1);
             let inlined_body = inlined_bodies.(count) in
+            (* CR mshinwell: I wonder if we should have an invariant check
+                that could be used to validate the usage information in [r].
+                It's not as straightforward as it used to be now that we
+                subtract from that information here. *)
+            r := R.forget_inlinable_continuation_uses !r cont ~args;
             match trap_action with
             | None ->
-              (* CR mshinwell: I wonder if we should have an invariant check
-                 that could be used to validate the usage information in [r].
-                 It's not as straightforward as it used to be now that we
-                 subtract from that information here. *)
-              r := R.forget_inlinable_continuation_uses !r cont ~args;
               inlined_body
             | Some trap_action ->
               (* We have to make a new continuation as we must preserve the

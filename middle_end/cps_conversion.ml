@@ -514,7 +514,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
       !try_stack_at_handler;
     let body, k_count_body = cps_tail body k in
     let handler, k_count_handler = cps_tail handler k in
-    Let_cont  {
+    Let_cont {
       name = continuation;
       administrative = false;
       is_exn_handler = false;
