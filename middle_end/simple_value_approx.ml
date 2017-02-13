@@ -1042,13 +1042,12 @@ let check_approx_for_closure_singleton t
   match check_approx_for_closure_allowing_unresolved t with
   | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) -> begin
     match Closure_id.Map.get_singleton value_closures with
-    | None -> Format.eprintf "No closure ids in map: %a\n%!" print t; Wrong
+    | None -> Wrong
     | Some (closure_id, value_set_of_closures) ->
       Ok (closure_id, set_of_closures_var, set_of_closures_symbol,
           value_set_of_closures)
     end
   | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_symbol _ ->
-Format.eprintf "Wrong closure approx: %a\n%!" print t;
     Wrong
 
 let approx_for_bound_var value_set_of_closures var =
