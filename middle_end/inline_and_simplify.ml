@@ -1019,9 +1019,7 @@ Format.eprintf "...freshened cont is %a\n%!"
           begin match call_kind with
           | Indirect -> ()
           | Direct _ ->
-            (* CR mshinwell: Should this be a fatal error?  It fails in
-               camlinternalOO. *)
-            Format.eprintf "Application of function %a (%a) is marked as \
+            Misc.fatal_errorf "Application of function %a (%a) is marked as \
                 a direct call but the approximation of the function was \
                 wrong\n%!"
               Variable.print lhs_of_application
@@ -1197,7 +1195,12 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       ~args ~args_approxs : Flambda.t * R.t =
+(*let orig_cont = cont in*)
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
+(*
+Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
+  Continuation.print orig_cont;
+*)
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let freshen_trap_action env r (trap_action : Flambda.trap_action) =
@@ -1236,6 +1239,9 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
         (E.set_freshening env freshening)
         params_and_approxs
     in
+(*
+Format.eprintf "Inlining stub: %a\n%!" Flambda.print handler.handler;
+*)
     let handler, r = simplify env r handler.handler in
     begin match trap_action with
     | None -> handler, r
@@ -1261,6 +1267,11 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       expr, r
     end
   | Some _ | None ->
+(*
+Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
+  Continuation.print cont
+  (Format.pp_print_list A.print) args_approxs;
+*)
     let r =
       R.use_continuation r env cont ~inlinable_position:true ~args
         ~args_approxs
@@ -1658,6 +1669,11 @@ and simplify_let_cont_handler ~env ~r ~cont
   let args_approxs =
     R.continuation_args_approxs r cont ~num_params:(List.length handler.params)
   in
+(*
+Format.eprintf "Handler of %a has args_approxs (%a)\n%!"
+  Continuation.print cont
+  (Format.pp_print_list A.print) args_approxs;
+*)
   let { Flambda. params = vars; stub; is_exn_handler; handler;
     specialised_args; } = handler
   in
@@ -1800,21 +1816,18 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
     (* First we simplify the continuations themselves. *)
     let r, handlers =
       Continuation.Map.fold (fun cont handler (r, handlers) ->
-          (* Note that [cont] may not be fresh for [handler] at the moment,
-             since the latter may come from another compilation unit, and has
-             not yet been freshened up. *)
+          let cont' = Freshening.apply_static_exception freshening cont in
           let r, handler =
 (*
 Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
 *)
-            simplify_let_cont_handler ~env ~r ~cont ~handler ~recursive
+            simplify_let_cont_handler ~env ~r ~cont:cont' ~handler ~recursive
           in
 (*
 Format.eprintf "New handler for %a is:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
 *)
-          let cont' = Freshening.apply_static_exception freshening cont in
           r, Continuation.Map.add cont' handler handlers)
         handlers
         (r, Continuation.Map.empty)
@@ -2443,14 +2456,10 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
   Flambda.print h;
 *)
         let h', r = simplify env r h in
-(*
-        let h =
-          if E.never_inline env then h
-          else
-            inline_and_specialise_continuations env r ~body:h ~simplify
-              ~backend:(E.backend env)
+        let h', r =
+          inline_and_specialise_continuations env r ~body:h' ~simplify
+            ~backend:(E.backend env)
         in
-*)
         let new_approxs = R.continuation_args_approxs r cont ~num_params:1 in
         let r, _uses = R.exit_scope_catch r env cont in
         let approx =
@@ -2491,14 +2500,10 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     in
     let env = E.add_continuation env cont cont_approx in
     let expr, r = simplify env r expr in
-(*
-    let expr =
-      if E.never_inline env then expr
-      else
-        inline_and_specialise_continuations env r ~body:expr ~simplify
-          ~backend:(E.backend env)
+    let expr, r =
+      inline_and_specialise_continuations env r ~body:expr ~simplify
+        ~backend:(E.backend env)
     in
-*)
     let program, r = simplify_program_body env r program in
     let r, _uses = R.exit_scope_catch r env cont in
     Effect (expr, cont, program), r
