@@ -53,13 +53,14 @@ module Continuation_with_specialised_args = struct
   end)
 end
 
+type specialised_continuation = {
+  handlers : Flambda.let_cont_handlers;
+  needed_fvs : Variable.Set.t;
+}
+
 type specialising_result =
   | Didn't_specialise
-  | Specialised of {
-      old_cont : Continuation.t;
-      new_cont : Continuation.t;
-      new_handlers : Flambda.continuation_handlers;
-    }
+  | Specialised of specialised_continuation
 
 (* This function constructs a suitable environment for simplification of a
    continuation's body that is eligible for specialisation.  The freshening
@@ -433,11 +434,6 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
     specialisations
     (Continuation.Map.empty, Continuation.With_args.Map.empty)
 
-type specialised_continuation = {
-  handlers : Flambda.let_cont_handlers;
-  needed_fvs : Variable.Set.t;
-}
-
 module Placement = struct
   type t =
     | After_let of Variable.t
@@ -449,13 +445,10 @@ module Placement = struct
   end)
 end
 
-let insert_specialisations r (expr : Flambda.expr) ~new_conts
-        ~apply_cont_rewrites =
-  (* CR-someday mshinwell: We could consider combining these two traversals
-     into one.  It will need the phys-equal checks. *)
-  (* For each specialised version of a continuation, find where in the
-     expression the continuation should be placed, such that all of its
-     free variables are in scope. *)
+(* For each specialised version of a continuation, find where in the
+   expression the continuation should be placed, such that all of its
+   free variables are in scope. *)
+let find_insertion_points expr ~new_conts =
   let rec find_insertion_points (expr : Flambda.expr)
         ~(pending : specialised_continuation Continuation.Map.t)
         ~(placing : specialised_continuation Continuation.Map.t)
@@ -476,24 +469,8 @@ let insert_specialisations r (expr : Flambda.expr) ~new_conts
       in
       !placed, placing
     in
-    let passing_continuation_bindings ~body ~handlers =
-
-    in
-    match expr with
-    | Let { var; body; _ } ->
-      if not (Variable.Set.mem var all_needed_variables) in
-        find_insertion_points body ~pending ~placing ~all_needed_variables
-      else
-        let placed, placing =
-          passing_var_binder var ~make_placement:(fun var -> After_let var)
-            ~placed
-        in
-        let all_needed_variables =
-          Variable.Set.remove var all_needed_variables
-        in
-        find_insertion_points body ~pending ~placing ~all_needed_variables
-          ~placed
-    | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+    let passing_continuation_binding ~name ~body ~handlers
+            ~pending ~placing ~all_needed_variables ~placed =
       let pending, placing, all_needed_variables =
         match Continuation.Map.find name pending with
         | exception Not_found -> pending, placing, all_needed_variables
@@ -531,60 +508,116 @@ let insert_specialisations r (expr : Flambda.expr) ~new_conts
       in
       if Variable.Set.empty all_needed_variables then
         pending, placing, all_needed_variables, placed
-
-
+      else
+        find_insertion_points body ~pending ~placing
+          ~all_needed_variables ~placed
+    in
+    let passing_continuation_bindings ~body ~handlers
+          ~pending ~placing ~all_needed_variables ~placed =
+      Continuation.Map.fold (fun name handler
+              (pending, placing, all_needed_variables, placed) ->
+          passing_continuation_binding ~name ~body ~handler
+            ~pending ~placing ~all_needed_variables ~placed)
+        handlers
+        (pending, placing, all_needed_variables, placed)
+    in
+    match expr with
+    | Let { var; body; _ } ->
+      if not (Variable.Set.mem var all_needed_variables) in
+        find_insertion_points body ~pending ~placing ~all_needed_variables
+      else
+        let placed, placing =
+          passing_var_binder var ~make_placement:(fun var -> After_let var)
+            ~placed
+        in
+        let all_needed_variables =
+          Variable.Set.remove var all_needed_variables
+        in
+        find_insertion_points body ~pending ~placing ~all_needed_variables
+          ~placed
+    | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+      let handlers = Continuation.Map.add name handler Continuation.Map.empty in
+      passing_continuation_bindings ~body ~handlers
+        ~pending ~placing ~all_needed_variables ~placed
     | Let_cont { body; handlers = Recursive handlers; } ->
-
+      passing_continuation_bindings ~body ~handlers
+        ~pending ~placing ~all_needed_variables ~placed
     | Let_mutable { body; _ } ->
       find_insertion_points body ~pending ~placing ~all_needed_variables
     | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
       pending, placing, all_needed_variables, placed
   in
-  let find_insertion_points expr ~new_conts =
-    let pending, placing, all_needed_variables, placed =
-      find_insertion_points expr ~pending:new_conts
-        ~placing:Continuation.Map.empty
-        ~all_needed_variables:Variable.Set.empty
-        ~placed:Placement.Map.empty
-    in
-    assert (Continuation.Map.empty pending);
-    assert (Continuation.Map.empty placing);
-    assert (Variable.Set.empty all_needed_variables);
-    assert (
-      let num_new_conts =
-        Continuation.Map.fold (fun _cont new_conts num_new_conts ->
-            num_new_conts + List.length new_conts)
-          new_conts
-          0
-      in
-      num_new_conts = Placement.Map.cardinal placed);
-    placed
+  let pending, placing, all_needed_variables, placed =
+    find_insertion_points expr ~pending:new_conts
+      ~placing:Continuation.Map.empty
+      ~all_needed_variables:Variable.Set.empty
+      ~placed:Placement.Map.empty
   in
+  assert (Continuation.Map.empty pending);
+  assert (Continuation.Map.empty placing);
+  assert (Variable.Set.empty all_needed_variables);
+  assert (
+    let num_new_conts =
+      Continuation.Map.fold (fun _cont new_conts num_new_conts ->
+          num_new_conts + List.length new_conts)
+        new_conts
+        0
+    in
+    num_new_conts = Placement.Map.cardinal placed);
+  placed
 
+let insert_specialisations r (expr : Flambda.expr) ~new_conts
+        ~apply_cont_rewrites =
+  (* CR-someday mshinwell: We could consider combining these two traversals
+     into one.  It will need the phys-equal checks. *)
+  let placed = find_insertion_points expr ~new_conts in
+  let place ~placement ~around : Flambda.expr =
+    match Placement.Map.find placement placed with
+    | exception Not_found -> None
+    | (specialised : specialised_continuation) ->
+      Some (Let_cont {
+        body = around;
+        handlers = specialised.handlers;
+      })
+  in
   let r = ref r in
   let expr =
-    Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
+    Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) : Flambda.t ->
         match expr with
-        | Let_cont { handlers; } ->
-          let bound_by_expr =
-            match handlers with
-            | Alias { name; _ }
-            | Nonrecursive { name; _ } -> Continuation.Set.singleton name
-            | Recursive handlers -> Continuation.Map.keys handlers
+        | Let ({ var; defining_expr; body } as let_expr) ->
+          let placement : Placement.t = After_let var in
+          begin match place ~placement ~around:body with
+          | None -> expr
+          | Some body -> Flambda.create_let var defining_expr body
+          end
+        | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+          let placement : Placement.t = Just_inside_continuation cont in
+          begin match place ~placement ~around:handler.handler with
+          | None -> expr
+          | Some handler ->
+            Let_cont {
+              body;
+              handlers = Nonrecursive { name; handler = {
+                handler with handler; };
+              };
+            }
+          end
+        | Let_cont { body; handlers = Recursive handlers; } ->
+          let done_something = ref false in
+          let handlers =
+            Continuation.Map.mapi (fun name
+                    (handler : Flambda.continuation_handler) ->
+                let placement : Placement.t = Just_inside_continuation cont in
+                begin match place ~placement ~around:handler.handler with
+                | None -> handler
+                | Some handler ->
+                  done_something := true;
+                  { handler with handler; }
+                end)
+              handlers
           in
-          Continuation.Set.fold (fun cont expr ->
-              match Continuation.Map.find cont new_conts with
-              | exception Not_found -> expr
-              | new_conts ->
-                List.fold_left (fun body handlers : Flambda.expr ->
-                    Let_cont {
-                      body;
-                      handlers = Recursive handlers;
-                    })
-                  expr
-                  new_conts)
-            bound_by_expr
-            expr
+          if not !done_something then expr
+          else Let_cont { body; handlers; }
         | Apply_cont (cont, trap_action, args) ->
           let key = cont, args in
           begin match
@@ -596,6 +629,7 @@ let insert_specialisations r (expr : Flambda.expr) ~new_conts
             r := R.forget_inlinable_continuation_uses !r cont ~args;
             Apply_cont (new_cont, None, args)
           end
+        | Let_cont { handlers = Alias _; _ }
         | Apply _ | Let _ | Let_mutable _ | Switch _ | Proved_unreachable ->
           expr)
       expr

@@ -40,52 +40,21 @@ let try_inlining ~cont ~args ~args_approxs ~env
   assert (count.inlinable_uses >= 1);
   assert (List.length args = List.length args_approxs);
   let params, env, expr =
-    (* If there are multiple uses of the continuation with the same arguments,
-       we will create a new shared continuation (see comment below); the
-       parameters of that continuation must be fresh. *)
-    (* XXX sharing is current disabled *)
-(*
-    if Num_continuation_uses.linear count then
-*)
-      let params = handler.params in
-      let expr =
-        List.fold_left2 (fun expr param arg ->
-            if not (E.mem env arg) then begin
-              Misc.fatal_errorf "When inlining continuation %a, argument %a \
-                  was not in scope in the environment: %a"
-                Continuation.print cont
-                Variable.print arg
-                E.print env
-            end;
-            Flambda.create_let param (Var arg) expr)
-          handler.handler
-          params args
-      in
-      params, env, expr
-(*
-    else
-      let freshening =
-        List.map (fun param -> param, Variable.rename param) handler.params
-      in
-      let subst = Variable.Map.of_list freshening in
-      (* CR mshinwell: We should be able to avoid this substitution by
-         adding [subst] to the freshening in the environment in the same way
-         as [Continuation_specialisation] does *)
-      let handler =
-        Flambda_utils.toplevel_substitution subst handler.handler
-      in
-      let params = List.map snd freshening in
-      let env =
-        (* Care: some of the arguments may not be in scope in [env].
-           [Inline_and_simplify] will correctly take care of this. *)
-        List.fold_left2 (fun env param arg_approx ->
-            let param_approx = A.augment_with_variable arg_approx param in
-            E.add env param param_approx)
-          env
-          params args_approxs
-      in
-      params, env, handler
-*)
+    let params = handler.params in
+    let expr =
+      List.fold_left2 (fun expr param arg ->
+          if not (E.mem env arg) then begin
+            Misc.fatal_errorf "When inlining continuation %a, argument %a \
+                was not in scope in the environment: %a"
+              Continuation.print cont
+              Variable.print arg
+              E.print env
+          end;
+          Flambda.create_let param (Var arg) expr)
+        handler.handler
+        params args
+    in
+    params, env, expr
   in
   let r = R.create () in
   let original : Flambda.t = Apply_cont (cont, None, args) in
@@ -153,13 +122,8 @@ Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
 let find_inlinings r ~simplify =
   let module N = Num_continuation_uses in
   let module U = Inline_and_simplify_aux.Continuation_uses in
-  (* We share code between application points that have the same continuation
-     and the same arguments. This is done by making a new continuation, whose
-     body is the inlined version after simplification of the original
-     continuation in the context of such arguments, and redirecting all of the
-     uses to that.
-     In preparation for this transformation we count up, for each continuation,
-     how many uses it has with distinct sets of arguments. *)
+  (* Count up, for each continuation, how many uses it has with distinct
+     sets of arguments. *)
   let definitions =
     Continuation.Map.fold (fun cont (uses, approx, _env, recursive)
           definitions ->
@@ -216,12 +180,12 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
           | None | Some (Recursive _) -> Didn't_inline
           | Some (Nonrecursive { is_exn_handler = true; }) ->
             (* This should be caught by handling of [Apply_cont] in
-              [Inline_and_simplify], but just to be on the safe side... *)
+               [Inline_and_simplify], but just to be on the safe side... *)
             Didn't_inline
           | Some (Nonrecursive handler) ->
             let inline_unconditionally =
               (* CR-soon mshinwell: Stubs should probably just be immediately
-                inlined by [Inline_and_simplify] upon the first traversal. *)
+                 inlined by [Inline_and_simplify] upon the first traversal. *)
               inline_unconditionally || handler.stub
             in
             try_inlining ~cont ~args ~args_approxs ~env ~handler
@@ -234,36 +198,6 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
             Continuation.With_args.Map.add (cont, args) bodies inlinings
           in
           inlinings, new_shared_conts, zero_uses)
-(* CR mshinwell: We need to revisit the shared continuation stuff.  Finding
-  the correct place to put such continuations is tricky.
-        | Many ->
-          let new_shared_cont = Continuation.create () in
-(*
-Format.eprintf "Continuation %a: new shared cont %a with body:@;%a\n%!"
-  Continuation.print cont
-  Continuation.print new_shared_cont Flambda.print body;
-*)
-          let apply_shared_cont : Flambda.expr =
-            Apply_cont (new_shared_cont, None, args)
-          in
-          let inlinings =
-            Continuation.With_args.Map.add (cont, args)
-              apply_shared_cont inlinings
-          in
-          (* [cont] is recorded because it's the place where the binding of the
-            [new_shared_cont] is going to be inserted. *)
-          let new_shared_conts =
-            let existing =
-              match Continuation.Map.find cont new_shared_conts with
-              | exception Not_found -> []
-              | existing -> existing
-            in
-            Continuation.Map.add cont
-              ((new_shared_cont, params, body) :: existing)
-              new_shared_conts
-          in
-          inlinings, new_shared_conts, zero_uses
-*)
     definitions
     (Continuation.With_args.Map.empty, Continuation.Map.empty,
       Continuation.Set.empty)
@@ -282,38 +216,8 @@ let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
            approximations in the environment for non-recursive continuations
            at present. *)
         | Let_cont { body; handlers = Nonrecursive { name; _ }; } ->
-          let expr =
-            if Continuation.Set.mem name zero_uses then
-              body
-            else
-              expr
-          in
-          begin match Continuation.Map.find name new_shared_conts with
-          | exception Not_found -> expr
-          | new_shared_conts ->
-            List.fold_left (fun expr (name, params, handler) ->
-  (*
-  Format.eprintf "Adding shared cont %a\n%!" Continuation.print name;
-  *)
-                (* CR mshinwell: If the shared continuation code is resurrected
-                   then we need to adjust "r" accordingly to record the new
-                   uses. *)
-                Flambda.Let_cont {
-                  body = expr;
-                  handlers = Nonrecursive {
-                    name;
-                    handler = {
-                      params;
-                      stub = false;
-                      is_exn_handler = false;
-                      handler;
-                      specialised_args = Variable.Map.empty;
-                    };
-                  };
-                })
-              expr
-              new_shared_conts
-          end
+          if Continuation.Set.mem name zero_uses then body
+          else expr
         | Apply_cont (cont, trap_action, args) ->
           begin match Continuation.With_args.Map.find (cont, args) inlinings with
           | exception Not_found -> expr
