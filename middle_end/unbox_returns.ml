@@ -4,6 +4,7 @@
 (*                                                                        *)
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
+(*                  Will Crichton, Jane Street Capital                    *)
 (*                                                                        *)
 (*   Copyright 2017 OCamlPro SAS                                          *)
 (*   Copyright 2017 Jane Street Group LLC                                 *)

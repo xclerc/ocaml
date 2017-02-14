@@ -386,12 +386,10 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
       (Continuation_with_specialised_args.Map.empty,
         Continuation.Map.empty)
   in
-(*
 Format.eprintf "Specialisation first stage result:\n%a\n%!"
   (Continuation_with_specialised_args.Map.print
     Continuation.With_args.Set.print)
   specialisations;
-*)
   (* The second step takes the map from above and makes a decision for
      each proposed specialisation, returning two maps:
        continuation "k" -> new continuation(s) to be defined just before "k"
@@ -435,8 +433,134 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
     specialisations
     (Continuation.Map.empty, Continuation.With_args.Map.empty)
 
+type specialised_continuation = {
+  handlers : Flambda.let_cont_handlers;
+  needed_fvs : Variable.Set.t;
+}
+
+module Placement = struct
+  type t =
+    | After_let of Variable.t
+    | Just_inside_continuation of Continuation.t
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+  end)
+end
+
 let insert_specialisations r (expr : Flambda.expr) ~new_conts
         ~apply_cont_rewrites =
+  (* CR-someday mshinwell: We could consider combining these two traversals
+     into one.  It will need the phys-equal checks. *)
+  (* For each specialised version of a continuation, find where in the
+     expression the continuation should be placed, such that all of its
+     free variables are in scope. *)
+  let rec find_insertion_points (expr : Flambda.expr)
+        ~(pending : specialised_continuation Continuation.Map.t)
+        ~(placing : specialised_continuation Continuation.Map.t)
+        ~all_needed_variables
+        ~(placed : specialised_continuation Placement.Map.t) =
+    let passing_var_binder var ~make_placement ~placed =
+      let placed = ref placed in
+      let placing =
+        Continuation.Map.filter_map placing ~f:(fun _cont new_cont ->
+            let needed_variables = Variable.Set.remove var needed_variables in
+            if Variable.Set.is_empty needed_variables then begin
+              let placement = make_placement var in
+              placed := Placement.Map.add placement new_cont !placed;
+              None
+            end else begin
+              Some needed_variables
+            end)
+      in
+      !placed, placing
+    in
+    let passing_continuation_bindings ~body ~handlers =
+
+    in
+    match expr with
+    | Let { var; body; _ } ->
+      if not (Variable.Set.mem var all_needed_variables) in
+        find_insertion_points body ~pending ~placing ~all_needed_variables
+      else
+        let placed, placing =
+          passing_var_binder var ~make_placement:(fun var -> After_let var)
+            ~placed
+        in
+        let all_needed_variables =
+          Variable.Set.remove var all_needed_variables
+        in
+        find_insertion_points body ~pending ~placing ~all_needed_variables
+          ~placed
+    | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+      let pending, placing, all_needed_variables =
+        match Continuation.Map.find name pending with
+        | exception Not_found -> pending, placing, all_needed_variables
+        | new_conts ->
+          List.fold_left (fun (pending, placing, all_needed_variables)
+                  (new_cont : specialised_continuation) ->
+              let pending = Continuation.Map.remove name pending in
+              let placing = Continuation.Map.add name new_cont placing in
+              let all_needed_variables =
+                Variable.Set.union all_needed_variables new_cont.needed_fvs
+              in
+              pending, placing, all_needed_variables)
+            (pending, placing, all_needed_variables)
+            new_conts
+      in
+      let params = Variable.Set.of_list handler.params in
+      let needed_params = Variable.Set.inter params all_needed_variables in
+      let placing, all_needed_variables, placed =
+        Variable.Set.fold (fun var (placing, all_needed_variables, placed) ->
+            let placed, placing =
+              passing_var_binder var
+                ~make_placement:(fun _var -> Just_inside_continuation name)
+                ~placed
+            in
+            let all_needed_variables =
+              Variable.Set.remove var all_needed_variables
+            in
+            placing, all_needed_variables, placed)
+          needed_params
+          (placing, all_needed_variables, placed)
+      in
+      let pending, placing, all_needed_variables, placed =
+        find_insertion_points handler.handler ~pending ~placing
+          ~all_needed_variables ~placed
+      in
+      if Variable.Set.empty all_needed_variables then
+        pending, placing, all_needed_variables, placed
+
+
+    | Let_cont { body; handlers = Recursive handlers; } ->
+
+    | Let_mutable { body; _ } ->
+      find_insertion_points body ~pending ~placing ~all_needed_variables
+    | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
+      pending, placing, all_needed_variables, placed
+  in
+  let find_insertion_points expr ~new_conts =
+    let pending, placing, all_needed_variables, placed =
+      find_insertion_points expr ~pending:new_conts
+        ~placing:Continuation.Map.empty
+        ~all_needed_variables:Variable.Set.empty
+        ~placed:Placement.Map.empty
+    in
+    assert (Continuation.Map.empty pending);
+    assert (Continuation.Map.empty placing);
+    assert (Variable.Set.empty all_needed_variables);
+    assert (
+      let num_new_conts =
+        Continuation.Map.fold (fun _cont new_conts num_new_conts ->
+            num_new_conts + List.length new_conts)
+          new_conts
+          0
+      in
+      num_new_conts = Placement.Map.cardinal placed);
+    placed
+  in
+
   let r = ref r in
   let expr =
     Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
@@ -479,10 +603,8 @@ let insert_specialisations r (expr : Flambda.expr) ~new_conts
   expr, !r
 
 let for_toplevel_expression expr r ~simplify ~backend =
-(*
 Format.eprintf "Input to Continuation_specialisation:\n@;%a\n"
   Flambda.print expr;
-*)
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify ~backend
   in

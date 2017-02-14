@@ -95,12 +95,12 @@ Format.eprintf "try_inlining simplification %a (params %a) starts@;%a@;\n%!"
   Flambda.print expr;
 *)
   let expr, r =
-(*
 Format.eprintf "Continuation %a inlining@;%a%!"
   Continuation.print cont Flambda.print expr;
-*)
     simplify (E.activate_freshening (E.set_never_inline env)) r expr
   in
+  (* CR mshinwell: [r] may contain new continuation uses that should be added
+     to the overall [r]. *)
 (*
 Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
   Continuation.print cont Flambda.print expr;
@@ -118,7 +118,6 @@ Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
       ~round:(E.round env)
   in
   if inline_unconditionally || W.evaluate wsb then begin
-(*
 Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) Original:\n%a\nInlined:\n%a\n%!"
   Continuation.print cont
   Variable.print_list args
@@ -127,7 +126,6 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
   (W.print_description ~subfunctions:false) wsb
   Flambda.print original
   Flambda.print expr;
-*)
     let exprs =
       (* For a given (continuation, arguments) pair we need as many
          freshened copies of the continuation as there are occurrences of that
