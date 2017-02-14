@@ -82,21 +82,11 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       old_handlers
       (Freshening.activate (E.freshening env))
   in
-  let env = E.set_freshening env freshening in
+  let env = E.set_never_inline (E.set_freshening env freshening) in
   let entry_point_cont = cont in
-  let new_handlers, total_benefit =
+  let new_handlers =
     Continuation.Map.fold (fun cont (old_handler : Flambda.continuation_handler)
-            (new_handlers, total_benefit) ->
-        let params, freshening =
-          Freshening.add_variables' freshening old_handler.params
-        in
-        let env = E.set_freshening env freshening in
-        let new_cont = Freshening.apply_static_exception freshening cont in
-        let new_cont_approx =
-          Continuation_approx.create_unknown ~name:new_cont
-            ~num_params:(List.length params)
-        in
-        let env = E.add_continuation env new_cont new_cont_approx in
+            new_handlers ->
         let wrong_spec_args =
           Variable.Set.inter (Variable.Map.keys old_handler.specialised_args)
             (Variable.Map.keys newly_specialised_args)
@@ -108,10 +98,10 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
             Variable.Set.print wrong_spec_args
         end;
         (* Compute the newly-specialised args.  These are either:
-            (a) those arising from the "entry point" (i.e. [Apply_cont] of
-                [entry_point_cont]); or
-            (b) those arising from invariant parameters flow from the entry
-                point's continuation handler. *)
+           (a) those arising from the "entry point" (i.e. [Apply_cont] of
+               [entry_point_cont]); or
+           (b) those arising from invariant parameters flow from the entry
+               point's continuation handler. *)
         let newly_specialised_args =
           if Continuation.equal cont entry_point_cont then
             newly_specialised_args
@@ -136,41 +126,25 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
               newly_specialised_args
               Variable.Map.empty
         in
-        let r = R.create () in
-(* Need to add uses for all of the handlers here. *)
-        let env = E.activate_freshening (E.set_never_inline env) in
-        let new_handler, r =
-          simplify_let_cont_handlers ~env ~r ~handlers:???
-            ~recursive ~freshening:??? ~update_use_env:???
-        in
-        let total_benefit = B.(+) (R.benefit r) total_benefit in
-        let newly_specialised_args =
-          Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
-                  newly_specialised_args ->
-              let param = Freshening.apply_variable freshening param in
-              Variable.Map.add param spec_to newly_specialised_args)
-            newly_specialised_args
-            Variable.Map.empty
-        in
         let specialised_args =
           Variable.Map.disjoint_union old_handler.specialised_args
             newly_specialised_args
         in
-        assert (not old_handler.is_exn_handler);
-        let new_handler : Flambda.continuation_handler =
-          { params;
-            stub = old_handler.stub;
-            is_exn_handler = false;
-            handler = new_handler;
+        let new_handler =
+          { old_handler with
             specialised_args;
           }
         in
-        let new_handlers =
-          Continuation.Map.add new_cont new_handler new_handlers
-        in
-        new_handlers, total_benefit)
-    old_handlers
-    (Continuation.Map.empty, B.zero)
+        Continuation.Map.add cont handler new_handlers)
+      old_handlers
+      Continuation.Map.empty
+  in
+  let r = R.create () in
+(* Need to add uses for all of the handlers here. *)
+  let new_handlers, r =
+    simplify_let_cont_handlers ~env ~r ~handlers:new_handlers
+      ~recursive ~freshening:(E.freshening env)
+      ~update_use_env:(fun env -> env)
   in
   let module W = Inlining_cost.Whether_sufficient_benefit in
   let wsb =
@@ -184,11 +158,13 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
           handler.handler)
         (Continuation.Map.data new_handlers)
     in
+    (* CR mshinwell: Probably some stuff about jump benefits should be
+       added... *)
     W.create_list ~originals
       ~toplevel:(E.at_toplevel env)
       ~branch_depth:(E.branch_depth env)
       new_handlers
-      ~benefit:total_benefit
+      ~benefit:(R.benefit r)
       ~lifting:false
       ~round:(E.round env)
   in
@@ -196,13 +172,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
 Format.eprintf "Evaluating %a\n%!" (W.print_description ~subfunctions:false) wsb;
 *)
   if W.evaluate wsb then
-    let old_cont = cont in
-    let new_cont = Freshening.apply_static_exception freshening old_cont in
-    Specialised {
-      old_cont;
-      new_cont;
-      new_handlers;
-    }
+    Specialised new_handlers
   else
     Didn't_specialise
 
@@ -229,6 +199,8 @@ let find_specialisations r ~simplify ~backend =
           (* Applications of continuations inside their own handlers will
              hit this case.  This is equivalent to the "self call" check
              in [Inlining_decision]. *)
+          acc
+        | Some (Nonrecursive { handler = { is_exn_handler = true; _ }; _ } ->
           acc
         | Some handlers ->
           let handlers, invariant_params, invariant_params_flow =

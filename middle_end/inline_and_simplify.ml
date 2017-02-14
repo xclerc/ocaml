@@ -1793,9 +1793,9 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
   in
   r, handler
 
-and simplify_let_cont_handlers ~env ~r ~body ~handlers
+and simplify_let_cont_handlers ~env ~r ~handlers
       ~(recursive : Asttypes.rec_flag) ~freshening ~update_use_env
-      : Flambda.expr * R.t =
+      : Flambda.let_cont_handlers option * R.t =
   (* If none of the handlers are used in the body, delete them all. *)
   let all_unused =
     Continuation.Map.for_all (fun cont _handler ->
@@ -1871,16 +1871,12 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
         (r, handlers)
     in
     if Continuation.Map.is_empty handlers then
-      body, r
+      None, r
     else
       match recursive with
       | Nonrecursive ->
         begin match Continuation.Map.bindings handlers with
-        | [name, handler] ->
-          Let_cont {
-            body;
-            handlers = Nonrecursive { name; handler; };
-          }, r
+        | [name, handler] -> Some (Nonrecursive { name; handler; }), r
         | _ ->
           Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
         end
@@ -1898,16 +1894,8 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
             | _ -> None
         in
         match is_non_recursive with
-        | Some (name, handler) ->
-          Let_cont {
-            body;
-            handlers = Nonrecursive { name; handler; };
-          }, r
-        | None ->
-          Let_cont {
-            body;
-            handlers = Recursive handlers;
-          }, r
+        | Some (name, handler) -> Some (Nonrecursive { name; handler; }), r
+        | None -> Some (Recursive handlers), r
 
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
@@ -2039,7 +2027,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           Unbox_continuation_params.for_non_recursive_continuation r ~handler
             ~name ~backend:(E.backend env)
       in
-      let simplify_one_handler ?update_use_env env r ~name ~handler ~body =
+      let simplify_one_handler ?update_use_env env r ~name ~handler ~body
+              : Flambda.expr * R.t =
         (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
            non-recursive ones before simplifying their body.  I'm not sure we
            need to, since we already ensure such continuations aren't in the
@@ -2052,8 +2041,13 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           | None -> (fun env -> env)
           | Some f -> f
         in
-        simplify_let_cont_handlers ~env ~r ~body ~handlers
-          ~recursive:Asttypes.Nonrecursive ~freshening ~update_use_env
+        let handlers =
+          simplify_let_cont_handlers ~env ~r ~handlers
+            ~recursive:Asttypes.Nonrecursive ~freshening ~update_use_env
+        in
+        match handlers with
+        | None -> body
+        | Some handlers -> Let_cont { body; handlers; }
       in
       begin match with_wrapper with
       | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
@@ -2123,9 +2117,14 @@ body, r
 Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
   Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
 *)
-      simplify_let_cont_handlers ~env ~r ~body ~handlers
-        ~recursive:Asttypes.Recursive ~freshening
-        ~update_use_env
+      let handlers =
+        simplify_let_cont_handlers ~env ~r ~handlers
+          ~recursive:Asttypes.Recursive ~freshening
+          ~update_use_env
+      in
+      match handlers with
+      | None -> body
+      | Some handlers -> Let_cont { body; handlers; }
 (*
 in
 Format.eprintf "With wrappers applied (recursive case):\n@ %a\n%!"
