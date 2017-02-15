@@ -20,6 +20,7 @@
 
 val for_toplevel_expression
    : Flambda.expr
+  -> vars_in_scope:Variable.Set.t
   -> Inline_and_simplify_aux.Result.t
   -> simplify_let_cont_handlers:(env:Inline_and_simplify_aux.Env.t
     -> r:Inline_and_simplify_aux.Result.t

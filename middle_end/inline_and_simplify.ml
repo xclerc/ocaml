@@ -724,7 +724,12 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
             if E.never_inline body_env then
               body, r
             else
+              let vars_in_scope =
+                Variable.Set.union (Variable.Map.keys function_decls.funs)
+                  (Variable.Set.of_list function_decl.params)
+              in
               inline_and_specialise_continuations env r ~body ~simplify
+                ~vars_in_scope
                 ~backend:(E.backend env)
           in
           let r, uses = R.exit_scope_catch r env continuation_param in
@@ -1182,13 +1187,14 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
   in
   expr, r
 
-and inline_and_specialise_continuations env r ~body ~simplify ~backend =
+and inline_and_specialise_continuations env r ~vars_in_scope ~body ~simplify
+      ~backend =
   if E.never_inline_continuations env then
     body, r
   else
     let body, r =
-      Continuation_specialisation.for_toplevel_expression body r
-        ~simplify_let_cont_handlers ~backend
+      Continuation_specialisation.for_toplevel_expression body
+        ~vars_in_scope r ~simplify_let_cont_handlers ~backend
     in
     Continuation_inlining.for_toplevel_expression body r ~simplify
 
@@ -2458,7 +2464,9 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
 *)
         let h', r = simplify env r h in
         let h', r =
-          inline_and_specialise_continuations env r ~body:h' ~simplify
+          inline_and_specialise_continuations env r
+            ~vars_in_scope:Variable.Set.empty
+            ~body:h' ~simplify
             ~backend:(E.backend env)
         in
         let new_approxs = R.continuation_args_approxs r cont ~num_params:1 in
@@ -2502,7 +2510,8 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     let env = E.add_continuation env cont cont_approx in
     let expr, r = simplify env r expr in
     let expr, r =
-      inline_and_specialise_continuations env r ~body:expr ~simplify
+      inline_and_specialise_continuations env r ~body:expr
+        ~vars_in_scope:Variable.Set.empty ~simplify
         ~backend:(E.backend env)
     in
     let program, r = simplify_program_body env r program in
