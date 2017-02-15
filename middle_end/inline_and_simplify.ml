@@ -725,6 +725,9 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
               body, r
             else
               let vars_in_scope =
+                (* CR mshinwell: This should be empty if the function
+                   declarations aren't recursive.  Although this probably
+                   doesn't actually matter *)
                 Variable.Set.union (Variable.Map.keys function_decls.funs)
                   (Variable.Set.of_list function_decl.params)
               in

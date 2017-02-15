@@ -374,6 +374,9 @@ module Env = struct
   let allow_continuation_inlining t =
     { t with allow_continuation_inlining = true; }
 
+  let disallow_continuation_inlining t =
+    { t with allow_continuation_inlining = false; }
+
   let never_inline_continuations t =
     never_inline t && not t.allow_continuation_inlining
 
@@ -693,18 +696,31 @@ end;
     }
 
   let forget_inlinable_continuation_uses t cont ~args =
-    match Continuation.Map.find cont t.used_continuations with
-    | exception Not_found -> t
-    | uses ->
-      (* CR mshinwell: This should presumably remove the entry from
-         [used_continuations] if no more uses (inlinable or non-inlinable)
-         remain---otherwise e.g. [continuation_unused], below, won't be
-         correct *)
-      let uses = Continuation_uses.remove_inlinable_uses uses ~args in
-      { t with
-        used_continuations =
-          Continuation.Map.add cont uses t.used_continuations;
-      }
+    (* CR mshinwell: think about this some more.  Do we have to touch
+       [used_continuations]? *)
+    let used_continuations =
+      match Continuation.Map.find cont t.used_continuations with
+      | exception Not_found -> t.used_continuations
+      | uses ->
+        (* CR mshinwell: This should presumably remove the entry from
+          [used_continuations] if no more uses (inlinable or non-inlinable)
+          remain---otherwise e.g. [continuation_unused], below, won't be
+          correct *)
+        let uses = Continuation_uses.remove_inlinable_uses uses ~args in
+        Continuation.Map.add cont uses t.used_continuations
+    in
+    let defined_continuations =
+      match Continuation.Map.find cont t.defined_continuations with
+      | exception Not_found -> t.defined_continuations
+      | (uses, approx, env, recursive) ->
+        let uses = Continuation_uses.remove_inlinable_uses uses ~args in
+        Continuation.Map.add cont (uses, approx, env, recursive)
+          t.defined_continuations
+    in
+    { t with
+      used_continuations;
+      defined_continuations;
+    }
 
   let forget_continuation_uses t cont =
     { t with

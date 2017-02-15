@@ -66,7 +66,9 @@ Format.eprintf "try_inlining simplification %a (params %a) starts@;%a@;\n%!"
   let expr, r =
 Format.eprintf "Continuation %a inlining@;%a%!"
   Continuation.print cont Flambda.print expr;
-    simplify (E.activate_freshening (E.set_never_inline env)) r expr
+    simplify (E.activate_freshening (
+        E.disallow_continuation_inlining (E.set_never_inline env)))
+      r expr
   in
   (* CR mshinwell: [r] may contain new continuation uses that should be added
      to the overall [r]. *)
@@ -104,7 +106,9 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
         else
           let r = R.create () in
           let expr, _r =
-            simplify (E.activate_freshening (E.set_never_inline env)) r expr
+            simplify (E.activate_freshening (
+                (E.disallow_continuation_inlining (E.set_never_inline env))))
+              r expr
           in
           expr)
     in
@@ -272,4 +276,8 @@ let for_toplevel_expression expr r ~simplify =
 Format.eprintf "Continuation inlining starting on:@;%a@;" Flambda.print expr;
 *)
   let inlinings, zero_uses = find_inlinings r ~simplify in
-  substitute r expr ~inlinings ~zero_uses
+let expr, r =  substitute r expr ~inlinings ~zero_uses in
+(*
+Format.eprintf "Continuation inlining returns:@;%a@;" Flambda.print expr;
+*)
+expr, r

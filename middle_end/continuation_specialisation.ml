@@ -77,7 +77,10 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       old_handlers
       (Freshening.activate (E.freshening env))
   in
-  let env = E.set_never_inline (E.set_freshening env freshening) in
+  let env =
+    E.disallow_continuation_inlining (
+      E.set_never_inline (E.set_freshening env freshening))
+  in
   let env =
     Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
               env ->
@@ -372,33 +375,54 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
         | exception Not_found -> assert false  (* see above *)
         | old_handlers -> old_handlers
       in
-      match
-        try_specialising ~cont ~old_handlers ~newly_specialised_args
-          ~invariant_params_flow ~env ~recursive ~simplify_let_cont_handlers
-      with
-      | Didn't_specialise -> acc
-      | Specialised (entry_point_new_cont, new_handlers) ->
-        let existing_conts =
-          match Continuation.Map.find cont new_conts with
-          | exception Not_found -> []
-          | existing_conts -> existing_conts
+      (* For non-recursive continuations, only specialise if there's an
+         opportunity to share the specialised continuation between more than
+         one use point. *)
+      let is_recursive =
+        match recursive with
+        | Nonrecursive -> false
+        | Recursive -> true
+      in
+      if (not is_recursive)
+        && Continuation.With_args.Set.cardinal cont_application_points < 2
+      then
+        acc
+      else
+        let () =
+          Format.eprintf "Trying to specialise %a (new spec args %a)\n%!"
+            Continuation.print cont
+            Flambda.print_specialised_args newly_specialised_args
         in
-        let new_conts =
-          Continuation.Map.add cont (new_handlers :: existing_conts)
-            new_conts
-        in
-        let apply_cont_rewrites =
-          Continuation.With_args.Set.fold (fun ((cont', _args) as key)
-                  apply_cont_rewrites ->
-              assert (Continuation.equal cont cont');
-              assert (not (Continuation.With_args.Map.mem key
-                apply_cont_rewrites));
-              Continuation.With_args.Map.add key entry_point_new_cont
-                apply_cont_rewrites)
-            cont_application_points
-            apply_cont_rewrites
-        in
-        new_conts, apply_cont_rewrites)
+        (* CR mshinwell: We should stop this trying to specialise
+           already-specialised arguments.  (It isn't clear whether there is
+           such a check for functions.) *)
+        match
+          try_specialising ~cont ~old_handlers ~newly_specialised_args
+            ~invariant_params_flow ~env ~recursive ~simplify_let_cont_handlers
+        with
+        | Didn't_specialise -> acc
+        | Specialised (entry_point_new_cont, new_handlers) ->
+          let existing_conts =
+            match Continuation.Map.find cont new_conts with
+            | exception Not_found -> []
+            | existing_conts -> existing_conts
+          in
+          let new_conts =
+            Continuation.Map.add cont (new_handlers :: existing_conts)
+              new_conts
+          in
+          let apply_cont_rewrites =
+            Continuation.With_args.Set.fold (fun ((cont', _args) as key)
+                    apply_cont_rewrites ->
+                assert (Continuation.equal cont cont');
+                assert (not (Continuation.With_args.Map.mem key
+                  apply_cont_rewrites));
+                Continuation.With_args.Map.add key entry_point_new_cont
+                  apply_cont_rewrites)
+              cont_application_points
+              apply_cont_rewrites
+          in
+          new_conts, apply_cont_rewrites)
     specialisations
     (Continuation.Map.empty, Continuation.With_args.Map.empty)
 
@@ -474,9 +498,6 @@ type insertion_state = {
   (* Specialised continuations whose corresponding pre-existing continuation
      is in scope and that we are looking to place as soon as all required
      variables are in scope. *)
-  all_needed_variables : Variable.Set.t;
-  (* The union of all variables that the handlers in [placing] require to
-     be in scope.  This field is present as an optimisation. *)
   placed : Flambda.let_cont_handlers Placement.Map.t;
   (* Specialised continuations whose placement has been identified. *)
 }
@@ -538,13 +559,9 @@ Variable.Set.print needed_fvs;
               }
             in
             let placing = being_placed :: state.placing in
-            let all_needed_variables =
-              Variable.Set.union state.all_needed_variables needed_fvs
-            in
             { state with
               pending;
               placing;
-              all_needed_variables;
             })
           state
           new_handlers_list
@@ -557,25 +574,14 @@ Variable.Set.print needed_fvs;
             Variable.Set.union state.vars_in_scope params
           in
           let state = { state with vars_in_scope; } in
-          let needed_params =
-            Variable.Set.inter params state.all_needed_variables
-          in
           let state =
             Variable.Set.fold (fun var state ->
 Format.eprintf "Passing binding of continuation parameter %a\n%!"
 Variable.print var;
-                let state =
-                  passing_var_binder var ~make_placement:(fun _var ->
-                      Just_inside_continuation name)
-                    ~state
-                in
-                let all_needed_variables =
-                  Variable.Set.remove var state.all_needed_variables
-                in
-                { state with
-                  all_needed_variables;
-                })
-              needed_params
+                passing_var_binder var ~make_placement:(fun _var ->
+                    Just_inside_continuation name)
+                  ~state)
+              params
               state
           in
           find_insertion_points handler.handler ~state)
@@ -602,22 +608,11 @@ Variable.print var;
     in
     match expr with
     | Let { var; body; _ } ->
-      if not (Variable.Set.mem var state.all_needed_variables) then
-        find_insertion_points body ~state
-      else
-        let state =
-          passing_var_binder var ~make_placement:(fun var -> After_let var)
-            ~state
-        in
-        let all_needed_variables =
-          Variable.Set.remove var state.all_needed_variables
-        in
-        let state =
-          { state with
-            all_needed_variables;
-          }
-        in
-        find_insertion_points body ~state
+      let state =
+        passing_var_binder var ~make_placement:(fun var -> After_let var)
+          ~state
+      in
+      find_insertion_points body ~state
     | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
       let handlers = Continuation.Map.add name handler Continuation.Map.empty in
       passing_continuation_bindings ~body ~handlers ~state
@@ -632,7 +627,6 @@ Variable.print var;
       { vars_in_scope;
         pending = new_conts;
         placing = [];
-        all_needed_variables = Variable.Set.empty;
         placed = Placement.Map.empty;
       }
     in
@@ -640,7 +634,6 @@ Variable.print var;
   in
   assert (Continuation.Map.is_empty state.pending);
   assert (state.placing = []);
-  assert (Variable.Set.is_empty state.all_needed_variables);
   assert (
     let num_new_conts =
       Continuation.Map.fold (fun _cont new_conts num_new_conts ->
@@ -735,6 +728,8 @@ let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
           | exception Not_found -> expr
           | new_cont ->
             assert (trap_action = None);
+            (* CR mshinwell: This should rename the uses
+               (cont -> new_cont), presumably? *)
             r := R.forget_inlinable_continuation_uses !r cont ~args;
             Apply_cont (new_cont, None, args)
           end

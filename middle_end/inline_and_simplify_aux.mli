@@ -184,6 +184,7 @@ module Env : sig
   val never_inline_continuations : t -> bool
 
   val allow_continuation_inlining : t -> t
+  val disallow_continuation_inlining : t -> t
 
   val inlining_level : t -> int
 
