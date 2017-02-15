@@ -747,9 +747,13 @@ Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify_let_cont_handlers ~backend
   in
+  if Continuation.Map.is_empty new_conts then begin
+    expr, r
+  end else begin
 let output, r =
   insert_specialisations r expr ~vars_in_scope ~new_conts ~apply_cont_rewrites
 in
 Format.eprintf "Output of Continuation_specialisation:\n@;%a\n"
   Flambda.print output;
 output, r
+  end
