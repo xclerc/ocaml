@@ -181,16 +181,6 @@ type filtered_switch_branches =
   | Must_be_taken of Continuation.t
   | Can_be_taken of (int * Continuation.t) list
 
-let inline_and_specialise_continuations env r ~body ~simplify ~backend =
-  if E.never_inline_continuations env then
-    body, r
-  else
-    let body, r =
-      Continuation_specialisation.for_toplevel_expression body r
-        ~simplify_let_cont_handlers ~backend
-    in
-    Continuation_inlining.for_toplevel_expression body r ~simplify
-
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body
    of a [let rec]-bound function refers to another in the same set of closures.
@@ -1192,6 +1182,16 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
   in
   expr, r
 
+and inline_and_specialise_continuations env r ~body ~simplify ~backend =
+  if E.never_inline_continuations env then
+    body, r
+  else
+    let body, r =
+      Continuation_specialisation.for_toplevel_expression body r
+        ~simplify_let_cont_handlers ~backend
+    in
+    Continuation_inlining.for_toplevel_expression body r ~simplify
+
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       ~args ~args_approxs : Flambda.t * R.t =
@@ -1811,7 +1811,7 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
   Continuation.Set.print (Continuation.Map.keys handlers)
   Flambda.print body;
 *)
-    body, r
+    None, r
   end else
     (* First we simplify the continuations themselves. *)
     let r, handlers =
@@ -1876,7 +1876,7 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
       match recursive with
       | Nonrecursive ->
         begin match Continuation.Map.bindings handlers with
-        | [name, handler] -> Some (Nonrecursive { name; handler; }), r
+        | [name, handler] -> Some (Flambda.Nonrecursive { name; handler; }), r
         | _ ->
           Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
         end
@@ -1894,8 +1894,9 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
             | _ -> None
         in
         match is_non_recursive with
-        | Some (name, handler) -> Some (Nonrecursive { name; handler; }), r
-        | None -> Some (Recursive handlers), r
+        | Some (name, handler) ->
+          Some (Flambda.Nonrecursive { name; handler; }), r
+        | None -> Some (Flambda.Recursive handlers), r
 
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
@@ -2041,13 +2042,13 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           | None -> (fun env -> env)
           | Some f -> f
         in
-        let handlers =
+        let handlers, r =
           simplify_let_cont_handlers ~env ~r ~handlers
             ~recursive:Asttypes.Nonrecursive ~freshening ~update_use_env
         in
         match handlers with
-        | None -> body
-        | Some handlers -> Let_cont { body; handlers; }
+        | None -> body, r
+        | Some handlers -> Let_cont { body; handlers; }, r
       in
       begin match with_wrapper with
       | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
@@ -2117,14 +2118,15 @@ body, r
 Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
   Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
 *)
-      let handlers =
+      let handlers, r =
         simplify_let_cont_handlers ~env ~r ~handlers
           ~recursive:Asttypes.Recursive ~freshening
           ~update_use_env
       in
-      match handlers with
-      | None -> body
-      | Some handlers -> Let_cont { body; handlers; }
+      begin match handlers with
+      | None -> body, r
+      | Some handlers -> Let_cont { body; handlers; }, r
+      end
 (*
 in
 Format.eprintf "With wrappers applied (recursive case):\n@ %a\n%!"
