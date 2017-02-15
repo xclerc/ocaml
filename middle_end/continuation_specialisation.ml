@@ -200,7 +200,7 @@ let find_specialisations r ~simplify ~backend =
              hit this case.  This is equivalent to the "self call" check
              in [Inlining_decision]. *)
           acc
-        | Some (Nonrecursive { handler = { is_exn_handler = true; _ }; _ } ->
+        | Some (Nonrecursive { handler = { is_exn_handler = true; _ }; _ }) ->
           acc
         | Some handlers ->
           let handlers, invariant_params, invariant_params_flow =
@@ -474,7 +474,7 @@ let find_insertion_points expr ~new_conts =
     in
     match expr with
     | Let { var; body; _ } ->
-      if not (Variable.Set.mem var all_needed_variables) in
+      if not (Variable.Set.mem var all_needed_variables) then
         find_insertion_points body ~pending ~placing ~all_needed_variables
       else
         let placed, placing =
@@ -519,8 +519,6 @@ let find_insertion_points expr ~new_conts =
 
 let insert_specialisations r (expr : Flambda.expr) ~new_conts
         ~apply_cont_rewrites =
-  (* CR-someday mshinwell: We could consider combining these two traversals
-     into one.  It will need the phys-equal checks. *)
   let placed = find_insertion_points expr ~new_conts in
   let place ~placement ~around : Flambda.expr =
     match Placement.Map.find placement placed with
@@ -587,10 +585,10 @@ let insert_specialisations r (expr : Flambda.expr) ~new_conts
   in
   expr, !r
 
-let for_toplevel_expression expr r ~simplify ~backend =
+let for_toplevel_expression expr r ~simplify_let_cont_handlers ~backend =
 Format.eprintf "Input to Continuation_specialisation:\n@;%a\n"
   Flambda.print expr;
   let new_conts, apply_cont_rewrites =
-    find_specialisations r ~simplify ~backend
+    find_specialisations r ~simplify_let_cont_handlers ~backend
   in
   insert_specialisations r expr ~new_conts ~apply_cont_rewrites

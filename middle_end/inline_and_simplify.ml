@@ -186,10 +186,10 @@ let inline_and_specialise_continuations env r ~body ~simplify ~backend =
     body, r
   else
     let body, r =
-      Continuation_inlining.for_toplevel_expression body r ~simplify
+      Continuation_specialisation.for_toplevel_expression body r
+        ~simplify_let_cont_handlers ~backend
     in
-    Continuation_specialisation.for_toplevel_expression body r ~simplify
-      ~backend
+    Continuation_inlining.for_toplevel_expression body r ~simplify
 
 (* Determine whether a given closure ID corresponds directly to a variable
    (bound to a closure) in the given environment.  This happens when the body

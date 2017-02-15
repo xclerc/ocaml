@@ -172,7 +172,7 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
   in
   Continuation.With_args.Map.fold (fun (cont, args)
             (inline_unconditionally, count, env, approx, args_approxs)
-            ((inlinings, new_shared_conts, zero_uses) as acc) ->
+            ((inlinings, zero_uses) as acc) ->
       if count.inlinable_uses < 1 && not count.has_non_inlinable_uses then acc
       else
         let inlining_result =
@@ -197,16 +197,14 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
           let inlinings =
             Continuation.With_args.Map.add (cont, args) bodies inlinings
           in
-          inlinings, new_shared_conts, zero_uses)
+          inlinings, zero_uses)
     definitions
-    (Continuation.With_args.Map.empty, Continuation.Map.empty,
-      Continuation.Set.empty)
+    (Continuation.With_args.Map.empty, Continuation.Set.empty)
 
 (* At the moment this doesn't apply the substitution to handlers as we
    discover inlinings (unlike what happens for function inlining).  Let's
    see how it goes. *)
-let substitute r (expr : Flambda.expr) ~inlinings ~new_shared_conts
-      ~zero_uses =
+let substitute r (expr : Flambda.expr) ~inlinings ~zero_uses =
   let r = ref r in
   let counts = Continuation.With_args.Tbl.create 42 in
   let expr =
@@ -273,5 +271,5 @@ let for_toplevel_expression expr r ~simplify =
 (*
 Format.eprintf "Continuation inlining starting on:@;%a@;" Flambda.print expr;
 *)
-  let inlinings, new_shared_conts, zero_uses = find_inlinings r ~simplify in
-  substitute r expr ~inlinings ~new_shared_conts ~zero_uses
+  let inlinings, zero_uses = find_inlinings r ~simplify in
+  substitute r expr ~inlinings ~zero_uses
