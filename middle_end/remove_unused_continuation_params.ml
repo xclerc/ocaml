@@ -100,11 +100,8 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
     wrapper_handler;
   }
 
-let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
-      ~original ~backend ~recursive : Flambda.expr =
-  let unused =
-    Invariant_params.Continuations.unused_arguments handlers ~backend
-  in
+let for_continuation ~body ~unused ~(handlers : Flambda.continuation_handlers)
+      ~original ~recursive : Flambda.expr =
   if Variable.Set.is_empty unused then
     original
   else
@@ -138,13 +135,21 @@ let run program ~backend =
         | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
             is_exn_handler = true; _ }; }; } -> expr
         | Let_cont { body; handlers = Nonrecursive { name; handler; } } ->
+          let unused =
+            let fvs = Flambda.free_variables handler.handler in
+            let params = Variable.Set.of_list handler.params in
+            Variable.Set.diff params fvs
+          in
           let handlers =
             Continuation.Map.add name handler Continuation.Map.empty
           in
-          for_continuation ~body ~handlers ~original:expr ~backend
+          for_continuation ~body ~handlers ~unused ~original:expr
             ~recursive:Asttypes.Nonrecursive
         | Let_cont { body; handlers = Recursive handlers; } ->
-          for_continuation ~body ~handlers ~original:expr ~backend
+          let unused =
+            Invariant_params.Continuations.unused_arguments handlers ~backend
+          in
+          for_continuation ~body ~handlers ~unused ~original:expr
             ~recursive:Asttypes.Recursive
         | Let_cont { handlers = Alias _; _ }
         | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
