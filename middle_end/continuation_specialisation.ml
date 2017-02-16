@@ -141,11 +141,15 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
   in
   match new_handlers with
   | None ->
+(*
 Format.eprintf "try_specialising: None case\n%!";
+*)
     Didn't_specialise
   | Some new_handlers ->
+(*
 Format.eprintf "try_specialising: new handlers:\n@ %a\n%!"
   Flambda.print_let_cont_handlers new_handlers;
+*)
     let module W = Inlining_cost.Whether_sufficient_benefit in
     let wsb =
       let originals =
@@ -173,7 +177,9 @@ Format.eprintf "try_specialising: new handlers:\n@ %a\n%!"
         ~lifting:false
         ~round:(E.round env)
     in
+(*
 Format.eprintf "Evaluating %a\n%!" (W.print_description ~subfunctions:false) wsb;
+*)
     if W.evaluate wsb then
       Specialised (entry_point_new_cont, new_handlers)
     else
@@ -326,10 +332,12 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
       (Continuation_with_specialised_args.Map.empty,
         Continuation.Map.empty)
   in
+(*
 Format.eprintf "Specialisation first stage result:\n%a\n%!"
   (Continuation_with_specialised_args.Map.print
     Continuation.With_args.Set.print)
   specialisations;
+*)
   (* The second step takes the map from above and makes a decision for
      each proposed specialisation, returning two maps:
        continuation "k" -> new continuation(s) to be defined just before "k"
@@ -357,11 +365,13 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
       then
         acc
       else
+(*
         let () =
           Format.eprintf "Trying to specialise %a (new spec args %a)\n%!"
             Continuation.print cont
             Flambda.print_specialised_args newly_specialised_args
         in
+*)
         (* CR mshinwell: We should stop this trying to specialise
            already-specialised arguments.  (It isn't clear whether there is
            such a check for functions.) *)
@@ -404,11 +414,17 @@ let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
   let place ~placement ~around =
     match Placement.Map.find placement placed with
     | exception Not_found -> None
-    | handlers ->
-      Some (Flambda.Let_cont {
-        body = around;
-        handlers;
-      })
+    | handlers_list ->
+      let expr =
+        List.fold_left (fun body handlers ->
+            Flambda.Let_cont {
+              body;
+              handlers;
+            })
+          around
+          handlers_list
+      in
+      Some expr
   in
   let r = ref r in
   let expr =
@@ -497,9 +513,11 @@ let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
 
 let for_toplevel_expression expr ~vars_in_scope r ~simplify_let_cont_handlers
       ~backend =
+(*
 Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a\n"
   Variable.Set.print vars_in_scope
   Flambda.print expr;
+*)
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify_let_cont_handlers ~backend
   in
@@ -509,7 +527,9 @@ Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a
 let output, r =
   insert_specialisations r expr ~vars_in_scope ~new_conts ~apply_cont_rewrites
 in
+(*
 Format.eprintf "Output of Continuation_specialisation:\n@;%a\n"
   Flambda.print output;
+*)
 output, r
   end

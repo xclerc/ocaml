@@ -46,4 +46,4 @@ val find_insertion_points
    : Flambda.expr
   -> vars_in_scope:Variable.Set.t
   -> new_conts:Flambda.let_cont_handlers list Continuation.Map.t
-  -> Flambda.let_cont_handlers Placement.Map.t
+  -> Flambda.let_cont_handlers list Placement.Map.t

@@ -84,8 +84,10 @@ type insertion_state = {
   (* Specialised continuations whose corresponding pre-existing continuation
      is in scope and that we are looking to place as soon as all required
      variables are in scope. *)
-  placed : Flambda.let_cont_handlers Placement.Map.t;
-  (* Specialised continuations whose placement has been identified. *)
+  placed : Flambda.let_cont_handlers list Placement.Map.t;
+  (* Specialised continuations whose placement has been identified.
+     There may of course be more than one set of handlers placed at any one
+     particular spot. *)
 }
 
 let find_insertion_points expr ~vars_in_scope ~new_conts =
@@ -98,11 +100,19 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
             let needed_fvs = Variable.Set.remove var being_placed.needed_fvs in
             if Variable.Set.is_empty needed_fvs then begin
               let placement = make_placement var in
+(*
 Format.eprintf "Placing %a %a\n%!"
   Continuation.Set.print (Continuation.Map.keys being_placed.handlers_as_map)
   Placement.print placement;
+*)
+              let already_placed =
+                match Placement.Map.find placement !placed with
+                | exception Not_found -> []
+                | already_placed -> already_placed
+              in
               placed :=
-                Placement.Map.add placement being_placed.handlers !placed;
+                Placement.Map.add placement
+                  (being_placed.handlers :: already_placed) !placed;
               None
             end else begin
               Some { being_placed with needed_fvs; }
@@ -116,7 +126,9 @@ Format.eprintf "Placing %a %a\n%!"
       }
     in
     let passing_continuation_binding ~name ~state =
+(*
 Format.eprintf "Passing binding of %a\n%!" Continuation.print name;
+*)
       match Continuation.Map.find name state.pending with
       | exception Not_found -> state
       | new_handlers_list ->
@@ -136,9 +148,11 @@ Format.eprintf "Passing binding of %a\n%!" Continuation.print name;
                 | Recursive handlers -> handlers
                 | Alias _ -> assert false
               in
+(*
 Format.eprintf "Being placed: %a (needed fvs %a)\n%!"
 Continuation.Set.print (Continuation.Map.keys handlers_as_map)
 Variable.Set.print needed_fvs;
+*)
               { handlers = new_handlers;
                 handlers_as_map;
                 needed_fvs;
@@ -162,8 +176,10 @@ Variable.Set.print needed_fvs;
           let state = { state with vars_in_scope; } in
           let state =
             Variable.Set.fold (fun var state ->
+(*
 Format.eprintf "Passing binding of continuation parameter %a\n%!"
 Variable.print var;
+*)
                 passing_var_binder var ~make_placement:(fun _var ->
                     Just_inside_continuation name)
                   ~state)
@@ -227,5 +243,11 @@ Variable.print var;
         new_conts
         0
     in
-    num_new_conts = Placement.Map.cardinal state.placed);
+    let num_placed =
+      Placement.Map.fold (fun _placement handlers_list num_placed ->
+          num_placed + List.length handlers_list)
+        state.placed
+        0
+    in
+    num_new_conts = num_placed);
   state.placed
