@@ -234,7 +234,13 @@ Variable.print var;
     in
     find_insertion_points expr ~state
   in
-  assert (Continuation.Map.is_empty state.pending);
+  if not (Continuation.Map.is_empty state.pending) then begin
+    Misc.fatal_errorf "Failed to find pre-existing continuations after \
+        which to find placements for the following: %a"
+      (Continuation.Map.print
+        (Format.pp_print_list Flambda.print_let_cont_handlers))
+      state.pending
+  end;
   assert (state.placing = []);
   assert (
     let num_new_conts =

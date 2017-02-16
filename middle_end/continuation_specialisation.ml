@@ -275,7 +275,8 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
   (not (Variable.Map.mem param handler.specialised_args))
   (A.useful arg_approx);
 *)
-                    Variable.Map.mem param invariant_params
+                    (not handler.stub)
+                      && Variable.Map.mem param invariant_params
                       && not (Variable.Map.mem param
                         handler.specialised_args)
                       && A.useful arg_approx)
