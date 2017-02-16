@@ -159,12 +159,6 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
                   definitions
               | inline_unconditionally, count, _env, approx, args_approxs ->
                 assert (not inline_unconditionally);
-                (* When generating a shared continuation the environment is
-                   always that immediately prior to the continuation whose
-                   body will be simplified to form the body of the shared
-                   continuation. *)
-                (* XXX Shared continuations are currently disabled.
-                   (For those it used to say "env" not "use.env" below. *)
                 let count =
                   { count with
                     inlinable_uses = count.inlinable_uses + 1;

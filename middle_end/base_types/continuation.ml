@@ -21,7 +21,7 @@ let raise_count = ref 0
 
 let next_raise_count () =
 (*
-if !raise_count = 26 then begin
+if !raise_count = 773 then begin
 Format.eprintf "Creation of continuation %d:\n%s\n%!"
   (!raise_count + 1)
   (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10))

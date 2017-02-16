@@ -190,6 +190,10 @@ let inline env r ~lhs_of_application
       (* First we construct the code that would result from copying the body of
          the function, without doing any further inlining upon it, to the call
          site. *)
+(*
+Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
+  Variable.print lhs_of_application Flambda.print function_decl.body;
+*)
       Inlining_transforms.inline_by_copying_function_body ~env
         ~r:(R.reset_benefit r) ~function_decls ~lhs_of_application
         ~closure_id_being_applied ~specialise_requested ~inline_requested

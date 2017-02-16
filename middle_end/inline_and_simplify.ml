@@ -545,7 +545,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
               in
               Closure_id.Map.add closure_id var project_var_var,
               set_approx)
-            value_closures (Closure_id.Map.empty, A.value_bottom)
+            value_closures (Closure_id.Map.empty, A.value_unknown Other)
         in
         let projection : Projection.t =
           Project_var {
@@ -1013,9 +1013,11 @@ Format.eprintf "...freshened cont is %a\n%!"
           | Direct _ ->
             Misc.fatal_errorf "Application of function %a (%a) is marked as \
                 a direct call but the approximation of the function was \
-                wrong\n%!"
+                wrong: %a@ \nEnvironment:@ %a\n%!"
               Variable.print lhs_of_application
               Variable.print_list args
+              A.print lhs_of_application_approx
+              E.print env
           end;
           let args_approxs = [A.value_unknown Other] in
           let continuation, r =
@@ -1286,7 +1288,7 @@ Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
         let trap_action, r = freshen_trap_action env r trap_action in
         Some trap_action, r
     in
-    Apply_cont (cont, trap_action, args), ret r A.value_bottom
+    Apply_cont (cont, trap_action, args), ret r (A.value_unknown Other)
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm). *)
@@ -1298,7 +1300,7 @@ and simplify_apply_cont_to_cont env r cont ~args_approxs =
     R.use_continuation r env cont ~inlinable_position:false ~args:[]
       ~args_approxs
   in
-  cont, ret r A.value_bottom
+  cont, ret r (A.value_unknown Other)
 
 (** [simplify_named] returns:
     - extra [Let]-bindings to be inserted prior to the one being simplified;
@@ -2143,7 +2145,7 @@ body, r
       assert (R.continuation_unused r name);
       let r, _uses = R.exit_scope_catch r env name in
       assert (not (R.is_used_continuation r name));
-      body, ret r A.value_bottom
+      body, ret r (A.value_unknown Other)
     end
   | Switch (arg, sw) ->
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->
@@ -2215,7 +2217,7 @@ Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
             in
             (i, cont)::acc, r
           in
-          let r = R.set_approx r A.value_bottom in
+          let r = R.set_approx r (A.value_unknown Other) in
           let consts, r = List.fold_right f consts ([], r) in
           let failaction, r =
             match sw.failaction with
