@@ -169,6 +169,7 @@ MIDDLE_END=\
   middle_end/ilambda.cmo \
   middle_end/cps_conversion.cmo \
   middle_end/flambda.cmo \
+  middle_end/continuation_with_specialised_args.cmo \
   middle_end/flambda_iterators.cmo \
   middle_end/flambda_utils.cmo \
   middle_end/inlining_cost.cmo \

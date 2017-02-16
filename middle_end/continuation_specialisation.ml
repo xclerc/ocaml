@@ -20,38 +20,6 @@ module A = Simple_value_approx
 module E = Inline_and_simplify_aux.Env
 module R = Inline_and_simplify_aux.Result
 
-module Continuation_with_specialised_args = struct
-  (* A continuation together with, for each of its specialised arguments, the
-     variable corresponding to such argument in a particular application of
-     that continuation.
-  *)
-  type t = Continuation.t * Flambda.specialised_args
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare t1 t2 =
-      let c = Continuation.compare (fst t1) (fst t2) in
-      if c <> 0 then c
-      else
-        (Variable.Map.compare Flambda.compare_specialised_to) (snd t1) (snd t2)
-
-    let equal t1 t2 =
-      compare t1 t2 = 0
-
-    let hash t =
-      Hashtbl.hash (Continuation.hash (fst t),
-        Hashtbl.hash (Variable.Map.bindings (snd t)))
-
-    let output _chan _t = Misc.fatal_error "not implemented"
-
-    let print ppf (cont, spec_args) =
-      Format.fprintf ppf "@[(%a, %a)@]"
-        Continuation.print cont
-        Flambda.print_specialised_args spec_args
-  end)
-end
-
 type specialising_result =
   | Didn't_specialise
   | Specialised of Continuation.t * Flambda.let_cont_handlers
@@ -425,57 +393,6 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
           new_conts, apply_cont_rewrites)
     specialisations
     (Continuation.Map.empty, Continuation.With_args.Map.empty)
-
-module Placement = struct
-  type t =
-    | After_let of Variable.t
-    | After_let_cont of Continuation.Set.t
-    | Just_inside_continuation of Continuation.t
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare t1 t2 =
-      match t1, t2 with
-      | After_let v1, After_let v2 -> Variable.compare v1 v2
-      | After_let _, _ -> -1
-      | _, After_let _ -> 1
-      | After_let_cont conts1, After_let_cont conts2 ->
-        Continuation.Set.compare conts1 conts2
-      | After_let_cont _, _ -> -1
-      | _, After_let_cont _ -> 1
-      | Just_inside_continuation cont1, Just_inside_continuation cont2 ->
-        Continuation.compare cont1 cont2
-
-    let equal t1 t2 = (compare t1 t2 = 0)
-
-    let hash t =
-      match t with
-      | After_let v -> Hashtbl.hash (0, Variable.hash v)
-      | After_let_cont conts ->
-        let conts_hash =
-          Continuation.Set.fold (fun cont hash ->
-              Hashtbl.hash (hash, Continuation.hash cont))
-            conts
-            0
-        in
-        Hashtbl.hash (1, conts_hash)
-      | Just_inside_continuation cont ->
-        Hashtbl.hash (2, Continuation.hash cont)
-
-    let print ppf t =
-      match t with
-      | After_let var ->
-        Format.fprintf ppf "after let-binding of %a" Variable.print var
-      | After_let_cont conts ->
-        Format.fprintf ppf "after Let_cont binding {%a}"
-          Continuation.Set.print conts
-      | Just_inside_continuation cont ->
-        Format.fprintf ppf "just inside handler of %a" Continuation.print cont
-
-    let output _ _ = Misc.fatal_error "Not implemented"
-  end)
-end
 
 let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
         ~apply_cont_rewrites =

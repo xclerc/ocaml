@@ -17,7 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Placement : sig
-  type t = private
+  type t =
     | After_let of Variable.t
     | After_let_cont of Continuation.Set.t
     | Just_inside_continuation of Continuation.t
@@ -27,8 +27,8 @@ end
 
 (** This function accepts an expression and a map [new_conts] associating sets
     of new continuation handlers (which do not appear in the expression) with
-    definitions of continuations that do appear in the expression.  The new
-    continuations mapped to by a given continuation [k] in [new_conts] may
+    definitions of continuations that do appear in the expression.  The sets of
+    new continuations mapped to by a given continuation [k] in [new_conts] may
     reference free variables that are not in scope at the point of definition
     of [k].  The function identifies, for each new set of continuation handlers,
     the earliest point in the expression (but not earlier than the definition
@@ -45,5 +45,5 @@ end
 val find_insertion_points
    : Flambda.expr
   -> vars_in_scope:Variable.Set.t
-  -> new_conts:Flambda.let_cont_handlers Continuation.Map.t
+  -> new_conts:Flambda.let_cont_handlers list Continuation.Map.t
   -> Flambda.let_cont_handlers Placement.Map.t

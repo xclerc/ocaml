@@ -1307,25 +1307,39 @@ middle_end/continuation_inlining.cmi : \
     middle_end/inline_and_simplify_aux.cmi middle_end/flambda.cmi
 middle_end/continuation_specialisation.cmo : \
     middle_end/base_types/variable.cmi middle_end/simple_value_approx.cmi \
+    middle_end/place_continuations.cmi \
     middle_end/base_types/num_continuation_uses.cmi utils/misc.cmi \
     middle_end/invariant_params.cmi middle_end/inlining_cost.cmi \
-    middle_end/inline_and_simplify_aux.cmi utils/identifiable.cmi \
-    middle_end/freshening.cmi middle_end/flambda_iterators.cmi \
-    middle_end/flambda.cmi middle_end/continuation_approx.cmi \
-    middle_end/base_types/continuation.cmi \
+    middle_end/inline_and_simplify_aux.cmi middle_end/freshening.cmi \
+    middle_end/flambda_iterators.cmi middle_end/flambda.cmi \
+    middle_end/continuation_with_specialised_args.cmi \
+    middle_end/continuation_approx.cmi middle_end/base_types/continuation.cmi \
     middle_end/continuation_specialisation.cmi
 middle_end/continuation_specialisation.cmx : \
     middle_end/base_types/variable.cmx middle_end/simple_value_approx.cmx \
+    middle_end/place_continuations.cmx \
     middle_end/base_types/num_continuation_uses.cmx utils/misc.cmx \
     middle_end/invariant_params.cmx middle_end/inlining_cost.cmx \
-    middle_end/inline_and_simplify_aux.cmx utils/identifiable.cmx \
-    middle_end/freshening.cmx middle_end/flambda_iterators.cmx \
-    middle_end/flambda.cmx middle_end/continuation_approx.cmx \
-    middle_end/base_types/continuation.cmx \
+    middle_end/inline_and_simplify_aux.cmx middle_end/freshening.cmx \
+    middle_end/flambda_iterators.cmx middle_end/flambda.cmx \
+    middle_end/continuation_with_specialised_args.cmx \
+    middle_end/continuation_approx.cmx middle_end/base_types/continuation.cmx \
     middle_end/continuation_specialisation.cmi
 middle_end/continuation_specialisation.cmi : \
-    middle_end/inline_and_simplify_aux.cmi middle_end/flambda.cmi \
-    middle_end/backend_intf.cmi
+    middle_end/base_types/variable.cmi middle_end/inline_and_simplify_aux.cmi \
+    middle_end/freshening.cmi middle_end/flambda.cmi \
+    middle_end/base_types/continuation.cmi middle_end/backend_intf.cmi \
+    parsing/asttypes.cmi
+middle_end/continuation_with_specialised_args.cmo : \
+    middle_end/base_types/variable.cmi utils/misc.cmi utils/identifiable.cmi \
+    middle_end/flambda.cmi middle_end/base_types/continuation.cmi \
+    middle_end/continuation_with_specialised_args.cmi
+middle_end/continuation_with_specialised_args.cmx : \
+    middle_end/base_types/variable.cmx utils/misc.cmx utils/identifiable.cmx \
+    middle_end/flambda.cmx middle_end/base_types/continuation.cmx \
+    middle_end/continuation_with_specialised_args.cmi
+middle_end/continuation_with_specialised_args.cmi : utils/identifiable.cmi \
+    middle_end/flambda.cmi middle_end/base_types/continuation.cmi
 middle_end/cps_conversion.cmo : middle_end/base_types/trap_id.cmi \
     bytecomp/printlambda.cmi typing/primitive.cmi \
     middle_end/prepare_lambda.cmi utils/numbers.cmi \
@@ -1808,6 +1822,15 @@ middle_end/middle_end.cmi : utils/timings.cmi bytecomp/lambda.cmi \
 middle_end/pass_wrapper.cmo : utils/clflags.cmi middle_end/pass_wrapper.cmi
 middle_end/pass_wrapper.cmx : utils/clflags.cmx middle_end/pass_wrapper.cmi
 middle_end/pass_wrapper.cmi :
+middle_end/place_continuations.cmo : middle_end/base_types/variable.cmi \
+    utils/misc.cmi utils/identifiable.cmi middle_end/flambda.cmi \
+    middle_end/base_types/continuation.cmi middle_end/place_continuations.cmi
+middle_end/place_continuations.cmx : middle_end/base_types/variable.cmx \
+    utils/misc.cmx utils/identifiable.cmx middle_end/flambda.cmx \
+    middle_end/base_types/continuation.cmx middle_end/place_continuations.cmi
+middle_end/place_continuations.cmi : middle_end/base_types/variable.cmi \
+    utils/identifiable.cmi middle_end/flambda.cmi \
+    middle_end/base_types/continuation.cmi
 middle_end/prepare_lambda.cmo : typing/types.cmi bytecomp/simplif.cmi \
     typing/primitive.cmi typing/predef.cmi utils/numbers.cmi utils/misc.cmi \
     bytecomp/matching.cmi parsing/location.cmi bytecomp/lambda.cmi \
