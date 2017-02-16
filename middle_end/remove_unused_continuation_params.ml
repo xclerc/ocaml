@@ -128,6 +128,10 @@ let for_continuation ~body ~(handlers : Flambda.continuation_handlers)
       ~with_wrappers:handlers
 
 let run program ~backend =
+  (* CR mshinwell: This is very inefficient, given the deeply-nested
+     continuation structures that are typical.  The continuation declarations
+     should probably be added one by one as they are encountered inside
+     [Invariant_params] itself. *)
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:(fun expr ->
     Flambda_iterators.map_expr (fun (expr : Flambda.expr) ->
         match expr with

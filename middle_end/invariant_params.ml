@@ -72,6 +72,8 @@ module type Continuations_or_functions = sig
        : t
       -> backend:(module Backend_intf.S)
       -> Name.t Variable.Map.t
+
+    val other_free_names : t -> Name.Set.t
   end
 
   type application = {
@@ -155,6 +157,10 @@ module For_functions = struct
             function_decl.body)
         function_decls.funs;
       !fun_var_bindings
+
+    let other_free_names _ =
+      (* Functions cannot be referenced except via variables. *)
+      Name.Set.empty
   end
 
   type application = {
@@ -217,6 +223,14 @@ module For_continuations = struct
     let declarations (t : t) = t
 
     let function_variable_aliases _t ~backend:_ = Variable.Map.empty
+
+    (* CR mshinwell: Hack which will go away when [Nonrecursive] accepts
+       a map *)
+    let other_free_names t =
+      let handlers : Flambda.let_cont_handlers =
+        Recursive t
+      in
+      Flambda.free_continuations_of_let_cont_handlers ~handlers
   end
 
   type application = {
@@ -403,6 +417,11 @@ module Analyse (CF : Continuations_or_functions) = struct
           (CF.Declaration.free_variables_of_body_excluding_callees_and_args
             decl))
       (CF.Declarations.declarations decls);
+    CF.Name.Set.iter
+      (fun name ->
+        if CF.Name.Map.mem name (CF.Declarations.declarations decls)
+        then CF.Name.Tbl.add escaping_functions name ())
+      (CF.Declarations.other_free_names decls);
     CF.Name.Map.iter
       (fun func_var decl ->
         List.iter
