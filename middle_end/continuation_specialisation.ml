@@ -125,7 +125,8 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
             r ->
         let num_params = List.length handler.params in
         let args_approxs =
-          Array.to_list (Array.init num_params (fun _ -> A.value_bottom))
+          Array.to_list (Array.init num_params (
+            fun _ -> A.value_unknown Other))
         in
         let cont = Freshening.apply_static_exception (E.freshening env) cont in
         R.use_continuation r env cont ~inlinable_position:false
@@ -481,8 +482,10 @@ let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
           | exception Not_found -> expr
           | new_cont ->
             assert (trap_action = None);
-            (* CR mshinwell: This should rename the uses
-               (cont -> new_cont), presumably? *)
+            (* We drop the usage information for specialised continuations
+               (and we don't define the specialised continuations in [r]) so
+               that the inlining pass immediately after this one doesn't try
+               to inline the specialised versions. *)
             r := R.forget_inlinable_continuation_uses !r cont ~args;
             Apply_cont (new_cont, None, args)
           end
