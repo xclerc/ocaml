@@ -1237,7 +1237,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
        Note that we don't call [R.use_continuation] here, because we're going
        to eliminate the use. *)
     let env = E.activate_freshening env in
-    let env = E.set_never_inline env in
+    let env = E.disallow_continuation_inlining (E.set_never_inline env) in
     let params, freshening =
       Freshening.add_variables' (E.freshening env) handler.params
     in
