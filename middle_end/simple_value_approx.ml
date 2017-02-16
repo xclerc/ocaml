@@ -169,8 +169,10 @@ end = struct
 
   and join ~really_import_approx a1 a2 =
     match a1, a2 with
-    | { descr = Bottom }, a
-    | a, { descr = Bottom } -> a
+    | { descr = Bottom }, _ -> a1
+    | _, { descr = Bottom } -> a2
+    | { descr = Unknown _ }, a
+    | a, { descr = Unknown _ } -> a
     | { descr = (Symbol _ | Extern _) }, _
     | _, { descr = (Symbol _ | Extern _) } ->
       join ~really_import_approx
