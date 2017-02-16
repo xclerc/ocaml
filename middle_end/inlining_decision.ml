@@ -537,10 +537,6 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       specialise = specialise_requested;
     }
   in
-  let self_call =
-    E.inside_set_of_closures_declaration
-      function_decls.set_of_closures_origin env
-  in
 (*
 Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
   Closure_id.print closure_id_being_applied
@@ -553,8 +549,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
     in
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity (fun _index ->
-        if self_call then A.value_bottom
-        else A.value_unknown Other))
+        A.value_unknown Other))
     in
 (*
 Format.eprintf "for_call_site: use of continuation %a has %d args\n%!"

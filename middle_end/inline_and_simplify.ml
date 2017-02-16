@@ -951,10 +951,6 @@ Format.eprintf "...freshened cont is %a\n%!"
                   approximation references non-existent closure %a@."
                 Closure_id.print closure_id_being_applied
           in
-          let self_call =
-            E.inside_set_of_closures_declaration
-              function_decls.set_of_closures_origin env
-          in
           let arity_of_application =
             match apply.call_kind with
             | Direct { return_arity; } -> return_arity
@@ -974,9 +970,7 @@ Format.eprintf "...freshened cont is %a\n%!"
           let continuation, r =
             let args_approxs =
               Array.to_list (Array.init function_decl.return_arity
-                (fun _index ->
-                  if self_call then A.value_bottom
-                  else A.value_unknown Other))
+                (fun _index -> A.value_unknown Other))
             in
             simplify_apply_cont_to_cont env r continuation
               ~args_approxs
@@ -2159,10 +2153,13 @@ body, r
         | (c, cont) as branch :: branches ->
           match filter arg_approx c with
           | A.Cannot_be_taken ->
+Format.eprintf "Switch arm %a cannot_be_taken\n%!" Continuation.print cont;
             filter_branches filter branches compatible_branches
           | A.Can_be_taken ->
+Format.eprintf "Switch arm %a can_be_taken\n%!" Continuation.print cont;
             filter_branches filter branches (branch :: compatible_branches)
           | A.Must_be_taken ->
+Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
             Must_be_taken cont
       in
       (* Use approximation information to determine which branches definitely
@@ -2199,6 +2196,8 @@ body, r
           let cont, r =
             simplify_apply_cont_to_cont env r cont ~args_approxs:[]
           in
+Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
+  Continuation.print cont A.print arg_approx (List.length sw.consts);
           Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
         | _ ->
           let env = E.inside_branch env in

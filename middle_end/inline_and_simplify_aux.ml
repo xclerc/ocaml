@@ -592,7 +592,7 @@ Format.eprintf "Joining %a and %a\n%!" A.print approx1 A.print approx2;
 
   let meet_of_args_approxs t ~num_params =
     match meet_of_args_approxs_opt t with
-    | None -> Array.to_list (Array.make num_params (A.value_bottom))
+    | None -> Array.to_list (Array.make num_params (A.value_unknown Other))
     | Some join -> join
 
   let inlinable_application_points t = t.inlinable_application_points
