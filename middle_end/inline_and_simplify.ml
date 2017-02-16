@@ -2153,13 +2153,19 @@ body, r
         | (c, cont) as branch :: branches ->
           match filter arg_approx c with
           | A.Cannot_be_taken ->
+(*
 Format.eprintf "Switch arm %a cannot_be_taken\n%!" Continuation.print cont;
+*)
             filter_branches filter branches compatible_branches
           | A.Can_be_taken ->
+(*
 Format.eprintf "Switch arm %a can_be_taken\n%!" Continuation.print cont;
+*)
             filter_branches filter branches (branch :: compatible_branches)
           | A.Must_be_taken ->
+(*
 Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
+*)
             Must_be_taken cont
       in
       (* Use approximation information to determine which branches definitely
@@ -2196,8 +2202,10 @@ Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
           let cont, r =
             simplify_apply_cont_to_cont env r cont ~args_approxs:[]
           in
+(*
 Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
   Continuation.print cont A.print arg_approx (List.length sw.consts);
+*)
           Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
         | _ ->
           let env = E.inside_branch env in
