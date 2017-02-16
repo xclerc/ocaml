@@ -120,7 +120,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
         handler = {
           params = results;
           handler = box_results_and_call_return_cont;
-          stub = false;
+          stub = true;
           is_exn_handler = false;
           specialised_args = Variable.Map.empty;
         };

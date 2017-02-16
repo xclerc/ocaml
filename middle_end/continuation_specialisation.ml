@@ -185,7 +185,8 @@ Format.eprintf "Evaluating %a\n%!" (W.print_description ~subfunctions:false) wsb
     else
       Didn't_specialise
 
-let find_specialisations r ~simplify_let_cont_handlers ~backend =
+let find_specialisations r ~simplify_let_cont_handlers ~backend
+      ~defined_continuations =
   let module N = Num_continuation_uses in
   let module U = Inline_and_simplify_aux.Continuation_uses in
   (* The first step constructs two maps.  The first of these is:
@@ -198,6 +199,11 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
      for those uses.
      The second map just maps continuations to their handlers (including any
      handlers defined simultaneously) and the environment of definition. *)
+  let definitions_with_uses =
+    Continuation.Map.filter (fun cont _ ->
+        Continuation.Set.mem cont defined_continuations)
+      (R.continuation_definitions_with_uses r)
+  in
   let specialisations, conts_to_handlers =
     (* CR mshinwell: [recursive] appears to be redundant with
        [approx.recursive] *)
@@ -329,7 +335,7 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
                 specialisations, conts_to_handlers)
             (specialisations, conts_to_handlers)
             (U.inlinable_application_points uses))
-      (R.continuation_definitions_with_uses r)
+      definitions_with_uses
       (Continuation_with_specialised_args.Map.empty,
         Continuation.Map.empty)
   in
@@ -519,8 +525,26 @@ Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a
   Variable.Set.print vars_in_scope
   Flambda.print expr;
 *)
+  (* We can't just use the usage information in [r]; that contains the whole
+     history from the current simplification pass.  We must restrict
+     specialisation to the continuations defined in [expr]. *)
+  (* CR mshinwell: To Flambda_utils? *)
+  let defined_continuations = ref Continuation.Set.empty in
+  Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
+      match expr with
+      | Let_cont { handlers = Nonrecursive { name; _ }; _ } ->
+        defined_continuations :=
+          Continuation.Set.add name !defined_continuations
+      | Let_cont { handlers = Recursive handlers; _ } ->
+        defined_continuations :=
+          Continuation.Set.union (Continuation.Map.keys handlers)
+            !defined_continuations
+      | _ -> ())
+    (fun _named -> ())
+    expr;
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify_let_cont_handlers ~backend
+      ~defined_continuations:!defined_continuations
   in
   if Continuation.Map.is_empty new_conts then begin
     expr, r

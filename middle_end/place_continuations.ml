@@ -91,6 +91,9 @@ type insertion_state = {
 }
 
 let find_insertion_points expr ~vars_in_scope ~new_conts =
+(*
+Format.eprintf "Finding insertion points in:@ \n%a\n%!" Flambda.print expr;
+*)
   let rec find_insertion_points (expr : Flambda.expr) ~state =
     let passing_var_binder var ~make_placement ~state =
       let vars_in_scope = Variable.Set.add var state.vars_in_scope in

@@ -1244,9 +1244,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
         (E.set_freshening env freshening)
         params_and_approxs
     in
-(*
-Format.eprintf "Inlining stub: %a\n%!" Flambda.print handler.handler;
-*)
+(*Format.eprintf "Inlining stub: %a\n%!" Continuation.print cont;*)
     let handler, r = simplify env r handler.handler in
     begin match trap_action with
     | None -> handler, r

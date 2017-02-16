@@ -371,9 +371,6 @@ module Env = struct
   let freshening t = t.freshening
   let never_inline t = t.never_inline || t.never_inline_outside_closures
 
-  let allow_continuation_inlining t =
-    { t with allow_continuation_inlining = true; }
-
   let disallow_continuation_inlining t =
     { t with allow_continuation_inlining = false; }
 
@@ -789,9 +786,11 @@ end;
 
   let define_continuation t cont env recursive uses approx =
 (*
-if Continuation.to_int cont = 302 then begin
-  Format.eprintf "Defining k302: approx = %a\n%!"
-    Continuation_approx.print approx
+let k = 14898 in
+if Continuation.to_int cont = k then begin
+  Format.eprintf "Defining continuation k%d:\n%s%!"
+    k
+    (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10))
 end;
 *)
     Env.invariant env;

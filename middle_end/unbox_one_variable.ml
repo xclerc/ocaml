@@ -201,7 +201,12 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
               name = filler_cont;
               handler = {
                 params = [];
-                stub = false;
+                (* CR mshinwell: All of the "stub" settings in this file are
+                   "true" so we don't try to unbox their arguments over and
+                   over.  Maybe instead we should have a "kind" field which
+                   could include the stub, is_exn_handler, etc data plus
+                   something saying not to unbox *)
+                stub = true;
                 is_exn_handler = false;
                 handler = filler;
                 specialised_args = Variable.Map.empty;
@@ -260,7 +265,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                     Apply_cont (join_cont, None,
                       is_int_in_wrapper @ wrapper_param_being_unboxed
                         @ all_units));
-                  stub = false;
+                  stub = true;
                   is_exn_handler = false;
                   specialised_args = Variable.Map.empty;
                 };
@@ -278,7 +283,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                        Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
                     (add_fill_fields_conts (
                       (Switch (tag, fill_fields_switch))));
-                stub = false;
+                stub = true;
                 is_exn_handler = false;
                 specialised_args = Variable.Map.empty;
               };
@@ -289,7 +294,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
             handler = {
               params = new_arguments_for_call_in_wrapper;
               handler = expr;
-              stub = false;
+              stub = true;
               is_exn_handler = false;
               specialised_args = Variable.Map.empty;
             };
@@ -359,7 +364,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                   handler = {
                     handler = Apply_cont (join_cont, None, [ctor_index_var]);
                     params = [];
-                    stub = false;
+                    stub = true;
                     is_exn_handler = false;
                     specialised_args = Variable.Map.empty;
                   };
@@ -394,7 +399,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                 handler = {
                   params = [];
                   handler;
-                  stub = false;
+                  stub = true;
                   is_exn_handler = false;
                   specialised_args = Variable.Map.empty;
                 };
@@ -414,7 +419,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                   params = [];
                   handler =
                     add_boxing_conts (Switch (discriminant, boxing_switch));
-                  stub = false;
+                  stub = true;
                   is_exn_handler = false;
                   specialised_args = Variable.Map.empty;
                 };
@@ -438,7 +443,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                 handler =
                   add_constant_ctor_conts
                     (Switch (discriminant, constant_ctor_switch));
-                stub = false;
+                stub = true;
                 is_exn_handler = false;
                 specialised_args = Variable.Map.empty;
               };
@@ -449,7 +454,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
             handler = {
               params = [boxed];
               handler = expr;
-              stub = false;
+              stub = true;
               is_exn_handler = false;
               specialised_args = Variable.Map.empty;
             };
