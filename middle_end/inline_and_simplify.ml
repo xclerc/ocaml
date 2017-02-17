@@ -2506,31 +2506,14 @@ let rec simplify_program_body env r (program : Flambda.program_body)
 Format.eprintf "Simplifying initialize_symbol field:@;%a"
   Flambda.print h;
 *)
-        let continuation_uses_snapshot, r =
-          R.snapshot_and_forget_continuation_uses r
+        let h', r, uses =
+          let descr =
+            Format.asprintf "Initialize_symbol %a" Symbol.print symbol
+          in
+          simplify_toplevel env r h ~continuation:cont ~descr
         in
-        let h', r = simplify env r h in
-        let h', r =
-          inline_and_specialise_continuations env r
-            ~vars_in_scope:Variable.Set.empty
-            ~body:h' ~simplify
-            ~backend:(E.backend env)
-        in
-        let new_approxs = R.continuation_args_approxs r cont ~num_params:1 in
-        let r, _uses = R.exit_scope_catch r env cont in
-        let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
         let approx =
-          match new_approxs with
-          | [approx] -> approx
-          | [] ->
-            Misc.fatal_errorf "No approximation returned from simplifying \
-                defining expression of Initialize_symbol with continuation %a"
-              Continuation.print cont
-          | _ ->
-            Misc.fatal_errorf "Multiple approximations returned from \
-                simplifying defining expression of Initialize_symbol with \
-                continuation %a"
-              Continuation.print cont
+          R.Continuation_uses.meet_of_args_approxs uses ~num_params:1
         in
         let approxs = approx :: approxs in
         if t' == t && h' == h
@@ -2555,19 +2538,23 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     let cont_approx =
       Continuation_approx.create_unknown ~name:cont ~num_params:1
     in
-    let env = E.add_continuation env cont cont_approx in
-    let continuation_uses_snapshot, r =
-      R.snapshot_and_forget_continuation_uses r
+    let expr, r, uses =
+      let descr =
+        Format.asprintf "Effect (return continuation %a)"
+          Continuation.print cont
+      in
+      simplify_toplevel env r h ~continuation:cont ~descr
     in
-    let expr, r = simplify env r expr in
-    let expr, r =
-      inline_and_specialise_continuations env r ~body:expr
-        ~vars_in_scope:Variable.Set.empty ~simplify
-        ~backend:(E.backend env)
-    in
-    let program, r = simplify_program_body env r program in
-    let r, _uses = R.exit_scope_catch r env cont in
-    let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
+    begin match
+      R.Continuation_uses.meet_of_args_approxs uses ~num_params:0
+    with
+    | [] -> ()
+    | _ ->
+      Misc.fatal_errorf "Effect (return continuation %a) has uses of its \
+          return continuation with non-zero arity:@ \n%a"
+        Continuation.print cont
+        Flambda.print expr
+    end;
     Effect (expr, cont, program), r
   | End root -> End root, r
 
