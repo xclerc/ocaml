@@ -537,9 +537,6 @@ Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a
 *)
   let new_conts, apply_cont_rewrites =
     find_specialisations r ~simplify_let_cont_handlers ~backend
-(*
-      ~defined_continuations:!defined_continuations
-*)
   in
   if Continuation.Map.is_empty new_conts then begin
     expr, r

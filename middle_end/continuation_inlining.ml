@@ -207,7 +207,6 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
    discover inlinings (unlike what happens for function inlining).  Let's
    see how it goes. *)
 let substitute r (expr : Flambda.expr) ~inlinings ~zero_uses =
-  let r = ref r in
   let counts = Continuation.With_args.Tbl.create 42 in
   let expr =
     Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
@@ -237,11 +236,6 @@ let substitute r (expr : Flambda.expr) ~inlinings ~zero_uses =
             end;
             Continuation.With_args.Tbl.replace counts (cont, args) (count + 1);
             let inlined_body = inlined_bodies.(count) in
-            (* CR mshinwell: I wonder if we should have an invariant check
-                that could be used to validate the usage information in [r].
-                It's not as straightforward as it used to be now that we
-                subtract from that information here. *)
-            r := R.forget_inlinable_continuation_uses !r cont ~args;
             match trap_action with
             | None ->
               inlined_body
@@ -267,7 +261,7 @@ let substitute r (expr : Flambda.expr) ~inlinings ~zero_uses =
         | Proved_unreachable -> expr)
       expr
   in
-  expr, !r
+  expr, r
 
 let for_toplevel_expression expr r ~simplify =
 (*

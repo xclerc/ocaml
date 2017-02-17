@@ -1133,15 +1133,17 @@ let check_toplevel_simplification_result r expr ~descr =
     let defined_continuations =
       Flambda_utils.all_defined_continuations_toplevel expr
     in
-    if not (Continuation.Set.equal defined_continuations_in_r
+    (* CR mshinwell: This could be a strict equality check, but that may be
+       unhelpful *)
+    if not (Continuation.Set.subset defined_continuations_in_r
       defined_continuations)
     then begin
-      Misc.fatal_errorf "Continuations defined by [Let_cont] bindings in %s \
-          do not match up with the defined-continuations information in [r]: \
-          the term has %a but [r] has %a.  Term:\n@ %a"
+      Misc.fatal_errorf "The continuation(s) %a are defined within \
+          [r] but do not occur in this term (%s):@ \n%a"
+        Continuation.Set.print
+          (Continuation.Set.diff defined_continuations_in_r
+            defined_continuations)
         descr
-        Continuation.Set.print defined_continuations
-        Continuation.Set.print defined_continuations_in_r
         Flambda.print expr
     end
     (* CR mshinwell: We could consider counting uses as well, although maybe

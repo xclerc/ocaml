@@ -946,4 +946,5 @@ let all_defined_continuations_toplevel expr =
             !defined_continuations
       | _ -> ())
     (fun _named -> ())
-    expr
+    expr;
+  !defined_continuations

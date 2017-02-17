@@ -27,3 +27,9 @@ val check_exn
   -> ?cmxfile:bool
   -> Flambda.program
   -> unit
+
+val check_toplevel_simplification_result
+   : Inline_and_simplify_aux.Result.t
+  -> Flambda.expr
+  -> descr:string
+  -> unit

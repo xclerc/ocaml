@@ -772,7 +772,6 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     Variable.Map.fold simplify_function function_decls.funs
       (Variable.Map.empty, Variable.Set.empty, r)
   in
-  let continuation_param_uses = Continuation.Tbl.to_map continuation_uses in
   let function_decls =
     Flambda.update_function_declarations function_decls ~funs
   in
@@ -780,6 +779,9 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     if E.never_inline env then
       function_decls, Variable.Map.empty
     else
+      let continuation_param_uses =
+        Continuation.Tbl.to_map continuation_param_uses
+      in
       Unbox_returns.run ~continuation_uses:continuation_param_uses
         ~function_decls ~specialised_args ~backend:(E.backend env)
   in
@@ -2189,7 +2191,7 @@ Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
   | Proved_unreachable -> Proved_unreachable, ret r A.value_bottom
 
 and simplify_toplevel env r expr ~continuation ~descr =
-  if not (Continuation.Map.mem continuation (E.continuations_in_scope env)
+  if not (Continuation.Map.mem continuation (E.continuations_in_scope env))
   then begin
     Misc.fatal_errorf "The continuation parameter (%a) must be in the \
         environment before calling [simplify_toplevel]"
@@ -2208,7 +2210,7 @@ and simplify_toplevel env r expr ~continuation ~descr =
   in
   let expr, r = simplify env r expr in
   let expr, r =
-    Flambda_invariants.check_simplification_result r expr;
+    Flambda_invariants.check_toplevel_simplification_result r expr ~descr;
     if E.never_inline_continuations env then begin
       expr, r
     end else begin
@@ -2221,14 +2223,16 @@ and simplify_toplevel env r expr ~continuation ~descr =
           ~vars_in_scope r ~simplify_let_cont_handlers
           ~backend:(E.backend env)
       in
-      Flambda_invariants.check_simplification_result r expr;
-      (* [Continuation_inlining] is allowed to be sloppy with [r] since we
-         don't need continuation usage information after it's finished. *)
-      Continuation_inlining.for_toplevel_expression expr r ~simplify
+      Flambda_invariants.check_toplevel_simplification_result r expr ~descr;
+      let expr, r =
+        Continuation_inlining.for_toplevel_expression expr r ~simplify
+      in
+      Flambda_invariants.check_toplevel_simplification_result r expr ~descr;
+      expr, r
     end
   in
   let r, uses = R.exit_scope_catch r env continuation in
-  let r = roll_back_continuation_uses r continuation_uses_snapshot in
+  let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
   (* At this stage:
      - no continuation defined in [expr] should be mentioned in [r];
      - the free continuations of [expr] must be at most the [continuation]
@@ -2243,12 +2247,15 @@ and simplify_toplevel env r expr ~continuation ~descr =
       let bad = Continuation.Set.inter defined_conts from_r in
       if not (Continuation.Set.is_empty bad) then begin
         Misc.fatal_errorf "Continuations (%a) defined locally to %s are still \
-            mentioned in [r] upon leaving [simplify_toplevel]:@ \n%a"
+            mentioned in %s [r] upon leaving [simplify_toplevel]:@ \n%a"
           Continuation.Set.print bad
           descr
+          descr'
           Flambda.print expr
       end
     in
+    check_defined r_used "the use information inside";
+    check_defined r_defined "the defined-continuations information inside";
     let free_conts = Flambda.free_continuations expr in
     let bad_free_conts =
       Continuation.Set.diff free_conts
@@ -2513,7 +2520,13 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
           simplify_toplevel env r h ~continuation:cont ~descr
         in
         let approx =
-          R.Continuation_uses.meet_of_args_approxs uses ~num_params:1
+          Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+            uses ~num_params:1
+        in
+        let approx =
+          match approx with
+          | [approx] -> approx
+          | _ -> assert false
         in
         let approxs = approx :: approxs in
         if t' == t && h' == h
@@ -2538,22 +2551,20 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     let cont_approx =
       Continuation_approx.create_unknown ~name:cont ~num_params:1
     in
+    let env = E.add_continuation env cont cont_approx in
     let expr, r, uses =
       let descr =
         Format.asprintf "Effect (return continuation %a)"
           Continuation.print cont
       in
-      simplify_toplevel env r h ~continuation:cont ~descr
+      simplify_toplevel env r expr ~continuation:cont ~descr
     in
     begin match
-      R.Continuation_uses.meet_of_args_approxs uses ~num_params:0
+      Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+        uses ~num_params:1
     with
-    | [] -> ()
-    | _ ->
-      Misc.fatal_errorf "Effect (return continuation %a) has uses of its \
-          return continuation with non-zero arity:@ \n%a"
-        Continuation.print cont
-        Flambda.print expr
+    | [_] -> ()
+    | _ -> assert false
     end;
     Effect (expr, cont, program), r
   | End root -> End root, r
