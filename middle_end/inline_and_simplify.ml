@@ -1183,7 +1183,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
       Flambda.Pop { id; exn_handler; }, r
   in
   match Continuation_approx.handlers cont_approx with
-  | Some (Nonrecursive handler) when handler.stub ->
+  | Some (Nonrecursive handler) when handler.stub && trap_action = None ->
     (* Stubs are unconditionally inlined out now so that we don't need to run
        the second [Continuation_inlining] pass when doing a "noinline" run
        of [Inline_and_simplify].
@@ -1202,20 +1202,16 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
         params_and_approxs
     in
 (*Format.eprintf "Inlining stub: %a\n%!" Continuation.print cont;*)
-    let handler, r = simplify env r handler.handler in
-    begin match trap_action with
-    | None -> handler, r
-    | Some trap_action ->
-      let new_cont = Continuation.create () in
-      let trap_action, r = freshen_trap_action env r trap_action in
-      let expr : Flambda.t =
+    let stub's_body : Flambda.expr =
+      match trap_action with
+      | None -> handler.handler
+      | Some trap_action ->
         Let_cont {
-          (* CR mshinwell: This should call [use_continuation] on [new_cont] *)
           body = Apply_cont (new_cont, Some trap_action, []);
           handlers = Nonrecursive {
             name = new_cont;
             handler = {
-              handler;
+              handler = handler.handler;
               params = [];
               stub = false;
               is_exn_handler = false;
@@ -1223,9 +1219,8 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
             };
           };
         }
-      in
-      expr, r
-    end
+    in
+    simplify env r stub's_body
   | Some _ | None ->
 (*
 Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"

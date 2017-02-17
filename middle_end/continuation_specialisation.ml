@@ -134,6 +134,13 @@ let try_specialising r ~cont ~cont_application_points
       Continuation.Map.empty
   in
   let r =
+    (* Any calls to a continuation ("k") being specialised from within that
+       continuation will be automatically repointed at the specialised
+       version by virtue of the freshening in the environment.  However it is
+       possible that the specialisation of another continuation yields calls
+       to "k" within its body.
+    *)
+(* XXX wrong *)
     R.repoint_continuation_uses ~cont_application_points
       ~freshening:(E.freshening env)
   in
@@ -504,12 +511,11 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
         with
         | exception Not_found -> expr
         | new_cont ->
-          assert (trap_action = None);
           (* As per the comment above on [try_specialising], we don't need
-              to touch [r] here, since it has already been updated to reflect
-              the fact that all [Apply_cont (cont, _, args)] are going to be
-              rewritten to point at [new_cont] instead. *)
-          Apply_cont (new_cont, None, args)
+             to touch [r] here, since it has already been updated to reflect
+             the fact that all [Apply_cont (cont, _, args)] are going to be
+             rewritten to point at [new_cont] instead. *)
+          Apply_cont (new_cont, trap_action, args)
         end
       | Let_cont { handlers = Alias _; _ }
       | Apply _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)

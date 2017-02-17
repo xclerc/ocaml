@@ -16,21 +16,20 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(*module A = Simple_value_approx*)
 module B = Inlining_cost.Benefit
 module E = Inline_and_simplify_aux.Env
 module R = Inline_and_simplify_aux.Result
 
 type inlining_result =
   | Didn't_inline
-  | Inlined of Variable.t list * (Flambda.expr array)
+  | Inlined of Variable.t list * (Flambda.expr array) * R.t
 
 type num_uses = {
   has_non_inlinable_uses : bool;
   inlinable_uses : int;
 }
 
-let try_inlining ~cont ~args ~args_approxs ~env
+let try_inlining r ~cont ~args ~args_approxs ~env
         ~(handler : Flambda.continuation_handler)
       ~inline_unconditionally ~(count : num_uses) ~simplify =
   if List.length handler.params <> List.length args then begin
@@ -56,7 +55,6 @@ let try_inlining ~cont ~args ~args_approxs ~env
     in
     params, env, expr
   in
-  let r = R.create () in
   let original : Flambda.t = Apply_cont (cont, None, args) in
 (*
 Format.eprintf "try_inlining simplification %a (params %a) starts@;%a@;\n%!"
@@ -72,8 +70,6 @@ Format.eprintf "Continuation %a inlining@;%a%!"
         E.disallow_continuation_inlining (E.set_never_inline env)))
       r expr
   in
-  (* CR mshinwell: [r] may contain new continuation uses that should be added
-     to the overall [r]. *)
 (*
 Format.eprintf "try_inlining simplification %a ends@;%a\n%!"
   Continuation.print cont Flambda.print expr;
@@ -101,22 +97,28 @@ Format.eprintf "Inlining apply_cont %a to %a%s (inlining benefit %a, desc: %a) O
   Flambda.print original
   Flambda.print expr;
 *)
-    let exprs =
+    let exprs, r =
       (* For a given (continuation, arguments) pair we need as many
          freshened copies of the continuation as there are occurrences of that
          pair in the overall expression. *)
-      Array.init count.inlinable_uses (fun index ->
-        if index < 1 then expr
-        else
-          let r = R.create () in
-          let expr, _r =
-            simplify (E.activate_freshening (
-                (E.disallow_continuation_inlining (E.set_never_inline env))))
-              r expr
-          in
-          expr)
+      let r = ref r in
+      let exprs =
+        Array.init count.inlinable_uses (fun index ->
+          if index < 1 then begin
+            expr
+          end else begin
+            let expr, r =
+              simplify (E.activate_freshening (
+                  (E.disallow_continuation_inlining (E.set_never_inline env))))
+                !r expr
+            in
+            r := r;
+            expr
+          end)
+      in
+      exprs, !r
     in
-    Inlined (params, exprs)
+    Inlined (params, exprs, r)
   end else begin
 (*
 Format.eprintf "Not inlining apply_cont %a to %a (inlining benefit %a)\n%!"
@@ -174,7 +176,7 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
   in
   Continuation.With_args.Map.fold (fun (cont, args)
             (inline_unconditionally, count, env, approx, args_approxs)
-            ((inlinings, zero_uses) as acc) ->
+            ((inlinings, zero_uses, r) as acc) ->
       if count.inlinable_uses < 1 && not count.has_non_inlinable_uses then acc
       else
         let inlining_result =
@@ -195,19 +197,20 @@ Format.eprintf "Continuation %a used linearly? %b\n%!"
         in
         match inlining_result with
         | Didn't_inline -> acc
-        | Inlined (_params, bodies) ->
+        | Inlined (_params, bodies, r) ->
           let inlinings =
             Continuation.With_args.Map.add (cont, args) bodies inlinings
           in
-          inlinings, zero_uses)
+          inlinings, zero_uses, r)
     definitions
-    (Continuation.With_args.Map.empty, Continuation.Set.empty)
+    (Continuation.With_args.Map.empty, Continuation.Set.empty, r)
 
 (* At the moment this doesn't apply the substitution to handlers as we
    discover inlinings (unlike what happens for function inlining).  Let's
    see how it goes. *)
 let substitute r (expr : Flambda.expr) ~inlinings ~zero_uses =
   let counts = Continuation.With_args.Tbl.create 42 in
+  let r = ref r in
   let expr =
     Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
         match expr with
@@ -218,6 +221,12 @@ let substitute r (expr : Flambda.expr) ~inlinings ~zero_uses =
           if Continuation.Set.mem name zero_uses then body
           else expr
         | Apply_cont (cont, trap_action, args) ->
+          (* Uses are forgotten one by one: it's possible that new calls to
+             a continuation being inlined out, with the same arguments as
+             at a point where it is being inlined, arose whilst inlining some
+             other continuation.  As such we can't just unilaterally forget all
+             uses of (cont, args) within [r]. *)
+          r := R.forget_one_continuation_use r cont ~args;
           begin match Continuation.With_args.Map.find (cont, args) inlinings with
           | exception Not_found -> expr
           | inlined_bodies ->
@@ -240,8 +249,12 @@ let substitute r (expr : Flambda.expr) ~inlinings ~zero_uses =
             | None ->
               inlined_body
             | Some trap_action ->
-              (* We have to make a new continuation as we must preserve the
-                 trap. *)
+              (* CR mshinwell: This should maybe be done instead by
+                 [Continuation_specialisation].  This probably requires
+                 changing [Continuation_uses] so it can track which uses are
+                 inlinable and which are only specialisable, or similar.
+                 (May be a good change anyway.) *)
+              (* We have to eta-expand in order to preserve the trap. *)
               let new_cont = Continuation.create () in
               Let_cont {
                 body = Apply_cont (new_cont, Some trap_action, []);
@@ -267,7 +280,7 @@ let for_toplevel_expression expr r ~simplify =
 (*
 Format.eprintf "Continuation inlining starting on:@;%a@;" Flambda.print expr;
 *)
-  let inlinings, zero_uses = find_inlinings r ~simplify in
+  let inlinings, zero_uses, r = find_inlinings r ~simplify in
 let expr, r =  substitute r expr ~inlinings ~zero_uses in
 (*
 Format.eprintf "Continuation inlining returns:@;%a@;" Flambda.print expr;
