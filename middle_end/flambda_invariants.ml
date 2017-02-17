@@ -1128,7 +1128,7 @@ let check_toplevel_simplification_result r expr ~descr =
         Flambda.print expr
     end;
     let defined_continuations_in_r =
-      Continuation.Map.keys (R.defined_continuations r)
+      Continuation.Map.keys (R.continuation_definitions_with_uses r)
     in
     let defined_continuations =
       Flambda_utils.all_defined_continuations_toplevel expr
