@@ -414,7 +414,7 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
     specialisations
     (Continuation.Map.empty, Continuation.With_args.Map.empty, r)
 
-let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
+let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
         ~apply_cont_rewrites =
   let module Placement = Place_continuations.Placement in
   let placed =
@@ -435,89 +435,85 @@ let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
       in
       Some expr
   in
-  let r = ref r in
-  let expr =
-    Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) : Flambda.t ->
-        match expr with
-        | Let { var; defining_expr; body } ->
-          let placement : Placement.t = After_let var in
-          begin match place ~placement ~around:body with
-          | None -> expr
-          | Some body -> Flambda.create_let var defining_expr body
-          end
-        | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
-          let done_something = ref false in
-          let placement : Placement.t = Just_inside_continuation name in
-          let handler_body =
-            match place ~placement ~around:handler.handler with
-            | None -> handler.handler
-            | Some handler_body ->
-              done_something := true;
-              handler_body
+  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) : Flambda.t ->
+      match expr with
+      | Let { var; defining_expr; body } ->
+        let placement : Placement.t = After_let var in
+        begin match place ~placement ~around:body with
+        | None -> expr
+        | Some body -> Flambda.create_let var defining_expr body
+        end
+      | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+        let done_something = ref false in
+        let placement : Placement.t = Just_inside_continuation name in
+        let handler_body =
+          match place ~placement ~around:handler.handler with
+          | None -> handler.handler
+          | Some handler_body ->
+            done_something := true;
+            handler_body
+        in
+        let body =
+          let placement : Placement.t =
+            After_let_cont (Continuation.Set.singleton name)
           in
-          let body =
-            let placement : Placement.t =
-              After_let_cont (Continuation.Set.singleton name)
-            in
-            match place ~placement ~around:body with
-            | None -> body
-            | Some body ->
-              done_something := true;
-              body
+          match place ~placement ~around:body with
+          | None -> body
+          | Some body ->
+            done_something := true;
+            body
+        in
+        if not !done_something then expr
+        else
+          Let_cont {
+            body;
+            handlers = Nonrecursive { name; handler = {
+              handler with handler = handler_body; };
+            };
+          }
+      | Let_cont { body; handlers = Recursive handlers; } ->
+        let done_something = ref false in
+        let handlers =
+          Continuation.Map.mapi (fun name
+                  (handler : Flambda.continuation_handler) ->
+              let placement : Placement.t = Just_inside_continuation name in
+              begin match place ~placement ~around:handler.handler with
+              | None -> handler
+              | Some handler_body ->
+                done_something := true;
+                { handler with handler = handler_body; }
+              end)
+            handlers
+        in
+        let body =
+          let placement : Placement.t =
+            After_let_cont (Continuation.Map.keys handlers)
           in
-          if not !done_something then expr
-          else
-            Let_cont {
-              body;
-              handlers = Nonrecursive { name; handler = {
-                handler with handler = handler_body; };
-              };
-            }
-        | Let_cont { body; handlers = Recursive handlers; } ->
-          let done_something = ref false in
-          let handlers =
-            Continuation.Map.mapi (fun name
-                    (handler : Flambda.continuation_handler) ->
-                let placement : Placement.t = Just_inside_continuation name in
-                begin match place ~placement ~around:handler.handler with
-                | None -> handler
-                | Some handler_body ->
-                  done_something := true;
-                  { handler with handler = handler_body; }
-                end)
-              handlers
-          in
-          let body =
-            let placement : Placement.t =
-              After_let_cont (Continuation.Map.keys handlers)
-            in
-            match place ~placement ~around:body with
-            | None -> body
-            | Some body ->
-              done_something := true;
-              body
-          in
-          if not !done_something then expr
-          else Let_cont { body; handlers = Recursive handlers; }
-        | Apply_cont (cont, trap_action, args) ->
-          let key = cont, args in
-          begin match
-            Continuation.With_args.Map.find key apply_cont_rewrites
-          with
-          | exception Not_found -> expr
-          | new_cont ->
-            assert (trap_action = None);
-            (* As per the comment above on [try_specialising], we don't need
-               to touch [r] here, since it has already been updated to reflect
-               the fact that all [Apply_cont (cont, _, args)] are going to be
-               rewritten to point at [new_cont] instead. *)
-            Apply_cont (new_cont, None, args)
-          end
-        | Let_cont { handlers = Alias _; _ }
-        | Apply _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
-      expr
-  in
-  expr, !r
+          match place ~placement ~around:body with
+          | None -> body
+          | Some body ->
+            done_something := true;
+            body
+        in
+        if not !done_something then expr
+        else Let_cont { body; handlers = Recursive handlers; }
+      | Apply_cont (cont, trap_action, args) ->
+        let key = cont, args in
+        begin match
+          Continuation.With_args.Map.find key apply_cont_rewrites
+        with
+        | exception Not_found -> expr
+        | new_cont ->
+          assert (trap_action = None);
+          (* As per the comment above on [try_specialising], we don't need
+              to touch [r] here, since it has already been updated to reflect
+              the fact that all [Apply_cont (cont, _, args)] are going to be
+              rewritten to point at [new_cont] instead. *)
+          Apply_cont (new_cont, None, args)
+        end
+      | Let_cont { handlers = Alias _; _ }
+      | Apply _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
+    expr
 
 let for_toplevel_expression expr ~vars_in_scope r ~simplify_let_cont_handlers
       ~backend =
@@ -533,7 +529,7 @@ Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a
     expr, r
   end else begin
 let output, r =
-  insert_specialisations r expr ~vars_in_scope ~new_conts ~apply_cont_rewrites
+  insert_specialisations expr ~vars_in_scope ~new_conts ~apply_cont_rewrites
 in
 (*
 Format.eprintf "Output of Continuation_specialisation:\n@;%a\n"
