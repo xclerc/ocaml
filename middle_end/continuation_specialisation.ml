@@ -133,17 +133,33 @@ let try_specialising r ~cont ~cont_application_points
       old_handlers
       Continuation.Map.empty
   in
-  let r =
     (* Any calls to a continuation ("k") being specialised from within that
        continuation will be automatically repointed at the specialised
        version by virtue of the freshening in the environment.  However it is
        possible that the specialisation of another continuation yields calls
        to "k" within its body.
     *)
-(* XXX wrong *)
+(*
+
+let_cont k x y = ... in
+
+-->
+
+let_cont k x y *stub* = apply_cont k_spec x y in
+let_cont k_spec x y { x = x' } = ... in
+
+i.e. instead of keeping the original [k], we change its definition to be
+a stub.  The inliner will then remove it.  This is kind of like repointing
+all of the continuations to be specialised in [r] at once, except that it
+doesn't muck up the usage information for ones that we don't end up
+specialising.
+
+...Except this doesn't work, since there might be multiple specialisations
+of the same continuation.  So we really do have to rewrite [Apply_cont].
+
     R.repoint_continuation_uses ~cont_application_points
       ~freshening:(E.freshening env)
-  in
+*)
   let r = R.reset_benefit r in
   let new_handlers, r =
     simplify_let_cont_handlers ~env ~r ~handlers:new_handlers

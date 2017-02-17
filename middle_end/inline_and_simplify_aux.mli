@@ -415,20 +415,6 @@ module Result : sig
     -> (Continuation_uses.t * Continuation_approx.t * Env.t
       * Asttypes.rec_flag) Continuation.Map.t
 
-  (** Given a mapping (specified as a freshening) from old to new continuations
-      and a set of uses of the old continuations (with their various arguments)
-      then update [t] to reflect the fact that all such uses are going to be
-      rewritten in the corresponding term to point at the "new" continuations
-      as mapped to by the freshening.  (This is used when specialising
-      continuations.)
-      Note that [cont_application_points] does not have to cover _all_ uses
-      of the continuations. *)
-  val repoint_continuation_uses
-     : t
-    -> cont_application_points:Continuation.With_args.Set.t
-    -> freshening:Freshening.t
-    -> t
-
   (** Check that there is no continuation binding construct in scope. *)
   val no_continuations_in_scope : t -> bool
 

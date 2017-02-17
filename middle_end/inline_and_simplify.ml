@@ -2219,11 +2219,13 @@ and simplify_toplevel env r expr ~continuation ~descr =
       in
       Flambda_invariants.check_toplevel_simplification_result r expr
         ~continuation ~descr;
-      let expr, r =
+      let expr =
         Continuation_inlining.for_toplevel_expression expr r ~simplify
       in
-      Flambda_invariants.check_toplevel_simplification_result r expr
-        ~continuation ~descr;
+      (* [Continuation_inlining] doesn't update [r] with any usage information;
+         but all we need now is the approximation for the parameter(s) of
+         the return [continuation], which won't have been changed by that
+         pass anyway. *)
       expr, r
     end
   in

@@ -19,7 +19,11 @@
     [Initialize_symbol] bodies and [Effect] bodies) after simplification
     and collection of continuation use information has happened.  Separation
     from the main simplification loop reduces the complexity of the inlining
-    from quadratic to linear. *)
+    from quadratic to linear.
+
+    This pass does not compute updated continuation usage information and
+    as such does not return a [Result.t].
+*)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
@@ -30,4 +34,4 @@ val for_toplevel_expression
     -> Inline_and_simplify_aux.Result.t
     -> Flambda.expr
     -> Flambda.expr * Inline_and_simplify_aux.Result.t)
-  -> Flambda.expr * Inline_and_simplify_aux.Result.t
+  -> Flambda.expr
