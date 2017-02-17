@@ -680,7 +680,7 @@ and simplify_set_of_closures original_env r
       ~set_of_closures ~function_decls ~only_for_function_decl:None
       ~freshen:true
   in
-  let continuation_uses = Continuation.Tbl.create 42 in
+  let continuation_param_uses = Continuation.Tbl.create 42 in
   let simplify_function fun_var (function_decl : Flambda.function_declaration)
         (funs, used_params, r)
         : Flambda.function_declaration Variable.Map.t * Variable.Set.t * R.t =
@@ -719,24 +719,15 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
 Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
   Flambda.print function_decl.body E.print body_env;
 *)
-          let body, r = simplify body_env r function_decl.body in
-          let body, r =
-            if E.never_inline body_env then
-              body, r
-            else
-              let vars_in_scope =
-                (* CR mshinwell: This should be empty if the function
-                   declarations aren't recursive.  Although this probably
-                   doesn't actually matter *)
-                Variable.Set.union (Variable.Map.keys function_decls.funs)
-                  (Variable.Set.of_list function_decl.params)
-              in
-              inline_and_specialise_continuations env r ~body ~simplify
-                ~vars_in_scope
-                ~backend:(E.backend env)
+          let body, r, uses =
+            let descr =
+              Format.asprintf "body of %a" Variable.print fun_var
+            in
+            simplify_toplevel body_env r function_decl.body
+              ~continuation:continuation_param
+              ~descr
           in
-          let r, uses = R.exit_scope_catch r env continuation_param in
-          Continuation.Tbl.add continuation_uses continuation_param uses;
+          Continuation.Tbl.add continuation_param_uses continuation_param uses;
           body, r)
     in
     let inline : Lambda.inline_attribute =
@@ -781,7 +772,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     Variable.Map.fold simplify_function function_decls.funs
       (Variable.Map.empty, Variable.Set.empty, r)
   in
-  let continuation_uses = Continuation.Tbl.to_map continuation_uses in
+  let continuation_param_uses = Continuation.Tbl.to_map continuation_uses in
   let function_decls =
     Flambda.update_function_declarations function_decls ~funs
   in
@@ -789,34 +780,11 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     if E.never_inline env then
       function_decls, Variable.Map.empty
     else
-      Unbox_returns.run ~continuation_uses ~function_decls ~specialised_args
-        ~backend:(E.backend env)
+      Unbox_returns.run ~continuation_uses:continuation_param_uses
+        ~function_decls ~specialised_args ~backend:(E.backend env)
   in
   let specialised_args =
     Variable.Map.disjoint_union specialised_args new_specialised_args
-  in
-  let r =
-    Variable.Map.fold (fun _fun_var
-            (function_decl : Flambda.function_declaration) r ->
-        let return_cont = function_decl.continuation_param in
-        let cont_approx =
-          Continuation_approx.create_unknown ~name:return_cont
-            ~num_params:function_decl.return_arity
-        in
-        let uses =
-          (* Since we're about to finish simplifying a set of closures, and
-             continuation use-def pairs cannot cross closure boundaries, the
-             usage information can just be empty. *)
-          (* CR mshinwell: Make sure [Flambda_invariants] checks this use-def
-             invariant. *)
-          Inline_and_simplify_aux.Continuation_uses.create
-            ~continuation:return_cont
-            ~backend:(E.backend env)
-        in
-        R.define_continuation r return_cont env Nonrecursive
-          uses cont_approx)
-      function_decls.funs
-      r
   in
   let invariant_params =
     lazy (Invariant_params.Functions.invariant_params_in_recursion
@@ -1185,17 +1153,6 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
     }
   in
   expr, r
-
-and inline_and_specialise_continuations env r ~vars_in_scope ~body ~simplify
-      ~backend =
-  if E.never_inline_continuations env then
-    body, r
-  else
-    let body, r =
-      Continuation_specialisation.for_toplevel_expression body
-        ~vars_in_scope r ~simplify_let_cont_handlers ~backend
-    in
-    Continuation_inlining.for_toplevel_expression body r ~simplify
 
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
@@ -2231,6 +2188,83 @@ Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
       end)
   | Proved_unreachable -> Proved_unreachable, ret r A.value_bottom
 
+and simplify_toplevel env r expr ~continuation ~descr =
+  if not (Continuation.Map.mem continuation (E.continuations_in_scope env)
+  then begin
+    Misc.fatal_errorf "The continuation parameter (%a) must be in the \
+        environment before calling [simplify_toplevel]"
+      Continuation.print continuation
+  end;
+  (* Use-def pairs of continuations cannot cross function boundaries.
+     We localise the uses and definitions of continuations within each
+     toplevel expression / function body by using the snapshot/restore
+     functions in [R].  This ensures in particular that passes such as
+     [Continuation_specialisation] which look at the defined
+     continuations information in [r] won't see definitions that don't
+     actually exist at toplevel in the expression they are analysing.
+  *)
+  let continuation_uses_snapshot, r =
+    R.snapshot_and_forget_continuation_uses r
+  in
+  let expr, r = simplify env r expr in
+  let expr, r =
+    Flambda_invariants.check_simplification_result r expr;
+    if E.never_inline_continuations env then begin
+      expr, r
+    end else begin
+      (* Continuation inlining and specialisation is done now, rather than
+         during [simplify]'s traversal itself, to reduce quadratic behaviour
+         to linear (with a constant factor of about two). *)
+      let expr, r =
+        let vars_in_scope = E.vars_in_scope env in
+        Continuation_specialisation.for_toplevel_expression expr
+          ~vars_in_scope r ~simplify_let_cont_handlers
+          ~backend:(E.backend env)
+      in
+      Flambda_invariants.check_simplification_result r expr;
+      (* [Continuation_inlining] is allowed to be sloppy with [r] since we
+         don't need continuation usage information after it's finished. *)
+      Continuation_inlining.for_toplevel_expression expr r ~simplify
+    end
+  in
+  let r, uses = R.exit_scope_catch r env continuation in
+  let r = roll_back_continuation_uses r continuation_uses_snapshot in
+  (* At this stage:
+     - no continuation defined in [expr] should be mentioned in [r];
+     - the free continuations of [expr] must be at most the [continuation]
+       parameter. *)
+  if !Clflags.flambda_invariant_checks then begin
+    let defined_conts = Flambda_utils.all_defined_continuations_toplevel expr in
+    let r_used = R.used_continuations r in
+    let r_defined =
+      Continuation.Map.keys (R.continuation_definitions_with_uses r)
+    in
+    let check_defined from_r descr' =
+      let bad = Continuation.Set.inter defined_conts from_r in
+      if not (Continuation.Set.is_empty bad) then begin
+        Misc.fatal_errorf "Continuations (%a) defined locally to %s are still \
+            mentioned in [r] upon leaving [simplify_toplevel]:@ \n%a"
+          Continuation.Set.print bad
+          descr
+          Flambda.print expr
+      end
+    in
+    let free_conts = Flambda.free_continuations expr in
+    let bad_free_conts =
+      Continuation.Set.diff free_conts
+        (Continuation.Set.singleton continuation)
+    in
+    if not (Continuation.Set.is_empty free_conts) then begin
+      Misc.fatal_errorf "The free continuations of %s \
+          must be at most {%a} (but are instead {%a}):@ \n%a"
+        descr
+        Continuation.print continuation
+        Continuation.Set.print bad_free_conts
+        Flambda.print expr
+    end
+  end;
+  expr, r, uses
+
 and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~fun_var =
   let function_decl =
@@ -2472,6 +2506,9 @@ let rec simplify_program_body env r (program : Flambda.program_body)
 Format.eprintf "Simplifying initialize_symbol field:@;%a"
   Flambda.print h;
 *)
+        let continuation_uses_snapshot, r =
+          R.snapshot_and_forget_continuation_uses r
+        in
         let h', r = simplify env r h in
         let h', r =
           inline_and_specialise_continuations env r
@@ -2481,6 +2518,7 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
         in
         let new_approxs = R.continuation_args_approxs r cont ~num_params:1 in
         let r, _uses = R.exit_scope_catch r env cont in
+        let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
         let approx =
           match new_approxs with
           | [approx] -> approx
@@ -2518,6 +2556,9 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
       Continuation_approx.create_unknown ~name:cont ~num_params:1
     in
     let env = E.add_continuation env cont cont_approx in
+    let continuation_uses_snapshot, r =
+      R.snapshot_and_forget_continuation_uses r
+    in
     let expr, r = simplify env r expr in
     let expr, r =
       inline_and_specialise_continuations env r ~body:expr
@@ -2526,6 +2567,7 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     in
     let program, r = simplify_program_body env r program in
     let r, _uses = R.exit_scope_catch r env cont in
+    let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
     Effect (expr, cont, program), r
   | End root -> End root, r
 
@@ -2580,9 +2622,10 @@ let run ~never_inline ~allow_continuation_inlining ~backend ~prefixname ~round
   let result = Flambda_utils.introduce_needed_import_symbols result in
   if not (R.no_continuations_in_scope r)
   then begin
-    Misc.fatal_error (Format.asprintf "Remaining continuation vars: %a@.%a@."
+    Misc.fatal_errorf "Continuations %a had uses but not definitions recorded \
+        in [r] by the end of simplification.  Program:@ \n%a"
       Continuation.Set.print (R.used_continuations r)
-      Flambda.print_program result)
+      Flambda.print_program result
   end;
   assert (R.no_continuations_in_scope r);
   if !Clflags.inlining_report then begin

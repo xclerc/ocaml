@@ -247,3 +247,6 @@ val create_wrapper_params
   -> specialised_args:Flambda.specialised_args
   -> freshening_already_assigned:Variable.t Variable.Map.t
   -> Variable.t Variable.Map.t * Variable.t list * Flambda.specialised_args
+
+(** All continuations defined at toplevel within the given expression. *)
+val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t

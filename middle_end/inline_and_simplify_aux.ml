@@ -237,6 +237,8 @@ module Env = struct
   let find_list_exn t vars =
     List.map (fun var -> find_exn t var) vars
 
+  let vars_in_scope t = Variable.Map.keys t.approx
+
   let find_opt t id =
     try Some (really_import_approx t
                 (snd (Variable.Map.find id t.approx)))
@@ -622,12 +624,17 @@ end
 module Continuation_usage_snapshot = struct
   type t = {
     used_continuations : Continuation_uses.t Continuation.Map.t;
+    defined_continuations :
+      (Continuation_uses.t * Continuation_approx.t * Env.t
+          * Asttypes.rec_flag)
+        Continuation.Map.t;
   }
 end
 
 module Result = struct
   type t =
     { approx : Simple_value_approx.t;
+      (* CR mshinwell: What about combining these next two? *)
       used_continuations : Continuation_uses.t Continuation.Map.t;
       defined_continuations :
         (Continuation_uses.t * Continuation_approx.t * Env.t
@@ -738,19 +745,23 @@ end;
   let snapshot_continuation_uses t =
     { Continuation_usage_snapshot.
       used_continuations = t.used_continuations;
+      defined_continuations = t.defined_continuations;
     }
 
+  let snapshot_and_forget_continuation_uses t =
+    let snapshot = snapshot_continuation_uses t in
+    let t =
+      { t with
+        used_continuations = Continuation.Map.empty;
+        defined_continuations = Continuation.Map.empty;
+      }
+    in
+    snapshot, t
+
   let roll_back_continuation_uses t (snapshot : Continuation_usage_snapshot.t) =
-    let conts_then = Continuation.Map.keys snapshot.used_continuations in
-    let conts_now = Continuation.Map.keys t.used_continuations in
-    if not (Continuation.Set.subset conts_then conts_now) then begin
-      Misc.fatal_errorf "Cannot roll back continuation uses: at the time of \
-          snapshotting the used continuations were %a but now they are %a"
-        Continuation.Set.print conts_then
-        Continuation.Set.print conts_now
-    end;
     { t with
       used_continuations = snapshot.used_continuations;
+      defined_continuations = snapshot.defined_continuations;
     }
 
   let continuation_unused t cont =

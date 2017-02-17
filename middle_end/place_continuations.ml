@@ -91,6 +91,15 @@ type insertion_state = {
 }
 
 let find_insertion_points expr ~vars_in_scope ~new_conts =
+  if !Clflags.flambda_invariant_checks then begin
+    let all_conts = Flambda_utils.all_defined_continuations_toplevel expr in
+    let add_after = Continuation.Map.keys new_conts in
+    let not_defined = Continuation.Set.diff add_after all_conts in
+    Misc.fatal_errorf "Request to place continuation(s) after continuation(s) \
+        {%a} that are not defined in the provided expression:@ \n%a"
+      Continuation.Set.print not_defined
+      Flambda.print expr
+  end;
 (*
 Format.eprintf "Finding insertion points in:@ \n%a\n%!" Flambda.print expr;
 *)

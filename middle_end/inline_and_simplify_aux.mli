@@ -83,6 +83,8 @@ module Env : sig
   (** Like [find_exn], but for a list of variables. *)
   val find_list_exn : t -> Variable.t list -> Simple_value_approx.t list
 
+  val vars_in_scope : t -> Variable.Set.t
+
   val does_not_bind : t -> Variable.t list -> bool
 
   val does_not_freshen : t -> Variable.t list -> bool
@@ -369,6 +371,10 @@ module Result : sig
     -> t
 
   val snapshot_continuation_uses : t -> Continuation_usage_snapshot.t
+
+  val snapshot_and_forget_continuation_uses
+     : t
+    -> Continuation_usage_snapshot.t * t
 
   val roll_back_continuation_uses : t -> Continuation_usage_snapshot.t -> t
 

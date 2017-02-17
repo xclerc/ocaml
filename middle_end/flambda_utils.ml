@@ -932,3 +932,18 @@ let create_wrapper_params ~params ~specialised_args
       Variable.Map.empty
   in
   renaming_map, wrapper_params, wrapper_specialised_args
+
+let all_defined_continuations_toplevel expr =
+  let defined_continuations = ref Continuation.Set.empty in
+  Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
+      match expr with
+      | Let_cont { handlers = Nonrecursive { name; _ }; _ } ->
+        defined_continuations :=
+          Continuation.Set.add name !defined_continuations
+      | Let_cont { handlers = Recursive handlers; _ } ->
+        defined_continuations :=
+          Continuation.Set.union (Continuation.Map.keys handlers)
+            !defined_continuations
+      | _ -> ())
+    (fun _named -> ())
+    expr
