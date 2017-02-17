@@ -707,9 +707,9 @@ end;
       | exception Not_found -> t.used_continuations
       | uses ->
         (* CR mshinwell: This should presumably remove the entry from
-          [used_continuations] if no more uses (inlinable or non-inlinable)
-          remain---otherwise e.g. [continuation_unused], below, won't be
-          correct *)
+           [used_continuations] if no more uses (inlinable or non-inlinable)
+           remain---otherwise e.g. [continuation_unused], below, won't be
+           correct *)
         let uses = Continuation_uses.remove_inlinable_uses uses ~args in
         Continuation.Map.add cont uses t.used_continuations
     in

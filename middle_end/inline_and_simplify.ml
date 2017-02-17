@@ -715,10 +715,8 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
           (Inlining_decision.should_inline_inside_declaration function_decl)
         ~dbg:function_decl.dbg
         ~f:(fun body_env ->
-(*
 Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
   Flambda.print function_decl.body E.print body_env;
-*)
           let body, r, uses =
             let descr =
               Format.asprintf "body of %a" Variable.print fun_var

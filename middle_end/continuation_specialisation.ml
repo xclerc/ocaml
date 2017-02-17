@@ -22,17 +22,30 @@ module R = Inline_and_simplify_aux.Result
 
 type specialising_result =
   | Didn't_specialise
-  | Specialised of Continuation.t * Flambda.let_cont_handlers
+  | Specialised of Continuation.t * Flambda.let_cont_handlers * R.t
 
 (* This function constructs a suitable environment for simplification of a
    continuation's body that is eligible for specialisation.  The freshening
    of the body is performed during the simplification.
+
    If the continuation is defined simultaneously with others, all of the
-   bodies will be simplified; specialised argument information may be
-   introduced for continuations apart from the starting point (called [cont])
-   using the invariant parameters flow information.
+   bodies will be simplified; specialised argument information may also be
+   introduced for continuations in the same group using the invariant
+   parameters flow information.  This saves multiple rounds of simplification
+   being required to propagate around mutually-recursive continuations.
+
+   In the event that specialisation succeeds the returned [r] will have been
+   updated with continuation use and definition information for the new
+   continuations; further, uses of the original continuations as specified in
+   [cont_application_points] will have been rewritten in [r] to point at the
+   specialised continuations.  To ensure this remains valid the caller must
+   make the corresponding rewriting at the [Apply_cont]s in the expression.
+   (It's done like this to ensure that we don't simplify the specialised
+   handlers using argument approximations that might be less precise than what
+   they were last time the handlers were simplified.)
 *)
-let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
+let try_specialising r ~cont ~cont_application_points
+      ~(old_handlers : Flambda.continuation_handlers)
       ~(newly_specialised_args : Flambda.specialised_args)
       ~invariant_params_flow ~env ~recursive ~simplify_let_cont_handlers
       : specialising_result =
@@ -121,30 +134,17 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       Continuation.Map.empty
   in
   let r =
-    Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
-            r ->
-        let num_params = List.length handler.params in
-        let args_approxs =
-          Array.to_list (Array.init num_params (
-            fun _ -> A.value_unknown Other))
-        in
-        let cont = Freshening.apply_static_exception (E.freshening env) cont in
-        R.use_continuation r env cont ~inlinable_position:false
-          ~args:[] ~args_approxs)
-      old_handlers
-      (R.create ())
+    R.repoint_continuation_uses ~cont_application_points
+      ~freshening:(E.freshening env)
   in
+  let r = R.reset_benefit r in
   let new_handlers, r =
     simplify_let_cont_handlers ~env ~r ~handlers:new_handlers
       ~recursive ~freshening:(E.freshening env)
       ~update_use_env:(fun env -> env)
   in
   match new_handlers with
-  | None ->
-(*
-Format.eprintf "try_specialising: None case\n%!";
-*)
-    Didn't_specialise
+  | None -> Didn't_specialise
   | Some new_handlers ->
 (*
 Format.eprintf "try_specialising: new handlers:\n@ %a\n%!"
@@ -181,7 +181,7 @@ Format.eprintf "try_specialising: new handlers:\n@ %a\n%!"
 Format.eprintf "Evaluating %a\n%!" (W.print_description ~subfunctions:false) wsb;
 *)
     if W.evaluate wsb then
-      Specialised (entry_point_new_cont, new_handlers)
+      Specialised (entry_point_new_cont, new_handlers, r)
     else
       Didn't_specialise
 
@@ -202,11 +202,7 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
      The second map just maps continuations to their handlers (including any
      handlers defined simultaneously) and the environment of definition. *)
   let definitions_with_uses =
-(*
-    Continuation.Map.filter (fun cont _ ->
-        Continuation.Set.mem cont defined_continuations)
-*)
-      (R.continuation_definitions_with_uses r)
+    R.continuation_definitions_with_uses r
   in
   let specialisations, conts_to_handlers =
     (* CR mshinwell: [recursive] appears to be redundant with
@@ -357,7 +353,8 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
      second is used to rewrite [Apply_cont] to specialised continuations. *)
   Continuation_with_specialised_args.Map.fold (fun
           (cont, newly_specialised_args)
-          cont_application_points ((new_conts, apply_cont_rewrites) as acc) ->
+          cont_application_points
+          ((r, new_conts, apply_cont_rewrites) as acc) ->
       let old_handlers, env, invariant_params_flow, recursive =
         match Continuation.Map.find cont conts_to_handlers with
         | exception Not_found -> assert false  (* see above *)
@@ -387,11 +384,12 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
            already-specialised arguments.  (It isn't clear whether there is
            such a check for functions.) *)
         match
-          try_specialising ~cont ~old_handlers ~newly_specialised_args
-            ~invariant_params_flow ~env ~recursive ~simplify_let_cont_handlers
+          try_specialising ~cont ~cont_application_points ~old_handlers
+            ~newly_specialised_args ~invariant_params_flow ~env ~recursive
+            ~simplify_let_cont_handlers
         with
         | Didn't_specialise -> acc
-        | Specialised (entry_point_new_cont, new_handlers) ->
+        | Specialised (entry_point_new_cont, new_handlers, r) ->
           let existing_conts =
             match Continuation.Map.find cont new_conts with
             | exception Not_found -> []
@@ -412,9 +410,9 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
               cont_application_points
               apply_cont_rewrites
           in
-          new_conts, apply_cont_rewrites)
+          new_conts, apply_cont_rewrites, r)
     specialisations
-    (Continuation.Map.empty, Continuation.With_args.Map.empty)
+    (Continuation.Map.empty, Continuation.With_args.Map.empty, r)
 
 let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
         ~apply_cont_rewrites =
@@ -509,11 +507,10 @@ let insert_specialisations r (expr : Flambda.expr) ~vars_in_scope ~new_conts
           | exception Not_found -> expr
           | new_cont ->
             assert (trap_action = None);
-            (* We drop the usage information for specialised continuations
-               (and we don't define the specialised continuations in [r]) so
-               that the inlining pass immediately after this one doesn't try
-               to inline the specialised versions. *)
-            r := R.forget_inlinable_continuation_uses !r cont ~args;
+            (* As per the comment above on [try_specialising], we don't need
+               to touch [r] here, since it has already been updated to reflect
+               the fact that all [Apply_cont (cont, _, args)] are going to be
+               rewritten to point at [new_cont] instead. *)
             Apply_cont (new_cont, None, args)
           end
         | Let_cont { handlers = Alias _; _ }
@@ -529,13 +526,7 @@ Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a
   Variable.Set.print vars_in_scope
   Flambda.print expr;
 *)
-(*
-  (* We can't just use the usage information in [r]; that contains the whole
-     history from the current simplification pass.  We must restrict
-     specialisation to the continuations defined in [expr]. *)
-  (* CR mshinwell: To Flambda_utils? *)
-*)
-  let new_conts, apply_cont_rewrites =
+  let new_conts, apply_cont_rewrites, r =
     find_specialisations r ~simplify_let_cont_handlers ~backend
   in
   if Continuation.Map.is_empty new_conts then begin
