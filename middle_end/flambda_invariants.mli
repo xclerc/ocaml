@@ -31,5 +31,6 @@ val check_exn
 val check_toplevel_simplification_result
    : Inline_and_simplify_aux.Result.t
   -> Flambda.expr
+  -> continuation:Continuation.t
   -> descr:string
   -> unit

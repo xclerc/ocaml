@@ -1049,9 +1049,11 @@ let rec free_continuations (expr : expr) =
   | Let_mutable { body; _ } ->
     free_continuations body
   | Let_cont { body; handlers; } ->
-    Continuation.Set.union
-      (free_continuations_of_let_cont_handlers ~handlers)
-      (free_continuations body)
+    let fcs_handlers, bound_conts =
+      free_continuations_of_let_cont_handlers' ~handlers
+    in
+    Continuation.Set.union fcs_handlers
+     (Continuation.Set.diff (free_continuations body) bound_conts)
   | Apply_cont (cont, trap_action, _args) ->
     let trap_action =
       match trap_action with
@@ -1071,18 +1073,31 @@ let rec free_continuations (expr : expr) =
     Continuation.Set.union failaction (Continuation.Set.of_list consts)
   | Proved_unreachable -> Continuation.Set.empty
 
-and free_continuations_of_let_cont_handlers ~(handlers : let_cont_handlers) =
+and free_continuations_of_let_cont_handlers' ~(handlers : let_cont_handlers) =
   match handlers with
-  | Alias { name = _; alias_of; } -> Continuation.Set.singleton alias_of
+  | Alias { name; alias_of; } ->
+    Continuation.Set.singleton alias_of, Continuation.Set.singleton name
   | Nonrecursive { name; handler = { handler; _ }; } ->
-    Continuation.Set.remove name (free_continuations handler)
+    let fcs = free_continuations handler in
+    if Continuation.Set.mem name fcs then begin
+      Misc.fatal_errorf "Nonrecursive [Let_cont] handler appears to be \
+          recursive:@ \n%a"
+        print_let_cont_handlers handlers
+    end;
+    fcs, Continuation.Set.singleton name
   | Recursive handlers ->
     let bound_conts = Continuation.Map.keys handlers in
-    Continuation.Map.fold (fun _name { handler; _ } fcs ->
-        Continuation.Set.union fcs
-          (Continuation.Set.diff (free_continuations handler) bound_conts))
-      handlers
-      Continuation.Set.empty
+    let fcs =
+      Continuation.Map.fold (fun _name { handler; _ } fcs ->
+          Continuation.Set.union fcs
+            (Continuation.Set.diff (free_continuations handler) bound_conts))
+        handlers
+        Continuation.Set.empty
+    in
+    fcs, bound_conts
+
+let free_continuations_of_let_cont_handlers ~(handlers : let_cont_handlers) =
+  fst (free_continuations_of_let_cont_handlers' ~handlers)
 
 let free_variables_of_let_cont_handlers (handlers : let_cont_handlers) =
   match handlers with

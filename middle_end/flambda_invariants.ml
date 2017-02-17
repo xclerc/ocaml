@@ -1117,14 +1117,18 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
   raise Flambda_invariants_failed
 end
 
-let check_toplevel_simplification_result r expr ~descr =
+let check_toplevel_simplification_result r expr ~continuation ~descr =
   if !Clflags.flambda_invariant_checks then begin
-    if not (R.no_continuations_in_scope r) then begin
+    let without_definitions = R.used_continuations r in
+    let bad_without_definitions =
+      Continuation.Set.remove continuation without_definitions
+    in
+    if not (Continuation.Set.is_empty bad_without_definitions) then begin
       Misc.fatal_errorf "The following continuations in %s \
           had uses but no definitions recorded for them in [r]: %a.  \
           Term:\n@ %a"
         descr
-        Continuation.Set.print (R.used_continuations r)
+        Continuation.Set.print bad_without_definitions
         Flambda.print expr
     end;
     let defined_continuations_in_r =

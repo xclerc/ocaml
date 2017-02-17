@@ -2210,7 +2210,8 @@ and simplify_toplevel env r expr ~continuation ~descr =
   in
   let expr, r = simplify env r expr in
   let expr, r =
-    Flambda_invariants.check_toplevel_simplification_result r expr ~descr;
+    Flambda_invariants.check_toplevel_simplification_result r expr
+      ~continuation ~descr;
     if E.never_inline_continuations env then begin
       expr, r
     end else begin
@@ -2223,11 +2224,13 @@ and simplify_toplevel env r expr ~continuation ~descr =
           ~vars_in_scope r ~simplify_let_cont_handlers
           ~backend:(E.backend env)
       in
-      Flambda_invariants.check_toplevel_simplification_result r expr ~descr;
+      Flambda_invariants.check_toplevel_simplification_result r expr
+        ~continuation ~descr;
       let expr, r =
         Continuation_inlining.for_toplevel_expression expr r ~simplify
       in
-      Flambda_invariants.check_toplevel_simplification_result r expr ~descr;
+      Flambda_invariants.check_toplevel_simplification_result r expr
+        ~continuation ~descr;
       expr, r
     end
   in
@@ -2261,12 +2264,12 @@ and simplify_toplevel env r expr ~continuation ~descr =
       Continuation.Set.diff free_conts
         (Continuation.Set.singleton continuation)
     in
-    if not (Continuation.Set.is_empty free_conts) then begin
+    if not (Continuation.Set.is_empty bad_free_conts) then begin
       Misc.fatal_errorf "The free continuations of %s \
           must be at most {%a} (but are instead {%a}):@ \n%a"
         descr
         Continuation.print continuation
-        Continuation.Set.print bad_free_conts
+        Continuation.Set.print free_conts
         Flambda.print expr
     end
   end;
