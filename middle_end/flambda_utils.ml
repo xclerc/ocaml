@@ -922,7 +922,7 @@ let create_wrapper_params ~params ~specialised_args
                 ~f:(fun param -> freshen_param param))
           in
           let spec_to : Flambda.specialised_to =
-            { var = Misc.Stdlib.Option.map freshen_param spec_to.var;
+            { var = spec_to.var;
               projection;
             }
           in
