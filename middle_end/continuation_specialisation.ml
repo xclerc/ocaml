@@ -139,26 +139,17 @@ let try_specialising r ~cont ~cont_application_points
        possible that the specialisation of another continuation yields calls
        to "k" within its body.
     *)
-(*
-
-let_cont k x y = ... in
-
--->
-
-let_cont k x y *stub* = apply_cont k_spec x y in
-let_cont k_spec x y { x = x' } = ... in
-
-i.e. instead of keeping the original [k], we change its definition to be
-a stub.  The inliner will then remove it.  This is kind of like repointing
-all of the continuations to be specialised in [r] at once, except that it
-doesn't muck up the usage information for ones that we don't end up
-specialising.
-
-...Except this doesn't work, since there might be multiple specialisations
-of the same continuation.  So we really do have to rewrite [Apply_cont].
-
-    R.repoint_continuation_uses ~cont_application_points
-      ~freshening:(E.freshening env)
+(* Next attempt:
+- Record how many instances of a given (cont, arg) pair there are to
+be specialised.
+- We can construct the [r] for simplification using that number.  If one of
+the previous handlers happened to produce one of the same (cont, arg) pairs
+then it doesn't matter: we're not removing anything from [r].  (Maybe that's
+the key thing: removal from usage information in [r] should be done in as
+few places as possible.)
+- Rewrite apply_conts as at present to point at the specialised continuation.
+Each time we rewrite one, as when inlining, we remove one use of that
+(cont, arg) pair.
 *)
   let r = R.reset_benefit r in
   let new_handlers, r =
@@ -216,7 +207,7 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
   let module U = Inline_and_simplify_aux.Continuation_uses in
   (* The first step constructs two maps.  The first of these is:
           (continuation * (specialised_params -> arg))
-       -> set of (continuation * args)
+       -> (continuation * args) -> number of occurrences of such pair
      which groups together uses of the continuation where some subset of
      its invariant parameters have the same arguments across those uses.  The
      range of the map enables identification of the corresponding [Apply_cont]
