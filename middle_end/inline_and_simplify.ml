@@ -721,7 +721,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
 *)
           let body, r, uses =
             let descr =
-              Format.asprintf "body of %a" Variable.print fun_var
+              Format.asprintf "the body of %a" Variable.print fun_var
             in
             simplify_toplevel body_env r function_decl.body
               ~continuation:continuation_param
@@ -1203,7 +1203,6 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
         (E.set_freshening env freshening)
         params_and_approxs
     in
-    let r = R.forget_continuation_definition r cont in
 (*Format.eprintf "Inlining stub: %a\n%!" Continuation.print cont;*)
     let stub's_body : Flambda.expr =
       match trap_action with
@@ -1771,9 +1770,8 @@ and simplify_let_cont_handlers ~env ~r ~handlers
      can get rid of stubs inside recursive bindings *)
   if all_unused then begin
 (*
-Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
-  Continuation.Set.print (Continuation.Map.keys handlers)
-  Flambda.print body;
+Format.eprintf "Deleting handlers binding %a\n%!"
+  Continuation.Set.print (Continuation.Map.keys handlers);
 *)
     let r =
       Continuation.Map.fold (fun cont _ r ->
@@ -1831,19 +1829,23 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
           let r, uses =
             R.exit_scope_catch ~update_use_env r env cont
           in
-          if Inline_and_simplify_aux.Continuation_uses.unused uses then
+          if Inline_and_simplify_aux.Continuation_uses.unused uses then begin
+(*Format.eprintf "Removing %a\n%!" Continuation.print cont;*)
             let handlers = Continuation.Map.remove cont handlers in
             let r = R.forget_continuation_definition r cont in
             r, handlers
-          else
+          end else begin
+(*Format.eprintf "Defining %a\n%!" Continuation.print cont;*)
             let r = R.define_continuation r cont env recursive uses approx in
-            r, handlers)
+            r, handlers
+          end)
         approxs
         (r, handlers)
     in
-    if Continuation.Map.is_empty handlers then
+    if Continuation.Map.is_empty handlers then begin
+(*Format.eprintf "No handlers left!\n%!";*)
       None, r
-    else
+    end else
       match recursive with
       | Nonrecursive ->
         begin match Continuation.Map.bindings handlers with

@@ -391,7 +391,7 @@ module Result : sig
 
   val non_recursive_continuations_used_linearly_in_inlinable_position
      : t
-    -> Flambda.continuation_handler Continuation.Map.t
+    -> Continuation.Set.t
 
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)

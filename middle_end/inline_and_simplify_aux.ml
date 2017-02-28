@@ -680,13 +680,12 @@ end;
     }
 
   let non_recursive_continuations_used_linearly_in_inlinable_position t =
-    Continuation.Map.filter_map t.defined_continuations
-      ~f:(fun _cont (uses, approx, _env, _recursive) ->
-        if not (Continuation_uses.linearly_used uses) then None
-        else
-          match Continuation_approx.handlers approx with
-          | Some (Nonrecursive handler) -> Some handler
-          | None | Some (Recursive _) -> None)
+    let used_linearly =
+      Continuation.Map.filter (fun _cont (uses, _approx, _env, _recursive) ->
+          Continuation_uses.linearly_used uses)
+        t.defined_continuations
+    in
+    Continuation.Map.keys used_linearly
 
   let forget_continuation_definition t cont =
     { t with
