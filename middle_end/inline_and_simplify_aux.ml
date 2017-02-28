@@ -508,6 +508,12 @@ module Continuation_uses = struct
       let has_useful_approx t =
         List.exists (fun approx -> A.useful approx) (args_approxs t)
 
+      let is_inlinable t =
+        match t with
+        | Not_inlinable_or_specialisable _ -> false
+        | Inlinable_and_specialisable _ -> true
+        | Only_specialisable _ -> false
+
       let is_specialisable t =
         match t with
         | Not_inlinable_or_specialisable _ -> None
@@ -554,6 +560,11 @@ module Continuation_uses = struct
     | Zero -> false
     | One -> true
     | Many -> false
+
+  let linearly_used_in_inlinable_position t =
+    match t.application_points with
+    | [use] when Use.Kind.is_inlinable use.kind -> true
+    | _ -> false
 
   (* CR mshinwell: this should be called "join" *)
   let meet_of_args_approxs_opt t =
@@ -681,8 +692,11 @@ end;
 
   let non_recursive_continuations_used_linearly_in_inlinable_position t =
     let used_linearly =
-      Continuation.Map.filter (fun _cont (uses, _approx, _env, _recursive) ->
-          Continuation_uses.linearly_used uses)
+      Continuation.Map.filter (fun _cont (uses, _approx, _env, recursive) ->
+          match (recursive : Asttypes.rec_flag) with
+          | Nonrecursive ->
+            Continuation_uses.linearly_used_in_inlinable_position uses
+          | Recursive -> false)
         t.defined_continuations
     in
     Continuation.Map.keys used_linearly
