@@ -512,15 +512,6 @@ module Continuation_uses = struct
         { Use. env; args; } :: t.inlinable_application_points;
     }
 
-  let remove_inlinable_uses t ~args =
-    let inlinable_application_points =
-      List.filter (fun { Use. env = _; args = args'; } ->
-          let args' = List.map (fun (arg, _approx) -> arg) args' in
-          Variable.compare_lists args args' <> 0)
-        t.inlinable_application_points
-    in
-    { t with inlinable_application_points; }
-
   let add_non_inlinable_use t _env ~args_approxs =
     { t with
       non_inlinable_application_points =
@@ -699,32 +690,14 @@ end;
         Continuation.Map.add cont uses t.used_continuations;
     }
 
-  let forget_inlinable_continuation_uses t cont ~args =
-    (* CR mshinwell: think about this some more.  Do we have to touch
-       [used_continuations]? *)
-    let used_continuations =
-      match Continuation.Map.find cont t.used_continuations with
-      | exception Not_found -> t.used_continuations
-      | uses ->
-        (* CR mshinwell: This should presumably remove the entry from
-           [used_continuations] if no more uses (inlinable or non-inlinable)
-           remain---otherwise e.g. [continuation_unused], below, won't be
-           correct *)
-        let uses = Continuation_uses.remove_inlinable_uses uses ~args in
-        Continuation.Map.add cont uses t.used_continuations
-    in
-    let defined_continuations =
-      match Continuation.Map.find cont t.defined_continuations with
-      | exception Not_found -> t.defined_continuations
-      | (uses, approx, env, recursive) ->
-        let uses = Continuation_uses.remove_inlinable_uses uses ~args in
-        Continuation.Map.add cont (uses, approx, env, recursive)
-          t.defined_continuations
-    in
-    { t with
-      used_continuations;
-      defined_continuations;
-    }
+  let non_recursive_continuations_used_linearly_in_inlinable_position t =
+    Continuation.Map.filter_map t.defined_continuations
+      ~f:(fun _cont (uses, approx, _env, _recursive) ->
+        if not (Continuation_uses.linearly_used uses) then None
+        else
+          match Continuation_approx.handlers approx with
+          | Some (Nonrecursive handler) -> Some handler
+          | None | Some (Recursive _) -> None)
 
   let forget_continuation_uses t cont =
     { t with

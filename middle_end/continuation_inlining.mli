@@ -14,15 +14,11 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Decision and transformation code for inlining of continuations.
+(** Inlining of continuations used only once.
+
     This runs on toplevel expressions (i.e. function bodies,
     [Initialize_symbol] bodies and [Effect] bodies) after simplification
-    and collection of continuation use information has happened.  Separation
-    from the main simplification loop reduces the complexity of the inlining
-    from quadratic to linear.
-
-    This pass does not compute updated continuation usage information and
-    as such does not return a [Result.t].
+    and collection of continuation use information has happened.
 *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
@@ -30,8 +26,4 @@
 val for_toplevel_expression
    : Flambda.expr
   -> Inline_and_simplify_aux.Result.t
-  -> simplify:(Inline_and_simplify_aux.Env.t
-    -> Inline_and_simplify_aux.Result.t
-    -> Flambda.expr
-    -> Flambda.expr * Inline_and_simplify_aux.Result.t)
-  -> Flambda.expr
+  -> Flambda.expr * Inline_and_simplify_aux.Result.t

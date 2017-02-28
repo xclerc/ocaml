@@ -1206,6 +1206,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
       match trap_action with
       | None -> handler.handler
       | Some trap_action ->
+        let new_cont = Continuation.create () in
         Let_cont {
           body = Apply_cont (new_cont, Some trap_action, []);
           handlers = Nonrecursive {
@@ -2210,25 +2211,32 @@ and simplify_toplevel env r expr ~continuation ~descr =
     end else begin
       (* Continuation inlining and specialisation is done now, rather than
          during [simplify]'s traversal itself, to reduce quadratic behaviour
-         to linear (with a constant factor of about two). *)
+         to linear.
+         Since we only inline linearly-used non-recursive continuations, the
+         changes to [r] that need to be made by the inlining pass are
+         straightforward. *)
       let expr, r =
-        let vars_in_scope = E.vars_in_scope env in
+        Continuation_inlining.for_toplevel_expression expr r
+      in
+      Flambda_invariants.check_toplevel_simplification_result r expr
+        ~continuation ~descr;
+      let vars_in_scope = E.vars_in_scope env in
+      let expr =
+        (* CR mshinwell: Should the specialisation pass return some
+           benefit value? *)
         Continuation_specialisation.for_toplevel_expression expr
           ~vars_in_scope r ~simplify_let_cont_handlers
           ~backend:(E.backend env)
       in
-      Flambda_invariants.check_toplevel_simplification_result r expr
-        ~continuation ~descr;
-      let expr =
-        Continuation_inlining.for_toplevel_expression expr r ~simplify
-      in
-      (* [Continuation_inlining] doesn't update [r] with any usage information;
-         but all we need now is the approximation for the parameter(s) of
-         the return [continuation], which won't have been changed by that
-         pass anyway. *)
       expr, r
     end
   in
+  (* Continuation specialisation could theoretically improve the precision
+     of the approximation for [continuation].  However tracking changes to 
+     continuation usage during specialisation is complicated and error-prone,
+     so instead, we accept an approximation for [continuation] that may be
+     slightly less precise.  Any subsequent round of simplification will
+     calculate the improved approximation anyway. *)
   let r, uses = R.exit_scope_catch r env continuation in
   let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
   (* At this stage:

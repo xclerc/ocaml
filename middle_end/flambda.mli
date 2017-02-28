@@ -175,7 +175,6 @@ type t =
 and named =
   | Var of Variable.t
   | Const of const
-  (* CR mshinwell: Push/poptrap shouldn't be hidden in [Prim]. *)
   | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
   | Assign of assign
   | Read_mutable of Mutable_variable.t

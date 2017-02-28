@@ -357,14 +357,6 @@ module Result : sig
     -> args_approxs:Simple_value_approx.t list
     -> t
 
-  (** Forget usage information for the given (continuation, arguments) pair
-      (for example after replacing an [Apply_cont] with an inlined body). *)
-  val forget_inlinable_continuation_uses
-     : t
-    -> Continuation.t
-    -> args:Variable.t list
-    -> t
-
   val forget_continuation_uses
      : t
     -> Continuation.t
@@ -389,6 +381,10 @@ module Result : sig
   (** Continuation usage information for use after examining the body of
       a [Let_cont] but before [define_continuation] has been called. *)
   val continuation_uses : t -> Continuation_uses.t Continuation.Map.t
+
+  val non_recursive_continuations_used_linearly_in_inlinable_position
+     : t
+    -> Flambda.continuation_handler Continuation.Map.t
 
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
