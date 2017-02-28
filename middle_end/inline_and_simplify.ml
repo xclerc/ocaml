@@ -1916,6 +1916,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
        [body].  If the continuations in [handlers] are recursive then
        that environment will also be used for simplifying the continuations
        themselves (otherwise the environment of the [Let_cont] is used). *)
+(*Format.eprintf "Simplifying Let_cont:@ \n%a\n%!" Flambda.print tree;*)
     let conts_and_approxs, freshening =
       let normal_case ~handlers =
         Continuation.Map.fold (fun name
@@ -2219,6 +2220,9 @@ and simplify_toplevel env r expr ~continuation ~descr =
   let continuation_uses_snapshot, r =
     R.snapshot_and_forget_continuation_uses r
   in
+(*
+Format.eprintf "Simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
+*)
   let expr, r = simplify env r expr in
   let expr, r =
     Flambda_invariants.check_toplevel_simplification_result r expr
@@ -2254,6 +2258,7 @@ and simplify_toplevel env r expr ~continuation ~descr =
      so instead, we accept an approximation for [continuation] that may be
      slightly less precise.  Any subsequent round of simplification will
      calculate the improved approximation anyway. *)
+  (* CR mshinwell: try to fix the above *)
   let r, uses = R.exit_scope_catch r env continuation in
   let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
   (* At this stage:

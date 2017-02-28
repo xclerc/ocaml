@@ -638,6 +638,7 @@ Continuation.print continuation (List.length args_approxs);
                   function_decls
                   ~backend:(E.backend env))))
         in
+        let cont_usage_snapshot = R.snapshot_continuation_uses r in
         let specialise_result =
           specialise env r ~lhs_of_application ~function_decls ~recursive
             ~closure_id_being_applied ~function_decl ~value_set_of_closures
@@ -662,6 +663,7 @@ Continuation.print continuation (List.length args_approxs);
                   Variable.print fun_var
                   A.print_value_set_of_closures value_set_of_closures
           in
+          let r = R.roll_back_continuation_uses r cont_usage_snapshot in
           let inline_result =
             inline env r ~function_decls ~lhs_of_application
               ~closure_id_being_applied ~function_decl ~value_set_of_closures
