@@ -688,9 +688,10 @@ end;
           | Some (Nonrecursive handler) -> Some handler
           | None | Some (Recursive _) -> None)
 
-  let forget_continuation_uses t cont =
+  let forget_continuation_definition t cont =
     { t with
-      used_continuations = Continuation.Map.remove cont t.used_continuations;
+      defined_continuations =
+        Continuation.Map.remove cont t.defined_continuations;
     }
 
   let is_used_continuation t i =

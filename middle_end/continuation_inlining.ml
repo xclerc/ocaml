@@ -41,7 +41,7 @@ let for_toplevel_expression expr r =
                   in an [Apply_cont] expression with a trap handler action"
                 Continuation.print cont
             end;
-            r := R.forget_continuation_uses !r cont;
+            r := R.forget_continuation_definition !r cont;
             List.fold_left2 (fun expr param arg ->
                 Flambda.create_let param (Var arg) expr)
               handler.handler

@@ -715,8 +715,10 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
           (Inlining_decision.should_inline_inside_declaration function_decl)
         ~dbg:function_decl.dbg
         ~f:(fun body_env ->
+(*
 Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
   Flambda.print function_decl.body E.print body_env;
+*)
           let body, r, uses =
             let descr =
               Format.asprintf "body of %a" Variable.print fun_var
@@ -1201,6 +1203,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
         (E.set_freshening env freshening)
         params_and_approxs
     in
+    let r = R.forget_continuation_definition r cont in
 (*Format.eprintf "Inlining stub: %a\n%!" Continuation.print cont;*)
     let stub's_body : Flambda.expr =
       match trap_action with
@@ -1772,6 +1775,12 @@ Format.eprintf "Deleting handlers binding %a; body:\n%@;%a"
   Continuation.Set.print (Continuation.Map.keys handlers)
   Flambda.print body;
 *)
+    let r =
+      Continuation.Map.fold (fun cont _ r ->
+          R.forget_continuation_definition r cont)
+        handlers
+        r
+    in
     None, r
   end else
     (* First we simplify the continuations themselves. *)
@@ -1824,6 +1833,7 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
           in
           if Inline_and_simplify_aux.Continuation_uses.unused uses then
             let handlers = Continuation.Map.remove cont handlers in
+            let r = R.forget_continuation_definition r cont in
             r, handlers
           else
             let r = R.define_continuation r cont env recursive uses approx in

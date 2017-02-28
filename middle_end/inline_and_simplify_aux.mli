@@ -369,11 +369,6 @@ module Result : sig
     -> Continuation_uses.Use.Kind.t
     -> t
 
-  val forget_continuation_uses
-     : t
-    -> Continuation.t
-    -> t
-
   val snapshot_continuation_uses : t -> Continuation_usage_snapshot.t
 
   val snapshot_and_forget_continuation_uses
@@ -422,6 +417,11 @@ module Result : sig
      : t
     -> (Continuation_uses.t * Continuation_approx.t * Env.t
       * Asttypes.rec_flag) Continuation.Map.t
+
+  val forget_continuation_definition
+     : t
+    -> Continuation.t
+    -> t
 
   (** Check that there is no continuation binding construct in scope. *)
   val no_continuations_in_scope : t -> bool
