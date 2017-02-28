@@ -505,8 +505,10 @@ module Continuation_uses = struct
         | Only_specialisable args_and_approxs ->
           List.map (fun (_arg, approx) -> approx) args_and_approxs
 
+(*
       let has_useful_approx t =
         List.exists (fun approx -> A.useful approx) (args_approxs t)
+*)
 
       let is_inlinable t =
         match t with
@@ -593,7 +595,7 @@ module Continuation_uses = struct
     | Some join -> join
 
   let application_points t = t.application_points
-
+(*
   let filter_out_non_useful_uses t =
     (* CR mshinwell: This should check that the approximation is always
        better than the join.  We could do this easily by adding an equality
@@ -605,6 +607,7 @@ module Continuation_uses = struct
         t.application_points
     in
     { t with application_points; }
+*)
 
   let map_use_environments t ~f =
     let application_points =
@@ -693,6 +696,11 @@ end;
   let non_recursive_continuations_used_linearly_in_inlinable_position t =
     let used_linearly =
       Continuation.Map.filter (fun _cont (uses, _approx, _env, recursive) ->
+(*
+Format.eprintf "NRCUL: continuation %a number of uses %d\n%!"
+  Continuation.print _cont
+  (List.length uses.Continuation_uses.application_points);
+*)
           match (recursive : Asttypes.rec_flag) with
           | Nonrecursive ->
             Continuation_uses.linearly_used_in_inlinable_position uses
@@ -781,7 +789,6 @@ if Continuation.to_int cont = k then begin
 end;
 *)
     Env.invariant env;
-    let uses = Continuation_uses.filter_out_non_useful_uses uses in
     { t with
       defined_continuations =
         Continuation.Map.add cont (uses, approx, env, recursive)

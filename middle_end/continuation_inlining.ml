@@ -25,8 +25,10 @@ let for_toplevel_expression expr r =
   if Continuation.Set.is_empty used_linearly then begin
     expr, r
   end else begin
+(*
     Format.eprintf "Continuations used linearly: %a\nTerm:@ \n%a%!"
       Continuation.Set.print used_linearly Flambda.print expr;
+*)
     let r = ref r in
     (* CR mshinwell: Consider adding phys-equal checks and use of the tail
       recursive [Let] mapper. *)
@@ -88,6 +90,8 @@ let for_toplevel_expression expr r =
       | Apply _ | Switch _ | Proved_unreachable -> expr
     in
     let expr = substitute Continuation.Map.empty expr in
+(*
     Format.eprintf "After continuation inlining:@ \n%a" Flambda.print expr;
+*)
     expr, !r
   end
