@@ -559,8 +559,8 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
 Format.eprintf "for_call_site: use of continuation %a has %d args\n%!"
 Continuation.print continuation (List.length args_approxs);
 *)
-    R.use_continuation r env continuation ~inlinable_position:false ~args:[]
-      ~args_approxs
+    R.use_continuation r env continuation
+      (Not_inlinable_or_specialisable args_approxs)
   in
   if function_decl.stub then
     let body, r =

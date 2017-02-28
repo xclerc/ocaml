@@ -992,8 +992,8 @@ Format.eprintf "...freshened cont is %a\n%!"
             simplify_apply_cont_to_cont env r continuation ~args_approxs
           in
           let r =
-            R.use_continuation r env continuation ~inlinable_position:false
-              ~args:[] ~args_approxs
+            R.use_continuation r env continuation
+              (Not_inlinable_or_specialisable args_approxs)
           in
           Apply ({ kind; func = lhs_of_application; args; call_kind = Indirect;
               dbg; inline = inline_requested; specialise = specialise_requested;
@@ -1229,8 +1229,13 @@ Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
   (Format.pp_print_list A.print) args_approxs;
 *)
     let r =
-      R.use_continuation r env cont ~inlinable_position:true ~args
-        ~args_approxs
+      let kind : Inline_and_simplify_aux.Continuation_uses.Use.Kind.t =
+        let args_and_approxs = List.combine args args_approxs in
+        match trap_action with
+        | None -> Inlinable_and_specialisable args_and_approxs
+        | Some _ -> Only_specialisable args_and_approxs
+      in
+      R.use_continuation r env cont kind
     in
     let trap_action, r =
       match trap_action with
@@ -1242,14 +1247,14 @@ Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
     Apply_cont (cont, trap_action, args), ret r (A.value_unknown Other)
 
 (** Simplify an application of a continuation for a context where only a
-    continuation is valid (e.g. a switch arm). *)
+    continuation is valid (e.g. a switch arm) and there are no opportunities
+    for inlining or specialisation. *)
 and simplify_apply_cont_to_cont env r cont ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let r =
-    R.use_continuation r env cont ~inlinable_position:false ~args:[]
-      ~args_approxs
+    R.use_continuation r env cont (Not_inlinable_or_specialisable args_approxs)
   in
   cont, ret r (A.value_unknown Other)
 

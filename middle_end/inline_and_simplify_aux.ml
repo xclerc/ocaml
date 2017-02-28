@@ -484,100 +484,96 @@ module Continuation_uses = struct
   module A = Simple_value_approx
 
   module Use = struct
+    module Kind = struct
+      type t =
+        | Not_inlinable_or_specialisable of Simple_value_approx.t list
+        | Inlinable_and_specialisable of
+            (Variable.t * Simple_value_approx.t) list
+        | Only_specialisable of (Variable.t * Simple_value_approx.t) list
+
+      let args t =
+        match t with
+        | Not_inlinable_or_specialisable _ -> []
+        | Inlinable_and_specialisable args_and_approxs
+        | Only_specialisable args_and_approxs ->
+          List.map (fun (arg, _approx) -> arg) args_and_approxs
+
+      let args_approxs t =
+        match t with
+        | Not_inlinable_or_specialisable args_approxs -> args_approxs
+        | Inlinable_and_specialisable args_and_approxs
+        | Only_specialisable args_and_approxs ->
+          List.map (fun (_arg, approx) -> approx) args_and_approxs
+
+      let has_useful_approx t =
+        List.exists (fun approx -> A.useful approx) (args_approxs t)
+
+      let is_specialisable t =
+        match t with
+        | Not_inlinable_or_specialisable _ -> None
+        | Inlinable_and_specialisable args_and_approxs
+        | Only_specialisable args_and_approxs -> Some args_and_approxs
+    end
+
     type t = {
-      args : (Variable.t * A.t) list;
+      kind : Kind.t;
       env : Env.t;
     }
-    type non_inlinable = A.t list
   end
 
   type t = {
     backend : (module Backend_intf.S);
     continuation : Continuation.t;
-    inlinable_application_points : Use.t list;
-    non_inlinable_application_points : Use.non_inlinable list;
+    application_points : Use.t list;
   }
 
   let create ~continuation ~backend =
     { backend;
       continuation;
-      inlinable_application_points = [];
-      non_inlinable_application_points = [];
+      application_points = [];
     }
 
-  (* CR mshinwell: change to "add_inlinable_or_specialisable_use"? *)
-  let add_inlinable_use t env ~args =
+  let add_use t env kind =
     { t with
-      inlinable_application_points =
-        { Use. env; args; } :: t.inlinable_application_points;
+      application_points = { Use. env; kind; } :: t.application_points;
     }
 
-  let add_non_inlinable_use t _env ~args_approxs =
-    { t with
-      non_inlinable_application_points =
-        args_approxs :: t.non_inlinable_application_points;
-    }
-
-  let num_inlinable_application_points t : Num_continuation_uses.t =
-    match t.inlinable_application_points with
-    | [] -> Zero
-    | [_] -> One
-    | _ -> Many
-
-  let num_non_inlinable_application_points t : Num_continuation_uses.t =
-    match t.non_inlinable_application_points with
+  let num_application_points t : Num_continuation_uses.t =
+    match t.application_points with
     | [] -> Zero
     | [_] -> One
     | _ -> Many
 
   let unused t =
-    match num_inlinable_application_points t,
-      num_non_inlinable_application_points t
-    with
-    | Zero, Zero -> true
-    | _, _ -> false
+    match num_application_points t with
+    | Zero -> true
+    | One | Many -> false
 
   let linearly_used t =
-    match num_inlinable_application_points t,
-      num_non_inlinable_application_points t
-    with
-    | One, Zero -> true
-    | _, _ -> false
-
-  let has_non_inlinable_uses t =
-    match t.non_inlinable_application_points with
-    | [] -> false
-    | _::_ -> true
+    match num_application_points t with
+    | Zero -> false
+    | One -> true
+    | Many -> false
 
   (* CR mshinwell: this should be called "join" *)
   let meet_of_args_approxs_opt t =
-    let application_points =
-      List.map (fun ({ args } : Use.t) -> List.map snd args)
-        t.inlinable_application_points
-      @ t.non_inlinable_application_points
-    in
-    match application_points with
+    match t.application_points with
     | [] -> None
     | use::uses ->
-(*
-Format.eprintf "STARTING JOIN (num uses %d)\n%!" (List.length application_points);
-*)
-      Some (List.fold_left (fun args_approxs use ->
-          if List.length args_approxs <> List.length use then begin
+      Some (List.fold_left (fun args_approxs (use : Use.t) ->
+          let args_approxs' = Use.Kind.args_approxs use.kind in
+          if List.length args_approxs <> List.length args_approxs' then begin
             Misc.fatal_errorf "meet_of_args_approx_opt %a: approx length %d, \
                 use length %d"
               Continuation.print t.continuation
-              (List.length args_approxs) (List.length use)
+              (List.length args_approxs) (List.length args_approxs')
           end;
           List.map2 (fun approx1 approx2 ->
               let module Backend = (val (t.backend) : Backend_intf.S) in
-(*
-Format.eprintf "Joining %a and %a\n%!" A.print approx1 A.print approx2;
-*)
               A.join approx1 approx2
                 ~really_import_approx:Backend.really_import_approx)
-            args_approxs use)
-        use
+            args_approxs args_approxs')
+        (Use.Kind.args_approxs use.kind)
         uses)
 
   let meet_of_args_approxs t ~num_params =
@@ -585,31 +581,29 @@ Format.eprintf "Joining %a and %a\n%!" A.print approx1 A.print approx2;
     | None -> Array.to_list (Array.make num_params (A.value_unknown Other))
     | Some join -> join
 
-  let inlinable_application_points t = t.inlinable_application_points
+  let application_points t = t.application_points
 
   let filter_out_non_useful_uses t =
     (* CR mshinwell: This should check that the approximation is always
        better than the join.  We could do this easily by adding an equality
        function to Simple_value_approx and then using that in conjunction with
        the "join" function *)
-    let inlinable_application_points =
+    let application_points =
       List.filter (fun (use : Use.t) ->
-          match use.args with
-          | [] -> true
-          | _ -> List.exists (fun (_var, approx) -> A.useful approx) use.args)
-        t.inlinable_application_points
+          Use.Kind.has_useful_approx use.kind)
+        t.application_points
     in
-    { t with inlinable_application_points; }
+    { t with application_points; }
 
   let map_use_environments t ~f =
-    let inlinable_application_points =
+    let application_points =
       List.map (fun (use : Use.t) ->
           { use with
             env = f use.env;
           })
-        t.inlinable_application_points
+        t.application_points
     in
-    { t with inlinable_application_points; }
+    { t with application_points; }
 end
 
 module Continuation_usage_snapshot = struct
@@ -655,7 +649,8 @@ module Result = struct
     in
     set_approx t meet
 
-  let use_continuation t env cont ~inlinable_position ~args ~args_approxs =
+  let use_continuation t env cont kind =
+    let args = Continuation_uses.Use.Kind.args kind in
     if not (List.for_all (fun arg -> Env.mem env arg) args) then begin
       Misc.fatal_errorf "use_continuation %a: argument(s) (%a) not in \
           environment %a"
@@ -678,13 +673,7 @@ end;
         Continuation_uses.create ~continuation:cont ~backend:(Env.backend env)
       | uses -> uses
     in
-    let uses =
-      if inlinable_position then
-        Continuation_uses.add_inlinable_use uses env
-          ~args:(List.combine args args_approxs)
-      else
-        Continuation_uses.add_non_inlinable_use uses env ~args_approxs
-    in
+    let uses = Continuation_uses.add_use uses env kind in
     { t with
       used_continuations =
         Continuation.Map.add cont uses t.used_continuations;

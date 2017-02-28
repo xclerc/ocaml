@@ -285,8 +285,26 @@ end
 
 module Continuation_uses : sig
   module Use : sig
+    module Kind : sig
+      type t =
+        | Not_inlinable_or_specialisable of Simple_value_approx.t list
+          (** Do not attempt to inline or specialise the continuation at this
+              use point. *)
+        | Inlinable_and_specialisable of
+            (Variable.t * Simple_value_approx.t) list
+          (** The continuation may be inlined or specialised at this
+              use point. *)
+        | Only_specialisable of (Variable.t * Simple_value_approx.t) list
+          (** The continuation may be specialised but not inlined at this use
+              point.  (Used for [Apply_cont] which have a [trap_action].) *)
+
+      val is_specialisable
+         : t
+        -> (Variable.t * Simple_value_approx.t) list option
+    end
+
     type t = private {
-      args : (Variable.t * Simple_value_approx.t) list;
+      kind : Kind.t;
       env : Env.t;
     }
   end
@@ -298,11 +316,10 @@ module Continuation_uses : sig
     -> backend:(module Backend_intf.S)
     -> t
 
-  val inlinable_application_points : t -> Use.t list
+  val application_points : t -> Use.t list
 
   val unused : t -> bool
   val linearly_used : t -> bool
-  val has_non_inlinable_uses : t -> bool
 
   val meet_of_args_approxs
      : t
@@ -344,17 +361,12 @@ module Result : sig
   val is_used_continuation : t -> Continuation.t -> bool
 
   (** Mark that the given continuation has been used and provide
-      an approximation for the arguments.  [inlinable_position] should be
-      [true] if the use of the continuation corresponds to a place where
-      the body of the corresponding handler could be substituted (for example
-      at an [Apply_cont] node, but not in a [Switch] arm). *)
+      an approximation for the arguments. *)
   val use_continuation
     : t
     -> Env.t
     -> Continuation.t
-    -> inlinable_position:bool
-    -> args:Variable.t list
-    -> args_approxs:Simple_value_approx.t list
+    -> Continuation_uses.Use.Kind.t
     -> t
 
   val forget_continuation_uses
