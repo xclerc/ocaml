@@ -447,6 +447,9 @@ let specialise env r ~lhs_of_application
                    Inlining_cost.Benefit.(requested_inline ~size_of:expr zero))
             else r_inlined
           in
+          let r_inlined =
+            R.roll_back_continuation_uses r_inlined cont_usage_snapshot
+          in
           let r =
             R.map_benefit r_inlined (Inlining_cost.Benefit.(+) (R.benefit r))
           in
@@ -489,6 +492,9 @@ let specialise env r ~lhs_of_application
               ~benefit:(R.benefit r_inlined)
           in
           if W.evaluate wsb_with_subfunctions then begin
+            let r_inlined =
+              R.roll_back_continuation_uses r_inlined cont_usage_snapshot
+            in
             let r =
               R.map_benefit r_inlined
                        (Inlining_cost.Benefit.(+) (R.benefit r))
