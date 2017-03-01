@@ -305,7 +305,7 @@ let test_closure_code_pointer t uclosure closure_id : Clambda.ulambda =
 
 let switch_numconsts_for_if = Numbers.Int.Set.of_list [0; 1]
 
-let switch_looks_like_if ~scrutinee ~(switch : Flambda.switch) =
+let switch_looks_like_if ~scrutinee:_ ~(switch : Flambda.switch) =
   if not (Numbers.Int.Set.equal switch.numconsts switch_numconsts_for_if) then
     None
   else
@@ -315,9 +315,17 @@ let switch_looks_like_if ~scrutinee ~(switch : Flambda.switch) =
     | [0, ifnot_cont], Some ifso_cont
     | [1, ifso_cont], Some ifnot_cont ->
       Some (ifso_cont, ifnot_cont)
-    | _ ->
+    | _ -> None
+      (* CR mshinwell: This breaks on e.g.
+         (switch (2) ty/2606
+           case int 1: goto k728
+           case int 0: goto k727
+           default: goto k724)
+         For the moment we allow it. *)
+(*
       Misc.fatal_errorf "Malformed Flambda.switch: %a"
         Flambda.print (Flambda.Switch (scrutinee, switch))
+*)
 
 (* CR mshinwell: combine with to_clambda_direct_apply? *)
 let to_clambda_apply env cont ~continuation_arity arg : Clambda.ulambda =
@@ -422,9 +430,11 @@ Format.eprintf "Compiling switch:@ \n%a\n%!" Flambda.print flam;
       let result =
         to_clambda_switch t env arg sw.consts sw.numconsts sw.failaction
 in
+(*
 Format.eprintf "Compiled Flambda switch:@ \n%a@ \nto Clambda switch:@ \n%a\n%!"
   Flambda.print flam
   Printclambda.clambda result;
+*)
 result
     end
   | Apply_cont (cont, trap_action, args) ->

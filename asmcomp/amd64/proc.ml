@@ -185,7 +185,7 @@ let loc_parameters arg =
   loc
 (* CR mshinwell: think about what the result limit should be *)
 let loc_results res =
-  let (loc, _ofs) = calling_conventions 0 9 100 109 not_supported res in loc
+  let (loc, _ofs) = calling_conventions 0 9 100 100 not_supported res in loc
 
 let loc_spacetime_node_hole = r13
 
