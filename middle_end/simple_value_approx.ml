@@ -503,6 +503,14 @@ type value_string = T.value_string = {
   size : int;
 }
 
+type unresolved_value =
+  | Set_of_closures_id of Set_of_closures_id.t
+  | Symbol of Symbol.t
+
+type unknown_because_of =
+  | Unresolved_value of unresolved_value
+  | Other
+
 type t = T.t = {
   descr : descr;
   var : Variable.t option;
@@ -670,7 +678,7 @@ let value_extern ex = approx (Extern ex)
 let value_symbol sym =
   { (approx (Symbol sym)) with symbol = Some (sym, None) }
 let value_bottom = approx Bottom
-let value_unresolved sym = approx (Unresolved sym)
+let value_unresolved value = approx (Unresolved value)
 
 let value_string size contents = approx (String {size; contents })
 let value_mutable_float_array ~size =
@@ -867,10 +875,10 @@ Format.eprintf "get_field %d from %a\n%!" i print t;
     Ok (value_unknown Other)
   | Unknown reason ->
     Ok (value_unknown reason)
-  | Unresolved sym ->
+  | Unresolved value ->
     (* We don't know anything, but we must remember that it comes
        from another compilation unit in case it contains a closure. *)
-    Ok (value_unresolved sym)
+    Ok (value_unknown (Unresolved_value value))
 
 type checked_approx_for_block =
   | Wrong
@@ -942,16 +950,16 @@ let freshen_and_check_closure_id
 
 type checked_approx_for_set_of_closures =
   | Wrong
-  | Unresolved of Symbol.t
+  | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_symbol of Symbol.t
+  | Unknown_because_of_unresolved_value of unresolved_value
   | Ok of Variable.t option * value_set_of_closures
 
 let check_approx_for_set_of_closures t : checked_approx_for_set_of_closures =
   match t.descr with
-  | Unresolved symbol -> Unresolved symbol
-  | Unknown (Unresolved_symbol symbol) ->
-    Unknown_because_of_unresolved_symbol symbol
+  | Unresolved value -> Unresolved value
+  | Unknown (Unresolved_value value) ->
+    Unknown_because_of_unresolved_value value
   | Set_of_closures value_set_of_closures ->
     (* Note that [var] might be [None]; we might be reaching the set of
        closures via approximations only, with the variable originally bound
@@ -968,14 +976,14 @@ let strict_check_approx_for_set_of_closures t
       : strict_checked_approx_for_set_of_closures =
   match check_approx_for_set_of_closures t with
   | Ok (var, value_set_of_closures) -> Ok (var, value_set_of_closures)
-  | Wrong | Unresolved _ | Unknown | Unknown_because_of_unresolved_symbol _ ->
+  | Wrong | Unresolved _ | Unknown | Unknown_because_of_unresolved_value _ ->
     Wrong
 
 type checked_approx_for_closure_allowing_unresolved =
   | Wrong
-  | Unresolved of Symbol.t
+  | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_symbol of Symbol.t
+  | Unknown_because_of_unresolved_value of unresolved_value
   | Ok of value_set_of_closures Closure_id.Map.t * Variable.t option
       * Symbol.t option
 
@@ -1013,9 +1021,9 @@ let check_approx_for_closure_allowing_unresolved t
       | Closure _ | Float _ | Boxed_int _ | Unknown _ | Bottom | Extern _
       | String _ | Float_array _ | Symbol _ | Union _ -> Wrong
     end
-  | Unknown (Unresolved_symbol symbol) ->
-    Unknown_because_of_unresolved_symbol symbol
-  | Unresolved symbol -> Unresolved symbol
+  | Unknown (Unresolved_value value) ->
+    Unknown_because_of_unresolved_value value
+  | Unresolved value -> Unresolved value
   | Set_of_closures _ | Union _ | Float _ | Boxed_int _ | Bottom | Extern _
   | String _ | Float_array _ | Symbol _ -> Wrong
   (* CR-soon mshinwell: This should be unwound once the reason for a value
@@ -1031,7 +1039,7 @@ let check_approx_for_closure t : checked_approx_for_closure =
   match check_approx_for_closure_allowing_unresolved t with
   | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
     Ok (value_closures, set_of_closures_var, set_of_closures_symbol)
-  | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_symbol _ ->
+  | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_value _ ->
     Wrong
 
 type checked_approx_for_closure_singleton =
@@ -1049,7 +1057,7 @@ let check_approx_for_closure_singleton t
       Ok (closure_id, set_of_closures_var, set_of_closures_symbol,
           value_set_of_closures)
     end
-  | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_symbol _ ->
+  | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_value _ ->
     Wrong
 
 let approx_for_bound_var value_set_of_closures var =

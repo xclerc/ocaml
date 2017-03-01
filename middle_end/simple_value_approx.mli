@@ -30,8 +30,12 @@ type value_string = {
   size : int;
 }
 
+type unresolved_value =
+  | Set_of_closures_id of Set_of_closures_id.t
+  | Symbol of Symbol.t
+
 type unknown_because_of =
-  | Unresolved_symbol of Symbol.t
+  | Unresolved_value of unresolved_value
   | Other
 
 (** A value of type [t] corresponds to an "approximation" of the result of
@@ -110,6 +114,7 @@ type unknown_because_of =
     When inlining [f], the B branch is unreachable, yet the compiler
     cannot prove it and must therefore keep it.
 *)
+
 module rec T : sig
   type t = private {
     descr : descr;
@@ -130,7 +135,7 @@ module rec T : sig
     | Bottom
     | Extern of Export_id.t
     | Symbol of Symbol.t
-    | Unresolved of Symbol.t
+    | Unresolved of unresolved_value
       (** No description was found for this symbol *)
 
   and value_closure = {
@@ -247,7 +252,7 @@ val value_block : Tag.t -> t array -> t
 val value_extern : Export_id.t -> t
 val value_symbol : Symbol.t -> t
 val value_bottom : t
-val value_unresolved : Symbol.t -> t
+val value_unresolved : unresolved_value -> t
 
 (** Construct a closure approximation given the approximation of the
     corresponding set of closures and the closure ID of the closure to
@@ -412,9 +417,9 @@ val strict_check_approx_for_set_of_closures
 
 type checked_approx_for_set_of_closures =
   | Wrong
-  | Unresolved of Symbol.t
+  | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_symbol of Symbol.t
+  | Unknown_because_of_unresolved_value of unresolved_value
   (* In the [Ok] case, there may not be a variable associated with the set of
      closures; it might be out of scope. *)
   | Ok of Variable.t option * value_set_of_closures
@@ -445,9 +450,9 @@ val check_approx_for_closure_singleton : t -> checked_approx_for_closure_singlet
 
 type checked_approx_for_closure_allowing_unresolved =
   | Wrong
-  | Unresolved of Symbol.t
+  | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_symbol of Symbol.t
+  | Unknown_because_of_unresolved_symbol of unresolved_value
   | Ok of value_set_of_closures Closure_id.Map.t
           * Variable.t option * Symbol.t option
 
