@@ -128,11 +128,12 @@ let add_static_exception t i =
   | Active t ->
     let i' = Continuation.create () in
 (*
-Format.eprintf "Freshening %a -> %a.  Is %a in the map? %s\n%!"
+Format.eprintf "Freshening %a -> %a.  Is %a in the map? %s\nBacktrace:\n%s\n%!"
   Continuation.print i
   Continuation.print i'
   Continuation.print i
-  (if Continuation.Map.mem i t.sb_exn then "yes" else "no");
+  (if Continuation.Map.mem i t.sb_exn then "yes" else "no")
+  (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10));
 *)
     let sb_exn =
       Continuation.Map.add i i' t.sb_exn

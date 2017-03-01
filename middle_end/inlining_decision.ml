@@ -564,12 +564,28 @@ Continuation.print continuation (List.length args_approxs);
   in
   if function_decl.stub then
     let body, r =
+(*
+Format.eprintf "Inlining application of %a (new cont %a), body:@ \n%a\n%!"
+  Variable.print lhs_of_application
+  Continuation.print (Continuation.create ())
+  Flambda.print function_decl.body;
+*)
       Inlining_transforms.inline_by_copying_function_body ~env
         ~r ~function_decls ~lhs_of_application
         ~closure_id_being_applied ~specialise_requested ~inline_requested
         ~function_decl ~args ~continuation ~dbg ~simplify
     in
+let body, r = body, r
+(* CR mshinwell: This was simplifying the body again!
     simplify env r body
+*)
+in begin
+(*
+  Format.eprintf "Inlined body (new cont %a):@ \n%a\n%!"
+    Flambda.print body Continuation.print (Continuation.create ());
+*)
+  body, r
+end
   else if E.never_inline env then
     (* This case only occurs when examining the body of a stub function
        but not in the context of inlining said function.  As such, there
