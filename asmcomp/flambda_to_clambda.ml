@@ -419,15 +419,13 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
 (*
 Format.eprintf "Compiling switch:@ \n%a\n%!" Flambda.print flam;
 *)
-      let const_index, const_actions =
-        to_clambda_switch t env flam sw.consts sw.numconsts sw.failaction
-      in
-      Uswitch (arg,
-        { us_index_consts = const_index;
-          us_actions_consts = const_actions;
-          us_index_blocks = [| |];
-          us_actions_blocks = [| |];
-        })
+      let result =
+        to_clambda_switch t env arg sw.consts sw.numconsts sw.failaction
+in
+Format.eprintf "Compiled Flambda switch:@ \n%a@ \nto Clambda switch:@ \n%a\n%!"
+  Flambda.print flam
+  Printclambda.clambda result;
+result
     end
   | Apply_cont (cont, trap_action, args) ->
     if Continuation.Set.mem cont t.exn_handlers then begin
@@ -690,26 +688,56 @@ and to_clambda_project_closure t env named set_of_closures closure_id
     in
     check_closure ulam named
 
-and to_clambda_switch _t env expr cases possible_values default =
-  let index_consts =
-    Array.of_list (Numbers.Int.Set.elements possible_values)
-  in
-  let actions_consts =
-    Array.map (fun possible_value ->
-        match List.assoc possible_value cases with
-        | exception Not_found ->
-          begin match default with
-          | Some cont -> apply_cont_returning_unit env cont
-          | None ->
-            Misc.fatal_errorf "Switch does not provide action for case %d \
-                and there is no default case: %a"
-              possible_value
-              Flambda.print expr
-          end
-        | cont -> apply_cont_returning_unit env cont)
-      index_consts
-  in
-  index_consts, actions_consts
+and to_clambda_switch _t env arg cases possible_values default
+      : Clambda.ulambda =
+  let min_possible_value = Numbers.Int.Set.min_elt possible_values in
+  let max_possible_value = Numbers.Int.Set.max_elt possible_values in
+  (* CR mshinwell: Think about how to do this properly. *)
+  if min_possible_value >= 0 && max_possible_value < 256 then
+    let indexes, actions =
+      let possible_values =
+        if Numbers.Int.Set.cardinal possible_values = 0 then 0
+        else Numbers.Int.Set.max_elt possible_values + 1
+      in
+      let index = Array.make possible_values 0 in
+      let store = Flambda_utils.Switch_storer.mk_store () in
+      begin match default with
+      | Some def when List.length cases < possible_values ->
+        ignore (store.act_store def)
+      | _ -> ()
+      end;
+      List.iter (fun (key, cont) -> index.(key) <- store.act_store cont) cases;
+      let actions =
+        Array.map (fun cont : Clambda.ulambda ->
+            apply_cont_returning_unit env cont)
+          (store.act_get ())
+      in
+      match actions with
+      | [| |] -> [| |], [| |]  (* May happen when [default] is [None]. *)
+      | _ -> index, actions
+    in
+    Uswitch (arg,
+      { us_index_consts = indexes;
+        us_actions_consts = actions;
+        us_index_blocks = [| |];
+        us_actions_blocks = [| |];
+      })
+  else
+    let default : Clambda.ulambda =
+      match default with
+      | None -> Uunreachable
+      | Some cont -> apply_cont_returning_unit env cont
+    in
+    List.fold_right (fun (possible_value, cont) expr : Clambda.ulambda ->
+        Uifthenelse (
+          Uprim (Pintcomp Ceq, [
+              Clambda.Uconst (Uconst_int possible_value);
+              arg;
+            ], Debuginfo.none),
+          apply_cont_returning_unit env cont,
+          expr))
+      cases
+      default
 
 and to_clambda_direct_apply t func args direct_func dbg env
       ~return_arity : Clambda.ulambda =

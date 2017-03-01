@@ -1338,6 +1338,7 @@ let transl_isout h arg dbg = tag_int (Cop(Ccmpa Clt, [h ; arg], dbg)) dbg
 (* Build an actual switch (ie jump table) *)
 
 let make_switch arg cases actions dbg =
+(*
   let is_const = function
     | Cconst_int n
     | Cconst_pointer n -> (n land 1) = 1
@@ -1363,6 +1364,7 @@ let make_switch arg cases actions dbg =
           const_actions.(act)) cases))) in
     addr_array_ref (Cconst_symbol table) (tag_int arg dbg) dbg
   else
+*)
     Cswitch (arg,cases,actions,dbg)
 
 module SArgBlocks =
