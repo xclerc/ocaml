@@ -19,8 +19,12 @@
 (* CR mshinwell: turn this off once namespacing issues sorted *)
 [@@@ocaml.warning "-44-45"]
 
+type unresolved_value =
+  | Set_of_closures_id of Set_of_closures_id.t
+  | Symbol of Symbol.t
+
 type unknown_because_of =
-  | Unresolved_symbol of Symbol.t
+  | Unresolved_value of unresolved_value
   | Other
 
 module rec T : sig
@@ -55,7 +59,7 @@ module rec T : sig
     | Bottom
     | Extern of Export_id.t
     | Symbol of Symbol.t
-    | Unresolved of Symbol.t
+    | Unresolved of unresolved_value
 
   and value_closure = {
     potential_closures : t Closure_id.Map.t;
@@ -209,13 +213,20 @@ end = struct
       (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
       Freshening.Project_var.print freshening
 
+  let print_unresolved_value ppf (unresolved : unresolved_value) =
+    match unresolved with
+    | Set_of_closures_id set ->
+      Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
+    | Symbol symbol ->
+      Format.fprintf ppf "Symbol %a" Symbol.print symbol
+
   let rec print_descr ppf = function
     | Union union -> Unionable.print ppf union
     | Unknown reason ->
       begin match reason with
-      | Unresolved_symbol symbol ->
-        Format.fprintf ppf "?(due to unresolved symbol '%a')"
-          Symbol.print symbol
+      | Unresolved_value value ->
+        Format.fprintf ppf "?(due to unresolved %a)"
+          print_unresolved_value value
       | Other -> Format.fprintf ppf "?"
       end;
     | Bottom -> Format.fprintf ppf "bottom"
@@ -231,8 +242,8 @@ end = struct
       Format.fprintf ppf "]@])";
     | Set_of_closures set_of_closures ->
       print_value_set_of_closures ppf set_of_closures
-    | Unresolved sym ->
-      Format.fprintf ppf "(unresolved %a)" Symbol.print sym
+    | Unresolved value ->
+      Format.fprintf ppf "(unresolved %a)" print_unresolved_value value
     | Float (Some f) -> Format.pp_print_float ppf f
     | Float None -> Format.pp_print_string ppf "float"
     | String { contents; size } -> begin
@@ -503,14 +514,6 @@ type value_string = T.value_string = {
   size : int;
 }
 
-type unresolved_value =
-  | Set_of_closures_id of Set_of_closures_id.t
-  | Symbol of Symbol.t
-
-type unknown_because_of =
-  | Unresolved_value of unresolved_value
-  | Other
-
 type t = T.t = {
   descr : descr;
   var : Variable.t option;
@@ -529,7 +532,7 @@ and descr = T.descr =
   | Bottom
   | Extern of Export_id.t
   | Symbol of Symbol.t
-  | Unresolved of Symbol.t
+  | Unresolved of unresolved_value
     (** No description was found for this symbol *)
 
 and value_closure = T.value_closure = {

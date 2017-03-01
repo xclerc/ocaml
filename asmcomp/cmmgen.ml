@@ -503,7 +503,6 @@ let rec unbox_float dbg cmm =
     Cswitch(e, tbl, Array.map (unbox_float dbg) el, dbg)
   | Ccatch(rec_flag, handlers, body) ->
     map_ccatch (unbox_float dbg) rec_flag handlers body
-  | Ctrywith(e1, id, e2) -> Ctrywith(unbox_float dbg e1, id, unbox_float dbg e2)
   | c -> Cop(Cload (Double_u, Immutable), [c], dbg)
 
 (* Complex *)

@@ -107,7 +107,7 @@ let insert_destroyed_at_oper intervals instr pos =
   if Array.length destroyed > 0 then
     update_interval_position_by_array intervals destroyed pos Result
 
-let insert_destroyed_at_raise intervals pos =
+let _insert_destroyed_at_raise intervals pos =
   let destroyed = Proc.destroyed_at_raise in
   if Array.length destroyed > 0 then
     update_interval_position_by_array intervals destroyed pos Result
@@ -115,6 +115,8 @@ let insert_destroyed_at_raise intervals pos =
 (* Build all intervals.
    The intervals will be expanded by one step at the start and end
    of a basic block. *)
+
+(* CR mshinwell: This code needs fixing for the push/poptrap stuff. *)
 
 let build_intervals fd =
   let intervals = Array.init
@@ -152,22 +154,17 @@ let build_intervals fd =
         insert_destroyed_at_oper intervals i !pos;
         walk_instruction body;
         walk_instruction i.next
-    | Icatch(_, body, handler) ->
+    | Icatch(_, _, handlers, body) ->
         insert_destroyed_at_oper intervals i !pos;
-        List.iter (fun (_, i) -> walk_instruction i) body;
-        walk_instruction handler;
+        List.iter (fun (_, _, i) -> walk_instruction i) handlers;
+        walk_instruction body;
         walk_instruction i.next
     | Iexit _ ->
         insert_destroyed_at_oper intervals i !pos;
         walk_instruction i.next
-    | Itrywith(body, handler) ->
-        insert_destroyed_at_oper intervals i !pos;
-        walk_instruction body;
-        insert_destroyed_at_raise intervals !pos;
-        walk_instruction handler;
-        walk_instruction i.next
     | Iraise _ ->
         walk_instruction i.next
+    | Iunreachable _ -> ()
     end in
   walk_instruction fd.fun_body;
   (* Generate the interval and fixed interval lists *)

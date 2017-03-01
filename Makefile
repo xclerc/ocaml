@@ -114,7 +114,15 @@ TYPING=typing/ident.cmo typing/path.cmo \
   typing/typeclass.cmo \
   typing/typemod.cmo
 
-COMP=bytecomp/lambda.cmo bytecomp/printlambda.cmo \
+COMP=\
+  middle_end/debuginfo.cmo \
+  middle_end/base_types/tag.cmo \
+  middle_end/base_types/linkage_name.cmo \
+  middle_end/base_types/compilation_unit.cmo \
+  middle_end/base_types/variable.cmo \
+  middle_end/base_types/continuation.cmo \
+  middle_end/base_types/trap_id.cmo \
+	bytecomp/lambda.cmo bytecomp/printlambda.cmo \
   bytecomp/semantics_of_primitives.cmo \
   bytecomp/typeopt.cmo bytecomp/switch.cmo bytecomp/matching.cmo \
   bytecomp/translobj.cmo bytecomp/translattribute.cmo \
@@ -169,6 +177,7 @@ ASMCOMP=\
   asmcomp/un_anf.cmo \
   asmcomp/afl_instrument.cmo \
   asmcomp/strmatch.cmo asmcomp/cmmgen.cmo \
+  asmcomp/interval.cmo asmcomp/linscan.cmo \
   asmcomp/printmach.cmo asmcomp/selectgen.cmo \
   asmcomp/spacetime_profiling.cmo asmcomp/selection.cmo \
   asmcomp/comballoc.cmo \

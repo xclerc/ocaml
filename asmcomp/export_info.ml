@@ -317,7 +317,7 @@ let print_approx ppf ((t,root_symbols) : t * Symbol.t list) =
         Set_of_closures_id.print set_of_closures_id
         print_binding bound_vars
         print_alias aliased_symbol
-        (Closure_id.Map.print print_approx) results
+        (Closure_id.Map.print (Format.pp_print_list print_approx)) results
     end
   and print_binding ppf bound_vars =
     Var_within_closure.Map.iter (fun clos_id approx ->

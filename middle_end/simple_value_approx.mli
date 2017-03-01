@@ -452,7 +452,7 @@ type checked_approx_for_closure_allowing_unresolved =
   | Wrong
   | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_symbol of unresolved_value
+  | Unknown_because_of_unresolved_value of unresolved_value
   | Ok of value_set_of_closures Closure_id.Map.t
           * Variable.t option * Symbol.t option
 

@@ -298,15 +298,17 @@ method is_simple_expr = function
   | Cop(op, args, _) ->
       begin match op with
         (* The following may have side effects *)
-      | Capply _ | Cextcall _ | Calloc | Cstore _ | Craise _ -> false
+      | Capply _ | Cextcall _ | Calloc | Cstore _ | Cmultistore
+      | Craise _ | Cpushtrap _ | Cpoptrap _ -> false
         (* The remaining operations are simple if their args are *)
-      | Cload _ | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi | Cand | Cor
+      | Cload _ | Cmultiload _
+      | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi | Cand | Cor
       | Cxor | Clsl | Clsr | Casr | Ccmpi _ | Caddv | Cadda | Ccmpa _ | Cnegf
       | Cabsf | Caddf | Csubf | Cmulf | Cdivf | Cfloatofint | Cintoffloat
       | Ccmpf _ | Ccheckbound -> List.for_all self#is_simple_expr args
       end
   | Cassign _ | Cifthenelse _ | Cswitch _ | Cloop _ | Ccatch _ | Cexit _
-  | Ctrywith _ -> false
+  | Cunreachable -> false
 
 (* Analyses the effects and coeffects of an expression.  This is used across
    a whole list of expressions with a view to determining which expressions
@@ -337,20 +339,21 @@ method effects_of exp =
   | Cop (op, args, _) ->
     let from_op =
       match op with
-      | Capply _ | Cextcall _ -> EC.arbitrary
+      | Capply _ | Cextcall _ | Cpushtrap _ | Cpoptrap _ -> EC.arbitrary
       | Calloc -> EC.none
-      | Cstore _ -> EC.effect_only Effect.Arbitrary
+      | Cstore _ | Cmultistore -> EC.effect_only Effect.Arbitrary
       | Craise _ | Ccheckbound -> EC.effect_only Effect.Raise
       | Cload (_, Asttypes.Immutable) -> EC.none
       | Cload (_, Asttypes.Mutable) -> EC.coeffect_only Coeffect.Read_mutable
+      | Cmultiload _ -> EC.none  (* always an immutable load *)
       | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi | Cand | Cor | Cxor
       | Clsl | Clsr | Casr | Ccmpi _ | Caddv | Cadda | Ccmpa _ | Cnegf | Cabsf
       | Caddf | Csubf | Cmulf | Cdivf | Cfloatofint | Cintoffloat | Ccmpf _ ->
         EC.none
     in
     EC.join from_op (EC.join_list_map args self#effects_of)
-  | Cassign _ | Cswitch _ | Cloop _ | Ccatch _ | Cexit _ | Ctrywith _ ->
-    EC.arbitrary
+  | Cassign _ | Cswitch _ | Cloop _ | Ccatch _ | Cexit _
+  | Cunreachable -> EC.arbitrary
 
 (* Says whether an integer constant is a suitable immediate argument *)
 

@@ -321,21 +321,23 @@ let simplify_move_within_set_of_closures env r
          is missing). *)
       [], Reachable (Move_within_set_of_closures {
           closure;
-<<<<<<< HEAD
           move = move_within_set_of_closures.move;
         }),
-        ret r (A.value_unknown (Unresolved_symbol sym))
+        ret r (A.value_unknown (Unresolved_value value))
     | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
       let () =
         match Closure_id.Map.bindings value_closures with
         | _ :: _ :: _ ->
-          Format.printf "Closure approximation is not a singleton in move@ %a@ %a@."
+          Format.printf "Closure approximation is not a singleton in \
+              move@ %a@ %a@."
             A.print closure_approx
-            Projection.print_move_within_set_of_closures move_within_set_of_closures
+            Projection.print_move_within_set_of_closures
+            move_within_set_of_closures
         | [] ->
           Format.printf "Closure approximation is empty in move@ %a@ %a@."
             A.print closure_approx
-            Projection.print_move_within_set_of_closures move_within_set_of_closures
+            Projection.print_move_within_set_of_closures
+            move_within_set_of_closures
         | _ ->
           ()
       in
@@ -372,18 +374,6 @@ let simplify_move_within_set_of_closures env r
             Closure_id.Map.add start_from move_to move,
             Closure_id.Map.add move_to value_set_of_closures approx_map)
           value_closures (Closure_id.Map.empty, Closure_id.Map.empty)
-=======
-          start_from = move_within_set_of_closures.start_from;
-          move_to = move_within_set_of_closures.move_to;
-        },
-        ret r (A.value_unknown (Unresolved_value value))
-    | Ok (_value_closure, set_of_closures_var, set_of_closures_symbol,
-          value_set_of_closures) ->
-      let freshen =
-        (* CR-soon mshinwell: potentially misleading name---not freshening with
-           new names, but with previously fresh names *)
-        A.freshen_and_check_closure_id value_set_of_closures
->>>>>>> ocaml/trunk
       in
       let projection : Projection.t =
         Move_within_set_of_closures {
@@ -591,20 +581,19 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
           simplify_named_using_approx_and_env env r expr approx
         end
       end
-<<<<<<< HEAD
-      | Unresolved symbol ->
+      | Unresolved value ->
         (* This value comes from a symbol for which we couldn't find any
           approximation, telling us that names within the closure couldn't
           have been renamed.  So we don't need to change the variable or
           closure ID in the [Project_var] expression. *)
         [], Reachable (Project_var { project_var with closure }),
-          ret r (A.value_unresolved symbol)
+          ret r (A.value_unresolved value)
       | Unknown ->
         [], Reachable (Project_var { project_var with closure }),
           ret r (A.value_unknown Other)
-      | Unknown_because_of_unresolved_symbol symbol ->
+      | Unknown_because_of_unresolved_value value ->
         [], Reachable (Project_var { project_var with closure }),
-          ret r (A.value_unknown (Unresolved_symbol symbol))
+          ret r (A.value_unknown (Unresolved_value value))
       | Wrong ->
         (* We must have the correct approximation of the value to ensure
           we take account of all freshenings. *)
@@ -613,29 +602,6 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
           Flambda.print_project_var project_var
           Variable.print closure
           Simple_value_approx.print approx)
-=======
-    | Unresolved symbol ->
-      (* This value comes from a symbol for which we couldn't find any
-         approximation, telling us that names within the closure couldn't
-         have been renamed.  So we don't need to change the variable or
-         closure ID in the [Project_var] expression. *)
-      Project_var { project_var with closure },
-        ret r (A.value_unresolved symbol)
-    | Unknown ->
-      Project_var { project_var with closure },
-        ret r (A.value_unknown Other)
-    | Unknown_because_of_unresolved_value value ->
-      Project_var { project_var with closure },
-        ret r (A.value_unknown (Unresolved_value value))
-    | Wrong ->
-      (* We must have the correct approximation of the value to ensure
-         we take account of all freshenings. *)
-      Misc.fatal_errorf "[Project_var] from a value with wrong \
-          approximation: %a@.closure=%a@.approx of closure=%a@."
-        Flambda.print_project_var project_var
-        Variable.print closure
-        Simple_value_approx.print approx)
->>>>>>> ocaml/trunk
 
 (* Transforms closure definitions by applying [loop] on the code of every
    one of the set and on the expressions of the free variables.
@@ -1450,7 +1416,6 @@ and simplify_named env r (tree : Flambda.named)
     let dbg = E.add_inlined_debuginfo env ~dbg in
     simplify_free_variables_named env args ~f:(fun env args args_approxs ->
       let tree = Flambda.Prim (prim, args, dbg) in
-<<<<<<< HEAD
       let projection : Projection.t = Prim (prim, args) in
       begin match E.find_projection env ~projection with
       | Some var ->
@@ -1562,39 +1527,6 @@ and simplify_named env r (tree : Flambda.named)
             let const_false = Variable.create "false" in
             [const_false, Const (Int 0)], Reachable (Var const_false),
               ret r (A.value_int 0)
-=======
-      begin match prim, args, args_approxs with
-      | Pgetglobal _, _, _ ->
-        Misc.fatal_error "Pgetglobal is forbidden in Inline_and_simplify"
-      (* CR-someday mshinwell: Optimise [Pfield_computed]. *)
-      | Pfield field_index, [arg], [arg_approx] ->
-        let projection : Projection.t = Field (field_index, arg) in
-        begin match E.find_projection env ~projection with
-        | Some var ->
-          simplify_free_variable_named env var ~f:(fun _env var var_approx ->
-            let r = R.map_benefit r (B.remove_projection projection) in
-            Expr (Var var), ret r var_approx)
-        | None ->
-          begin match A.get_field arg_approx ~field_index with
-          | Unreachable -> (Flambda.Expr Proved_unreachable, r)
-          | Ok approx ->
-            let tree, approx =
-              match arg_approx.symbol with
-              (* If the [Pfield] is projecting directly from a symbol, rewrite
-                 the expression to [Read_symbol_field]. *)
-              | Some (symbol, None) ->
-                let approx =
-                  A.augment_with_symbol_field approx symbol field_index
-                in
-                Flambda.Read_symbol_field (symbol, field_index), approx
-              | None | Some (_, Some _ ) ->
-                (* This [Pfield] is either not projecting from a symbol at all,
-                   or it is the projection of a projection from a symbol. *)
-                let approx' = E.really_import_approx env approx in
-                tree, approx'
-            in
-            simplify_named_using_approx_and_env env r tree approx
->>>>>>> ocaml/trunk
           end
         | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
         | Pgettag, [_arg], [arg_approx] ->
