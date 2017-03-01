@@ -1147,7 +1147,31 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
         descr
         Continuation.Set.print defined_continuations
         Flambda.print expr
-    end
+    end;
     (* CR mshinwell: We could consider counting uses as well, although maybe
        that's excessive. *)
+    (* CR mshinwell: The following could check the actual code in the
+       continuation approximations matches the code in the term. *)
+    let all_handlers_in_continuation_approxs =
+      Continuation.Map.fold (fun _cont (_, approx, _, _) all_handlers ->
+          match Continuation_approx.handlers approx with
+          | None -> all_handlers
+          | Some (Nonrecursive _) ->
+            Continuation.Set.add (Continuation_approx.name approx) all_handlers
+          | Some (Recursive handlers) ->
+            Continuation.Set.union all_handlers
+              (Continuation.Map.keys handlers))
+        (R.continuation_definitions_with_uses r)
+        Continuation.Set.empty
+    in
+    if not (Continuation.Set.equal defined_continuations
+      all_handlers_in_continuation_approxs)
+    then begin
+      Misc.fatal_errorf "Continuations don't match up between the \
+          continuation approximations in [r] (%a) and the term \
+          (%a):@ \n%a\n"
+        Continuation.Set.print all_handlers_in_continuation_approxs
+        Continuation.Set.print defined_continuations
+        Flambda.print expr
+    end
   end

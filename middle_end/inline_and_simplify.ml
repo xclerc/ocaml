@@ -1805,32 +1805,12 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
         handlers
         (r, Continuation.Map.empty)
     in
-    let approxs =
-      Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
-              approxs ->
-          let num_params = List.length handler.params in
-          let handlers : Continuation_approx.continuation_handlers =
-            match recursive with
-            | Nonrecursive ->
-              begin match Continuation.Map.bindings handlers with
-              | [_cont, handler] -> Nonrecursive handler
-              | _ -> assert false
-              end
-            | Recursive -> Recursive handlers
-          in
-          let approx =
-            Continuation_approx.create ~name:cont
-              ~handlers ~num_params
-          in
-          Continuation.Map.add cont approx approxs)
-        handlers
-        Continuation.Map.empty
-    in
     (* Then we collect uses of the continuations and delete any unused ones.
        The usage information will subsequently be used by the continuation
        inlining and specialisation transformations. *)
     let r, handlers =
-      Continuation.Map.fold (fun cont approx (r, handlers) ->
+      Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+              (r, handlers) ->
           let r, uses =
             R.exit_scope_catch ~update_use_env r env cont
           in
@@ -1841,10 +1821,24 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
             r, handlers
           end else begin
 (*Format.eprintf "Defining %a\n%!" Continuation.print cont;*)
+            let approx =
+              let num_params = List.length handler.params in
+              let handlers : Continuation_approx.continuation_handlers =
+                match recursive with
+                | Nonrecursive ->
+                  begin match Continuation.Map.bindings handlers with
+                  | [_cont, handler] -> Nonrecursive handler
+                  | _ -> assert false
+                  end
+                | Recursive -> Recursive handlers
+              in
+              Continuation_approx.create ~name:cont
+                ~handlers ~num_params
+            in
             let r = R.define_continuation r cont env recursive uses approx in
             r, handlers
           end)
-        approxs
+        handlers
         (r, handlers)
     in
     if Continuation.Map.is_empty handlers then begin

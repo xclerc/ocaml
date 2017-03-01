@@ -142,7 +142,12 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
             (handler : Flambda.continuation_handler) r ->
         let join_approxs =
           match Continuation.Map.find cont definitions_with_uses with
-          | exception Not_found -> assert false
+          | exception Not_found ->
+            Misc.fatal_errorf "Continuation %a does not occur in the \
+                definitions-with-uses set (only maps %a)"
+              Continuation.print cont
+              Continuation.Set.print
+              (Continuation.Map.keys definitions_with_uses)
           | (uses, _approx, _env, _recursive) ->
             Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
               uses ~num_params:(List.length handler.params)
@@ -235,6 +240,8 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
      for those uses.
      The second map just maps continuations to their handlers (including any
      handlers defined simultaneously) and the environment of definition. *)
+  (* CR mshinwell: The second map appears now to be redundant with
+     [definitions_with_uses] *)
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   let specialisations, conts_to_handlers =
     (* CR mshinwell: [recursive] appears to be redundant with
@@ -423,6 +430,11 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
           already-specialised arguments.  (It isn't clear whether there is
           such a check for functions.)  This might be easy to do in
           [try_specialising] given a suitable ordering on approximations. *)
+(*
+Format.eprintf "Trying to specialise %a.  All handlers in group %a\n%!"
+  Continuation.print cont
+  Continuation.Set.print (Continuation.Map.keys old_handlers);
+*)
         match
           try_specialising ~cont ~old_handlers
             ~newly_specialised_args ~invariant_params_flow ~env ~recursive
@@ -566,6 +578,9 @@ Format.eprintf "Input (with {%a} in scope) to Continuation_specialisation:\n@;%a
     find_specialisations r ~simplify_let_cont_handlers ~backend
   in
   if Continuation.Map.is_empty new_conts then begin
+(*
+Format.eprintf "No specialising to do.\n%!";
+*)
     expr
   end else begin
 let output =
