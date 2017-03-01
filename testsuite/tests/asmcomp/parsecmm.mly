@@ -179,7 +179,7 @@ expr:
   | LPAREN LET letdef sequence RPAREN { make_letdef $3 $4 }
   | LPAREN ASSIGN IDENT expr RPAREN { Cassign(find_ident $3, $4) }
   | LPAREN APPLY location expr exprlist machtype RPAREN
-                { Cop(Capply $6, $4 :: List.rev $5, debuginfo ?loc:$3 ()) }
+                { Cop(Capply [| $6 |], $4 :: List.rev $5, debuginfo ?loc:$3 ()) }
   | LPAREN EXTCALL STRING exprlist machtype RPAREN
                {Cop(Cextcall($3, $5, false, None), List.rev $4, debuginfo ())}
   | LPAREN ALLOC exprlist RPAREN { Cop(Calloc, List.rev $3, debuginfo ()) }
@@ -195,16 +195,14 @@ expr:
           match $3 with
             Cconst_int x when x <> 0 -> $4
           | _ -> Cifthenelse($3, $4, (Cexit(0,[]))) in
-        Ccatch(Recursive, [0, [], Cloop body], Ctuple []) }
+        Ccatch(Normal Recursive, [0, [], Cloop body], Ctuple []) }
   | LPAREN EXIT IDENT exprlist RPAREN
     { Cexit(find_label $3, List.rev $4) }
   | LPAREN CATCH sequence WITH catch_handlers RPAREN
     { let handlers = $5 in
       List.iter (fun (_, l, _) -> List.iter unbind_ident l) handlers;
-      Ccatch(Recursive, handlers, $3) }
+      Ccatch(Normal Recursive, handlers, $3) }
   | EXIT        { Cexit(0,[]) }
-  | LPAREN TRY sequence WITH bind_ident sequence RPAREN
-                { unbind_ident $5; Ctrywith($3, $5, $6) }
   | LPAREN VAL expr expr RPAREN
       { Cop(Cload (Word_val, Mutable), [access_array $3 $4 Arch.size_addr],
           debuginfo ()) }

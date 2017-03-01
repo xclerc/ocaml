@@ -327,6 +327,8 @@ end and Unionable : sig
   val flatten : t -> singleton or_bottom
 
   val maybe_is_immediate_value : t -> int -> bool
+
+  val ok_for_variant : t -> bool
 end = struct
   type 'a or_bottom =
     | Ok of 'a
@@ -426,6 +428,17 @@ end = struct
           | Constptr p when i = p -> true
           | Constptr _ -> false)
         imms
+
+  let ok_for_variant t =
+    match t with
+    | Blocks by_tag | Blocks_and_immediates (by_tag, _) ->
+      (* CR mshinwell: Should the failure of this check be an error?
+         Perhaps the invariants pass should check "makeblock" to ensure it's
+         not used at or above No_scan_tag either *)
+      Tag.Map.for_all (fun tag _contents -> (Tag.to_int tag) < Obj.no_scan_tag)
+        by_tag
+    | Immediates _imms -> true
+
 
   let join (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
     let get_immediates t =
@@ -922,7 +935,9 @@ type checked_approx_for_variant =
 
 let check_approx_for_variant t : checked_approx_for_variant =
   match t.descr with
-  | Union union -> Ok union
+  | Union union ->
+    if Unionable.ok_for_variant union then Ok union
+    else Wrong
   | Bottom | Float_array _ | String _ | Float _ | Boxed_int _
   | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong

@@ -477,8 +477,8 @@ result
   | Let_cont { body; handlers = Nonrecursive { name; handler = {
       params; is_exn_handler; handler; _ }; }; } ->
     if Continuation.Set.mem name t.exn_handlers && not is_exn_handler then begin
-      Misc.fatal_errorf "Continuation %a is used in [Apply_cont] \
-          but is not marked as an exception handler"
+      Misc.fatal_errorf "Continuation %a is an exception handler but is not \
+          marked as such in the [Let_cont] that defines it"
         Continuation.print name
     end;
     if is_exn_handler && List.length params <> 1 then begin

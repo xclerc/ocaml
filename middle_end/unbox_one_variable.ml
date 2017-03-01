@@ -512,5 +512,7 @@ let how_to_unbox ~being_unboxed ~being_unboxed_approx =
       | Blocks blocks | Blocks_and_immediates (blocks, _) -> blocks
       | Immediates _ -> Tag.Map.empty
     in
+    (* CR mshinwell: This is sometimes returning "new_params" being empty;
+       this should be an error presumably *)
     if Tag.Map.is_empty blocks then None
     else Some (how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed)
