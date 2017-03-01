@@ -1778,18 +1778,16 @@ and simplify_let_cont_handlers ~env ~r ~handlers
 Format.eprintf "Deleting handlers binding %a\n%!"
   Continuation.Set.print (Continuation.Map.keys handlers);
 *)
-    let r =
-      Continuation.Map.fold (fun cont _ r ->
-          R.forget_continuation_definition r cont)
-        handlers
-        r
-    in
     None, r
   end else
-    (* First we simplify the continuations themselves. *)
+    (* First we simplify the continuations themselves.  We also remember
+       which continuations were added to [r] whilst simplifying each handler,
+       so if we delete one or more of the handlers, we can also update [r]
+       accordingly. *)
     let r, handlers =
       Continuation.Map.fold (fun cont handler (r, handlers) ->
           let cont' = Freshening.apply_static_exception freshening cont in
+          let cont_snapshot_before = R.snapshot_continuation_uses r in
           let r, handler =
 (*
 Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
@@ -1797,11 +1795,17 @@ Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
 *)
             simplify_let_cont_handler ~env ~r ~cont:cont' ~handler ~recursive
           in
+          let cont_snapshot_after = R.snapshot_continuation_uses r in
+          let introduced_conts =
+            Inline_and_simplify_aux.Continuation_usage_snapshot.
+              continuations_defined_between_snapshots
+              ~before:cont_snapshot_before ~after:cont_snapshot_after
+          in
 (*
 Format.eprintf "New handler for %a is:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
 *)
-          r, Continuation.Map.add cont' handler handlers)
+          r, Continuation.Map.add cont' (handler, introduced_conts) handlers)
         handlers
         (r, Continuation.Map.empty)
     in
@@ -1809,7 +1813,8 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
        The usage information will subsequently be used by the continuation
        inlining and specialisation transformations. *)
     let r, handlers =
-      Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+      Continuation.Map.fold (fun cont
+              ((handler : Flambda.continuation_handler), introduced_conts)
               (r, handlers) ->
           let r, uses =
             R.exit_scope_catch ~update_use_env r env cont
@@ -1818,6 +1823,12 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
 (*Format.eprintf "Removing %a\n%!" Continuation.print cont;*)
             let handlers = Continuation.Map.remove cont handlers in
             let r = R.forget_continuation_definition r cont in
+            let r =
+              Continuation.Set.fold (fun cont r ->
+                  R.forget_continuation_definition r cont)
+                introduced_conts
+                r
+            in
             r, handlers
           end else begin
 (*Format.eprintf "Defining %a\n%!" Continuation.print cont;*)
@@ -1827,19 +1838,27 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
                 match recursive with
                 | Nonrecursive ->
                   begin match Continuation.Map.bindings handlers with
-                  | [_cont, handler] -> Nonrecursive handler
+                  | [_cont, (handler, _)] -> Nonrecursive handler
                   | _ -> assert false
                   end
-                | Recursive -> Recursive handlers
+                | Recursive ->
+                  let handlers =
+                    Continuation.Map.map (fun (handler, _) -> handler)
+                      handlers
+                  in
+                  Recursive handlers
               in
-              Continuation_approx.create ~name:cont
-                ~handlers ~num_params
+              Continuation_approx.create ~name:cont ~handlers ~num_params
             in
             let r = R.define_continuation r cont env recursive uses approx in
             r, handlers
           end)
         handlers
         (r, handlers)
+    in
+    let handlers =
+      Continuation.Map.map (fun (handler, _) -> handler)
+        handlers
     in
     if Continuation.Map.is_empty handlers then begin
 (*Format.eprintf "No handlers left!\n%!";*)

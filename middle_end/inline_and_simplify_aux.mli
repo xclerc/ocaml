@@ -331,6 +331,11 @@ end
 
 module Continuation_usage_snapshot : sig
   type t
+
+  val continuations_defined_between_snapshots
+     : before:t
+    -> after:t
+    -> Continuation.Set.t
 end
 
 module Result : sig

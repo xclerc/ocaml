@@ -628,6 +628,11 @@ module Continuation_usage_snapshot = struct
           * Asttypes.rec_flag)
         Continuation.Map.t;
   }
+
+  let continuations_defined_between_snapshots ~before ~after =
+    Continuation.Set.diff
+      (Continuation.Map.keys after.defined_continuations)
+      (Continuation.Map.keys before.defined_continuations)
 end
 
 module Result = struct
