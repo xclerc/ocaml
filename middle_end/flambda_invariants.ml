@@ -1142,10 +1142,17 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
       defined_continuations)
     then begin
       Misc.fatal_errorf "Defined continuations in [r] (%a) do not match those \
-          defined in %s (%a):@ \n%a"
+          defined in %s (%a) (in [r] but not in the term: %a; \
+          in the term but not in [r]: %a):@ \n%a"
         Continuation.Set.print defined_continuations_in_r
         descr
         Continuation.Set.print defined_continuations
+        Continuation.Set.print
+        (Continuation.Set.diff defined_continuations_in_r
+          defined_continuations)
+        Continuation.Set.print
+        (Continuation.Set.diff defined_continuations
+          defined_continuations_in_r)
         Flambda.print expr
     end;
     (* CR mshinwell: We could consider counting uses as well, although maybe

@@ -218,6 +218,9 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
                Inlining_cost.Benefit.(requested_inline ~size_of:body zero))
         else r_inlined
       in
+      let r_inlined =
+        R.roll_back_continuation_uses r_inlined cont_usage_snapshot
+      in
       let r =
         R.map_benefit r_inlined (Inlining_cost.Benefit.(+) (R.benefit r))
       in
@@ -236,7 +239,6 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
         then env
         else E.inlining_level_up env
       in
-      let r = R.roll_back_continuation_uses r cont_usage_snapshot in
       Changed ((simplify env r body), decision)
     in
     if always_inline then
@@ -269,7 +271,9 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
              to avoid having to check whether or not it is recursive *)
           E.inside_unrolled_function env function_decls.set_of_closures_origin
         in
-        let r = R.roll_back_continuation_uses r cont_usage_snapshot in
+        let r_inlined =
+          R.roll_back_continuation_uses r_inlined cont_usage_snapshot
+        in
         let body, r_inlined = simplify env r_inlined body in
         let wsb_with_subfunctions =
           W.create ~original body
@@ -401,6 +405,7 @@ let specialise env r ~lhs_of_application
   match try_specialising with
   | Don't_try_it decision -> Original decision
   | Try_it -> begin
+      let cont_usage_snapshot = R.snapshot_continuation_uses r in
       let r =
         R.set_inlining_threshold r (Some remaining_inlining_threshold)
       in
@@ -459,6 +464,7 @@ let specialise env r ~lhs_of_application
           in
           let application_env = E.set_never_inline_inside_closures env in
           let expr, r = simplify closure_env r expr in
+          let r = R.roll_back_continuation_uses r cont_usage_snapshot in
           let res = simplify application_env r expr in
           let decision =
             if always_specialise then S.Specialised.Annotation
@@ -470,6 +476,9 @@ let specialise env r ~lhs_of_application
             let env = E.inlining_level_up env in
             E.set_never_inline_outside_closures env
           in
+          let r_inlined =
+            R.roll_back_continuation_uses r_inlined cont_usage_snapshot
+          in
           let expr, r_inlined = simplify closure_env r_inlined expr in
           let wsb_with_subfunctions =
             W.create ~original expr
@@ -480,16 +489,16 @@ let specialise env r ~lhs_of_application
               ~benefit:(R.benefit r_inlined)
           in
           if W.evaluate wsb_with_subfunctions then begin
-             let r =
-               R.map_benefit r_inlined
-                        (Inlining_cost.Benefit.(+) (R.benefit r))
-             in
-             let application_env = E.set_never_inline_inside_closures env in
-             let res = simplify application_env r expr in
-             let decision =
-               S.Specialised.With_subfunctions (wsb, wsb_with_subfunctions)
-             in
-             Changed (res, decision)
+            let r =
+              R.map_benefit r_inlined
+                       (Inlining_cost.Benefit.(+) (R.benefit r))
+            in
+            let application_env = E.set_never_inline_inside_closures env in
+            let res = simplify application_env r expr in
+            let decision =
+              S.Specialised.With_subfunctions (wsb, wsb_with_subfunctions)
+            in
+            Changed (res, decision)
           end else begin
             let decision =
               S.Not_specialised.Not_beneficial (wsb, wsb_with_subfunctions)
