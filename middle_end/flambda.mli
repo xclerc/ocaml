@@ -462,8 +462,8 @@ and function_declaration = private {
 }
 
 (** Equivalent to the similar type in [Ilambda]. *)
-(* CR mshinwell: change this type as per Pierre's suggestion? *)
 and switch = {
+  (* CR mshinwell: [numconsts] should move onto the default case. *)
   numconsts : Numbers.Int.Set.t;
   (** All possible values that the scrutinee might have. *)
   consts : (int * Continuation.t) list;

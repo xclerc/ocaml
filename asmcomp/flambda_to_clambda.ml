@@ -416,8 +416,11 @@ let rec to_clambda (t : t) env (flam : Flambda.t) : Clambda.ulambda =
       let ifnot = apply_cont_returning_unit env ifnot_cont in
       Uifthenelse (arg, ifso, ifnot)
     | None ->
+(*
+Format.eprintf "Compiling switch:@ \n%a\n%!" Flambda.print flam;
+*)
       let const_index, const_actions =
-        to_clambda_switch t env sw.consts sw.numconsts sw.failaction
+        to_clambda_switch t env flam sw.consts sw.numconsts sw.failaction
       in
       Uswitch (arg,
         { us_index_consts = const_index;
@@ -687,27 +690,26 @@ and to_clambda_project_closure t env named set_of_closures closure_id
     in
     check_closure ulam named
 
-and to_clambda_switch _t env cases num_keys default =
-  let num_keys =
-    if Numbers.Int.Set.cardinal num_keys = 0 then 0
-    else Numbers.Int.Set.max_elt num_keys + 1
+and to_clambda_switch _t env expr cases possible_values default =
+  let index_consts =
+    Array.of_list (Numbers.Int.Set.elements possible_values)
   in
-  let index = Array.make num_keys 0 in
-  let store = Flambda_utils.Switch_storer.mk_store () in
-  begin match default with
-  | Some def when List.length cases < num_keys ->
-    ignore (store.act_store def)
-  | _ -> ()
-  end;
-  List.iter (fun (key, cont) -> index.(key) <- store.act_store cont) cases;
-  let actions =
-    Array.map (fun cont : Clambda.ulambda ->
-        apply_cont_returning_unit env cont)
-      (store.act_get ())
+  let actions_consts =
+    Array.map (fun possible_value ->
+        match List.assoc possible_value cases with
+        | exception Not_found ->
+          begin match default with
+          | Some cont -> apply_cont_returning_unit env cont
+          | None ->
+            Misc.fatal_errorf "Switch does not provide action for case %d \
+                and there is no default case: %a"
+              possible_value
+              Flambda.print expr
+          end
+        | cont -> apply_cont_returning_unit env cont)
+      index_consts
   in
-  match actions with
-  | [| |] -> [| |], [| |]  (* May happen when [default] is [None]. *)
-  | _ -> index, actions
+  index_consts, actions_consts
 
 and to_clambda_direct_apply t func args direct_func dbg env
       ~return_arity : Clambda.ulambda =
