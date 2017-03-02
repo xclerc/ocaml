@@ -1178,14 +1178,14 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_approxs:[A.value_bottom]
+          ~args_approxs:[A.value_unknown Other]
       in
       Flambda.Push { id; exn_handler; }, r
     | Pop { id; exn_handler; } ->
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_approxs:[A.value_bottom]
+          ~args_approxs:[A.value_unknown Other]
       in
       Flambda.Pop { id; exn_handler; }, r
   in
