@@ -591,7 +591,7 @@ module Continuation_uses = struct
 
   let meet_of_args_approxs t ~num_params =
     match meet_of_args_approxs_opt t with
-    | None -> Array.to_list (Array.make num_params (A.value_unknown Other))
+    | None -> Array.to_list (Array.make num_params A.value_bottom)
     | Some join -> join
 
   let application_points t = t.application_points
@@ -650,7 +650,7 @@ module Result = struct
     }
 
   let create () =
-    { approx = Simple_value_approx.value_unknown Other;
+    { approx = Simple_value_approx.value_bottom;
       used_continuations = Continuation.Map.empty;
       defined_continuations = Continuation.Map.empty;
       inlining_threshold = None;
@@ -759,9 +759,7 @@ Format.eprintf "NRCUL: continuation %a number of uses %d\n%!"
   let continuation_args_approxs t i ~num_params =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->
-      let approxs =
-        Array.make num_params (Simple_value_approx.value_unknown Other)
-      in
+      let approxs = Array.make num_params (Simple_value_approx.value_bottom) in
       Array.to_list approxs
     | uses ->
       Continuation_uses.meet_of_args_approxs uses ~num_params

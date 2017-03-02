@@ -46,6 +46,7 @@ module rec T : sig
   }
 
   and descr =
+    | Unknown of unknown_because_of
     | Union of Unionable.t
     (* CR mshinwell: These next two should presumably go into [Union] so we
        can unbox them *)
@@ -55,11 +56,10 @@ module rec T : sig
     | Closure of value_closure
     | String of value_string
     | Float_array of value_float_array
-    | Unknown of unknown_because_of
-    | Bottom
     | Extern of Export_id.t
     | Symbol of Symbol.t
     | Unresolved of unresolved_value
+    | Bottom
 
   and value_closure = {
     potential_closures : t Closure_id.Map.t;
@@ -132,7 +132,8 @@ end = struct
     | Union union1, Union union2 ->
       begin match Unionable.join union1 union2 ~really_import_approx with
       | Ok union -> Union union
-      | Bottom -> Bottom
+      | Ill_typed_code -> Bottom
+      | Anything -> Unknown Other
       end
     | Symbol s1, Symbol s2 when Symbol.equal s1 s2 -> d1
     | Extern e1, Extern e2 when Export_id.equal e1 e2 -> d1
@@ -173,10 +174,10 @@ end = struct
 
   and join ~really_import_approx a1 a2 =
     match a1, a2 with
-    | { descr = Bottom }, _ -> a1
-    | _, { descr = Bottom } -> a2
-    | { descr = Unknown _ }, a
-    | a, { descr = Unknown _ } -> a
+    | { descr = Bottom }, _ -> a2
+    | _, { descr = Bottom } -> a1
+    | { descr = Unknown _ }, _ -> a1
+    | _, { descr = Unknown _ } -> a2
     | { descr = (Symbol _ | Extern _) }, _
     | _, { descr = (Symbol _ | Extern _) } ->
       join ~really_import_approx
@@ -313,8 +314,9 @@ end and Unionable : sig
   val useful : t -> bool
 
   type 'a or_bottom =
+    | Anything
     | Ok of 'a
-    | Bottom
+    | Ill_typed_code
 
   val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
 
@@ -330,9 +332,10 @@ end and Unionable : sig
 
   val ok_for_variant : t -> bool
 end = struct
-  type 'a or_bottom =
+  type 'a or_bottom =  (* CR mshinwell: rename type *)
+    | Anything
     | Ok of 'a
-    | Bottom
+    | Ill_typed_code
 
   module Immediate = struct
     type t =
@@ -358,7 +361,7 @@ end = struct
 
     let join t1 t2 : t or_bottom =
       if equal t1 t2 then Ok t1
-      else Bottom
+      else Anything
 
     let join_set ts =
       let t = Set.choose ts in
@@ -366,7 +369,8 @@ end = struct
       Set.fold (fun t ts ->
           match ts with
           | Ok ts -> join t ts
-          | Bottom -> Bottom)
+          | Ill_typed_code -> Ill_typed_code
+          | Anything -> Anything)
         ts (Ok t)
   end
 
@@ -439,7 +443,6 @@ end = struct
         by_tag
     | Immediates _imms -> true
 
-
   let join (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
     let get_immediates t =
       match t with
@@ -470,7 +473,7 @@ end = struct
           end)
         blocks_t1 blocks_t2
     in
-    if !ill_typed_code then Bottom
+    if !ill_typed_code then Ill_typed_code
     else if Immediate.Set.is_empty immediates then Ok (Blocks blocks)
     else if Tag.Map.is_empty blocks then Ok (Immediates immediates)
     else Ok (Blocks_and_immediates (blocks, immediates))
@@ -494,18 +497,19 @@ end = struct
     | Blocks by_tag ->
       begin match Tag.Map.bindings by_tag with
       | [tag, fields] -> Ok (Block (tag, fields))
-      | _ -> Bottom
+      | _ -> Anything
       end
     | Blocks_and_immediates (by_tag, imms) ->
       if Tag.Map.is_empty by_tag then flatten (Immediates imms)
       else if Immediate.Set.is_empty imms then flatten (Blocks by_tag)
-      else Bottom
+      else Anything
     | Immediates imms ->
       match Immediate.join_set imms with
       | Ok (Int i) -> Ok (Int i)
       | Ok (Char c) -> Ok (Char c)
       | Ok (Constptr p) -> Ok (Constptr p)
-      | Bottom -> Bottom
+      | Ill_typed_code -> Ill_typed_code
+      | Anything -> Anything
 end
 
 let equal_boxed_int = T.equal_boxed_int
@@ -534,6 +538,7 @@ type t = T.t = {
 }
 
 and descr = T.descr =
+  | Unknown of unknown_because_of
   | Union of Unionable.t
   | Float of float option
   | Boxed_int : 'a T.boxed_int * 'a -> descr
@@ -541,12 +546,11 @@ and descr = T.descr =
   | Closure of value_closure
   | String of T.value_string
   | Float_array of value_float_array
-  | Unknown of unknown_because_of
-  | Bottom
   | Extern of Export_id.t
   | Symbol of Symbol.t
   | Unresolved of unresolved_value
     (** No description was found for this symbol *)
+  | Bottom
 
 and value_closure = T.value_closure = {
   potential_closures : t Closure_id.Map.t;
@@ -742,7 +746,7 @@ let simplify_named t (named : Flambda.named) : simplification_result_named =
     match t.descr with
     | Union union ->
       begin match Unionable.flatten union with
-      | Ok (Block _) | Bottom ->
+      | Ok (Block _) | Ill_typed_code | Anything ->
         named, Nothing_done, t
       | Ok (Int n) ->
         let const, approx = make_const_int_named n in
@@ -781,7 +785,7 @@ let simplify_var t : (Flambda.named * t) option =
   match t.descr with
   | Union union ->
     begin match Unionable.flatten union with
-    | Ok (Block _) | Bottom -> try_symbol ()
+    | Ok (Block _) | Ill_typed_code | Anything -> try_symbol ()
     | Ok (Int n) -> Some (make_const_int_named n)
     | Ok (Char n) -> Some (make_const_char_named n)
     | Ok (Constptr n) -> Some (make_const_ptr_named n)
@@ -868,8 +872,7 @@ Format.eprintf "get_field %d from %a\n%!" i print t;
          something exceptionally unsafe, or it is an unreachable branch.
          We consider this as unreachable and mark the result accordingly. *)
       Unreachable
-    | Bottom ->
-      Ok (value_unknown Other)
+    | Ill_typed_code | Anything -> Unreachable
     end
   (* CR-someday mshinwell: This should probably return Unreachable in more
      cases.  I added a couple more. *)
@@ -905,7 +908,7 @@ let check_approx_for_block t : checked_approx_for_block =
   | Union union ->
     begin match Unionable.flatten union with
     | Ok (Block (tag, fields)) -> Ok (tag, fields)
-    | Ok (Int _ | Char _ | Constptr _) | Bottom -> Wrong
+    | Ok (Int _ | Char _ | Constptr _) | Ill_typed_code | Anything -> Wrong
     end
   | Bottom | Float_array _ | String _ | Float _ | Boxed_int _
   | Set_of_closures _ | Closure _ | Symbol _ | Extern _
@@ -921,7 +924,7 @@ let check_approx_for_block_or_immediate t
   match t.descr with
   | Union union ->
     begin match Unionable.flatten union with
-    | Bottom -> Wrong
+    | Ill_typed_code | Anything -> Wrong
     | Ok (Block _) -> Block
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
@@ -1125,7 +1128,7 @@ let potentially_taken_const_switch_branch t branch =
   | Union union ->
     let must_be_taken =
       match Unionable.flatten union with
-      | Bottom -> false
+      | Ill_typed_code | Anything -> false
       | Ok (Block _) -> false
       | Ok (Int i) | Ok (Constptr i) -> i = branch
       | Ok (Char c) -> Char.code c = branch

@@ -568,7 +568,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
     in
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity (fun _index ->
-        A.value_unknown Other))
+        A.value_bottom))
     in
 (*
 Format.eprintf "for_call_site: use of continuation %a has %d args\n%!"

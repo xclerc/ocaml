@@ -104,7 +104,8 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       begin match A.Unionable.flatten union with
       | Ok (Int _ | Char _ | Constptr _) -> S.const_bool_expr expr true
       | Ok (Block _) -> S.const_bool_expr expr false
-      | Bottom -> expr, A.value_unknown Other, C.Benefit.zero
+      | Ill_typed_code -> expr, A.value_bottom, C.Benefit.zero
+      | Anything -> expr, A.value_unknown Other, C.Benefit.zero
       end
     | [Union union] ->
       begin match A.Unionable.flatten union with

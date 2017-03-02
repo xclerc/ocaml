@@ -550,7 +550,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
               in
               Closure_id.Map.add closure_id var project_var_var,
               set_approx)
-            value_closures (Closure_id.Map.empty, A.value_unknown Other)
+            value_closures (Closure_id.Map.empty, A.value_bottom)
         in
         let projection : Projection.t =
           Project_var {
@@ -1178,14 +1178,14 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_approxs:[A.value_unknown Other]
+          ~args_approxs:[A.value_bottom]
       in
       Flambda.Push { id; exn_handler; }, r
     | Pop { id; exn_handler; } ->
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_approxs:[A.value_unknown Other]
+          ~args_approxs:[A.value_bottom]
       in
       Flambda.Pop { id; exn_handler; }, r
   in
@@ -2204,7 +2204,7 @@ Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
             in
             (i, cont)::acc, r
           in
-          let r = R.set_approx r (A.value_unknown Other) in
+          let r = R.set_approx r A.value_bottom in
           let consts, r = List.fold_right f consts ([], r) in
           let failaction, r =
             match sw.failaction with

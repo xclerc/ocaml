@@ -122,7 +122,14 @@ module rec T : sig
     symbol : (Symbol.t * int option) option;
   }
 
+  (** Partial order:
+        Bottom <= (everything else except Unknown) <= Unknown
+
+      [Bottom] means "no value can flow to this point".
+      [Unknown] means "any value might flow to this point".
+  *)
   and descr = private 
+    | Unknown of unknown_because_of
     | Union of Unionable.t
     | Float of float option
     | Boxed_int : 'a boxed_int * 'a -> descr
@@ -130,17 +137,10 @@ module rec T : sig
     | Closure of value_closure
     | String of value_string
     | Float_array of value_float_array
-    | Unknown of unknown_because_of
-      (* CR mshinwell: Need to think about this whole unknown/bottom thing.
-         How about:
-         - Bottom --> Nothing
-         - Unknown --> Anything
-      *)
-    | Bottom
     | Extern of Export_id.t
     | Symbol of Symbol.t
     | Unresolved of unresolved_value
-      (** No description was found for this symbol *)
+    | Bottom
 
   and value_closure = {
     potential_closures : t Closure_id.Map.t;
@@ -204,9 +204,13 @@ end and Unionable : sig
 
   val print : Format.formatter -> t -> unit
 
+  (** Partial ordering:
+        Ill_typed_code <= Ok _ <= Anything
+  *)
   type 'a or_bottom =
+    | Anything
     | Ok of 'a
-    | Bottom
+    | Ill_typed_code
 
   val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
 
