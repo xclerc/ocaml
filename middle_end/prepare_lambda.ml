@@ -512,9 +512,14 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
                 sw_failaction = None;
               }
             in
-            k (wrap_switch (
-              L.Lswitch (Lprim (Pisint, [scrutinee], Location.none),
-                isint_switch)))))))
+            let switch =
+              if switch.sw_numconsts = 0 then blocks_switch
+              else if switch.sw_numblocks = 0 then consts_switch
+              else
+                L.Lswitch (Lprim (Pisint, [scrutinee], Location.none),
+                  isint_switch)
+            in
+            k (wrap_switch switch)))))
   | Lstringswitch (scrutinee, cases, default, loc) ->
     prepare env (Matching.expand_stringswitch loc scrutinee cases default) k
   | Lstaticraise (cont, args) ->
@@ -629,4 +634,9 @@ let run lam =
   in
   let env = Env.create ~current_unit_id in
   let lam = add_default_argument_wrappers lam in
-  prepare env lam (fun lam -> lam)
+  let lam = prepare env lam (fun lam -> lam) in
+(* CR mshinwell: add "-dpreparelambda" or something.  Also -dilambda.
+  Format.eprintf "After Prepare_lambda:@ \n%a\n%!"
+    Printlambda.lambda lam;
+*)
+  lam
