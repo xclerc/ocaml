@@ -1453,7 +1453,12 @@ and simplify_named env r (tree : Flambda.named)
               [], Reachable (Var var), ret r var_approx)
           | None ->
             begin match A.get_field arg_approx ~field_index with
-            | Unreachable -> [], Unreachable, r
+            | Unreachable ->
+(*
+Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
+  field_index Variable.print arg A.print arg_approx;
+*)
+              [], Unreachable, r
             | Ok approx ->
               let tree, approx =
                 match arg_approx.symbol with
@@ -2136,6 +2141,10 @@ body, r
     end
   | Switch (arg, sw) ->
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->
+(*
+Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
+  Variable.print arg A.print arg_approx;
+*)
       let rec filter_branches filter branches compatible_branches =
         match branches with
         | [] -> Can_be_taken compatible_branches

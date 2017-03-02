@@ -872,7 +872,8 @@ Format.eprintf "get_field %d from %a\n%!" i print t;
          something exceptionally unsafe, or it is an unreachable branch.
          We consider this as unreachable and mark the result accordingly. *)
       Unreachable
-    | Ill_typed_code | Anything -> Unreachable
+    | Ill_typed_code -> Unreachable
+    | Anything -> Ok (value_unknown Other)
     end
   (* CR-someday mshinwell: This should probably return Unreachable in more
      cases.  I added a couple more. *)
