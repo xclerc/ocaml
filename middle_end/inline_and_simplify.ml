@@ -1927,7 +1927,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
     simplify_free_variables env args ~f:(fun env args args_approxs ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_approxs)
   | Let_cont { body; handlers = Nonrecursive { name; handler = {
-      params; handler = Apply_cont (alias_of, None, params'); }; }; }
+      params; handler = Apply_cont (alias_of, None, params');
+      is_exn_handler = false; }; }; }
     when Variable.compare_lists params params' = 0 ->
     (* Introduction of continuation aliases. *)
     let expr : Flambda.t =
