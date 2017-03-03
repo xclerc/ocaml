@@ -344,6 +344,8 @@ let rec linear i n =
             [lbl_end] to [linear].
             For the moment we don't use this -1 label at all, and make sure
             there's a real label there.
+            Maybe there should be a separate pass for doing the dead code
+            elimination on Linear?
       *)
       (* CR mshinwell: Change the type to make this statically checked *)
       assert (not is_exn_handler || List.length handlers = 1);
@@ -385,9 +387,11 @@ l)
       in
       let n2 = adjust_trap_depth ~before:n1.trap_depth ~after:n2 in
       let n3 = linear body (add_branch lbl_end n2) in
+(*
 let hs = List.map (fun (k, _, _) -> k) handlers in
 Format.eprintf "Body of Icatch binding %a will continue at label %d\n%!"
   (Format.pp_print_list Format.pp_print_int) hs lbl_end;
+*)
       exit_label := previous_exit_label;
       n3
   | Iexit nfail ->
