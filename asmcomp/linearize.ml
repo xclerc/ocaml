@@ -153,6 +153,14 @@ let get_label n =
     let lbl = Cmm.new_label () in
     (lbl, cons_instr (Llabel lbl) n)
 
+let get_real_label n =
+  match n.desc with
+  | Lbranch lbl -> (lbl, n)
+  | Llabel lbl -> (lbl, n)
+  | _ ->
+    let lbl = Cmm.new_label () in
+    (lbl, cons_instr (Llabel lbl) n)
+
 (* Check the fallthrough label *)
 let check_label n = match n.desc with
   | Lbranch lbl -> lbl
@@ -313,16 +321,49 @@ let rec linear i n =
       in
       cons_instr (Llabel lbl_head) n2
   | Icatch(_rec_flag, is_exn_handler, handlers, body) ->
+      (* CR mshinwell: There were two problems:
+         1. The patch to introduce multiple handlers had forgotten to put
+            a branch at the end of each handler to the join point.
+         2. For:
+              catch
+                catch
+                  ...
+                with k1 -> ...
+              with k2 -> ...
+              Iend
+            then the "lbl_end" for the outermost catch is -1.  This means that
+            the recursive call to linearize the body of the catch would never
+            add a branch before the handler k2, since the code before that
+            branch must be unreachable.  So when we come to the second Icatch
+            then "lbl_end" ends up getting the label from the start of [k2],
+            which can cause dead "goto"s to jump to exception handling
+            continuations.  (Causes [Linear_invariants] to fail.)
+            It also seems as if the dead code elimination won't correctly
+            propagate backwards at present due to this -1 being lost.  It's
+            unclear to me whether there is any solution other than passing
+            [lbl_end] to [linear].
+            For the moment we don't use this -1 label at all, and make sure
+            there's a real label there.
+      *)
       (* CR mshinwell: Change the type to make this statically checked *)
       assert (not is_exn_handler || List.length handlers = 1);
-      let (lbl_end, n1) = get_label (linear i.Mach.next n) in
+      let (lbl_end, n1) = get_real_label (linear i.Mach.next n) in
       (* CR mshinwell for pchambart:
          1. rename "io"
          2. Make sure the test cases cover the "Iend" cases too *)
       let labels_at_entry_to_handlers = List.map (fun (_nfail, _, handler) ->
           match handler.Mach.desc with
-          | Iend -> lbl_end
-          | _ -> Cmm.new_label ())
+          | Iend ->
+(*
+Format.eprintf "Start of handler %d has label %d\n%!" _nfail lbl_end;
+*)
+ lbl_end
+          | _ ->
+let l = Cmm.new_label () in
+(*
+Format.eprintf "Start of handler %d has label %d\n%!" _nfail l;
+*)
+l)
         handlers in
       let previous_exit_label = !exit_label in
       let exit_label_add =
@@ -338,12 +379,15 @@ let rec linear i n =
             | _ ->
               let trap_depth = List.length trap_stack in
               let n = adjust_trap_depth ~before:trap_depth ~after:n in
-              let handler = linear handler n in
+              let handler = linear handler (add_branch lbl_end n) in
               cons_instr (Llabel lbl_handler) handler)
           n1 handlers labels_at_entry_to_handlers
       in
       let n2 = adjust_trap_depth ~before:n1.trap_depth ~after:n2 in
       let n3 = linear body (add_branch lbl_end n2) in
+let hs = List.map (fun (k, _, _) -> k) handlers in
+Format.eprintf "Body of Icatch binding %a will continue at label %d\n%!"
+  (Format.pp_print_list Format.pp_print_int) hs lbl_end;
       exit_label := previous_exit_label;
       n3
   | Iexit nfail ->

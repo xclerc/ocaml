@@ -581,9 +581,7 @@ CFI_STARTPROC
         movq    %r14, %rsp
         popq    %r14
         popq    %r11
-  /* CR mshinwell: These "jmpq"s through %r11 need a different syntax on
-     macOS, I suspect */
-        jmpq    %r11
+        jmpq    *%r11
 LBL(110):
         movq    %rax, %r12            /* Save exception bucket */
         movq    %rax, C_ARG_1         /* arg 1: exception bucket */
@@ -604,7 +602,7 @@ LBL(110):
         movq    %r14, %rsp
         popq    %r14
         popq    %r11
-        jmpq    %r11
+        jmpq    *%r11
 CFI_ENDPROC
 
 /* Raise an exception from C */
@@ -618,7 +616,7 @@ CFI_STARTPROC
         popq    %r14                   /* Recover previous exception handler */
         LOAD_VAR(caml_young_ptr, %r15) /* Reload alloc ptr */
         popq    %r11
-        jmpq    %r11
+        jmpq    *%r11
 LBL(112):
 #ifdef WITH_FRAME_POINTERS
         ENTER_FUNCTION          ;

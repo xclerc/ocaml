@@ -26,7 +26,7 @@ module U = Inline_and_simplify_aux.Continuation_uses
 
 let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~(how_to_unbox : Unbox_one_variable.How_to_unbox.t) ~return_cont_param
-      ~specialised_args =
+      ~specialised_args ~return_arity =
   let dbg = Debuginfo.none in
   (* There are two steps:
      1. Build a stub continuation that is called by the function instead of
@@ -66,9 +66,6 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
         };
       };
     }
-  in
-  let return_arity =
-    function_decl.return_arity - 1 + List.length how_to_unbox.new_params
   in
   let function_decl =
     Flambda.create_function_declaration ~continuation_param:new_return_cont
@@ -182,16 +179,23 @@ let for_function_decl ~continuation_uses ~fun_var
     Format.eprintf "Unbox_returns on:\n@ %a\n%!"
       Flambda.print_function_declaration (fun_var, function_decl);
 *)
-              let function_decls, new_specialised_args =
-                unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
-                  ~return_cont_param ~specialised_args
+              let return_arity =
+                function_decl.return_arity - 1
+                  + List.length how_to_unbox.new_params
               in
+              if return_arity <= function_decl.return_arity then
+                None
+              else
+                let function_decls, new_specialised_args =
+                  unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
+                    ~return_cont_param ~specialised_args ~return_arity
+                in
 (*
     Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
       Flambda.print_function_declarations
         (Flambda.create_function_declarations ~funs:function_decls);
 *)
-              Some (function_decls, new_specialised_args)
+                Some (function_decls, new_specialised_args)
             end
 
 let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
