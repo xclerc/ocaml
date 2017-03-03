@@ -93,6 +93,9 @@ exception Unbound_closure_ids of Closure_id.Set.t
 exception Unbound_vars_within_closures of Var_within_closure.Set.t
 exception Move_to_a_closure_not_in_the_free_variables
   of Variable.t * Variable.Set.t
+exception Exception_handler_used_as_normal_continuation of Continuation.t
+exception Exception_handler_used_as_return_continuation of Continuation.t
+exception Normal_continuation_used_as_exception_handler of Continuation.t
 
 exception Flambda_invariants_failed
 
@@ -175,18 +178,7 @@ module Push_pop_invariants = struct
 
   let rec loop (env:env) current_stack (expr : Flambda.t) =
     match expr with
-    | Let_mutable { body; _ } -> loop env current_stack body
-    | Let { defining_expr; body; _ } ->
-      begin match defining_expr with
-      | Set_of_closures set_of_closures ->
-        Variable.Map.iter
-          (fun _ (function_decl : Flambda.function_declaration) ->
-            well_formed_trap ~continuation_arity:function_decl.return_arity
-              function_decl.continuation_param function_decl.body)
-          set_of_closures.function_decls.funs
-      | _ -> ()
-      end;
-      loop env current_stack body
+    | Let { body; _ } | Let_mutable { body; _ } -> loop env current_stack body
     | Let_cont { body; handlers; } ->
       let handler_stack = var () in
       let env =
@@ -288,26 +280,16 @@ module Push_pop_invariants = struct
     loop env root expr
 
   let check program =
-    Flambda_iterators.iter_exprs_at_toplevel_of_program program
+    Flambda_iterators.iter_exprs_at_toplevels_in_program program
       ~f:well_formed_trap
 end
 
 module Continuation_scoping = struct
+  type kind = Normal | Exn_handler
+
   let rec loop env (expr : Flambda.t) =
     match expr with
-    | Let_mutable { body; _ } -> loop env body
-    | Let { defining_expr; body; _ } ->
-      begin match defining_expr with
-      | Set_of_closures set_of_closures ->
-        Variable.Map.iter
-          (fun _ (function_decl : Flambda.function_declaration) ->
-            check_expr function_decl.continuation_param
-              ~continuation_arity:function_decl.return_arity
-              function_decl.body)
-          set_of_closures.function_decls.funs
-      | _ -> ()
-      end;
-      loop env body
+    | Let { body; _ } | Let_mutable { body; _ } -> loop env body
     | Let_cont { body; handlers; } ->
       let env =
         match handlers with
@@ -315,17 +297,23 @@ module Continuation_scoping = struct
           begin match Continuation.Map.find alias_of env with
           | exception Not_found ->
             raise (Continuation_not_caught (alias_of, "alias"))
-          | arity -> Continuation.Map.add name arity env
+          | arity_and_kind ->
+            Continuation.Map.add name arity_and_kind env
           end
         | Nonrecursive { name; handler; } ->
           let arity = List.length handler.params in
-          Continuation.Map.add name arity env
+          let kind = if handler.is_exn_handler then Exn_handler else Normal in
+          loop env handler.handler;
+          Continuation.Map.add name (arity, kind) env
         | Recursive handlers ->
           let recursive_env =
             Continuation.Map.fold (fun cont
                     (handler : Flambda.continuation_handler) env ->
                 let arity = List.length handler.params in
-                Continuation.Map.add cont arity env)
+                let kind =
+                  if handler.is_exn_handler then Exn_handler else Normal
+                in
+                Continuation.Map.add cont (arity, kind) env)
               handlers
               env
           in
@@ -342,53 +330,80 @@ module Continuation_scoping = struct
           Continuation.Map.fold (fun cont
                   (handler : Flambda.continuation_handler) env ->
               let arity = List.length handler.params in
-              Continuation.Map.add cont arity env)
+              let kind =
+                if handler.is_exn_handler then Exn_handler else Normal
+              in
+              Continuation.Map.add cont (arity, kind) env)
             handlers
             env
       in
       loop env body
-    | Apply_cont ( cont, exn, args ) -> begin
-      let arity =
+    | Apply_cont (cont, exn, args) ->
+      let arity, kind =
         try Continuation.Map.find cont env with
-        | Not_found ->
-          raise (Continuation_not_caught (cont, "apply_cont"))
+        | Not_found -> raise (Continuation_not_caught (cont, "apply_cont"))
       in
-      if not (List.length args = arity) then
-        raise (Continuation_called_with_wrong_arity (cont, List.length args, arity));
-      match exn with
+      if not (List.length args = arity) then begin
+        raise (Continuation_called_with_wrong_arity (
+          cont, List.length args, arity))
+      end;
+      begin match kind with
+      | Normal -> ()
+      | Exn_handler ->
+        raise (Exception_handler_used_as_normal_continuation cont)
+      end;
+      begin match exn with
       | None -> ()
       | Some (Push { id = _; exn_handler })
       | Some (Pop { id = _; exn_handler }) ->
         match Continuation.Map.find exn_handler env with
         | exception Not_found ->
           raise (Continuation_not_caught (exn_handler, "push/pop"))
-        | arity ->
-          if not (arity = 1) then
-            raise (Continuation_called_with_wrong_arity (cont, 1, arity));
-      end
-    | Apply { continuation; call_kind; _ } -> begin
-        match Continuation.Map.find continuation env with
-        | exception Not_found ->
-          raise (Continuation_not_caught (continuation, "apply"))
-        | arity ->
-          let expected_arity =
-            match call_kind with
-            | Direct { return_arity; _ } -> return_arity
-            | Indirect -> 1
-          in
-          if not (arity = expected_arity) then begin
-            raise (Continuation_called_with_wrong_arity
-              (continuation, expected_arity, arity))
+        | (arity, kind) ->
+          begin match kind with
+          | Exn_handler -> ()
+          | Normal ->
+            raise (Normal_continuation_used_as_exception_handler exn_handler)
+          end;
+          assert (not (Continuation.equal cont exn_handler));
+          if arity <> 1 then begin
+            raise (Continuation_called_with_wrong_arity (cont, 1, arity))
           end
+      end
+    | Apply { continuation; call_kind; _ } ->
+      begin match Continuation.Map.find continuation env with
+      | exception Not_found ->
+        raise (Continuation_not_caught (continuation, "apply"))
+      | arity, kind ->
+        begin match kind with
+        | Normal -> ()
+        | Exn_handler ->
+          raise (Exception_handler_used_as_return_continuation continuation)
+        end;
+        let expected_arity =
+          match call_kind with
+          | Direct { return_arity; _ } -> return_arity
+          | Indirect -> 1
+        in
+        if arity <> expected_arity then begin
+          raise (Continuation_called_with_wrong_arity
+            (continuation, expected_arity, arity))
+        end
       end
     | Switch (_,{ consts; failaction; _ } ) ->
       let check (_, cont) =
         match Continuation.Map.find cont env with
         | exception Not_found ->
           raise (Continuation_not_caught (cont, "switch"))
-        | arity ->
-          if not (arity = 0) then
-            raise (Continuation_called_with_wrong_arity (cont, 0, arity));
+        | arity, kind ->
+          begin match kind with
+          | Normal -> ()
+          | Exn_handler ->
+            raise (Exception_handler_used_as_normal_continuation cont)
+          end;
+          if not (arity = 0) then begin
+            raise (Continuation_called_with_wrong_arity (cont, 0, arity))
+          end
       in
       List.iter check consts;
       begin match failaction with
@@ -399,11 +414,11 @@ module Continuation_scoping = struct
     | Proved_unreachable -> ()
 
   and check_expr ~continuation_arity k (expr : Flambda.t) =
-    let env = Continuation.Map.singleton k continuation_arity in
+    let env = Continuation.Map.singleton k (continuation_arity, Normal) in
     loop env expr
 
   let check program =
-    Flambda_iterators.iter_exprs_at_toplevel_of_program program ~f:check_expr
+    Flambda_iterators.iter_exprs_at_toplevels_in_program program ~f:check_expr
 end
 
 let variable_and_symbol_invariants (program : Flambda.program) =
@@ -978,7 +993,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
       miscompilations *)
     (* every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
         flam; *)
-    Flambda_iterators.iter_exprs_at_toplevel_of_program flam
+    Flambda_iterators.iter_exprs_at_toplevels_in_program flam
       ~f:(fun ~continuation_arity:_ _cont flam ->
         primitive_invariants flam
           ~no_access_to_global_module_identifiers:cmxfile;
@@ -1111,7 +1126,16 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
       Format.eprintf ">> Malformed exception continuation %a: %s"
         Continuation.print cont
         str
-  | exn -> raise exn
+    | Exception_handler_used_as_normal_continuation cont ->
+      Format.eprintf ">> Exception handler %a used as normal continuation"
+        Continuation.print cont
+    | Exception_handler_used_as_return_continuation cont ->
+      Format.eprintf ">> Exception handler %a used as return continuation"
+        Continuation.print cont
+    | Normal_continuation_used_as_exception_handler cont ->
+      Format.eprintf ">> Non-exception handler %a used as exception handler"
+        Continuation.print cont
+    | exn -> raise exn
   end;
   Format.eprintf "\n@?";
   raise Flambda_invariants_failed

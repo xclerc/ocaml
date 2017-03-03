@@ -163,6 +163,26 @@ let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
   in
   loop program.program_body
 
+(* CR mshinwell: think of a better name *)
+let iter_exprs_at_toplevels_in_program (program : Flambda.program) ~f =
+  iter_exprs_at_toplevel_of_program program
+    ~f:(fun ~continuation_arity cont expr ->
+      let rec iter_expr ~continuation_arity cont expr =
+        iter_named (fun (named : Flambda.named) ->
+            match named with
+            | Set_of_closures set_of_closures ->
+              Variable.Map.iter
+                (fun _ (function_decl : Flambda.function_declaration) ->
+                  iter_expr ~continuation_arity:function_decl.return_arity
+                    function_decl.continuation_param
+                    function_decl.body)
+                set_of_closures.function_decls.funs
+            | _ -> ())
+          expr;
+        f ~continuation_arity cont expr
+      in
+      iter_expr ~continuation_arity cont expr)
+
 let iter_named_of_program program ~f =
   iter_exprs_at_toplevel_of_program program
     ~f:(fun ~continuation_arity:_ _ e -> iter_named f e)

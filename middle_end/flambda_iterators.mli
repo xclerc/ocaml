@@ -105,7 +105,23 @@ val iter_all_toplevel_immutable_let_and_let_rec_bindings
   -> f:(Variable.t -> Flambda.named -> unit)
   -> unit
 
+(** Iterate over all expressions occurring directly at the toplevel of the
+    program.  Note that the only function bodies iterated over are those
+    bound to a symbol.  (That is to say, a function body in a set of closures
+    [constant_defining_value] will be iterated over---but any subfunctions in
+    the body will not be.  Likewise any function body defined by a normal
+    [Let] will not be iterated over.)  If you want to iterate over those
+    things as well, use [iter_exprs_at_toplevels_in_program]. *)
 val iter_exprs_at_toplevel_of_program
+   : Flambda.program
+  -> f:(continuation_arity:int -> Continuation.t -> Flambda.t -> unit)
+  -> unit
+
+(** Iterate over all toplevel expressions in the program:
+    - bodies of functions, whether bound to symbols or not, including any
+      subfunctions; and
+    - [Effect] expressions. *)
+val iter_exprs_at_toplevels_in_program
    : Flambda.program
   -> f:(continuation_arity:int -> Continuation.t -> Flambda.t -> unit)
   -> unit
