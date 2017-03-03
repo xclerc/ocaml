@@ -32,12 +32,12 @@ let rec lift (expr : Flambda.expr) ~to_copy =
       free_conts, lifted, body
     end else if Continuation.Set.equal free_conts our_cont then begin
       (* The body of this [Let_cont] can only return through [cont], which
-          means that [handler] postdominates [body].  As such we can cut off
-          [body] and put it inside an [Initialize_symbol] whose continuation
-          is [handler].
-          We also augment [to_copy] to ensure that the binding of the existing
-          variable to the new symbol is restated at the top of each subsequent
-          lifted expression. *)
+         means that [handler] postdominates [body].  As such we can cut off
+         [body] and put it inside an [Initialize_symbol] whose continuation
+         is [handler].
+         We also augment [to_copy] to ensure that the binding of the existing
+         variable to the new symbol is restated at the top of each subsequent
+         lifted expression. *)
       let symbol = Flambda_utils.make_variable_symbol param in
       let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
       let to_copy = (param, defining_expr)::to_copy in
@@ -79,11 +79,9 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     let lifted = (cont, var, symbol, expr, to_copy) :: lifted in
     let body = Flambda.create_let var sym_defining_expr body in
     free_conts, lifted, body
-  | Let_mutable ({ body; _ } as let_mutable) ->
-    let free_conts, lifted, body = lift body ~to_copy in
-    let body : Flambda.t = Let_mutable { let_mutable with body; } in
-    free_conts, lifted, body
-  | Let_cont _ | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
+  (* CR mshinwell: Add better treatment of Let_mutable? *)
+  | Let_cont _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
+  | Proved_unreachable ->
     let free_conts = Flambda.free_continuations expr in
     free_conts, [], expr
 
