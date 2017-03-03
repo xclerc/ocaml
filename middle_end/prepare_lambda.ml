@@ -375,7 +375,9 @@ let rec simplify_primitive env (prim : L.primitive) args loc =
     let const_true = Ident.create "const_true" in
     let cond = Ident.create "cond_sequor" in
     prepare env (
-      L.Llet (Strict, Pgenval, const_true, Lconst (Const_base (Const_int 1)),
+      (* CR mshinwell: N.B. This used to say "Const_int" which I think is
+         wrong; "true" and "false" are "Const_pointer". *)
+      L.Llet (Strict, Pgenval, const_true, Lconst (Const_pointer 1),
         (L.Llet (Strict, Pgenval, cond, arg1,
           (Lifthenelse (Lvar cond, Lvar const_true, arg2))))))
       (fun lam -> lam)
@@ -385,7 +387,7 @@ let rec simplify_primitive env (prim : L.primitive) args loc =
     (* CR mshinwell: This recursion is a bit ugly.  Factor out a helper
        function for constructing if-then-else-like switches? *)
     prepare env (
-      L.Llet (Strict, Pgenval, const_false, Lconst (Const_base (Const_int 0)),
+      L.Llet (Strict, Pgenval, const_false, Lconst (Const_pointer 0),
         (L.Llet (Strict, Pgenval, cond, arg1,
           (Lifthenelse (Lvar cond, arg2, Lvar const_false))))))
       (fun lam -> lam)
