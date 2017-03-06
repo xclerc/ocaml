@@ -38,6 +38,7 @@ module Env = struct
     never_inline_inside_closures : bool;
     never_inline_outside_closures : bool;
     allow_continuation_inlining : bool;
+    allow_less_precise_approximations : bool;
     unroll_counts : int Set_of_closures_origin.Map.t;
     inlining_counts : int Closure_id.Map.t;
     actively_unrolling : int Set_of_closures_origin.Map.t;
@@ -62,6 +63,7 @@ module Env = struct
       never_inline_inside_closures = false;
       never_inline_outside_closures = false;
       allow_continuation_inlining = allow_continuation_inlining;
+      allow_less_precise_approximations = false;
       unroll_counts = Set_of_closures_origin.Map.empty;
       inlining_counts = Closure_id.Map.empty;
       actively_unrolling = Set_of_closures_origin.Map.empty;
@@ -379,6 +381,11 @@ module Env = struct
   let never_inline_continuations t =
     never_inline t && not t.allow_continuation_inlining
 
+  let less_precise_approximations t = t.allow_less_precise_approximations
+
+  let allow_less_precise_approximations t =
+    { t with allow_less_precise_approximations = true; }
+
   let note_entering_closure t ~closure_id ~dbg =
     if t.never_inline then t
     else
@@ -678,11 +685,13 @@ module Result = struct
         Env.print env
     end;
 (*
-let k = 128 in
+let k = 289 in
 if Continuation.to_int cont = k then begin
-  Format.eprintf "Adding use of continuation k%d, num_args %d:\n%s\n%!"
+  Format.eprintf "Adding use of continuation k%d, args %a approxs %a:\n%s\n%!"
     k
-    (List.length args_approxs)
+    Variable.print_list args
+    (Format.pp_print_list Simple_value_approx.print)
+    (Continuation_uses.Use.Kind.args_approxs kind)
     (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10))
 end;
 *)
@@ -693,6 +702,14 @@ end;
       | uses -> uses
     in
     let uses = Continuation_uses.add_use uses env kind in
+(*
+if Continuation.to_int cont = k then begin
+  Format.eprintf "Join of args approxs for k%d: %a\n%!"
+    k
+    (Format.pp_print_list Simple_value_approx.print)
+    (Continuation_uses.meet_of_args_approxs uses ~num_params:1)
+end;
+*)
     { t with
       used_continuations =
         Continuation.Map.add cont uses t.used_continuations;

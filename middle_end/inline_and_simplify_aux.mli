@@ -187,6 +187,17 @@ module Env : sig
 
   val disallow_continuation_inlining : t -> t
 
+  (** Allow terms to be simplified under less precise approximation
+      assumptions (see [less_precise_approximations] below). *)
+  val allow_less_precise_approximations : t -> t
+
+  (** Whether it is permissible for a term to be simplified under assumptions
+      of less precise approximations than were used last time such term
+      was simplified.  The process of simplification in such an environment
+      is a "type inference only" procedure and the code resulting from it
+      must be discarded.  Used when simplifying recursive continuations. *)
+  val less_precise_approximations : t -> bool
+
   val inlining_level : t -> int
 
   (** Mark that this environment is used to rewrite code for inlining. This is

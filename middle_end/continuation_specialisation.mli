@@ -25,6 +25,7 @@ val for_toplevel_expression
   -> simplify_let_cont_handlers:(env:Inline_and_simplify_aux.Env.t
     -> r:Inline_and_simplify_aux.Result.t
     -> handlers:Flambda.continuation_handler Continuation.Map.t
+    -> args_approxs:Simple_value_approx.t list Continuation.Map.t option
     -> recursive:Asttypes.rec_flag
     -> freshening:Freshening.t
     -> update_use_env:(

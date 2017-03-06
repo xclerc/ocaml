@@ -202,6 +202,7 @@ end = struct
         let descr = join_descr ~really_import_approx a1.descr a2.descr in
         match descr with
         | Union union when not (Unionable.is_singleton union) ->
+          (* CR mshinwell: Think about whether we need to do better here *)
           { descr;
             var = None;
             symbol = None;
@@ -450,6 +451,8 @@ end = struct
         imms
 
   let ok_for_variant t =
+    (* CR mshinwell: Shouldn't this function say "false" for e.g.
+       (Int 0) u (Constptr 0) ? *)
     match t with
     | Blocks by_tag | Blocks_and_immediates (by_tag, _) ->
       (* CR mshinwell: Should the failure of this check be an error?
