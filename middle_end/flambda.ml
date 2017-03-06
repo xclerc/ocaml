@@ -414,7 +414,8 @@ let rec lam ppf (flam : t) =
           Continuation.Map.iter (fun name
                   { params; stub; is_exn_handler; handler;
                     specialised_args; } ->
-              fprintf ppf "@[%s%a%s%s%s@[%a@]%s@]%a =@ %a@ "
+              if not !first then fprintf ppf "@ ";
+              fprintf ppf "@[%s%a%s%s%s@[%a@]%s@]%a =@ %a"
                 (if !first then "" else "and ")
                 Continuation.print name
                 (if stub then " *stub*" else "")
