@@ -253,6 +253,17 @@ let print_specialised_args ppf spec_args =
       spec_args
   end
 
+let print_specialised_args' ppf spec_args =
+  if not (Variable.Map.is_empty spec_args)
+  then begin
+    fprintf ppf "@ @[<v 2>with specialisations: ";
+    Variable.Map.iter (fun id (spec_to : specialised_to) ->
+        fprintf ppf "@ %a := %a"
+          Variable.print id print_specialised_to spec_to)
+      spec_args;
+    fprintf ppf "@]"
+  end
+
 (* CR-soon mshinwell: delete uses of old names *)
 let print_project_var = Projection.print_project_var
 let print_move_within_set_of_closures =
@@ -389,13 +400,13 @@ let rec lam ppf (flam : t) =
         match handlers with
         | Nonrecursive { name; handler = {
             params; stub; handler; specialised_args; }; } ->
-          fprintf ppf "@[<v 2>where %a%s%s%a%s%a =@ %a@]"
+          fprintf ppf "@[<v 2>where %a%s%s@[%a@]%s%a =@ %a@]"
             Continuation.print name
             (if stub then " *stub*" else "")
             (match params with [] -> "" | _ -> " (")
             Variable.print_list params
             (match params with [] -> "" | _ -> ")")
-            print_specialised_args specialised_args
+            print_specialised_args' specialised_args
             lam handler
         | Recursive handlers ->
           let first = ref true in
@@ -403,7 +414,7 @@ let rec lam ppf (flam : t) =
           Continuation.Map.iter (fun name
                   { params; stub; is_exn_handler; handler;
                     specialised_args; } ->
-              fprintf ppf "@[%s%a%s%s%s%a%s%a =@ %a@]@ "
+              fprintf ppf "@[%s%a%s%s%s@[%a@]%s@]%a =@ %a@ "
                 (if !first then "" else "and ")
                 Continuation.print name
                 (if stub then " *stub*" else "")
@@ -411,7 +422,7 @@ let rec lam ppf (flam : t) =
                 (match params with [] -> "" | _ -> " (")
                 Variable.print_list params
                 (match params with [] -> "" | _ -> ")")
-                print_specialised_args specialised_args
+                print_specialised_args' specialised_args
                 lam handler;
               first := false)
             handlers;
