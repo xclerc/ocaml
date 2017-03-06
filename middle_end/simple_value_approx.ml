@@ -176,8 +176,6 @@ end = struct
     match a1, a2 with
     | { descr = Bottom }, _ -> a2
     | _, { descr = Bottom } -> a1
-    | { descr = Unknown _ }, _ -> a1
-    | _, { descr = Unknown _ } -> a2
     | { descr = (Symbol _ | Extern _) }, _
     | _, { descr = (Symbol _ | Extern _) } ->
       join ~really_import_approx
@@ -201,10 +199,18 @@ end = struct
               | _ -> None
             else None
         in
-        { descr = join_descr ~really_import_approx a1.descr a2.descr;
-          var;
-          symbol;
-        }
+        let descr = join_descr ~really_import_approx a1.descr a2.descr in
+        match descr with
+        | Union union when not (Unionable.is_singleton union) ->
+          { descr;
+            var = None;
+            symbol = None;
+          }
+        | _ ->
+          { descr;
+            var;
+            symbol;
+          }
 
   let print_value_set_of_closures ppf
         { function_decls = { funs }; invariant_params; freshening; _ } =
@@ -305,6 +311,8 @@ end and Unionable : sig
     | Immediates of Immediate.Set.t
 
   val print : Format.formatter -> t -> unit
+
+  val is_singleton : t -> bool
 
   val value_int : int -> t
   val value_char : char -> t
@@ -407,6 +415,14 @@ end = struct
       Format.fprintf ppf "@[(immediates (%a))@]"
         Immediate.Set.print imms
 
+  let is_singleton t =
+    match t with
+    | Blocks blocks -> Tag.Map.cardinal blocks = 1
+    | Blocks_and_immediates (blocks, imms) ->
+      (Tag.Map.cardinal blocks = 1 && Immediate.Set.is_empty imms)
+        || (Tag.Map.is_empty blocks && Immediate.Set.cardinal imms = 1)
+    | Immediates imms -> Immediate.Set.cardinal imms = 1
+
   let value_int i =
     Immediates (Immediate.Set.singleton (Int i))
 
@@ -459,12 +475,11 @@ end = struct
     in
     let blocks_t1 = get_blocks t1 in
     let blocks_t2 = get_blocks t2 in
-    let ill_typed_code = ref false in
+    let anything = ref false in
     let blocks =
       Tag.Map.union (fun _tag fields1 fields2 ->
           if Array.length fields1 <> Array.length fields2 then begin
-            (* Two blocks with the same tag but different sizes! *)
-            ill_typed_code := true;
+            anything := true;
             None
           end else begin
             Some (Array.map2 (fun field existing_field ->
@@ -473,7 +488,7 @@ end = struct
           end)
         blocks_t1 blocks_t2
     in
-    if !ill_typed_code then Ill_typed_code
+    if !anything then Anything
     else if Immediate.Set.is_empty immediates then Ok (Blocks blocks)
     else if Tag.Map.is_empty blocks then Ok (Immediates immediates)
     else Ok (Blocks_and_immediates (blocks, immediates))

@@ -2208,14 +2208,14 @@ Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
           Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
         | _ ->
           let env = E.inside_branch env in
-          let f (i, cont) (acc, r) =
+          let f (acc, r) (i, cont) =
             let cont, r =
               simplify_apply_cont_to_cont env r cont ~args_approxs:[]
             in
             (i, cont)::acc, r
           in
           let r = R.set_approx r A.value_bottom in
-          let consts, r = List.fold_right f consts ([], r) in
+          let consts, r = List.fold_left f ([], r) consts in
           let failaction, r =
             match sw.failaction with
             | None -> None, r
