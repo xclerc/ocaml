@@ -208,7 +208,6 @@ type program = {
 }
 
 let fprintf = Format.fprintf
-module Int = Numbers.Int
 
 let print_const = Const.print
 
@@ -339,20 +338,19 @@ let rec lam ppf (flam : t) =
         List.iter
           (fun (n, l) ->
              if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<hv 1>case int %i:@ goto %a@]"
+             fprintf ppf "@[<hv 1>| %i ->@ goto %a@]"
                n Continuation.print l)
           sw.consts;
         begin match sw.failaction with
         | None  -> ()
         | Some l ->
             if !spc then fprintf ppf "@ " else spc := true;
-            fprintf ppf "@[<hv 1>default:@ goto %a@]"
+            let module Int = Numbers.Int in
+            fprintf ppf "@[<hv 1>| _ ->@ goto %a@]"
               Continuation.print l
         end in
       fprintf ppf
-        "@[<1>(%s (%i) %a@ @[<v 0>%a@])@]"
-        (match sw.failaction with None -> "switch*" | _ -> "switch")
-        (Int.Set.cardinal sw.numconsts)
+        "@[<v 1>(switch %a@ @[<v 0>%a@])@]"
         Variable.print larg switch sw
   | Apply_cont (i, trap_action, []) ->
     fprintf ppf "@[<2>(%agoto@ %a)@]"
