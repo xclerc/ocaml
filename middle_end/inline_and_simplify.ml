@@ -1801,10 +1801,11 @@ Format.eprintf "Deleting handlers binding %a\n%!"
             | Some args_approxs ->
               begin match Continuation.Map.find cont args_approxs with
               | exception Not_found ->
-                Misc.fatal_errorf "Argument approximation override requested \
-                    for continuation %a but [args_approxs] does not map \
-                    such continuation"
-                  Continuation.print cont
+                (* A new continuation introduced by
+                   [Unbox_continuation_params] (see below). *)
+                (* CR mshinwell: maybe we should enforce that? *)
+                Array.to_list (Array.init (List.length handler.params)
+                  (fun _ -> A.value_unknown Other))
               | args_approxs ->
                 assert (List.length handler.params = List.length args_approxs);
                 args_approxs
@@ -2041,8 +2042,12 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         if handler.stub || E.never_inline_continuations env
         then Unchanged { handler; }
         else
-          Unbox_continuation_params.for_non_recursive_continuation r ~handler
-            ~name ~backend:(E.backend env)
+          let args_approxs =
+            R.continuation_args_approxs r name
+              ~num_params:(List.length handler.params)
+          in
+          Unbox_continuation_params.for_non_recursive_continuation ~handler
+            ~args_approxs ~name ~backend:(E.backend env)
       in
       let simplify_one_handler ?update_use_env env r ~name ~handler ~body
               : Flambda.expr * R.t =
@@ -2125,21 +2130,19 @@ body, r
       in
       begin match handlers with
       | None -> body, r
-      | Some handlers ->
-        let handlers =
-          match handlers with
-          | Nonrecursive { name; handler; } ->
-            Continuation.Map.add name handler Continuation.Map.empty
-          | Recursive handlers -> handlers
-          | Alias _ -> assert false
-        in
+      | Some _handlers ->
         let args_approxs =
           Continuation.Map.mapi (fun cont
                     (handler : Flambda.continuation_handler) ->
               let num_params = List.length handler.params in
+              let cont =
+                Freshening.apply_static_exception (E.freshening body_env) cont
+              in
               R.continuation_args_approxs r cont ~num_params)
-            handlers
+            original_handlers
         in
+Format.eprintf "args_approxs override:@ %a\n%!"
+  (Continuation.Map.print (Format.pp_print_list A.print)) args_approxs;
         let handlers = original_handlers in
         let r = original_r in
         let handlers, env, update_use_env =
@@ -2147,8 +2150,8 @@ body, r
             handlers, body_env, (fun env -> env)
           else
             let with_wrappers =
-              Unbox_continuation_params.for_recursive_continuations r ~handlers
-                ~backend:(E.backend env)
+              Unbox_continuation_params.for_recursive_continuations
+                ~handlers ~args_approxs ~backend:(E.backend env)
             in
             (* CR mshinwell: move to Flambda_utils, probably *)
             Continuation.Map.fold (fun cont

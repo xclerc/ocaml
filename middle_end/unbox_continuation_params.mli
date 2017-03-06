@@ -20,14 +20,14 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val for_non_recursive_continuation
-   : Inline_and_simplify_aux.Result.t
-  -> name:Continuation.t
+   : name:Continuation.t
   -> handler:Flambda.continuation_handler
+  -> args_approxs:Simple_value_approx.t list
   -> backend:(module Backend_intf.S)
   -> Flambda_utils.with_wrapper
 
 val for_recursive_continuations
-   : Inline_and_simplify_aux.Result.t
-  -> handlers:Flambda.continuation_handlers
+   : handlers:Flambda.continuation_handlers
+  -> args_approxs:Simple_value_approx.t list Continuation.Map.t
   -> backend:(module Backend_intf.S)
   -> Flambda_utils.with_wrapper Continuation.Map.t

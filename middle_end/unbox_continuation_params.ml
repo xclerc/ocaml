@@ -18,7 +18,6 @@
 
 module H = Unbox_one_variable.How_to_unbox
 (*module CAV = Invariant_params.Continuations.Continuation_and_variable*)
-module R = Inline_and_simplify_aux.Result
 
 let find_unboxings ~continuation_uses ~handlers =
   Continuation.Map.filter_map handlers
@@ -35,12 +34,7 @@ let find_unboxings ~continuation_uses ~handlers =
 Format.eprintf "No definition for %a\n%!" Continuation.print cont;
 *)
             None
-          | uses ->
-            let num_params = List.length params in
-            let args_approxs =
-              Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
-                uses ~num_params
-            in
+          | args_approxs ->
             let params_to_approxs =
               Variable.Map.of_list (List.combine params args_approxs)
             in
@@ -115,12 +109,12 @@ Format.eprintf "Invariant params:\n@;%a\n"
     unboxings_by_cont unboxings_by_cont'
 *)
 
-let for_continuations r ~handlers ~backend =
+let for_continuations ~continuation_uses ~handlers ~backend
+      : Flambda_utils.with_wrapper Continuation.Map.t option =
 (*
 Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
   Continuation.Set.print (Continuation.Map.keys handlers);
 *)
-  let continuation_uses = R.continuation_uses r in
   let unboxings_by_cont = find_unboxings ~continuation_uses ~handlers in
   if Continuation.Map.is_empty unboxings_by_cont then begin
     None
@@ -249,7 +243,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
     Some with_wrappers
   end
 
-let for_non_recursive_continuation r ~name ~handler ~backend
+let for_non_recursive_continuation ~name ~handler ~args_approxs ~backend
       : Flambda_utils.with_wrapper =
 (*
 Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
@@ -258,7 +252,10 @@ Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
   let handlers =
     Continuation.Map.add name handler Continuation.Map.empty
   in
-  let result = for_continuations r ~handlers ~backend in
+  let continuation_uses =
+    Continuation.Map.add name args_approxs Continuation.Map.empty
+  in
+  let result = for_continuations ~continuation_uses ~handlers ~backend in
   match result with
   | None -> Unchanged { handler; }
   | Some wrappers ->
@@ -268,12 +265,14 @@ Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
       with_wrapper
     | _ -> assert false
 
-let for_recursive_continuations r ~handlers ~backend =
+let for_recursive_continuations ~handlers ~args_approxs ~backend =
 (*
 Format.eprintf "Unbox_continuation_params starting: recursive %a\n%!"
   Continuation.Set.print (Continuation.Map.keys handlers);
 *)
-  let result = for_continuations r ~handlers ~backend in
+  let result =
+    for_continuations ~continuation_uses:args_approxs ~handlers ~backend
+  in
   match result with
   | None ->
     Continuation.Map.map (fun handler : Flambda_utils.with_wrapper ->
