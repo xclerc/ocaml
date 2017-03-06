@@ -256,7 +256,7 @@ let print_specialised_args ppf spec_args =
 let print_specialised_args' ppf spec_args =
   if not (Variable.Map.is_empty spec_args)
   then begin
-    fprintf ppf "@ @[<v 2>with specialisations: ";
+    fprintf ppf "@ @[<v 2>specialising: ";
     Variable.Map.iter (fun id (spec_to : specialised_to) ->
         fprintf ppf "@ %a := %a"
           Variable.print id print_specialised_to spec_to)
