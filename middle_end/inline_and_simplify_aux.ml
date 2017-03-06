@@ -781,6 +781,14 @@ Format.eprintf "NRCUL: continuation %a number of uses %d\n%!"
     | uses ->
       Continuation_uses.meet_of_args_approxs uses ~num_params
 
+  let defined_continuation_args_approxs t i ~num_params =
+    match Continuation.Map.find i t.defined_continuations with
+    | exception Not_found ->
+      let approxs = Array.make num_params (Simple_value_approx.value_bottom) in
+      Array.to_list approxs
+    | (uses, _approx, _env, _recursive) ->
+      Continuation_uses.meet_of_args_approxs uses ~num_params
+
   let exit_scope_catch ?update_use_env t env i =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->

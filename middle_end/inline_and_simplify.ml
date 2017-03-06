@@ -2138,7 +2138,7 @@ body, r
               let cont =
                 Freshening.apply_static_exception (E.freshening body_env) cont
               in
-              R.continuation_args_approxs r cont ~num_params)
+              R.defined_continuation_args_approxs r cont ~num_params)
             original_handlers
         in
 Format.eprintf "args_approxs override:@ %a\n%!"

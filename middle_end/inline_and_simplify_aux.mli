@@ -401,6 +401,13 @@ module Result : sig
     -> num_params:int
     -> Simple_value_approx.t list
 
+  (* CR mshinwell: improve names of these two functions *)
+  val defined_continuation_args_approxs
+     : t
+    -> Continuation.t
+    -> num_params:int
+    -> Simple_value_approx.t list
+
   (** Continuation usage information for use after examining the body of
       a [Let_cont] but before [define_continuation] has been called. *)
   val continuation_uses : t -> Continuation_uses.t Continuation.Map.t

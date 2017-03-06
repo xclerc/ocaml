@@ -74,7 +74,18 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
   let dbg = Debuginfo.none in
   let num_constant_ctors = Numbers.Int.Set.cardinal constant_ctors in
   assert (num_constant_ctors >= 0);
-  let no_constant_ctors = (num_constant_ctors = 0) in
+  (* CR mshinwell: We need to think about this more.
+     Suppose we have code that deconstructs an "int option".  That code uses
+     Pisint.  However we know that the thing is only ever going to be
+     "Some x" and try to elide the "_is_int" parameter.  However that means
+     we don't know that Pisint foo_option = false.  For the moment we don't
+     elide the "_is_int".  Note that for Unbox_continuation_params the
+     extra argument isn't really a problem---it will be removed---but for
+     Unbox_returns we really don't want to generate an extra return value
+     if it isn't needed.  We need to check whether it suffers from this
+     problem (it may not since there is extra client-side code used for
+     [Unbox_returns]). *)
+  let no_constant_ctors = false (* (num_constant_ctors = 0) *) in
   let num_tags = Tag.Map.cardinal blocks in
   assert (num_tags >= 1);  (* see below *)
   let wrapper_param_being_unboxed = Variable.rename being_unboxed in
@@ -491,6 +502,9 @@ let how_to_unbox ~being_unboxed ~being_unboxed_approx =
   match A.check_approx_for_variant being_unboxed_approx with
   | Wrong -> None
   | Ok approx ->
+Format.eprintf "how_to_unbox %a: %a\n%!"
+  Variable.print being_unboxed
+  A.print being_unboxed_approx;
     let constant_ctors =
       match approx with
       | Blocks _ -> Numbers.Int.Set.empty
