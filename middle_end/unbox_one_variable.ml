@@ -502,9 +502,11 @@ let how_to_unbox ~being_unboxed ~being_unboxed_approx =
   match A.check_approx_for_variant being_unboxed_approx with
   | Wrong -> None
   | Ok approx ->
+(*
 Format.eprintf "how_to_unbox %a: %a\n%!"
   Variable.print being_unboxed
   A.print being_unboxed_approx;
+*)
     let constant_ctors =
       match approx with
       | Blocks _ -> Numbers.Int.Set.empty

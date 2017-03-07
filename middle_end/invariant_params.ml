@@ -341,9 +341,6 @@ module Analyse (CF : Continuations_or_functions) = struct
       escaping_function caller_arg;
       match find_callee_arg ~callee ~callee_pos with
       | None ->
-Format.eprintf "argument %a for callee %a is not involved in a recursive call\n%!"
-  Variable.print caller_arg
-  CF.Name.print callee;
         used_variable caller_arg (* not a recursive call *)
       | Some callee_arg ->
         match CF.Name.Map.find caller (CF.Declarations.declarations decls) with
@@ -356,19 +353,8 @@ Format.eprintf "argument %a for callee %a is not involved in a recursive call\n%
             (* CR mshinwell: remove use of polymorphic comparison *)
             let params = CF.Declaration.params decl in
             if List.mem caller_arg params then begin
-Format.eprintf "Recording arg %a of %a ---> %a of %a\n%!"
-  Variable.print caller_arg
-  CF.Name.print caller
-  Variable.print callee_arg
-  CF.Name.print callee;
               param_to_param ~caller ~caller_arg ~callee ~callee_arg !relation
             end else begin
-Format.eprintf "Recording 'anything' ---> %a of %a (params of decl: %a) \
-    (caller_arg %a not found)\n%!"
-  Variable.print callee_arg
-  CF.Name.print callee
-  Variable.print_list params
-  Variable.print caller_arg;
               used_variable caller_arg;
               anything_to_param ~callee ~callee_arg !relation
             end
