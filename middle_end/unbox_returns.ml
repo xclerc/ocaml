@@ -19,10 +19,10 @@
 
 module U = Inline_and_simplify_aux.Continuation_uses
 
-(* CR mshinwell: Fix [Unbox_one_variable] so that when we don't need the
-   discriminant, etc, then they aren't generated.  These are simplified
-   away automatically for [Unbox_continuation_params] but cannot be for
-   this one. *)
+(* CR mshinwell: This should use direct call surrogates.  Unfortunately this
+   is a nuisance because it involves renaming the continuation parameter
+   and all normal parameters to the function being unboxed, together with
+   existing specialised args. *)
 
 let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~(how_to_unbox : Unbox_one_variable.How_to_unbox.t) ~return_cont_param
