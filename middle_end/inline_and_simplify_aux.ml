@@ -498,6 +498,23 @@ module Continuation_uses = struct
             (Variable.t * Simple_value_approx.t) list
         | Only_specialisable of (Variable.t * Simple_value_approx.t) list
 
+      let print ppf t =
+        let print_arg_and_approx ppf (arg, approx) =
+          Format.fprintf ppf "(%a %a)"
+            Variable.print arg
+            A.print approx
+        in
+        match t with
+        | Not_inlinable_or_specialisable args_approxs ->
+          Format.fprintf ppf "(Not_inlinable_or_specialisable %a)"
+            (Format.pp_print_list A.print) args_approxs
+        | Inlinable_and_specialisable args_and_approxs ->
+          Format.fprintf ppf "(Inlinable_and_specialisable %a)"
+            (Format.pp_print_list print_arg_and_approx) args_and_approxs
+        | Only_specialisable args_and_approxs ->
+          Format.fprintf ppf "(Only_specialisable %a)"
+            (Format.pp_print_list print_arg_and_approx) args_and_approxs
+
       let args t =
         match t with
         | Not_inlinable_or_specialisable _ -> []
@@ -534,6 +551,8 @@ module Continuation_uses = struct
       kind : Kind.t;
       env : Env.t;
     }
+
+    let print ppf t = Kind.print ppf t.kind
   end
 
   type t = {
@@ -547,6 +566,11 @@ module Continuation_uses = struct
       continuation;
       application_points = [];
     }
+
+  let print ppf t =
+    Format.fprintf ppf "(%a application_points = (%a))"
+      Continuation.print t.continuation
+      (Format.pp_print_list Use.print) t.application_points
 
   let add_use t env kind =
     { t with
@@ -776,11 +800,24 @@ Format.eprintf "NRCUL: continuation %a number of uses %d\n%!"
   let continuation_args_approxs t i ~num_params =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->
+(*
+Format.eprintf "Continuation %a not in used_continuations, returning bottom\n%!"
+  Continuation.print i;
+*)
       let approxs = Array.make num_params (Simple_value_approx.value_bottom) in
       Array.to_list approxs
     | uses ->
+(*
+let approxs =
+*)
       Continuation_uses.meet_of_args_approxs uses ~num_params
-
+(*
+in
+Format.eprintf "Continuation %a IS in used_continuations: %a\n%!"
+  Continuation.print i
+  (Format.pp_print_list Simple_value_approx.print) approxs;
+approxs
+*)
   let defined_continuation_args_approxs t i ~num_params =
     match Continuation.Map.find i t.defined_continuations with
     | exception Not_found ->

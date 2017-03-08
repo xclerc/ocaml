@@ -327,6 +327,8 @@ module Continuation_uses : sig
     -> backend:(module Backend_intf.S)
     -> t
 
+  val print : Format.formatter -> t -> unit
+
   val application_points : t -> Use.t list
 
   val unused : t -> bool

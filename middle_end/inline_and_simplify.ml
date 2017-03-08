@@ -978,21 +978,41 @@ Format.eprintf "...freshened cont is %a\n%!"
                   application expression: %a"
                 arity Flambda.print (Flambda.Apply apply)
           in
+(*
+let used_conts = R.continuation_uses r in
+Format.eprintf "After simplifying application of %a to %a, r contains:\n@ %a\n%!"
+  Variable.print lhs_of_application
+  Variable.print_list args
+  (Continuation.Map.print
+    Inline_and_simplify_aux.Continuation_uses.print) used_conts;
+let joins =
+  Continuation.Map.map (fun uses ->
+    Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs uses
+      ~num_params:0)
+    used_conts
+in
+Format.eprintf "Continuation args join:\n@ %a\n%!"
+  (Continuation.Map.print
+    (Format.pp_print_list A.print)) joins;
+*)
           wrap result, r
         | Wrong ->  (* Insufficient approximation information to simplify. *)
-          begin match call_kind with
-          | Indirect -> ()
-          | Direct _ when E.less_precise_approximations env -> ()
-          | Direct _ ->
-            Misc.fatal_errorf "Application of function %a (%a) is marked as \
-                a direct call but the approximation of the function was \
-                wrong: %a@ \nEnvironment:@ %a\n%!"
-              Variable.print lhs_of_application
-              Variable.print_list args
-              A.print lhs_of_application_approx
-              E.print env
-          end;
-          let args_approxs = [A.value_unknown Other] in
+          let args_approxs =
+            match call_kind with
+            | Indirect -> [A.value_unknown Other]
+            | Direct { return_arity; _ }
+                when E.less_precise_approximations env ->
+              Array.to_list (Array.init return_arity (fun _ ->
+                A.value_unknown Other))
+            | Direct _ ->
+              Misc.fatal_errorf "Application of function %a (%a) is marked as \
+                  a direct call but the approximation of the function was \
+                  wrong: %a@ \nEnvironment:@ %a\n%!"
+                Variable.print lhs_of_application
+                Variable.print_list args
+                A.print lhs_of_application_approx
+                E.print env
+          in
           let continuation, r =
             simplify_apply_cont_to_cont env r continuation ~args_approxs
           in
@@ -1809,7 +1829,7 @@ Format.eprintf "Deleting handlers binding %a\n%!"
           let args_approxs =
             match args_approxs with
             | None ->
-              R.continuation_args_approxs r cont
+              R.continuation_args_approxs r cont'
                 ~num_params:(List.length handler.params)
             | Some args_approxs ->
               begin match Continuation.Map.find cont args_approxs with
