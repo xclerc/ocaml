@@ -171,7 +171,10 @@ let reset () =
   live_at_exit := []
 
 let fundecl ppf f =
-(*Format.eprintf "Start of Liveness:@;%a@;%!" Printmach.fundecl f;*)
+(* CR mshinwell: Add a new "-d" option to do this *)
+(*
+Format.eprintf "Start of Liveness:@;%a@;%!" Printmach.fundecl f;
+*)
   let initially_live = live f.fun_body Reg.Set.empty in
   (* Sanity check: only function parameters (and the Spacetime node hole
      register, if profiling) can be live at entrypoint *)

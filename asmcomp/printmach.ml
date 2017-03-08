@@ -69,7 +69,7 @@ let regsetaddr ppf s =
 
 let print_trap_stack ppf trap_stack =
   match trap_stack with
-  | [] -> ()
+  | [] -> Format.fprintf ppf "[no traps]"
   | trap_stack ->
     Format.fprintf ppf "[traps %a]"
       (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")

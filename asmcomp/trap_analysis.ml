@@ -26,17 +26,17 @@ module Int = Numbers.Int
 
 let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       : Mach.instruction * (Mach.trap_stack Int.Map.t) =
+  let print_stack ppf stack =
+    Format.fprintf ppf "%a"
+      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
+        (fun ppf cont -> Format.fprintf ppf "%d" cont))
+      stack
+  in
   let add_stack ~cont ~stack ~stacks_at_exit =
     match Int.Map.find cont stacks_at_exit with
     | exception Not_found ->
       Int.Map.add cont stack stacks_at_exit
     | stack' ->
-      let print_stack ppf stack =
-        Format.fprintf ppf "%a"
-          (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
-            (fun ppf cont -> Format.fprintf ppf "%d" cont))
-          stack
-      in
       if stack <> stack' then begin
         Misc.fatal_errorf "Iexit points for continuation %d disagree on \
             the trap stack: existing = %a new = %a"
@@ -65,7 +65,9 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
       | Ipushtrap cont ->
         (* CR pchambart: This shouldn't keep the handler alive. If
            there is no raise the handler should be eliminated. *)
-        let stacks_at_exit = add_stack ~cont ~stack:(cont :: stack) ~stacks_at_exit in
+        let stacks_at_exit =
+          add_stack ~cont ~stack:(cont :: stack) ~stacks_at_exit
+        in
         cont :: stack, stacks_at_exit
       | Ipoptrap cont ->
         begin match stack with
