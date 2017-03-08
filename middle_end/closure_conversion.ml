@@ -284,11 +284,10 @@ let rec close t env (lam : Ilambda.t) : Flambda.t =
     end
   | Switch (scrutinee, sw) ->
     let zero_to_n = Numbers.Int.zero_to_n in
-    Switch (Env.find_var env scrutinee,
-      { numconsts = zero_to_n (sw.numconsts - 1);
-        consts = sw.consts;
-        failaction = sw.failaction;
-      })
+    Flambda.create_switch ~scrutinee:(Env.find_var env scrutinee)
+      ~all_possible_values:(zero_to_n (sw.numconsts - 1))
+      ~arms:sw.consts
+      ~default:sw.failaction
   | Event (ilam, _) -> close t env ilam
 
 and close_named t env (named : Ilambda.named) : Flambda.named =

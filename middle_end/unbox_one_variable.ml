@@ -162,11 +162,11 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
     let is_block_cont = Continuation.create () in
     let join_cont = Continuation.create () in
     let tag = Variable.create "tag" in
-    let is_int_switch : Flambda.switch =
-      { numconsts = Numbers.Int.Set.of_list [0; 1];
-        consts = [0, is_block_cont];
-        failaction = Some is_int_cont;
-      }
+    let is_int_switch =
+      Flambda.create_switch ~scrutinee:is_int_in_wrapper
+        ~all_possible_values:(Numbers.Int.Set.of_list [0; 1])
+        ~arms:[0, is_block_cont]
+        ~default:(Some is_int_cont)
     in
     let add_fill_fields_conts expr =
       Numbers.Int.Map.fold (fun size filler_cont expr : Flambda.expr ->
@@ -227,14 +227,14 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
         sizes_to_filler_conts
         expr      
     in
-    let fill_fields_switch : Flambda.switch =
-      let numconsts =
-        Tag.Set.fold (fun tag numconsts ->
-            Numbers.Int.Set.add (Tag.to_int tag) numconsts)
+    let fill_fields_switch =
+      let all_possible_values =
+        Tag.Set.fold (fun tag all_possible_values ->
+            Numbers.Int.Set.add (Tag.to_int tag) all_possible_values)
           all_tags
           Numbers.Int.Set.empty
       in
-      let consts =
+      let arms =
         Numbers.Int.Map.fold (fun size filler_cont consts ->
             Tag.Map.fold (fun tag fields consts ->
                 if Array.length fields = size then
@@ -246,10 +246,10 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
           sizes_to_filler_conts
           []
       in
-      { numconsts;
-        consts = List.rev consts;
-        failaction = None;
-      }
+      Flambda.create_switch ~scrutinee:tag
+        ~all_possible_values
+        ~arms
+        ~default:None
     in
     Flambda.create_let unit_value (Const (Int 0))
       (Flambda.create_let is_int_in_wrapper
@@ -260,7 +260,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
         (Let_cont {
           body = Let_cont {
             body = Let_cont {
-              body = Switch (is_int_in_wrapper, is_int_switch);
+              body = is_int_switch;
               handlers = Nonrecursive {
                 name = is_int_cont;
                 handler = {
@@ -292,8 +292,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                      | Some known -> known
                      | None ->
                        Prim (Pgettag, [wrapper_param_being_unboxed], dbg))
-                    (add_fill_fields_conts (
-                      (Switch (tag, fill_fields_switch))));
+                    (add_fill_fields_conts fill_fields_switch);
                 stub = true;
                 is_exn_handler = false;
                 specialised_args = Variable.Map.empty;
@@ -323,29 +322,29 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
      present; we shouldn't run it unless required. *)
   let boxing_is_int_cont = Continuation.create () in
   let boxing_is_block_cont = Continuation.create () in
-  let boxing_is_int_switch : Flambda.switch =
-    { numconsts = Numbers.Int.Set.of_list [0; 1];
-      consts = [0, boxing_is_block_cont];
-      failaction = Some boxing_is_int_cont;
-    }
+  let boxing_is_int_switch =
+    Flambda.create_switch ~scrutinee:is_int
+      ~all_possible_values:(Numbers.Int.Set.of_list [0; 1])
+      ~arms:[0, boxing_is_block_cont]
+      ~default:(Some boxing_is_int_cont)
   in
-  let boxing_switch : Flambda.switch =
-    let numconsts =
+  let boxing_switch =
+    let all_possible_values =
       Tag.Set.fold (fun tag numconsts ->
           Numbers.Int.Set.add (Tag.to_int tag) numconsts)
         all_tags
         Numbers.Int.Set.empty
     in
-    let consts =
+    let arms =
       Tag.Map.fold (fun tag (_size, boxing_cont) consts ->
           (Tag.to_int tag, boxing_cont) :: consts)
         tags_to_sizes_and_boxing_conts
         []
     in
-    { numconsts;
-      consts = List.rev consts;
-      failaction = None;
-    }
+    Flambda.create_switch ~scrutinee:discriminant
+      ~all_possible_values
+      ~arms
+      ~default:None
   in
   let build_boxed_value_from_new_params =
     let boxed = Variable.rename ~append:"_boxed" being_unboxed in
@@ -358,11 +357,11 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
           constant_ctors
           []
       in
-      let constant_ctor_switch : Flambda.switch =
-        { numconsts = constant_ctors;
-          consts;
-          failaction = None;
-        }
+      let constant_ctor_switch =
+        Flambda.create_switch ~scrutinee:discriminant
+          ~all_possible_values:constant_ctors
+          ~arms:consts
+          ~default:None
       in
       let add_constant_ctor_conts expr =
         List.fold_left (fun expr (ctor_index, cont) ->
@@ -423,13 +422,12 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
         Let_cont {
           body = Let_cont {
             body = Let_cont {
-              body = Switch (is_int, boxing_is_int_switch);
+              body = boxing_is_int_switch;
               handlers = Nonrecursive {
                 name = boxing_is_block_cont;
                 handler = {
                   params = [];
-                  handler =
-                    add_boxing_conts (Switch (discriminant, boxing_switch));
+                  handler = add_boxing_conts boxing_switch;
                   stub = true;
                   is_exn_handler = false;
                   specialised_args = Variable.Map.empty;
@@ -451,9 +449,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
                    require propagation of the projection information from the
                    stub function generated by Unbox_returns to the place it's
                    being inlined. *)
-                handler =
-                  add_constant_ctor_conts
-                    (Switch (discriminant, constant_ctor_switch));
+                handler = add_constant_ctor_conts constant_ctor_switch;
                 stub = true;
                 is_exn_handler = false;
                 specialised_args = Variable.Map.empty;

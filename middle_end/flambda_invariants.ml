@@ -96,6 +96,7 @@ exception Move_to_a_closure_not_in_the_free_variables
 exception Exception_handler_used_as_normal_continuation of Continuation.t
 exception Exception_handler_used_as_return_continuation of Continuation.t
 exception Normal_continuation_used_as_exception_handler of Continuation.t
+exception Empty_switch of Variable.t
 
 exception Flambda_invariants_failed
 
@@ -537,6 +538,9 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_inline_attribute inline;
       ignore_specialise_attribute specialise
     | Switch (arg, { numconsts; consts; failaction; }) ->
+      if List.length consts < 1 then begin
+        raise (Empty_switch arg)
+      end;
       check_variable_is_bound env arg;
       ignore_int_set numconsts;
       List.iter (fun (n, e) ->
@@ -1135,6 +1139,8 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
     | Normal_continuation_used_as_exception_handler cont ->
       Format.eprintf ">> Non-exception handler %a used as exception handler"
         Continuation.print cont
+    | Empty_switch scrutinee ->
+      Format.eprintf ">> Empty switch on %a" Variable.print scrutinee
     | exn -> raise exn
   end;
   Format.eprintf "\n@?";

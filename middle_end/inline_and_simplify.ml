@@ -2288,8 +2288,13 @@ Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
               in
               Some cont, r
           in
-          let sw = { sw with failaction; consts; } in
-          Switch (arg, sw), r
+          let switch =
+            Flambda.create_switch ~scrutinee:arg
+              ~all_possible_values:sw.numconsts
+              ~arms:consts
+              ~default:failaction
+          in
+          switch, r
       end)
   | Proved_unreachable -> Proved_unreachable, ret r A.value_bottom
 

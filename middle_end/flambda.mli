@@ -462,7 +462,7 @@ and function_declaration = private {
 }
 
 (** Equivalent to the similar type in [Ilambda]. *)
-and switch = {
+and switch = private {
   (* CR mshinwell: [numconsts] should move onto the default case. *)
   numconsts : Numbers.Int.Set.t;
   (** All possible values that the scrutinee might have. *)
@@ -703,6 +703,15 @@ module With_free_variables : sig
   (** O(1) time. *)
   val free_variables : _ t -> Variable.Set.t
 end
+
+(** Create a [Switch] statement (or [Apply_cont] if the switch only goes
+    to one place). *)
+val create_switch
+   : scrutinee:Variable.t
+  -> all_possible_values:Numbers.Int.Set.t
+  -> arms:(int * Continuation.t) list
+  -> default:Continuation.t option
+  -> expr
 
 (** Create a function declaration.  This calculates the free variables and
     symbols occurring in the specified [body]. *)

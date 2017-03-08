@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module Int = Numbers.Int
+
 type call_kind =
   | Indirect
   | Direct of {
@@ -177,7 +179,7 @@ and function_declaration = {
 }
 
 and switch = {
-  numconsts : Numbers.Int.Set.t;
+  numconsts : Int.Set.t;
   consts : (int * Continuation.t) list;
   failaction : Continuation.t option;
 }
@@ -343,26 +345,10 @@ let rec lam ppf (flam : t) =
       Mutable_variable.print mut_var
       Variable.print var
       lam body
-  | Switch(larg, sw) ->
-      let switch ppf (sw : switch) =
-        let spc = ref false in
-        List.iter
-          (fun (n, l) ->
-             if !spc then fprintf ppf "@ " else spc := true;
-             fprintf ppf "@[<hv 1>| %i ->@ goto %a@]"
-               n Continuation.print l)
-          sw.consts;
-        begin match sw.failaction with
-        | None  -> ()
-        | Some l ->
-            if !spc then fprintf ppf "@ " else spc := true;
-            let module Int = Numbers.Int in
-            fprintf ppf "@[<hv 1>| _ ->@ goto %a@]"
-              Continuation.print l
-        end in
-      fprintf ppf
-        "@[<v 1>(switch %a@ @[<v 0>%a@])@]"
-        Variable.print larg switch sw
+  | Switch (scrutinee, sw) ->
+    fprintf ppf
+      "@[<v 1>(switch %a@ @[<v 0>%a@])@]"
+      Variable.print scrutinee print_switch sw
   | Apply_cont (i, trap_action, []) ->
     fprintf ppf "@[<2>(%agoto@ %a)@]"
       print_trap_action trap_action
@@ -464,6 +450,23 @@ and print_named ppf (named : named) =
     fprintf ppf "@[<2>(%a@ <%s>@ %a)@]" Printlambda.primitive prim
       (Debuginfo.to_string dbg)
       Variable.print_list args
+
+and print_switch ppf (sw : switch) =
+  let spc = ref false in
+  List.iter
+    (fun (n, l) ->
+        if !spc then fprintf ppf "@ " else spc := true;
+        fprintf ppf "@[<hv 1>| %i ->@ goto %a@]"
+          n Continuation.print l)
+    sw.consts;
+  begin match sw.failaction with
+  | None  -> ()
+  | Some l ->
+      if !spc then fprintf ppf "@ " else spc := true;
+      let module Int = Int in
+      fprintf ppf "@[<hv 1>| _ ->@ goto %a@]"
+        Continuation.print l
+  end
 
 and print_let_cont_handlers ppf (handler : let_cont_handlers) =
   match handler with
@@ -1197,6 +1200,64 @@ let free_symbols_program (program : program) =
   (* Note that there is no need to count the [imported_symbols]. *)
   loop program.program_body;
   !symbols
+
+let create_switch ~scrutinee ~all_possible_values ~arms ~default : expr =
+  let result_switch : switch =
+    { numconsts = all_possible_values;
+      consts = arms;
+      failaction = default;
+    }
+  in
+  let result : expr = Switch (scrutinee, result_switch) in
+  let arms =
+    List.sort (fun (value1, _) (value2, _) -> Pervasives.compare value1 value2)
+      arms
+  in
+  let num_possible_values = Int.Set.cardinal all_possible_values in
+  let num_arms = List.length arms in
+  let arm_values = List.map (fun (value, _cont) -> value) arms in
+  let num_arm_values = List.length arm_values in
+  let arm_values_set = Int.Set.of_list arm_values in
+  let num_arm_values_set = Int.Set.cardinal arm_values_set in
+  if num_arm_values <> num_arm_values_set then begin
+    Misc.fatal_errorf "More than one arm of this switch matches on \
+        the same value: %a"
+      print result
+  end;
+  if num_arms > num_possible_values then begin
+    Misc.fatal_errorf "This switch has too many arms: %a"
+      print result
+  end;
+  if not (Int.Set.subset arm_values_set all_possible_values) then begin
+    Misc.fatal_errorf "This switch matches on values that were not specified \
+        in the set of all possible values: %a"
+      print result
+  end;
+  if num_possible_values < 1 then begin
+    Misc.fatal_errorf "This switch matches on nothing: %a"
+      print result
+  end;
+  let default =
+    if num_arm_values = num_possible_values then None
+    else default
+  in
+  let single_case =
+    match arms, default with
+    | [_, cont], None
+    | [], Some cont -> Some cont
+    | arms, default ->
+      let destinations =
+        Continuation.Set.of_list (List.map (fun (_, cont) -> cont) arms)
+      in
+      assert (not (Continuation.Set.is_empty destinations));
+      match Continuation.Set.elements destinations, default with
+      | [cont], None -> Some cont
+      | [cont], Some cont' when Continuation.equal cont cont' -> Some cont
+      | _, _ -> None
+  in
+  match single_case with
+  | Some cont -> Apply_cont (cont, None, [])
+  | None -> Switch (scrutinee, { result_switch with failaction = default; })
 
 let create_function_declaration ~params ~continuation_param ~return_arity
       ~body ~stub ~dbg
