@@ -89,7 +89,6 @@ let lambda_smaller' lam ~than:threshold =
       aux sw.consts
     | Apply_cont _ -> incr size
     | Let_cont { body; handlers; } ->
-      incr size;
       lambda_size body;
       begin match handlers with
       | Alias _ -> ()
