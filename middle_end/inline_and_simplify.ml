@@ -781,7 +781,10 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     Flambda.update_function_declarations function_decls ~funs
   in
   let function_decls, new_specialised_args =
-    if E.never_inline env then
+    (* CR mshinwell: I'm not sure about this "round" condition.  It seems
+       though that doing [Unbox_returns] too early may be
+       detrimental, as it prevents small functions being inlined *)
+    if E.never_inline env || E.round env < 2 then
       function_decls, Variable.Map.empty
     else
       let continuation_param_uses =
@@ -2254,6 +2257,8 @@ Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
       (* CR mshinwell: Maybe do "simplify_apply_cont_to_cont" on all the
          arms here? *)
       let destination_is_unreachable cont =
+        (* CR mshinwell: This unreachable thing should be tidied up and also
+           done on [Apply_cont]. *)
         let cont, _r =
           simplify_apply_cont_to_cont env r cont ~args_approxs:[]
         in
