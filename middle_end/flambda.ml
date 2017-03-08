@@ -1002,7 +1002,10 @@ module With_free_variables = struct
     | Named (_, free_vars) -> free_vars
 end
 
-type named_reachable = Reachable of named | Unreachable
+type named_reachable =
+  | Reachable of named
+  | Non_terminating of named
+  | Unreachable
 
 let fold_lets_option t ~init ~for_defining_expr ~for_last_body
       ~filter_defining_expr =
@@ -1045,6 +1048,16 @@ Format.eprintf "Deleting binding of %a.  FVs of body %a.  Body:\n%a\n\
           (var, defining_expr) :: (List.rev bindings) @ rev_lets
         in
         loop body ~acc ~rev_lets
+      | Non_terminating defining_expr ->
+(*
+Format.eprintf "This defining expression doesn't terminate:\n@ %a\n%!"
+  print_named defining_expr;
+*)
+        let rev_lets =
+          (var, defining_expr) :: (List.rev bindings) @ rev_lets
+        in
+        let last_body, acc = for_last_body acc Proved_unreachable in
+        finish ~last_body ~acc ~rev_lets
       | Unreachable ->
         let rev_lets = (List.rev bindings) @ rev_lets in
         let last_body, acc = for_last_body acc Proved_unreachable in
@@ -1234,30 +1247,33 @@ let create_switch ~scrutinee ~all_possible_values ~arms ~default : expr =
       print result
   end;
   if num_possible_values < 1 then begin
-    Misc.fatal_errorf "This switch matches on nothing: %a"
-      print result
-  end;
-  let default =
-    if num_arm_values = num_possible_values then None
-    else default
-  in
-  let single_case =
-    match arms, default with
-    | [_, cont], None
-    | [], Some cont -> Some cont
-    | arms, default ->
-      let destinations =
-        Continuation.Set.of_list (List.map (fun (_, cont) -> cont) arms)
-      in
-      assert (not (Continuation.Set.is_empty destinations));
-      match Continuation.Set.elements destinations, default with
-      | [cont], None -> Some cont
-      | [cont], Some cont' when Continuation.equal cont cont' -> Some cont
-      | _, _ -> None
-  in
-  match single_case with
-  | Some cont -> Apply_cont (cont, None, [])
-  | None -> Switch (scrutinee, { result_switch with failaction = default; })
+    (* We could fail with an error, but it's probably more helpful for this
+       to produce [Unreachable]. *)
+    Proved_unreachable
+  end
+  else begin
+    let default =
+      if num_arm_values = num_possible_values then None
+      else default
+    in
+    let single_case =
+      match arms, default with
+      | [_, cont], None
+      | [], Some cont -> Some cont
+      | arms, default ->
+        let destinations =
+          Continuation.Set.of_list (List.map (fun (_, cont) -> cont) arms)
+        in
+        assert (not (Continuation.Set.is_empty destinations));
+        match Continuation.Set.elements destinations, default with
+        | [cont], None -> Some cont
+        | [cont], Some cont' when Continuation.equal cont cont' -> Some cont
+        | _, _ -> None
+    in
+    match single_case with
+    | Some cont -> Apply_cont (cont, None, [])
+    | None -> Switch (scrutinee, { result_switch with failaction = default; })
+  end
 
 let create_function_declaration ~params ~continuation_param ~return_arity
       ~body ~stub ~dbg

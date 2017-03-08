@@ -1413,8 +1413,6 @@ and simplify_named env r (tree : Flambda.named)
       [], Reachable (Assign { being_assigned; new_value; }),
         ret r (A.value_unknown Other))
   | Prim (prim, args, dbg) ->
-    (* CR mshinwell: It appears that dead code after "raise" is not being
-       deleted *)
     let dbg = E.add_inlined_debuginfo env ~dbg in
     simplify_free_variables_named env args ~f:(fun env args args_approxs ->
       let tree = Flambda.Prim (prim, args, dbg) in
@@ -1430,7 +1428,7 @@ and simplify_named env r (tree : Flambda.named)
       | None ->
         let default () : (Variable.t * Flambda.named) list
               * Flambda.named_reachable * R.t =
-          let expr, approx, benefit =
+          let named, approx, benefit =
             let module Backend = (val (E.backend env) : Backend_intf.S) in
             Simplify_primitives.primitive prim (args, args_approxs) tree dbg
               ~size_int:Backend.size_int ~big_endian:Backend.big_endian
@@ -1441,7 +1439,7 @@ and simplify_named env r (tree : Flambda.named)
             | Popaque -> A.value_unknown Other
             | _ -> approx
           in
-          [], Reachable expr, ret r approx
+          [], Reachable named, ret r approx
         in
         begin match prim, args, args_approxs with
         | Pgetglobal _, _, _ ->
@@ -1584,6 +1582,11 @@ and simplify_newly_introduced_let_bindings env r ~bindings
               (var, defining_expr) :: (List.rev new_bindings) @ bindings
             in
             bindings, env, r, false
+          | Non_terminating defining_expr ->
+            let bindings =
+              (var, defining_expr) :: (List.rev new_bindings) @ bindings
+            in
+            bindings, env, r, true
           | Unreachable ->
             let bindings = (List.rev new_bindings) @ bindings in
             bindings, env, r, true)
@@ -1593,7 +1596,8 @@ and simplify_newly_introduced_let_bindings env r ~bindings
   let new_bindings, around, r = simplify_named env r around in
   let around_fvs =
     match around with
-    | Reachable around -> Flambda.free_variables_named around
+    | Reachable around
+    | Non_terminating around -> Flambda.free_variables_named around
     | Unreachable -> Variable.Set.empty
   in
   let bindings, r, _fvs =
@@ -1617,6 +1621,15 @@ and simplify_newly_introduced_let_bindings env r ~bindings
 
 and for_defining_expr_of_let (env, r) var defining_expr =
   let new_bindings, defining_expr, r = simplify_named env r defining_expr in
+  let defining_expr : Flambda.named_reachable =
+    match defining_expr with
+    | Non_terminating _ | Unreachable -> defining_expr
+    | Reachable defining_expr ->
+      (* Cause subsequent code to be deleted if the evaluation of this
+         let's defining expression doesn't terminate. *)
+      if A.is_bottom (R.approx r) then Non_terminating defining_expr
+      else Reachable defining_expr
+  in
   let var, sb = Freshening.add_variable (E.freshening env) var in
   let env = E.set_freshening env sb in
   let env = E.add env var (R.approx r) in
@@ -1973,8 +1986,17 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
               (* If it's a stub, we put the code for [handler] in the
                  environment; this is unfreshened, but will be freshened up
                  if we inline it.
-                 Note that stubs are not allowed to call themselves. *)
-              if handler.stub then begin
+                 Note that stubs are not allowed to call themselves.
+                 The code for [handler] is also put in the environment if
+                 the continuation just contains [Proved_unreachable].  This
+                 enables earlier [Switch]es that branch to such continuation
+                 to be simplified, in some cases removing them entirely. *)
+              let is_unreachable =
+                match handler.handler with
+                | Proved_unreachable -> true
+                | _ -> false
+              in
+              if handler.stub || is_unreachable then begin
                 assert (not (Continuation.Set.mem name
                   (Flambda.free_continuations handler.handler)));
                 Continuation_approx.create ~name:freshened_name
@@ -2209,26 +2231,43 @@ Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
 Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
   Variable.print arg A.print arg_approx;
 *)
+      (* CR mshinwell: Maybe do "simplify_apply_cont_to_cont" on all the
+         arms here? *)
+      let destination_is_unreachable cont =
+        let cont, _r =
+          simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+        in
+        let cont_approx = E.find_continuation env cont in
+        match Continuation_approx.handlers cont_approx with
+        | None | Some (Recursive _) -> false
+        | Some (Nonrecursive handler) ->
+          match handler.handler with
+          | Proved_unreachable -> true
+          | _ -> false
+      in
       let rec filter_branches filter branches compatible_branches =
         match branches with
         | [] -> Can_be_taken compatible_branches
         | (c, cont) as branch :: branches ->
-          match filter arg_approx c with
-          | A.Cannot_be_taken ->
+          if destination_is_unreachable cont then
+            filter_branches filter branches compatible_branches
+          else
+            match filter arg_approx c with
+            | A.Cannot_be_taken ->
 (*
 Format.eprintf "Switch arm %a cannot_be_taken\n%!" Continuation.print cont;
 *)
-            filter_branches filter branches compatible_branches
-          | A.Can_be_taken ->
+              filter_branches filter branches compatible_branches
+            | A.Can_be_taken ->
 (*
 Format.eprintf "Switch arm %a can_be_taken\n%!" Continuation.print cont;
 *)
-            filter_branches filter branches (branch :: compatible_branches)
-          | A.Must_be_taken ->
+              filter_branches filter branches (branch :: compatible_branches)
+            | A.Must_be_taken ->
 (*
 Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
 *)
-            Must_be_taken cont
+              Must_be_taken cont
       in
       (* Use approximation information to determine which branches definitely
          will be taken, or may be taken.  (Note that the "Union" case in
@@ -2259,16 +2298,19 @@ Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
                   | Float f -> ...]
           *)
           Proved_unreachable, r
-        | [_, cont], None
-        | [], Some cont ->
+        | [_, cont], None ->
           let cont, r =
             simplify_apply_cont_to_cont env r cont ~args_approxs:[]
           in
-(*
-Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
-  Continuation.print cont A.print arg_approx (List.length sw.consts);
-*)
           Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
+        | [], Some cont ->
+          if destination_is_unreachable cont then
+            Proved_unreachable, R.map_benefit r B.remove_branch
+          else
+            let cont, r =
+              simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+            in
+            Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
         | _ ->
           let env = E.inside_branch env in
           let f (acc, r) (i, cont) =
@@ -2283,10 +2325,13 @@ Format.eprintf "Only leaving default case %a.  Arg approx %a num_consts %d\n%!"
             match sw.failaction with
             | None -> None, r
             | Some cont ->
-              let cont, r =
-                simplify_apply_cont_to_cont env r cont ~args_approxs:[]
-              in
-              Some cont, r
+              if destination_is_unreachable cont then
+                None, r
+              else
+                let cont, r =
+                  simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+                in
+                Some cont, r
           in
           let switch =
             Flambda.create_switch ~scrutinee:arg

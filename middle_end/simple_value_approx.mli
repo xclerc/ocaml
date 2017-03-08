@@ -313,6 +313,8 @@ val augment_kind_with_approx : t -> Lambda.value_kind -> Lambda.value_kind
 
 val equal_boxed_int : 'a boxed_int -> 'a -> 'b boxed_int -> 'b -> bool
 
+val is_bottom : t -> bool
+
 (** An approximation is "known" iff it is not [Unknown]. *)
 val known : t -> bool
 

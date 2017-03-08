@@ -842,6 +842,13 @@ let simplify_var_to_var_using_env t ~is_present_in_env =
   | Some var when is_present_in_env var -> Some var
   | _ -> None
 
+let is_bottom t =
+  match t.descr with
+  | Bottom -> true
+  | Unresolved _ | Unknown _ | String _ | Float_array _ | Union _
+  | Set_of_closures _ | Closure _ | Extern _ | Float _ | Boxed_int _
+  | Symbol _ -> false
+
 let known t =
   match t.descr with
   | Unresolved _ | Unknown _ -> false

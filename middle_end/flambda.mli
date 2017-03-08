@@ -600,7 +600,10 @@ val free_symbols_named : named -> Symbol.Set.t
 
 val free_symbols_program : program -> Symbol.Set.t
 
-type named_reachable = Reachable of named | Unreachable
+type named_reachable =
+  | Reachable of named
+  | Non_terminating of named
+  | Unreachable
 
 (** Used to avoid exceeding the stack limit when handling expressions with
     multiple consecutive nested [Let]-expressions.  This saves rewriting large
@@ -704,8 +707,8 @@ module With_free_variables : sig
   val free_variables : _ t -> Variable.Set.t
 end
 
-(** Create a [Switch] statement (or [Apply_cont] if the switch only goes
-    to one place). *)
+(** Create a suitable [expr] to represent the given switch.  (The result may
+    not actually be a [Switch].) *)
 val create_switch
    : scrutinee:Variable.t
   -> all_possible_values:Numbers.Int.Set.t
