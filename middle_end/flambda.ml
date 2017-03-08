@@ -1249,6 +1249,8 @@ let create_switch ~scrutinee ~all_possible_values ~arms ~default : expr =
   if num_possible_values < 1 then begin
     Proved_unreachable
   end else if num_arms = 0 && default = None then begin
+    (* [num_possible_values] might be strictly greater than zero in this
+       case, but that doesn't matter. *)
     Proved_unreachable
   end else begin
     let default =
