@@ -2760,6 +2760,7 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
     | [_] -> ()
     | _ -> assert false
     end;
+    let program, r = simplify_program_body env r program in
     Effect (expr, cont, program), r
   | End root -> End root, r
 

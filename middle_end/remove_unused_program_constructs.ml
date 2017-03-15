@@ -54,6 +54,16 @@ let let_rec_dep defs dep =
   in
   fixpoint dep
 
+let no_effects_field (expr : Flambda.t) ~return_continuation =
+  match expr with
+  | Let { var; defining_expr;
+        body = Apply_cont (cont, None, [var']); _ }
+      when Continuation.equal cont return_continuation
+        && Effect_analysis.no_effects_named defining_expr ->
+    assert (Variable.equal var var');  (* [var] is the only thing in scope *)
+    true
+  | _ -> Effect_analysis.no_effects expr
+
 let rec loop (program : Flambda.program_body)
       : Flambda.program_body * Symbol.Set.t =
   match program with
@@ -83,7 +93,7 @@ let rec loop (program : Flambda.program_body)
     else begin
       List.fold_left
         (fun (program, dep) (field, cont) ->
-           if Effect_analysis.no_effects field then
+           if no_effects_field field ~return_continuation:cont then
              program, dep
            else
              let new_dep = dependency field in
@@ -93,9 +103,9 @@ let rec loop (program : Flambda.program_body)
     end
   | Effect (effect, cont, program) ->
     let program, dep = loop program in
-    if Effect_analysis.no_effects effect then begin
+    if no_effects_field effect ~return_continuation:cont then
       program, dep
-    end else begin
+    else begin
       let new_dep = dependency effect in
       let dep = Symbol.Set.union new_dep dep in
       Effect (effect, cont, program), dep

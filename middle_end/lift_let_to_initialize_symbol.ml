@@ -42,7 +42,9 @@ let rec lift (expr : Flambda.expr) ~to_copy =
       let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
       let to_copy = (param, defining_expr)::to_copy in
       let free_conts, lifted', handler = lift handler ~to_copy in
-      let lifted = lifted @ [name, param, symbol, body, to_copy] @ lifted' in
+      let lifted =
+        lifted @ [Tag.zero, param, symbol, [name, body, to_copy]] @ lifted'
+      in
       let expr = Flambda.create_let param defining_expr handler in
       free_conts, lifted, expr
     end else begin
@@ -69,14 +71,34 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     (* This let-expression is to be lifted. *)
     let var' = Variable.rename var in
     let symbol = Flambda_utils.make_variable_symbol var in
-    let sym_defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
+    let sym_defining_expr : Flambda.named =
+      match defining_expr with
+      | Prim (Pmakeblock (_tag, Immutable, _shape), _fields, _dbg) ->
+        Symbol symbol
+      | _ -> Read_symbol_field (symbol, 0)
+    in
     let to_copy = (var, sym_defining_expr)::to_copy in
     let free_conts, lifted, body = lift body ~to_copy in
-    let cont = Continuation.create () in
-    let expr : Flambda.expr =
-      Flambda.create_let var' defining_expr (Apply_cont (cont, None, [var']))
+    let tag, conts_exprs_and_to_copies =
+      match defining_expr with
+      | Prim (Pmakeblock (tag, Immutable, _shape), fields, _dbg) ->
+        let conts_exprs_and_to_copies =
+          List.map (fun field ->
+              let cont = Continuation.create () in
+              let expr : Flambda.expr = Apply_cont (cont, None, [field]) in
+              cont, expr, to_copy)
+            fields
+        in
+        Tag.create_exn tag, conts_exprs_and_to_copies
+      | _ ->
+        let cont = Continuation.create () in
+        let expr : Flambda.expr =
+          Flambda.create_let var' defining_expr
+            (Apply_cont (cont, None, [var']))
+        in
+        Tag.zero, [cont, expr, to_copy]
     in
-    let lifted = (cont, var, symbol, expr, to_copy) :: lifted in
+    let lifted = (tag, var, symbol, conts_exprs_and_to_copies) :: lifted in
     let body = Flambda.create_let var sym_defining_expr body in
     free_conts, lifted, body
   (* CR mshinwell: Add better treatment of Let_mutable? *)
@@ -89,42 +111,53 @@ let rec lift (expr : Flambda.expr) ~to_copy =
 let introduce_symbols expr =
   let _free_conts, lifted, expr = lift expr ~to_copy:[] in
   let lifted =
-    List.map (fun (cont, var, symbol, expr, to_copy) ->
-        let to_copy, subst =
-          List.fold_left (fun (to_copy, subst) (var, defining_expr) ->
-              let var' = Variable.rename var in
-              let to_copy = (var', defining_expr) :: to_copy in
-              to_copy, Variable.Map.add var var' subst)
-            ([], Variable.Map.empty)
-            to_copy
-        in
-        let to_copy =
-          List.map (fun (var, defining_expr) ->
-              let defining_expr =
-                Flambda_utils.toplevel_substitution_named subst defining_expr
+    List.map (fun (tag, var, symbol, conts_exprs_and_to_copies) ->
+        let conts_exprs_and_to_copies =
+          List.map (fun (cont, expr, to_copy) ->
+              let to_copy, subst =
+                List.fold_left (fun (to_copy, subst) (var, defining_expr) ->
+                    let var' = Variable.rename var in
+                    let to_copy = (var', defining_expr) :: to_copy in
+                    to_copy, Variable.Map.add var var' subst)
+                  ([], Variable.Map.empty)
+                  to_copy
               in
-              var, defining_expr)
-            to_copy
+              let to_copy =
+                List.map (fun (var, defining_expr) ->
+                    let defining_expr =
+                      Flambda_utils.toplevel_substitution_named subst
+                        defining_expr
+                    in
+                    var, defining_expr)
+                  to_copy
+              in
+              let expr = Flambda_utils.toplevel_substitution subst expr in
+              cont, expr, to_copy)
+            conts_exprs_and_to_copies
         in
-        let expr = Flambda_utils.toplevel_substitution subst expr in
-        cont, var, symbol, expr, to_copy)
+        tag, var, symbol, conts_exprs_and_to_copies)
       lifted
   in
   lifted, expr
 
 let add_extracted lifted program_body =
-  List.fold_left (fun acc (cont, _var, symbol, expr, to_copy)
+  List.fold_left (fun acc (tag, _var, symbol, conts_exprs_and_to_copies)
             : Flambda.program_body ->
-      let expr =
-        List.fold_left (fun expr (var, defining_expr) ->
-            if Variable.Set.mem var (Flambda.free_variables expr) then
-              Flambda.create_let var defining_expr expr
-            else
-              expr)
-          expr
-          to_copy
+      let fields =
+        List.map (fun (cont, expr, to_copy) ->
+            let expr =
+              List.fold_left (fun expr (var, defining_expr) ->
+                  if Variable.Set.mem var (Flambda.free_variables expr) then
+                    Flambda.create_let var defining_expr expr
+                  else
+                    expr)
+                expr
+                to_copy
+            in
+            expr, cont)
+          conts_exprs_and_to_copies
       in
-      Initialize_symbol (symbol, Tag.zero, [expr, cont], acc))
+      Initialize_symbol (symbol, tag, fields, acc))
     program_body
     (List.rev lifted)
 
