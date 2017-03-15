@@ -572,7 +572,7 @@ let print_constant_defining_value ppf (const : constant_defining_value) =
   match const with
   | Allocated_const const ->
     fprintf ppf "(Allocated_const %a)" Allocated_const.print const
-  | Block (tag, []) -> fprintf ppf "(Atom (tag %d))" (Tag.to_int tag)
+  | Block (tag, []) -> fprintf ppf "(Empty block (tag %d))" (Tag.to_int tag)
   | Block (tag, fields) ->
     let print_field ppf (field : constant_defining_value_block_field) =
       match field with
