@@ -24,7 +24,8 @@ let should_copy (named:Flambda.named) =
 let rec lift (expr : Flambda.expr) ~to_copy =
   match expr with
   | Let_cont ({ body; handlers = Nonrecursive { name; handler = ({
-      params = [param]; handler; _ } as handler_record); }; }) ->
+      params = [param]; handler; is_exn_handler; _ } as handler_record); }; })
+      when not is_exn_handler ->
     let free_conts_body, lifted, body = lift body ~to_copy in
     let our_cont = Continuation.Set.singleton name in
     if Continuation.Set.is_empty free_conts_body then begin
