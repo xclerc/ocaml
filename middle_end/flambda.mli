@@ -591,6 +591,11 @@ val free_continuations_of_let_cont_handlers
    : handlers:let_cont_handlers
   -> Continuation.Set.t
 
+(* CR mshinwell: Improve return type of this function *)
+val free_continuations_of_let_cont_handlers'
+   : handlers:let_cont_handlers
+  -> Continuation.Set.t * Continuation.Set.t  (* free, bound *)
+
 (* CR mshinwell: Consider if we want to cache these. *)
 val free_continuations : expr -> Continuation.Set.t
 

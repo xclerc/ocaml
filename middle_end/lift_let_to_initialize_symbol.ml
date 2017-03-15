@@ -23,14 +23,14 @@ let should_copy (named:Flambda.named) =
 
 let rec lift (expr : Flambda.expr) ~to_copy =
   match expr with
-  | Let_cont (({ body; handlers = Nonrecursive { name; handler = {
-      params = [param]; handler; _ }; }; } as let_cont)) ->
-    let free_conts, lifted, body = lift body ~to_copy in
+  | Let_cont ({ body; handlers = Nonrecursive { name; handler = ({
+      params = [param]; handler; _ } as handler_record); }; }) ->
+    let free_conts_body, lifted, body = lift body ~to_copy in
     let our_cont = Continuation.Set.singleton name in
-    if Continuation.Set.is_empty free_conts then begin
+    if Continuation.Set.is_empty free_conts_body then begin
       (* The continuation is unused; delete it. *)
-      free_conts, lifted, body
-    end else if Continuation.Set.equal free_conts our_cont then begin
+      free_conts_body, lifted, body
+    end else if Continuation.Set.equal free_conts_body our_cont then begin
       (* The body of this [Let_cont] can only return through [cont], which
          means that [handler] postdominates [body].  As such we can cut off
          [body] and put it inside an [Initialize_symbol] whose continuation
@@ -41,18 +41,30 @@ let rec lift (expr : Flambda.expr) ~to_copy =
       let symbol = Flambda_utils.make_variable_symbol param in
       let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
       let to_copy = (param, defining_expr)::to_copy in
-      let free_conts, lifted', handler = lift handler ~to_copy in
+      let free_conts_handler, lifted', handler = lift handler ~to_copy in
       let lifted =
         lifted @ [Tag.zero, param, symbol, [name, body, to_copy]] @ lifted'
       in
       let expr = Flambda.create_let param defining_expr handler in
-      free_conts, lifted, expr
+      free_conts_handler, lifted, expr
     end else begin
-      let free_conts =
-        Continuation.Set.union free_conts
-          (Flambda.free_continuations handler)
+      let handlers : Flambda.let_cont_handlers =
+        Nonrecursive {
+          name;
+          handler = handler_record;
+        };
       in
-      let expr : Flambda.expr = Let_cont { let_cont with body; } in
+      let expr : Flambda.expr =
+        Let_cont {
+          body;
+          handlers;
+        }
+      in
+      let free_conts =
+        Continuation.Set.union
+          (Continuation.Set.remove name free_conts_body)
+          (Flambda.free_continuations handler_record.handler)
+      in
       free_conts, lifted, expr
     end
   | Let { var; defining_expr; body; _ } when should_copy defining_expr ->
@@ -101,9 +113,24 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     let lifted = (tag, var, symbol, conts_exprs_and_to_copies) :: lifted in
     let body = Flambda.create_let var sym_defining_expr body in
     free_conts, lifted, body
-  (* CR mshinwell: Add better treatment of Let_mutable? *)
-  | Let_cont _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
-  | Proved_unreachable ->
+  | Let_cont { body; handlers; } ->
+    let free_conts_body, lifted, body = lift body ~to_copy in
+    let expr : Flambda.expr =
+      Let_cont {
+        body;
+        handlers;
+      }
+    in
+    let free_conts_handlers, bound_conts =
+      Flambda.free_continuations_of_let_cont_handlers' ~handlers
+    in
+    let free_conts =
+      Continuation.Set.diff
+        (Continuation.Set.union free_conts_body free_conts_handlers)
+        bound_conts
+    in
+    free_conts, lifted, expr
+  | Let_mutable _ | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
     let free_conts = Flambda.free_continuations expr in
     free_conts, [], expr
 
