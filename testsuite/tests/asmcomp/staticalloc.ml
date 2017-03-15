@@ -4,6 +4,8 @@
    Ref: http://caml.inria.fr/mantis/view.php?id=5779
 *)
 
+(* CR mshinwell: This needs more than one round on CPS-flambda *)
+
 let () =
   let x0 = Gc.allocated_bytes () in
   let x1 = Gc.allocated_bytes () in

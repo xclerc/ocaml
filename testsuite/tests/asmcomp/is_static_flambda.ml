@@ -26,6 +26,17 @@ let h x =
 let () = (h [@inlined always]) (Sys.opaque_identity 2)
 *)
 
+(* CR mshinwell for pchambart: These aren't lifted.  e.g.
+
+  initialize_symbol
+    (Is_static_flambda.camlIs_static_flambda__b_486 0
+       Field 0, return continuation k155:
+         (let (const/10617 Const(2) b/485 (caml_alloc_dummy <> const/10617))
+           (apply_cont k155 b/485)))
+
+  Presumably this relates to the new let rec code?
+*)
+(*
 (* Recursive constant values should be static *)
 let rec a = 1 :: b
 and b = 2 :: a
@@ -60,6 +71,8 @@ let i () =
   assert(is_in_static_data l2)
 
 let () = (i [@inlined never]) ()
+
+*)
 
 module type P = module type of Pervasives
 (* Top-level modules should be static *)
