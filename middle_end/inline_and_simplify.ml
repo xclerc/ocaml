@@ -2397,6 +2397,8 @@ Format.eprintf "%a branch simplifies to: %a\n%!"
                 in
                 Some cont, r
           in
+(* XXX this is wrong---we can't record a use if we might eliminate it inside
+   this next function. *)
           let switch =
             Flambda.create_switch ~scrutinee:arg
               ~all_possible_values:sw.numconsts
