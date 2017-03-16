@@ -1232,10 +1232,11 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
         in
         if num_in_term <> num_in_r then begin
           Misc.fatal_errorf "Continuation count mismatch for %a between the \
-              term (%d) and [r] (%d): %a"
+              term (%d) and [r] (%d): %a@ %a"
             Continuation.print cont
             num_in_term
             num_in_r
+            Inline_and_simplify_aux.Continuation_uses.print uses
             Flambda.print expr
         end)
       continuation_definitions_with_uses
