@@ -1011,10 +1011,6 @@ Format.eprintf "Continuation args join:\n@ %a\n%!"
           let continuation, r =
             simplify_apply_cont_to_cont env r continuation ~args_approxs
           in
-          let r =
-            R.use_continuation r env continuation
-              (Not_inlinable_or_specialisable args_approxs)
-          in
           let call_kind : Flambda.call_kind =
             if E.less_precise_approximations env then call_kind
             else Indirect
