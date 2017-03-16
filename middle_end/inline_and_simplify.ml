@@ -1803,6 +1803,15 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
 and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
       ~(recursive : Asttypes.rec_flag) ~freshening ~update_use_env
       : Flambda.let_cont_handlers option * R.t =
+  Continuation.Map.iter (fun cont _handler ->
+      let cont = Freshening.apply_static_exception freshening cont in
+      if R.continuation_defined r cont then begin
+        Misc.fatal_errorf "Ready to simplify continuation handlers \
+            defining (at least) %a but such continuation is already \
+            defined in [r]"
+          Continuation.print cont
+      end)
+    handlers;
   (* If none of the handlers are used in the body, delete them all. *)
   let all_unused =
     Continuation.Map.for_all (fun cont _handler ->
@@ -1813,10 +1822,6 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
   (* CR mshinwell: we should enhance the deletion of continuations so it
      can get rid of stubs inside recursive bindings *)
   if all_unused then begin
-(*
-Format.eprintf "Deleting handlers binding %a\n%!"
-  Continuation.Set.print (Continuation.Map.keys handlers);
-*)
     None, r
   end else
     (* First we simplify the continuations themselves.  We also remember
@@ -1886,7 +1891,6 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
             R.exit_scope_catch ~update_use_env r env cont
           in
           if Inline_and_simplify_aux.Continuation_uses.unused uses then begin
-(*Format.eprintf "Removing %a\n%!" Continuation.print cont;*)
             let handlers = Continuation.Map.remove cont handlers in
             let r = R.forget_continuation_definition r cont in
             let r =
@@ -2105,7 +2109,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
            non-recursive ones before simplifying their body.  I'm not sure we
            need to, since we already ensure such continuations aren't in the
-           environment when simplifying the [handlers]. *)
+           environment when simplifying the [handlers].
+           ...except for stubs... *)
         let handlers =
           Continuation.Map.add name handler Continuation.Map.empty
         in
@@ -2260,14 +2265,10 @@ Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
 Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
   Variable.print arg A.print arg_approx;
 *)
-      (* CR mshinwell: Maybe do "simplify_apply_cont_to_cont" on all the
-         arms here? *)
       let destination_is_unreachable cont =
         (* CR mshinwell: This unreachable thing should be tidied up and also
            done on [Apply_cont]. *)
-        let cont, _r =
-          simplify_apply_cont_to_cont env r cont ~args_approxs:[]
-        in
+        let cont = Freshening.apply_static_exception (E.freshening env) cont in
         let cont_approx = E.find_continuation env cont in
         match Continuation_approx.handlers cont_approx with
         | None | Some (Recursive _) -> false
@@ -2308,10 +2309,23 @@ Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
       in
       begin match filtered_consts with
       | Must_be_taken cont ->
+(*
+        let cont_approx =
+          E.find_continuation env
+            (Freshening.apply_static_exception (E.freshening env) cont)
+        in
+Format.eprintf "Switch branch must be taken: %a approx %a\n%!"
+  Continuation.print cont
+  Continuation_approx.print cont_approx;
+*)
         let expr, r =
           simplify_apply_cont env r cont ~trap_action:None
             ~args:[] ~args_approxs:[]
         in
+(*
+Format.eprintf "%a branch simplifies to: %a\n%!"
+  Continuation.print cont Flambda.print expr;
+*)
         expr, R.map_benefit r B.remove_branch
       | Can_be_taken consts ->
         match consts, sw.failaction with

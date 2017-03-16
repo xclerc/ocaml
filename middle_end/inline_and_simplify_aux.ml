@@ -725,7 +725,6 @@ module Result = struct
         Variable.print_list args
         Env.print env
     end;
-(*
 let k = 6589 in
 if Continuation.to_int cont = k then begin
   Format.eprintf "Adding use of continuation k%d, args %a approxs %a:\n%s\n%!"
@@ -735,7 +734,6 @@ if Continuation.to_int cont = k then begin
     (Continuation_uses.Use.Kind.args_approxs kind)
     (Printexc.raw_backtrace_to_string (Printexc.get_callstack 20))
 end;
-*)
     let uses =
       match Continuation.Map.find cont t.used_continuations with
       | exception Not_found ->
@@ -866,14 +864,23 @@ approxs
 
   let define_continuation t cont env recursive uses approx =
 (*
-let k = 14898 in
+let k = 25987 in
 if Continuation.to_int cont = k then begin
   Format.eprintf "Defining continuation k%d:\n%s%!"
     k
-    (Printexc.raw_backtrace_to_string (Printexc.get_callstack 10))
+    (Printexc.raw_backtrace_to_string (Printexc.get_callstack 30))
 end;
 *)
     Env.invariant env;
+    if Continuation.Map.mem cont t.used_continuations then begin
+      Misc.fatal_errorf "Must call exit_scope_catch before \
+          define_continuation %a"
+        Continuation.print cont
+    end;
+    if Continuation.Map.mem cont t.defined_continuations then begin
+      Misc.fatal_errorf "Cannot redefine continuation %a"
+        Continuation.print cont
+    end;
     { t with
       defined_continuations =
         Continuation.Map.add cont (uses, approx, env, recursive)
