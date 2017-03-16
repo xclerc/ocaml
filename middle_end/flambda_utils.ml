@@ -948,3 +948,29 @@ let all_defined_continuations_toplevel expr =
     (fun _named -> ())
     expr;
   !defined_continuations
+
+let count_continuation_uses_toplevel (expr : Flambda.t) =
+  let counts = Continuation.Tbl.create 42 in
+  let use cont =
+    match Continuation.Tbl.find counts cont with
+    | exception Not_found -> Continuation.Tbl.add counts cont 1
+    | count -> Continuation.Tbl.replace counts cont (count + 1)
+  in
+  Flambda_iterators.iter_toplevel (fun (expr : Flambda.t) ->
+      match expr with
+      | Apply { continuation; _ } -> use continuation
+      | Apply_cont (cont, None, _) -> use cont
+      | Apply_cont (cont, Some (Push { exn_handler; _ }), _)
+      | Apply_cont (cont, Some (Pop { exn_handler; _ }), _) ->
+        use cont;
+        use exn_handler
+      | Switch (_, switch) ->
+        List.iter (fun (_const, cont) -> use cont) switch.consts;
+        begin match switch.failaction with
+        | None -> ()
+        | Some cont -> use cont
+        end
+      | Let _ | Let_mutable _ | Let_cont _ | Proved_unreachable -> ())
+    (fun _named -> ())
+    expr;
+  Continuation.Tbl.to_map counts

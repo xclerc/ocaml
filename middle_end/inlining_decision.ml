@@ -521,8 +521,8 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       ~lhs_of_application ~closure_id_being_applied
       ~(function_decl : Flambda.function_declaration)
       ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
-      ~args ~args_approxs ~continuation ~dbg ~simplify ~inline_requested
-      ~specialise_requested =
+      ~args ~args_approxs ~continuation ~dbg ~simplify
+      ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested =
   if List.length args <> List.length args_approxs then begin
     Misc.fatal_error "Inlining_decision.for_call_site: inconsistent lengths \
         of [args] and [args_approxs]"
@@ -541,9 +541,8 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       end
     | Always_inline | Default_inline | Never_inline -> inline_requested
   in
-  let original =
-    Flambda.Apply {
-      kind = Function;
+  let original_apply : Flambda.apply =
+    { kind = Function;
       continuation;
       func = lhs_of_application;
       args;
@@ -556,6 +555,22 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       specialise = specialise_requested;
     }
   in
+  let original_expr : Flambda.expr = Apply original_apply in
+  let original r =
+    let continuation, r =
+      let args_approxs =
+        Array.to_list (Array.init function_decl.return_arity
+          (fun _index -> A.value_unknown Other))
+      in
+      simplify_apply_cont_to_cont env r continuation ~args_approxs
+    in
+    let original_expr : Flambda.expr =
+      Apply { original_apply with
+        continuation;
+      }
+    in
+    original_expr, r
+  in
 (*
 Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
   Closure_id.print closure_id_being_applied
@@ -566,6 +581,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
     let r =
       R.set_approx (R.seen_direct_application r) (A.value_unknown Other)
     in
+(*
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity (fun _index ->
         A.value_bottom))
@@ -576,6 +592,8 @@ Continuation.print continuation (List.length args_approxs);
 *)
     R.use_continuation r env continuation
       (Not_inlinable_or_specialisable args_approxs)
+*)
+    r
   in
   if function_decl.stub then
     let body, r =
@@ -605,7 +623,7 @@ end
     (* This case only occurs when examining the body of a stub function
        but not in the context of inlining said function.  As such, there
        is nothing to do here (and no decision to report). *)
-    original, original_r
+    original original_r
   else begin
     let env = E.unset_never_inline_inside_closures env in
     let env =
@@ -673,7 +691,8 @@ end
         let specialise_result =
           specialise env r ~lhs_of_application ~function_decls ~recursive
             ~closure_id_being_applied ~function_decl ~value_set_of_closures
-            ~args ~args_approxs ~continuation ~dbg ~simplify ~original
+            ~args ~args_approxs ~continuation ~dbg ~simplify
+            ~original:original_expr
             ~inline_requested ~specialise_requested ~fun_cost ~self_call
             ~inlining_threshold
         in
@@ -698,7 +717,7 @@ end
           let inline_result =
             inline env r ~function_decls ~lhs_of_application
               ~closure_id_being_applied ~function_decl ~value_set_of_closures
-              ~only_use_of_function ~original ~recursive
+              ~only_use_of_function ~original:original_expr ~recursive
               ~inline_requested ~specialise_requested ~args ~continuation
               ~size_from_approximation ~dbg ~simplify ~fun_cost ~self_call
               ~inlining_threshold
@@ -712,7 +731,8 @@ end
     in
     let res, decision =
       match simpl with
-      | Original decision -> (original, original_r), decision
+      | Original decision ->
+        original original_r, decision
       | Changed ((expr, r), decision) ->
         let res =
           if E.inlining_level env = 0

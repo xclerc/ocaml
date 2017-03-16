@@ -334,6 +334,8 @@ module Continuation_uses : sig
   val unused : t -> bool
   val linearly_used : t -> bool
 
+  val num_uses : t -> int
+
   val meet_of_args_approxs
      : t
     -> num_params:int

@@ -573,6 +573,12 @@ module Continuation_uses = struct
       (Format.pp_print_list Use.print) t.application_points
 
   let add_use t env kind =
+(*
+Format.eprintf "Adding use for %a, kind %a, backtrace:\n@ %s\n"
+  Continuation.print t.continuation Use.Kind.print kind
+  (Printexc.raw_backtrace_to_string
+    (Printexc.get_callstack 100));
+*)
     { t with
       application_points = { Use. env; kind; } :: t.application_points;
     }
@@ -594,6 +600,8 @@ module Continuation_uses = struct
     | One -> true
     | Many -> false
 
+  let num_uses t = List.length t.application_points
+
   let linearly_used_in_inlinable_position t =
     match t.application_points with
     | [use] when Use.Kind.is_inlinable use.kind -> true
@@ -604,6 +612,8 @@ module Continuation_uses = struct
     match t.application_points with
     | [] -> None
     | use::uses ->
+Format.eprintf "meet_of_args_approxs_opt %a:\n" Continuation.print
+  t.continuation;
       Some (List.fold_left (fun args_approxs (use : Use.t) ->
           let args_approxs' = Use.Kind.args_approxs use.kind in
           if List.length args_approxs <> List.length args_approxs' then begin
@@ -614,6 +624,9 @@ module Continuation_uses = struct
           end;
           List.map2 (fun approx1 approx2 ->
               let module Backend = (val (t.backend) : Backend_intf.S) in
+Format.eprintf "approx1=%a approx2=%a\n%!"
+  A.print approx1
+  A.print approx2;
               A.join approx1 approx2
                 ~really_import_approx:Backend.really_import_approx)
             args_approxs args_approxs')

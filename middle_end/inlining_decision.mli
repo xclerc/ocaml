@@ -34,6 +34,12 @@ val for_call_site
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
+  -> simplify_apply_cont_to_cont:(
+       Inline_and_simplify_aux.Env.t
+    -> Inline_and_simplify_aux.Result.t
+    -> Continuation.t
+    -> args_approxs:Simple_value_approx.t list
+    -> Continuation.t * Inline_and_simplify_aux.Result.t)
   -> inline_requested:Lambda.inline_attribute
   -> specialise_requested:Lambda.specialise_attribute
   -> Flambda.t * Inline_and_simplify_aux.Result.t

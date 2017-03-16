@@ -1161,8 +1161,11 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
         Continuation.Set.print bad_without_definitions
         Flambda.print expr
     end;
+    let continuation_definitions_with_uses =
+      R.continuation_definitions_with_uses r
+    in
     let defined_continuations_in_r =
-      Continuation.Map.keys (R.continuation_definitions_with_uses r)
+      Continuation.Map.keys continuation_definitions_with_uses
     in
     let defined_continuations =
       Flambda_utils.all_defined_continuations_toplevel expr
@@ -1185,8 +1188,6 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
           defined_continuations_in_r)
         Flambda.print expr
     end;
-    (* CR mshinwell: We could consider counting uses as well, although maybe
-       that's excessive. *)
     (* CR mshinwell: The following could check the actual code in the
        continuation approximations matches the code in the term. *)
     let all_handlers_in_continuation_approxs =
@@ -1210,5 +1211,32 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
         Continuation.Set.print all_handlers_in_continuation_approxs
         Continuation.Set.print defined_continuations
         Flambda.print expr
-    end
+    end;
+    (* Checking the number of uses recorded in [r] is correct helps to catch
+       bugs where, for example, some [Value_unknown] approximation for some
+       argument of some continuation fails to be removed by a transformation
+       that produces a more precise approximation (which can cause the
+       join of the argument's approximations to remain at [Value_unknown]). *)
+    let counts = Flambda_utils.count_continuation_uses_toplevel expr in
+    Continuation.Map.iter (fun cont (uses, _, _, _) ->
+        let num_in_term =
+          match Continuation.Map.find cont counts with
+          | exception Not_found ->
+            Misc.fatal_errorf "Cannot find continuation count for %a: %a"
+              Continuation.print cont
+              Flambda.print expr
+          | count -> count
+        in
+        let num_in_r =
+          Inline_and_simplify_aux.Continuation_uses.num_uses uses
+        in
+        if num_in_term <> num_in_r then begin
+          Misc.fatal_errorf "Continuation count mismatch for %a between the \
+              term (%d) and [r] (%d): %a"
+            Continuation.print cont
+            num_in_term
+            num_in_r
+            Flambda.print expr
+        end)
+      continuation_definitions_with_uses
   end

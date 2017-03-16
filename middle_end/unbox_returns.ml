@@ -168,6 +168,11 @@ let for_function_decl ~continuation_uses ~fun_var
             Unbox_one_variable.how_to_unbox ~being_unboxed:return_cont_param
               ~being_unboxed_approx:arg_approx
           in
+(*
+    Format.eprintf "Unbox_returns unboxing return with approx %a on:\n@ %a\n%!"
+      Simple_value_approx.print arg_approx
+      Flambda.print_function_declaration (fun_var, function_decl);
+*)
           match how_to_unbox with
           | None -> None
           | Some how_to_unbox ->
@@ -175,10 +180,6 @@ let for_function_decl ~continuation_uses ~fun_var
             if List.length how_to_unbox.new_params > 4 then begin
               None
             end else begin
-(*
-    Format.eprintf "Unbox_returns on:\n@ %a\n%!"
-      Flambda.print_function_declaration (fun_var, function_decl);
-*)
               let return_arity =
                 function_decl.return_arity - 1
                   + List.length how_to_unbox.new_params

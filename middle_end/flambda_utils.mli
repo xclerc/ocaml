@@ -250,3 +250,7 @@ val create_wrapper_params
 
 (** All continuations defined at toplevel within the given expression. *)
 val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t
+
+val count_continuation_uses_toplevel
+   : Flambda.expr
+  -> int Continuation.Map.t

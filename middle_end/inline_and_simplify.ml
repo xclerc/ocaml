@@ -945,14 +945,6 @@ Format.eprintf "...freshened cont is %a\n%!"
               Flambda.print_function_declaration
               (lhs_of_application, function_decl)
           end;
-          let continuation, r =
-            let args_approxs =
-              Array.to_list (Array.init function_decl.return_arity
-                (fun _index -> A.value_unknown Other))
-            in
-            simplify_apply_cont_to_cont env r continuation
-              ~args_approxs
-          in
           let r =
             match apply.call_kind with
             | Indirect ->
@@ -1038,12 +1030,22 @@ and simplify_full_application env r ~function_decls ~lhs_of_application
   Inlining_decision.for_call_site ~env ~r ~function_decls
     ~lhs_of_application ~closure_id_being_applied ~function_decl
     ~value_set_of_closures ~args ~args_approxs ~continuation ~dbg ~simplify
-    ~inline_requested ~specialise_requested
+    ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested
 
 and simplify_partial_application env r ~lhs_of_application
       ~closure_id_being_applied
       ~(function_decl : Flambda.function_declaration) ~args ~continuation ~dbg
       ~inline_requested ~specialise_requested =
+(*
+  let continuation, r =
+    let args_approxs =
+      Array.to_list (Array.init function_decl.return_arity
+        (fun _index -> A.value_unknown Other))
+    in
+    simplify_apply_cont_to_cont env r continuation
+      ~args_approxs
+  in
+*)
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity > List.length args);
   (* For simplicity, we disallow [@inline] attributes on partial
@@ -1116,8 +1118,16 @@ and simplify_partial_application env r ~lhs_of_application
 
 and simplify_over_application env r ~args ~args_approxs ~continuation
       ~function_decls ~lhs_of_application ~closure_id_being_applied
-      ~function_decl ~value_set_of_closures ~dbg ~inline_requested
-      ~specialise_requested =
+      ~(function_decl : Flambda.function_declaration) ~value_set_of_closures
+      ~dbg ~inline_requested ~specialise_requested =
+  let continuation, r =
+    let args_approxs =
+      Array.to_list (Array.init function_decl.return_arity
+        (fun _index -> A.value_unknown Other))
+    in
+    simplify_apply_cont_to_cont env r continuation
+      ~args_approxs
+  in
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity < List.length args);
   assert (List.length args = List.length args_approxs);
