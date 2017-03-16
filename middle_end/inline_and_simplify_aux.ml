@@ -797,6 +797,9 @@ Format.eprintf "NRCUL: continuation %a number of uses %d\n%!"
   let continuation_unused t cont =
     not (Continuation.Map.mem cont t.used_continuations)
 
+  let continuation_defined t cont =
+    Continuation.Map.mem cont t.defined_continuations
+
   let continuation_args_approxs t i ~num_params =
     match Continuation.Map.find i t.used_continuations with
     | exception Not_found ->

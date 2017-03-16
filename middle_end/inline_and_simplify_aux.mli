@@ -396,6 +396,7 @@ module Result : sig
   val roll_back_continuation_uses : t -> Continuation_usage_snapshot.t -> t
 
   val continuation_unused : t -> Continuation.t -> bool
+  val continuation_defined : t -> Continuation.t -> bool
 
   val continuation_args_approxs
      : t

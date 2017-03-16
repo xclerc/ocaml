@@ -54,14 +54,29 @@ let for_toplevel_expression expr r =
           else env
         in
         let body = substitute body_env body in
-        if used_linearly then body
-        else Let_cont { body; handlers = Nonrecursive { name; handler; }; }
+        if not (used_linearly || R.continuation_defined !r name) then begin
+          Misc.fatal_errorf "Continuation %a: if it's not used linearly \
+              then it should be defined in [r] (note that zero uses does \
+              not count as ``linearly used''): %a"
+            Continuation.print name
+            Flambda.print expr
+        end;
+        (* Beware: we may have failed to inline---see comment below.
+           In that case the [Let_cont] must stay. *)
+        if R.continuation_defined !r name then
+          Let_cont { body; handlers = Nonrecursive { name; handler; }; }
+        else
+          body
       | Let_cont { body; handlers = Recursive handlers; } ->
         let body = substitute env body in
         let handlers =
           Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
               { handler with
-                handler = substitute env handler.handler;
+                (* Do not inline continuations into recursive continuations.
+                   This can cause high nesting depth of [catch rec] in the
+                   backend and very bad compilation time performance, e.g.
+                   during liveness analysis. *)
+                handler = substitute Continuation.Map.empty handler.handler;
               })
             handlers
         in

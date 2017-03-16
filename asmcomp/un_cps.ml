@@ -16,13 +16,14 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module Int = Numbers.Int
 module N = Num_continuation_uses
 
-let zero_uses = Numbers.Int.Map.empty, false
+let zero_uses = Int.Map.empty, false
 
 let combine_uses (uses1, contains_returns1) (uses2, contains_returns2) =
   let uses =
-    Numbers.Int.Map.union
+    Int.Map.union
       (fun _cont count1 count2 -> Some (N.(+) count1 count2))
       uses1 uses2
   in
@@ -32,27 +33,29 @@ let combine_uses (uses1, contains_returns1) (uses2, contains_returns2) =
 (* CR mshinwell: Remove mutable state once we've settled on what we need
    from this pass. *)
 
-let used_within_catch_bodies = ref Numbers.Int.Map.empty
+let used_within_catch_bodies = ref Int.Map.empty
 
-let rec count_uses (ulam : Clambda.ulambda) =
+let rec count_uses ~in_scope (ulam : Clambda.ulambda) =
   let (+) = combine_uses in
   (* CR mshinwell: use explicit ignore functions *)
   (* CR mshinwell: short-circuit once we get to [Many] *)
   match ulam with
   | Uvar _ | Uconst _ | Uunreachable -> zero_uses
-  | Udirect_apply (_, args, _, _) -> count_uses_list args
-  | Ugeneric_apply (func, args, _) -> count_uses func + count_uses_list args
+  | Udirect_apply (_, args, _, _) -> count_uses_list ~in_scope args
+  | Ugeneric_apply (func, args, _) ->
+    count_uses ~in_scope func + count_uses_list ~in_scope args
   | Uclosure (funcs, vars) ->
-    count_uses_list
+    count_uses_list ~in_scope
       (List.map (fun (func : Clambda.ufunction) -> func.body) funcs)
-      + count_uses_list vars
-  | Uoffset (closure, _) -> count_uses closure
+      + count_uses_list ~in_scope vars
+  | Uoffset (closure, _) -> count_uses ~in_scope closure
   | Ulet (_, _, _, defining_expr, body) ->
-    count_uses defining_expr + count_uses body
+    count_uses ~in_scope defining_expr + count_uses ~in_scope body
   | Uletrec (bindings, ulam) ->
-    count_uses_list (List.map snd bindings) + count_uses ulam
+    count_uses_list ~in_scope (List.map snd bindings)
+      + count_uses ~in_scope ulam
   | Uprim (Preturn, [arg], _) ->
-    let uses, _contains_return = count_uses arg in
+    let uses, _contains_return = count_uses ~in_scope arg in
     let contains_return =
       match arg with
       | Ustaticfail _ -> false
@@ -61,52 +64,86 @@ let rec count_uses (ulam : Clambda.ulambda) =
     uses, contains_return
   | Uprim (Preturn, _, _) ->
     Misc.fatal_errorf "Preturn takes exactly one argument"
-  | Uprim (_, args, _) -> count_uses_list args
+  | Uprim (_, args, _) -> count_uses_list ~in_scope args
   | Uswitch (scrutinee, switch) ->
-    count_uses scrutinee + count_uses_array switch.us_actions_consts
-      + count_uses_array switch.us_actions_blocks
+    count_uses ~in_scope scrutinee
+      + count_uses_array ~in_scope switch.us_actions_consts
+      + count_uses_array ~in_scope switch.us_actions_blocks
   | Ustringswitch (scrutinee, cases, default) ->
-    count_uses scrutinee + count_uses_list (List.map snd cases)
-      + count_uses_option default
+    count_uses ~in_scope scrutinee
+      + count_uses_list ~in_scope (List.map snd cases)
+      + count_uses_option ~in_scope default
   | Ustaticfail (cont, args) ->
-    (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty, false)
-      + count_uses_list args
+    (Int.Map.add cont N.One Int.Map.empty, false)
+      + count_uses_list ~in_scope args
   | Ucatch (kind, handlers, body) ->
-    let body_uses = count_uses body in
+    let handler_conts =
+      Int.Set.of_list (
+        List.map (fun (cont, _, _) -> cont) handlers)
+    in
+    let body_uses =
+      let in_scope = Int.Set.union in_scope handler_conts in
+      count_uses ~in_scope body
+    in
     begin match kind, handlers with
     | Normal Nonrecursive, [cont, _params, _handler] ->
       used_within_catch_bodies :=
-        Numbers.Int.Map.add cont body_uses !used_within_catch_bodies
+        Int.Map.add cont body_uses !used_within_catch_bodies
     | _ -> ()
     end;
-    List.fold_left (fun handler_uses (_cont, _params, handler) ->
-        handler_uses + count_uses handler)
+    let in_scope_already = in_scope in
+    let in_scope =
+      match kind with
+      | Normal Nonrecursive | Exn_handler -> in_scope
+      | Normal Recursive -> Int.Set.union in_scope handler_conts
+    in
+    (* Continuations defined outside of a recursive continuation and
+       used inside such are always deemed to have "Many" uses so that they are
+       never inlined.  See comment in [Continuation_inlining] as to why. *)
+    List.fold_left (fun uses (_cont, _params, handler) ->
+        let handler_uses, used_within_catch_bodies =
+          count_uses ~in_scope handler
+        in
+        let handler_uses =
+          Int.Map.mapi (fun cont num_uses : N.t ->
+              if Int.Set.mem cont in_scope_already then Many
+              else num_uses)
+            handler_uses
+        in
+        uses + (handler_uses, used_within_catch_bodies))
       body_uses
       handlers
-  | Utrywith (body, _, handler) -> count_uses body + count_uses handler
+  | Utrywith (body, _, handler) ->
+    count_uses ~in_scope body + count_uses ~in_scope handler
   | Uifthenelse (cond, ifso, ifnot) ->
-    count_uses cond + count_uses ifso + count_uses ifnot
-  | Usequence (ulam1, ulam2) -> count_uses ulam1 + count_uses ulam2
-  | Uwhile (cond, body) -> count_uses cond + count_uses body
+    count_uses ~in_scope cond + count_uses ~in_scope ifso
+      + count_uses ~in_scope ifnot
+  | Usequence (ulam1, ulam2) ->
+    count_uses ~in_scope ulam1 + count_uses ~in_scope ulam2
+  | Uwhile (cond, body) ->
+    count_uses ~in_scope cond + count_uses ~in_scope body
   | Ufor (_, start, stop, _, body) ->
-    count_uses start + count_uses stop + count_uses body
-  | Uassign (_, ulam) -> count_uses ulam
+    count_uses ~in_scope start + count_uses ~in_scope stop
+      + count_uses ~in_scope body
+  | Uassign (_, ulam) -> count_uses ~in_scope ulam
   | Usend (_, meth, obj, args, _) ->
-    count_uses meth + count_uses obj + count_uses_list args
+    count_uses ~in_scope meth + count_uses ~in_scope obj
+      + count_uses_list ~in_scope args
   | Upushtrap cont | Upoptrap cont ->
-    (Numbers.Int.Map.add cont N.One Numbers.Int.Map.empty, false)
+    (Int.Map.add cont N.One Int.Map.empty, false)
 
-and count_uses_list (ulams : Clambda.ulambda list) =
+and count_uses_list ~in_scope (ulams : Clambda.ulambda list) =
   let (+) = combine_uses in
   match ulams with
   | [] -> zero_uses
-  | ulam::ulams -> count_uses ulam + count_uses_list ulams
+  | ulam::ulams -> count_uses ~in_scope ulam + count_uses_list ~in_scope ulams
 
-and count_uses_array ulams = count_uses_list (Array.to_list ulams)
+and count_uses_array ~in_scope ulams =
+  count_uses_list ~in_scope (Array.to_list ulams)
 
-and count_uses_option = function
+and count_uses_option ~in_scope = function
   | None -> zero_uses
-  | Some ulam -> count_uses ulam
+  | Some ulam -> count_uses ~in_scope ulam
 
 module Env : sig
   type t
@@ -136,45 +173,45 @@ end = struct
     | Let_bind_args_and_substitute of Ident.t list * Clambda.ulambda
 
   type t = {
-    actions : action_at_apply_cont Numbers.Int.Map.t;
+    actions : action_at_apply_cont Int.Map.t;
   }
 
   let create () =
-    { actions = Numbers.Int.Map.empty;
+    { actions = Int.Map.empty;
     }
 
   let linearly_used_continuation t ~cont ~params ~handler =
-    if Numbers.Int.Map.mem cont t.actions then begin
+    if Int.Map.mem cont t.actions then begin
       Misc.fatal_errorf "Continuation %d already in Un_cps environment"
         cont
     end else begin
       let action = Let_bind_args_and_substitute (params, handler) in
-      { actions = Numbers.Int.Map.add cont action t.actions;
+      { actions = Int.Map.add cont action t.actions;
       }
     end
 
   let continuation_will_turn_into_sequence t ~cont =
-    if Numbers.Int.Map.mem cont t.actions then begin
+    if Int.Map.mem cont t.actions then begin
       Misc.fatal_errorf "Continuation %d already in Un_cps environment"
         cont
     end else begin
       (* CR mshinwell: add Return_unit *)
       let action = Let_bind_args_and_substitute ([], Uconst (Uconst_int 0)) in
-      { actions = Numbers.Int.Map.add cont action t.actions;
+      { actions = Int.Map.add cont action t.actions;
       }
     end
 
   let continuation_will_turn_into_let t ~cont =
-    if Numbers.Int.Map.mem cont t.actions then begin
+    if Int.Map.mem cont t.actions then begin
       Misc.fatal_errorf "Continuation %d already in Un_cps environment"
         cont
     end else begin
-      { actions = Numbers.Int.Map.add cont Return t.actions;
+      { actions = Int.Map.add cont Return t.actions;
       }
     end
 
   let action_at_apply_cont t ~cont =
-    match Numbers.Int.Map.find cont t.actions with
+    match Int.Map.find cont t.actions with
     | exception Not_found -> Unchanged
     | action -> action
 end
@@ -184,7 +221,7 @@ type can_turn_into_let_or_sequence =
   | Sequence
   | Let of Ident.t
 
-let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
+let inline ulam ~(uses : N.t Int.Map.t) ~used_within_catch_bodies =
   let module E = Env in
   let rec inline env (ulam : Clambda.ulambda) : Clambda.ulambda =
     match ulam with
@@ -255,7 +292,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
           | Normal
       end in
       let action : Action.t =
-        match Numbers.Int.Map.find cont uses with
+        match Int.Map.find cont uses with
         | exception Not_found -> Unused
         | One -> Linear_inlining
         | Many -> Normal
@@ -267,7 +304,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
         let env = E.linearly_used_continuation env ~cont ~params ~handler in
         inline env body
       | Normal ->
-        begin match Numbers.Int.Map.find cont used_within_catch_bodies with
+        begin match Int.Map.find cont used_within_catch_bodies with
         | exception Not_found ->
           Misc.fatal_errorf "No record of used continuations within \
               Ucatch body %d"
@@ -280,7 +317,7 @@ let inline ulam ~(uses : N.t Numbers.Int.Map.t) ~used_within_catch_bodies =
              normal, non-recursive binding.)
           *)
           let can_turn_into_let_or_sequence =
-            match Numbers.Int.Map.bindings used with
+            match Int.Map.bindings used with
             | [cont', _] when cont = cont' ->
               if contains_returns then begin
                 Nothing
@@ -340,8 +377,8 @@ Format.eprintf "Turning continuation with the following defining expr into Let:@
   inline (E.create ()) ulam
 
 let run ulam =
-  used_within_catch_bodies := Numbers.Int.Map.empty;
+  used_within_catch_bodies := Int.Map.empty;
   let uses, _contains_returns =
-    count_uses ulam
+    count_uses ~in_scope:Int.Set.empty ulam
   in
   inline ulam ~uses ~used_within_catch_bodies:!used_within_catch_bodies
