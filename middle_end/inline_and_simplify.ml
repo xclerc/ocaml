@@ -1891,8 +1891,6 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
             R.exit_scope_catch ~update_use_env r env cont
           in
           if Inline_and_simplify_aux.Continuation_uses.unused uses then begin
-            let handlers = Continuation.Map.remove cont handlers in
-            let r = R.forget_continuation_definition r cont in
             let r =
               Continuation.Set.fold (fun cont r ->
                   R.forget_continuation_definition r cont)
@@ -1901,7 +1899,22 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
             in
             r, handlers
           end else begin
-(*Format.eprintf "Defining %a\n%!" Continuation.print cont;*)
+            let handlers =
+              Continuation.Map.add cont (handler, uses) handlers
+            in
+            r, handlers
+          end)
+        handlers
+        (r, Continuation.Map.empty)
+    in
+    if Continuation.Map.is_empty handlers then begin
+(*Format.eprintf "No handlers left!\n%!";*)
+      None, r
+    end else
+      let r, handlers =
+        Continuation.Map.fold (fun cont
+                ((handler : Flambda.continuation_handler), uses)
+                (r, handlers') ->
             let approx =
               let num_params = List.length handler.params in
               let handlers : Continuation_approx.continuation_handlers =
@@ -1909,37 +1922,33 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
                 | Nonrecursive ->
                   begin match Continuation.Map.bindings handlers with
                   | [_cont, (handler, _)] -> Nonrecursive handler
-                  | _ -> assert false
+                  | _ ->
+                    Misc.fatal_errorf "Nonrecursive Let_cont may only have one \
+                        handler, but binds %a"
+                      Continuation.Set.print (Continuation.Map.keys handlers)
                   end
                 | Recursive ->
                   let handlers =
-                    Continuation.Map.map (fun (handler, _) -> handler)
+                    Continuation.Map.map (fun (handler, _uses) -> handler)
                       handlers
                   in
                   Recursive handlers
               in
               Continuation_approx.create ~name:cont ~handlers ~num_params
             in
-            let r = R.define_continuation r cont env recursive uses approx in
-            r, handlers
-          end)
-        handlers
-        (r, handlers)
-    in
-    let handlers =
-      Continuation.Map.map (fun (handler, _) -> handler)
-        handlers
-    in
-    if Continuation.Map.is_empty handlers then begin
-(*Format.eprintf "No handlers left!\n%!";*)
-      None, r
-    end else
+            let r =
+              R.define_continuation r cont env recursive uses approx
+            in
+            let handlers' = Continuation.Map.add cont handler handlers' in
+            r, handlers')
+          handlers
+          (r, Continuation.Map.empty)
+      in
       match recursive with
       | Nonrecursive ->
         begin match Continuation.Map.bindings handlers with
         | [name, handler] -> Some (Flambda.Nonrecursive { name; handler; }), r
-        | _ ->
-          Misc.fatal_errorf "Nonrecursive Let_cont may only have one handler"
+        | _ -> assert false
         end
       | Recursive ->
         let is_non_recursive =
