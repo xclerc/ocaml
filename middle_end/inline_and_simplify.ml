@@ -1807,7 +1807,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
       let cont = Freshening.apply_static_exception freshening cont in
       if R.continuation_defined r cont then begin
         Misc.fatal_errorf "Ready to simplify continuation handlers \
-            defining (at least) %a but such continuation is already \
+            defining (at least) %a but such continuation(s) is/are already \
             defined in [r]"
           Continuation.print cont
       end)
@@ -1822,6 +1822,8 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
   (* CR mshinwell: we should enhance the deletion of continuations so it
      can get rid of stubs inside recursive bindings *)
   if all_unused then begin
+    (* We don't need to touch [r] since we haven't simplified any of
+       the handlers. *)
     None, r
   end else
     (* First we simplify the continuations themselves.  We also remember
@@ -1832,7 +1834,6 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
       Continuation.Map.fold (fun cont
                 (handler : Flambda.continuation_handler) (r, handlers) ->
           let cont' = Freshening.apply_static_exception freshening cont in
-          let cont_snapshot_before = R.snapshot_continuation_uses r in
           let args_approxs =
             let unknown () =
               Array.to_list (Array.init (List.length handler.params)
@@ -1858,6 +1859,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
                 args_approxs
               end
           in
+          let _cont_snapshot_before = R.snapshot_continuation_uses r in
           let r, handler =
 (*
 Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
@@ -1866,12 +1868,14 @@ Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
             simplify_let_cont_handler ~env ~r ~cont:cont' ~handler
               ~args_approxs
           in
-          let cont_snapshot_after = R.snapshot_continuation_uses r in
-          let introduced_conts =
+          let _cont_snapshot_after = R.snapshot_continuation_uses r in
+          let introduced_conts = () in
+(*
             Inline_and_simplify_aux.Continuation_usage_snapshot.
-              continuations_defined_between_snapshots
+              continuations_defined_or_used_between_snapshots
               ~before:cont_snapshot_before ~after:cont_snapshot_after
           in
+*)
 (*
 Format.eprintf "New handler for %a is:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
@@ -1885,25 +1889,27 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
        inlining and specialisation transformations. *)
     let r, handlers =
       Continuation.Map.fold (fun cont
-              ((handler : Flambda.continuation_handler), introduced_conts)
+              ((handler : Flambda.continuation_handler), _introduced_conts)
               (r, handlers) ->
           let r, uses =
             R.exit_scope_catch ~update_use_env r env cont
           in
+          (* CR mshinwell: Deletion here is a pain, we should find an
+             easier way *)
+(*
           if Inline_and_simplify_aux.Continuation_uses.unused uses then begin
             let r =
-              Continuation.Set.fold (fun cont r ->
-                  R.forget_continuation_definition r cont)
+              R.forget_continuations_defined_or_used_between_snapshots r
                 introduced_conts
-                r
             in
             r, handlers
           end else begin
+*)
             let handlers =
               Continuation.Map.add cont (handler, uses) handlers
             in
             r, handlers
-          end)
+ (*         end *))
         handlers
         (r, Continuation.Map.empty)
     in
@@ -2203,6 +2209,9 @@ body, r
               let cont =
                 Freshening.apply_static_exception (E.freshening body_env) cont
               in
+              (* N.B. If [cont]'s handler was deleted, the following function
+                 will produce [Value_bottom] for the arguments, rather than
+                 failing. *)
               R.defined_continuation_args_approxs r cont ~num_params)
             original_handlers
         in
@@ -2266,6 +2275,7 @@ Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
       assert (R.continuation_unused r name);
       let r, _uses = R.exit_scope_catch r env name in
       assert (not (R.is_used_continuation r name));
+      assert (not (R.continuation_defined r name));
       body, ret r (A.value_unknown Other)
     end
   | Switch (arg, sw) ->

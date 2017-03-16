@@ -1221,10 +1221,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
     Continuation.Map.iter (fun cont (uses, _, _, _) ->
         let num_in_term =
           match Continuation.Map.find cont counts with
-          | exception Not_found ->
-            Misc.fatal_errorf "Cannot find continuation count for %a: %a"
-              Continuation.print cont
-              Flambda.print expr
+          | exception Not_found -> 0
           | count -> count
         in
         let num_in_r =
