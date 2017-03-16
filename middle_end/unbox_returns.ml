@@ -143,10 +143,10 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
 let for_function_decl ~continuation_uses ~fun_var
         ~(function_decl : Flambda.function_declaration)
         ~specialised_args ~recursively_used =
-  let return_cont = function_decl.continuation_param in
   if function_decl.stub || Variable.Set.mem fun_var recursively_used then
     None
   else
+    let return_cont = function_decl.continuation_param in
     match Continuation.Map.find return_cont continuation_uses with
     | exception Not_found -> None
     | uses ->
