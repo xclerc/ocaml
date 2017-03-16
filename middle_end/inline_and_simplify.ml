@@ -1681,8 +1681,7 @@ and filter_defining_expr_of_let r var (defining_expr : Flambda.named)
     r, var, Some defining_expr
 
 and simplify_let_cont_handler ~env ~r ~cont
-      ~(handler : Flambda.continuation_handler) ~args_approxs
-      ~(recursive : Asttypes.rec_flag) =
+      ~(handler : Flambda.continuation_handler) ~args_approxs =
 (*
 Format.eprintf "Handler of %a has args_approxs (%a)\n%!"
   Continuation.print cont
@@ -1753,15 +1752,9 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
   let param_approxs =
     List.map (fun param ->
         let not_specialised () =
-          (* Take the join of the approximations discovered whilst simplifying
-             the body, unless the continuation binding is recursive, in which
-             case we may not have seen all of the uses yet. *)
-          match recursive with
-          | Recursive -> A.value_unknown Other
-          | Nonrecursive ->
-            match Variable.Map.find param freshened_params_to_args_approxs with
-            | exception Not_found -> assert false  (* see above *)
-            | arg_approx -> arg_approx
+          match Variable.Map.find param freshened_params_to_args_approxs with
+          | exception Not_found -> assert false
+          | arg_approx -> arg_approx
         in
         match Variable.Map.find param specialised_args with
         | exception Not_found -> not_specialised ()
@@ -1836,18 +1829,25 @@ Format.eprintf "Deleting handlers binding %a\n%!"
           let cont' = Freshening.apply_static_exception freshening cont in
           let cont_snapshot_before = R.snapshot_continuation_uses r in
           let args_approxs =
+            let unknown () =
+              Array.to_list (Array.init (List.length handler.params)
+                (fun _ -> A.value_unknown Other))
+            in
             match args_approxs with
             | None ->
-              R.continuation_args_approxs r cont'
-                ~num_params:(List.length handler.params)
+              begin match recursive with
+              | Recursive -> unknown ()
+              | Nonrecursive ->
+                R.continuation_args_approxs r cont'
+                  ~num_params:(List.length handler.params)
+              end
             | Some args_approxs ->
               begin match Continuation.Map.find cont args_approxs with
               | exception Not_found ->
                 (* A new continuation introduced by
                    [Unbox_continuation_params] (see below). *)
                 (* CR mshinwell: maybe we should enforce that? *)
-                Array.to_list (Array.init (List.length handler.params)
-                  (fun _ -> A.value_unknown Other))
+                unknown ()
               | args_approxs ->
                 assert (List.length handler.params = List.length args_approxs);
                 args_approxs
@@ -1858,7 +1858,7 @@ Format.eprintf "Deleting handlers binding %a\n%!"
 Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
 *)
-            simplify_let_cont_handler ~env ~r ~cont:cont' ~handler ~recursive
+            simplify_let_cont_handler ~env ~r ~cont:cont' ~handler
               ~args_approxs
           in
           let cont_snapshot_after = R.snapshot_continuation_uses r in
