@@ -1287,12 +1287,16 @@ Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm) and there are no opportunities
     for inlining or specialisation. *)
-and simplify_apply_cont_to_cont env r cont ~args_approxs =
+and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let r =
-    R.use_continuation r env cont (Not_inlinable_or_specialisable args_approxs)
+    match don't_record_use with
+    | None ->
+      R.use_continuation r env cont
+        (Not_inlinable_or_specialisable args_approxs)
+    | Some () -> r
   in
   cont, ret r (A.value_unknown Other)
 
@@ -2380,6 +2384,7 @@ Format.eprintf "%a branch simplifies to: %a\n%!"
           let f (acc, r) (i, cont) =
             let cont, r =
               simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+                ~don't_record_use:()
             in
             (i, cont)::acc, r
           in
@@ -2394,18 +2399,24 @@ Format.eprintf "%a branch simplifies to: %a\n%!"
               else
                 let cont, r =
                   simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+                    ~don't_record_use:()
                 in
                 Some cont, r
           in
-(* XXX this is wrong---we can't record a use if we might eliminate it inside
-   this next function. *)
-          let switch =
-            Flambda.create_switch ~scrutinee:arg
+          let switch, used_conts =
+            Flambda.create_switch' ~scrutinee:arg
               ~all_possible_values:sw.numconsts
               ~arms:consts
               ~default:failaction
           in
-          switch, r
+          let r = ref r in
+          Continuation.Map.iter (fun cont num_uses ->
+              for _use = 1 to num_uses do
+                r := R.use_continuation !r env cont
+                  (Not_inlinable_or_specialisable [])
+              done)
+            used_conts;
+          switch, !r
       end)
   | Proved_unreachable -> Proved_unreachable, ret r A.value_bottom
 

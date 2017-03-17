@@ -1214,7 +1214,8 @@ let free_symbols_program (program : program) =
   loop program.program_body;
   !symbols
 
-let create_switch ~scrutinee ~all_possible_values ~arms ~default : expr =
+let create_switch' ~scrutinee ~all_possible_values ~arms ~default
+      : expr * (int Continuation.Map.t) =
   let result_switch : switch =
     { numconsts = all_possible_values;
       consts = arms;
@@ -1247,11 +1248,11 @@ let create_switch ~scrutinee ~all_possible_values ~arms ~default : expr =
       print result
   end;
   if num_possible_values < 1 then begin
-    Proved_unreachable
+    Proved_unreachable, Continuation.Map.empty
   end else if num_arms = 0 && default = None then begin
     (* [num_possible_values] might be strictly greater than zero in this
        case, but that doesn't matter. *)
-    Proved_unreachable
+    Proved_unreachable, Continuation.Map.empty
   end else begin
     let default =
       if num_arm_values = num_possible_values then None
@@ -1272,9 +1273,30 @@ let create_switch ~scrutinee ~all_possible_values ~arms ~default : expr =
         | _, _ -> None
     in
     match single_case with
-    | Some cont -> Apply_cont (cont, None, [])
-    | None -> Switch (scrutinee, { result_switch with failaction = default; })
+    | Some cont ->
+      Apply_cont (cont, None, []),
+        Continuation.Map.add cont 1 Continuation.Map.empty
+    | None ->
+      let num_uses = Continuation.Tbl.create 42 in
+      let add_use cont =
+        match Continuation.Tbl.find num_uses cont with
+        | exception Not_found -> Continuation.Tbl.add num_uses cont 1
+        | num -> Continuation.Tbl.replace num_uses cont (num + 1)
+      in
+      List.iter (fun (_const, cont) -> add_use cont) result_switch.consts;
+      begin match default with
+      | None -> ()
+      | Some default -> add_use default
+      end;
+      Switch (scrutinee, { result_switch with failaction = default; }),
+        Continuation.Tbl.to_map num_uses
   end
+
+let create_switch ~scrutinee ~all_possible_values ~arms ~default =
+  let switch, _uses =
+    create_switch' ~scrutinee ~all_possible_values ~arms ~default
+  in
+  switch
 
 let create_function_declaration ~params ~continuation_param ~return_arity
       ~body ~stub ~dbg

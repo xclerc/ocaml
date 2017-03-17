@@ -35,7 +35,8 @@ val for_call_site
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
   -> simplify_apply_cont_to_cont:(
-       Inline_and_simplify_aux.Env.t
+       ?don't_record_use:unit
+    -> Inline_and_simplify_aux.Env.t
     -> Inline_and_simplify_aux.Result.t
     -> Continuation.t
     -> args_approxs:Simple_value_approx.t list

@@ -562,7 +562,8 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
         Array.to_list (Array.init function_decl.return_arity
           (fun _index -> A.value_unknown Other))
       in
-      simplify_apply_cont_to_cont env r continuation ~args_approxs
+      simplify_apply_cont_to_cont ?don't_record_use:None env r continuation
+        ~args_approxs
     in
     let original_expr : Flambda.expr =
       Apply { original_apply with

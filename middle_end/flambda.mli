@@ -721,6 +721,16 @@ val create_switch
   -> default:Continuation.t option
   -> expr
 
+(** As for [create_switch], but also returns a map showing the continuations
+    that occur within the returned expression, and how many uses of each there
+    are therein. *)
+val create_switch'
+   : scrutinee:Variable.t
+  -> all_possible_values:Numbers.Int.Set.t
+  -> arms:(int * Continuation.t) list
+  -> default:Continuation.t option
+  -> expr * (int Continuation.Map.t)
+
 (** Create a function declaration.  This calculates the free variables and
     symbols occurring in the specified [body]. *)
 val create_function_declaration
