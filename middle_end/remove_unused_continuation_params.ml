@@ -23,7 +23,7 @@
 let remove_parameters ~(handler : Flambda.continuation_handler)
         ~to_remove : Flambda_utils.with_wrapper =
   let freshened_params =
-    List.map (fun param -> param, Variable.rename param) handler.params
+    List.map (fun param -> param, Parameter.rename param) handler.params
   in
   let wrapper_params =
     List.map (fun (_param, freshened_param) -> freshened_param)
@@ -31,34 +31,34 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
   in
   let wrapper_params_not_unused =
     Misc.Stdlib.List.filter_map (fun (param, freshened_param) ->
-        if Variable.Set.mem param to_remove then None
-        else Some freshened_param)
+        if Parameter.Set.mem param to_remove then None
+        else Some (Parameter.var freshened_param))
       freshened_params
   in
   let new_params =
-    List.filter (fun param -> not (Variable.Set.mem param to_remove))
+    List.filter (fun param -> not (Parameter.Set.mem param to_remove))
       handler.params
   in
-  let freshening = Variable.Map.of_list freshened_params in
+  let freshening = Parameter.Map.of_list freshened_params in
   let freshen param =
-    match Variable.Map.find param freshening with
+    match Parameter.Map.find param freshening with
     | param -> param
     | exception Not_found -> assert false
   in
   let new_specialised_args =
     Flambda_utils.clean_specialised_args_projections (
       Variable.Map.filter (fun param _spec_to ->
-          not (Variable.Set.mem param to_remove))
+          not (Parameter.Set.mem (Parameter.wrap param) to_remove))
         handler.specialised_args)
   in
   let wrapper_specialised_args =
     Variable.Map.fold (fun var (spec_to : Flambda.specialised_to)
             wrapper_specialised_args ->
-        let var = freshen var in
+        let var = Parameter.var (freshen (Parameter.wrap var)) in
         let projection =
           Misc.Stdlib.Option.map (fun projection ->
               Projection.map_projecting_from projection ~f:(fun from ->
-                freshen from))
+                Parameter.var (freshen (Parameter.wrap from))))
             spec_to.projection
         in
         let spec_to : Flambda.specialised_to =
@@ -81,8 +81,8 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
   in
   assert (not handler.is_exn_handler);
   let new_handler =
-    Variable.Set.fold (fun param body ->
-        Flambda.create_let param (Const (Const_pointer 0)) body)
+    Parameter.Set.fold (fun param body ->
+        Flambda.create_let (Parameter.var param) (Const (Const_pointer 0)) body)
       to_remove
       handler.handler
   in
@@ -102,17 +102,17 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
 
 let for_continuation ~body ~unused ~(handlers : Flambda.continuation_handlers)
       ~original ~recursive : Flambda.expr =
-  if Variable.Set.is_empty unused then
+  if Parameter.Set.is_empty unused then
     original
   else
     let handlers =
       Continuation.Map.fold (fun cont
               (handler : Flambda.continuation_handler) handlers ->
           let to_remove =
-            Variable.Set.inter unused (Variable.Set.of_list handler.params)
+            Parameter.Set.inter unused (Parameter.Set.of_list handler.params)
           in
           let with_wrapper : Flambda_utils.with_wrapper =
-            if handler.stub || Variable.Set.is_empty to_remove then
+            if handler.stub || Parameter.Set.is_empty to_remove then
               Unchanged { handler; }
             else
               remove_parameters ~handler ~to_remove
@@ -137,8 +137,10 @@ let run program ~backend =
         | Let_cont { body; handlers = Nonrecursive { name; handler; } } ->
           let unused =
             let fvs = Flambda.free_variables handler.handler in
-            let params = Variable.Set.of_list handler.params in
-            Variable.Set.diff params fvs
+            let params = Parameter.Set.of_list handler.params in
+            Parameter.Set.filter (fun param ->
+                Variable.Set.mem (Parameter.var param) fvs)
+              params
           in
           let handlers =
             Continuation.Map.add name handler Continuation.Map.empty
@@ -149,6 +151,7 @@ let run program ~backend =
           let unused =
             Invariant_params.Continuations.unused_arguments handlers ~backend
           in
+          let unused = Parameter.Set.wrap unused in
           for_continuation ~body ~handlers ~unused ~original:expr
             ~recursive:Asttypes.Recursive
         | Let_cont { handlers = Alias _; _ }

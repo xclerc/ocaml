@@ -143,7 +143,8 @@ let middle_end ppf ~prefixname ~backend
                Remove_unused_closure_vars.remove_unused_closure_variables
                 ~remove_direct_call_surrogates:false)
           +-+ ("Inline_and_simplify",
-               Inline_and_simplify.run ~never_inline:false ~backend
+               Inline_and_simplify.run ~never_inline:false
+                  ~allow_continuation_inlining:false ~backend
                  ~prefixname ~round)
           +-+ ("Remove_unused_closure_vars 2",
                Remove_unused_closure_vars.remove_unused_closure_variables

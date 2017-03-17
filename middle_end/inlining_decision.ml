@@ -347,7 +347,7 @@ let specialise env r ~lhs_of_application
           Variable.Map.add param (Variable.Set.singleton param)
             invariant_params)
         Variable.Map.empty
-        function_decl.params)
+        (Parameter.List.vars function_decl.params))
   in
   let has_no_useful_approxes =
     lazy

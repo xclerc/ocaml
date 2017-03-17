@@ -239,13 +239,14 @@ let from_function's_specialised_args ~env ~specialised_args
   from_expr ~get_approx ~which_variables function_decl.body
 
 let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
-  let which_variables = Variable.Set.of_list handler.params in
+  let handler_params = Parameter.List.vars handler.params in
+  let which_variables = Variable.Set.of_list handler_params in
   let param_approxs =
     Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs uses
-      ~num_params:(List.length handler.params)
+      ~num_params:(List.length handler_params)
   in
   let params_to_approxs =
-    Variable.Map.of_list (List.combine handler.params param_approxs)
+    Variable.Map.of_list (List.combine handler_params param_approxs)
   in
 (*
 Format.eprintf "params_to_approxs:\n@;%a\n"

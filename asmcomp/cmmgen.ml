@@ -1356,7 +1356,6 @@ let transl_isout h arg dbg = tag_int (Cop(Ccmpa Clt, [h ; arg], dbg)) dbg
 (* Build an actual switch (ie jump table) *)
 
 let make_switch arg cases actions dbg =
-(*
   let is_const = function
     (* Constant integers loaded from a table should end in 1,
        so that Cload never produces untagged integers *)
@@ -1381,7 +1380,6 @@ let make_switch arg cases actions dbg =
           const_actions.(act)) cases)));
     addr_array_ref (Cconst_symbol table) (tag_int arg dbg) dbg
   else
-*)
     Cswitch (arg,cases,actions,dbg)
 
 module SArgBlocks =
@@ -1796,10 +1794,10 @@ let rec transl env e =
   | Uswitch(arg,
       { us_index_consts = [|0|];
         us_actions_consts = [|const_action|];
-        us_actions_blocks = [|block_action|] }) ->
+        us_actions_blocks = [|block_action|] }, _dbg) ->
       transl env (Uifthenelse(arg, block_action, const_action))
 
-  | Uswitch(arg, s) ->
+  | Uswitch(arg, s, dbg) ->
       let loc = Debuginfo.to_location dbg in
       (* As in the bytecode interpreter, only matching against constants
          can be checked *)
@@ -1821,14 +1819,14 @@ let rec transl env e =
           | [| _; 0 |], [| if_not; if_zero; |] ->
             transl env (Uifthenelse (arg, if_not, if_zero))
           | _, _ ->
-            transl_switch dbg env
+            transl_switch loc env
               (untag_int arg_cmm dbg) s.us_index_consts s.us_actions_consts
         in
         bind "switch" (transl env arg) (fun arg ->
           Cifthenelse(
           Cop(Cand, [arg; Cconst_int 1], dbg),
           only_consts ~arg_cmm:arg,
-          transl_switch dbg env
+          transl_switch loc env
             (get_tag arg dbg) s.us_index_blocks s.us_actions_blocks))
   | Ustringswitch(arg,sw,d) ->
       let dbg = Debuginfo.none in

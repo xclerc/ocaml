@@ -23,6 +23,11 @@ type t
 type parameter = t
 
 (** Make a parameter from a variable with default attributes *)
+(* CR-soon mshinwell: This whole thing is a bit of a mess.  This wrap
+   function is going to lead to attributes being dropped by accident.  We
+   should think about how to improve this.
+   There should for a start be a proper creation function with "with
+   default attributes" in the name, or similar. *)
 val wrap : Variable.t -> t
 
 val var : t -> Variable.t
@@ -40,7 +45,10 @@ module T : Identifiable.Thing with type t = t
 
 module Set : sig
   include Identifiable.Set with module T := T
+
   val vars : parameter list -> Variable.Set.t
+
+  val wrap : Variable.Set.t -> t
 end
 
 include Identifiable.S with type t := t
@@ -50,4 +58,16 @@ include Identifiable.S with type t := t
 module List : sig
   (** extract variables from a list of parameters, preserving the order *)
   val vars : t list -> Variable.t list
+
+  val wrap : Variable.t list -> t list
+
+  val rename
+     : ?current_compilation_unit:Compilation_unit.t
+    -> ?append:string
+    -> t list
+    -> t list
+
+  val print : Format.formatter -> t list -> unit
+
+  val compare : t list -> t list -> int
 end

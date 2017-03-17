@@ -35,6 +35,7 @@ module type Set = sig
   val to_string : t -> string
   val of_list : elt list -> t
   val map : (elt -> elt) -> t -> t
+  val get_singleton : t -> elt option
 end
 
 module type Map = sig
@@ -62,6 +63,7 @@ module type Map = sig
   val transpose_keys_and_data_set : key t -> Set.Make(T).t t
   val print :
     (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
+  val get_singleton : 'a t -> (key * 'a) option
 end
 
 module type Tbl = sig
@@ -178,6 +180,11 @@ module Make_map (T : Thing) = struct
         in
         add v set m)
       map empty
+
+  let get_singleton t =
+    match bindings t with
+    | [key, value] -> Some (key, value)
+    | _ -> None
 end
 
 module Make_set (T : Thing) = struct
@@ -200,6 +207,11 @@ module Make_set (T : Thing) = struct
     | t :: q -> List.fold_left (fun acc e -> add e acc) (singleton t) q
 
   let map f s = of_list (List.map f (elements s))
+
+  let get_singleton t =
+    match elements t with
+    | [elt] -> Some elt
+    | _ -> None
 end
 
 module Make_tbl (T : Thing) = struct

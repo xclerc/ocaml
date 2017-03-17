@@ -154,6 +154,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
         in
         let args_approxs =
           List.map2 (fun param join_approx ->
+              let param = Parameter.var param in
               match Variable.Map.find param handler.specialised_args with
               | exception Not_found -> join_approx
               | spec_to ->
@@ -266,6 +267,7 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
               (* Non-recursive continuation: all parameters are invariant. *)
               let invariant_params =
                 List.fold_left (fun invariant_params param ->
+                    let param = Parameter.var param in
                     let param_set = Variable.Set.singleton param in
                     Variable.Map.add param param_set invariant_params)
                   Variable.Map.empty
@@ -307,7 +309,8 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
                   = List.length args_and_approxs);
                 let params_with_args =
                   Variable.Map.of_list (
-                    List.combine handler.params args_and_approxs)
+                    let params = Parameter.List.vars handler.params in
+                    List.combine params args_and_approxs)
                 in
                 let params_with_specialised_args =
                   Variable.Map.filter (fun param (_arg, arg_approx) ->
@@ -359,15 +362,15 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
                   in
                   let conts_to_handlers =
                     (* This [add] is of course executed once per use of the
-                      continuation; it will thus choose the environment for
-                      some arbitrary use of that continuation as that to be
-                      used during [try_specialising].  This is fine: the only
-                      things we need during the simplification inside that
-                      function are the dependencies of the continuation
-                      handler(s) and the approximations of the newly-specialised
-                      arguments (and their dependencies, transitively).  All of
-                      these will be present in the environment at each of the
-                      use sites. *)
+                       continuation; it will thus choose the environment for
+                       some arbitrary use of that continuation as that to be
+                       used during [try_specialising].  This is fine: the only
+                       things we need during the simplification inside that
+                       function are the dependencies of the continuation
+                       handler(s) and the approximations of the
+                       newly-specialised arguments (and their dependencies,
+                       transitively).  All of these will be present in the
+                       environment at each of the use sites. *)
                     Continuation.Map.add cont
                       (handlers, use.env, invariant_params_flow, recursive)
                       conts_to_handlers

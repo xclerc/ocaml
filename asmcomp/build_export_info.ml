@@ -314,7 +314,7 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
       List.fold_left (fun env (param, approx) ->
           Env.add_approx env param approx)
         env
-        (List.combine handler.params args_approxs)
+        (List.combine (Parameter.List.vars handler.params) args_approxs)
     in
     approx_of_expr env r handler.handler
   | Let_cont { body; handlers = Recursive handlers; } ->
@@ -340,7 +340,7 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
         assert (List.length args_approxs = num_params);
         let env =
           List.fold_left (fun env (param, approx) ->
-              Env.add_approx env param approx)
+              Env.add_approx env (Parameter.var param) approx)
             env
             (List.combine handler.params args_approxs)
         in

@@ -643,7 +643,7 @@ let split_default_wrapper ~id:fun_id ~kind ~params ~body ~attr ~loc =
             sw_consts = [_];
             sw_numblocks = 1;
             sw_blocks = [_];
-            sw_failaction = None})
+            sw_failaction = None}, _dbg)
          as def), rest) when
         Ident.name optparam = "*opt*" && List.mem optparam params
           && not (List.mem_assoc optparam map)

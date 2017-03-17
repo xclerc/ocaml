@@ -37,12 +37,19 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
         unboxed result, and then boxes it.  (When this stub is inlined at a
         direct call site of the original function, the boxing should normally
         be eliminated.) *)
+  let freshening_already_assigned =
+    Variable.Map.fold (fun var1 var2 being_unboxed ->
+        let param1 = Parameter.wrap var1 in
+        let param2 = Parameter.wrap var2 in
+        Parameter.Map.add param1 param2 being_unboxed)
+      how_to_unbox.being_unboxed_to_wrapper_params_being_unboxed
+      Parameter.Map.empty
+  in
   let _cont_wrapper_params_map, cont_wrapper_params,
       cont_wrapper_specialised_args =
     Flambda_utils.create_wrapper_params ~params:[return_cont_param]
       ~specialised_args:Variable.Map.empty
-      ~freshening_already_assigned:(how_to_unbox.
-        being_unboxed_to_wrapper_params_being_unboxed)
+      ~freshening_already_assigned
   in
   let new_return_cont = Continuation.create () in
   let wrapper_body =
@@ -84,7 +91,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       fun_wrapper_specialised_args =
     Flambda_utils.create_wrapper_params ~params:function_decl.params
       ~specialised_args
-      ~freshening_already_assigned:Variable.Map.empty
+      ~freshening_already_assigned:Parameter.Map.empty
   in
   let function_stub_body : Flambda.expr =
     let receive_results = Continuation.create () in
@@ -103,7 +110,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
         kind = Function;
         func = new_fun_var;
         continuation = receive_results;
-        args = fun_wrapper_params;
+        args = Parameter.List.vars fun_wrapper_params;
         call_kind = Direct {
           closure_id = Closure_id.wrap new_fun_var;
           return_arity = function_decl.return_arity;
@@ -115,7 +122,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       handlers = Nonrecursive {
         name = receive_results;
         handler = {
-          params = results;
+          params = Parameter.List.wrap results;
           handler = box_results_and_call_return_cont;
           stub = true;
           is_exn_handler = false;
@@ -189,7 +196,8 @@ let for_function_decl ~continuation_uses ~fun_var
               else
                 let function_decls, new_specialised_args =
                   unbox_function_decl ~fun_var ~function_decl ~how_to_unbox
-                    ~return_cont_param ~specialised_args ~return_arity
+                    ~return_cont_param:(Parameter.wrap return_cont_param)
+                    ~specialised_args ~return_arity
                 in
 (*
     Format.eprintf "Unbox_returns returns:\n@ %a\n%!"

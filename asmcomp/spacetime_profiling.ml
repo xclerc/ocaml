@@ -350,6 +350,7 @@ class virtual instruction_selection = object (self)
         words;
         label_after_call_gc = Some label;
         spacetime_index = index;
+        trap_stack = [];
       }
     end else begin
       super#select_allocation words

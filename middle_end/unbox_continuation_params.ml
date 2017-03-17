@@ -35,6 +35,7 @@ Format.eprintf "No definition for %a\n%!" Continuation.print cont;
 *)
             None
           | args_approxs ->
+            let params = Parameter.List.vars params in
             let params_to_approxs =
               Variable.Map.of_list (List.combine params args_approxs)
             in
@@ -141,10 +142,17 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
             let new_cont = Continuation.create () in
             let how_to_unbox = H.merge_variable_map unboxings in
             let _wrapper_params_map, wrapper_params, wrapper_specialised_args =
+              let freshening_already_assigned =
+                Variable.Map.fold (fun var1 var2 being_unboxed ->
+                    let param1 = Parameter.wrap var1 in
+                    let param2 = Parameter.wrap var2 in
+                    Parameter.Map.add param1 param2 being_unboxed)
+                  how_to_unbox.being_unboxed_to_wrapper_params_being_unboxed
+                  Parameter.Map.empty
+              in
               Flambda_utils.create_wrapper_params ~params:handler.params
                 ~specialised_args:handler.specialised_args
-                ~freshening_already_assigned:(how_to_unbox.
-                  being_unboxed_to_wrapper_params_being_unboxed)
+                ~freshening_already_assigned
             in
             (* Make sure we don't keep unboxing the same variable over and over
                by checking that we have increased the known-projections
@@ -190,7 +198,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
               let wrapper_body =
                 let initial_body : Flambda.t =
                   Apply_cont (new_cont, None,
-                    wrapper_params
+                    Parameter.List.vars wrapper_params
                       @ how_to_unbox.new_arguments_for_call_in_wrapper)
                 in
                 how_to_unbox.add_bindings_in_wrapper initial_body
@@ -199,7 +207,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
               let with_wrapper : Flambda_utils.with_wrapper =
                 let params =
                   handler.params
-                    @ (List.map (fun (param, _proj) -> param)
+                    @ (List.map (fun (param, _proj) -> Parameter.wrap param)
                       how_to_unbox.new_params)
                 in
 (*

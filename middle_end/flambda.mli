@@ -285,8 +285,7 @@ and continuation_handlers =
   continuation_handler Continuation.Map.t
 
 and continuation_handler = {
-  (* CR-soon mshinwell: Use [Parameter.t] for [params]. *)
-  params : Variable.t list;
+  params : Parameter.t list;
   stub : bool;
   is_exn_handler : bool;
   (** Continuations used as exception handlers must always be [Nonrecursive]

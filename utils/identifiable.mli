@@ -39,6 +39,7 @@ module type Set = sig
   val to_string : t -> string
   val of_list : elt list -> t
   val map : (elt -> elt) -> t -> t
+  val get_singleton : t -> elt option
 end
 
 module type Map = sig
@@ -72,6 +73,7 @@ module type Map = sig
   val transpose_keys_and_data_set : key t -> Set.Make(T).t t
   val print :
     (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
+  val get_singleton : 'a t -> (key * 'a) option
 end
 
 module type Tbl = sig

@@ -23,18 +23,18 @@ type flambda_kind =
   | Lifted
 
 (* CR mshinwell: Check that apply_cont is well-formed when there is a
-  trap installation or removal. *)
+   trap installation or removal. *)
 
 (* Explicit "ignore" functions.  We name every pattern variable, avoiding
-  underscores, to try to avoid accidentally failing to handle (for example)
-  a particular variable.
-  We also avoid explicit record field access during the checking functions,
-  preferring instead to use exhaustive record matches.
+   underscores, to try to avoid accidentally failing to handle (for example)
+   a particular variable.
+   We also avoid explicit record field access during the checking functions,
+   preferring instead to use exhaustive record matches.
 *)
 (* CR-someday pchambart: for sum types, we should probably add an exhaustive
-  pattern in ignores functions to be reminded if a type change *)
+   pattern in ignores functions to be reminded if a type change *)
 let ignore_variable (_ : Variable.t) = ()
-let ignore_variable_list (_ : Variable.t list) = ()
+let ignore_parameter_list (_ : Parameter.t list) = ()
 let ignore_call_kind (_ : Flambda.call_kind) = ()
 let ignore_debuginfo (_ : Debuginfo.t) = ()
 let ignore_meth_kind (_ : Lambda.meth_kind) = ()
@@ -322,7 +322,7 @@ module Continuation_scoping = struct
                   ({ params; stub; is_exn_handler; handler; specialised_args; }
                     : Flambda.continuation_handler) ->
               ignore_continuation name;
-              ignore_variable_list params;
+              ignore_parameter_list params;
               loop recursive_env handler;
               ignore_bool stub;
               ignore_bool is_exn_handler;
@@ -499,6 +499,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
         ignore_continuation name;
         ignore_bool stub;
         ignore_bool is_exn_handler;
+        let params = Parameter.List.vars params in
         loop (add_binding_occurrences env params) handler;
         ignore specialised_args (* CR mshinwell: fixme *)
       | Recursive handlers ->
@@ -511,6 +512,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
                   is an exception handler"
                 Continuation.print name
             end;
+            let params = Parameter.List.vars params in
             loop (add_binding_occurrences env params) handler;
             ignore specialised_args (* CR mshinwell: fixme *) )
           handlers

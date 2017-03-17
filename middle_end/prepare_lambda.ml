@@ -466,7 +466,7 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
   | Lprim (prim, args, loc) ->
     prepare_list env args (fun args ->
       k (simplify_primitive env prim args loc))
-  | Lswitch (scrutinee, switch) ->
+  | Lswitch (scrutinee, switch, loc) ->
     prepare env scrutinee (fun scrutinee ->
       let const_nums, sw_consts = List.split switch.sw_consts in
       let block_nums, sw_blocks = List.split switch.sw_blocks in
@@ -500,11 +500,11 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
               }
             in
             let consts_switch : L.lambda =
-              L.Lswitch (scrutinee, consts_switch)
+              L.Lswitch (scrutinee, consts_switch, loc)
             in
             let blocks_switch : L.lambda =
               L.Lswitch (Lprim (Pgettag, [scrutinee], Location.none),
-               blocks_switch)
+               blocks_switch, loc)
             in
             let isint_switch : L.lambda_switch =
               { sw_numconsts = 2;
@@ -519,7 +519,7 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
               else if switch.sw_numblocks = 0 then consts_switch
               else
                 L.Lswitch (Lprim (Pisint, [scrutinee], Location.none),
-                  isint_switch)
+                  isint_switch, loc)
             in
             k (wrap_switch switch)))))
   | Lstringswitch (scrutinee, cases, default, loc) ->
@@ -548,7 +548,8 @@ and prepare env (lam : L.lambda) (k : L.lambda -> L.lambda) =
               sw_failaction = None;
             }
           in
-          k (L.Lswitch (cond, switch)))))
+          (* CR-soon mshinwell: Add location to Lifthenelse. *)
+          k (L.Lswitch (cond, switch, Location.none)))))
   | Lsequence (lam1, lam2) ->
     let ident = Ident.create "sequence" in
     prepare env (L.Llet (Strict, Pgenval, ident, lam1, lam2)) k

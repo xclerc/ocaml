@@ -135,7 +135,7 @@ and same_continuation_handler
       ({ params = params2; stub = stub2;
          handler = handler2; specialised_args = specialised_args2; }
         : Flambda.continuation_handler) =
-  Variable.compare_lists params1 params2 = 0
+  Parameter.List.compare params1 params2 = 0
     && stub1 = stub2
     && same handler1 handler2
     && Variable.Map.equal Flambda.equal_specialised_to
@@ -892,19 +892,32 @@ let create_wrapper_params ~params ~specialised_args
       ~freshening_already_assigned =
   let renaming =
     List.map (fun param ->
-        match Variable.Map.find param freshening_already_assigned with
-        | exception Not_found -> param, Variable.rename param
+        match Parameter.Map.find param freshening_already_assigned with
+        | exception Not_found -> param, Parameter.rename param
         | renamed_param -> param, renamed_param)
       params
   in
-  let renaming_map = Variable.Map.of_list renaming in
+  let renaming_map = Parameter.Map.of_list renaming in
   let freshen_param param =
-    match Variable.Map.find param renaming_map with
+    match Parameter.Map.find param renaming_map with
     | exception Not_found -> assert false
     | param -> param
   in
   let wrapper_params = List.map freshen_param params in
-  let params = Variable.Set.of_list params in
+  (* CR mshinwell: We need to sort out this nonsense.  Should specialised
+     args be Parameter.Map.t, for example? *)
+  let renaming_map' =
+    Variable.Map.of_list (
+      List.map (fun (param, renamed_param) ->
+          Parameter.var param, Parameter.var renamed_param)
+        renaming)
+  in
+  let freshen_param param =
+    match Variable.Map.find param renaming_map' with
+    | exception Not_found -> assert false
+    | param -> param
+  in
+  let params = Parameter.Set.vars params in
   let wrapper_specialised_args =
     Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
             wrapper_specialised_args ->
@@ -974,3 +987,16 @@ let count_continuation_uses_toplevel (expr : Flambda.t) =
     (fun _named -> ())
     expr;
   Continuation.Tbl.to_map counts
+
+let update_function_decl's_params_and_body
+      (function_decl : Flambda.function_declaration) ~params ~body =
+  Flambda.create_function_declaration
+    ~params
+    ~continuation_param:function_decl.continuation_param
+    ~return_arity:function_decl.return_arity
+    ~body
+    ~stub:function_decl.stub
+    ~dbg:function_decl.dbg
+    ~inline:function_decl.inline
+    ~specialise:function_decl.specialise
+    ~is_a_functor:function_decl.is_a_functor

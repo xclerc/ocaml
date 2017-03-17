@@ -487,7 +487,8 @@ result
         Continuation.print name
     end;
     let env_handler, params =
-      List.fold_right (fun var (env, ids) ->
+      List.fold_right (fun param (env, ids) ->
+          let var = Parameter.var param in
           let id, env = Env.add_fresh_ident env var in
           env, id :: ids)
         params (env, [])
@@ -504,7 +505,8 @@ result
       Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
                 conts ->
           let env_handler, ids =
-            List.fold_right (fun var (env, ids) ->
+            List.fold_right (fun param (env, ids) ->
+                let var = Parameter.var param in
                 let id, env = Env.add_fresh_ident env var in
                 env, id :: ids)
               handler.params (env, [])

@@ -286,7 +286,7 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
   | Let_cont { body; handlers =
       Nonrecursive { name; handler = {
         params; stub; is_exn_handler; handler; specialised_args; }; }; } ->
-    let params_set = Variable.Set.of_list params in
+    let params_set = Variable.Set.of_list (Parameter.List.vars params) in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
       sink_expr handler ~state:(State.create ())

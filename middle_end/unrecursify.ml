@@ -17,36 +17,33 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 let unrecursify_function ~fun_var:function_variable
-    ~(function_decl : Flambda.function_declaration)
-          : Flambda.function_declaration option =
+    ~(function_decl : Flambda.function_declaration) =
   let closure_id = Closure_id.wrap function_variable in
   let loop_continuation = Continuation.create () in
-  let new_params = List.map (fun v -> Variable.rename v) function_decl.params in
   let did_something = ref false in
   let handler =
-    Flambda_iterators.map_toplevel_expr
-      (function
-        | (Let _ | Let_mutable _ | Let_cont _ |
-           Apply_cont _ | Switch _ | Proved_unreachable) as expr ->
-          expr
-        | Apply { kind = Function;
-                  continuation;
-                  args;
-                  call_kind = Direct {
-                    closure_id = call_closure_id;
-                    return_arity = 1;
-                  };
-                }
+    Flambda_iterators.map_toplevel_expr (fun expr ->
+        match expr with
+        | Apply {
+            kind = Function;
+            continuation;
+            args;
+            call_kind = Direct {
+              closure_id = call_closure_id;
+              return_arity = 1;
+            };
+          }
           when Continuation.equal continuation function_decl.continuation_param
             && Closure_id.equal call_closure_id closure_id ->
           did_something := true;
           Apply_cont (loop_continuation, None, args)
-        | Apply _ as expr ->
-          expr)
+        | Let _ | Let_mutable _ | Let_cont _ | Apply_cont _ | Switch _
+        | Apply _ | Proved_unreachable -> expr)
       function_decl.body
   in
   if not !did_something then None
   else
+    let new_params = Parameter.List.rename function_decl.params in
     let body : Flambda.t =
       Let_cont
         { handlers =
@@ -61,19 +58,12 @@ let unrecursify_function ~fun_var:function_variable
                     specialised_args = Variable.Map.empty;
                   };
               ]);
-          body = Apply_cont (loop_continuation, None, new_params);
+          body = Apply_cont (loop_continuation, None,
+            Parameter.List.vars new_params);
         }
     in
     let function_decl =
-      Flambda.create_function_declaration
-        ~params:new_params
-        ~continuation_param:function_decl.continuation_param
-        ~return_arity:function_decl.return_arity
-        ~body
-        ~stub:function_decl.stub
-        ~dbg:function_decl.dbg
-        ~inline:function_decl.inline
-        ~specialise:function_decl.specialise
-        ~is_a_functor:function_decl.is_a_functor
+      Flambda_utils.update_function_decl's_params_and_body function_decl
+        ~params:new_params ~body
     in
     Some function_decl

@@ -38,7 +38,7 @@ let rec combine i allocstate =
           let (newnext, newsz) =
             combine i.next (Pending_alloc(i.res.(0), sz)) in
           (instr_cons_debug (Iop(Ialloc {words = newsz; spacetime_index = 0;
-              label_after_call_gc = None; }))
+              label_after_call_gc = None; trap_stack = []; }))
             i.arg i.res i.dbg newnext, 0)
       | Pending_alloc(reg, ofs) ->
           if ofs + sz < Config.max_young_wosize * Arch.size_addr then begin
@@ -50,7 +50,7 @@ let rec combine i allocstate =
             let (newnext, newsz) =
               combine i.next (Pending_alloc(i.res.(0), sz)) in
             (instr_cons_debug (Iop(Ialloc { words = newsz; spacetime_index = 0;
-                label_after_call_gc = None; }))
+                label_after_call_gc = None; trap_stack = []; }))
               i.arg i.res i.dbg newnext, ofs)
           end
       end

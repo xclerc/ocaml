@@ -243,10 +243,10 @@ val build_let_cont_with_wrappers
   -> Flambda.expr
 
 val create_wrapper_params
-   : params:Variable.t list
+   : params:Parameter.t list
   -> specialised_args:Flambda.specialised_args
-  -> freshening_already_assigned:Variable.t Variable.Map.t
-  -> Variable.t Variable.Map.t * Variable.t list * Flambda.specialised_args
+  -> freshening_already_assigned:Parameter.t Parameter.Map.t
+  -> Parameter.t Parameter.Map.t * Parameter.t list * Flambda.specialised_args
 
 (** All continuations defined at toplevel within the given expression. *)
 val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t
@@ -254,3 +254,9 @@ val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t
 val count_continuation_uses_toplevel
    : Flambda.expr
   -> int Continuation.Map.t
+
+val update_function_decl's_params_and_body
+   : Flambda.function_declaration
+  -> params:Parameter.t list
+  -> body:Flambda.expr
+  -> Flambda.function_declaration

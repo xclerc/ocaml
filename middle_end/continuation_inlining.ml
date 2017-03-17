@@ -95,7 +95,7 @@ let for_toplevel_expression expr r =
           end;
           r := R.forget_continuation_definition !r cont;
           List.fold_left2 (fun expr param arg ->
-              Flambda.create_let param (Var arg) expr)
+              Flambda.create_let (Parameter.var param) (Var arg) expr)
             handler.handler
             handler.params args
         end

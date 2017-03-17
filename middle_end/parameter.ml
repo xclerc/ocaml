@@ -56,6 +56,9 @@ module Tbl = M.Tbl
 module Set = struct
   include M.Set
   let vars l = Variable.Set.of_list (List.map var l)
+
+  let wrap vars =
+    of_list (List.map (fun var -> wrap var) (Variable.Set.elements vars))
 end
 
 let rename ?current_compilation_unit ?append p =
@@ -65,4 +68,16 @@ let map_var f { var } = { var = f var }
 
 module List = struct
   let vars params = List.map (fun { var } -> var) params
+
+  let wrap vars = List.map (fun var -> wrap var) vars
+
+  let rename ?current_compilation_unit ?append ts =
+    List.map (fun t -> rename ?current_compilation_unit ?append t) ts
+
+  let print ppf ts =
+    let pp_sep ppf () = Format.fprintf ppf "@ " in
+    Format.pp_print_list ~pp_sep print ppf ts
+
+  let compare ts1 ts2 =
+    Misc.Stdlib.List.compare compare ts1 ts2
 end

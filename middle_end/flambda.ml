@@ -144,7 +144,7 @@ and continuation_handlers =
   continuation_handler Continuation.Map.t
 
 and continuation_handler = {
-  params : Variable.t list;
+  params : Parameter.t list;
   stub : bool;
   is_exn_handler : bool;
   handler : t;
@@ -165,13 +165,9 @@ and function_declarations = {
 }
 
 and function_declaration = {
-<<<<<<< HEAD
   continuation_param : Continuation.t;
   return_arity : int;
-  params : Variable.t list;
-=======
   params : Parameter.t list;
->>>>>>> ocaml/trunk
   body : t;
   free_variables : Variable.Set.t;
   free_symbols : Symbol.Set.t;
@@ -394,7 +390,7 @@ let rec lam ppf (flam : t) =
             Continuation.print name
             (if stub then " *stub*" else "")
             (match params with [] -> "" | _ -> " (")
-            Variable.print_list params
+            Parameter.List.print params
             (match params with [] -> "" | _ -> ")")
             print_specialised_args' specialised_args
             lam handler
@@ -411,7 +407,7 @@ let rec lam ppf (flam : t) =
                 (if stub then " *stub*" else "")
                 (if is_exn_handler then "*exn* " else "")
                 (match params with [] -> "" | _ -> " (")
-                Variable.print_list params
+                Parameter.List.print params
                 (match params with [] -> "" | _ -> ")")
                 print_specialised_args' specialised_args
                 lam handler;
@@ -480,7 +476,7 @@ and print_let_cont_handlers ppf (handler : let_cont_handlers) =
       Continuation.print name
       (if stub then "*stub* " else "")
       (match params with [] -> "" | _ -> "(")
-      Variable.print_list params
+      Parameter.List.print params
       (match params with [] -> "" | _ -> ") ")
       print_specialised_args specialised_args
       lam handler
@@ -498,7 +494,7 @@ and print_let_cont_handlers ppf (handler : let_cont_handlers) =
           (if stub then "*stub* " else "")
           (if is_exn_handler then "*exn* " else "")
           (match params with [] -> "" | _ -> "(")
-          Variable.print_list params
+          Parameter.List.print params
           (match params with [] -> "" | _ -> ") ")
           print_specialised_args specialised_args
           lam handler;
@@ -542,16 +538,10 @@ and print_function_declaration ppf var (f : function_declaration) =
     | Never_specialise -> " *never_specialise*"
     | Default_specialise -> ""
   in
-<<<<<<< HEAD
   fprintf ppf "@[<2>(%a%s%s%s%s%s@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
     Variable.print var stub arity is_a_functor inline specialise
     Continuation.print f.continuation_param
-    idents f.params lam f.body
-=======
-  fprintf ppf "@[<2>(%a%s%s%s%s@ =@ fun@[<2>%a@] ->@ @[<2>%a@])@]@ "
-    Variable.print var stub is_a_functor inline specialise
     params f.params lam f.body
->>>>>>> ocaml/trunk
 
 and print_set_of_closures ppf (set_of_closures : set_of_closures) =
   match set_of_closures with
@@ -733,14 +723,15 @@ let rec variables_usage ?ignore_uses_as_callee
       | Alias _ -> ()
       | Nonrecursive { name = _; handler = {
           params; handler; specialised_args; _ }; } ->
-        List.iter bound_variable params;
+        List.iter (fun param -> bound_variable (Parameter.var param)) params;
         free_variables
           (free_variables_of_specialised_args specialised_args);
         aux handler
       | Recursive handlers ->
         Continuation.Map.iter (fun _name { params; handler;
                 specialised_args; _ } ->
-            List.iter bound_variable params;
+            List.iter (fun param -> bound_variable (Parameter.var param))
+              params;
             free_variables
               (free_variables_of_specialised_args specialised_args);
             aux handler)
@@ -1146,7 +1137,7 @@ let free_variables_of_let_cont_handlers (handlers : let_cont_handlers) =
     Variable.Set.union
       (free_variables_of_specialised_args specialised_args)
       (Variable.Set.diff (free_variables handler)
-        (Variable.Set.of_list params))
+        (Parameter.Set.vars params))
   | Recursive handlers ->
     Continuation.Map.fold (fun _name { params; handler; specialised_args; _ }
             fvs ->
@@ -1154,7 +1145,7 @@ let free_variables_of_let_cont_handlers (handlers : let_cont_handlers) =
           (Variable.Set.union
             (free_variables_of_specialised_args specialised_args)
             (Variable.Set.diff (free_variables handler)
-              (Variable.Set.of_list params))))
+              (Parameter.Set.vars params))))
       handlers
       Variable.Set.empty
 
@@ -1418,14 +1409,9 @@ let create_set_of_closures ~function_decls ~free_vars ~specialised_args
         print_function_declarations function_decls
     end;
     let all_params =
-<<<<<<< HEAD
       Variable.Map.fold (fun _fun_var (function_decl : function_declaration)
                 all_params ->
-          Variable.Set.union (Variable.Set.of_list function_decl.params)
-=======
-      Variable.Map.fold (fun _fun_var function_decl all_params ->
           Variable.Set.union (Parameter.Set.vars function_decl.params)
->>>>>>> ocaml/trunk
             all_params)
         function_decls.funs
         Variable.Set.empty

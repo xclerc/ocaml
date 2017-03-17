@@ -39,6 +39,7 @@ let rec lift (expr : Flambda.expr) ~to_copy =
          We also augment [to_copy] to ensure that the binding of the existing
          variable to the new symbol is restated at the top of each subsequent
          lifted expression. *)
+      let param = Parameter.var param in
       let symbol = Flambda_utils.make_variable_symbol param in
       let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
       let to_copy = (param, defining_expr)::to_copy in

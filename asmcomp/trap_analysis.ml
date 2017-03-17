@@ -106,6 +106,10 @@ let rec trap_stacks (insn : Mach.instruction) ~stack ~stacks_at_exit
         Mach.Iop (Iintop_imm (
             Icheckbound { check with trap_stack = stack; }, i)),
           stacks_at_exit
+      | Ialloc alloc ->
+        let stacks_at_exit = register_raise ~stack ~stacks_at_exit in
+        Mach.Iop (Ialloc ({ alloc with trap_stack = stack; })),
+          stacks_at_exit
       | _ -> Mach.Iop op, stacks_at_exit
     in
     let next, stacks_at_exit =

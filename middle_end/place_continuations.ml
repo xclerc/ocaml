@@ -184,7 +184,9 @@ Variable.Set.print needed_fvs;
     let enter_continuation_handlers ~handlers ~state =
       Continuation.Map.fold (fun name
               (handler : Flambda.continuation_handler) state ->
-          let params = Variable.Set.of_list handler.params in
+          let params =
+            Variable.Set.of_list (Parameter.List.vars handler.params)
+          in
           let vars_in_scope =
             Variable.Set.union state.vars_in_scope params
           in

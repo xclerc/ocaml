@@ -65,7 +65,7 @@ let rec count_uses ~in_scope (ulam : Clambda.ulambda) =
   | Uprim (Preturn, _, _) ->
     Misc.fatal_errorf "Preturn takes exactly one argument"
   | Uprim (_, args, _) -> count_uses_list ~in_scope args
-  | Uswitch (scrutinee, switch) ->
+  | Uswitch (scrutinee, switch, _dbg) ->
     count_uses ~in_scope scrutinee
       + count_uses_array ~in_scope switch.us_actions_consts
       + count_uses_array ~in_scope switch.us_actions_blocks
@@ -247,14 +247,14 @@ let inline ulam ~(uses : N.t Int.Map.t) ~used_within_catch_bodies =
       Uletrec (bindings, inline env ulam)
     | Uprim (prim, args, dbg) ->
       Uprim (prim, inline_list env args, dbg)
-    | Uswitch (scrutinee, switch) ->
+    | Uswitch (scrutinee, switch, dbg) ->
       let switch =
         { switch with
           us_actions_consts = inline_array env switch.us_actions_consts;
           us_actions_blocks = inline_array env switch.us_actions_blocks;
         }
       in
-      Uswitch (inline env scrutinee, switch)
+      Uswitch (inline env scrutinee, switch, dbg)
     | Ustringswitch (scrutinee, cases, default) ->
       let cases =
         List.map (fun (str, case) -> str, inline env case) cases

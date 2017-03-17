@@ -1137,7 +1137,7 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   let handler : Flambda.continuation_handler =
     { stub = false;
       is_exn_handler = false;
-      params = [func_var];
+      params = [Parameter.wrap func_var];
       handler =
         Apply {
           kind = Function;
@@ -1230,7 +1230,8 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
     let env = E.activate_freshening env in
     let env = E.disallow_continuation_inlining (E.set_never_inline env) in
     let params, freshening =
-      Freshening.add_variables' (E.freshening env) handler.params
+      Freshening.add_variables' (E.freshening env)
+        (Parameter.List.vars handler.params)
     in
     let params_and_approxs = List.combine params args_approxs in
     let env =
@@ -1696,7 +1697,8 @@ Format.eprintf "Handler of %a has args_approxs (%a)\n%!"
   in
   (* CR mshinwell: rename "vars" to "params" *)
   let freshened_vars, sb =
-    Freshening.add_variables' (E.freshening env) vars
+    Freshening.add_variables' (E.freshening env)
+      (Parameter.List.vars vars)
   in
 (*
 Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%!"
@@ -1708,11 +1710,13 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
     Misc.fatal_errorf "simplify_let_cont_handler (%a): params are %a but \
         args_approxs has length %d"
       Continuation.print cont
-      Variable.print_list vars
+      Parameter.List.print vars
       (List.length args_approxs)
   end;
   let freshened_params_to_args_approxs =
-    let params_to_args_approxs = List.combine vars args_approxs in
+    let params_to_args_approxs =
+      List.combine (Parameter.List.vars vars) args_approxs
+    in
     let freshened_params_to_args_approxs =
       List.map (fun (param, approx) ->
           Freshening.apply_variable sb param, approx)
@@ -1795,7 +1799,7 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
         | _ -> Some spec_to)
   in
   let handler : Flambda.continuation_handler =
-    { params = vars;
+    { params = Parameter.List.wrap vars;
       stub;
       is_exn_handler;
       handler;
@@ -2013,7 +2017,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   | Let_cont { body; handlers = Nonrecursive { name; handler = {
       params; handler = Apply_cont (alias_of, None, params');
       is_exn_handler = false; }; }; }
-    when Variable.compare_lists params params' = 0 ->
+    when Parameter.List.compare params (Parameter.List.wrap params') = 0 ->
     (* Introduction of continuation aliases. *)
     let expr : Flambda.t =
       Let_cont { body; handlers = Alias { name; alias_of; }; }
