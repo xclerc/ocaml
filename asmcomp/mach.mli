@@ -64,11 +64,8 @@ type operation =
   | Iload of Cmm.memory_chunk * Arch.addressing_mode
   | Istore of Cmm.memory_chunk * Arch.addressing_mode * bool
                                  (* false = initialization, true = assignment *)
-  (* CR mshinwell: note: Ialloc needs the trap stack as well once the
-     patch to cope with exceptions coming out of allocation points has been
-     merged. *)
   | Ialloc of { words : int; label_after_call_gc : label option;
-      spacetime_index : int; }
+      spacetime_index : int; trap_stack : trap_stack; }
     (** For Spacetime only, Ialloc instructions take one argument, being the
         pointer to the trie node for the current function. *)
   | Iintop of integer_operation

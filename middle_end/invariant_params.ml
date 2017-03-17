@@ -96,7 +96,7 @@ module For_functions = struct
 
   module Declaration = struct
     type t = Flambda.function_declaration
-    let params (t : t) = t.params
+    let params (t : t) = Parameter.List.vars t.params
     let body (t : t) = t.body
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =

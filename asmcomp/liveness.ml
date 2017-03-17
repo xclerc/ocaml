@@ -75,9 +75,12 @@ let rec live i finally =
           | Icall_imm { trap_stack; _ }
           | Iextcall { trap_stack; _ }
           | Iintop (Icheckbound { trap_stack; _ })
-          | Iintop_imm (Icheckbound { trap_stack; _ }, _) ->
+          | Iintop_imm (Icheckbound { trap_stack; _ }, _)
+          | Ialloc { trap_stack; _ } ->
               (* The function call may raise an exception, branching to the
-                 nearest enclosing try ... with. Similarly for bounds checks.
+                 nearest enclosing try ... with. Similarly for bounds checks
+                 and allocation (for the latter: finalizers may throw
+                 exceptions, as may signal handlers).
                  Hence, everything that must be live at the beginning of
                  the exception handler must also be live across this instr. *)
               let live_at_raise = find_live_at_raise ~trap_stack in

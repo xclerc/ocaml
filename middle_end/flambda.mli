@@ -285,6 +285,7 @@ and continuation_handlers =
   continuation_handler Continuation.Map.t
 
 and continuation_handler = {
+  (* CR-soon mshinwell: Use [Parameter.t] for [params]. *)
   params : Variable.t list;
   stub : bool;
   is_exn_handler : bool;
@@ -432,7 +433,7 @@ and function_declaration = private {
       so that it does an unboxed return of multiple values. *)
   return_arity : int;
   (** The number of parameters of the [continuation_param] continuation. *)
-  params : Variable.t list;
+  params : Parameter.t list;
   (** The normal parameters of the function. *)
   body : t;
   (** The code of the function's body. *)
@@ -734,7 +735,7 @@ val create_switch'
 (** Create a function declaration.  This calculates the free variables and
     symbols occurring in the specified [body]. *)
 val create_function_declaration
-   : params:Variable.t list
+   : params:Parameter.t list
   -> continuation_param:Continuation.t
   -> return_arity:int
   -> body:t

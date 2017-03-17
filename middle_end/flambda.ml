@@ -165,9 +165,13 @@ and function_declarations = {
 }
 
 and function_declaration = {
+<<<<<<< HEAD
   continuation_param : Continuation.t;
   return_arity : int;
   params : Variable.t list;
+=======
+  params : Parameter.t list;
+>>>>>>> ocaml/trunk
   body : t;
   free_variables : Variable.Set.t;
   free_symbols : Symbol.Set.t;
@@ -504,8 +508,11 @@ and print_let_cont_handlers ppf (handler : let_cont_handlers) =
     fprintf ppf "%a = %a" Continuation.print name Continuation.print alias_of
 
 and print_function_declaration ppf var (f : function_declaration) =
-  let idents ppf =
-    List.iter (fprintf ppf "@ %a" Variable.print) in
+  let param ppf p =
+    Variable.print ppf (Parameter.var p)
+  in
+  let params ppf =
+    List.iter (fprintf ppf "@ %a" param) in
   let stub =
     if f.stub then
       " *stub*"
@@ -535,10 +542,16 @@ and print_function_declaration ppf var (f : function_declaration) =
     | Never_specialise -> " *never_specialise*"
     | Default_specialise -> ""
   in
+<<<<<<< HEAD
   fprintf ppf "@[<2>(%a%s%s%s%s%s@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
     Variable.print var stub arity is_a_functor inline specialise
     Continuation.print f.continuation_param
     idents f.params lam f.body
+=======
+  fprintf ppf "@[<2>(%a%s%s%s%s@ =@ fun@[<2>%a@] ->@ @[<2>%a@])@]@ "
+    Variable.print var stub is_a_functor inline specialise
+    params f.params lam f.body
+>>>>>>> ocaml/trunk
 
 and print_set_of_closures ppf (set_of_closures : set_of_closures) =
   match set_of_closures with
@@ -1373,7 +1386,7 @@ let create_set_of_closures ~function_decls ~free_vars ~specialised_args
                 expected_free_vars ->
           let free_vars =
             Variable.Set.diff function_decl.free_variables
-              (Variable.Set.union (Variable.Set.of_list function_decl.params)
+              (Variable.Set.union (Parameter.Set.vars function_decl.params)
                 all_fun_vars)
           in
           Variable.Set.union free_vars expected_free_vars)
@@ -1405,9 +1418,14 @@ let create_set_of_closures ~function_decls ~free_vars ~specialised_args
         print_function_declarations function_decls
     end;
     let all_params =
+<<<<<<< HEAD
       Variable.Map.fold (fun _fun_var (function_decl : function_declaration)
                 all_params ->
           Variable.Set.union (Variable.Set.of_list function_decl.params)
+=======
+      Variable.Map.fold (fun _fun_var function_decl all_params ->
+          Variable.Set.union (Parameter.Set.vars function_decl.params)
+>>>>>>> ocaml/trunk
             all_params)
         function_decls.funs
         Variable.Set.empty
@@ -1432,7 +1450,7 @@ let create_set_of_closures ~function_decls ~free_vars ~specialised_args
 let used_params (function_decl : function_declaration) =
   Variable.Set.filter
     (fun param -> Variable.Set.mem param function_decl.free_variables)
-    (Variable.Set.of_list function_decl.params)
+    (Parameter.Set.vars function_decl.params)
 
 let compare_constant_defining_value_block_field
     (c1:constant_defining_value_block_field)

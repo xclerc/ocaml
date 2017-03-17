@@ -209,6 +209,7 @@ MIDDLE_END=\
   middle_end/base_types/symbol.cmo \
   middle_end/pass_wrapper.cmo \
   middle_end/allocated_const.cmo \
+  middle_end/parameter.cmo \
   middle_end/projection.cmo \
   middle_end/prepare_lambda.cmo \
   middle_end/ilambda.cmo \
@@ -952,36 +953,48 @@ partialclean::
 # The runtime system for the bytecode compiler
 
 .PHONY: runtime
-runtime: makeruntime stdlib/libcamlrun.$(A)
+runtime: stdlib/libcamlrun.$(A)
 
 .PHONY: makeruntime
 makeruntime:
 	$(MAKE) -C byterun $(BOOT_FLEXLINK_CMD) all
+byterun/libcamlrun.$(A): makeruntime ;
 stdlib/libcamlrun.$(A): byterun/libcamlrun.$(A)
 	cd stdlib; $(LN) ../byterun/libcamlrun.$(A) .
 clean::
 	$(MAKE) -C byterun clean
 	rm -f stdlib/libcamlrun.$(A)
 
+otherlibs_all := bigarray dynlink graph num raw_spacetime_lib \
+  str systhreads threads unix win32graph win32unix
+subdirs := asmrun byterun debugger lex ocamldoc stdlib tools \
+  $(addprefix otherlibs/, $(otherlibs_all))
+
 .PHONY: alldepend
-alldepend::
-	$(MAKE) -C byterun depend
+ifeq "$(TOOLCHAIN)" "msvc"
+alldepend:
+	$(error Dependencies cannot be regenerated using the MSVC ports)
+else
+alldepend: depend
+	for dir in $(subdirs); do \
+	  $(MAKE) -C $$dir depend; \
+	done
+endif
 
 # The runtime system for the native-code compiler
 
 .PHONY: runtimeopt
-runtimeopt: makeruntimeopt stdlib/libasmrun.$(A)
+runtimeopt: stdlib/libasmrun.$(A)
 
 .PHONY: makeruntimeopt
 makeruntimeopt:
 	$(MAKE) -C asmrun $(BOOT_FLEXLINK_CMD) all
+asmrun/libasmrun.$(A): makeruntimeopt ;
 stdlib/libasmrun.$(A): asmrun/libasmrun.$(A)
 	cp $< $@
 clean::
 	$(MAKE) -C asmrun clean
 	rm -f stdlib/libasmrun.$(A)
-alldepend::
-	$(MAKE) -C asmrun depend
 
 # The standard library
 
@@ -1000,9 +1013,6 @@ libraryopt:
 partialclean::
 	$(MAKE) -C stdlib clean
 
-alldepend::
-	$(MAKE) -C stdlib depend
-
 # The lexer and parser generators
 
 .PHONY: ocamllex
@@ -1015,9 +1025,6 @@ ocamllex.opt: ocamlopt
 
 partialclean::
 	$(MAKE) -C lex clean
-
-alldepend::
-	$(MAKE) -C lex depend
 
 .PHONY: ocamlyacc
 ocamlyacc:
@@ -1040,14 +1047,11 @@ ocamldoc.opt: ocamlc.opt ocamlyacc ocamllex
 
 .PHONY: html_doc
 html_doc: ocamldoc
-	make -C ocamldoc $@
+	$(MAKE) -C ocamldoc $@
 	@echo "documentation is in ./ocamldoc/stdlib_html/"
 
 partialclean::
 	$(MAKE) -C ocamldoc clean
-
-alldepend::
-	$(MAKE) -C ocamldoc depend
 
 # The extra libraries
 
@@ -1073,11 +1077,6 @@ clean::
 	  ($(MAKE) -C otherlibs/$$i clean); \
 	done
 
-alldepend::
-	for i in $(OTHERLIBRARIES); do \
-	  ($(MAKE) -C otherlibs/$$i depend); \
-	done
-
 # The replay debugger
 
 .PHONY: ocamldebugger
@@ -1086,9 +1085,6 @@ ocamldebugger: ocamlc ocamlyacc ocamllex otherlibraries
 
 partialclean::
 	$(MAKE) -C debugger clean
-
-alldepend::
-	$(MAKE) -C debugger depend
 
 # Check that the stack limit is reasonable.
 ifeq "$(UNIX_OR_WIN32)" "unix"
@@ -1162,9 +1158,6 @@ ocamltoolsopt.opt: ocamlc.opt ocamlyacc ocamllex.opt asmcomp/cmx_format.cmi \
 
 partialclean::
 	$(MAKE) -C tools clean
-
-alldepend::
-	$(MAKE) -C tools depend
 
 ## Test compilation of backend-specific parts
 
@@ -1295,13 +1288,8 @@ depend: beforedepend
 	$(CAMLDEP) -slash $(DEPFLAGS) -bytecode \
 		-impl driver/compdynlink.mlbyte >> .depend
 
-alldepend:: depend
-
 .PHONY: distclean
 distclean: clean
-	rm -f asmrun/.depend.nt byterun/.depend.nt \
-	            otherlibs/bigarray/.depend.nt  \
-		    otherlibs/str/.depend.nt
 	rm -f boot/ocamlrun boot/ocamlrun$(EXE) boot/camlheader \
 	      boot/ocamlyacc boot/*.cm* boot/libcamlrun.$(A)
 	rm -f config/Makefile config/m.h config/s.h

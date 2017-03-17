@@ -438,7 +438,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
               | None ->
                 Misc.fatal_errorf "No equality to variable for specialised arg %a"
                   Variable.print param)
-          ffunc.params;
+          (Parameter.List.vars ffunc.params);
         mark_loop ~toplevel:false [] ffunc.body)
       function_decls.funs
 

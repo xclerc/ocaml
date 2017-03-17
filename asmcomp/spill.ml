@@ -359,7 +359,8 @@ let rec spill i finally =
         | Icall_imm { trap_stack; _ }
         | Iextcall { trap_stack; _ }
         | Iintop (Icheckbound { trap_stack; _ })
-        | Iintop_imm (Icheckbound { trap_stack; _ }, _) ->
+        | Iintop_imm (Icheckbound { trap_stack; _ }, _)
+        | Ialloc { trap_stack; _ } ->
             let spill_at_raise = find_spill_at_raise ~trap_stack in
             Reg.Set.union before1 spill_at_raise
         | _ ->

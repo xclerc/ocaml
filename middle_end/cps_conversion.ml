@@ -237,7 +237,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
     let result_var = Ident.create name in
     cps_non_tail_list args (fun args ->
       I.Let (result_var, Prim (prim, args, loc), k result_var))
-  | Lswitch (scrutinee, switch) ->
+  | Lswitch (scrutinee, switch, _loc) ->
     begin match switch.sw_blocks with
     | [] -> ()
     | _ -> Misc.fatal_error "Lswitch `block' cases are forbidden"
@@ -483,7 +483,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
       I.Let (result_var, Prim (prim, args, loc),
         Apply_cont (k, None, [result_var]))),
     N.One
-  | Lswitch (scrutinee, switch) ->
+  | Lswitch (scrutinee, switch, _loc) ->
     begin match switch.sw_blocks with
     | [] -> ()
     | _ -> Misc.fatal_error "Lswitch `block' cases are forbidden"

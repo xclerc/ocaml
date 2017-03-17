@@ -731,7 +731,7 @@ and to_clambda_switch _t env arg cases possible_values default
         us_actions_consts = actions;
         us_index_blocks = [| |];
         us_actions_blocks = [| |];
-      })
+      }, Debuginfo.none)  (* debug info will be added by a later GPR *)
   else
     let default : Clambda.ulambda =
       match default with
@@ -841,7 +841,7 @@ and to_clambda_set_of_closures t env
     in
     let env_body, params =
       List.fold_right (fun var (env, params) ->
-          let id, env = Env.add_fresh_ident env var in
+          let id, env = Env.add_fresh_ident env (Parameter.var var) in
           env, id :: params)
         function_decl.params (env, [])
     in
@@ -884,7 +884,7 @@ and to_clambda_closed_set_of_closures t env symbol
     in
     let env_body, params =
       List.fold_right (fun var (env, params) ->
-          let id, env = Env.add_fresh_ident env var in
+          let id, env = Env.add_fresh_ident env (Parameter.var var) in
           env, id :: params)
         function_decl.params (env, [])
     in

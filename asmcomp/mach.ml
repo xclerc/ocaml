@@ -57,7 +57,7 @@ type operation =
   | Iload of Cmm.memory_chunk * Arch.addressing_mode
   | Istore of Cmm.memory_chunk * Arch.addressing_mode * bool
   | Ialloc of { words : int; label_after_call_gc : label option;
-        spacetime_index : int; }
+        spacetime_index : int; trap_stack : trap_stack; }
   | Iintop of integer_operation
   | Iintop_imm of integer_operation * int
   | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
