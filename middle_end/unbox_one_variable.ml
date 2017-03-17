@@ -70,7 +70,8 @@ module How_to_unbox = struct
     Variable.Map.fold (fun _param t1 t2 -> merge t1 t2) t_map (create ())
 end
 
-let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
+let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
+      ~unbox_returns : How_to_unbox.t =
   let dbg = Debuginfo.none in
   let num_constant_ctors = Numbers.Int.Set.cardinal constant_ctors in
   assert (num_constant_ctors >= 0);
@@ -82,10 +83,14 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
      elide the "_is_int".  Note that for Unbox_continuation_params the
      extra argument isn't really a problem---it will be removed---but for
      Unbox_returns we really don't want to generate an extra return value
-     if it isn't needed.  We need to check whether it suffers from this
-     problem (it may not since there is extra client-side code used for
-     [Unbox_returns]). *)
-  let no_constant_ctors = false (* (num_constant_ctors = 0) *) in
+     if it isn't needed.
+     Follow-up: think this might be ok for Unbox_returns only, since we don't
+     need the Pisint = false judgements etc.
+  *)
+  let no_constant_ctors = 
+    if unbox_returns then num_constant_ctors = 0
+    else false
+  in
   let num_tags = Tag.Map.cardinal blocks in
   assert (num_tags >= 1);  (* see below *)
   let wrapper_param_being_unboxed = Variable.rename being_unboxed in
@@ -494,7 +499,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed : How_to_unbox.t =
     build_boxed_value_from_new_params;
   }
 
-let how_to_unbox ~being_unboxed ~being_unboxed_approx =
+let how_to_unbox ~being_unboxed ~being_unboxed_approx ~unbox_returns =
   match A.check_approx_for_variant being_unboxed_approx with
   | Wrong -> None
   | Ok approx ->
@@ -527,4 +532,6 @@ Format.eprintf "how_to_unbox %a: %a\n%!"
     (* CR mshinwell: This is sometimes returning "new_params" being empty;
        this should be an error presumably *)
     if Tag.Map.is_empty blocks then None
-    else Some (how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed)
+    else
+      Some (how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
+        ~unbox_returns)

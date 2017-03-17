@@ -37,4 +37,5 @@ end
 val how_to_unbox
    : being_unboxed:Variable.t
   -> being_unboxed_approx:Simple_value_approx.t
+  -> unbox_returns:bool
   -> How_to_unbox.t option

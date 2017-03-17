@@ -173,7 +173,7 @@ let for_function_decl ~continuation_uses ~fun_var
           let return_cont_param = Variable.create "return_cont_param" in
           let how_to_unbox =
             Unbox_one_variable.how_to_unbox ~being_unboxed:return_cont_param
-              ~being_unboxed_approx:arg_approx
+              ~being_unboxed_approx:arg_approx ~unbox_returns:true
           in
 (*
     Format.eprintf "Unbox_returns unboxing return with approx %a on:\n@ %a\n%!"

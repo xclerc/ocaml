@@ -54,7 +54,7 @@ Format.eprintf "No definition for %a\n%!" Continuation.print cont;
                   if already_has_projection then None
                   else
                     Unbox_one_variable.how_to_unbox ~being_unboxed:param
-                      ~being_unboxed_approx:approx)
+                      ~being_unboxed_approx:approx ~unbox_returns:false)
             in
             if Variable.Map.is_empty unboxings then None
             else Some unboxings)
