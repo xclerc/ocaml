@@ -139,7 +139,7 @@ let run program ~backend =
             let fvs = Flambda.free_variables handler.handler in
             let params = Parameter.Set.of_list handler.params in
             Parameter.Set.filter (fun param ->
-                Variable.Set.mem (Parameter.var param) fvs)
+                not (Variable.Set.mem (Parameter.var param) fvs))
               params
           in
           let handlers =
