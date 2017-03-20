@@ -19,6 +19,20 @@
 
 module U = Inline_and_simplify_aux.Continuation_uses
 
+(* CR mshinwell: Think carefully about function return approximations in
+   the context of potentially turning tail calls into non-tail calls via
+   this transformation. e.g.:
+
+   let foo <k> f x =
+     if x < 42 then k (1, 2)
+     else f <k> ()
+
+   Some notion of whether a value can be reconstructed just from its
+   approximation (plus projection information in the environment) is
+   probably required.  We should be careful that all wrapping code goes away
+   in these circumstances, so as not to break tail calls.
+*)
+
 (* CR mshinwell: This should use direct call surrogates.  Unfortunately this
    is a nuisance because it involves renaming the continuation parameter
    and all normal parameters to the function being unboxed, together with
