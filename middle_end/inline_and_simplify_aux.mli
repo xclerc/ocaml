@@ -361,6 +361,8 @@ module Result : sig
 
   val create : unit -> t
 
+  val union : t -> t -> t
+
   (** The approximation of the subexpression that has just been
       simplified. *)
   val approx : t -> Simple_value_approx.t

@@ -1827,20 +1827,15 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
         R.continuation_unused r cont)
       handlers
   in
-  (* CR mshinwell: we should enhance the deletion of continuations so it
-     can get rid of stubs inside recursive bindings *)
   if all_unused then begin
     (* We don't need to touch [r] since we haven't simplified any of
        the handlers. *)
     None, r
   end else
-    (* First we simplify the continuations themselves.  We also remember
-       which continuations were added to [r] whilst simplifying each handler,
-       so if we delete one or more of the handlers, we can also update [r]
-       accordingly. *)
-    let r, handlers =
+    (* First we simplify the continuations themselves. *)
+    let handlers =
       Continuation.Map.fold (fun cont
-                (handler : Flambda.continuation_handler) (r, handlers) ->
+                (handler : Flambda.continuation_handler) handlers ->
           let cont' = Freshening.apply_static_exception freshening cont in
           let args_approxs =
             let unknown () =
@@ -1867,57 +1862,52 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
                 args_approxs
               end
           in
-          let _cont_snapshot_before = R.snapshot_continuation_uses r in
           let r, handler =
 (*
 Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
 *)
-            simplify_let_cont_handler ~env ~r ~cont:cont' ~handler
+            simplify_let_cont_handler ~env ~r:(R.create ()) ~cont:cont' ~handler
               ~args_approxs
           in
-          let _cont_snapshot_after = R.snapshot_continuation_uses r in
-          let introduced_conts = () in
-(*
-            Inline_and_simplify_aux.Continuation_usage_snapshot.
-              continuations_defined_or_used_between_snapshots
-              ~before:cont_snapshot_before ~after:cont_snapshot_after
-          in
-*)
 (*
 Format.eprintf "New handler for %a is:@ \n%a\n%!"
   Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
 *)
-          r, Continuation.Map.add cont' (handler, introduced_conts) handlers)
+          Continuation.Map.add cont' (handler, r) handlers)
         handlers
-        (r, Continuation.Map.empty)
+        Continuation.Map.empty
     in
-    (* Then we collect uses of the continuations and delete any unused ones.
+    let continuation_unused cont =
+      (* For a continuation being bound in the group to be unused, it must be
+         unused within *all of the handlers* and the body. *)
+      let unused_within_all_handlers =
+        Continuation.Map.for_all (fun _cont (_handler, r_from_handler) ->
+            not (R.is_used_continuation r_from_handler cont))
+          handlers
+      in
+      unused_within_all_handlers
+        && not (R.is_used_continuation r cont)
+    in
+    (* Collect uses of the continuations and delete any unused ones.
        The usage information will subsequently be used by the continuation
        inlining and specialisation transformations. *)
     let r, handlers =
       Continuation.Map.fold (fun cont
-              ((handler : Flambda.continuation_handler), _introduced_conts)
+              ((handler : Flambda.continuation_handler), r_from_handler)
               (r, handlers) ->
-          let r, uses =
-            R.exit_scope_catch ~update_use_env r env cont
-          in
-          (* CR mshinwell: Deletion here is a pain, we should find an
-             easier way *)
-(*
-          if Inline_and_simplify_aux.Continuation_uses.unused uses then begin
-            let r =
-              R.forget_continuations_defined_or_used_between_snapshots r
-                introduced_conts
-            in
+          if continuation_unused cont then
+            let r, _uses = R.exit_scope_catch ~update_use_env r env cont in
             r, handlers
-          end else begin
-*)
+          else
+            let r, uses =
+              let r = R.union r r_from_handler in
+              R.exit_scope_catch ~update_use_env r env cont
+            in
             let handlers =
               Continuation.Map.add cont (handler, uses) handlers
             in
-            r, handlers
- (*         end *))
+            r, handlers)
         handlers
         (r, Continuation.Map.empty)
     in

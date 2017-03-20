@@ -152,8 +152,8 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~body:function_stub_body
       ~stub:true
       ~dbg:function_decl.dbg
-      ~inline:function_decl.inline
-      ~specialise:function_decl.specialise
+      ~inline:Lambda.Default_inline
+      ~specialise:Lambda.Default_specialise
       ~is_a_functor:function_decl.is_a_functor
   in
   Variable.Map.add new_fun_var function_decl

@@ -567,6 +567,18 @@ module Continuation_uses = struct
       application_points = [];
     }
 
+  let union t1 t2 =
+    if not (Continuation.equal t1.continuation t2.continuation) then begin
+      Misc.fatal_errorf "Cannot union [Continuation_uses.t] for two different \
+          continuations (%a and %a)"
+        Continuation.print t1.continuation
+        Continuation.print t2.continuation
+    end;
+    { backend = t1.backend;
+      continuation = t1.continuation;
+      application_points = t1.application_points @ t2.application_points;
+    }
+
   let print ppf t =
     Format.fprintf ppf "(%a application_points = (%a))"
       Continuation.print t.continuation
@@ -685,6 +697,7 @@ end
 
 module Result = struct
   type t =
+    (* CR mshinwell: remove [approx]? *)
     { approx : Simple_value_approx.t;
       (* CR mshinwell: What about combining these next two? *)
       used_continuations : Continuation_uses.t Continuation.Map.t;
@@ -704,6 +717,20 @@ module Result = struct
       inlining_threshold = None;
       benefit = Inlining_cost.Benefit.zero;
       num_direct_applications = 0;
+    }
+
+  let union t1 t2 =
+    { approx = Simple_value_approx.value_bottom;
+      used_continuations =
+        Continuation.Map.union_merge Continuation_uses.union
+          t1.used_continuations t2.used_continuations;
+      defined_continuations =
+        Continuation.Map.disjoint_union
+          t1.defined_continuations t2.defined_continuations;
+      inlining_threshold = t1.inlining_threshold;
+      benefit = Inlining_cost.Benefit.(+) t1.benefit t2.benefit;
+      num_direct_applications =
+        t1.num_direct_applications + t2.num_direct_applications;
     }
 
   let approx t = t.approx
