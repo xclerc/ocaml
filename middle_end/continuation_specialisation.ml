@@ -184,9 +184,11 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
             handler.params
             join_approxs
         in
+(*
 Format.eprintf "try_specialising: adding use of %a with args approxs %a\n%!"
   Continuation.print cont
   (Format.pp_print_list A.print) args_approxs;
+*)
         R.use_continuation r env freshened_cont
           (Not_inlinable_or_specialisable args_approxs))
       old_handlers
@@ -199,11 +201,15 @@ Format.eprintf "try_specialising: adding use of %a with args approxs %a\n%!"
   in
   match new_handlers with
   | None ->
+(*
 Format.eprintf "try_specialising: no handlers!\n%!";
+*)
     Didn't_specialise
   | Some new_handlers ->
+(*
 Format.eprintf "try_specialising: new handlers:\n@ %a\n%!"
   Flambda.print_let_cont_handlers new_handlers;
+*)
     let module W = Inlining_cost.Whether_sufficient_benefit in
     let wsb =
       let originals =
@@ -231,7 +237,9 @@ Format.eprintf "try_specialising: new handlers:\n@ %a\n%!"
         ~lifting:false
         ~round:(E.round env)
     in
+(*
 Format.eprintf "Evaluating %a\n%!" (W.print_description ~subfunctions:false) wsb;
+*)
     if W.evaluate wsb then Specialised (entry_point_new_cont, new_handlers)
     else Didn't_specialise
 
@@ -324,6 +332,7 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
                 in
                 let params_with_specialised_args =
                   Variable.Map.filter (fun param (_arg, arg_approx) ->
+(*
 Format.eprintf "Considering use of param %a as arg %a, approx %a: \
     Invariant? %b New spec arg? %b Useful approx? %b\n%!"
   Variable.print param
@@ -332,6 +341,7 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
   (Variable.Map.mem param invariant_params)
   (not (Variable.Map.mem param handler.specialised_args))
   (A.useful arg_approx);
+*)
                       (not handler.stub)
                         && Variable.Map.mem param invariant_params
                         && not (Variable.Map.mem param
@@ -390,10 +400,12 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
       (Continuation_with_specialised_args.Map.empty,
         Continuation.Map.empty)
   in
+(*
 Format.eprintf "Specialisation first stage result:\n%a\n%!"
   (Continuation_with_specialised_args.Map.print
     Continuation.With_args.Set.print)
   specialisations;
+*)
   (* The second step takes the map from above and makes a decision for
      each proposed specialisation, returning two maps:
        continuation "k" -> new continuation(s) to be defined just before "k"
@@ -424,11 +436,13 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
       then begin
         acc
       end else begin
+(*
         let () =
           Format.eprintf "Trying to specialise %a (new spec args %a)\n%!"
             Continuation.print cont
             Flambda.print_specialised_args newly_specialised_args
         in
+*)
         (* CR mshinwell: We should stop this trying to specialise
           already-specialised arguments.  (It isn't clear whether there is
           such a check for functions.)  This might be easy to do in

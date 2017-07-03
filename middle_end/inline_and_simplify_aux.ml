@@ -874,24 +874,30 @@ approxs
       Continuation_uses.meet_of_args_approxs uses ~num_params
 
   let exit_scope_catch ?update_use_env t env i =
-    match Continuation.Map.find i t.used_continuations with
-    | exception Not_found ->
-      let uses =
-        Continuation_uses.create ~continuation:i ~backend:(Env.backend env)
-      in
-      t, uses
-    | uses ->
-      let uses =
-        match update_use_env with
-        | None -> uses
-        | Some f ->
-          Continuation_uses.map_use_environments uses ~f
-      in
-      { t with
-        used_continuations = Continuation.Map.remove i t.used_continuations;
-      }, uses
+    (*Format.eprintf "exit_scope_catch %a\n%!" Continuation.print i;*)
+    let t, uses =
+      match Continuation.Map.find i t.used_continuations with
+      | exception Not_found ->
+        let uses =
+          Continuation_uses.create ~continuation:i ~backend:(Env.backend env)
+        in
+        t, uses
+      | uses ->
+        let uses =
+          match update_use_env with
+          | None -> uses
+          | Some f ->
+            Continuation_uses.map_use_environments uses ~f
+        in
+        { t with
+          used_continuations = Continuation.Map.remove i t.used_continuations;
+        }, uses
+    in
+    assert (continuation_unused t i);
+    t, uses
 
   let define_continuation t cont env recursive uses approx =
+(*    Format.eprintf "define_continuation %a\n%!" Continuation.print cont;*)
 (*
 let k = 25987 in
 if Continuation.to_int cont = k then begin

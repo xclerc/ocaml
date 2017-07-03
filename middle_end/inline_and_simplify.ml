@@ -1892,18 +1892,22 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
     (* Collect uses of the continuations and delete any unused ones.
        The usage information will subsequently be used by the continuation
        inlining and specialisation transformations. *)
+    let r =
+      Continuation.Map.fold (fun cont
+              ((_handler : Flambda.continuation_handler), r_from_handler) r ->
+          if continuation_unused cont then r
+          else R.union r r_from_handler)
+        handlers
+        r
+    in
     let r, handlers =
       Continuation.Map.fold (fun cont
-              ((handler : Flambda.continuation_handler), r_from_handler)
+              ((handler : Flambda.continuation_handler), _r_from_handler)
               (r, handlers) ->
+          let r, uses = R.exit_scope_catch ~update_use_env r env cont in
           if continuation_unused cont then
-            let r, _uses = R.exit_scope_catch ~update_use_env r env cont in
             r, handlers
           else
-            let r, uses =
-              let r = R.union r r_from_handler in
-              R.exit_scope_catch ~update_use_env r env cont
-            in
             let handlers =
               Continuation.Map.add cont (handler, uses) handlers
             in
@@ -1911,6 +1915,9 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
         handlers
         (r, Continuation.Map.empty)
     in
+    Continuation.Map.iter (fun cont _handler ->
+        assert (R.continuation_unused r cont))
+      handlers;
     if Continuation.Map.is_empty handlers then begin
 (*Format.eprintf "No handlers left!\n%!";*)
       None, r
