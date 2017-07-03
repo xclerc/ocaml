@@ -175,6 +175,7 @@ module Options = Main_args.Make_optcomp_options (struct
   let _dletcont = option "-dletcont"
   let _dinterval = option "-dinterval"
   let _dtimings = option "-dtimings"
+  let _dprofile = option "-dprofile"
   let _opaque = option "-opaque"
 
   let _args = Arg.read_arg

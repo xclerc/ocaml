@@ -125,7 +125,7 @@ let dump_interval = ref false           (* -dinterval *)
 let keep_startup_file = ref false       (* -dstartup *)
 let dump_let_cont = ref false           (* -dletcont *)
 let dump_combine = ref false            (* -dcombine *)
-let print_timings = ref false           (* -dtimings *)
+let profile_columns : Profile.column list ref = ref [] (* -dprofile/-dtimings *)
 
 let native_code = ref false             (* set to true under ocamlopt *)
 
@@ -155,7 +155,7 @@ let pic_code = ref (match Config.architecture with (* -fPIC *)
 let runtime_variant = ref "";;      (* -runtime-variant *)
 
 let keep_docs = ref false              (* -keep-docs *)
-let keep_locs = ref false              (* -keep-locs *)
+let keep_locs = ref true               (* -keep-locs *)
 let unsafe_string = ref (not Config.safe_string)
                                    (* -safe-string / -unsafe-string *)
 
@@ -367,6 +367,11 @@ let unboxed_types = ref false
 
 let arg_spec = ref []
 let arg_names = ref Misc.StringMap.empty
+
+let reset_arguments () =
+  arg_spec := [];
+  arg_names := Misc.StringMap.empty
+
 let add_arguments loc args =
   List.iter (function (arg_name, _, _) as arg ->
     try

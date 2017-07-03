@@ -231,6 +231,7 @@ and lam ppf (t : t) =
       | Lev_after _ -> "after"
       | Lev_function -> "funct-body"
       | Lev_pseudo -> "pseudo"
+      | Lev_module_definition _ -> "module_definition"
     in
     fprintf ppf "@[<2>(%s %s(%i)%s:%i-%i@ %a)@]" kind
       ev.lev_loc.Location.loc_start.Lexing.pos_fname

@@ -315,6 +315,14 @@ Never use the
 command on executables produced by
 .BR ocamlc\ \-custom ,
 this would remove the bytecode part of the executable.
+
+Security warning: never set the "setuid" or "setgid" bits on
+executables produced by
+.BR ocamlc\ \-custom ,
+this would make them vulnerable to attacks.
+.TP
+.BI \-depend\ ocamldep-args
+Compute dependencies, as ocamldep would do.
 .TP
 .BI \-dllib\ \-l libname
 Arrange for the C shared library

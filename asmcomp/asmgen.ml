@@ -105,31 +105,30 @@ let compile_fundecl (ppf : formatter) fd_cmm =
   Proc.init ();
   Reg.reset();
   fd_cmm
-  ++ Timings.time ~accumulate:true "selection" Selection.fundecl
+  ++ Profile.record ~accumulate:true "selection" Selection.fundecl
   ++ pass_dump_if ppf dump_selection "After instruction selection"
-  ++ Timings.time ~accumulate:true "comballoc" Comballoc.fundecl
+  ++ Profile.record ~accumulate:true "comballoc" Comballoc.fundecl
   ++ pass_dump_if ppf dump_combine "After allocation combining"
-  ++ Timings.time ~accumulate:true "cse" CSE.fundecl
+  ++ Profile.record ~accumulate:true "cse" CSE.fundecl
   ++ pass_dump_if ppf dump_cse "After CSE"
-  ++ Timings.time ~accumulate:true "trap_analysis" Trap_analysis.run
-  ++ Timings.time ~accumulate:true "liveness" (liveness ppf)
-  ++ Timings.time ~accumulate:true "deadcode" Deadcode.fundecl
+  ++ Profile.record ~accumulate:true "trap_analysis" Trap_analysis.run
+  ++ Profile.record ~accumulate:true "liveness" (liveness ppf)
+  ++ Profile.record ~accumulate:true "deadcode" Deadcode.fundecl
   ++ pass_dump_if ppf dump_live "Liveness analysis"
-  ++ Timings.time ~accumulate:true "spill" Spill.fundecl
-  ++ Timings.time ~accumulate:true "liveness" (liveness ppf)
+  ++ Profile.record ~accumulate:true "spill" Spill.fundecl
+  ++ Profile.record ~accumulate:true "liveness" (liveness ppf)
   ++ pass_dump_if ppf dump_spill "After spilling"
-  ++ Timings.time ~accumulate:true "split" Split.fundecl
+  ++ Profile.record ~accumulate:true "split" Split.fundecl
   ++ pass_dump_if ppf dump_split "After live range splitting"
-  ++ Timings.time ~accumulate:true "liveness" (liveness ppf)
-  ++ Timings.time ~accumulate:true "regalloc" (regalloc ppf 1)
-  ++ pass_dump_if ppf dump_reload "Before linearizing"
-  ++ Timings.time ~accumulate:true "linearize" Linearize.fundecl
+  ++ Profile.record ~accumulate:true "liveness" (liveness ppf)
+  ++ Profile.record ~accumulate:true "regalloc" (regalloc ppf 1)
+  ++ Profile.record ~accumulate:true "linearize" Linearize.fundecl
   ++ pass_dump_linear_if ppf dump_linear "Linearized code"
   ++ Linear_invariants.check
-  ++ Timings.time ~accumulate:true "scheduling" Scheduling.fundecl
+  ++ Profile.record ~accumulate:true "scheduling" Scheduling.fundecl
   ++ Linear_invariants.check
   ++ pass_dump_linear_if ppf dump_scheduling "After instruction scheduling"
-  ++ Timings.time ~accumulate:true "emit" Emit.fundecl
+  ++ Profile.record ~accumulate:true "emit" Emit.fundecl
 
 let compile_phrase ppf p =
   if !dump_cmm then fprintf ppf "%a@." Printcmm.phrase p;
@@ -163,7 +162,7 @@ let compile_unit _output_prefix asm_filename keep_asm
       raise exn
     end;
     let assemble_result =
-      Timings.time "assemble"
+      Profile.record "assemble"
         (Proc.assemble_file asm_filename) obj_filename
     in
     if assemble_result <> 0
@@ -181,8 +180,8 @@ let end_gen_implementation ?toplevel ppf
     (clambda:clambda_and_constants) =
   Emit.begin_assembly ();
   clambda
-  ++ Timings.time "cmm" Cmmgen.compunit
-  ++ Timings.time "compile_phrases" (List.iter (compile_phrase ppf))
+  ++ Profile.record "cmm" Cmmgen.compunit
+  ++ Profile.record "compile_phrases" (List.iter (compile_phrase ppf))
   ++ (fun () -> ());
   (match toplevel with None -> () | Some f -> compile_genfuns ppf f);
 
@@ -203,7 +202,7 @@ let flambda_gen_implementation ?toplevel ~backend ppf
     (program:Flambda.program) =
   let export = Build_export_info.build_export_info ~backend program in
   let (clambda, preallocated, constants) =
-    Timings.time_call "backend" (fun () ->
+    Profile.record_call "backend" (fun () ->
       (program, export)
       ++ Flambda_to_clambda.convert
       ++ flambda_raw_clambda_dump_if ppf

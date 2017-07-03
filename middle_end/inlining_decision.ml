@@ -396,6 +396,8 @@ let specialise env r ~lhs_of_application
       Don't_try_it (S.Not_specialised.Above_threshold threshold)
     else if not (Var_within_closure.Map.is_empty (Lazy.force bound_vars)) then
       Don't_try_it S.Not_specialised.Not_closed
+    else if not (Lazy.force recursive) then
+      Don't_try_it S.Not_specialised.Not_recursive
     else if Variable.Map.is_empty (Lazy.force invariant_params) then
       Don't_try_it S.Not_specialised.No_invariant_parameters
     else if Lazy.force has_no_useful_approxes then
