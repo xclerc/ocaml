@@ -170,8 +170,8 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
                 match spec_to.var with
                 | None -> join_approx
                 | Some spec_to ->
-                  begin match E.find_exn env spec_to with
-                  | exception Not_found ->
+                  begin match E.find_opt env spec_to with
+                  | None ->
                     Misc.fatal_errorf "Variable %a of %a specialised to %a \
                         but that latter variable is not in the environment: \
                         @ \n%a"
@@ -179,7 +179,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
                       Continuation.print cont
                       Variable.print spec_to
                       E.print env
-                  | approx -> approx
+                  | Some approx -> approx
                   end)
             handler.params
             join_approxs
