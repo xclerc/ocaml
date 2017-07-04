@@ -238,10 +238,10 @@ let print_specialised_to ppf (spec_to : specialised_to) =
   | Some projection ->
     match spec_to.var with
     | None ->
-      fprintf ppf "<none>(= %a)"
+      fprintf ppf "%a"
         Projection.print projection
     | Some var ->
-      fprintf ppf "%a(= %a)"
+      fprintf ppf "%a = %a"
         Variable.print var
         Projection.print projection
 

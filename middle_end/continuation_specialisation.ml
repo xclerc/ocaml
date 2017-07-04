@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2016 OCamlPro SAS                                          *)
-(*   Copyright 2016 Jane Street Group LLC                                 *)
+(*   Copyright 2016--2017 OCamlPro SAS                                    *)
+(*   Copyright 2016--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -80,11 +80,24 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
             Continuation.print cont
             Variable.Set.print wrong_spec_args
         end;
+        (* For a recursive group of continuations, [newly_specialised_args]
+           may contain parameters across all of them, so we need to restrict it
+           to just those for [cont]. *)
+        let newly_specialised_args =
+          let params = Parameter.Set.of_list old_handler.params in
+          Variable.Map.filter (fun param _spec_to ->
+              Parameter.Set.mem (Parameter.wrap param) params)
+            newly_specialised_args
+        in
         (* Compute the newly-specialised args.  These are either:
            (a) those arising from the "entry point" (i.e. [Apply_cont] of
                [entry_point_cont]); or
            (b) those arising from invariant parameters flow from the entry
                point's continuation handler. *)
+(*
+Format.eprintf "computing newly specialised args of %a\n%!"
+  Continuation.print cont;
+*)
         let newly_specialised_args =
           if Continuation.equal cont entry_point_cont then
             newly_specialised_args
@@ -99,6 +112,13 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
                   in
                   CV.Set.fold (fun (cont', param')
                           newly_specialised_args ->
+(*
+Format.eprintf "IPF param %a of %a --> param %a of %a\n%!"
+  Variable.print param
+  Continuation.print cont
+  Variable.print param'
+  Continuation.print cont';
+*)
                       if not (Continuation.equal cont cont') then
                         newly_specialised_args
                       else
@@ -194,6 +214,10 @@ Format.eprintf "try_specialising: adding use of %a with args approxs %a\n%!"
       old_handlers
       (R.create ())
   in
+(*
+Format.eprintf "try_specialising handlers:@ \n%a\n%!"
+  Flambda.print_let_cont_handlers (Flambda.Recursive new_handlers);
+*)
   let new_handlers, r =
     simplify_let_cont_handlers ~env ~r ~handlers:new_handlers
       ~args_approxs:None ~recursive ~freshening:(E.freshening env)
@@ -402,9 +426,11 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
       Continuation_with_specialised_args.Map.empty
   in
 (*
+let print_data ppf (uses, _env, _ipf, _handlers, _rec) =
+  Continuation.With_args.Set.print ppf uses
+in
 Format.eprintf "Specialisation first stage result:\n%a\n%!"
-  (Continuation_with_specialised_args.Map.print
-    Continuation.With_args.Set.print) (* type error *)
+  (Continuation_with_specialised_args.Map.print print_data)
   specialisations;
 *)
   (* The second step takes the map from above and makes a decision for
@@ -433,18 +459,22 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
       then begin
         acc
       end else begin
+(*
         let () =
           Format.eprintf "Trying to specialise %a (new spec args %a)\n%!"
             Continuation.print cont
             Flambda.print_specialised_args newly_specialised_args
         in
+*)
         (* CR mshinwell: We should stop this trying to specialise
            already-specialised arguments.  (It isn't clear whether there is
            such a check for functions.)  This might be easy to do in
            [try_specialising] given a suitable ordering on approximations. *)
+(*
 Format.eprintf "Trying to specialise %a.  All handlers in group %a\n%!"
   Continuation.print cont
   Continuation.Set.print (Continuation.Map.keys old_handlers);
+*)
         match
           try_specialising ~cont ~old_handlers
             ~newly_specialised_args ~invariant_params_flow ~env ~recursive

@@ -922,6 +922,19 @@ end;
           t.defined_continuations;
     }
 
+  let update_defined_continuation_approx t cont approx =
+    match Continuation.Map.find cont t.defined_continuations with
+    | exception Not_found ->
+      Misc.fatal_errorf "Cannot update approximation of undefined \
+          continuation %a"
+        Continuation.print cont
+    | (uses, _old_approx, env, recursive) ->
+      { t with
+        defined_continuations =
+          Continuation.Map.add cont (uses, approx, env, recursive)
+            t.defined_continuations;
+      }
+
   let continuation_definitions_with_uses t =
     t.defined_continuations
 

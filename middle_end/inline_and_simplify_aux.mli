@@ -442,6 +442,13 @@ module Result : sig
     -> Continuation_approx.t
     -> t
 
+  (** Update the approximation for a defined continuation. *)
+  val update_defined_continuation_approx
+     : t
+    -> Continuation.t
+    -> Continuation_approx.t
+    -> t
+
   (** Continuation definition information for the inliner. *)
   val continuation_definitions_with_uses
      : t

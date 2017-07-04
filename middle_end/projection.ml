@@ -133,7 +133,7 @@ include Identifiable.Make (struct
     | Move_within_set_of_closures (move_within_set_of_closures) ->
       print_move_within_set_of_closures ppf move_within_set_of_closures
     | Field (field_index, var) ->
-      Format.fprintf ppf "Field %d of %a" field_index Variable.print var
+      Format.fprintf ppf "Field (%a, %d)" Variable.print var field_index
     | Prim (prim, args) ->
       Format.fprintf ppf "Prim (%a, %a)"
         Printlambda.primitive prim

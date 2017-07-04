@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2016 OCamlPro SAS                                          *)
-(*   Copyright 2016 Jane Street Group LLC                                 *)
+(*   Copyright 2016--2017 OCamlPro SAS                                    *)
+(*   Copyright 2016--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -63,10 +63,21 @@ let for_toplevel_expression expr r =
         end;
         (* Beware: we may have failed to inline---see comment below.
            In that case the [Let_cont] must stay. *)
-        if R.continuation_defined !r name then
+        if R.continuation_defined !r name then begin
+          (* Continuation specialisation, which runs after this pass, takes
+             the code of continuations from their approximations.  As such if
+             a continuation has been changed by inlining then its new version
+             must be recorded. *)
+          let approx =
+            Continuation_approx.create ~name
+              ~handlers:(Nonrecursive handler)
+              ~num_params:(List.length handler.params)
+          in
+          r := R.update_defined_continuation_approx !r name approx;
           Let_cont { body; handlers = Nonrecursive { name; handler; }; }
-        else
+        end else begin
           body
+          end
       | Let_cont { body; handlers = Recursive handlers; } ->
         let body = substitute env body in
         let handlers =
@@ -80,6 +91,15 @@ let for_toplevel_expression expr r =
               })
             handlers
         in
+        Continuation.Map.iter (fun name
+                (handler : Flambda.continuation_handler) ->
+            let approx =
+              Continuation_approx.create ~name
+                ~handlers:(Recursive handlers)
+                ~num_params:(List.length handler.params)
+            in
+            r := R.update_defined_continuation_approx !r name approx)
+          handlers;
         Let_cont { body; handlers = Recursive handlers; }
       | Apply_cont (cont, trap_action, args) ->
         begin match Continuation.Map.find cont env with

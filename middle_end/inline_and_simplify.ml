@@ -1732,12 +1732,18 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
       (* CR mshinwell: Duplicate of a part of
           [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
       *)
-      Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
+      Variable.Map.mapi (fun param (spec_to : Flambda.specialised_to) ->
           match spec_to.var with
           | Some external_var ->
             let var =
               Freshening.apply_variable sb external_var
             in
+            if Variable.equal param var then begin
+              Misc.fatal_errorf "Attempt to specialise parameter %a of %a \
+                  to itself"
+                Variable.print param
+                Continuation.print cont
+            end;
             let var =
               match
                 A.simplify_var_to_var_using_env (E.find_exn env var)
