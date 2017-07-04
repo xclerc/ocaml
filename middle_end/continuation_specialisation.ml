@@ -173,10 +173,10 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
                   begin match E.find_opt env spec_to with
                   | None ->
                     Misc.fatal_errorf "Variable %a of %a specialised to %a \
-                        but that latter variable is not in the environment: \
-                        @ \n%a"
+                        but %a is not in the environment:@ \n%a"
                       Variable.print param
                       Continuation.print cont
+                      Variable.print spec_to
                       Variable.print spec_to
                       E.print env
                   | Some approx -> approx
@@ -249,32 +249,28 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
 *)
   let module N = Num_continuation_uses in
   let module U = Inline_and_simplify_aux.Continuation_uses in
-  (* The first step constructs two maps.  The first of these is:
+  (* The first step constructs a map:
           (continuation * (specialised_params -> arg))
-       -> set of (continuation * args)
+       -> set of (continuation * args) * environment * ...
      which groups together uses of the continuation where some subset of
      its invariant parameters have the same arguments across those uses.  The
      range of the map enables identification of the corresponding [Apply_cont]
      nodes which will need to be repointed if the continuation is specialised
-     for those uses.
-     The second map just maps continuations to their handlers (including any
-     handlers defined simultaneously) and the environment of definition. *)
-  (* CR mshinwell: The second map appears now to be redundant with
-     [definitions_with_uses] *)
+     for those uses. *)
   let definitions_with_uses = R.continuation_definitions_with_uses r in
-  let specialisations, conts_to_handlers =
+  let specialisations =
     (* CR mshinwell: [recursive] appears to be redundant with
        [approx.recursive] *)
     Continuation.Map.fold (fun cont (uses, approx, _env, recursive)
-          ((specialisations, conts_to_handlers) as acc) ->
+          specialisations ->
         match Continuation_approx.handlers approx with
         | None ->
           (* Applications of continuations inside their own handlers will
              hit this case.  This is equivalent to the "self call" check
              in [Inlining_decision]. *)
-          acc
+          specialisations
         | Some (Nonrecursive { is_exn_handler = true; _ }) ->
-          acc
+          specialisations
         | Some handlers ->
           let handlers, invariant_params, invariant_params_flow =
             match handlers with
@@ -318,10 +314,9 @@ let find_specialisations r ~simplify_let_cont_handlers ~backend =
                   inside the approximation"
                 Continuation.print cont
           in
-          List.fold_left (fun ((specialisations, conts_to_handlers) as acc)
-                  (use : U.Use.t) ->
+          List.fold_left (fun specialisations (use : U.Use.t) ->
               match U.Use.Kind.is_specialisable use.kind with
-              | None -> acc
+              | None -> specialisations
               | Some args_and_approxs ->
                 assert (List.length handler.params
                   = List.length args_and_approxs);
@@ -350,7 +345,7 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
                     params_with_args
                 in
                 if Variable.Map.cardinal params_with_specialised_args < 1 then
-                  acc
+                  specialisations
                 else
                   let params_with_specialised_args =
                     Variable.Map.map (fun (arg, _) : Flambda.specialised_to ->
@@ -362,65 +357,67 @@ Format.eprintf "Considering use of param %a as arg %a, approx %a: \
                   let key : Continuation_with_specialised_args.t =
                     cont, params_with_specialised_args
                   in
-                  let uses =
+                  let uses, env =
                     match
                       Continuation_with_specialised_args.Map.find key
                         specialisations
                     with
-                    | exception Not_found -> Continuation.With_args.Set.empty
-                    | uses -> uses
+                    | exception Not_found ->
+                      Continuation.With_args.Set.empty, use.env
+                    | uses, env, _, _, _ -> uses, env
                   in
+                  (* We arbitrarily pick the first of the use environments as
+                     the environment in which we will try specialising the
+                     continuation.  This is correct because the variables to
+                     which we are specialising parameters must all occur (and
+                     thus have equal approximations) in the environment at
+                     every one of the use points we are specialising. *)
+                  Variable.Map.iter (fun param
+                          (spec_to : Flambda.specialised_to) ->
+                      match spec_to.var with
+                      | None -> assert false  (* see above *)
+                      | Some spec_to ->
+                        if not (E.mem use.env spec_to) then begin
+                          Misc.fatal_errorf "Newly-specialised parameter %a \
+                              of %a (being specialised to %a) is not in this \
+                              use environment:@ \n%a"
+                            Variable.print param
+                            Continuation.print cont
+                            Variable.print spec_to
+                            E.print use.env
+                        end)
+                    params_with_specialised_args;
                   let use_args =
                     List.map (fun (arg, _approx) -> arg) args_and_approxs
                   in
-                  let specialisations =
-                    Continuation_with_specialised_args.Map.add key
-                      (Continuation.With_args.Set.add (cont, use_args) uses)
-                      specialisations
+                  let uses =
+                    Continuation.With_args.Set.add (cont, use_args) uses
                   in
-                  let conts_to_handlers =
-                    (* This [add] is of course executed once per use of the
-                       continuation; it will thus choose the environment for
-                       some arbitrary use of that continuation as that to be
-                       used during [try_specialising].  This is fine: the only
-                       things we need during the simplification inside that
-                       function are the dependencies of the continuation
-                       handler(s) and the approximations of the
-                       newly-specialised arguments (and their dependencies,
-                       transitively).  All of these will be present in the
-                       environment at each of the use sites. *)
-                    Continuation.Map.add cont
-                      (handlers, use.env, invariant_params_flow, recursive)
-                      conts_to_handlers
-                  in
-                  specialisations, conts_to_handlers)
-            (specialisations, conts_to_handlers)
+                  Continuation_with_specialised_args.Map.add key
+                    (uses, env, invariant_params_flow, handlers, recursive)
+                    specialisations)
+            specialisations
             (U.application_points uses))
       definitions_with_uses
-      (Continuation_with_specialised_args.Map.empty,
-        Continuation.Map.empty)
+      Continuation_with_specialised_args.Map.empty
   in
 (*
 Format.eprintf "Specialisation first stage result:\n%a\n%!"
   (Continuation_with_specialised_args.Map.print
-    Continuation.With_args.Set.print)
+    Continuation.With_args.Set.print) (* type error *)
   specialisations;
 *)
   (* The second step takes the map from above and makes a decision for
      each proposed specialisation, returning two maps:
-       continuation "k" -> new continuation(s) to be defined just before "k"
+       continuation "k" -> specialisations of "k"
        (continuation * args) -> new "entry" continuation
      The first map is then used to add new [Let_cont] definitions and the
      second is used to rewrite [Apply_cont] to specialised continuations. *)
   Continuation_with_specialised_args.Map.fold (fun
           (cont, newly_specialised_args)
-          cont_application_points
+          (cont_application_points, env, invariant_params_flow, old_handlers,
+            (recursive : Asttypes.rec_flag))
           ((new_conts, apply_cont_rewrites) as acc) ->
-      let old_handlers, env, invariant_params_flow, recursive =
-        match Continuation.Map.find cont conts_to_handlers with
-        | exception Not_found -> assert false  (* see above *)
-        | old_handlers -> old_handlers
-      in
       let is_recursive =
         match recursive with
         | Nonrecursive -> false
@@ -436,22 +433,18 @@ Format.eprintf "Specialisation first stage result:\n%a\n%!"
       then begin
         acc
       end else begin
-(*
         let () =
           Format.eprintf "Trying to specialise %a (new spec args %a)\n%!"
             Continuation.print cont
             Flambda.print_specialised_args newly_specialised_args
         in
-*)
         (* CR mshinwell: We should stop this trying to specialise
-          already-specialised arguments.  (It isn't clear whether there is
-          such a check for functions.)  This might be easy to do in
-          [try_specialising] given a suitable ordering on approximations. *)
-(*
+           already-specialised arguments.  (It isn't clear whether there is
+           such a check for functions.)  This might be easy to do in
+           [try_specialising] given a suitable ordering on approximations. *)
 Format.eprintf "Trying to specialise %a.  All handlers in group %a\n%!"
   Continuation.print cont
   Continuation.Set.print (Continuation.Map.keys old_handlers);
-*)
         match
           try_specialising ~cont ~old_handlers
             ~newly_specialised_args ~invariant_params_flow ~env ~recursive
