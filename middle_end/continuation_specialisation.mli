@@ -33,4 +33,4 @@ val for_toplevel_expression
       -> Inline_and_simplify_aux.Env.t)
     -> Flambda.let_cont_handlers option * Inline_and_simplify_aux.Result.t)
   -> backend:(module Backend_intf.S)
-  -> Flambda.expr
+  -> Flambda.expr option

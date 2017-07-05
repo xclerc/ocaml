@@ -2467,14 +2467,16 @@ Format.eprintf "Simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
       Flambda_invariants.check_toplevel_simplification_result r expr
         ~continuation ~descr;
       let vars_in_scope = E.vars_in_scope env in
-      let expr =
+      let new_expr =
         (* CR mshinwell: Should the specialisation pass return some
            benefit value? *)
         Continuation_specialisation.for_toplevel_expression expr
           ~vars_in_scope r ~simplify_let_cont_handlers
           ~backend:(E.backend env)
       in
-      expr, r
+      match new_expr with
+      | None -> expr, r
+      | Some new_expr -> new_expr, r
     end
   in
   (* Continuation specialisation could theoretically improve the precision
