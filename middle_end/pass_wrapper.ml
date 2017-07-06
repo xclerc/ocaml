@@ -21,17 +21,18 @@ let register ~pass_name =
 
 let with_dump ~pass_name ~f ~input ~print_input ~print_output =
   let dump = Clflags.dumped_pass pass_name in
+  if dump then begin
+    Format.eprintf "Before %s:@ %a@.@." pass_name print_input input
+    end;
   let result = f () in
   match result with
   | None ->
     if dump then begin
-      Format.eprintf "%s: no-op.  Input:@ %a@.\n\n%!" pass_name
-        print_input input
+      Format.eprintf "%s: no-op.\n%!" pass_name
     end;
     None
   | Some result ->
     if dump then begin
-      Format.eprintf "Before %s:@ %a@.@." pass_name print_input input;
       Format.eprintf "After %s:@ %a@.@." pass_name print_output result
     end;
     Some result

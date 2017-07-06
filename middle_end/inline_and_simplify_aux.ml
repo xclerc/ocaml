@@ -186,6 +186,9 @@ module Env = struct
         print t
     | approx -> approx
 
+  let mem_continuation t cont =
+    Continuation.Map.mem cont t.continuations
+
   let does_not_bind t vars =
     not (List.exists (mem t) vars)
 

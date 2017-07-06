@@ -51,6 +51,10 @@ module M =
 module T = M.T
 include T
 
+let print_list ppf ts =
+  let pp_sep ppf () = Format.fprintf ppf "@ " in
+  Format.pp_print_list ~pp_sep print ppf ts
+
 module Map = M.Map
 module Tbl = M.Tbl
 module Set = struct

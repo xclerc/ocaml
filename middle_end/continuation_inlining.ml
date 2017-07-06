@@ -19,6 +19,8 @@
 module R = Inline_and_simplify_aux.Result
 
 let for_toplevel_expression expr r =
+  (* This pass only performs linear inlining, even for stubs.  Non-linear
+     inlining for stubs is done by [Inline_and_simplify]. *)
   let used_linearly =
     R.non_recursive_continuations_used_linearly_in_inlinable_position r
   in
@@ -77,7 +79,7 @@ let for_toplevel_expression expr r =
           Let_cont { body; handlers = Nonrecursive { name; handler; }; }
         end else begin
           body
-          end
+        end
       | Let_cont { body; handlers = Recursive handlers; } ->
         let body = substitute env body in
         let handlers =

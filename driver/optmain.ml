@@ -149,7 +149,10 @@ module Options = Main_args.Make_optcomp_options (struct
     default_simplify_rounds := 3;
     use_inlining_arguments_set o3_arguments;
     use_inlining_arguments_set ~round:1 o2_arguments;
-    use_inlining_arguments_set ~round:0 o1_arguments
+    use_inlining_arguments_set ~round:0 o1_arguments;
+    (* CR mshinwell: unclear how this interacts with explicit
+       "-no-treat-invalid-code-as-dead". *)
+    treat_invalid_code_as_dead := true
   let _open s = open_modules := s :: !open_modules
   let _output_obj = set output_c_object
   let _output_complete_obj () =
@@ -174,6 +177,8 @@ module Options = Main_args.Make_optcomp_options (struct
   let _shared () = shared := true; dlcode := true
   let _S = set keep_asm_file
   let _thread = set use_threads
+  let _treat_invalid_code_as_dead = set treat_invalid_code_as_dead
+  let _no_treat_invalid_code_as_dead = clear treat_invalid_code_as_dead
   let _unbox_closures = set unbox_closures
   let _unbox_closures_factor f = unbox_closures_factor := f
   let _unboxed_types = set unboxed_types

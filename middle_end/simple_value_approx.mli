@@ -324,10 +324,12 @@ val useful : t -> bool
 (** Whether all approximations in the given list do *not* satisfy [useful]. *)
 val all_not_useful : t list -> bool
 
-(** A value is certainly immutable if its approximation is known and not bottom.
-    It must have been resolved (it cannot be [Extern] or
-    [Symbol]).  (See comment above for further explanation.) *)
-val is_definitely_immutable : t -> bool
+(** Whether code that mutates a value with the given approximation is to be
+    treated as invalid.  Cannot be called with an [Extern] or [Symbol]
+    approximation; these need to be resolved first. *)
+val invalid_to_mutate : t -> bool
+
+val length_of_array : t -> int option
 
 type simplification_summary =
   | Nothing_done
@@ -471,6 +473,9 @@ type checked_approx_for_closure_allowing_unresolved =
 val check_approx_for_closure_allowing_unresolved
    : t
   -> checked_approx_for_closure_allowing_unresolved
+
+(** Returns the value if it can be proved to be a constant int *)
+val check_approx_for_int : t -> int option
 
 (** Returns the value if it can be proved to be a constant float *)
 val check_approx_for_float : t -> float option

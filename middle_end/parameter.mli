@@ -55,6 +55,8 @@ include Identifiable.S with type t := t
                         and module T := T
                         and module Set := Set
 
+val print_list : Format.formatter -> t list -> unit
+
 module List : sig
   (** extract variables from a list of parameters, preserving the order *)
   val vars : t list -> Variable.t list

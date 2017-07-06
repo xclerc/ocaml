@@ -1222,9 +1222,10 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
   in
   match Continuation_approx.handlers cont_approx with
   | Some (Nonrecursive handler) when handler.stub && trap_action = None ->
-    (* Stubs are unconditionally inlined out now so that we don't need to run
-       the second [Continuation_inlining] pass when doing a "noinline" run
-       of [Inline_and_simplify].
+    (* Stubs are unconditionally inlined out now for two reasons:
+       - [Continuation_inlining] cannot do non-linear inlining;
+       - Even if it could, we don't want to have to run that pass when
+         doing a "noinline" run of [Inline_and_simplify].
        Note that we don't call [R.use_continuation] here, because we're going
        to eliminate the use. *)
     let env = E.activate_freshening env in
@@ -1516,41 +1517,100 @@ Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
         | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
         | (Parraysetu kind | Parraysets kind),
             [_block; _field; _value],
-            [block_approx; _field_approx; value_approx] ->
-          if A.is_definitely_immutable block_approx then begin
+            [block_approx; field_approx; value_approx] ->
+          if A.invalid_to_mutate block_approx then begin
             Location.prerr_warning (Debuginfo.to_location dbg)
-              Warnings.Assignment_to_non_mutable_value
-          end;
-          let kind =
-            match A.descr block_approx, A.descr value_approx with
-            | (Float_array _, _)
-            | (_, Float _) ->
-              begin match kind with
-              | Pfloatarray | Pgenarray -> ()
-              | Paddrarray | Pintarray ->
-                (* CR pchambart: Do a proper warning here *)
-                Misc.fatal_errorf "Assignment of a float to a specialised \
-                                  non-float array: %a"
-                  Flambda.print_named tree
-              end;
-              Lambda.Pfloatarray
-              (* CR pchambart: This should be accounted by the benefit *)
-            | _ ->
-              kind
-          in
-          let prim : Lambda.primitive =
-            match prim with
-            | Parraysetu _ -> Parraysetu kind
-            | Parraysets _ -> Parraysets kind
-            | _ -> assert false
-          in
-          [], Reachable (Prim (prim, args, dbg)), ret r (A.value_unknown Other)
+              Warnings.Assignment_to_non_mutable_value;
+            if !Clflags.treat_invalid_code_as_dead then
+              [], Flambda.Unreachable, r
+            else
+              [], Flambda.Reachable (Prim (prim, args, dbg)),
+                ret r (A.value_unknown Other)
+          end else begin
+            let size = A.length_of_array block_approx in
+            let index = A.check_approx_for_int field_approx in
+            let bounds_check_definitely_fails =
+              match size, index with
+              | Some size, _ when size <= 0 ->
+                assert (size = 0);  (* see [Simple_value_approx] *)
+                true
+              | Some size, Some index ->
+                (* This is ok even in the presence of [Obj.truncate], since that
+                   can only make blocks smaller. *)
+                index >= 0 && index < size
+              | _, _ -> false
+            in
+            let convert_to_raise =
+              match prim with
+              | Parraysets _ -> bounds_check_definitely_fails
+              | Parraysetu _ -> false
+              | _ -> assert false  (* see above *)
+            in
+            if convert_to_raise then begin
+              (* CR mshinwell: move to separate function *)
+              let invalid_argument_var = Variable.create "invalid_argument" in
+              let invalid_argument : Flambda.named =
+                let module Backend = (val (E.backend env) : Backend_intf.S) in
+                Symbol (Backend.symbol_for_global'
+                  Predef.ident_invalid_argument)
+              in
+              let msg_var = Variable.create "msg" in
+              let msg : Flambda.named =
+                Allocated_const (String "index out of bounds")
+              in
+              let exn_var = Variable.create "exn" in
+              let exn : Flambda.named =
+                Prim (Pmakeblock (0, Immutable, None),
+                  [invalid_argument_var; msg_var], dbg)
+              in
+              let bindings = [
+                  invalid_argument_var, invalid_argument;
+                  msg_var, msg;
+                  exn_var, exn;
+                ]
+              in
+              bindings, Reachable (Prim (Praise Raise_regular, [exn_var], dbg)),
+                ret r A.value_bottom
+            end else begin
+              let kind =
+                match A.descr block_approx, A.descr value_approx with
+                | (Float_array _, _)
+                | (_, Float _) ->
+                  begin match kind with
+                  | Pfloatarray | Pgenarray -> ()
+                  | Paddrarray | Pintarray ->
+                    (* CR pchambart: Do a proper warning here *)
+                    Misc.fatal_errorf "Assignment of a float to a specialised \
+                                      non-float array: %a"
+                      Flambda.print_named tree
+                  end;
+                  Lambda.Pfloatarray
+                  (* CR pchambart: This should be accounted by the benefit *)
+                | _ ->
+                  kind
+              in
+              let prim : Lambda.primitive =
+                match prim with
+                | Parraysetu _ -> Parraysetu kind
+                | Parraysets _ -> Parraysets kind
+                | _ -> assert false
+              in
+              [], Reachable (Prim (prim, args, dbg)),
+                ret r (A.value_unknown Other)
+            end
+          end
         | Psetfield _, _block::_, block_approx::_ ->
-          if A.is_definitely_immutable block_approx then begin
+          if A.invalid_to_mutate block_approx then begin
             Location.prerr_warning (Debuginfo.to_location dbg)
-              Warnings.Assignment_to_non_mutable_value
-          end;
-          [], Reachable tree, ret r (A.value_unknown Other)
+              Warnings.Assignment_to_non_mutable_value;
+            if !Clflags.treat_invalid_code_as_dead then
+              [], Flambda.Unreachable, r
+            else
+              [], Flambda.Reachable (Prim (prim, args, dbg)),
+                ret r (A.value_unknown Other)
+          end else begin
+            [], Reachable tree, ret r (A.value_unknown Other)
+          end
         | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
           Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
         | Pisint, [_arg], [arg_approx] ->
@@ -1579,6 +1639,16 @@ Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
               ret r (A.value_int tag)
           end
         | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
+        | Parraylength _, [_arg], [arg_approx] ->
+          begin match A.length_of_array arg_approx with
+          | None -> default ()
+          | Some length ->
+            let r = R.map_benefit r B.remove_prim in
+            let const_length = Variable.create "length" in
+            [const_length, Const (Int length)], Reachable (Var const_length),
+              ret r (A.value_int length)
+          end
+        | Parraylength _, _, _ -> Misc.fatal_error "Parraylength arity error"
         | (Psequand | Psequor), _, _ ->
           Misc.fatal_error "Psequand and Psequor must be expanded (see \
               handling in closure_conversion.ml)"
@@ -2166,7 +2236,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           in
           (* CR mshinwell: See if we can cut down the continuation information
              in the environment (probably just to stub definitions and
-             alias definitions) so we don't need [update_use_env]. *)
+             alias definitions) so we don't need [update_use_env].
+             Second thoughts: maybe this wouldn't help?  Some of these being
+             added are stubs. *)
           let env = update_use_env env in
 (*
 Format.eprintf "Adding %a to the environment to simplify the wrapper\n%!"
@@ -2175,6 +2247,9 @@ Format.eprintf "Adding %a to the environment to simplify the wrapper\n%!"
           simplify_one_handler ~update_use_env env r ~name
             ~handler:wrapper_handler ~body
         in
+(*
+let body, r =
+*)
         simplify_one_handler env r ~name:new_cont ~handler:new_handler ~body
 (*
 in

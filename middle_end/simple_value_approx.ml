@@ -340,6 +340,11 @@ end and Unionable : sig
   val maybe_is_immediate_value : t -> int -> bool
 
   val ok_for_variant : t -> bool
+
+  val as_int : t -> int option
+  val size_of_block : t -> int option
+
+  val invalid_to_mutate : t -> bool
 end = struct
   type 'a or_bottom =  (* CR mshinwell: rename type *)
     | Anything
@@ -462,6 +467,19 @@ end = struct
         by_tag
     | Immediates _imms -> true
 
+  let as_int t =
+    let check_immediates imms =
+      match Immediate.Set.elements imms with
+      | [Int i] -> Some i
+      | _ -> None
+    in
+    match t with
+    | Blocks _ -> None
+    | Blocks_and_immediates (by_tag, imms) ->
+      if not (Tag.Map.is_empty by_tag) then None
+      else check_immediates imms
+    | Immediates imms -> check_immediates imms
+
   let join (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
     let get_immediates t =
       match t with
@@ -528,6 +546,27 @@ end = struct
       | Ok (Constptr p) -> Ok (Constptr p)
       | Ill_typed_code -> Ill_typed_code
       | Anything -> Anything
+
+  let size_of_block t =
+    match t with
+    | Blocks by_tag ->
+      let sizes =
+        List.map (fun (_tag, fields) -> Array.length fields)
+          (Tag.Map.bindings by_tag)
+      in
+      let sizes = Numbers.Int.Set.of_list sizes in
+      begin match Numbers.Int.Set.elements sizes with
+      | [] -> Some 0
+      | [size] -> Some size
+      | _ -> None
+      end
+    | Blocks_and_immediates _ | Immediates _ -> None
+
+  let invalid_to_mutate t =
+    match size_of_block t with
+    | None -> true
+    | Some 0 -> false  (* empty arrays are treated as mutable *)
+    | Some _ -> true
 end
 
 let equal_boxed_int = T.equal_boxed_int
@@ -864,9 +903,10 @@ let useful t =
 
 let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 
-let is_definitely_immutable t =
+let invalid_to_mutate t =
   match t.descr with
-  | String { contents = Some _ } | Union _ | Set_of_closures _ | Float _
+  | Union unionable -> Unionable.invalid_to_mutate unionable
+  | String { contents = Some _ } | Set_of_closures _ | Float _
   | Boxed_int _ | Closure _ -> true
   | String { contents = None } | Float_array _ | Unresolved _ | Unknown _
   | Bottom -> false
@@ -924,6 +964,12 @@ Format.eprintf "get_field %d from %a\n%!" i print t;
     (* We don't know anything, but we must remember that it comes
        from another compilation unit in case it contains a closure. *)
     Ok (value_unknown (Unresolved_value value))
+
+let length_of_array t =
+  match t.descr with
+  | Union union -> Unionable.size_of_block union
+  | Float_array { contents = Contents floats; _ } -> Some (Array.length floats)
+  | _ -> None  (* Could be improved later if required. *)
 
 type checked_approx_for_block =
   | Wrong
@@ -1115,6 +1161,12 @@ let approx_for_bound_var value_set_of_closures var =
       print_value_set_of_closures value_set_of_closures
       Var_within_closure.print var
       (Printexc.raw_backtrace_to_string (Printexc.get_callstack max_int))
+
+let check_approx_for_int t : int option =
+  match t.descr with
+  | Union unionable -> Unionable.as_int unionable
+  | Float _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
+  | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
 
 let check_approx_for_float t : float option =
   match t.descr with

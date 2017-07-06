@@ -216,8 +216,9 @@ Format.eprintf "try_specialising: adding use of %a with args approxs %a\n%!"
 *)
 let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       ~(newly_specialised_args : Flambda.specialised_args)
-      ~invariant_params_flow ~env ~recursive ~simplify_let_cont_handlers
-      ~definitions_with_uses : specialising_result =
+      ~invariant_params_flow ~env ~(recursive : Asttypes.rec_flag)
+      ~simplify_let_cont_handlers ~definitions_with_uses
+      : specialising_result =
   let freshening, env = environment_for_simplification ~env ~old_handlers in
   let entry_point_cont = cont in
   let entry_point_new_cont =
@@ -231,6 +232,34 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
     usage_information_for_simplification ~env ~old_handlers ~new_handlers
       ~definitions_with_uses ~freshening
   in
+Format.eprintf "trying to specialise %a@ \n...in environment:@ \n%a\n%!"
+  Flambda.print_let_cont_handlers
+  (Flambda.Recursive old_handlers)
+  E.print env;
+  if !Clflags.flambda_invariant_checks then begin
+    let handlers : Flambda.let_cont_handlers =
+      match recursive with
+      | Nonrecursive ->
+        begin match Continuation.Map.bindings new_handlers with
+        | [name, handler] -> Nonrecursive { name; handler; }
+        | _ -> assert false
+        end
+      | Recursive -> Recursive new_handlers
+    in
+    let free_conts =
+      Flambda.free_continuations_of_let_cont_handlers ~handlers
+    in
+    let unbound_conts =
+      Continuation.Set.filter (fun cont -> not (E.mem_continuation env cont))
+        free_conts
+    in
+    if not (Continuation.Set.is_empty unbound_conts) then begin
+      Misc.fatal_errorf "Candidate for specialisation has free \
+          continuations %a that are not bound in the environment:@ \n%a"
+        Continuation.Set.print unbound_conts
+        E.print env
+    end
+  end;
   let new_handlers, r =
     simplify_let_cont_handlers ~env ~r ~handlers:new_handlers
       ~args_approxs:None ~recursive ~freshening:(E.freshening env)
@@ -454,8 +483,7 @@ Format.eprintf "Trying to specialise %a.  All handlers in group %a\n%!"
   Continuation.Set.print (Continuation.Map.keys old_handlers);
 *)
 
-let beneficial_candidate_specialisations r ~specialisations
-      ~simplify_let_cont_handlers =
+let beneficial_specialisations r ~specialisations ~simplify_let_cont_handlers =
   let module CA = Continuation.With_args in
   let module CSA = Continuation_with_specialised_args in
   let definitions_with_uses = R.continuation_definitions_with_uses r in
@@ -605,7 +633,7 @@ let for_toplevel_expression expr ~vars_in_scope r ~simplify_let_cont_handlers
     ~f:(fun () ->
       let new_conts, apply_cont_rewrites =
         let specialisations = find_candidate_specialisations r ~backend in
-        beneficial_candidate_specialisations r ~specialisations
+        beneficial_specialisations r ~specialisations
           ~simplify_let_cont_handlers
       in
       if Continuation.Map.is_empty new_conts then None

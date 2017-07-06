@@ -463,6 +463,18 @@ let mk_dtimings f =
   "-dtimings", Arg.Unit f, " Print timings information for each pass";
 ;;
 
+let mk_treat_invalid_code_as_dead f =
+  "-treat-invalid-code-as-dead", Arg.Unit f,
+    " Delete code performing operations that will misbehave at runtime or \
+      whose semantics may not be preserved during compilation (see OCaml \
+      manual for full details)"
+;;
+
+let mk_no_treat_invalid_code_as_dead f =
+  "-no-treat-invalid-code-as-dead", Arg.Unit f,
+    " Disable code deletion performed by -treat-invalid-code-as-dead"
+;;
+
 let mk_dprofile f =
   "-dprofile", Arg.Unit f, Profile.options_doc
 ;;
@@ -919,6 +931,8 @@ module type Optcommon_options = sig
   val _no_unbox_specialised_args : unit -> unit
   val _o2 : unit -> unit
   val _o3 : unit -> unit
+  val _treat_invalid_code_as_dead : unit -> unit
+  val _no_treat_invalid_code_as_dead : unit -> unit
 
   val _clambda_checks : unit -> unit
   val _dflambda : unit -> unit
@@ -1227,6 +1241,8 @@ struct
     mk_strict_formats F._strict_formats;
     mk_no_strict_formats F._no_strict_formats;
     mk_thread F._thread;
+    mk_treat_invalid_code_as_dead F._treat_invalid_code_as_dead;
+    mk_no_treat_invalid_code_as_dead F._no_treat_invalid_code_as_dead;
     mk_unbox_closures F._unbox_closures;
     mk_unbox_closures_factor F._unbox_closures_factor;
     mk_inline_max_unroll F._inline_max_unroll;
@@ -1333,6 +1349,8 @@ module Make_opttop_options (F : Opttop_options) = struct
     mk_no_strict_sequence F._no_strict_sequence;
     mk_strict_formats F._strict_formats;
     mk_no_strict_formats F._no_strict_formats;
+    mk_treat_invalid_code_as_dead F._treat_invalid_code_as_dead;
+    mk_no_treat_invalid_code_as_dead F._no_treat_invalid_code_as_dead;
     mk_unbox_closures F._unbox_closures;
     mk_unbox_closures_factor F._unbox_closures_factor;
     mk_unboxed_types F._unboxed_types;
