@@ -232,11 +232,9 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
     usage_information_for_simplification ~env ~old_handlers ~new_handlers
       ~definitions_with_uses ~freshening
   in
-Format.eprintf "trying to specialise %a@ \n...in environment:@ \n%a\n%!"
-  Flambda.print_let_cont_handlers
-  (Flambda.Recursive old_handlers)
-  E.print env;
   if !Clflags.flambda_invariant_checks then begin
+    (* Unbound continuations will be caught by [simplify_let_cont_handlers]
+       but it's nicer for debugging to check now. *)
     let handlers : Flambda.let_cont_handlers =
       match recursive with
       | Nonrecursive ->
@@ -255,9 +253,12 @@ Format.eprintf "trying to specialise %a@ \n...in environment:@ \n%a\n%!"
     in
     if not (Continuation.Set.is_empty unbound_conts) then begin
       Misc.fatal_errorf "Candidate for specialisation has free \
-          continuations %a that are not bound in the environment:@ \n%a"
+          continuations %a that are not bound in the environment:@ \n%a@ \n\
+          The candidate for specialisation (originally named %a) was:@ \n%a"
         Continuation.Set.print unbound_conts
         E.print env
+        Continuation.Set.print (Continuation.Map.keys old_handlers)
+        Flambda.print_let_cont_handlers handlers
     end
   end;
   let new_handlers, r =
