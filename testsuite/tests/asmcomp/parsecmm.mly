@@ -191,11 +191,12 @@ expr:
   | LPAREN IF expr expr expr RPAREN { Cifthenelse($3, $4, $5) }
   | LPAREN SWITCH INTCONST expr caselist RPAREN { make_switch $3 $4 $5 }
   | LPAREN WHILE expr sequence RPAREN
-      { let body =
+      { let cont = Lambda.next_raise_count () in
+        let body =
           match $3 with
             Cconst_int x when x <> 0 -> $4
-          | _ -> Cifthenelse($3, $4, (Cexit(0,[]))) in
-        Ccatch(Normal Recursive, [0, [], Cloop body], Ctuple []) }
+          | _ -> Cifthenelse($3, $4, (Cexit(cont,[]))) in
+        Ccatch(Normal Recursive, [cont, [], Cloop body], Ctuple []) }
   | LPAREN EXIT IDENT exprlist RPAREN
     { Cexit(find_label $3, List.rev $4) }
   | LPAREN CATCH sequence WITH catch_handlers RPAREN
@@ -207,7 +208,7 @@ expr:
     { unbind_ident $5;
       let cont = Lambda.next_raise_count () in
       let result = bind_ident "result" in
-      Ccatch (Normal Nonrecursive, [cont, [$5], $6],
+      Ccatch (Exn_handler, [cont, [$5], $6],
         Csequence (Cop (Cpushtrap cont, [], debuginfo ()),
           Clet (result, $3,
             Csequence (Cop (Cpoptrap cont, [], debuginfo ()),
