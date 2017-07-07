@@ -232,6 +232,29 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
     usage_information_for_simplification ~env ~old_handlers ~new_handlers
       ~definitions_with_uses ~freshening
   in
+let old_handlers' : Flambda.let_cont_handlers =
+  match recursive with
+  | Nonrecursive ->
+    begin match Continuation.Map.bindings old_handlers with
+    | [name, handler] -> Nonrecursive { name; handler; }
+    | _ -> assert false
+    end
+  | Recursive -> Recursive old_handlers
+in
+let new_handlers' : Flambda.let_cont_handlers =
+  match recursive with
+  | Nonrecursive ->
+    begin match Continuation.Map.bindings new_handlers with
+    | [name, handler] -> Nonrecursive { name; handler; }
+    | _ -> assert false
+    end
+  | Recursive -> Recursive new_handlers
+in
+if !Clflags.dump_flambda then begin
+Format.eprintf "Trying to specialise: old@ \n%a@ \nnew@ \n%a@ \n"
+  Flambda.print_let_cont_handlers old_handlers'
+  Flambda.print_let_cont_handlers new_handlers'
+end;
   if !Clflags.flambda_invariant_checks then begin
     (* Unbound continuations will be caught by [simplify_let_cont_handlers]
        but it's nicer for debugging to check now. *)
@@ -270,7 +293,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
   | Some new_handlers ->
     let module W = Inlining_cost.Whether_sufficient_benefit in
     let wsb =
-      let originals =
+      let _originals =
         List.map (fun (handler : Flambda.continuation_handler) ->
             handler.handler)
           (Continuation.Map.data old_handlers)
@@ -287,7 +310,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
       in
       (* CR mshinwell: Probably some stuff about jump benefits should be
          added... *)
-      W.create_list ~originals
+      W.create_list ~originals:[]
         ~toplevel:(E.at_toplevel env)
         ~branch_depth:(E.branch_depth env)
         new_handlers
@@ -295,6 +318,9 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
         ~lifting:false
         ~round:(E.round env)
     in
+if W.evaluate wsb && !Clflags.dump_flambda then begin
+Format.eprintf "Benefit: %a@ \n%!" (W.print_description ~subfunctions:false) wsb
+  end;
     if W.evaluate wsb then Specialised (entry_point_new_cont, new_handlers)
     else Didn't_specialise
 

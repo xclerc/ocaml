@@ -25,6 +25,7 @@
 val run
    : never_inline:bool
   -> allow_continuation_inlining:bool
+  -> allow_continuation_specialisation:bool
   -> backend:(module Backend_intf.S)
   -> prefixname:string
   -> round:int

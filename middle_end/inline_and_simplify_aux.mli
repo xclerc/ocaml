@@ -34,6 +34,7 @@ module Env : sig
   val create
      : never_inline:bool
     -> allow_continuation_inlining:bool
+    -> allow_continuation_specialisation:bool
     -> backend:(module Backend_intf.S)
     -> round:int
     -> t
@@ -186,8 +187,11 @@ module Env : sig
   val never_inline : t -> bool
 
   val never_inline_continuations : t -> bool
+  val never_specialise_continuations : t -> bool
+  val never_unbox_continuations : t -> bool
 
   val disallow_continuation_inlining : t -> t
+  val disallow_continuation_specialisation : t -> t
 
   (** Allow terms to be simplified under less precise approximation
       assumptions (see [less_precise_approximations] below). *)

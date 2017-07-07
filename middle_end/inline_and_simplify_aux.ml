@@ -38,6 +38,7 @@ module Env = struct
     never_inline_inside_closures : bool;
     never_inline_outside_closures : bool;
     allow_continuation_inlining : bool;
+    allow_continuation_specialisation : bool;
     allow_less_precise_approximations : bool;
     unroll_counts : int Set_of_closures_origin.Map.t;
     inlining_counts : int Closure_id.Map.t;
@@ -47,7 +48,8 @@ module Env = struct
     inlined_debuginfo : Debuginfo.t;
   }
 
-  let create ~never_inline ~allow_continuation_inlining ~backend ~round =
+  let create ~never_inline ~allow_continuation_inlining
+        ~allow_continuation_specialisation ~backend ~round =
     { backend;
       round;
       approx = Variable.Map.empty;
@@ -62,7 +64,8 @@ module Env = struct
       never_inline;
       never_inline_inside_closures = false;
       never_inline_outside_closures = false;
-      allow_continuation_inlining = allow_continuation_inlining;
+      allow_continuation_inlining;
+      allow_continuation_specialisation;
       allow_less_precise_approximations = false;
       unroll_counts = Set_of_closures_origin.Map.empty;
       inlining_counts = Closure_id.Map.empty;
@@ -383,6 +386,15 @@ module Env = struct
 
   let never_inline_continuations t =
     never_inline t && not t.allow_continuation_inlining
+
+  let disallow_continuation_specialisation t =
+    { t with allow_continuation_specialisation = false; }
+
+  let never_specialise_continuations t =
+    never_inline t && not t.allow_continuation_specialisation
+
+  (* CR mshinwell: may want to split this out properly *)
+  let never_unbox_continuations = never_specialise_continuations
 
   let less_precise_approximations t = t.allow_less_precise_approximations
 

@@ -228,7 +228,10 @@ module Benefit = struct
   }
 
   let remove_call t = { t with remove_call = t.remove_call + 1; }
-  let remove_alloc t = { t with remove_alloc = t.remove_alloc + 1; }
+  let remove_alloc t =
+Printf.eprintf "remove_alloc: %s\n%!"
+  (Printexc.raw_backtrace_to_string (Printexc.get_callstack 50));
+    { t with remove_alloc = t.remove_alloc + 1; }
   let remove_prim t = { t with remove_prim = t.remove_prim + 1; }
   let remove_prims t n = { t with remove_prim = t.remove_prim + n; }
   let remove_branch t = { t with remove_branch = t.remove_branch + 1; }

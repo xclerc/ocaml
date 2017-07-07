@@ -784,7 +784,10 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
     (* CR mshinwell: I'm not sure about this "round" condition.  It seems
        though that doing [Unbox_returns] too early may be
        detrimental, as it prevents small functions being inlined *)
-    if E.never_inline env || E.round env < 2 then
+    if E.never_inline env
+      || E.round env < 2
+      || E.never_unbox_continuations env
+    then
       function_decls, Variable.Map.empty
     else
       let continuation_param_uses =
@@ -1230,6 +1233,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
        to eliminate the use. *)
     let env = E.activate_freshening env in
     let env = E.disallow_continuation_inlining (E.set_never_inline env) in
+    let env = E.disallow_continuation_specialisation env in
     let params, freshening =
       Freshening.add_variables' (E.freshening env)
         (Parameter.List.vars handler.params)
@@ -2190,7 +2194,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         (* Unboxing of continuation parameters is done now so that in one pass
            of [Inline_and_simplify] such unboxing will go all the way down the
            control flow. *)
-        if handler.stub || E.never_inline_continuations env
+        if handler.stub || E.never_unbox_continuations env
         then Unchanged { handler; }
         else
           let args_approxs =
@@ -2292,7 +2296,7 @@ Format.eprintf "args_approxs override:@ %a\n%!"
         let handlers = original_handlers in
         let r = original_r in
         let handlers, env, update_use_env =
-          if E.never_inline_continuations env then
+          if E.never_unbox_continuations env then
             handlers, body_env, []
           else
             let with_wrappers =
@@ -2515,29 +2519,36 @@ and simplify_toplevel env r expr ~continuation ~descr =
 Format.eprintf "Simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
 *)
   let expr, r = simplify env r expr in
+  Flambda_invariants.check_toplevel_simplification_result r expr
+    ~continuation ~descr;
   let expr, r =
 (*
 Format.eprintf "After simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
 *)
-    Flambda_invariants.check_toplevel_simplification_result r expr
-      ~continuation ~descr;
-    if E.never_inline_continuations env then begin
-      expr, r
-    end else begin
-      (* Continuation inlining and specialisation is done now, rather than
-         during [simplify]'s traversal itself, to reduce quadratic behaviour
-         to linear.
-         Since we only inline linearly-used non-recursive continuations, the
-         changes to [r] that need to be made by the inlining pass are
-         straightforward. *)
-      let expr, r =
-        Continuation_inlining.for_toplevel_expression expr r
-      in
+    let expr, r =
+      if E.never_inline_continuations env then begin
+        expr, r
+      end else begin
+        (* Continuation inlining and specialisation is done now, rather than
+           during [simplify]'s traversal itself, to reduce quadratic behaviour
+           to linear.
+           Since we only inline linearly-used non-recursive continuations, the
+           changes to [r] that need to be made by the inlining pass are
+           straightforward. *)
+        let expr, r =
+          Continuation_inlining.for_toplevel_expression expr r
+        in
 (*
 Format.eprintf "After continuation inlining:@ \n%a\n%!" Flambda.print expr;
 *)
-      Flambda_invariants.check_toplevel_simplification_result r expr
-        ~continuation ~descr;
+        Flambda_invariants.check_toplevel_simplification_result r expr
+          ~continuation ~descr;
+        expr, r
+      end
+    in
+    if E.never_specialise_continuations env then begin
+      expr, r
+    end else begin
       let vars_in_scope = E.vars_in_scope env in
       let new_expr =
         (* CR mshinwell: Should the specialisation pass return some
@@ -2934,14 +2945,15 @@ let add_predef_exns_to_environment ~env ~backend =
     env
     Predef.all_predef_exns
 
-let run ~never_inline ~allow_continuation_inlining ~backend ~prefixname ~round
-      program =
+let run ~never_inline ~allow_continuation_inlining
+      ~allow_continuation_specialisation ~backend ~prefixname ~round program =
   let r = R.create () in
   let report = !Clflags.inlining_report in
   if never_inline then Clflags.inlining_report := false;
   let initial_env =
     add_predef_exns_to_environment
-      ~env:(E.create ~never_inline ~allow_continuation_inlining ~backend ~round)
+      ~env:(E.create ~never_inline ~allow_continuation_inlining
+        ~allow_continuation_specialisation ~backend ~round)
       ~backend
   in
   let result, r = simplify_program initial_env r program in
