@@ -36,7 +36,7 @@ let () = (h [@inlined always]) (Sys.opaque_identity 2)
 
   Presumably this relates to the new let rec code?
 *)
-(*
+
 (* Recursive constant values should be static *)
 let rec a = 1 :: b
 and b = 2 :: a
@@ -71,8 +71,6 @@ let i () =
   assert(is_in_static_data l2)
 
 let () = (i [@inlined never]) ()
-
-*)
 
 module type P = module type of Pervasives
 (* Top-level modules should be static *)

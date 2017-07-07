@@ -203,6 +203,16 @@ expr:
       List.iter (fun (_, l, _) -> List.iter unbind_ident l) handlers;
       Ccatch(Normal Recursive, handlers, $3) }
   | EXIT        { Cexit(0,[]) }
+  | LPAREN TRY sequence WITH bind_ident sequence RPAREN
+    { unbind_ident $5;
+      let cont = Lambda.next_raise_count () in
+      let result = bind_ident "result" in
+      Ccatch (Normal Nonrecursive, [cont, [$5], $6],
+        Csequence (Cop (Cpushtrap cont, [], debuginfo ()),
+          Clet (result, $3,
+            Csequence (Cop (Cpoptrap cont, [], debuginfo ()),
+              Cvar result))))
+    }
   | LPAREN VAL expr expr RPAREN
       { Cop(Cload (Word_val, Mutable), [access_array $3 $4 Arch.size_addr],
           debuginfo ()) }
