@@ -1885,7 +1885,7 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
   r, handler
 
 and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
-      ~(recursive : Asttypes.rec_flag) ~freshening ~update_use_env
+      ~(recursive : Asttypes.rec_flag) ~freshening
       : Flambda.let_cont_handlers option * R.t =
   Continuation.Map.iter (fun cont _handler ->
       let cont = Freshening.apply_static_exception freshening cont in
@@ -1980,7 +1980,7 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
       Continuation.Map.fold (fun cont
               ((handler : Flambda.continuation_handler), _r_from_handler)
               (r, handlers) ->
-          let r, uses = R.exit_scope_catch ~update_use_env r env cont in
+          let r, uses = R.exit_scope_catch r env cont in
           if continuation_unused cont then
             r, handlers
           else
@@ -2200,7 +2200,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           Unbox_continuation_params.for_non_recursive_continuation ~handler
             ~args_approxs ~name ~backend:(E.backend env)
       in
-      let simplify_one_handler ?update_use_env env r ~name ~handler ~body
+      let simplify_one_handler env r ~name ~handler ~body
               : Flambda.expr * R.t =
         (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
            non-recursive ones before simplifying their body.  I'm not sure we
@@ -2210,14 +2210,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         let handlers =
           Continuation.Map.add name handler Continuation.Map.empty
         in
-        let update_use_env =
-          match update_use_env with
-          | None -> (fun env -> env)
-          | Some f -> f
-        in
         let handlers, r =
           simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs:None
-            ~recursive:Asttypes.Nonrecursive ~freshening ~update_use_env
+            ~recursive:Asttypes.Nonrecursive ~freshening
         in
         match handlers with
         | None -> body, r
@@ -2226,33 +2221,23 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       begin match with_wrapper with
       | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
       | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
-        let body, r =
-          let approx =
-            Continuation_approx.create_unknown ~name:new_cont
-              ~num_params:(List.length new_handler.params)
-          in
-          let update_use_env env =
-            E.add_continuation env new_cont approx
-          in
-          (* CR mshinwell: See if we can cut down the continuation information
-             in the environment (probably just to stub definitions and
-             alias definitions) so we don't need [update_use_env].
-             Second thoughts: maybe this wouldn't help?  Some of these being
-             added are stubs. *)
-          let env = update_use_env env in
-(*
-Format.eprintf "Adding %a to the environment to simplify the wrapper\n%!"
-  Continuation.print new_cont;
-*)
-          simplify_one_handler ~update_use_env env r ~name
-            ~handler:wrapper_handler ~body
+        let approx =
+          Continuation_approx.create_unknown ~name:new_cont
+            ~num_params:(List.length new_handler.params)
         in
+        let body, r =
+          let env = E.add_continuation env new_cont approx in
+          simplify_one_handler env r ~name ~handler:wrapper_handler ~body
+        in
+        let body, r =
+          simplify_one_handler env r ~name:new_cont ~handler:new_handler ~body
+        in
+        let r =
+          R.update_all_continuation_use_environments r
+            ~if_present_in_env:name ~then_add_to_env:(new_cont, approx)
+        in
+        body, r
 (*
-let body, r =
-*)
-        simplify_one_handler env r ~name:new_cont ~handler:new_handler ~body
-(*
-in
 Format.eprintf "With wrappers applied:\n@ %a\n%!"
   Flambda.print body;
 body, r
@@ -2283,7 +2268,6 @@ body, r
         let env = E.allow_less_precise_approximations body_env in
         simplify_let_cont_handlers ~env ~r ~handlers
           ~args_approxs:None ~recursive:Asttypes.Recursive ~freshening
-          ~update_use_env:(fun env -> env)
       in
       begin match handlers with
       | None -> body, r
@@ -2309,7 +2293,7 @@ Format.eprintf "args_approxs override:@ %a\n%!"
         let r = original_r in
         let handlers, env, update_use_env =
           if E.never_inline_continuations env then
-            handlers, body_env, (fun env -> env)
+            handlers, body_env, []
           else
             let with_wrappers =
               Unbox_continuation_params.for_recursive_continuations
@@ -2333,17 +2317,24 @@ Format.eprintf "args_approxs override:@ %a\n%!"
                       ~num_params:(List.length new_handler.params)
                   in
                   let env = E.add_continuation env new_cont approx in
-                  let update_use_env env =
-                    update_use_env (E.add_continuation env new_cont approx)
+                  let update_use_env =
+                    (cont, (new_cont, approx)) :: update_use_env
                   in
                   handlers, env, update_use_env)
               with_wrappers
-              (Continuation.Map.empty, body_env, (fun env -> env))
+              (Continuation.Map.empty, body_env, [])
         in
         let handlers, r =
           simplify_let_cont_handlers ~env ~r ~handlers
             ~args_approxs:(Some args_approxs) ~recursive:Asttypes.Recursive
-            ~freshening ~update_use_env
+            ~freshening
+        in
+        let r =
+          List.fold_left (fun r (if_present_in_env, then_add_to_env) ->
+              R.update_all_continuation_use_environments r
+                ~if_present_in_env ~then_add_to_env)
+            r
+            update_use_env
         in
         begin match handlers with
         | None -> body, r
@@ -2525,6 +2516,9 @@ Format.eprintf "Simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
 *)
   let expr, r = simplify env r expr in
   let expr, r =
+(*
+Format.eprintf "After simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
+*)
     Flambda_invariants.check_toplevel_simplification_result r expr
       ~continuation ~descr;
     if E.never_inline_continuations env then begin
@@ -2539,6 +2533,9 @@ Format.eprintf "Simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
       let expr, r =
         Continuation_inlining.for_toplevel_expression expr r
       in
+(*
+Format.eprintf "After continuation inlining:@ \n%a\n%!" Flambda.print expr;
+*)
       Flambda_invariants.check_toplevel_simplification_result r expr
         ~continuation ~descr;
       let vars_in_scope = E.vars_in_scope env in

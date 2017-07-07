@@ -672,12 +672,15 @@ Format.eprintf "approx1=%a approx2=%a\n%!"
     { t with application_points; }
 *)
 
-  let map_use_environments t ~f =
+  let update_use_environments t ~if_present_in_env ~then_add_to_env =
     let application_points =
       List.map (fun (use : Use.t) ->
-          { use with
-            env = f use.env;
-          })
+          if Env.mem_continuation use.env if_present_in_env then
+            let new_cont, approx = then_add_to_env in
+            let env = Env.add_continuation use.env new_cont approx in
+            { use with env; }
+          else
+            use)
         t.application_points
     in
     { t with application_points; }
@@ -876,28 +879,76 @@ approxs
     | (uses, _approx, _env, _recursive) ->
       Continuation_uses.meet_of_args_approxs uses ~num_params
 
-  let exit_scope_catch ?update_use_env t env i =
-    (*Format.eprintf "exit_scope_catch %a\n%!" Continuation.print i;*)
+  let exit_scope_catch t env i =
+(*
+    Format.eprintf "exit_scope_catch %a\n%!" Continuation.print i;
+*)
     let t, uses =
       match Continuation.Map.find i t.used_continuations with
       | exception Not_found ->
+(*
+Format.eprintf "no uses\n%!";
+*)
         let uses =
           Continuation_uses.create ~continuation:i ~backend:(Env.backend env)
         in
         t, uses
       | uses ->
-        let uses =
-          match update_use_env with
-          | None -> uses
-          | Some f ->
-            Continuation_uses.map_use_environments uses ~f
-        in
+(*
+let application_points =
+  Continuation_uses.application_points uses
+in
+Format.eprintf "Uses:\n";
+let count = ref 1 in
+List.iter (fun (use : Continuation_uses.Use.t) ->
+  let env = use.env in
+  Format.eprintf "Use %d: %a@ \n%!"
+    (!count) Env.print env;
+  incr count)
+application_points;
+*)
         { t with
           used_continuations = Continuation.Map.remove i t.used_continuations;
         }, uses
     in
     assert (continuation_unused t i);
+(*
+    Format.eprintf "exit_scope_catch %a finished.\n%!" Continuation.print i;
+let application_points =
+  Continuation_uses.application_points uses
+in
+Format.eprintf "Uses being returned:\n";
+let count = ref 1 in
+List.iter (fun (use : Continuation_uses.Use.t) ->
+  let env = use.env in
+  Format.eprintf "Use %d: %a@ \n%!"
+    (!count) Env.print env;
+  incr count)
+application_points;
+*)
     t, uses
+
+  let update_all_continuation_use_environments t ~if_present_in_env
+        ~then_add_to_env =
+    let used_continuations =
+      Continuation.Map.map (fun uses ->
+            Continuation_uses.update_use_environments uses
+              ~if_present_in_env ~then_add_to_env)
+        t.used_continuations
+    in
+    let defined_continuations =
+      Continuation.Map.map (fun (uses, approx, env, recursive) ->
+          let uses =
+            Continuation_uses.update_use_environments uses
+              ~if_present_in_env ~then_add_to_env
+          in
+          uses, approx, env, recursive)
+        t.defined_continuations
+    in
+    { t with
+      used_continuations;
+      defined_continuations;
+    }
 
   let define_continuation t cont env recursive uses approx =
 (*    Format.eprintf "define_continuation %a\n%!" Continuation.print cont;*)

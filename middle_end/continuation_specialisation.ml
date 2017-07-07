@@ -264,7 +264,6 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
   let new_handlers, r =
     simplify_let_cont_handlers ~env ~r ~handlers:new_handlers
       ~args_approxs:None ~recursive ~freshening:(E.freshening env)
-      ~update_use_env:(fun env -> env)
   in
   match new_handlers with
   | None -> Didn't_specialise

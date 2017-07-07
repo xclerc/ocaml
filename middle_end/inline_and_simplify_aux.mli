@@ -428,8 +428,7 @@ module Result : sig
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
   val exit_scope_catch
-     : ?update_use_env:(Env.t -> Env.t)
-    -> t
+     : t
     -> Env.t
     -> Continuation.t
     -> t * Continuation_uses.t
@@ -442,6 +441,18 @@ module Result : sig
     -> Asttypes.rec_flag
     -> Continuation_uses.t
     -> Continuation_approx.t
+    -> t
+
+  (** Update all use environments (both for "used" and "defined" continuations)
+      such that if [is_present_in_env] is in such an environment then
+      [then_add_to_env] will be added with the given approximation.
+
+      This is used after wrappers have been added during continuation unboxing
+      to keep [r] up to date. *)
+  val update_all_continuation_use_environments
+     : t
+    -> if_present_in_env:Continuation.t
+    -> then_add_to_env:(Continuation.t * Continuation_approx.t)
     -> t
 
   (** Update the approximation for a defined continuation. *)
