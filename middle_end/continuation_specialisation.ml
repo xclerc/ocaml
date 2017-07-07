@@ -38,8 +38,9 @@ let environment_for_simplification ~env ~old_handlers =
       (Freshening.activate (E.freshening env))
   in
   let env =
-    E.disallow_continuation_inlining (
-      E.set_never_inline (E.set_freshening env freshening))
+    E.disallow_continuation_specialisation (
+      E.disallow_continuation_inlining (
+        E.set_never_inline (E.set_freshening env freshening)))
   in
   let env =
     Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
