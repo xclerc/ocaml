@@ -385,13 +385,13 @@ module Env = struct
     { t with allow_continuation_inlining = false; }
 
   let never_inline_continuations t =
-    never_inline t && not t.allow_continuation_inlining
+    not t.allow_continuation_inlining
 
   let disallow_continuation_specialisation t =
     { t with allow_continuation_specialisation = false; }
 
   let never_specialise_continuations t =
-    never_inline t && not t.allow_continuation_specialisation
+    not t.allow_continuation_specialisation
 
   (* CR mshinwell: may want to split this out properly *)
   let never_unbox_continuations = never_specialise_continuations
