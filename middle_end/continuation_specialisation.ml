@@ -83,10 +83,6 @@ let handlers_for_simplification ~old_handlers ~newly_specialised_args
               [entry_point_cont]); or
           (b) those arising from invariant parameters flow from the entry
               point's continuation handler. *)
-(*
-Format.eprintf "computing newly specialised args of %a\n%!"
-Continuation.print cont;
-*)
       let newly_specialised_args =
         if Continuation.equal cont entry_point_cont then
           newly_specialised_args
@@ -101,18 +97,10 @@ Continuation.print cont;
                 in
                 CV.Set.fold (fun (cont', param')
                         newly_specialised_args ->
-(*
-Format.eprintf "IPF param %a of %a --> param %a of %a\n%!"
-Variable.print param
-Continuation.print cont
-Variable.print param'
-Continuation.print cont';
-*)
                     if not (Continuation.equal cont cont') then
                       newly_specialised_args
                     else
-                      Variable.Map.add param' spec_to
-                        newly_specialised_args)
+                      Variable.Map.add param' spec_to newly_specialised_args)
                   flows_to
                   newly_specialised_args)
             newly_specialised_args
@@ -194,15 +182,10 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
           handler.params
           join_approxs
       in
-(*
-Format.eprintf "try_specialising: adding use of %a with args approxs %a\n%!"
-  Continuation.print cont
-  (Format.pp_print_list A.print) args_approxs;
-*)
-        R.use_continuation r env freshened_cont
-          (Not_inlinable_or_specialisable args_approxs))
-      old_handlers
-      (R.create ())
+      R.use_continuation r env freshened_cont
+        (Not_inlinable_or_specialisable args_approxs))
+    old_handlers
+    (R.create ())
 
 (* This function constructs a suitable environment for simplification of a
    continuation's body that is eligible for specialisation.  The freshening
@@ -232,29 +215,6 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
     usage_information_for_simplification ~env ~old_handlers ~new_handlers
       ~definitions_with_uses ~freshening
   in
-let old_handlers' : Flambda.let_cont_handlers =
-  match recursive with
-  | Nonrecursive ->
-    begin match Continuation.Map.bindings old_handlers with
-    | [name, handler] -> Nonrecursive { name; handler; }
-    | _ -> assert false
-    end
-  | Recursive -> Recursive old_handlers
-in
-let new_handlers' : Flambda.let_cont_handlers =
-  match recursive with
-  | Nonrecursive ->
-    begin match Continuation.Map.bindings new_handlers with
-    | [name, handler] -> Nonrecursive { name; handler; }
-    | _ -> assert false
-    end
-  | Recursive -> Recursive new_handlers
-in
-if !Clflags.dump_flambda then begin
-Format.eprintf "Trying to specialise: old@ \n%a@ \nnew@ \n%a@ \n"
-  Flambda.print_let_cont_handlers old_handlers'
-  Flambda.print_let_cont_handlers new_handlers'
-end;
   if !Clflags.flambda_invariant_checks then begin
     (* Unbound continuations will be caught by [simplify_let_cont_handlers]
        but it's nicer for debugging to check now. *)
@@ -308,8 +268,8 @@ end;
         | Alias _ ->
           Misc.fatal_error "simplify_let_cont_handlers should not return Alias"
       in
-      (* CR mshinwell: Probably some stuff about jump benefits should be
-         added... *)
+      (* CR-someday mshinwell: Probably some stuff about jump benefits should
+         be added... *)
       W.create_list ~originals:[]
         ~toplevel:(E.at_toplevel env)
         ~branch_depth:(E.branch_depth env)
@@ -318,9 +278,6 @@ end;
         ~lifting:false
         ~round:(E.round env)
     in
-if W.evaluate wsb && !Clflags.dump_flambda then begin
-Format.eprintf "Benefit: %a@ \n%!" (W.print_description ~subfunctions:false) wsb
-  end;
     if W.evaluate wsb then Specialised (entry_point_new_cont, new_handlers)
     else Didn't_specialise
 
@@ -362,17 +319,6 @@ let can_specialise_param ~(handler : Flambda.continuation_handler) ~param
     && Variable.Map.mem param invariant_params
     && (not (Variable.Map.mem param handler.specialised_args))
     && A.useful arg_approx
-
-(*
-Format.eprintf "Considering use of param %a as arg %a, approx %a: \
-    Invariant? %b New spec arg? %b Useful approx? %b\n%!"
-  Variable.print param
-  Variable.print _arg
-  Simple_value_approx.print arg_approx
-  (Variable.Map.mem param invariant_params)
-  (not (Variable.Map.mem param handler.specialised_args))
-  (A.useful arg_approx);
-*)
 
 let examine_use ~specialisations ~cont
       ~(handler : Flambda.continuation_handler) ~invariant_params
@@ -488,27 +434,6 @@ let find_candidate_specialisations r ~backend =
     definitions_with_uses
     Continuation_with_specialised_args.Map.empty
 
-(*
-let print_data ppf (uses, _env, _ipf, _handlers, _rec) =
-  Continuation.With_args.Set.print ppf uses
-in
-Format.eprintf "Specialisation first stage result:\n%a\n%!"
-  (Continuation_with_specialised_args.Map.print print_data)
-  specialisations;
-*)
-(* from below:
-        let () =
-          Format.eprintf "Trying to specialise %a (new spec args %a)\n%!"
-            Continuation.print cont
-            Flambda.print_specialised_args newly_specialised_args
-        in
-*)
-(*
-Format.eprintf "Trying to specialise %a.  All handlers in group %a\n%!"
-  Continuation.print cont
-  Continuation.Set.print (Continuation.Map.keys old_handlers);
-*)
-
 let beneficial_specialisations r ~specialisations ~simplify_let_cont_handlers =
   let module CA = Continuation.With_args in
   let module CSA = Continuation_with_specialised_args in
@@ -561,11 +486,8 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
     | exception Not_found -> None
     | handlers_list ->
       let expr =
-        List.fold_left (fun body handlers ->
-            Flambda.Let_cont {
-              body;
-              handlers;
-            })
+        List.fold_left (fun body handlers : Flambda.expr ->
+            Let_cont { body; handlers; })
           around
           handlers_list
       in
@@ -639,12 +561,7 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
           Continuation.With_args.Map.find key apply_cont_rewrites
         with
         | exception Not_found -> expr
-        | new_cont ->
-          (* As per the comment above on [try_specialising], we don't need
-             to touch [r] here, since it has already been updated to reflect
-             the fact that all [Apply_cont (cont, _, args)] are going to be
-             rewritten to point at [new_cont] instead. *)
-          Apply_cont (new_cont, trap_action, args)
+        | new_cont -> Apply_cont (new_cont, trap_action, args)
         end
       | Let_cont { handlers = Alias _; _ }
       | Apply _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
