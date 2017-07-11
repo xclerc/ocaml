@@ -41,7 +41,7 @@ module Env = struct
     allow_continuation_specialisation : bool;
     allow_less_precise_approximations : bool;
     unroll_counts : int Set_of_closures_origin.Map.t;
-    inlining_counts : int Closure_id.Map.t;
+    inlining_counts : int Closure_origin.Map.t;
     actively_unrolling : int Set_of_closures_origin.Map.t;
     closure_depth : int;
     inlining_stats_closure_stack : Inlining_stats.Closure_stack.t;
@@ -68,7 +68,7 @@ module Env = struct
       allow_continuation_specialisation;
       allow_less_precise_approximations = false;
       unroll_counts = Set_of_closures_origin.Map.empty;
-      inlining_counts = Closure_id.Map.empty;
+      inlining_counts = Closure_origin.Map.empty;
       actively_unrolling = Set_of_closures_origin.Map.empty;
       closure_depth = 0;
       inlining_stats_closure_stack =
@@ -99,11 +99,17 @@ module Env = struct
   let print ppf t =
     Format.fprintf ppf
       "Environment maps: %a@.Projections: %a@.Freshening: %a@.\
-        Continuations: %a@."
+        Continuations: %a@.Currently inside functions: %a@.\
+        Never inline: %b@.Never inline inside closures: %b@.\
+        Never inline outside closures: %b@."
       Variable.Set.print (Variable.Map.keys t.approx)
       (Projection.Map.print Variable.print) t.projections
       Freshening.print t.freshening
       (Continuation.Map.print Continuation_approx.print) t.continuations
+      Set_of_closures_origin.Set.print t.current_functions
+      t.never_inline
+      t.never_inline_inside_closures
+      t.never_inline_outside_closures
 
   let mem t var = Variable.Map.mem var t.approx
 
@@ -255,7 +261,16 @@ module Env = struct
   let activate_freshening t =
     { t with freshening = Freshening.activate t.freshening }
 
-  let enter_set_of_closures_declaration origin t =
+  (* CR-someday mshinwell: consider changing name to remove "declaration".
+     Also, isn't this the inlining stack?  Maybe we can use that instead. *)
+  let enter_set_of_closures_declaration t origin =
+(*
+Format.eprintf "Entering decl: have %a, adding %a, result %a\n%!"
+  Set_of_closures_origin.Set.print t.current_functions
+  Set_of_closures_origin.print origin
+  Set_of_closures_origin.Set.print
+    (Set_of_closures_origin.Set.add origin t.current_functions);
+*)
     { t with
       current_functions =
         Set_of_closures_origin.Set.add origin t.current_functions; }
@@ -357,7 +372,7 @@ module Env = struct
   let inlining_allowed t id =
     let inlining_count =
       try
-        Closure_id.Map.find id t.inlining_counts
+        Closure_origin.Map.find id t.inlining_counts
       with Not_found ->
         max 1 (Clflags.Int_arg_helper.get
                  ~key:t.round !Clflags.inline_max_unroll)
@@ -367,13 +382,13 @@ module Env = struct
   let inside_inlined_function t id =
     let inlining_count =
       try
-        Closure_id.Map.find id t.inlining_counts
+        Closure_origin.Map.find id t.inlining_counts
       with Not_found ->
         max 1 (Clflags.Int_arg_helper.get
                  ~key:t.round !Clflags.inline_max_unroll)
     in
     let inlining_counts =
-      Closure_id.Map.add id (inlining_count - 1) t.inlining_counts
+      Closure_origin.Map.add id (inlining_count - 1) t.inlining_counts
     in
     { t with inlining_counts }
 
@@ -1149,8 +1164,8 @@ let prepare_to_simplify_set_of_closures ~env
       Closure_id.Map.empty
   in
   let env =
-    E.enter_set_of_closures_declaration
-      function_decls.set_of_closures_origin env
+    E.enter_set_of_closures_declaration env
+      function_decls.set_of_closures_origin
   in
   (* we use the previous closure for evaluating the functions *)
   let internal_value_set_of_closures =

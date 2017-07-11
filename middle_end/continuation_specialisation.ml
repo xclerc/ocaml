@@ -420,11 +420,10 @@ let find_candidate_specialisations r ~backend =
         match (recursive : Asttypes.rec_flag), num_application_points with
         | Nonrecursive, n when n <= 1 ->
           (* Non-recursive continuations that only have a single (inlinable)
-             use point should have been inlined out by
-             [Continuation_inlining].  (There would be no point in
-             specialising such a continuation here in any case, since it's
-             already been simplified under the most precise approximations
-             available for its parameters.) *)
+             use point will be inlined out by [Continuation_inlining].
+             (There would be no point in specialising such a continuation
+             here in any case, since it's already been simplified under the
+             most precise approximations available for its parameters.) *)
           specialisations
         | (Nonrecursive | Recursive), _ ->
           List.fold_left (fun specialisations use ->

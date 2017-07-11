@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* CR mshinwell: check specialisation behaviour is preserved *)
+
 let unrecursify_function ~fun_var:function_variable
     ~(function_decl : Flambda.function_declaration) =
   let closure_id = Closure_id.wrap function_variable in
@@ -63,7 +65,7 @@ let unrecursify_function ~fun_var:function_variable
         }
     in
     let function_decl =
-      Flambda_utils.update_function_decl's_params_and_body function_decl
+      Flambda.update_function_decl's_params_and_body function_decl
         ~params:new_params ~body
     in
     Some function_decl

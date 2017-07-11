@@ -425,6 +425,9 @@ and function_declarations = private {
 }
 
 and function_declaration = private {
+  closure_origin : Closure_origin.t;
+  (** The closure from which this function declaration originally came.
+      Used as a backstop against unbounded recursion during inlining. *)
   continuation_param : Continuation.t;
   (** The continuation parameter of the function, i.e. to where we must jump
       once the result of the function has been computed.  If the continuation
@@ -732,7 +735,10 @@ val create_switch'
   -> expr * (int Continuation.Map.t)
 
 (** Create a function declaration.  This calculates the free variables and
-    symbols occurring in the specified [body]. *)
+    symbols occurring in the specified [body].
+    To just change the parameters or body of a function the "update" functions
+    below should be used, if possible; otherwise care must be taken to
+    preserve the [closure_origin]. *)
 val create_function_declaration
    : params:Parameter.t list
   -> continuation_param:Continuation.t
@@ -743,12 +749,28 @@ val create_function_declaration
   -> inline:Lambda.inline_attribute
   -> specialise:Lambda.specialise_attribute
   -> is_a_functor:bool
+  (* CR mshinwell for pchambart: check Closure_origin stuff *)
+  -> closure_origin:Closure_origin.t
   -> function_declaration
 
 (** Create a set of function declarations given the individual declarations. *)
 val create_function_declarations
    : funs:function_declaration Variable.Map.t
   -> function_declarations
+
+(** Change only the code of a function declaration. *)
+val update_body_of_function_declaration
+   : function_declaration
+  -> body:expr
+  -> function_declaration
+
+(** Change only the code and parameters of a function declaration. *)
+(* CR-soon mshinwell: rename this to match new update function above *)
+val update_function_decl's_params_and_body
+   : function_declaration
+  -> params:Parameter.t list
+  -> body:expr
+  -> function_declaration
 
 (** Create a set of function declarations based on another set of function
     declarations. *)

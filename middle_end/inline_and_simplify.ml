@@ -720,10 +720,8 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
           (Inlining_decision.should_inline_inside_declaration function_decl)
         ~dbg:function_decl.dbg
         ~f:(fun body_env ->
-(*
-Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
-  Flambda.print function_decl.body E.print body_env;
-*)
+          assert (E.inside_set_of_closures_declaration
+            function_decls.set_of_closures_origin body_env);
           let body, r, uses =
             let descr =
               Format.asprintf "the body of %a" Variable.print fun_var
@@ -763,6 +761,7 @@ Format.eprintf "Simplifying function body@;%a@;Environment:@;%a"
         ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
         ~inline ~specialise:function_decl.specialise
         ~is_a_functor:function_decl.is_a_functor
+        ~closure_origin:function_decl.closure_origin
     in
     let function_decl =
       match Unrecursify.unrecursify_function ~fun_var ~function_decl with
@@ -2611,7 +2610,7 @@ Format.eprintf "After continuation inlining:@ \n%a\n%!" Flambda.print expr;
   expr, r, uses
 
 and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
-      ~fun_var =
+      ~fun_var ~new_fun_var =
   let function_decl =
     match Variable.Map.find fun_var set_of_closures.function_decls.funs with
     | exception Not_found ->
@@ -2652,7 +2651,10 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~closure_id:(Closure_id.wrap fun_var)
       ~inline_inside:false
       ~dbg:function_decl.dbg
-      ~f:(fun body_env -> simplify body_env r function_decl.body)
+      ~f:(fun body_env ->
+        assert (E.inside_set_of_closures_declaration
+          function_decls.set_of_closures_origin body_env);
+        simplify body_env r function_decl.body)
   in
   let _r, _uses =
     R.exit_scope_catch r env function_decl.continuation_param
@@ -2664,6 +2666,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
       ~inline:function_decl.inline ~specialise:function_decl.specialise
       ~is_a_functor:function_decl.is_a_functor
+      ~closure_origin:(Closure_origin.create (Closure_id.wrap new_fun_var))
   in
   function_decl, specialised_args
 

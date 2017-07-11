@@ -348,6 +348,7 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
     Flambda.create_function_declaration ~params:(List.map subst_param params)
       ~continuation_param ~return_arity:1 ~body ~stub ~dbg:Debuginfo.none
       ~inline:Default_inline ~specialise:Default_specialise ~is_a_functor:false
+      ~closure_origin:(Closure_origin.create (Closure_id.wrap id))
   in
   assert (Variable.Set.equal (Variable.Set.map subst free_variables)
     function_declaration.free_variables);
@@ -987,16 +988,3 @@ let count_continuation_uses_toplevel (expr : Flambda.t) =
     (fun _named -> ())
     expr;
   Continuation.Tbl.to_map counts
-
-let update_function_decl's_params_and_body
-      (function_decl : Flambda.function_declaration) ~params ~body =
-  Flambda.create_function_declaration
-    ~params
-    ~continuation_param:function_decl.continuation_param
-    ~return_arity:function_decl.return_arity
-    ~body
-    ~stub:function_decl.stub
-    ~dbg:function_decl.dbg
-    ~inline:function_decl.inline
-    ~specialise:function_decl.specialise
-    ~is_a_functor:function_decl.is_a_functor

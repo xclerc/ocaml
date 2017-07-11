@@ -319,16 +319,8 @@ and sink_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let funs =
     Variable.Map.map (fun
             (function_decl : Flambda.function_declaration) ->
-        Flambda.create_function_declaration
-          ~params:function_decl.params
-          ~continuation_param:function_decl.continuation_param
-          ~return_arity:function_decl.return_arity
-          ~body:(sink function_decl.body)
-          ~stub:function_decl.stub
-          ~dbg:function_decl.dbg
-          ~inline:function_decl.inline
-          ~specialise:function_decl.specialise
-          ~is_a_functor:function_decl.is_a_functor)
+        Flambda.update_body_of_function_declaration function_decl
+          ~body:(sink function_decl.body))
       set_of_closures.function_decls.funs
   in
   let function_decls =

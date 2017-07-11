@@ -263,13 +263,8 @@ let rewrite_recursive_calls_with_symbols t
                 | e -> e)
               func_decl.body
           in
-          Flambda.create_function_declaration ~params:func_decl.params
-            ~continuation_param:func_decl.continuation_param
-            ~return_arity:func_decl.return_arity ~body
-            ~stub:func_decl.stub ~dbg:func_decl.dbg ~inline:func_decl.inline
-            ~specialise:func_decl.specialise
-            ~is_a_functor:func_decl.is_a_functor)
-          function_declarations.funs
+          Flambda.update_body_of_function_declaration func_decl ~body)
+        function_declarations.funs
       in
       Flambda.update_function_declarations function_declarations ~funs
     end
@@ -350,12 +345,8 @@ module Project_var = struct
           Flambda_utils.toplevel_substitution subst.sb_var func_decl.body
         in
         let function_decl =
-          Flambda.create_function_declaration ~params
-            ~continuation_param:func_decl.continuation_param
-            ~return_arity:func_decl.return_arity
-            ~body ~stub:func_decl.stub ~dbg:func_decl.dbg
-            ~inline:func_decl.inline ~specialise:func_decl.specialise
-            ~is_a_functor:func_decl.is_a_functor
+          Flambda.update_function_decl's_params_and_body func_decl
+            ~params ~body
         in
         function_decl, subst
       in

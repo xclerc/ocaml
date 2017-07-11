@@ -561,6 +561,7 @@ module Make (T : S) = struct
         ~inline:Default_inline
         ~specialise:Default_specialise
         ~is_a_functor:false
+        ~closure_origin:function_decl.closure_origin
     in
     new_fun_var, new_function_decl, rewritten_existing_specialised_args,
       benefit
@@ -619,7 +620,7 @@ module Make (T : S) = struct
           specialised_args, None
         else
           let function_decl, new_specialised_args =
-            duplicate_function ~env ~set_of_closures ~fun_var
+            duplicate_function ~env ~set_of_closures ~fun_var ~new_fun_var
           in
           let specialised_args =
             Variable.Map.disjoint_union specialised_args new_specialised_args
@@ -636,6 +637,9 @@ module Make (T : S) = struct
         in
         function_decl.params @ new_params
       in
+      let closure_origin =
+        Closure_origin.create (Closure_id.wrap new_fun_var)
+      in
       let rewritten_function_decl =
         Flambda.create_function_declaration
           ~continuation_param:function_decl.continuation_param
@@ -647,6 +651,7 @@ module Make (T : S) = struct
           ~inline:function_decl.inline
           ~specialise:function_decl.specialise
           ~is_a_functor:function_decl.is_a_functor
+          ~closure_origin
       in
       let funs, direct_call_surrogates =
         if for_one_function.make_direct_call_surrogates then
