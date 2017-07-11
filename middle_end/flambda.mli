@@ -736,9 +736,15 @@ val create_switch'
 
 (** Create a function declaration.  This calculates the free variables and
     symbols occurring in the specified [body].
+
     To just change the parameters or body of a function the "update" functions
     below should be used, if possible; otherwise care must be taken to
-    preserve the [closure_origin]. *)
+    preserve the [closure_origin].
+
+    When adding a stub to a function the stub should receive a new
+    [closure_origin] and the renamed original function should retain its
+    existing [closure_origin].
+*)
 val create_function_declaration
    : params:Parameter.t list
   -> continuation_param:Continuation.t

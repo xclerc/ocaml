@@ -539,8 +539,10 @@ and print_function_declaration ppf var (f : function_declaration) =
     | Never_specialise -> " *never_specialise*"
     | Default_specialise -> ""
   in
-  fprintf ppf "@[<2>(%a%s%s%s%s%s@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
+  fprintf ppf
+    "@[<2>(%a%s%s%s%s%s(origin %a)@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
     Variable.print var stub arity is_a_functor inline specialise
+    Closure_origin.print f.closure_origin
     Continuation.print f.continuation_param
     params f.params lam f.body
 

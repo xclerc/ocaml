@@ -99,7 +99,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~inline:function_decl.inline
       ~specialise:function_decl.specialise
       ~is_a_functor:function_decl.is_a_functor
-      ~closure_origin:(Closure_origin.create (Closure_id.wrap new_fun_var))
+      ~closure_origin:function_decl.closure_origin
   in
   let wrapper_return_cont = Continuation.create () in
   let _fun_wrapper_params_map, fun_wrapper_params,
@@ -156,7 +156,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~inline:Lambda.Default_inline
       ~specialise:Lambda.Default_specialise
       ~is_a_functor:function_decl.is_a_functor
-      ~closure_origin:function_decl.closure_origin
+      ~closure_origin:(Closure_origin.create (Closure_id.wrap fun_var))
   in
   Variable.Map.add new_fun_var function_decl
     (Variable.Map.add fun_var function_stub_decl

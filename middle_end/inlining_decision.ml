@@ -271,6 +271,8 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
              to avoid having to check whether or not it is recursive *)
           E.inside_unrolled_function env function_decls.set_of_closures_origin
         in
+        (* CR mshinwell: note: this next line was missing in the old Flambda *)
+        let env = E.inside_inlined_function env function_decl.closure_origin in
         let r_inlined =
           R.roll_back_continuation_uses r_inlined cont_usage_snapshot
         in
@@ -506,6 +508,10 @@ let specialise env r ~lhs_of_application
                        (Inlining_cost.Benefit.(+) (R.benefit r))
             in
             let application_env = E.set_never_inline_inside_closures env in
+(*
+Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
+  E.print application_env Flambda.print expr;
+*)
             let res = simplify application_env r expr in
             let decision =
               S.Specialised.With_subfunctions (wsb, wsb_with_subfunctions)
@@ -578,6 +584,11 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
     in
     original_expr, r
   in
+(*
+Format.eprintf "Application of %a (%a).\n%!"
+  Closure_id.print closure_id_being_applied
+  Variable.print_list args;
+*)
 (*
 Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
   Closure_id.print closure_id_being_applied
