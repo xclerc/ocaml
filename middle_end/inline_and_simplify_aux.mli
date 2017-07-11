@@ -34,6 +34,7 @@ module Env : sig
   val create
      : never_inline:bool
     -> allow_continuation_inlining:bool
+    -> allow_continuation_specialisation:bool
     -> backend:(module Backend_intf.S)
     -> round:int
     -> t
@@ -139,12 +140,6 @@ module Env : sig
       variables from outer scopes that are not accessible. *)
   val local : t -> t
 
-  (** Note that the inliner is descending into a function body from the given
-      set of closures.  A set of such descents is maintained. *)
-  (* CR-someday mshinwell: consider changing name to remove "declaration".
-     Also, isn't this the inlining stack?  Maybe we can use that instead. *)
-  val enter_set_of_closures_declaration : Set_of_closures_origin.t -> t -> t
-
   (** Determine whether the inliner is currently inside a function body from
       the given set of closures.  This is used to detect whether a given
       function call refers to a function which exists somewhere on the current
@@ -186,8 +181,11 @@ module Env : sig
   val never_inline : t -> bool
 
   val never_inline_continuations : t -> bool
+  val never_specialise_continuations : t -> bool
+  val never_unbox_continuations : t -> bool
 
   val disallow_continuation_inlining : t -> t
+  val disallow_continuation_specialisation : t -> t
 
   (** Allow terms to be simplified under less precise approximation
       assumptions (see [less_precise_approximations] below). *)
@@ -226,11 +224,12 @@ module Env : sig
 
   (** Whether it is permissible to inline a call to a function in the given
       environment. *)
-  val inlining_allowed : t -> Closure_id.t -> bool
+  val inlining_allowed : t -> Closure_origin.t -> bool
 
   (** Whether the given environment is currently being used to rewrite the
       body of an inlined function. *)
-  val inside_inlined_function : t -> Closure_id.t -> t
+  (* CR mshinwell: comment wrong? *)
+  val inside_inlined_function : t -> Closure_origin.t -> t
 
   (** If collecting inlining statistics, record that the inliner is about to
       descend into [closure_id].  This information enables us to produce a
@@ -428,8 +427,7 @@ module Result : sig
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
   val exit_scope_catch
-     : ?update_use_env:(Env.t -> Env.t)
-    -> t
+     : t
     -> Env.t
     -> Continuation.t
     -> t * Continuation_uses.t
@@ -442,6 +440,18 @@ module Result : sig
     -> Asttypes.rec_flag
     -> Continuation_uses.t
     -> Continuation_approx.t
+    -> t
+
+  (** Update all use environments (both for "used" and "defined" continuations)
+      such that if [is_present_in_env] is in such an environment then
+      [then_add_to_env] will be added with the given approximation.
+
+      This is used after wrappers have been added during continuation unboxing
+      to keep [r] up to date. *)
+  val update_all_continuation_use_environments
+     : t
+    -> if_present_in_env:Continuation.t
+    -> then_add_to_env:(Continuation.t * Continuation_approx.t)
     -> t
 
   (** Update the approximation for a defined continuation. *)

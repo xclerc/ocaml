@@ -254,9 +254,3 @@ val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t
 val count_continuation_uses_toplevel
    : Flambda.expr
   -> int Continuation.Map.t
-
-val update_function_decl's_params_and_body
-   : Flambda.function_declaration
-  -> params:Parameter.t list
-  -> body:Flambda.expr
-  -> Flambda.function_declaration

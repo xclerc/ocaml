@@ -38,16 +38,18 @@ module Env = struct
     never_inline_inside_closures : bool;
     never_inline_outside_closures : bool;
     allow_continuation_inlining : bool;
+    allow_continuation_specialisation : bool;
     allow_less_precise_approximations : bool;
     unroll_counts : int Set_of_closures_origin.Map.t;
-    inlining_counts : int Closure_id.Map.t;
+    inlining_counts : int Closure_origin.Map.t;
     actively_unrolling : int Set_of_closures_origin.Map.t;
     closure_depth : int;
     inlining_stats_closure_stack : Inlining_stats.Closure_stack.t;
     inlined_debuginfo : Debuginfo.t;
   }
 
-  let create ~never_inline ~allow_continuation_inlining ~backend ~round =
+  let create ~never_inline ~allow_continuation_inlining
+        ~allow_continuation_specialisation ~backend ~round =
     { backend;
       round;
       approx = Variable.Map.empty;
@@ -62,10 +64,11 @@ module Env = struct
       never_inline;
       never_inline_inside_closures = false;
       never_inline_outside_closures = false;
-      allow_continuation_inlining = allow_continuation_inlining;
+      allow_continuation_inlining;
+      allow_continuation_specialisation;
       allow_less_precise_approximations = false;
       unroll_counts = Set_of_closures_origin.Map.empty;
-      inlining_counts = Closure_id.Map.empty;
+      inlining_counts = Closure_origin.Map.empty;
       actively_unrolling = Set_of_closures_origin.Map.empty;
       closure_depth = 0;
       inlining_stats_closure_stack =
@@ -96,11 +99,17 @@ module Env = struct
   let print ppf t =
     Format.fprintf ppf
       "Environment maps: %a@.Projections: %a@.Freshening: %a@.\
-        Continuations: %a@."
+        Continuations: %a@.Currently inside functions: %a@.\
+        Never inline: %b@.Never inline inside closures: %b@.\
+        Never inline outside closures: %b@."
       Variable.Set.print (Variable.Map.keys t.approx)
       (Projection.Map.print Variable.print) t.projections
       Freshening.print t.freshening
       (Continuation.Map.print Continuation_approx.print) t.continuations
+      Set_of_closures_origin.Set.print t.current_functions
+      t.never_inline
+      t.never_inline_inside_closures
+      t.never_inline_outside_closures
 
   let mem t var = Variable.Map.mem var t.approx
 
@@ -252,7 +261,16 @@ module Env = struct
   let activate_freshening t =
     { t with freshening = Freshening.activate t.freshening }
 
-  let enter_set_of_closures_declaration origin t =
+  (* CR-someday mshinwell: consider changing name to remove "declaration".
+     Also, isn't this the inlining stack?  Maybe we can use that instead. *)
+  let enter_set_of_closures_declaration t origin =
+(*
+Format.eprintf "Entering decl: have %a, adding %a, result %a\n%!"
+  Set_of_closures_origin.Set.print t.current_functions
+  Set_of_closures_origin.print origin
+  Set_of_closures_origin.Set.print
+    (Set_of_closures_origin.Set.add origin t.current_functions);
+*)
     { t with
       current_functions =
         Set_of_closures_origin.Set.add origin t.current_functions; }
@@ -354,7 +372,7 @@ module Env = struct
   let inlining_allowed t id =
     let inlining_count =
       try
-        Closure_id.Map.find id t.inlining_counts
+        Closure_origin.Map.find id t.inlining_counts
       with Not_found ->
         max 1 (Clflags.Int_arg_helper.get
                  ~key:t.round !Clflags.inline_max_unroll)
@@ -364,13 +382,13 @@ module Env = struct
   let inside_inlined_function t id =
     let inlining_count =
       try
-        Closure_id.Map.find id t.inlining_counts
+        Closure_origin.Map.find id t.inlining_counts
       with Not_found ->
         max 1 (Clflags.Int_arg_helper.get
                  ~key:t.round !Clflags.inline_max_unroll)
     in
     let inlining_counts =
-      Closure_id.Map.add id (inlining_count - 1) t.inlining_counts
+      Closure_origin.Map.add id (inlining_count - 1) t.inlining_counts
     in
     { t with inlining_counts }
 
@@ -382,7 +400,16 @@ module Env = struct
     { t with allow_continuation_inlining = false; }
 
   let never_inline_continuations t =
-    never_inline t && not t.allow_continuation_inlining
+    not t.allow_continuation_inlining
+
+  let disallow_continuation_specialisation t =
+    { t with allow_continuation_specialisation = false; }
+
+  let never_specialise_continuations t =
+    not t.allow_continuation_specialisation
+
+  (* CR mshinwell: may want to split this out properly *)
+  let never_unbox_continuations = never_specialise_continuations
 
   let less_precise_approximations t = t.allow_less_precise_approximations
 
@@ -672,12 +699,15 @@ Format.eprintf "approx1=%a approx2=%a\n%!"
     { t with application_points; }
 *)
 
-  let map_use_environments t ~f =
+  let update_use_environments t ~if_present_in_env ~then_add_to_env =
     let application_points =
       List.map (fun (use : Use.t) ->
-          { use with
-            env = f use.env;
-          })
+          if Env.mem_continuation use.env if_present_in_env then
+            let new_cont, approx = then_add_to_env in
+            let env = Env.add_continuation use.env new_cont approx in
+            { use with env; }
+          else
+            use)
         t.application_points
     in
     { t with application_points; }
@@ -876,28 +906,76 @@ approxs
     | (uses, _approx, _env, _recursive) ->
       Continuation_uses.meet_of_args_approxs uses ~num_params
 
-  let exit_scope_catch ?update_use_env t env i =
-    (*Format.eprintf "exit_scope_catch %a\n%!" Continuation.print i;*)
+  let exit_scope_catch t env i =
+(*
+    Format.eprintf "exit_scope_catch %a\n%!" Continuation.print i;
+*)
     let t, uses =
       match Continuation.Map.find i t.used_continuations with
       | exception Not_found ->
+(*
+Format.eprintf "no uses\n%!";
+*)
         let uses =
           Continuation_uses.create ~continuation:i ~backend:(Env.backend env)
         in
         t, uses
       | uses ->
-        let uses =
-          match update_use_env with
-          | None -> uses
-          | Some f ->
-            Continuation_uses.map_use_environments uses ~f
-        in
+(*
+let application_points =
+  Continuation_uses.application_points uses
+in
+Format.eprintf "Uses:\n";
+let count = ref 1 in
+List.iter (fun (use : Continuation_uses.Use.t) ->
+  let env = use.env in
+  Format.eprintf "Use %d: %a@ \n%!"
+    (!count) Env.print env;
+  incr count)
+application_points;
+*)
         { t with
           used_continuations = Continuation.Map.remove i t.used_continuations;
         }, uses
     in
     assert (continuation_unused t i);
+(*
+    Format.eprintf "exit_scope_catch %a finished.\n%!" Continuation.print i;
+let application_points =
+  Continuation_uses.application_points uses
+in
+Format.eprintf "Uses being returned:\n";
+let count = ref 1 in
+List.iter (fun (use : Continuation_uses.Use.t) ->
+  let env = use.env in
+  Format.eprintf "Use %d: %a@ \n%!"
+    (!count) Env.print env;
+  incr count)
+application_points;
+*)
     t, uses
+
+  let update_all_continuation_use_environments t ~if_present_in_env
+        ~then_add_to_env =
+    let used_continuations =
+      Continuation.Map.map (fun uses ->
+            Continuation_uses.update_use_environments uses
+              ~if_present_in_env ~then_add_to_env)
+        t.used_continuations
+    in
+    let defined_continuations =
+      Continuation.Map.map (fun (uses, approx, env, recursive) ->
+          let uses =
+            Continuation_uses.update_use_environments uses
+              ~if_present_in_env ~then_add_to_env
+          in
+          uses, approx, env, recursive)
+        t.defined_continuations
+    in
+    { t with
+      used_continuations;
+      defined_continuations;
+    }
 
   let define_continuation t cont env recursive uses approx =
 (*    Format.eprintf "define_continuation %a\n%!" Continuation.print cont;*)
@@ -1086,8 +1164,8 @@ let prepare_to_simplify_set_of_closures ~env
       Closure_id.Map.empty
   in
   let env =
-    E.enter_set_of_closures_declaration
-      function_decls.set_of_closures_origin env
+    E.enter_set_of_closures_declaration env
+      function_decls.set_of_closures_origin
   in
   (* we use the previous closure for evaluating the functions *)
   let internal_value_set_of_closures =

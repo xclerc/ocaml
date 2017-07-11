@@ -87,7 +87,7 @@ let inline env r ~lhs_of_application
       Try_it
     else if self_call then
       Don't_try_it S.Not_inlined.Self_call
-    else if not (E.inlining_allowed env closure_id_being_applied) then
+    else if not (E.inlining_allowed env function_decl.closure_origin) then
       Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
     else if only_use_of_function || always_inline then
       Try_it
@@ -230,7 +230,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
            recursive to avoid having to check whether or not it is recursive *)
         E.inside_unrolled_function env function_decls.set_of_closures_origin
       in
-      let env = E.inside_inlined_function env closure_id_being_applied in
+      let env = E.inside_inlined_function env function_decl.closure_origin in
       let env =
         if E.inlining_level env = 0
            (* If the function was considered for inlining without considering
@@ -271,6 +271,8 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
              to avoid having to check whether or not it is recursive *)
           E.inside_unrolled_function env function_decls.set_of_closures_origin
         in
+        (* CR mshinwell: note: this next line was missing in the old Flambda *)
+        let env = E.inside_inlined_function env function_decl.closure_origin in
         let r_inlined =
           R.roll_back_continuation_uses r_inlined cont_usage_snapshot
         in
@@ -308,6 +310,9 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
       end
     end
 
+(* CR mshinwell: Stop specialising functions when there is no increase in
+   precision of the argument approximations.  (Will act as a backstop to
+   prevent unbounded recursion during specialisation.) *)
 let specialise env r ~lhs_of_application
       ~(function_decls : Flambda.function_declarations)
       ~(function_decl : Flambda.function_declaration)
@@ -405,7 +410,8 @@ let specialise env r ~lhs_of_application
     else Try_it
   in
   match try_specialising with
-  | Don't_try_it decision -> Original decision
+  | Don't_try_it decision ->
+      Original decision
   | Try_it -> begin
       let cont_usage_snapshot = R.snapshot_continuation_uses r in
       let r =
@@ -502,6 +508,10 @@ let specialise env r ~lhs_of_application
                        (Inlining_cost.Benefit.(+) (R.benefit r))
             in
             let application_env = E.set_never_inline_inside_closures env in
+(*
+Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
+  E.print application_env Flambda.print expr;
+*)
             let res = simplify application_env r expr in
             let decision =
               S.Specialised.With_subfunctions (wsb, wsb_with_subfunctions)
@@ -574,6 +584,11 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
     in
     original_expr, r
   in
+(*
+Format.eprintf "Application of %a (%a).\n%!"
+  Closure_id.print closure_id_being_applied
+  Variable.print_list args;
+*)
 (*
 Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
   Closure_id.print closure_id_being_applied

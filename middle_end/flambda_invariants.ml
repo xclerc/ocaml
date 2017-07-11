@@ -1229,6 +1229,19 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
         let num_in_r =
           Inline_and_simplify_aux.Continuation_uses.num_uses uses
         in
+(*
+let application_points =
+  Inline_and_simplify_aux.Continuation_uses.application_points uses
+in
+Format.eprintf "Uses of continuation %a:\n" Continuation.print cont;
+let count = ref 1 in
+List.iter (fun (use : Inline_and_simplify_aux.Continuation_uses.Use.t) ->
+  let env = use.env in
+  Format.eprintf "Use %d: %a@ \n%!"
+    (!count) Inline_and_simplify_aux.Env.print env;
+  incr count)
+application_points;
+*)
         if num_in_term <> num_in_r then begin
           Misc.fatal_errorf "Continuation count mismatch for %a between the \
               term (%d) and [r] (%d): %a@ %a"

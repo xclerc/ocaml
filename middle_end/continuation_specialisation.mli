@@ -28,9 +28,6 @@ val for_toplevel_expression
     -> args_approxs:Simple_value_approx.t list Continuation.Map.t option
     -> recursive:Asttypes.rec_flag
     -> freshening:Freshening.t
-    -> update_use_env:(
-         Inline_and_simplify_aux.Env.t
-      -> Inline_and_simplify_aux.Env.t)
     -> Flambda.let_cont_handlers option * Inline_and_simplify_aux.Result.t)
   -> backend:(module Backend_intf.S)
   -> Flambda.expr option

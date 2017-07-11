@@ -144,8 +144,8 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
   | Lvar id -> k id
   | Lconst _ -> name_then_cps_non_tail "const" lam k
   | Lapply apply ->
-    cps_non_tail apply.ap_func (fun func ->
-      cps_non_tail_list apply.ap_args (fun args ->
+    cps_non_tail_list apply.ap_args (fun args ->
+      cps_non_tail apply.ap_func (fun func ->
         let continuation = Continuation.create () in
         let result_var = Ident.create "apply_result" in
         let after = k result_var in
@@ -397,8 +397,8 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
   | Lvar id -> Apply_cont (k, None, [id]), N.One
   | Lconst _ -> name_then_cps_tail "const" lam k
   | Lapply apply ->
-    cps_non_tail apply.ap_func (fun func ->
-      cps_non_tail_list apply.ap_args (fun args ->
+    cps_non_tail_list apply.ap_args (fun args ->
+      cps_non_tail apply.ap_func (fun func ->
         let apply : I.apply = {
           kind = Function;
           func;

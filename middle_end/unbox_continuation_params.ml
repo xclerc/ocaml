@@ -210,6 +210,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
                     @ (List.map (fun (param, _proj) -> Parameter.wrap param)
                       how_to_unbox.new_params)
                 in
+(*
   Format.eprintf "Unbox_continuation_params has unboxed:\n@;%a\n%!"
     Flambda.print_let_cont_handlers (Flambda.Recursive
       (Continuation.Map.add cont handler Continuation.Map.empty));
@@ -224,6 +225,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
     Flambda.print_specialised_args specialised_args
     Continuation.print new_cont
     Flambda.print handler.handler;
+*)
                 With_wrapper {
                   new_cont;
                   new_handler = {
@@ -251,8 +253,10 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
 
 let for_non_recursive_continuation ~name ~handler ~args_approxs ~backend
       : Flambda_utils.with_wrapper =
+(*
 Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
   Continuation.print name;
+*)
   let handlers =
     Continuation.Map.add name handler Continuation.Map.empty
   in

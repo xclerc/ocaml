@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* CR mshinwell: This function is broken, it shouldn't count occurrences
+   under lambdas (to match up with [Invariant_params], etc.) *)
 let in_function_declarations (function_decls : Flambda.function_declarations)
       ~backend =
   let module VCC = Strongly_connected_components.Make (Variable) in

@@ -165,6 +165,7 @@ and function_declarations = {
 }
 
 and function_declaration = {
+  closure_origin : Closure_origin.t;
   continuation_param : Continuation.t;
   return_arity : int;
   params : Parameter.t list;
@@ -538,8 +539,10 @@ and print_function_declaration ppf var (f : function_declaration) =
     | Never_specialise -> " *never_specialise*"
     | Default_specialise -> ""
   in
-  fprintf ppf "@[<2>(%a%s%s%s%s%s@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
+  fprintf ppf
+    "@[<2>(%a%s%s%s%s%s(origin %a)@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
     Variable.print var stub arity is_a_functor inline specialise
+    Closure_origin.print f.closure_origin
     Continuation.print f.continuation_param
     params f.params lam f.body
 
@@ -551,19 +554,22 @@ and print_set_of_closures ppf (set_of_closures : set_of_closures) =
     in
     fprintf ppf "@[<2>(set_of_closures id=%a@ %a@ @[<2>free_vars={%a@ }@]@ \
         @[<2>specialised_args={%a})@]@ \
-        @[<2>direct_call_surrogates=%a@]@]"
+        @[<2>direct_call_surrogates=%a@]@ \
+        @[<2>set_of_closures_origin=%a@]@]"
       Set_of_closures_id.print function_decls.set_of_closures_id
       funs function_decls.funs
       print_free_vars free_vars
       print_specialised_args specialised_args
       (Variable.Map.print Variable.print)
       set_of_closures.direct_call_surrogates
+      Set_of_closures_origin.print function_decls.set_of_closures_origin
 
 let print_function_declarations ppf (fd : function_declarations) =
   let funs ppf =
     Variable.Map.iter (print_function_declaration ppf)
   in
-  fprintf ppf "@[<2>(%a)@]" funs fd.funs
+  fprintf ppf "@[<2>(%a)(origin = %a)@]" funs fd.funs
+    Set_of_closures_origin.print fd.set_of_closures_origin
 
 let print ppf flam =
   fprintf ppf "%a@." lam flam
@@ -1306,6 +1312,7 @@ let create_function_declaration ~params ~continuation_param ~return_arity
       ~body ~stub ~dbg
       ~(inline : Lambda.inline_attribute)
       ~(specialise : Lambda.specialise_attribute) ~is_a_functor
+      ~closure_origin
       : function_declaration =
   begin match stub, inline with
   | true, (Never_inline | Default_inline)
@@ -1326,7 +1333,8 @@ let create_function_declaration ~params ~continuation_param ~return_arity
   if return_arity < 1 then begin
     Misc.fatal_errorf "Illegal return arity %d" return_arity
   end;
-  { params;
+  { closure_origin;
+    params;
     continuation_param;
     return_arity;
     body;
@@ -1337,6 +1345,38 @@ let create_function_declaration ~params ~continuation_param ~return_arity
     inline;
     specialise;
     is_a_functor;
+  }
+
+let update_body_of_function_declaration (func_decl: function_declaration)
+      ~body : function_declaration =
+  { closure_origin = func_decl.closure_origin;
+    params = func_decl.params;
+    continuation_param = func_decl.continuation_param;
+    return_arity = func_decl.return_arity;
+    body;
+    free_variables = free_variables body;
+    free_symbols = free_symbols body;
+    stub = func_decl.stub;
+    dbg = func_decl.dbg;
+    inline = func_decl.inline;
+    specialise = func_decl.specialise;
+    is_a_functor = func_decl.is_a_functor;
+  }
+
+let update_function_decl's_params_and_body
+      (func_decl : function_declaration) ~params ~body =
+  { closure_origin = func_decl.closure_origin;
+    params;
+    continuation_param = func_decl.continuation_param;
+    return_arity = func_decl.return_arity;
+    body;
+    free_variables = free_variables body;
+    free_symbols = free_symbols body;
+    stub = func_decl.stub;
+    dbg = func_decl.dbg;
+    inline = func_decl.inline;
+    specialise = func_decl.specialise;
+    is_a_functor = func_decl.is_a_functor;
   }
 
 let create_function_declarations ~funs =
