@@ -107,7 +107,7 @@ let rec call_alarm arec =
   end
 
 
-let create_alarm f =
+let [@inline never] create_alarm f =
   let arec = { active = ref true; f = f } in
   finalise call_alarm arec;
   arec.active
