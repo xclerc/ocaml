@@ -6,7 +6,10 @@ let rec allocate_lots m = function
   | 0 -> Leaf m
   | n -> Branch (allocate_lots m (n-1), allocate_lots (m+1) (n-1))
 
-let measure f =
+(* Inlining is prevented to stop Flambda from lifting [a] and [c] to
+   toplevel [Initialize_symbol] constructs, which would necessitate
+   boxing of the floats therein. *)
+let [@inline never] measure f =
   let a = Gc.minor_words () in
   f ();
   let c = Gc.minor_words () in

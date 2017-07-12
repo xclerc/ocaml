@@ -542,6 +542,10 @@ type program_body =
   (** [End] accepts the root symbol: the only symbol that can never be
       eliminated. *)
 
+(* CR-someday mshinwell: consider support for [Initialize_symbol] that can
+   hold unboxed numbers (e.g. floats for testsuite/tests/misc/gcwords.ml
+   when the inlining annotation is removed, as it used to be). *)
+
 type program = {
   imported_symbols : Symbol.Set.t;
   program_body : program_body;
