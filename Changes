@@ -333,6 +333,8 @@ Working version
 - MPR#7564, GPR#1211: Allow forward slashes in the target of symbolic links
   created by Unix.symlink under Windows.
   (Nicolas Ojeda Bar, review by David Allsopp)
+Working 4.05.x branch
+---------------------
 
 - MPR#7591, GPR#1257: on x86-64, frame table is not 8-aligned
   (Xavier Leroy, report by Mantis user "voglerr", review by Gabriel Scherer)
