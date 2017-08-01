@@ -184,17 +184,6 @@ module Push_pop_invariants = struct
       let handler_stack = var () in
       let env =
         match handlers with
-        | Alias { name; alias_of; } ->
-          let cont_stack =
-            match Continuation.Map.find alias_of env with
-            | exception Not_found ->
-              Misc.fatal_errorf "Unbound continuation %a in Let_cont Alias %a"
-                Continuation.print alias_of
-                Flambda.print expr
-            | cont_stack -> cont_stack
-          in
-          unify_stack alias_of handler_stack cont_stack;
-          define env name handler_stack
         | Nonrecursive { name; handler; } ->
           loop env handler_stack handler.handler;
           define env name handler_stack
@@ -294,13 +283,6 @@ module Continuation_scoping = struct
     | Let_cont { body; handlers; } ->
       let env =
         match handlers with
-        | Alias { name; alias_of; } ->
-          begin match Continuation.Map.find alias_of env with
-          | exception Not_found ->
-            raise (Continuation_not_caught (alias_of, "alias"))
-          | arity_and_kind ->
-            Continuation.Map.add name arity_and_kind env
-          end
         | Nonrecursive { name; handler; } ->
           let arity = List.length handler.params in
           let kind = if handler.is_exn_handler then Exn_handler else Normal in
@@ -491,9 +473,6 @@ let variable_and_symbol_invariants (program : Flambda.program) =
     | Let_cont { body; handlers; } ->
       loop env body;
       begin match handlers with
-      | Alias { name; alias_of; } ->
-        ignore_continuation name;
-        ignore_continuation alias_of
       | Nonrecursive { name; handler = {
           params; stub; is_exn_handler; handler; specialised_args; }; } ->
         ignore_continuation name;

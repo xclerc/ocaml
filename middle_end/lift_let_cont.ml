@@ -108,7 +108,6 @@ module State = struct
     let continuations_to_remain =
       match thing with
       | Let _ | Let_mutable _ -> t.continuations_to_remain
-      | Let_cont (Alias { name; _ })
       | Let_cont (Nonrecursive { name; _ }) ->
         Continuation.Set.add name t.continuations_to_remain
       | Let_cont (Recursive handlers) ->
@@ -298,14 +297,6 @@ and lift_expr (expr : Flambda.expr) ~state =
     in
     let expr, state = lift_expr body ~state in
     expr, State.forget_mutable_variable state var
-  | Let_cont { body; handlers = (Alias { alias_of; _ }) as handlers; } ->
-    let state =
-      if State.can_lift_if_using_continuation state alias_of then
-        State.lift_continuations state ~handlers
-      else
-        State.to_remain state (Let_cont handlers)
-    in
-    lift_expr body ~state
   | Let_cont { body; handlers = Nonrecursive ({ name; handler; }); }
       when handler.is_exn_handler ->
     (* Don't lift anything out of the scope of an exception handler.
@@ -339,11 +330,24 @@ and lift_expr (expr : Flambda.expr) ~state =
     in
     let body = lift body in
     Flambda.Let_cont { body; handlers; }, state
-  | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
-    let handlers = Continuation.Map.add name handler Continuation.Map.empty in
-    lift_let_cont ~body ~handlers ~state ~recursive:Asttypes.Nonrecursive
-  | Let_cont { body; handlers = Recursive handlers; } ->
-    lift_let_cont ~body ~handlers ~state ~recursive:Asttypes.Recursive
+  | Let_cont { body; handlers; } ->
+    begin match Flambda_utils.let_handler_is_alias ~handlers with
+    | Some (_name, alias_of) ->
+      let state =
+        if State.can_lift_if_using_continuation state alias_of then
+          State.lift_continuations state ~handlers
+        else
+          State.to_remain state (Let_cont handlers)
+      in
+      lift_expr body ~state
+    | None ->
+      let recursive = match handlers with
+        | Nonrecursive _ -> Asttypes.Nonrecursive
+        | Recursive _ -> Asttypes.Recursive
+      in
+      let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+      lift_let_cont ~body ~handlers ~state ~recursive
+    end
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr, state
 
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =

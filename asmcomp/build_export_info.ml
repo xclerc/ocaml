@@ -303,7 +303,12 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
         Result.add_continuation_use_approx r continuation ~args_approxs
       | _ -> r
     end
-  | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+  | Let_cont { body; handlers = (Nonrecursive { name; handler; } as handlers); } ->
+    begin match Flambda_utils.let_handler_is_alias ~handlers with
+    | Some (name, alias_of) ->
+      let env = Env.add_continuation_alias env name ~alias_of in
+      approx_of_expr env r body
+    | None ->
     let r = approx_of_expr env r body in
     let num_params = List.length handler.params in
     let args_approxs =
@@ -317,6 +322,7 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
         (List.combine (Parameter.List.vars handler.params) args_approxs)
     in
     approx_of_expr env r handler.handler
+    end
   | Let_cont { body; handlers = Recursive handlers; } ->
     let r =
       Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
@@ -347,9 +353,6 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
         approx_of_expr env r handler.handler)
       handlers
       r
-  | Let_cont { body; handlers = Alias { name; alias_of; }; } ->
-    let env = Env.add_continuation_alias env name ~alias_of in
-    approx_of_expr env r body
   | Apply_cont (cont, _trap, args) ->
     let cont = Env.expand_continuation_alias env cont in
     let args_approxs = List.map (fun arg -> Env.find_approx env arg) args in

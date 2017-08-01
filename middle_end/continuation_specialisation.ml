@@ -266,8 +266,6 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
           List.map (fun (handler : Flambda.continuation_handler) ->
               handler.handler)
             (Continuation.Map.data handlers)
-        | Alias _ ->
-          Misc.fatal_error "simplify_let_cont_handlers should not return Alias"
       in
       (* CR-someday mshinwell: Probably some stuff about jump benefits should
          be added... *)
@@ -563,7 +561,6 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
         | exception Not_found -> expr
         | new_cont -> Apply_cont (new_cont, trap_action, args)
         end
-      | Let_cont { handlers = Alias _; _ }
       | Apply _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
     expr
 

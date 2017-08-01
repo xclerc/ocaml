@@ -64,8 +64,6 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
             (handler : Flambda.continuation_handler) ->
           loop handler.handler)
         handlers
-    | Let_cont { body; handlers = Alias _; _ } ->
-      loop body
     | Apply _ | Apply_cont _ | Switch _ ->
       set := Variable.Set.union !set (Flambda.free_variables flam)
     | Proved_unreachable -> ()

@@ -279,7 +279,6 @@ and let_cont_handlers =
      accepted [continuation_handlers]. *)
   | Nonrecursive of { name : Continuation.t; handler : continuation_handler; }
   | Recursive of continuation_handlers
-  | Alias of { name : Continuation.t; alias_of : Continuation.t; }
 
 and continuation_handlers =
   continuation_handler Continuation.Map.t

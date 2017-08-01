@@ -154,7 +154,6 @@ let run program ~backend =
           let unused = Parameter.Set.wrap unused in
           for_continuation ~body ~handlers ~unused ~original:expr
             ~recursive:Asttypes.Recursive
-        | Let_cont { handlers = Alias _; _ }
         | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
         | Proved_unreachable -> expr)
       expr)

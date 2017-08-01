@@ -113,10 +113,6 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
 and same_let_cont_handlers (handlers1 : Flambda.let_cont_handlers)
       (handlers2 : Flambda.let_cont_handlers) =
   match handlers1, handlers2 with
-  | Alias { name = name1; alias_of = alias_of1; },
-      Alias { name = name2; alias_of = alias_of2; } ->
-    Continuation.equal name1 name2
-      && Continuation.equal alias_of1 alias_of2
   | Nonrecursive { name = name1; handler = handler1; },
       Nonrecursive { name = name2; handler = handler2; } ->
     Continuation.equal name1 name2
@@ -239,7 +235,6 @@ let toplevel_substitution sb tree =
       let args = List.map sb args in
       Apply_cont (static_exn, trap_action, args)
     | Let _ | Proved_unreachable -> flam
-    | Let_cont { body = _; handlers = Alias _; } -> flam
     | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
       let handler =
         { handler with
@@ -992,3 +987,37 @@ let count_continuation_uses_toplevel (expr : Flambda.t) =
     (fun _named -> ())
     expr;
   Continuation.Tbl.to_map counts
+
+let let_handler_is_alias ~(handlers : Flambda.let_cont_handlers) =
+  match handlers with
+  | Recursive _ -> None
+  | Nonrecursive { name; handler} ->
+    if handler.is_exn_handler then None
+    else begin match handler.handler with
+      | Apply_cont (alias_of, None, params) ->
+        let params = Parameter.List.wrap params in
+        if Parameter.List.compare handler.params params = 0 then
+          Some (name, alias_of)
+        else None
+      | _ -> None
+    end
+
+let make_let_cont_alias ~name ~alias_of ~arity : Flambda.let_cont_handlers =
+  let handler_params, apply_params =
+    let rec aux n =
+      if n <= 0 then []
+      else let v = Variable.create "continuation_wrapper" in
+        (Parameter.wrap v, v) :: (aux (n - 1))
+    in
+    List.split (aux arity)
+  in
+  Nonrecursive {
+    name;
+    handler = {
+      params = handler_params;
+      stub = false; (* CR vlaviron: Check whether this is correct *)
+      is_exn_handler = false;
+      handler = Apply_cont (alias_of, None, apply_params);
+      specialised_args = Variable.Map.empty;
+    };
+  }

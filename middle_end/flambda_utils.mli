@@ -250,3 +250,14 @@ val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t
 val count_continuation_uses_toplevel
    : Flambda.expr
   -> int Continuation.Map.t
+
+(** If alias, returns [Some (name, alias_of)] *)
+val let_handler_is_alias
+   : handlers:Flambda.let_cont_handlers
+  -> (Continuation.t * Continuation.t) option
+
+val make_let_cont_alias
+   : name:Continuation.t
+  -> alias_of:Continuation.t
+  -> arity:int
+  -> Flambda.let_cont_handlers
