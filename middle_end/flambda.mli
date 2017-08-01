@@ -594,6 +594,10 @@ val used_variables_named
   -> named
   -> Variable.Set.t
 
+val continuation_map_of_let_handlers
+   : handlers:let_cont_handlers
+  -> continuation_handlers
+
 val free_continuations_of_let_cont_handlers
    : handlers:let_cont_handlers
   -> Continuation.Set.t

@@ -2148,12 +2148,9 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           (Continuation.Map.empty, E.freshening env)
       in
       match handlers with
-      | Nonrecursive { name; handler; } ->
-        let handlers =
-          Continuation.Map.add name handler Continuation.Map.empty
-        in
+      | Nonrecursive _ | Recursive _ ->
+        let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
         normal_case ~handlers
-      | Recursive handlers -> normal_case ~handlers
       | Alias { name; alias_of; } ->
         let freshened_name, freshening =
           Freshening.add_static_exception (E.freshening env) name

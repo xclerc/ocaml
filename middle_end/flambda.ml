@@ -1079,6 +1079,12 @@ Format.eprintf "This defining expression doesn't terminate:\n@ %a\n%!"
   in
   loop t ~acc:init ~rev_lets:[]
 
+let continuation_map_of_let_handlers ~(handlers : let_cont_handlers) =
+  match handlers with
+  | Alias _ -> Continuation.Map.empty
+  | Nonrecursive { name; handler } -> Continuation.Map.singleton name handler
+  | Recursive handlers -> handlers
+
 let rec free_continuations (expr : expr) =
   match expr with
   | Let { body; _ }
@@ -1136,24 +1142,15 @@ let free_continuations_of_let_cont_handlers ~(handlers : let_cont_handlers) =
   fst (free_continuations_of_let_cont_handlers' ~handlers)
 
 let free_variables_of_let_cont_handlers (handlers : let_cont_handlers) =
-  match handlers with
-  | Alias _ -> Variable.Set.empty
-  | Nonrecursive { name = _; handler = {
-      params; handler; specialised_args; _ }; } ->
-    Variable.Set.union
-      (free_variables_of_specialised_args specialised_args)
-      (Variable.Set.diff (free_variables handler)
-        (Parameter.Set.vars params))
-  | Recursive handlers ->
-    Continuation.Map.fold (fun _name { params; handler; specialised_args; _ }
-            fvs ->
-        Variable.Set.union fvs
-          (Variable.Set.union
-            (free_variables_of_specialised_args specialised_args)
-            (Variable.Set.diff (free_variables handler)
-              (Parameter.Set.vars params))))
-      handlers
-      Variable.Set.empty
+  Continuation.Map.fold (fun _name { params; handler; specialised_args; _ }
+          fvs ->
+      Variable.Set.union fvs
+        (Variable.Set.union
+          (free_variables_of_specialised_args specialised_args)
+          (Variable.Set.diff (free_variables handler)
+            (Parameter.Set.vars params))))
+    (continuation_map_of_let_handlers ~handlers)
+    Variable.Set.empty
 
 let free_symbols_helper symbols (named : named) =
   match named with
