@@ -597,6 +597,18 @@ val continuation_map_of_let_handlers
    : handlers:let_cont_handlers
   -> continuation_handlers
 
+(** [map_let_cont_handlers ~handlers ~f] is equivalent to calling [f] on
+    [continuation_map_of_let_handlers ~handlers], then repacking the result
+    in the same constructor (Recursive or Nonrecursive) as [handlers] *)
+val map_let_cont_handlers
+   : handlers:let_cont_handlers
+  -> f:(continuation_handlers -> continuation_handlers)
+  -> let_cont_handlers
+
+val bound_continuations_of_let_handlers
+   : handlers:let_cont_handlers
+  -> Continuation.Set.t
+
 val free_continuations_of_let_cont_handlers
    : handlers:let_cont_handlers
   -> Continuation.Set.t

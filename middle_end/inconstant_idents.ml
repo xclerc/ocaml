@@ -236,13 +236,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_loop ~toplevel curr body
     (* Not constant cases: we mark directly 'curr in NC' and mark
        bound variables as in NC also *)
-    | Let_cont { body; handlers = Nonrecursive { handler; _ }; } ->
-      mark_curr curr;
-      mark_loop ~toplevel [] body;
-      List.iter (fun param -> mark_curr [Var (Parameter.var param)])
-        handler.params;
-      mark_loop ~toplevel:false [] handler.handler
-    | Let_cont { body; handlers = Recursive handlers; } ->
+    | Let_cont { body; handlers; } ->
       mark_curr curr;
       mark_loop ~toplevel [] body;
       Continuation.Map.iter (fun _cont
@@ -250,7 +244,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
           List.iter (fun param -> mark_curr [Var (Parameter.var param)])
             handler.params;
           mark_loop ~toplevel:false [] handler.handler)
-        handlers
+        (Flambda.continuation_map_of_let_handlers ~handlers)
       (* CR-someday pchambart: If recursive staticcatch is introduced:
          this becomes ~toplevel:false
          mshinwell: This has been set to the conservative value *)

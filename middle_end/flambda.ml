@@ -1075,6 +1075,22 @@ let continuation_map_of_let_handlers ~(handlers : let_cont_handlers) =
   | Nonrecursive { name; handler } -> Continuation.Map.singleton name handler
   | Recursive handlers -> handlers
 
+let map_let_cont_handlers ~(handlers : let_cont_handlers) ~f =
+  match handlers with
+  | Nonrecursive { name; handler } ->
+    let handlers = f (Continuation.Map.singleton name handler) in
+    begin match Continuation.Map.bindings handlers with
+    | [ name, handler ] -> Nonrecursive { name; handler; }
+    | _ -> Misc.fatal_errorf "Flambda.map_let_cont_handlers: \
+        Nonrecursive case expects exactly one handler"
+    end
+  | Recursive handlers -> Recursive (f handlers)
+
+let bound_continuations_of_let_handlers ~(handlers : let_cont_handlers) =
+  match handlers with
+  | Nonrecursive { name; _ } -> Continuation.Set.singleton name
+  | Recursive handlers -> Continuation.Map.keys handlers
+
 let rec free_continuations (expr : expr) =
   match expr with
   | Let { body; _ }

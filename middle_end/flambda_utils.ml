@@ -235,23 +235,11 @@ let toplevel_substitution sb tree =
       let args = List.map sb args in
       Apply_cont (static_exn, trap_action, args)
     | Let _ | Proved_unreachable -> flam
-    | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
-      let handler =
-        { handler with
-          (* CR mshinwell: share with below *)
-          specialised_args =
-            (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                { spec_to with var = sb_opt spec_to.var; })
-              handler.specialised_args);
-        }
-      in
-      Let_cont { body; handlers = Nonrecursive { name; handler; }; }
-    | Let_cont { body; handlers = Recursive handlers; } ->
-      let handlers =
+    | Let_cont { body; handlers; } ->
+      let f handlers =
         Continuation.Map.map (fun (handler : Flambda.continuation_handler)
                 : Flambda.continuation_handler ->
             { handler with
-              (* CR mshinwell: share with below *)
               specialised_args =
                 (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
                     { spec_to with var = sb_opt spec_to.var; })
@@ -259,7 +247,7 @@ let toplevel_substitution sb tree =
             })
           handlers
       in
-      Let_cont { body; handlers = Recursive handlers; }
+      Let_cont { body; handlers = Flambda.map_let_cont_handlers ~handlers ~f; }
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
@@ -950,6 +938,14 @@ let all_defined_continuations_toplevel expr =
   let defined_continuations = ref Continuation.Set.empty in
   Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
       match expr with
+      (* CR vlaviron: Alternate implementation (slightly slower, but more robust
+         to changes in Flambda.let_cont_handlers) :
+      | Let_cont { handlers; _ } ->
+        let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+        defined_continuations :=
+          Continuation.Set.union (Continuation.Map.keys handlers)
+            !defined_continuations
+      *)
       | Let_cont { handlers = Nonrecursive { name; _ }; _ } ->
         defined_continuations :=
           Continuation.Set.add name !defined_continuations

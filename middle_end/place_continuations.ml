@@ -231,10 +231,8 @@ Variable.print var;
           ~state
       in
       find_insertion_points body ~state
-    | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
-      let handlers = Continuation.Map.add name handler Continuation.Map.empty in
-      passing_continuation_bindings ~body ~handlers ~state
-    | Let_cont { body; handlers = Recursive handlers; } ->
+    | Let_cont { body; handlers; } ->
+      let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
       passing_continuation_bindings ~body ~handlers ~state
     | Let_mutable { body; _ } -> find_insertion_points body ~state
     | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> state
