@@ -938,20 +938,10 @@ let all_defined_continuations_toplevel expr =
   let defined_continuations = ref Continuation.Set.empty in
   Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
       match expr with
-      (* CR vlaviron: Alternate implementation (slightly slower, but more robust
-         to changes in Flambda.let_cont_handlers) :
       | Let_cont { handlers; _ } ->
-        let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+        let conts = Flambda.bound_continuations_of_let_handlers ~handlers in
         defined_continuations :=
-          Continuation.Set.union (Continuation.Map.keys handlers)
-            !defined_continuations
-      *)
-      | Let_cont { handlers = Nonrecursive { name; _ }; _ } ->
-        defined_continuations :=
-          Continuation.Set.add name !defined_continuations
-      | Let_cont { handlers = Recursive handlers; _ } ->
-        defined_continuations :=
-          Continuation.Set.union (Continuation.Map.keys handlers)
+          Continuation.Set.union conts
             !defined_continuations
       | _ -> ())
     (fun _named -> ())
