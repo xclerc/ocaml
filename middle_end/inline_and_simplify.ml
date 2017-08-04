@@ -2138,30 +2138,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           handlers
           (Continuation.Map.empty, E.freshening env)
       in
-      match Flambda_utils.let_handler_is_alias ~handlers with
-      | None ->
-        let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
-        normal_case ~handlers
-      | Some (name, alias_of) ->
-        let freshened_name, freshening =
-          Freshening.add_static_exception (E.freshening env) name
-        in
-        let alias_of =
-          Freshening.apply_static_exception (E.freshening env) alias_of
-        in
-        let approx =
-          let approx = E.find_continuation env alias_of in
-          Continuation_approx.create_unknown
-            ~name:(Continuation_approx.name approx)
-            ~num_params:(Continuation_approx.num_params approx)
-        in
-        assert (Continuation_approx.handlers approx = None);
-        let conts_and_approxs =
-          Continuation.Map.of_list [
-            freshened_name, (name, approx);
-          ]
-        in
-        conts_and_approxs, freshening
+      let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+      normal_case ~handlers
     in
     (* CR mshinwell: Is _unfreshened_name redundant? *)
     let body_env =
@@ -2176,17 +2154,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
 (*Format.eprintf "Simplifying body finished.\n";*)
     begin match handlers with
     | Nonrecursive { name; handler; } ->
-      begin match Flambda_utils.let_handler_is_alias ~handlers with
-      | Some (name, _alias_of) ->
-      (* As a result of adding the approximation of [name], above, to the
-         environment then all uses of it in the [body] should have been
-         replaced by [alias_of]. *)
-      assert (R.continuation_unused r name);
-      let r, _uses = R.exit_scope_catch r env name in
-      assert (not (R.is_used_continuation r name));
-      assert (not (R.continuation_defined r name));
-      body, ret r (A.value_unknown Other)
-      | None ->
       let with_wrapper : Flambda_utils.with_wrapper =
         (* CR mshinwell: Tidy all this up somehow. *)
         (* Unboxing of continuation parameters is done now so that in one pass
@@ -2244,7 +2211,6 @@ Format.eprintf "With wrappers applied:\n@ %a\n%!"
   Flambda.print body;
 body, r
 *)
-      end
       end
     | Recursive handlers ->
       (* The sequence is:

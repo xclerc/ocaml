@@ -125,9 +125,6 @@ module State = struct
       variables_to_remain;
     }
 
-  let can_lift_if_using_continuation t cont =
-    not (Continuation.Set.mem cont t.continuations_to_remain)
-
   let can_lift_if_using_continuations t conts =
     Continuation.Set.is_empty
       (Continuation.Set.inter conts t.continuations_to_remain)
@@ -331,23 +328,12 @@ and lift_expr (expr : Flambda.expr) ~state =
     let body = lift body in
     Flambda.Let_cont { body; handlers; }, state
   | Let_cont { body; handlers; } ->
-    begin match Flambda_utils.let_handler_is_alias ~handlers with
-    | Some (_name, alias_of) ->
-      let state =
-        if State.can_lift_if_using_continuation state alias_of then
-          State.lift_continuations state ~handlers
-        else
-          State.to_remain state (Let_cont handlers)
-      in
-      lift_expr body ~state
-    | None ->
-      let recursive = match handlers with
-        | Nonrecursive _ -> Asttypes.Nonrecursive
-        | Recursive _ -> Asttypes.Recursive
-      in
-      let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
-      lift_let_cont ~body ~handlers ~state ~recursive
-    end
+    let recursive = match handlers with
+      | Nonrecursive _ -> Asttypes.Nonrecursive
+      | Recursive _ -> Asttypes.Recursive
+    in
+    let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+    lift_let_cont ~body ~handlers ~state ~recursive
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr, state
 
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =

@@ -146,12 +146,6 @@ module Env : sig
 
   val keep_only_symbols : t -> t
 
-  val add_continuation_alias
-     : t
-    -> Continuation.t
-    -> alias_of:Continuation.t
-    -> t
-
   val add_return_continuation : t -> Continuation.t -> t
 
   type expanded_continuation =
@@ -226,13 +220,6 @@ end = struct
     { t with
       continuations =
         Continuation.Map.add cont Return_continuation t.continuations;
-    }
-
-  let add_continuation_alias t cont ~alias_of =
-    let alias_of = expand_continuation_aliases t alias_of in
-    { t with
-      continuations =
-        Continuation.Map.add cont alias_of t.continuations;
     }
 end
 
@@ -471,13 +458,8 @@ result
     | None -> expr
     | Some trap_action -> Usequence (trap_action, expr)
     end
-  | Let_cont { body; handlers = (Nonrecursive { name; handler = {
-      params; is_exn_handler; handler; _ }; } as handlers); } ->
-    begin match Flambda_utils.let_handler_is_alias ~handlers with
-    | Some (name, alias_of) ->
-      let env = Env.add_continuation_alias env name ~alias_of in
-      to_clambda t env body
-    | None ->
+  | Let_cont { body; handlers = Nonrecursive { name; handler = {
+      params; is_exn_handler; handler; _ }; }; } ->
     if Continuation.Set.mem name t.exn_handlers && not is_exn_handler then begin
       Misc.fatal_errorf "Continuation %a is an exception handler but is not \
           marked as such in the [Let_cont] that defines it"
@@ -502,7 +484,6 @@ result
       else Normal Nonrecursive
     in
     Ucatch (kind, [name, params, handler], to_clambda t env body)
-    end
   | Let_cont { body; handlers = Recursive handlers; } ->
     let conts =
       Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)

@@ -974,20 +974,6 @@ let count_continuation_uses_toplevel (expr : Flambda.t) =
     expr;
   Continuation.Tbl.to_map counts
 
-let let_handler_is_alias ~(handlers : Flambda.let_cont_handlers) =
-  match handlers with
-  | Recursive _ -> None
-  | Nonrecursive { name; handler} ->
-    if handler.is_exn_handler then None
-    else begin match handler.handler with
-      | Apply_cont (alias_of, None, params) ->
-        let params = Parameter.List.wrap params in
-        if Parameter.List.compare handler.params params = 0 then
-          Some (name, alias_of)
-        else None
-      | _ -> None
-    end
-
 let make_let_cont_alias ~name ~alias_of ~arity : Flambda.let_cont_handlers =
   let handler_params, apply_params =
     let rec aux n =
@@ -1001,7 +987,7 @@ let make_let_cont_alias ~name ~alias_of ~arity : Flambda.let_cont_handlers =
     name;
     handler = {
       params = handler_params;
-      stub = false; (* CR vlaviron: Check whether this is correct *)
+      stub = true;
       is_exn_handler = false;
       handler = Apply_cont (alias_of, None, apply_params);
       specialised_args = Variable.Map.empty;
