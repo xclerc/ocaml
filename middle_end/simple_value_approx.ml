@@ -1220,3 +1220,63 @@ let potentially_taken_const_switch_branch t branch =
     Can_be_taken
   | Float _ | Float_array _ | String _ | Closure _ | Set_of_closures _
   | Boxed_int _ | Bottom -> Cannot_be_taken
+
+let phys_equal (approxs:t list) =
+  match approxs with
+  | [] | [_] | _ :: _ :: _ :: _ ->
+      Misc.fatal_error "wrong number of arguments for equality"
+  | [a1; a2] ->
+    (* N.B. The following would be incorrect if the variables are not
+       bound in the environment:
+       match a1.var, a2.var with
+       | Some v1, Some v2 when Variable.equal v1 v2 -> true
+       | _ -> ...
+    *)
+    match a1.symbol, a2.symbol with
+    | Some (s1, None), Some (s2, None) -> Symbol.equal s1 s2
+    | Some (s1, Some f1), Some (s2, Some f2) -> Symbol.equal s1 s2 && f1 = f2
+    | _ -> false
+
+let is_known_to_be_some_kind_of_int (arg:descr) =
+  match arg with
+  | Union (Immediates _) -> true
+  | Union (Blocks _ | Blocks_and_immediates _) | Float _ | Set_of_closures _
+  | Closure _ | String _ | Float_array _
+  | Boxed_int _ | Unknown _ | Extern _
+  | Symbol _ | Unresolved _ | Bottom -> false
+
+let is_known_to_be_some_kind_of_block (arg:descr) =
+  match arg with
+  | Union (Blocks _) | Float _ | Float_array _ | Boxed_int _
+  | Closure _ | String _ -> true
+  | Set_of_closures _ | Union (Blocks_and_immediates _ | Immediates _)
+  | Unknown _ | Extern _ | Symbol _
+  | Unresolved _ | Bottom -> false
+
+let rec structurally_different (arg1:t) (arg2:t) =
+  match arg1.descr, arg2.descr with
+  | Union (Immediates s1), Union (Immediates s2)
+    when Unionable.Immediate.Set.(is_empty (inter s1 s2)) ->
+    true
+  | Union (Blocks b1), Union (Blocks b2)
+    when Tag.Map.cardinal b1 = 1 && Tag.Map.cardinal b2 = 1 ->
+    let tag1, fields1 = Tag.Map.min_binding b1 in
+    let tag2, fields2 = Tag.Map.min_binding b2 in
+    not (Tag.equal tag1 tag2)
+    || (Array.length fields1 <> Array.length fields2)
+    || Misc.Stdlib.Array.exists2 structurally_different fields1 fields2
+  | descr1, descr2 ->
+    (* This is not very precise as this won't allow to distinguish
+       blocks from strings for instance. This can be improved if it
+       is deemed valuable. *)
+    (is_known_to_be_some_kind_of_int descr1
+     && is_known_to_be_some_kind_of_block descr2)
+    || (is_known_to_be_some_kind_of_block descr1
+        && is_known_to_be_some_kind_of_int descr2)
+
+let phys_different (approxs:t list) =
+  match approxs with
+  | [] | [_] | _ :: _ :: _ :: _ ->
+    Misc.fatal_error "wrong number of arguments for equality"
+  | [a1; a2] ->
+    structurally_different a1 a2

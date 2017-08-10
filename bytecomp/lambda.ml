@@ -770,5 +770,13 @@ let rec size_of_lambda lam =
   | Lsequence (_lam, lam') -> size_of_lambda lam'
   | _ -> RHS_nonrec
 
+let merge_inline_attributes attr1 attr2 =
+  match attr1, attr2 with
+  | Default_inline, _ -> Some attr2
+  | _, Default_inline -> Some attr1
+  | _, _ ->
+    if attr1 = attr2 then Some attr1
+    else None
+
 let reset () =
   Continuation.reset ()

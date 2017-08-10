@@ -388,4 +388,9 @@ type rhs_kind =
 
 val size_of_lambda : lambda -> rhs_kind
 
+val merge_inline_attributes
+   : inline_attribute
+  -> inline_attribute
+  -> inline_attribute option
+
 val reset: unit -> unit

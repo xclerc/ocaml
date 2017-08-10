@@ -691,15 +691,19 @@ let substitute_read_symbol_field_for_variables
 
 type sharing_key = Continuation.t
 let make_key cont = Some cont
+let compare_key = Continuation.compare
 
 module Switch_storer =
   Switch.Store
     (struct
       (* CR mshinwell: Check if this thing uses polymorphic comparison.
-         Should be ok if so, at the moment, but should be fixed. *)
+         Should be ok if so, at the moment, but should be fixed.
+         vlaviron: the addition of a compare function to the signature should
+         fix the problem. *)
       type t = Continuation.t
       type key = sharing_key
       let make_key = make_key
+      let compare_key = compare_key
     end)
 
 let fun_vars_referenced_in_decls

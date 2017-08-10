@@ -763,7 +763,8 @@ method emit_expr (env:environment) exp =
                 self#insert_move_results loc_res rd.(0) stack_ofs;
                 Some rd.(0)
               end
-          | Ialloc { words = _; spacetime_index; label_after_call_gc; } ->
+          | Ialloc { words; spacetime_index; label_after_call_gc; } ->
+              assert (words <= Config.max_young_wosize);
               let rd = self#regs_for typ_val in
               let size = size_expr env (Ctuple new_args) in
               let op =
