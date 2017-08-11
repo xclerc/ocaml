@@ -113,10 +113,6 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
 and same_let_cont_handlers (handlers1 : Flambda.let_cont_handlers)
       (handlers2 : Flambda.let_cont_handlers) =
   match handlers1, handlers2 with
-  | Alias { name = name1; alias_of = alias_of1; },
-      Alias { name = name2; alias_of = alias_of2; } ->
-    Continuation.equal name1 name2
-      && Continuation.equal alias_of1 alias_of2
   | Nonrecursive { name = name1; handler = handler1; },
       Nonrecursive { name = name2; handler = handler2; } ->
     Continuation.equal name1 name2
@@ -239,24 +235,11 @@ let toplevel_substitution sb tree =
       let args = List.map sb args in
       Apply_cont (static_exn, trap_action, args)
     | Let _ | Proved_unreachable -> flam
-    | Let_cont { body = _; handlers = Alias _; } -> flam
-    | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
-      let handler =
-        { handler with
-          (* CR mshinwell: share with below *)
-          specialised_args =
-            (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-                { spec_to with var = sb_opt spec_to.var; })
-              handler.specialised_args);
-        }
-      in
-      Let_cont { body; handlers = Nonrecursive { name; handler; }; }
-    | Let_cont { body; handlers = Recursive handlers; } ->
-      let handlers =
+    | Let_cont { body; handlers; } ->
+      let f handlers =
         Continuation.Map.map (fun (handler : Flambda.continuation_handler)
                 : Flambda.continuation_handler ->
             { handler with
-              (* CR mshinwell: share with below *)
               specialised_args =
                 (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
                     { spec_to with var = sb_opt spec_to.var; })
@@ -264,7 +247,7 @@ let toplevel_substitution sb tree =
             })
           handlers
       in
-      Let_cont { body; handlers = Recursive handlers; }
+      Let_cont { body; handlers = Flambda.map_let_cont_handlers ~handlers ~f; }
   in
   let aux_named (named : Flambda.named) : Flambda.named =
     match named with
@@ -955,12 +938,10 @@ let all_defined_continuations_toplevel expr =
   let defined_continuations = ref Continuation.Set.empty in
   Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
       match expr with
-      | Let_cont { handlers = Nonrecursive { name; _ }; _ } ->
+      | Let_cont { handlers; _ } ->
+        let conts = Flambda.bound_continuations_of_let_handlers ~handlers in
         defined_continuations :=
-          Continuation.Set.add name !defined_continuations
-      | Let_cont { handlers = Recursive handlers; _ } ->
-        defined_continuations :=
-          Continuation.Set.union (Continuation.Map.keys handlers)
+          Continuation.Set.union conts
             !defined_continuations
       | _ -> ())
     (fun _named -> ())
@@ -992,3 +973,23 @@ let count_continuation_uses_toplevel (expr : Flambda.t) =
     (fun _named -> ())
     expr;
   Continuation.Tbl.to_map counts
+
+let make_let_cont_alias ~name ~alias_of ~arity : Flambda.let_cont_handlers =
+  let handler_params, apply_params =
+    let rec aux n =
+      if n <= 0 then []
+      else let v = Variable.create "continuation_wrapper" in
+        (Parameter.wrap v, v) :: (aux (n - 1))
+    in
+    List.split (aux arity)
+  in
+  Nonrecursive {
+    name;
+    handler = {
+      params = handler_params;
+      stub = true;
+      is_exn_handler = false;
+      handler = Apply_cont (alias_of, None, apply_params);
+      specialised_args = Variable.Map.empty;
+    };
+  }

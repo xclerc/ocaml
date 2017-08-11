@@ -121,9 +121,6 @@ let for_toplevel_expression expr r =
             handler.handler
             handler.params args
         end
-      | Let_cont { body; handlers = (Alias _) as handlers; } ->
-        let body = substitute env body in
-        Let_cont { body; handlers; }
       | Apply _ | Switch _ | Proved_unreachable -> expr
     in
     let expr = substitute Continuation.Map.empty expr in

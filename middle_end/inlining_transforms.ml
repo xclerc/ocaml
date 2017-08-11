@@ -146,14 +146,13 @@ let inline_by_copying_function_body ~env ~r
   in
   (* Arrange for the continuation through which the function returns to be
      that supplied at the call site. *)
+  let handlers = Flambda_utils.make_let_cont_alias
+    ~name:function_decl.continuation_param
+    ~alias_of:continuation
+    ~arity:function_decl.return_arity
+  in
   let body : Flambda.t =
-    Let_cont {
-      body;
-      handlers = Alias {
-        name = function_decl.continuation_param;
-        alias_of = continuation;
-      };
-    }
+    Let_cont { body; handlers; }
   in
   let bindings_for_params_to_args =
     (* Bind the function's parameters to the arguments from the call site. *)

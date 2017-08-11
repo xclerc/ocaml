@@ -33,7 +33,6 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
     Continuation.Map.iter
       (fun _cont ({ handler; _ } : Flambda.continuation_handler) -> f handler)
       handlers
-  | Let_cont { handlers = Alias _; _ } -> ()
 
 let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
   match tree with
@@ -51,14 +50,9 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       Let_mutable { mutable_let with body = new_body }
-  | Let_cont ({ body; handlers; } as let_cont) ->
+  | Let_cont { body; handlers; } ->
     let new_body = f body in
     match handlers with
-    | Alias _ ->
-      if new_body == body then
-        tree
-      else
-        Let_cont { let_cont with body = new_body; }
     | Nonrecursive { name; handler =
         ({ handler = handler_expr; _ } as handler); } ->
       let new_handler_expr = f handler_expr in
@@ -256,14 +250,9 @@ let map_general ~toplevel f f_named tree =
             Let_mutable { mutable_let with body = new_body }
         (* CR-soon mshinwell: There's too much code duplication here with
            [map_subexpressions]. *)
-        | Let_cont ({ body; handlers; } as let_cont) ->
+        | Let_cont { body; handlers; } ->
           let new_body = aux body in
           match handlers with
-          | Alias _ ->
-            if new_body == body then
-              tree
-            else
-              Let_cont { let_cont with body = new_body; }
           | Nonrecursive { name; handler =
               ({ handler = handler_expr; _ } as handler); } ->
             let new_handler_expr = aux handler_expr in

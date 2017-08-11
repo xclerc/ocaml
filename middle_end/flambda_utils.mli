@@ -250,3 +250,9 @@ val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t
 val count_continuation_uses_toplevel
    : Flambda.expr
   -> int Continuation.Map.t
+
+val make_let_cont_alias
+   : name:Continuation.t
+  -> alias_of:Continuation.t
+  -> arity:int
+  -> Flambda.let_cont_handlers
