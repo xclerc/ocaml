@@ -91,7 +91,6 @@ let lambda_smaller' lam ~than:threshold =
     | Let_cont { body; handlers; } ->
       lambda_size body;
       begin match handlers with
-      | Alias _ -> ()
       | Nonrecursive { name = _; handler = { handler; _ }; } ->
         lambda_size handler
       | Recursive handlers ->

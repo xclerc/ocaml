@@ -138,7 +138,6 @@ and let_cont = {
 and let_cont_handlers =
   | Nonrecursive of { name : Continuation.t; handler : continuation_handler; }
   | Recursive of continuation_handlers
-  | Alias of { name : Continuation.t; alias_of : Continuation.t; }
 
 and continuation_handlers =
   continuation_handler Continuation.Map.t
@@ -415,10 +414,6 @@ let rec lam ppf (flam : t) =
               first := false)
             handlers;
           fprintf ppf "@]"
-        | Alias { name; alias_of; } ->
-          fprintf ppf "@[<v 2>where %a = %a@]"
-            Continuation.print name
-            Continuation.print alias_of
       in
       let pp_sep ppf () = fprintf ppf "@ " in
       fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
@@ -501,8 +496,6 @@ and print_let_cont_handlers ppf (handler : let_cont_handlers) =
           lam handler;
         first := false)
       handlers
-  | Alias { name; alias_of; } ->
-    fprintf ppf "%a = %a" Continuation.print name Continuation.print alias_of
 
 and print_function_declaration ppf var (f : function_declaration) =
   let param ppf p =
@@ -726,7 +719,6 @@ let rec variables_usage ?ignore_uses_as_callee
     | Let_cont { handlers; body; } ->
       aux body;
       begin match handlers with
-      | Alias _ -> ()
       | Nonrecursive { name = _; handler = {
           params; handler; specialised_args; _ }; } ->
         List.iter (fun param -> bound_variable (Parameter.var param)) params;
@@ -920,7 +912,6 @@ let iter_general ~toplevel f f_named maybe_named =
         | Recursive handlers ->
           Continuation.Map.iter (fun _cont { handler; } -> aux handler)
             handlers
-        | Alias _ -> ()
         end
       | Proved_unreachable -> ()
   and aux_named (named : named) =
@@ -1079,6 +1070,27 @@ Format.eprintf "This defining expression doesn't terminate:\n@ %a\n%!"
   in
   loop t ~acc:init ~rev_lets:[]
 
+let continuation_map_of_let_handlers ~(handlers : let_cont_handlers) =
+  match handlers with
+  | Nonrecursive { name; handler } -> Continuation.Map.singleton name handler
+  | Recursive handlers -> handlers
+
+let map_let_cont_handlers ~(handlers : let_cont_handlers) ~f =
+  match handlers with
+  | Nonrecursive { name; handler } ->
+    let handlers = f (Continuation.Map.singleton name handler) in
+    begin match Continuation.Map.bindings handlers with
+    | [ name, handler ] -> Nonrecursive { name; handler; }
+    | _ -> Misc.fatal_errorf "Flambda.map_let_cont_handlers: \
+        Nonrecursive case expects exactly one handler"
+    end
+  | Recursive handlers -> Recursive (f handlers)
+
+let bound_continuations_of_let_handlers ~(handlers : let_cont_handlers) =
+  match handlers with
+  | Nonrecursive { name; _ } -> Continuation.Set.singleton name
+  | Recursive handlers -> Continuation.Map.keys handlers
+
 let rec free_continuations (expr : expr) =
   match expr with
   | Let { body; _ }
@@ -1111,8 +1123,6 @@ let rec free_continuations (expr : expr) =
 
 and free_continuations_of_let_cont_handlers' ~(handlers : let_cont_handlers) =
   match handlers with
-  | Alias { name; alias_of; } ->
-    Continuation.Set.singleton alias_of, Continuation.Set.singleton name
   | Nonrecursive { name; handler = { handler; _ }; } ->
     let fcs = free_continuations handler in
     if Continuation.Set.mem name fcs then begin
@@ -1136,24 +1146,15 @@ let free_continuations_of_let_cont_handlers ~(handlers : let_cont_handlers) =
   fst (free_continuations_of_let_cont_handlers' ~handlers)
 
 let free_variables_of_let_cont_handlers (handlers : let_cont_handlers) =
-  match handlers with
-  | Alias _ -> Variable.Set.empty
-  | Nonrecursive { name = _; handler = {
-      params; handler; specialised_args; _ }; } ->
-    Variable.Set.union
-      (free_variables_of_specialised_args specialised_args)
-      (Variable.Set.diff (free_variables handler)
-        (Parameter.Set.vars params))
-  | Recursive handlers ->
-    Continuation.Map.fold (fun _name { params; handler; specialised_args; _ }
-            fvs ->
-        Variable.Set.union fvs
-          (Variable.Set.union
-            (free_variables_of_specialised_args specialised_args)
-            (Variable.Set.diff (free_variables handler)
-              (Parameter.Set.vars params))))
-      handlers
-      Variable.Set.empty
+  Continuation.Map.fold (fun _name { params; handler; specialised_args; _ }
+          fvs ->
+      Variable.Set.union fvs
+        (Variable.Set.union
+          (free_variables_of_specialised_args specialised_args)
+          (Variable.Set.diff (free_variables handler)
+            (Parameter.Set.vars params))))
+    (continuation_map_of_let_handlers ~handlers)
+    Variable.Set.empty
 
 let free_symbols_helper symbols (named : named) =
   match named with

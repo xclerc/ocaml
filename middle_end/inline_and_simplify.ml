@@ -2090,15 +2090,6 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   | Apply_cont (cont, trap_action, args) ->
     simplify_free_variables env args ~f:(fun env args args_approxs ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_approxs)
-  | Let_cont { body; handlers = Nonrecursive { name; handler = {
-      params; handler = Apply_cont (alias_of, None, params');
-      is_exn_handler = false; }; }; }
-    when Parameter.List.compare params (Parameter.List.wrap params') = 0 ->
-    (* Introduction of continuation aliases. *)
-    let expr : Flambda.t =
-      Let_cont { body; handlers = Alias { name; alias_of; }; }
-    in
-    simplify env r expr
   | Let_cont { body; handlers; } ->
     (* In two stages we form the environment to be used for simplifying the
        [body].  If the continuations in [handlers] are recursive then
@@ -2147,33 +2138,8 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           handlers
           (Continuation.Map.empty, E.freshening env)
       in
-      match handlers with
-      | Nonrecursive { name; handler; } ->
-        let handlers =
-          Continuation.Map.add name handler Continuation.Map.empty
-        in
-        normal_case ~handlers
-      | Recursive handlers -> normal_case ~handlers
-      | Alias { name; alias_of; } ->
-        let freshened_name, freshening =
-          Freshening.add_static_exception (E.freshening env) name
-        in
-        let alias_of =
-          Freshening.apply_static_exception (E.freshening env) alias_of
-        in
-        let approx =
-          let approx = E.find_continuation env alias_of in
-          Continuation_approx.create_unknown
-            ~name:(Continuation_approx.name approx)
-            ~num_params:(Continuation_approx.num_params approx)
-        in
-        assert (Continuation_approx.handlers approx = None);
-        let conts_and_approxs =
-          Continuation.Map.of_list [
-            freshened_name, (name, approx);
-          ]
-        in
-        conts_and_approxs, freshening
+      let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+      normal_case ~handlers
     in
     (* CR mshinwell: Is _unfreshened_name redundant? *)
     let body_env =
@@ -2348,15 +2314,6 @@ Format.eprintf "args_approxs override:@ %a\n%!"
 Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
   Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
 *)
-    | Alias { name; alias_of = _; } ->
-      (* As a result of adding the approximation of [name], above, to the
-         environment then all uses of it in the [body] should have been
-         replaced by [alias_of]. *)
-      assert (R.continuation_unused r name);
-      let r, _uses = R.exit_scope_catch r env name in
-      assert (not (R.is_used_continuation r name));
-      assert (not (R.continuation_defined r name));
-      body, ret r (A.value_unknown Other)
     end
   | Switch (arg, sw) ->
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->

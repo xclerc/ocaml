@@ -266,8 +266,6 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
           List.map (fun (handler : Flambda.continuation_handler) ->
               handler.handler)
             (Continuation.Map.data handlers)
-        | Alias _ ->
-          Misc.fatal_error "simplify_let_cont_handlers should not return Alias"
       in
       (* CR-someday mshinwell: Probably some stuff about jump benefits should
          be added... *)
@@ -501,37 +499,9 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
         | None -> expr
         | Some body -> Flambda.create_let var defining_expr body
         end
-      | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+      | Let_cont { body; handlers; } ->
         let done_something = ref false in
-        let placement : Placement.t = Just_inside_continuation name in
-        let handler_body =
-          match place ~placement ~around:handler.handler with
-          | None -> handler.handler
-          | Some handler_body ->
-            done_something := true;
-            handler_body
-        in
-        let body =
-          let placement : Placement.t =
-            After_let_cont (Continuation.Set.singleton name)
-          in
-          match place ~placement ~around:body with
-          | None -> body
-          | Some body ->
-            done_something := true;
-            body
-        in
-        if not !done_something then expr
-        else
-          Let_cont {
-            body;
-            handlers = Nonrecursive { name; handler = {
-              handler with handler = handler_body; };
-            };
-          }
-      | Let_cont { body; handlers = Recursive handlers; } ->
-        let done_something = ref false in
-        let handlers =
+        let f handlers =
           Continuation.Map.mapi (fun name
                   (handler : Flambda.continuation_handler) ->
               let placement : Placement.t = Just_inside_continuation name in
@@ -545,7 +515,8 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
         in
         let body =
           let placement : Placement.t =
-            After_let_cont (Continuation.Map.keys handlers)
+            After_let_cont
+              (Flambda.bound_continuations_of_let_handlers ~handlers)
           in
           match place ~placement ~around:body with
           | None -> body
@@ -553,8 +524,9 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
             done_something := true;
             body
         in
+        let handlers = Flambda.map_let_cont_handlers ~handlers ~f in
         if not !done_something then expr
-        else Let_cont { body; handlers = Recursive handlers; }
+        else Let_cont { body; handlers; }
       | Apply_cont (cont, trap_action, args) ->
         let key = cont, args in
         begin match
@@ -563,7 +535,6 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
         | exception Not_found -> expr
         | new_cont -> Apply_cont (new_cont, trap_action, args)
         end
-      | Let_cont { handlers = Alias _; _ }
       | Apply _ | Let_mutable _ | Switch _ | Proved_unreachable -> expr)
     expr
 

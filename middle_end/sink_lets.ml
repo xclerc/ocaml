@@ -243,9 +243,6 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
         ~candidates_to_sink:(Variable.Set.singleton initial_value)
     in
     Let_mutable { var; initial_value; contents_kind; body; }, state
-  | Let_cont { body; handlers = (Alias _) as handlers; } ->
-    let body, state = sink_expr body ~state in
-    Let_cont { body; handlers; }, state
   | Let_cont { body; handlers = Recursive handlers; } ->
     let body = sink body in
     let handlers, state =
@@ -346,9 +343,6 @@ and sink (expr : Flambda.t) =
     | Let_mutable { var; initial_value; contents_kind; body; } ->
       let body = sink body in
       Let_mutable { var; initial_value; contents_kind; body; }
-    | Let_cont { body; handlers = (Alias _) as handlers; } ->
-      let body = sink body in
-      Let_cont { body; handlers; }
     | Let_cont { body; handlers = Nonrecursive { name; handler = {
         params; stub; is_exn_handler; handler; specialised_args; }; }; } ->
       let body = sink body in
