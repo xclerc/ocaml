@@ -21,22 +21,6 @@ module C = Inlining_cost
 module I = Simplify_boxed_integer_ops
 module S = Simplify_common
 
-let phys_equal (approxs:A.t list) =
-  match approxs with
-  | [] | [_] | _ :: _ :: _ :: _ ->
-      Misc.fatal_error "wrong number of arguments for equality"
-  | [a1; a2] ->
-    (* N.B. The following would be incorrect if the variables are not
-       bound in the environment:
-       match a1.var, a2.var with
-       | Some v1, Some v2 when Variable.equal v1 v2 -> true
-       | _ -> ...
-    *)
-    match a1.symbol, a2.symbol with
-    | Some (s1, None), Some (s2, None) -> Symbol.equal s1 s2
-    | Some (s1, Some f1), Some (s2, Some f2) -> Symbol.equal s1 s2 && f1 = f2
-    | _ -> false
-
 let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       ~big_endian : Flambda.named * A.t * Inlining_cost.Benefit.t =
   let fpc = !Clflags.float_const_prop in
@@ -76,9 +60,9 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
         A.value_immutable_float_array (Array.of_list approxs)
       in
       expr, approx, C.Benefit.zero
-  | Pintcomp Ceq when phys_equal approxs ->
+  | Pintcomp Ceq when A.phys_equal approxs ->
     S.const_bool_expr expr true
-  | Pintcomp Cneq when phys_equal approxs ->
+  | Pintcomp Cneq when A.phys_equal approxs ->
     S.const_bool_expr expr false
     (* N.B. Having [not (phys_equal approxs)] would not on its own tell us
        anything about whether the two values concerned are unequal.  To judge
@@ -101,6 +85,12 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
        inlined later, [a] and [b] could be shared and thus [c] and [d] could
        be too.  As such, any intermediate non-aliasing judgement would be
        invalid. *)
+  | Pintcomp Ceq when A.phys_different approxs ->
+    S.const_bool_expr expr false
+  | Pintcomp Cneq when A.phys_different approxs ->
+    S.const_bool_expr expr true
+    (* If two values are structurally different we are certain they can never
+       be shared*)
   | _ ->
     match A.descrs approxs with
     | [Union union] when p = Lambda.Pisint ->

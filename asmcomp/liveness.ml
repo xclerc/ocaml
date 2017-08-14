@@ -137,8 +137,7 @@ let rec live i finally =
       in
       let live_at_exit_before = !live_at_exit in
       let rec fixpoint before_handlers =
-        let live_at_exit_add = before_handlers in
-        live_at_exit := live_at_exit_add @ !live_at_exit;
+        live_at_exit := before_handlers @ !live_at_exit;
         let before_handlers' = List.map2 aux handlers before_handlers in
         live_at_exit := live_at_exit_before;
         match rec_flag with

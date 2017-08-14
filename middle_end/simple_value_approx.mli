@@ -496,3 +496,6 @@ val potentially_taken_const_switch_branch
    : t
   -> int
   -> switch_branch_selection
+
+val phys_equal : t list -> bool
+val phys_different : t list -> bool
