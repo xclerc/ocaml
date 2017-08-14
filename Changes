@@ -22,6 +22,10 @@ Working version
   (Daniel Bünzli, review by Damien Doligez, Alain Frisch, Xavier
   Leroy and Leo White)
 
+- GPR#1247: M.(::) construction for expressions
+  and patterns (plus fix printing of (::) in the toplevel)
+  (Florian Angeletti, review by Alain Frisch, Gabriel Scherer)
+
 ### Code generation and optimizations:
 
 - MPR#5324, GPR#375: An alternative Linear Scan register allocator for
@@ -142,6 +146,9 @@ Working version
   them with "Error (warning ..):", instead of "Warning ..:" and
   a trailing "Error: Some fatal warnings were triggered" message.
   (Valentin Gatien-Baron, review by Alain Frisch)
+
+* GPR#1189: allow MSVC ports to use -l option in ocamlmklib
+  (David Allsopp)
 
 ### Manual and documentation:
 
@@ -390,8 +397,8 @@ Working version
   Mark Shinwell, Thomas Braibant, Stephen Dolan, Pierre Chambart,
   François Bobot, Jacques Garrigue, David Allsopp, and Alain Frisch)
 
-- GPR#938, GPR#1170: Stack overflow detection on 64-bit Windows
-  (Olivier Andrieu)
+- GPR#938, GPR#1170, GPR#1289: Stack overflow detection on 64-bit Windows
+  (Olivier Andrieu, tweaked by David Allsopp)
 
 - GPR#1073: Remove statically allocated compare stack.
   (Stephen Dolan)
