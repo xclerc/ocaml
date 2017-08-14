@@ -42,6 +42,18 @@ let name t = t.name
 let num_params t = t.num_params
 let handlers t = t.handlers
 
+let is_alias t =
+  match t.handlers with
+  | None | Some (Recursive _) -> None
+  | Some (Nonrecursive handler) ->
+    match handler.handler with
+    | Apply_cont (cont, None, args) ->
+      if Parameter.List.equal_vars handler.params args then
+        Some cont
+      else
+        None
+    | _ -> None
+
 let print ppf t =
   let print_handlers ppf = function
     | None -> Format.fprintf ppf "<handlers not known>"

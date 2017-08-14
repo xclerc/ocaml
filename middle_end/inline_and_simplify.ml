@@ -1295,7 +1295,11 @@ Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
 and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_approxs =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
-  let cont = Continuation_approx.name cont_approx in
+  let cont =
+    match Continuation_approx.is_alias cont_approx with
+    | None -> Continuation_approx.name cont_approx
+    | Some alias_of -> alias_of
+  in
   let r =
     match don't_record_use with
     | None ->
@@ -2111,15 +2115,20 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
                  if we inline it.
                  Note that stubs are not allowed to call themselves.
                  The code for [handler] is also put in the environment if
-                 the continuation just contains [Proved_unreachable].  This
+                 the continuation is just an [Apply_cont] acting as a
+                 continuation alias or just contains [Proved_unreachable].  This
                  enables earlier [Switch]es that branch to such continuation
                  to be simplified, in some cases removing them entirely. *)
-              let is_unreachable =
+              let alias_or_unreachable =
                 match handler.handler with
                 | Proved_unreachable -> true
+                (* CR mshinwell: share somehow with [Continuation_approx].
+                   Also, think about this in the multi-argument case -- need
+                   to freshen. *)
+                | Apply_cont (_cont, None, []) -> true
                 | _ -> false
               in
-              if handler.stub || is_unreachable then begin
+              if handler.stub || alias_or_unreachable then begin
                 assert (not (Continuation.Set.mem name
                   (Flambda.free_continuations handler.handler)));
                 Continuation_approx.create ~name:freshened_name

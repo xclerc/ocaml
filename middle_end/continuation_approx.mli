@@ -35,4 +35,6 @@ val name : t -> Continuation.t
 val num_params : t -> int
 val handlers : t -> continuation_handlers option
 
+val is_alias : t -> Continuation.t option
+
 val print : Format.formatter -> t -> unit

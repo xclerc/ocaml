@@ -75,6 +75,12 @@ module List = struct
 
   let wrap vars = List.map (fun var -> wrap var) vars
 
+  let equal_vars t vars =
+    List.length t = List.length vars
+      && List.for_all2 (fun param variable ->
+          Variable.equal (var param) variable)
+        t vars
+
   let rename ?current_compilation_unit ?append ts =
     List.map (fun t -> rename ?current_compilation_unit ?append t) ts
 

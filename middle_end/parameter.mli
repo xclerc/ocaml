@@ -63,6 +63,8 @@ module List : sig
 
   val wrap : Variable.t list -> t list
 
+  val equal_vars : t list -> Variable.t list -> bool
+
   val rename
      : ?current_compilation_unit:Compilation_unit.t
     -> ?append:string
