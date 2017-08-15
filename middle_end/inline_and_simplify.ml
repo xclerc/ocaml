@@ -171,11 +171,11 @@ let approx_for_allocated_const (const : Allocated_const.t) =
   | Int32 i -> A.value_boxed_int Int32 i
   | Int64 i -> A.value_boxed_int Int64 i
   | Nativeint i -> A.value_boxed_int Nativeint i
-  | Boxed_float f -> A.value_float f
+  | Boxed_float f -> A.value_boxed_float f
   | Float_array a -> A.value_mutable_float_array ~size:(List.length a)
   | Immutable_float_array a ->
       A.value_immutable_float_array
-        (Array.map A.value_float (Array.of_list a))
+        (Array.map A.value_boxed_float (Array.of_list a))
 
 type filtered_switch_branches =
   | Must_be_taken of Continuation.t

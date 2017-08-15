@@ -249,7 +249,7 @@ val update_freshening_of_value_set_of_closures
 val value_unknown : unknown_because_of -> t
 val value_int : int -> t
 val value_char : char -> t
-val value_float : float -> t
+val value_boxed_float : float -> t
 val value_any_float : t
 val value_mutable_float_array : size:int -> t
 val value_immutable_float_array : t array -> t

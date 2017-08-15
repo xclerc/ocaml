@@ -717,7 +717,7 @@ let value_unknown reason = approx (Unknown reason)
 let value_int i = approx (Union (Unionable.value_int i))
 let value_char i = approx (Union (Unionable.value_char i))
 let value_constptr i = approx (Union (Unionable.value_constptr i))
-let value_float f = approx (Boxed_float (Some f))
+let value_boxed_float f = approx (Boxed_float (Some f))
 let value_any_float = approx (Boxed_float None)
 let value_boxed_int bi i = approx (Boxed_int (bi,i))
 
@@ -814,7 +814,7 @@ let make_const_bool_named b : Flambda.named * t =
   make_const_ptr_named (if b then 1 else 0)
 
 let make_const_float_named f : Flambda.named * t =
-  Allocated_const (Float f), value_float f
+  Allocated_const (Float f), value_boxed_float f
 
 let make_const_boxed_int_named (type bi) (t:bi boxed_int) (i:bi)
       : Flambda.named * t =
