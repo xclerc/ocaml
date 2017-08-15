@@ -50,7 +50,7 @@ module rec T : sig
     | Union of Unionable.t
     (* CR mshinwell: These next two should presumably go into [Union] so we
        can unbox them *)
-    | Float of float option
+    | Boxed_float of float option
     | Boxed_int : 'a boxed_int * 'a -> descr
     | Set_of_closures of value_set_of_closures
     | Closure of value_closure
@@ -137,7 +137,7 @@ end = struct
       end
     | Symbol s1, Symbol s2 when Symbol.equal s1 s2 -> d1
     | Extern e1, Extern e2 when Export_id.equal e1 e2 -> d1
-    | Float i, Float j when i = j -> d1
+    | Boxed_float i, Boxed_float j when i = j -> d1
     | Boxed_int (bi1, i1), Boxed_int (bi2, i2)
         when equal_boxed_int bi1 i1 bi2 i2 -> d1
     | Closure { potential_closures = map1 },
@@ -252,8 +252,8 @@ end = struct
       print_value_set_of_closures ppf set_of_closures
     | Unresolved value ->
       Format.fprintf ppf "(unresolved %a)" print_unresolved_value value
-    | Float (Some f) -> Format.pp_print_float ppf f
-    | Float None -> Format.pp_print_string ppf "float"
+    | Boxed_float (Some f) -> Format.pp_print_float ppf f
+    | Boxed_float None -> Format.pp_print_string ppf "float"
     | String { contents; size } -> begin
         match contents with
         | None ->
@@ -628,7 +628,7 @@ type t = T.t = {
 and descr = T.descr =
   | Unknown of unknown_because_of
   | Union of Unionable.t
-  | Float of float option
+  | Boxed_float of float option
   | Boxed_int : 'a T.boxed_int * 'a -> descr
   | Set_of_closures of value_set_of_closures
   | Closure of value_closure
@@ -681,10 +681,10 @@ let augment_with_kind t (kind:Lambda.value_kind) =
   | Pgenval -> t
   | Pfloatval ->
     begin match t.descr with
-    | Float _ ->
+    | Boxed_float _ ->
       t
     | Unknown _ | Unresolved _ ->
-      { t with descr = Float None }
+      { t with descr = Boxed_float None }
     | Union _
     | Boxed_int _
     | Set_of_closures _
@@ -702,7 +702,7 @@ let augment_with_kind t (kind:Lambda.value_kind) =
 
 let augment_kind_with_approx t (kind:Lambda.value_kind) : Lambda.value_kind =
   match t.descr with
-  | Float _ -> Pfloatval
+  | Boxed_float _ -> Pfloatval
   | Union union ->
     begin match Unionable.flatten union with
     | Ok (Int _) -> Pintval
@@ -717,8 +717,8 @@ let value_unknown reason = approx (Unknown reason)
 let value_int i = approx (Union (Unionable.value_int i))
 let value_char i = approx (Union (Unionable.value_char i))
 let value_constptr i = approx (Union (Unionable.value_constptr i))
-let value_float f = approx (Float (Some f))
-let value_any_float = approx (Float None)
+let value_float f = approx (Boxed_float (Some f))
+let value_any_float = approx (Boxed_float None)
 let value_boxed_int bi i = approx (Boxed_int (bi,i))
 
 let value_closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
@@ -849,7 +849,7 @@ let simplify_named t (named : Flambda.named) : simplification_result_named =
         let const, approx = make_const_ptr_named n in
         const, Replaced_term, approx
       end
-    | Float (Some f) ->
+    | Boxed_float (Some f) ->
       let const, approx = make_const_float_named f in
       const, Replaced_term, approx
     | Boxed_int (t, i) ->
@@ -857,7 +857,7 @@ let simplify_named t (named : Flambda.named) : simplification_result_named =
       const, Replaced_term, approx
     | Symbol sym ->
       Symbol sym, Replaced_term, t
-    | String _ | Float_array _ | Float None
+    | String _ | Float_array _ | Boxed_float None
     | Set_of_closures _ | Closure _
     | Unknown _ | Bottom | Extern _ | Unresolved _ ->
       named, Nothing_done, t
@@ -881,10 +881,10 @@ let simplify_var t : (Flambda.named * t) option =
     | Ok (Char n) -> Some (make_const_char_named n)
     | Ok (Constptr n) -> Some (make_const_ptr_named n)
     end
-  | Float (Some f) -> Some (make_const_float_named f)
+  | Boxed_float (Some f) -> Some (make_const_float_named f)
   | Boxed_int (t, i) -> Some (make_const_boxed_int_named t i)
   | Symbol sym -> Some (Symbol sym, t)
-  | String _ | Float_array _ | Float None
+  | String _ | Float_array _ | Boxed_float None
   | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Extern _
   | Unresolved _ -> try_symbol ()
 
@@ -919,20 +919,20 @@ let is_bottom t =
   match t.descr with
   | Bottom -> true
   | Unresolved _ | Unknown _ | String _ | Float_array _ | Union _
-  | Set_of_closures _ | Closure _ | Extern _ | Float _ | Boxed_int _
+  | Set_of_closures _ | Closure _ | Extern _ | Boxed_float _ | Boxed_int _
   | Symbol _ -> false
 
 let known t =
   match t.descr with
   | Unresolved _ | Unknown _ -> false
   | String _ | Float_array _ | Bottom | Union _ | Set_of_closures _ | Closure _
-  | Extern _ | Float _ | Boxed_int _ | Symbol _ -> true
+  | Extern _ | Boxed_float _ | Boxed_int _ | Symbol _ -> true
 
 let useful t =
   match t.descr with
   | Unresolved _ | Unknown _ | Bottom -> false
   | Union union -> Unionable.useful union
-  | String _ | Float_array _ | Set_of_closures _ | Float _ | Boxed_int _
+  | String _ | Float_array _ | Set_of_closures _ | Boxed_float _ | Boxed_int _
   | Closure _ | Extern _ | Symbol _ -> true
 
 let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
@@ -940,7 +940,7 @@ let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 let invalid_to_mutate t =
   match t.descr with
   | Union unionable -> Unionable.invalid_to_mutate unionable
-  | String { contents = Some _ } | Set_of_closures _ | Float _
+  | String { contents = Some _ } | Set_of_closures _ | Boxed_float _
   | Boxed_int _ | Closure _ -> true
   | String { contents = None } | Float_array _ | Unresolved _ | Unknown _
   | Bottom -> false
@@ -984,7 +984,7 @@ Format.eprintf "get_field %d from %a\n%!" i print t;
        change this, although it's probably not Pfield that is used to
        do the projection. *)
     Ok (value_unknown Other)
-  | String _ | Float _ | Boxed_int _ ->
+  | String _ | Boxed_float _ | Boxed_int _ ->
     (* The user is doing something unsafe. *)
     Unreachable
   | Set_of_closures _ | Closure _
@@ -1016,7 +1016,7 @@ let check_approx_for_block t : checked_approx_for_block =
     | Ok (Block (tag, fields)) -> Ok (tag, fields)
     | Ok (Int _ | Char _ | Constptr _) | Ill_typed_code | Anything -> Wrong
     end
-  | Bottom | Float_array _ | String _ | Float _ | Boxed_int _
+  | Bottom | Float_array _ | String _ | Boxed_float _ | Boxed_int _
   | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong
 
@@ -1034,7 +1034,7 @@ let check_approx_for_block_or_immediate t
     | Ok (Block _) -> Block
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
-  | Bottom | Float_array _ | String _ | Float _ | Boxed_int _
+  | Bottom | Float_array _ | String _ | Boxed_float _ | Boxed_int _
   | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong
 
@@ -1047,7 +1047,7 @@ let check_approx_for_variant t : checked_approx_for_variant =
   | Union union ->
     if Unionable.ok_for_variant union then Ok union
     else Wrong
-  | Bottom | Float_array _ | String _ | Float _ | Boxed_int _
+  | Bottom | Float_array _ | String _ | Boxed_float _ | Boxed_int _
   | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong
 
@@ -1092,7 +1092,7 @@ let check_approx_for_set_of_closures t : checked_approx_for_set_of_closures =
        closures via approximations only, with the variable originally bound
        to the set now out of scope. *)
     Ok (t.var, value_set_of_closures)
-  | Closure _ | Union _ | Float _ | Boxed_int _ | Unknown _ | Bottom
+  | Closure _ | Union _ | Boxed_float _ | Boxed_int _ | Unknown _ | Bottom
   | Extern _ | String _ | Float_array _ | Symbol _ -> Wrong
 
 type strict_checked_approx_for_set_of_closures =
@@ -1127,7 +1127,7 @@ let check_approx_for_closure_allowing_unresolved t
             | Set_of_closures value_set_of_closures ->
               value_set_of_closures
             | Unresolved _
-            | Closure _ | Union _ | Float _ | Boxed_int _ | Unknown _
+            | Closure _ | Union _ | Boxed_float _ | Boxed_int _ | Unknown _
             | Bottom | Extern _ | String _ | Float_array _ | Symbol _ ->
               raise Exit)
             value_closure.potential_closures
@@ -1145,13 +1145,13 @@ let check_approx_for_closure_allowing_unresolved t
         Ok (Closure_id.Map.singleton closure_id value_set_of_closures,
             set_of_closures.var, symbol)
       | Unresolved _
-      | Closure _ | Float _ | Boxed_int _ | Unknown _ | Bottom | Extern _
+      | Closure _ | Boxed_float _ | Boxed_int _ | Unknown _ | Bottom | Extern _
       | String _ | Float_array _ | Symbol _ | Union _ -> Wrong
     end
   | Unknown (Unresolved_value value) ->
     Unknown_because_of_unresolved_value value
   | Unresolved value -> Unresolved value
-  | Set_of_closures _ | Union _ | Float _ | Boxed_int _ | Bottom | Extern _
+  | Set_of_closures _ | Union _ | Boxed_float _ | Boxed_int _ | Bottom | Extern _
   | String _ | Float_array _ | Symbol _ -> Wrong
   (* CR-soon mshinwell: This should be unwound once the reason for a value
      being unknown can be correctly propagated through the export info. *)
@@ -1199,12 +1199,12 @@ let approx_for_bound_var value_set_of_closures var =
 let check_approx_for_int t : int option =
   match t.descr with
   | Union unionable -> Unionable.as_int unionable
-  | Float _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
+  | Boxed_float _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
   | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
 
 let check_approx_for_float t : float option =
   match t.descr with
-  | Float f -> f
+  | Boxed_float f -> f
   | Union _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
   | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
 
@@ -1214,11 +1214,11 @@ let float_array_as_constant (t:value_float_array) : float list option =
   | Contents contents ->
     Array.fold_right (fun elt acc ->
         match acc, elt.descr with
-        | Some acc, Float (Some f) ->
+        | Some acc, Boxed_float (Some f) ->
           Some (f :: acc)
         | None, _
         | Some _,
-          (Float None | Unresolved _ | Unknown _ | String _ | Float_array _
+          (Boxed_float None | Unresolved _ | Unknown _ | String _ | Float_array _
             | Bottom | Union _ | Set_of_closures _ | Closure _ | Extern _
             | Boxed_int _ | Symbol _)
           -> None)
@@ -1227,7 +1227,7 @@ let float_array_as_constant (t:value_float_array) : float list option =
 let check_approx_for_string t : string option =
   match t.descr with
   | String { contents } -> contents
-  | Union _ | Float _ | Unresolved _ | Unknown _ | Float_array _ | Bottom
+  | Union _ | Boxed_float _ | Unresolved _ | Unknown _ | Float_array _ | Bottom
   | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
 
 type switch_branch_selection =
@@ -1252,7 +1252,7 @@ let potentially_taken_const_switch_branch t branch =
     (* In theory symbols cannot contain integers but this shouldn't
        matter as this will always be an imported approximation *)
     Can_be_taken
-  | Float _ | Float_array _ | String _ | Closure _ | Set_of_closures _
+  | Boxed_float _ | Float_array _ | String _ | Closure _ | Set_of_closures _
   | Boxed_int _ | Bottom -> Cannot_be_taken
 
 let phys_equal (approxs:t list) =
@@ -1274,14 +1274,14 @@ let phys_equal (approxs:t list) =
 let is_known_to_be_some_kind_of_int (arg:descr) =
   match arg with
   | Union (Immediates _) -> true
-  | Union (Blocks _ | Blocks_and_immediates _) | Float _ | Set_of_closures _
+  | Union (Blocks _ | Blocks_and_immediates _) | Boxed_float _ | Set_of_closures _
   | Closure _ | String _ | Float_array _
   | Boxed_int _ | Unknown _ | Extern _
   | Symbol _ | Unresolved _ | Bottom -> false
 
 let is_known_to_be_some_kind_of_block (arg:descr) =
   match arg with
-  | Union (Blocks _) | Float _ | Float_array _ | Boxed_int _
+  | Union (Blocks _) | Boxed_float _ | Float_array _ | Boxed_int _
   | Closure _ | String _ -> true
   | Set_of_closures _ | Union (Blocks_and_immediates _ | Immediates _)
   | Unknown _ | Extern _ | Symbol _

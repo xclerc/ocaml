@@ -117,7 +117,7 @@ let rec prepare_letrec recursive_set current_var (lam:Lambda.lambda) letrec =
     | T.Record_unboxed _ ->
       assert false
     | T.Record_float ->
-      build_block current_var size Float lam letrec
+      build_block current_var size Boxed_float lam letrec
     end
   | Lprim ((Pmakeblock _ | Pmakearray (_, _)) as prim, args, dbg)
     when not (List.for_all is_a_variable args) ->
@@ -151,7 +151,7 @@ let rec prepare_letrec recursive_set current_var (lam:Lambda.lambda) letrec =
   | Lprim (Pmakearray ((Paddrarray|Pintarray), _), args, _) ->
     build_block current_var (List.length args) Normal lam letrec
   | Lprim (Pmakearray (Pfloatarray, _), args, _) ->
-    build_block current_var (List.length args) Float lam letrec
+    build_block current_var (List.length args) Boxed_float lam letrec
   | Lconst const ->
     { letrec with consts = (current_var, const) :: letrec.consts }
   | Llet (Variable, k, id, def, body) ->
@@ -249,7 +249,7 @@ let dissect_letrec ~bindings ~body =
       let fn =
         match block_type with
         | Normal -> "caml_alloc_dummy"
-        | Float -> "caml_alloc_dummy_float"
+        | Boxed_float -> "caml_alloc_dummy_float"
       in
       let desc = Primitive.simple ~name:fn ~arity:1 ~alloc:true in
       let size : L.lambda = Lconst (Const_base (Const_int size)) in

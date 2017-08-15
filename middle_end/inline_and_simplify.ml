@@ -171,7 +171,7 @@ let approx_for_allocated_const (const : Allocated_const.t) =
   | Int32 i -> A.value_boxed_int Int32 i
   | Int64 i -> A.value_boxed_int Int64 i
   | Nativeint i -> A.value_boxed_int Nativeint i
-  | Float f -> A.value_float f
+  | Boxed_float f -> A.value_float f
   | Float_array a -> A.value_mutable_float_array ~size:(List.length a)
   | Immutable_float_array a ->
       A.value_immutable_float_array
@@ -1583,7 +1583,7 @@ Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
               let kind =
                 match A.descr block_approx, A.descr value_approx with
                 | (Float_array _, _)
-                | (_, Float _) ->
+                | (_, Boxed_float _) ->
                   begin match kind with
                   | Pfloatarray | Pgenarray -> ()
                   | Paddrarray | Pintarray ->
@@ -2401,12 +2401,12 @@ Format.eprintf "%a branch simplifies to: %a\n%!"
             * if there is a default action take that case;
             * otherwise this is something that is guaranteed not to
               be reachable by the type checker.  For example:
-              [type 'a t = Int : int -> int t | Float : float -> float t
+              [type 'a t = Int : int -> int t | Boxed_float : float -> float t
                 match Int 1 with
                 | Int _ -> ...
-                | Float f as v ->
+                | Boxed_float f as v ->
                   match v with   <-- This match is unreachable
-                  | Float f -> ...]
+                  | Boxed_float f -> ...]
           *)
           Proved_unreachable, r
         | [_, cont], None ->

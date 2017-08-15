@@ -131,7 +131,7 @@ module rec T : sig
   and descr = private 
     | Unknown of unknown_because_of
     | Union of Unionable.t
-    | Float of float option
+    | Boxed_float of float option
     | Boxed_int : 'a boxed_int * 'a -> descr
     | Set_of_closures of value_set_of_closures
     | Closure of value_closure

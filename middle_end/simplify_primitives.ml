@@ -168,14 +168,14 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
         end
       | _, _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [Float (Some x)] when fpc ->
+    | [Boxed_float (Some x)] when fpc ->
       begin match p with
       | Pintoffloat -> S.const_int_expr expr (int_of_float x)
       | Pnegfloat -> S.const_float_expr expr (-. x)
       | Pabsfloat -> S.const_float_expr expr (abs_float x)
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
-    | [Float (Some n1); Float (Some n2)] when fpc ->
+    | [Boxed_float (Some n1); Boxed_float (Some n2)] when fpc ->
       begin match p with
       | Paddfloat -> S.const_float_expr expr (n1 +. n2)
       | Psubfloat -> S.const_float_expr expr (n1 -. n2)
@@ -267,7 +267,7 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
         end
     | _ ->
       match Semantics_of_primitives.return_type_of_primitive p with
-      | Float ->
+      | Boxed_float ->
         expr, A.value_any_float, C.Benefit.zero
       | Other ->
         expr, A.value_unknown Other, C.Benefit.zero
