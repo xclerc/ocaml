@@ -298,6 +298,8 @@ end and Unionable : sig
       | Constptr of int
 
     include Identifiable.S with type t := t
+
+    val represents : t -> int
   end
 
   type blocks = T.t array Tag.Map.t
@@ -310,6 +312,8 @@ end and Unionable : sig
     | Blocks of blocks
     | Blocks_and_immediates of blocks * Immediate.Set.t
     | Immediates of Immediate.Set.t
+
+  val invariant : t -> unit
 
   val print : Format.formatter -> t -> unit
 
@@ -386,6 +390,10 @@ end = struct
           | Ill_typed_code -> Ill_typed_code
           | Anything -> Anything)
         ts (Ok t)
+
+    let represents = function
+      | Int n | Constptr n -> n
+      | Char c -> Char.code c
   end
 
   type blocks = T.t array Tag.Map.t
@@ -408,6 +416,17 @@ end = struct
     | Blocks_and_immediates of blocks * Immediate.Set.t
     | Immediates of Immediate.Set.t
 
+  let invariant t =
+    if !Clflags.flambda_invariant_checks then begin
+      match t with
+      | Blocks blocks -> assert (Tag.Map.cardinal blocks >= 1)
+      | Blocks_and_immediates (blocks, immediates) ->
+        assert (Tag.Map.cardinal blocks >= 1);
+        assert (Immediate.Set.cardinal immediates >= 1)
+      | Immediates immediates ->
+        assert (Immediate.Set.cardinal immediates >= 1)
+    end
+
   let print ppf t =
     match t with
     | Blocks by_tag ->
@@ -422,6 +441,7 @@ end = struct
         Immediate.Set.print imms
 
   let is_singleton t =
+    invariant t;
     match t with
     | Blocks blocks -> Tag.Map.cardinal blocks = 1
     | Blocks_and_immediates (blocks, imms) ->
@@ -441,7 +461,9 @@ end = struct
   let value_block tag fields =
     Blocks (Tag.Map.add tag fields Tag.Map.empty)
 
+  (* CR mshinwell: Bad name? *)
   let maybe_is_immediate_value t i =
+    invariant t;
     match t with
     | Blocks _ -> false
     | Blocks_and_immediates (_, imms) | Immediates imms ->
@@ -456,6 +478,7 @@ end = struct
         imms
 
   let ok_for_variant t =
+    invariant t;
     (* CR mshinwell: Shouldn't this function say "false" for e.g.
        (Int 0) u (Constptr 0) ? *)
     match t with
@@ -468,7 +491,9 @@ end = struct
     | Immediates _imms -> true
 
   let as_int t =
+    invariant t;
     let check_immediates imms =
+      (* CR mshinwell: Should this include Char and Constptr? *)
       match Immediate.Set.elements imms with
       | [Int i] -> Some i
       | _ -> None
@@ -481,6 +506,8 @@ end = struct
     | Immediates imms -> check_immediates imms
 
   let join (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
+    invariant t1;
+    invariant t2;
     let get_immediates t =
       match t with
       | Blocks _ -> Immediate.Set.empty
@@ -515,6 +542,7 @@ end = struct
     else Ok (Blocks_and_immediates (blocks, immediates))
 
   let useful t =
+    invariant t;
     match t with
     | Blocks blocks -> not (Tag.Map.is_empty blocks)
     | Blocks_and_immediates (blocks, immediates) ->
@@ -529,6 +557,7 @@ end = struct
     | Constptr of int
 
   let rec flatten t : singleton or_bottom =
+    invariant t;
     match t with
     | Blocks by_tag ->
       begin match Tag.Map.bindings by_tag with
@@ -548,6 +577,7 @@ end = struct
       | Anything -> Anything
 
   let size_of_block t =
+    invariant t;
     match t with
     | Blocks by_tag ->
       let sizes =
@@ -563,6 +593,7 @@ end = struct
     | Blocks_and_immediates _ | Immediates _ -> None
 
   let invalid_to_mutate t =
+    invariant t;
     match size_of_block t with
     | None -> true
     | Some 0 -> false  (* empty arrays are treated as mutable *)
@@ -1254,10 +1285,31 @@ let is_known_to_be_some_kind_of_block (arg:descr) =
   | Unresolved _ | Bottom -> false
 
 let rec structurally_different (arg1:t) (arg2:t) =
+  let module Int = Numbers.Int in
+  let module Immediate = Unionable.Immediate in
+  let immediates_structurally_different s1 s2 union1 union2 =
+    Unionable.invariant union1;
+    Unionable.invariant union2;
+    (* The frontend isn't precise about "int" and "const pointer", for
+       example generating "(!= b/1006 0)" for a match against a bool, which
+       is a "const pointer".  The same presumably might happen with "char".
+       As such for "structurally different" purposes we treat immediates whose
+       runtime representations are the same as equal. *)
+    let s1 =
+      Immediate.Set.fold (fun imm s1 ->
+          Int.Set.add (Immediate.represents imm) s1)
+        s1 Int.Set.empty
+    in
+    let s2 =
+      Immediate.Set.fold (fun imm s2 ->
+          Int.Set.add (Immediate.represents imm) s2)
+        s2 Int.Set.empty
+    in
+    Int.Set.is_empty (Int.Set.inter s1 s2)
+  in
   match arg1.descr, arg2.descr with
-  | Union (Immediates s1), Union (Immediates s2)
-    when Unionable.Immediate.Set.(is_empty (inter s1 s2)) ->
-    true
+  | Union ((Immediates s1) as union1), Union ((Immediates s2) as union2)
+    when immediates_structurally_different s1 s2 union1 union2 -> true
   | Union (Blocks b1), Union (Blocks b2)
     when Tag.Map.cardinal b1 = 1 && Tag.Map.cardinal b2 = 1 ->
     let tag1, fields1 = Tag.Map.min_binding b1 in

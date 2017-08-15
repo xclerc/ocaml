@@ -122,7 +122,6 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
           completeness. *)
         | Pidentity -> S.const_ptr_expr expr x
         | Pnot -> S.const_bool_expr expr (x = 0)
-        | Pisint -> S.const_bool_expr expr true
         | Poffsetint y -> S.const_ptr_expr expr (x + y)
         | Pctconst c ->
           begin match c with

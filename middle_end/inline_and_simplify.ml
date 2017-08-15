@@ -1298,7 +1298,8 @@ and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_approxs =
   let cont =
     match Continuation_approx.is_alias cont_approx with
     | None -> Continuation_approx.name cont_approx
-    | Some alias_of -> alias_of
+    | Some alias_of ->
+      Freshening.apply_static_exception (E.freshening env) alias_of
   in
   let r =
     match don't_record_use with
