@@ -780,7 +780,10 @@ let value_set_of_closures ?set_of_closures_var value_set_of_closures =
     symbol = None;
   }
 
-let value_block t b = approx (Union (Unionable.value_block t b))
+let value_block t b =
+  (* Avoid having multiple possible approximations for e.g. [Int64] values. *)
+  if Tag.if_at_or_above_no_scan_tag then value_unknown Other
+  else approx (Union (Unionable.value_block t b))
 
 let value_extern ex = approx (Extern ex)
 let value_symbol sym =

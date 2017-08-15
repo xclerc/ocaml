@@ -148,7 +148,7 @@ module rec T : sig
   } [@@unboxed]
 
   (* CR-soon mshinwell: add support for the approximations of the results, so we
-    can do all of the tricky higher-order cases. *)
+     can do all of the tricky higher-order cases. *)
   and value_set_of_closures = private {
     function_decls : Flambda.function_declarations;
     bound_vars : t Var_within_closure.Map.t;
