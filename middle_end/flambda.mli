@@ -49,6 +49,10 @@ module Const : sig
     (** [Const_pointer] is an immediate value of a type whose values may be
       boxed (typically a variant type with both constant and non-constant
       constructors). *)
+    | Unboxed_float of float
+    | Unboxed_int32 of Int32.t
+    | Unboxed_int64 of Int64.t
+    | Unboxed_nativeint of Nativeint.t
 
   include Identifiable.S with type t := t
 end
@@ -98,28 +102,6 @@ type free_var = {
 }
 
 type free_vars = free_var Variable.Map.t
-(* CR-someday mshinwell: move to separate module and make [Identifiable].
-  (Or maybe nearly Identifiable; having a special map that enforces invariants
-  might be good.) *)
-(* CR-someday mshinwell: This should perhaps be altered so that the
-   specialisation isn't just to a variable, or some particular projection,
-   but is instead to an actual approximation (which would be enhanced to
-   describe the projection too). *)
-type specialised_to = {
-  var : Variable.t option;
-  (** The "outer variable".  For non-specialised arguments of continuations
-      (which may still be involved in projection relations) this may be
-      [None]. *)
-  projection : Projection.t option;
-  (** The [projecting_from] value (see projection.mli) of any [projection]
-      must be another free variable or specialised argument (depending on
-      whether this record type is involved in [free_vars] or
-      [specialised_args] respectively) in the same set of closures.
-      As such, this field describes a relation of projections between
-      either the [free_vars] or the [specialised_args]. *)
-}
-
-type specialised_args = specialised_to Variable.Map.t
 
 (** Actions affecting exception traps on the stack.  These are always
     associated with an [Apply_cont] node; the trap action is executed before

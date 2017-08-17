@@ -99,6 +99,8 @@ module rec T : sig
     size : int;
   }
 
+  val infer_value_kind : t -> Value_kind.t
+
   val join : really_import_approx:(t -> t) -> t -> t -> t
 
   val equal_boxed_int : 'a boxed_int -> 'a -> 'b boxed_int -> 'b -> bool
@@ -355,10 +357,7 @@ end and Unionable : sig
 
   type blocks = T.t array Tag.Scannable.Map.t
 
-  (* These are the approximations which, if we join them, we might end up
-     with a non-[Bottom] approximation.
-
-     Other representations are possible, but this one has two nice properties:
+  (* Other representations are possible, but this one has two nice properties:
      1. It doesn't involve any comparison on values of type [T.t].
      2. It lines up with the classification of approximations required when
         unboxing (cf. [Unbox_one_variable]). *)
@@ -730,44 +729,7 @@ let augment_with_symbol_field t symbol field =
   | Some _ -> t
 let replace_description t descr = { t with descr }
 
-let augment_with_kind t (kind:Lambda.value_kind) =
-  match kind with
-  | Pgenval -> t
-  | Pfloatval ->
-    begin match t.descr with
-    | Boxed_float _ ->
-      t
-    | Unknown _ | Unresolved _ ->
-      { t with descr = Boxed_float None }
-    | Union _
-    | Boxed_int _
-    | Set_of_closures _
-    | Closure _
-    | String _
-    | Float_array _
-    | Bottom ->
-      (* Unreachable *)
-      { t with descr = Bottom }
-    | Extern _ | Symbol _ ->
-      (* We don't know yet *)
-      t
-    end
-  | _ -> t
-
-let augment_kind_with_approx t (kind:Lambda.value_kind) : Lambda.value_kind =
-  match t.descr with
-  | Boxed_float _ -> Pfloatval
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Int _) -> Pintval
-    | _ -> kind
-    end
-  | Boxed_int (Int32, _) -> Pboxedintval Pint32
-  | Boxed_int (Int64, _) -> Pboxedintval Pint64
-  | Boxed_int (Nativeint, _) -> Pboxedintval Pnativeint
-  | _ -> kind
-
-let value_unknown reason = approx (Unknown reason)
+let value_unknown kind reason = approx (Unknown (kind, reason))
 let value_int i = approx (Union (Unionable.value_int i))
 let value_char i = approx (Union (Unionable.value_char i))
 let value_constptr i = approx (Union (Unionable.value_constptr i))
@@ -859,6 +821,52 @@ let value_immutable_float_array (contents:t array) =
   in
   approx (Float_array { contents = Contents contents; size; } )
 
+let augment_with_kind t (kind:Lambda.value_kind) =
+  match kind with
+  | Pgenval -> t
+  | Pfloatval ->
+    begin match t.descr with
+    | Boxed_number (Float, { descr = Float _; _ }) ->
+      t
+    | Unknown (Other, _) | Unresolved _ ->
+      { t with descr = Boxed_number (Float, value_unknown Float Other); }
+    | Unknown (Unboxed_float | Unboxed_int32 | Unboxed_int64
+        | Unboxed_nativeint, _) ->
+      Misc.fatal_errorf "An unboxed value cannot have Pfloatval kind: %a"
+        print t
+    | Union _
+    | Float _
+    | Int32 _
+    | Int64 _
+    | Nativeint _
+    | Boxed_number _
+    | Set_of_closures _
+    | Closure _
+    | String _
+    | Float_array _
+    | Bottom ->
+      (* Unreachable *)
+      { t with descr = Bottom }
+    | Extern _ | Symbol _ ->
+      (* We don't know yet *)
+      t
+    end
+  | _ -> t
+
+let augment_kind_with_approx t (kind:Lambda.value_kind) : Lambda.value_kind =
+  match t.descr with
+  | Boxed_number (Float, { descr = Float _; _ }) -> Pfloatval
+  | Boxed_number (Int32, { descr = Int32 _; _ }) -> Pboxedintval Pint32
+  | Boxed_number (Int64, { descr = Int64 _; _ }) -> Pboxedintval Pint64
+  | Boxed_number (Nativeint, { descr = Nativeint _; _ }) ->
+    Pboxedintval Pnativeint
+  | Union union ->
+    begin match Unionable.flatten union with
+    | Ok (Int _) -> Pintval
+    | _ -> kind
+    end
+  | _ -> kind
+
 let make_const_int_named n : Flambda.named * t =
   Const (Int n), value_int n
 
@@ -872,17 +880,28 @@ let make_const_bool_named b : Flambda.named * t =
   make_const_ptr_named (if b then 1 else 0)
 
 let make_const_boxed_float_named f : Flambda.named * t =
-  Allocated_const (Float f), value_boxed_float f
+  Allocated_const (Float f), boxed_float f
 
-let make_const_boxed_int_named (type bi) (t:bi boxed_int) (i:bi)
-      : Flambda.named * t =
-  let c : Allocated_const.t =
-    match t with
-    | Int32 -> Int32 i
-    | Int64 -> Int64 i
-    | Nativeint -> Nativeint i
-  in
-  Allocated_const c, value_boxed_int t i
+let make_const_boxed_int32_named n : Flambda.named * t =
+  Allocated_const (Int32 f), boxed_int32 f
+
+let make_const_boxed_int64_named n : Flambda.named * t =
+  Allocated_const (Int64 f), boxed_int64 f
+
+let make_const_boxed_nativeint_named n : Flambda.named * t =
+  Allocated_const (Nativeint f), boxed_nativeint f
+
+let make_const_unboxed_float_named f : Flambda.named * t =
+  Allocated_const (Float f), unboxed_float f
+
+let make_const_unboxed_int32_named n : Flambda.named * t =
+  Allocated_const (Int32 f), unboxed_int32 f
+
+let make_const_unboxed_int64_named n : Flambda.named * t =
+  Allocated_const (Int64 f), unboxed_int64 f
+
+let make_const_unboxed_nativeint_named n : Flambda.named * t =
+  Allocated_const (Nativeint f), unboxed_nativeint f
 
 type simplification_summary =
   | Nothing_done
@@ -890,44 +909,7 @@ type simplification_summary =
 
 type simplification_result_named = Flambda.named * simplification_summary * t
 
-let simplify_named t (named : Flambda.named) : simplification_result_named =
-  if Effect_analysis.no_effects_named named then
-    match t.descr with
-    | Union union ->
-      begin match Unionable.flatten union with
-      | Ok (Block _) | Ill_typed_code | Anything ->
-        named, Nothing_done, t
-      | Ok (Int n) ->
-        let const, approx = make_const_int_named n in
-        const, Replaced_term, approx
-      | Ok (Char n) ->
-        let const, approx = make_const_char_named n in
-        const, Replaced_term, approx
-      | Ok (Constptr n) ->
-        let const, approx = make_const_ptr_named n in
-        const, Replaced_term, approx
-      end
-
-
-    | Boxed_float (Some f) ->
-      let const, approx = make_const_boxed_float_named f in
-      const, Replaced_term, approx
-    | Boxed_int (t, i) ->
-      let const, approx = make_const_boxed_int_named t i in
-      const, Replaced_term, approx
-
-
-    | Symbol sym ->
-      Symbol sym, Replaced_term, t
-    | String _ | Float_array _ | Boxed_float None
-    | Set_of_closures _ | Closure _
-    | Unknown _ | Bottom | Extern _ | Unresolved _ ->
-      named, Nothing_done, t
-  else
-    named, Nothing_done, t
-
-(* CR-soon mshinwell: bad name.  This function and its call site in
-   [Inline_and_simplify] is also messy. *)
+(* CR-soon mshinwell: bad name *)
 let simplify_var t : (Flambda.named * t) option =
   let try_symbol () : (Flambda.named * t) option =
     match t.symbol with
@@ -943,16 +925,59 @@ let simplify_var t : (Flambda.named * t) option =
     | Ok (Char n) -> Some (make_const_char_named n)
     | Ok (Constptr n) -> Some (make_const_ptr_named n)
     end
-
-
-  | Boxed_float (Some f) -> Some (make_const_boxed_float_named f)
-  | Boxed_int (t, i) -> Some (make_const_boxed_int_named t i)
-
-
+  | Boxed_number (Float, { descr = Float fs; _ }) ->
+    begin match Float.Set.get_singleton fs with
+    | Some f -> Some (make_const_boxed_float_named f)
+    | None -> try_symbol ()
+    end
+  | Boxed_number (Int32, { descr = Int32 ns; _ }) ->
+    begin match Int32.Set.get_singleton ns with
+    | Some n -> Some (make_const_boxed_int32_named n)
+    | None -> try_symbol ()
+    end
+  | Boxed_number (Int64, { descr = Int64 ns; _ }) ->
+    begin match Int64.Set.get_singleton ns with
+    | Some n -> Some (make_const_boxed_int64_named n)
+    | None -> try_symbol ()
+    end
+  | Boxed_number (Nativeint, { descr = Nativeint ns; _ }) ->
+    begin match Nativeint.Set.get_singleton ns with
+    | Some n -> Some (make_const_boxed_nativeint_named n)
+    | None -> try_symbol ()
+    end
+  | Float fs ->
+    begin match Float.Set.get_singleton fs with
+    | Some f -> Some (make_const_unboxed_float_named f)
+    | None -> try_symbol ()
+    end
+  | Int32 fs ->
+    begin match Int32.Set.get_singleton fs with
+    | Some f -> Some (make_const_unboxed_int32_named f)
+    | None -> try_symbol ()
+    end
+  | Int64 fs ->
+    begin match Int64.Set.get_singleton fs with
+    | Some f -> Some (make_const_unboxed_int64_named f)
+    | None -> try_symbol ()
+    end
+  | Nativeint fs ->
+    begin match Nativeint.Set.get_singleton fs with
+    | Some f -> Some (make_const_unboxed_nativeint_named f)
+    | None -> try_symbol ()
+    end
   | Symbol sym -> Some (Symbol sym, t)
-  | String _ | Float_array _ | Boxed_float None
-  | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Extern _
-  | Unresolved _ -> try_symbol ()
+  | Boxed_number _ | String _ | Float_array _ | Set_of_closures _
+  | Closure _ | Unknown _ | Bottom | Extern _ | Unresolved _ -> try_symbol ()
+
+let simplify_named t (named : Flambda.named) : simplification_result_named =
+  if Effect_analysis.no_effects_named named then
+    match simplify_var t with
+    | Some (named, t) ->
+      named, Replaced_term, t
+    | None ->
+      named, Nothing_done, t
+  else
+    named, Nothing_done, t
 
 let join_summaries summary ~replaced_by_var_or_symbol =
   match replaced_by_var_or_symbol, summary with

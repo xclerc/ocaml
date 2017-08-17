@@ -163,6 +163,10 @@ let approx_for_const (const : Flambda.const) =
   | Int i -> A.value_int i
   | Char c -> A.value_char c
   | Const_pointer i -> A.value_constptr i
+  | Unboxed_float f -> A.unboxed_float f
+  | Unboxed_int32 n -> A.unboxed_int32 n
+  | Unboxed_int64 n -> A.unboxed_int64 n
+  | Unboxed_nativeint n -> A.unboxed_nativeint n
 
 let approx_for_allocated_const (const : Allocated_const.t) =
   match const with

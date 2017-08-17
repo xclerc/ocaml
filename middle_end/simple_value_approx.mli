@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -14,11 +14,10 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+(** The type system of Flambda.  The types give approximations to the results
+    of evaluating Flambda terms at runtime. *)
 
-(** Simple approximations to the runtime results of computations.
-    This pass is designed for speed rather than accuracy; the performance
-    is important since it is used heavily during inlining. *)
+[@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Boxed_number_kind : sig
   type t = private
@@ -40,6 +39,29 @@ type unresolved_value =
 type unknown_because_of =
   | Unresolved_value of unresolved_value
   | Other
+
+(* CR-someday mshinwell: move to separate module and make [Identifiable].
+  (Or maybe nearly Identifiable; having a special map that enforces invariants
+  might be good.) *)
+(* CR-someday mshinwell: This should perhaps be altered so that the
+   specialisation isn't just to a variable, or some particular projection,
+   but is instead to an actual approximation (which would be enhanced to
+   describe the projection too). *)
+type specialised_to = {
+  var : Variable.t option;
+  (** The "outer variable".  For non-specialised arguments of continuations
+      (which may still be involved in projection relations) this may be
+      [None]. *)
+  projection : Projection.t option;
+  (** The [projecting_from] value (see projection.mli) of any [projection]
+      must be another free variable or specialised argument (depending on
+      whether this record type is involved in [free_vars] or
+      [specialised_args] respectively) in the same set of closures.
+      As such, this field describes a relation of projections between
+      either the [free_vars] or the [specialised_args]. *)
+}
+
+type specialised_args = specialised_to Variable.Map.t
 
 (** A value of type [t] corresponds to an "approximation" of the result of
     a computation in the program being compiled.  That is to say, it
@@ -119,7 +141,7 @@ type unknown_because_of =
 *)
 
 module rec T : sig
-  type t = private {
+  type ('decls, 'freshening) t = private {
     descr : descr;
     var : Variable.t option;
     symbol : (Symbol.t * int option) option;
@@ -133,7 +155,12 @@ module rec T : sig
       [Bottom] means "no value can flow to this point".
       [Unknown (k, _)] means "any value of kind [k] might flow to this point".
   *)
-  and descr = private 
+  (* CR mshinwell: After the closure reworking patch has been merged and
+     the work on classic mode closure approximations has been merged (the
+     latter introducing a type of function declarations in this module), then
+     the only circularity between this type and Flambda will be for
+     Flambda.expr on function bodies. *)
+  and ('decls, 'freshening) descr = private 
     | Unknown of Value_kind.t * unknown_because_of
     | Union of Unionable.t
     (* CR mshinwell: Should we call this "Unboxed_float" and the same for
@@ -143,8 +170,8 @@ module rec T : sig
     | Int64 of Int64.Set.t
     | Nativeint of Nativeint.Set.t
     | Boxed_number of boxed_number_kind * t
-    | Set_of_closures of value_set_of_closures
-    | Closure of value_closure
+    | Set_of_closures of ('decls, 'freshening) value_set_of_closures
+    | Closure of ('decls, 'freshening) value_closure
     | String of value_string
     | Float_array of value_float_array
     | Extern of Export_id.t
@@ -152,22 +179,22 @@ module rec T : sig
     | Unresolved of unresolved_value
     | Bottom
 
-  and value_closure = {
-    potential_closures : t Closure_id.Map.t;
+  and ('decls, 'freshening) value_closure = {
+    potential_closures : ('decls, 'freshening) t Closure_id.Map.t;
     (** Map of closures ids to set of closures *)
   } [@@unboxed]
 
   (* CR-soon mshinwell: add support for the approximations of the results, so we
      can do all of the tricky higher-order cases. *)
-  and value_set_of_closures = private {
-    function_decls : Flambda.function_declarations;
+  and ('decls, 'freshening) value_set_of_closures = private {
+    function_decls : 'decls;
     bound_vars : t Var_within_closure.Map.t;
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
     size : int option Variable.Map.t lazy_t;
     (** For functions that are very likely to be inlined, the size of the
         function's body. *)
-    specialised_args : Flambda.specialised_args;
-    freshening : Freshening.Project_var.t;
+    specialised_args : specialised_args;
+    freshening : 'freshening;
     (** Any freshening that has been applied to [function_decls]. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
@@ -202,7 +229,7 @@ end and Unionable : sig
     include Identifiable.S with type t := t
   end
 
-  type blocks = T.t array Tag.Map.t
+  type blocks = T.t array Tag.Scannable.Map.t
 
   (** Values of type [t] represent unions of approximations, that is to say,
       disjunctions of properties known to hold of a value at one or more of
@@ -225,7 +252,7 @@ end and Unionable : sig
   val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
 
   type singleton = private
-    | Block of Tag.t * T.t array
+    | Block of Tag.Scannable.t * T.t array
     | Int of int
     | Char of char
     | Constptr of int
@@ -257,7 +284,7 @@ val update_freshening_of_value_set_of_closures
 
 (** Basic construction of approximations. *)
 (* CR mshinwell: ditch "value_" prefixes *)
-val value_unknown : unknown_because_of -> t
+val value_unknown : Value_kind.t -> unknown_because_of -> t
 val value_int : int -> t
 val value_char : char -> t
 val value_boxed_float : float -> t
@@ -266,12 +293,20 @@ val any_unboxed_float : t
 val any_unboxed_int32 : t
 val any_unboxed_int64 : t
 val any_unboxed_nativeint : t
+val unboxed_float : float -> t
+val unboxed_int32 : Int32.t -> t
+val unboxed_int64 : Int64.t -> t
+val unboxed_nativeint : Nativeint.t -> t
+val boxed_float : float -> t
+val boxed_int32 : Int32.t -> t
+val boxed_int64 : Int64.t -> t
+val boxed_nativeint : Nativeint.t -> t
 val value_mutable_float_array : size:int -> t
 val value_immutable_float_array : t array -> t
 val value_string : int -> string option -> t
 val value_boxed_int : 'i boxed_int -> 'i -> t
 val value_constptr : int -> t
-val value_block : Tag.t -> t array -> t
+val value_block : Tag.Scannable.t -> t array -> t
 val value_extern : Export_id.t -> t
 val value_symbol : Symbol.t -> t
 val value_bottom : t
