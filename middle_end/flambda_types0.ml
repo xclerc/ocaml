@@ -53,6 +53,83 @@ type specialised_to = {
 
 type specialised_args = specialised_to Variable.Map.t
 
+(* A value of type [T.t] corresponds to an "approximation" of the result of
+    a computation in the program being compiled.  That is to say, it
+    represents what knowledge we have about such a result at compile time.
+    The simplification pass exploits this information to partially evaluate
+    computations.
+
+    At a high level, an approximation for a value [v] has three parts:
+    - the "description" (for example, "the constant integer 42");
+    - an optional variable;
+    - an optional symbol or symbol field.
+    If the variable (resp. symbol) is present then that variable (resp.
+    symbol) may be used to obtain the value [v].
+
+    The exact semantics of the variable and symbol fields follows.
+
+    Approximations are deduced at particular points in an expression tree,
+    but may subsequently be propagated to other locations.
+
+    At the point at which an approximation is built for some value [v], we can
+    construct a set of variables (call the set [S]) that are known to alias the
+    same value [v].  Each member of [S] will have the same or a more precise
+    [descr] field in its approximation relative to the approximation for [v].
+    (An increase in precision may currently be introduced for pattern
+    matches.)  If [S] is non-empty then it is guaranteed that there is a
+    unique member of [S] that was declared in a scope further out ("earlier")
+    than all other members of [S].  If such a member exists then it is
+    recorded in the [var] field.  Otherwise [var] is [None].
+
+    Analogous to the construction of the set [S], we can construct a set [T]
+    consisting of all symbols that are known to alias the value whose
+    approximation is being constructed.  If [T] is non-empty then the
+    [symbol] field is set to some member of [T]; it does not matter which
+    one.  (There is no notion of scope for symbols.)
+
+    Note about mutable blocks:
+
+    Mutable blocks are always represented by [Unknown] or
+    [Bottom].  Any other approximation could leave the door open to
+    a miscompilation.   Such bad scenarios are most likely a user using
+    [Obj.magic] or [Obj.set_field] in an inappropriate situation.
+    Such a situation might be:
+    [let x = (1, 1) in
+     Obj.set_field (Obj.repr x) 0 (Obj.repr 2);
+     assert(fst x = 2)]
+    The user would probably expect the assertion to be true, but the
+    compiler could in fact propagate the value of [x] across the
+    [Obj.set_field].
+
+    Insisting that mutable blocks have [Unknown] or [bottom]
+    approximations certainly won't always prevent this kind of error, but
+    should help catch many of them.
+
+    It is possible that there may be some false positives, with correct
+    but unreachable code causing this check to fail.  However the likelihood
+    of this seems sufficiently low, especially compared to the advantages
+    gained by performing the check, that we include it.
+
+    An example of a pattern that might trigger a false positive is:
+    [type a = { a : int }
+     type b = { mutable b : int }
+     type _ t =
+       | A : a t
+       | B : b t
+     let f (type x) (v:x t) (r:x) =
+       match v with
+       | A -> r.a
+       | B -> r.b <- 2; 3
+
+    let v =
+    let r =
+      ref A in
+      r := A; (* Some pattern that the compiler can't understand *)
+      f !r { a = 1 }]
+    When inlining [f], the B branch is unreachable, yet the compiler
+    cannot prove it and must therefore keep it.
+*)
+
 module rec T : sig
   type value_string = {
     (* CR-soon mshinwell: use variant *)
@@ -60,51 +137,90 @@ module rec T : sig
     size : int;
   }
 
+  (** The type of an Flambda term. *)
   type ('decls, 'freshening) t = {
     descr : descr;
     var : Variable.t option;
     symbol : (Symbol.t * int option) option;
   } 
 
-  type ('decls, 'freshening) descr = {
+  (** Types are equipped with a subtyping relation given by a partial order.
+
+      [Bottom] is, well, bottom.
+      Each [Unknown (k, _)] gives a top element.
+
+      [Bottom] means "no value can flow to this point".
+      [Unknown (k, _)] means "any value of kind [k] might flow to this point".
+  *)
+  (* CR mshinwell: After the closure reworking patch has been merged and
+     the work on classic mode closure approximations has been merged (the
+     latter introducing a type of function declarations in this module), then
+     the only circularity between this type and Flambda will be for
+     Flambda.expr on function bodies. *)
+  and ('decls, 'freshening) descr = private 
     | Unknown of Value_kind.t * unknown_because_of
     | Union of Unionable.t
-    | Float of Float.Set.t
-    | Int32 of Int32.Set.t
-    | Int64 of Int64.Set.t
-    | Nativeint of Nativeint.Set.t
-    | Boxed_number of Boxed_number_kind.t * t
-    | Set_of_closures of ('decls, 'freshening) value_set_of_closures
-    | Closure of ('decls, 'freshening) value_closure
-    | String of value_string
-    | Float_array of value_float_array
+    | Unboxed_float of Float.Set.t
+    | Unboxed_int32 of Int32.Set.t
+    | Unboxed_int64 of Int64.Set.t
+    | Unboxed_nativeint of Nativeint.Set.t
+    | Boxed_number of boxed_number_kind * t
+    | Set_of_closures of ('decls, 'freshening) set_of_closures
+    | Closure of ('decls, 'freshening) closure
+    | String of string
+    | Float_array of float_array
     | Extern of Export_id.t
     | Symbol of Symbol.t
     | Unresolved of unresolved_value
     | Bottom
 
-  and ('decls, 'freshening) value_closure = {
+  and ('decls, 'freshening) closure = {
     potential_closures : ('decls, 'freshening) t Closure_id.Map.t;
+    (** Map of closures ids to set of closures *)
   } [@@unboxed]
 
-  and ('decls, 'freshening) value_set_of_closures = private {
+  (* CR-soon mshinwell: add support for the approximations of the results, so we
+     can do all of the tricky higher-order cases. *)
+  and ('decls, 'freshening) set_of_closures = private {
     function_decls : 'decls;
     bound_vars : t Var_within_closure.Map.t;
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
     size : int option Variable.Map.t lazy_t;
+    (** For functions that are very likely to be inlined, the size of the
+        function's body. *)
     specialised_args : specialised_args;
     freshening : 'freshening;
+    (** Any freshening that has been applied to [function_decls]. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
-  and value_float_array_contents =
+  and float_array_contents =
     | Contents of t array
     | Unknown_or_mutable
 
-  and value_float_array = {
-    contents : value_float_array_contents;
+  and float_array = {
+    contents : float_array_contents;
     size : int;
   }
+  (* CR-someday mshinwell: This should perhaps be altered so that the
+     specialisation isn't just to a variable, or some particular projection,
+     but is instead to an actual approximation (which would be enhanced to
+     describe the projection too). *)
+  and specialised_to = {
+    var : Variable.t option;
+    (** The "outer variable".  For non-specialised arguments of continuations
+        (which may still be involved in projection relations) this may be
+        [None]. *)
+    projection : Projection.t option;
+    (** The [projecting_from] value (see projection.mli) of any [projection]
+        must be another free variable or specialised argument (depending on
+        whether this record type is involved in [free_vars] or
+        [specialised_args] respectively) in the same set of closures.
+        As such, this field describes a relation of projections between
+        either the [free_vars] or the [specialised_args]. *)
+  }
+
+  and specialised_args = specialised_to Variable.Map.t
 
   val infer_value_kind : t -> Value_kind.t
 
@@ -364,7 +480,11 @@ end and Unionable : sig
 
   type blocks = T.t array Tag.Scannable.Map.t
 
-  (* Other representations are possible, but this one has two nice properties:
+  (* Values of type [t] represent unions of approximations, that is to say,
+     disjunctions of properties known to hold of a value at one or more of
+     its use points.
+
+     Other representations are possible, but this one has two nice properties:
      1. It doesn't involve any comparison on values of type [T.t].
      2. It lines up with the classification of approximations required when
         unboxing (cf. [Unbox_one_variable]). *)
@@ -691,21 +811,21 @@ and descr = T.descr =
   | Int64 of Int64.Set.t
   | Nativeint of Nativeint.Set.t
   | Boxed_number of boxed_number * t
-  | Set_of_closures of value_set_of_closures
-  | Closure of value_closure
-  | String of T.value_string
-  | Float_array of value_float_array
+  | Set_of_closures of set_of_closures
+  | Closure of closure
+  | String of T.string
+  | Float_array of float_array
   | Extern of Export_id.t
   | Symbol of Symbol.t
   | Unresolved of unresolved_value
     (** No description was found for this symbol *)
   | Bottom
 
-and value_closure = T.value_closure = {
+and closure = T.closure = {
   potential_closures : t Closure_id.Map.t;
 } [@@unboxed]
 
-and value_set_of_closures = T.value_set_of_closures = {
+and set_of_closures = T.set_of_closures = {
   function_decls : Flambda.function_declarations;
   bound_vars : t Var_within_closure.Map.t;
   invariant_params : Variable.Set.t Variable.Map.t lazy_t;
@@ -715,12 +835,12 @@ and value_set_of_closures = T.value_set_of_closures = {
   direct_call_surrogates : Closure_id.t Closure_id.Map.t;
 }
 
-and value_float_array_contents = T.value_float_array_contents =
+and float_array_contents = T.float_array_contents =
   | Contents of t array
   | Unknown_or_mutable
 
-and value_float_array = T.value_float_array = {
-  contents : value_float_array_contents;
+and float_array = T.float_array = {
+  ontents : float_array_contents;
   size : int;
 }
 
@@ -829,7 +949,7 @@ let value_immutable_float_array (contents:t array) =
   in
   approx (Float_array { contents = Contents contents; size; } )
 
-let augment_with_kind t (kind:Lambda.value_kind) =
+let refine_using_value_kind t (kind : Lambda.value_kind) =
   match kind with
   | Pgenval -> t
   | Pfloatval ->
@@ -861,7 +981,7 @@ let augment_with_kind t (kind:Lambda.value_kind) =
     end
   | _ -> t
 
-let augment_kind_with_approx t (kind:Lambda.value_kind) : Lambda.value_kind =
+let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
   match t.descr with
   | Boxed_number (Float, { descr = Float _; _ }) -> Pfloatval
   | Boxed_number (Int32, { descr = Int32 _; _ }) -> Pboxedintval Pint32
@@ -878,23 +998,23 @@ let augment_kind_with_approx t (kind:Lambda.value_kind) : Lambda.value_kind =
 module type Constructors_and_accessors = sig
   val descr : t -> descr
   val descrs : t list -> descr list
-  val create_value_set_of_closures
-    : function_decls:Flambda.function_declarations
+  val create_set_of_closures
+     : function_decls:Flambda.function_declarations
     -> bound_vars:t Var_within_closure.Map.t
     -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
     -> specialised_args:Flambda.specialised_to Variable.Map.t
     -> freshening:Freshening.Project_var.t
     -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
-    -> value_set_of_closures
-  val update_freshening_of_value_set_of_closures
-    : value_set_of_closures
+    -> set_of_closures
+  val update_freshening_of_set_of_closures
+     : set_of_closures
     -> freshening:Freshening.Project_var.t
-    -> value_set_of_closures
-  val value_unknown : Value_kind.t -> unknown_because_of -> t
-  val value_int : int -> t
-  val value_char : char -> t
-  val value_boxed_float : float -> t
-  val value_any_float : t
+    -> set_of_closures
+  val unknown : Value_kind.t -> unknown_because_of -> t
+  val int : int -> t
+  val char : char -> t
+  val boxed_float : float -> t
+  val any_float : t
   val any_unboxed_float : t
   val any_unboxed_int32 : t
   val any_unboxed_int64 : t
@@ -907,25 +1027,25 @@ module type Constructors_and_accessors = sig
   val boxed_int32 : Int32.t -> t
   val boxed_int64 : Int64.t -> t
   val boxed_nativeint : Nativeint.t -> t
-  val value_mutable_float_array : size:int -> t
-  val value_immutable_float_array : t array -> t
-  val value_string : int -> string option -> t
-  val value_boxed_int : 'i boxed_int -> 'i -> t
-  val value_constptr : int -> t
-  val value_block : Tag.Scannable.t -> t array -> t
-  val value_extern : Export_id.t -> t
-  val value_symbol : Symbol.t -> t
-  val value_bottom : t
-  val value_unresolved : unresolved_value -> t
-  val value_closure
-    : ?closure_var:Variable.t
+  val mutable_float_array : size:int -> t
+  val immutable_float_array : t array -> t
+  val string : int -> string option -> t
+  val boxed_int : 'i boxed_int -> 'i -> t
+  val constptr : int -> t
+  val block : Tag.Scannable.t -> t array -> t
+  val extern : Export_id.t -> t
+  val symbol : Symbol.t -> t
+  val bottom : t
+  val unresolved : unresolved_value -> t
+  val closure
+     : ?closure_var:Variable.t
     -> ?set_of_closures_var:Variable.t
     -> ?set_of_closures_symbol:Symbol.t
-    -> value_set_of_closures Closure_id.Map.t
+    -> set_of_closures Closure_id.Map.t
     -> t
-  val value_set_of_closures
-    : ?set_of_closures_var:Variable.t
-    -> value_set_of_closures
+  val set_of_closures
+     : ?set_of_closures_var:Variable.t
+    -> set_of_closures
     -> t
   val make_const_int_named : int -> Flambda.named * t
   val make_const_char_named : char -> Flambda.named * t
@@ -937,6 +1057,6 @@ module type Constructors_and_accessors = sig
   val augment_with_symbol : t -> Symbol.t -> t
   val augment_with_symbol_field : t -> Symbol.t -> int -> t
   val replace_description : t -> descr -> t
-  val augment_with_kind : t -> Lambda.value_kind -> t
-  val augment_kind_with_approx : t -> Lambda.value_kind -> Lambda.value_kind
+  val refine_using_value_kind : t -> Lambda.value_kind -> t
+  val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 end

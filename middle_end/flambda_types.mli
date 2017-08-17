@@ -20,11 +20,36 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Types of Flambda terms. *)
-type t
+(** The type of an Flambda term. *)
+type t = Flambda_types0.T.t
 
 (** Means of making and examining types. *)
 include Flambda_types0.Constructors_and_accessors
+
+(** Take the given integer and produce an appropriate type for it
+    together with an Flambda term representing it. *)
+val make_const_int_named : int -> Flambda.named * t
+
+(** As for [make_const_int_named], but for characters. *)
+val make_const_char_named : char -> Flambda.named * t
+
+(** As for [make_const_int_named], but for "const_pointer"s. *)
+val make_const_ptr_named : int -> Flambda.named * t
+
+(** As for [make_const_int_named], but for booleans. *)
+val make_const_bool_named : bool -> Flambda.named * t
+
+(** As for [make_const_int_named], but for boxed floats. *)
+val make_const_boxed_float_named : float -> Flambda.named * t
+
+(** As for [make_const_int_named], but for boxed int32s. *)
+val make_const_boxed_int32_named : Int32.t -> Flambda.named * t
+
+(** As for [make_const_int_named], but for boxed int64s. *)
+val make_const_boxed_int64_named : Int64.t -> Flambda.named * t
+
+(** As for [make_const_int_named], but for boxed nativeints. *)
+val make_const_boxed_nativeint_named : Nativeint.t -> Flambda.named * t
 
 (** Whether the given type says that a term of that type is unreachable. *)
 val is_bottom : t -> bool
