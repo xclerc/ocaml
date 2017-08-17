@@ -215,6 +215,7 @@ MIDDLE_END=\
   middle_end/prepare_lambda.cmo \
   middle_end/ilambda.cmo \
   middle_end/cps_conversion.cmo \
+  middle_end/flambda_types.cmo \
   middle_end/flambda.cmo \
   middle_end/continuation_with_specialised_args.cmo \
   middle_end/flambda_iterators.cmo \
@@ -222,7 +223,6 @@ MIDDLE_END=\
   middle_end/inlining_cost.cmo \
   middle_end/effect_analysis.cmo \
   middle_end/freshening.cmo \
-  middle_end/simple_value_approx.cmo \
   middle_end/continuation_approx.cmo \
   middle_end/closure_conversion_aux.cmo \
   middle_end/closure_conversion.cmo \
