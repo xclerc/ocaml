@@ -164,21 +164,42 @@ let for_primitive (prim : Lambda.primitive) =
     No_effects, No_coeffects
 
 type return_type =
-  | Float
+  | Boxed_float
+  | Unboxed_float
+  | Unboxed_int32
+  | Unboxed_int64
+  | Unboxed_nativeint
   | Other
-
+ 
 let return_type_of_primitive (prim:Lambda.primitive) =
   match prim with
-  | Pfloatofint
-  | Pnegfloat
-  | Pabsfloat
-  | Paddfloat
-  | Psubfloat
-  | Pmulfloat
-  | Pdivfloat
+  | Pbox_float
+  | Pfloatofint Boxed
+  | Pnegfloat Boxed
+  | Pabsfloat Boxed
+  | Paddfloat Boxed
+  | Psubfloat Boxed
+  | Pmulfloat Boxed
+  | Pdivfloat Boxed
   | Pfloatfield _
   | Parrayrefu Pfloatarray
-  | Parrayrefs Pfloatarray ->
-      Float
-  | _ ->
+  | Parrayrefs Pfloatarray
+  | Pbigarrayref(_, _, (Pbigarray_float32 | Pbigarray_float64), _, Boxed)
+  | Pccall { prim_native_repr_res = Unboxed_float } ->
+      Boxed_float
+  | Punbox_float
+  | Pfloatofint Unboxed
+  | Pnegfloat Unboxed
+  | Pabsfloat Unboxed
+  | Paddfloat Unboxed
+  | Psubfloat Unboxed
+  | Pmulfloat Unboxed
+  | Pdivfloat Unboxed
+  | Pbigarrayref(_, _, (Pbigarray_float32 | Pbigarray_float64), _, Unboxed)
+  | Pccall_unboxed { prim_native_repr_res = Unboxed_float } ->
+      Unboxed_float
+  | Pintofbint Pint32 -> Unboxed_int32
+  | Pintofbint Pint64 -> Unboxed_int64
+  | Pintofbint Pnativeint -> Unboxed_nativeint
+  | _ ->  (* CR mshinwell: must be made exhaustive *)
       Other

@@ -137,11 +137,11 @@ let simplify_free_variable_named env var ~f =
     | [var], [approx] -> f env var approx
     | _ -> assert false)
 
-let simplify_named_using_approx r named approx
+let simplify_named_using_approx r named (approx, value_kind)
       : (Variable.t * Flambda.named) list * Flambda.named_reachable
-          * R.t =
+          * Value_kind.t * R.t =
   let named, _summary, approx = A.simplify_named approx named in
-  [], Reachable named, R.set_approx r approx
+  [], Reachable named, value_kind, R.set_approx r approx
 
 let simplify_named_using_approx_and_env env r original_named approx
       : (Variable.t * Flambda.named) list * Flambda.named_reachable
@@ -1453,7 +1453,7 @@ and simplify_named env r (tree : Flambda.named)
       Freshening.apply_mutable_variable (E.freshening env) being_assigned
     in
     simplify_free_variable_named env new_value ~f:(fun _env new_value _approx ->
-      [], Reachable (Assign { being_assigned; new_value; }),
+      [], Reachable (Assign { being_assigned; new_value; }, Value_kind.Value),
         ret r (A.value_unknown Other))
   | Prim (prim, args, dbg) ->
     let dbg = E.add_inlined_debuginfo env ~dbg in
@@ -1482,7 +1482,7 @@ and simplify_named env r (tree : Flambda.named)
             | Popaque -> A.value_unknown Other
             | _ -> approx
           in
-          [], Reachable named, ret r approx
+          [], Reachable (named, value_kind), ret r approx
         in
         begin match prim, args, args_approxs with
         | Pgetglobal _, _, _ ->
@@ -1732,20 +1732,22 @@ and simplify_newly_introduced_let_bindings env r ~bindings
   bindings, around, r
 
 and for_defining_expr_of_let (env, r) var defining_expr =
-  let new_bindings, defining_expr, r = simplify_named env r defining_expr in
+  let new_bindings, defining_expr, value_kind, r =
+    simplify_named env r defining_expr
+  in
   let defining_expr : Flambda.named_reachable =
     match defining_expr with
     | Non_terminating _ | Unreachable -> defining_expr
     | Reachable defining_expr ->
       (* Cause subsequent code to be deleted if the evaluation of this
-         let's defining expression doesn't terminate. *)
+         [Let]'s defining expression doesn't terminate. *)
       if A.is_bottom (R.approx r) then Non_terminating defining_expr
       else Reachable defining_expr
   in
   let var, sb = Freshening.add_variable (E.freshening env) var in
   let env = E.set_freshening env sb in
   let env = E.add env var (R.approx r) in
-  (env, r), new_bindings, var, defining_expr
+  (env, r), new_bindings, var, value_kind, defining_expr
 
 and filter_defining_expr_of_let r var (defining_expr : Flambda.named)
       free_vars_of_body =

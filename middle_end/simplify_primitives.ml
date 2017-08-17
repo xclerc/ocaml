@@ -269,5 +269,13 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       match Semantics_of_primitives.return_type_of_primitive p with
       | Boxed_float ->
         expr, A.value_any_float, C.Benefit.zero
+      | Unboxed_float ->
+        expr, A.any_unboxed_float, C.Benefit.zero
+      | Unboxed_int32 ->
+        expr, A.any_unboxed_int32, C.Benefit.zero
+      | Unboxed_int64 ->
+        expr, A.any_unboxed_int64, C.Benefit.zero
+      | Unboxed_nativeint ->
+        expr, A.any_unboxed_nativeint, C.Benefit.zero
       | Other ->
         expr, A.value_unknown Other, C.Benefit.zero

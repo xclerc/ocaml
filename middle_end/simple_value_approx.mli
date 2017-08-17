@@ -20,10 +20,13 @@
     This pass is designed for speed rather than accuracy; the performance
     is important since it is used heavily during inlining. *)
 
-type 'a boxed_int =
-  | Int32 : int32 boxed_int
-  | Int64 : int64 boxed_int
-  | Nativeint : nativeint boxed_int
+module Boxed_number_kind : sig
+  type t = private
+    | Float
+    | Int32
+    | Int64
+    | Nativeint
+end
 
 type value_string = {
   contents : string option;  (* [None] if unknown or mutable *)
@@ -122,17 +125,24 @@ module rec T : sig
     symbol : (Symbol.t * int option) option;
   }
 
-  (** Partial order:
-        Bottom <= (everything else except Unknown) <= Unknown
+  (** Approximations form a partial order.
+
+      [Bottom] is, well, bottom.
+      Each [Unknown (k, _)] gives a top element.
 
       [Bottom] means "no value can flow to this point".
-      [Unknown] means "any value might flow to this point".
+      [Unknown (k, _)] means "any value of kind [k] might flow to this point".
   *)
   and descr = private 
-    | Unknown of unknown_because_of
+    | Unknown of Value_kind.t * unknown_because_of
     | Union of Unionable.t
-    | Boxed_float of float option
-    | Boxed_int : 'a boxed_int * 'a -> descr
+    (* CR mshinwell: Should we call this "Unboxed_float" and the same for
+       the others? *)
+    | Float of Float.Set.t
+    | Int32 of Int32.Set.t
+    | Int64 of Int64.Set.t
+    | Nativeint of Nativeint.Set.t
+    | Boxed_number of boxed_number_kind * t
     | Set_of_closures of value_set_of_closures
     | Closure of value_closure
     | String of value_string
@@ -246,11 +256,16 @@ val update_freshening_of_value_set_of_closures
   -> value_set_of_closures
 
 (** Basic construction of approximations. *)
+(* CR mshinwell: ditch "value_" prefixes *)
 val value_unknown : unknown_because_of -> t
 val value_int : int -> t
 val value_char : char -> t
 val value_boxed_float : float -> t
 val value_any_float : t
+val any_unboxed_float : t
+val any_unboxed_int32 : t
+val any_unboxed_int64 : t
+val any_unboxed_nativeint : t
 val value_mutable_float_array : size:int -> t
 val value_immutable_float_array : t array -> t
 val value_string : int -> string option -> t

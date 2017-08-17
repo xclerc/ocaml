@@ -26,14 +26,16 @@
     describe the overall structure of a compilation unit.
 *)
 
+type return_arity = Value_kind.t list
+
 (** Whether the callee in a function application is known at compile time. *)
 type call_kind =
   | Indirect
   | Direct of {
       closure_id : Closure_id.t;
-      return_arity : int;
-      (** How many unboxed results are returned by the callee (equal to the
-          arity of [continuation] in the enclosing [apply] record). *)
+      return_arity : return_arity;
+      (** [return_arity] describes what the callee returns.  It matches up with
+          the arity of [continuation] in the enclosing [apply] record. *)
     }
 
 (** Simple constants.  ("Structured constants" are rewritten to invocations
@@ -220,6 +222,7 @@ and named =
 
 and let_expr = private {
   var : Variable.t;
+  kind : Value_kind.t;
   defining_expr : named;
   body : t;
   (* CR-someday mshinwell: we could consider having these be keys into some
@@ -429,11 +432,13 @@ and function_declaration = private {
   (** The continuation parameter of the function, i.e. to where we must jump
       once the result of the function has been computed.  If the continuation
       takes more than one argument then the backend will compile the function
-      so that it does an unboxed return of multiple values. *)
-  return_arity : int;
-  (** The number of parameters of the [continuation_param] continuation. *)
+      so that it returns multiple values. *)
+  return_arity : return_arity;
+  (** The kinds of the parameters of the [continuation_param] continuation.
+      (This encodes whether the function returns multiple and/or unboxed
+      values, for example.) *)
   params : Parameter.t list;
-  (** The normal parameters of the function. *)
+  (** The normal (variable) parameters of the function. *)
   body : t;
   (** The code of the function's body. *)
   (* CR-soon mshinwell: inconsistent naming free_variables/free_vars here and
@@ -641,7 +646,8 @@ val fold_lets_option
       'a
     -> Variable.t
     -> named
-    -> 'a * (Variable.t * named) list * Variable.t * named_reachable)
+    -> 'a * (Variable.t * Value_kind.t * named) list
+      * Variable.t * Value_kind.t * named_reachable)
   -> for_last_body:('a -> t -> t * 'b)
   (* CR-someday mshinwell: consider making [filter_defining_expr]
      optional *)

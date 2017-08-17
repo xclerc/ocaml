@@ -54,9 +54,14 @@ module Env : sig
   (** Add the approximation of a variable---that is to say, some knowledge
       about the value(s) the variable may take on at runtime---to the
       environment. *)
-  val add : t -> Variable.t -> Simple_value_approx.t -> t
+  val add : t -> Variable.t -> Value_kind.t -> Simple_value_approx.t -> t
 
-  val add_outer_scope : t -> Variable.t -> Simple_value_approx.t -> t
+  val add_outer_scope
+     : t
+    -> Variable.t
+    -> Value_kind.t
+    -> Simple_value_approx.t
+    -> t
 
   (** Like [add], but for mutable variables. *)
   val add_mutable : t -> Mutable_variable.t -> Simple_value_approx.t -> t
@@ -70,7 +75,7 @@ module Env : sig
   (** Find the approximation of a given variable, raising a fatal error if
       the environment does not know about the variable.  Use [find_opt]
       instead if you need to catch the failure case. *)
-  val find_exn : t -> Variable.t -> Simple_value_approx.t
+  val find_exn : t -> Variable.t -> Simple_value_approx.t * Value_kind.t
 
   (** Like [find_exn], but for mutable variables. *)
   val find_mutable_exn : t -> Mutable_variable.t -> Simple_value_approx.t

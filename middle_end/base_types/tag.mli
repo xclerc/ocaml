@@ -25,3 +25,11 @@ val to_int : t -> int
 
 val zero : t
 val object_tag : t
+
+module Scannable : sig
+  (** Tags that are strictly less than [No_scan_tag], corresponding to
+      blocks that can be scanned by the GC. *)
+  type t
+
+  include Identifiable.S with type t := t
+end

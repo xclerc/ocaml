@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -19,6 +19,25 @@
 (* CR mshinwell: turn this off once namespacing issues sorted *)
 [@@@ocaml.warning "-44-45"]
 
+module Float = Numbers.Float
+module Int32 = Numbers.Int32
+module Int64 = Numbers.Int64
+
+module Boxed_number_kind : sig
+  type t =
+    | Float
+    | Int32
+    | Int64
+    | Nativeint
+
+  let print ppf t =
+    match t with
+    | Float -> fprintf ppf "float"
+    | Int32 -> fprintf ppf "int32"
+    | Int64 -> fprintf ppf "int64"
+    | Nativeint -> fprintf ppf "nativeint"
+end
+
 type unresolved_value =
   | Set_of_closures_id of Set_of_closures_id.t
   | Symbol of Symbol.t
@@ -28,11 +47,6 @@ type unknown_because_of =
   | Other
 
 module rec T : sig
-  type 'a boxed_int =
-    | Int32 : int32 boxed_int
-    | Int64 : int64 boxed_int
-    | Nativeint : nativeint boxed_int
-
   type value_string = {
     (* CR-soon mshinwell: use variant *)
     contents : string option; (* None if unknown or mutable *)
@@ -43,15 +57,16 @@ module rec T : sig
     descr : descr;
     var : Variable.t option;
     symbol : (Symbol.t * int option) option;
-  }
+  } 
 
   and descr =
-    | Unknown of unknown_because_of
+    | Unknown of Value_kind.t * unknown_because_of
     | Union of Unionable.t
-    (* CR mshinwell: These next two should presumably go into [Union] so we
-       can unbox them *)
-    | Boxed_float of float option
-    | Boxed_int : 'a boxed_int * 'a -> descr
+    | Float of Float.Set.t
+    | Int32 of Int32.Set.t
+    | Int64 of Int64.Set.t
+    | Nativeint of Nativeint.Set.t
+    | Boxed_number of Boxed_number_kind.t * t
     | Set_of_closures of value_set_of_closures
     | Closure of value_closure
     | String of value_string
@@ -97,14 +112,32 @@ module rec T : sig
 end = struct
   include T
 
-  let equal_boxed_int (type t1) (type t2)
-        (bi1 : t1 boxed_int) (i1 : t1)
-        (bi2 : t2 boxed_int) (i2 : t2) =
-    match bi1, bi2 with
-    | Int32, Int32 -> Int32.equal i1 i2
-    | Int64, Int64 -> Int64.equal i1 i2
-    | Nativeint, Nativeint -> Nativeint.equal i1 i2
-    | _ -> false
+  let infer_value_kind t : Value_kind.t =
+    match t.descr with
+    | Unknown (kind, _) -> Some kind
+    | Float _ -> Some Unboxed_float
+    | Int32 _ -> Some Unboxed_int32
+    | Int64 _ -> Some Unboxed_int64
+    | Nativeint _ -> Some Unboxed_nativeint
+    | Union _
+    | Boxed_number _
+    | Set_of_closures _
+    | Closure _
+    | String _
+    | Float_array _
+    | Extern _
+    | Symbol _
+    | Unresolved _ -> Some Other
+    | Bottom -> None
+
+  let value_kinds_are_compatible a1 a2 =
+    let kind1 = infer_value_kind a1 in
+    let kind2 = infer_value_kind a2 in
+    match kind1, kind2 with
+    | None, None
+    | None, Some _
+    | Some _, None -> true
+    | Some kind1, Some kind2 -> Value_kind.equal kind1 kind2
 
   (* Closures and set of closures descriptions cannot be merged.
 
@@ -135,11 +168,20 @@ end = struct
       | Ill_typed_code -> Bottom
       | Anything -> Unknown Other
       end
-    | Symbol s1, Symbol s2 when Symbol.equal s1 s2 -> d1
+    | Float fs1, Float fs2 -> Float (Float.Set.union fs1 fs2)
+    | Int32 is1, Int32 is2 -> Int32 (Int32.Set.union is1 is2)
+    | Int64 is1, Int64 is2 -> Int64 (Int64.Set.union is1 is2)
+    | Nativeint is1, Nativeint is2 -> Nativeint (Nativeint.Set.union is1 is2)
+    | Boxed_number (Float, t1), Boxed_number (Float, t2)
+      Boxed_number (Float, join t1 t2)
+    | Boxed_number (Int32, t1), Boxed_number (Int32, t2)
+      Boxed_number (Int32, join t1 t2)
+    | Boxed_number (Int64, t1), Boxed_number (Int64, t2)
+      Boxed_number (Int64, join t1 t2)
+    | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2)
+      Boxed_number (Nativeint, join t1 t2)
     | Extern e1, Extern e2 when Export_id.equal e1 e2 -> d1
-    | Boxed_float i, Boxed_float j when i = j -> d1
-    | Boxed_int (bi1, i1), Boxed_int (bi2, i2)
-        when equal_boxed_int bi1 i1 bi2 i2 -> d1
+    | Symbol s1, Symbol s2 when Symbol.equal s1 s2 -> d1
     | Closure { potential_closures = map1 },
       Closure { potential_closures = map2 } ->
       let potential_closures =
@@ -173,45 +215,52 @@ end = struct
     | _ -> Unknown Other
 
   and join ~really_import_approx a1 a2 =
-    match a1, a2 with
-    | { descr = Bottom }, _ -> a2
-    | _, { descr = Bottom } -> a1
-    | { descr = (Symbol _ | Extern _) }, _
-    | _, { descr = (Symbol _ | Extern _) } ->
-      join ~really_import_approx
-        (really_import_approx a1) (really_import_approx a2)
-    | _ ->
-        let var =
-          match a1.var, a2.var with
-          | None, _ | _, None -> None
-          | Some v1, Some v2 ->
-            if Variable.equal v1 v2 then Some v1
-            else None
-        in
-        let symbol =
-          match a1.symbol, a2.symbol with
-          | None, _ | _, None -> None
-          | Some (v1, field1), Some (v2, field2) ->
-            if Symbol.equal v1 v2 then
-              match field1, field2 with
-              | None, None -> a1.symbol
-              | Some f1, Some f2 when f1 = f2 -> a1.symbol
-              | _ -> None
-            else None
-        in
-        let descr = join_descr ~really_import_approx a1.descr a2.descr in
-        match descr with
-        | Union union when not (Unionable.is_singleton union) ->
-          (* CR mshinwell: Think about whether we need to do better here *)
-          { descr;
-            var = None;
-            symbol = None;
-          }
-        | _ ->
-          { descr;
-            var;
-            symbol;
-          }
+    if value_kinds_are_compatible a1 a2 then begin
+      match a1, a2 with
+      | { descr = Bottom }, _ -> a2
+      | _, { descr = Bottom } -> a1
+      | { descr = (Symbol _ | Extern _) }, _
+      | _, { descr = (Symbol _ | Extern _) } ->
+        join ~really_import_approx
+          (really_import_approx a1) (really_import_approx a2)
+      | _ ->
+          let var =
+            match a1.var, a2.var with
+            | None, _ | _, None -> None
+            | Some v1, Some v2 ->
+              if Variable.equal v1 v2 then Some v1
+              else None
+          in
+          let symbol =
+            match a1.symbol, a2.symbol with
+            | None, _ | _, None -> None
+            | Some (v1, field1), Some (v2, field2) ->
+              if Symbol.equal v1 v2 then
+                match field1, field2 with
+                | None, None -> a1.symbol
+                | Some f1, Some f2 when f1 = f2 -> a1.symbol
+                | _ -> None
+              else None
+          in
+          let descr = join_descr ~really_import_approx a1.descr a2.descr in
+          match descr with
+          | Union union when not (Unionable.is_singleton union) ->
+            (* CR mshinwell: Think about whether we need to do better here *)
+            { descr;
+              var = None;
+              symbol = None;
+            }
+          | _ ->
+            { descr;
+              var;
+              symbol;
+            }
+    end else begin
+      Misc.fatal_errorf "Values with incompatible kinds must not flow to \
+          the same place: %a and %a"
+        print a1
+        print a2
+    end
 
   let print_value_set_of_closures ppf
         { function_decls = { funs }; invariant_params; freshening; _ } =
@@ -230,12 +279,13 @@ end = struct
 
   let rec print_descr ppf = function
     | Union union -> Unionable.print ppf union
-    | Unknown reason ->
+    | Unknown (kind, reason) ->
       begin match reason with
       | Unresolved_value value ->
-        Format.fprintf ppf "?(due to unresolved %a)"
+        Format.fprintf ppf "?(%a)(due to unresolved %a)"
+          Value_kind.print kind
           print_unresolved_value value
-      | Other -> Format.fprintf ppf "?"
+      | Other -> Format.fprintf ppf "?(%a)" Value_kind.print kind
       end;
     | Bottom -> Format.fprintf ppf "bottom"
     | Extern id -> Format.fprintf ppf "_%a_" Export_id.print id
@@ -252,8 +302,14 @@ end = struct
       print_value_set_of_closures ppf set_of_closures
     | Unresolved value ->
       Format.fprintf ppf "(unresolved %a)" print_unresolved_value value
-    | Boxed_float (Some f) -> Format.pp_print_float ppf f
-    | Boxed_float None -> Format.pp_print_string ppf "float"
+    | Float fs -> Format.fprintf ppf "float(%a)" Float.Set.print fs
+    | Int32 ns -> Format.fprintf ppf "int32(%a)" Int32.Set.print ns
+    | Int64 ns -> Format.fprintf ppf "int64(%a)" Int64.Set.print ns
+    | Nativeint ns -> Format.fprintf ppf "nativeint(%a)" Nativeint.Set.print ns
+    | Boxed_number (bn, t) ->
+      Format.fprintf ppf "box_%a(%a)"
+        Boxed_number_kind.print bn
+        print t
     | String { contents; size } -> begin
         match contents with
         | None ->
@@ -273,11 +329,6 @@ end = struct
       | Contents _ ->
         Format.fprintf ppf "float_array_imm %i" float_array.size
       end
-    | Boxed_int (t, i) ->
-      match t with
-      | Int32 -> Format.fprintf ppf "%li" i
-      | Int64 -> Format.fprintf ppf "%Li" i
-      | Nativeint -> Format.fprintf ppf "%ni" i
 
   and print ppf { descr; var; symbol; } =
     let print ppf = function
@@ -302,9 +353,12 @@ end and Unionable : sig
     val represents : t -> int
   end
 
-  type blocks = T.t array Tag.Map.t
+  type blocks = T.t array Tag.Scannable.Map.t
 
-  (* Other representations are possible, but this one has two nice properties:
+  (* These are the approximations which, if we join them, we might end up
+     with a non-[Bottom] approximation.
+
+     Other representations are possible, but this one has two nice properties:
      1. It doesn't involve any comparison on values of type [T.t].
      2. It lines up with the classification of approximations required when
         unboxing (cf. [Unbox_one_variable]). *)
@@ -322,7 +376,7 @@ end and Unionable : sig
   val value_int : int -> t
   val value_char : char -> t
   val value_constptr : int -> t
-  val value_block : Tag.t -> T.t array -> t
+  val value_block : Tag.Scannable.t -> T.t array -> t
 
   val useful : t -> bool
 
@@ -334,7 +388,7 @@ end and Unionable : sig
   val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
 
   type singleton = private
-    | Block of Tag.t * T.t array
+    | Block of Tag.Scannable.t * T.t array
     | Int of int
     | Char of char
     | Constptr of int
@@ -396,12 +450,12 @@ end = struct
       | Char c -> Char.code c
   end
 
-  type blocks = T.t array Tag.Map.t
+  type blocks = T.t array Tag.Scannable.Map.t
 
   let print_blocks ppf (by_tag : blocks) =
     let print_binding ppf (tag, fields) =
       Format.fprintf ppf "@[[|%a: %a|]@]"
-        Tag.print tag
+        Tag.Scannable.print tag
         (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
           T.print)
         (Array.to_list fields)
@@ -409,7 +463,7 @@ end = struct
     Format.fprintf ppf "@[%a@]"
       (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " U ")
         print_binding)
-      (Tag.Map.bindings by_tag)
+      (Tag.Scannable.Map.bindings by_tag)
 
   type t =
     | Blocks of blocks
@@ -419,9 +473,9 @@ end = struct
   let invariant t =
     if !Clflags.flambda_invariant_checks then begin
       match t with
-      | Blocks blocks -> assert (Tag.Map.cardinal blocks >= 1)
+      | Blocks blocks -> assert (Tag.Scannable.Map.cardinal blocks >= 1)
       | Blocks_and_immediates (blocks, immediates) ->
-        assert (Tag.Map.cardinal blocks >= 1);
+        assert (Tag.Scannable.Map.cardinal blocks >= 1);
         assert (Immediate.Set.cardinal immediates >= 1)
       | Immediates immediates ->
         assert (Immediate.Set.cardinal immediates >= 1)
@@ -443,10 +497,10 @@ end = struct
   let is_singleton t =
     invariant t;
     match t with
-    | Blocks blocks -> Tag.Map.cardinal blocks = 1
+    | Blocks blocks -> Tag.Scannable.Map.cardinal blocks = 1
     | Blocks_and_immediates (blocks, imms) ->
-      (Tag.Map.cardinal blocks = 1 && Immediate.Set.is_empty imms)
-        || (Tag.Map.is_empty blocks && Immediate.Set.cardinal imms = 1)
+      (Tag.Scannable.Map.cardinal blocks = 1 && Immediate.Set.is_empty imms)
+        || (Tag.Scannable.Map.is_empty blocks && Immediate.Set.cardinal imms = 1)
     | Immediates imms -> Immediate.Set.cardinal imms = 1
 
   let value_int i =
@@ -459,7 +513,7 @@ end = struct
     Immediates (Immediate.Set.singleton (Constptr p))
 
   let value_block tag fields =
-    Blocks (Tag.Map.add tag fields Tag.Map.empty)
+    Blocks (Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty)
 
   (* CR mshinwell: Bad name? *)
   let maybe_is_immediate_value t i =
@@ -486,7 +540,7 @@ end = struct
       (* CR mshinwell: Should the failure of this check be an error?
          Perhaps the invariants pass should check "makeblock" to ensure it's
          not used at or above No_scan_tag either *)
-      Tag.Map.for_all (fun tag _contents -> (Tag.to_int tag) < Obj.no_scan_tag)
+      Tag.Scannable.Map.for_all (fun tag _contents -> (Tag.Scannable.to_int tag) < Obj.no_scan_tag)
         by_tag
     | Immediates _imms -> true
 
@@ -501,7 +555,7 @@ end = struct
     match t with
     | Blocks _ -> None
     | Blocks_and_immediates (by_tag, imms) ->
-      if not (Tag.Map.is_empty by_tag) then None
+      if not (Tag.Scannable.Map.is_empty by_tag) then None
       else check_immediates imms
     | Immediates imms -> check_immediates imms
 
@@ -519,13 +573,13 @@ end = struct
     let get_blocks t =
       match t with
       | Blocks by_tag | Blocks_and_immediates (by_tag, _) -> by_tag
-      | Immediates _ -> Tag.Map.empty
+      | Immediates _ -> Tag.Scannable.Map.empty
     in
     let blocks_t1 = get_blocks t1 in
     let blocks_t2 = get_blocks t2 in
     let anything = ref false in
     let blocks =
-      Tag.Map.union (fun _tag fields1 fields2 ->
+      Tag.Scannable.Map.union (fun _tag fields1 fields2 ->
           if Array.length fields1 <> Array.length fields2 then begin
             anything := true;
             None
@@ -538,20 +592,22 @@ end = struct
     in
     if !anything then Anything
     else if Immediate.Set.is_empty immediates then Ok (Blocks blocks)
-    else if Tag.Map.is_empty blocks then Ok (Immediates immediates)
+    else if Tag.Scannable.Map.is_empty blocks then Ok (Immediates immediates)
     else Ok (Blocks_and_immediates (blocks, immediates))
 
   let useful t =
+    (* CR mshinwell: some of these are necessarily [true] when [invariant]
+       holds *)
     invariant t;
     match t with
-    | Blocks blocks -> not (Tag.Map.is_empty blocks)
+    | Blocks blocks -> not (Tag.Scannable.Map.is_empty blocks)
     | Blocks_and_immediates (blocks, immediates) ->
-      (not (Tag.Map.is_empty blocks))
+      (not (Tag.Scannable.Map.is_empty blocks))
         || (not (Immediate.Set.is_empty immediates))
     | Immediates immediates -> not (Immediate.Set.is_empty immediates)
 
   type singleton =
-    | Block of Tag.t * T.t array
+    | Block of Tag.Scannable.t * T.t array
     | Int of int
     | Char of char
     | Constptr of int
@@ -560,12 +616,12 @@ end = struct
     invariant t;
     match t with
     | Blocks by_tag ->
-      begin match Tag.Map.bindings by_tag with
+      begin match Tag.Scannable.Map.bindings by_tag with
       | [tag, fields] -> Ok (Block (tag, fields))
       | _ -> Anything
       end
     | Blocks_and_immediates (by_tag, imms) ->
-      if Tag.Map.is_empty by_tag then flatten (Immediates imms)
+      if Tag.Scannable.Map.is_empty by_tag then flatten (Immediates imms)
       else if Immediate.Set.is_empty imms then flatten (Blocks by_tag)
       else Anything
     | Immediates imms ->
@@ -582,7 +638,7 @@ end = struct
     | Blocks by_tag ->
       let sizes =
         List.map (fun (_tag, fields) -> Array.length fields)
-          (Tag.Map.bindings by_tag)
+          (Tag.Scannable.Map.bindings by_tag)
       in
       let sizes = Numbers.Int.Set.of_list sizes in
       begin match Numbers.Int.Set.elements sizes with
@@ -608,11 +664,6 @@ let join = T.join
 
 (* CR mshinwell: Sort out all this namespacing crap *)
 
-type 'a boxed_int = 'a T.boxed_int =
-  | Int32 : int32 boxed_int
-  | Int64 : int64 boxed_int
-  | Nativeint : nativeint boxed_int
-
 type value_string = T.value_string = {
   (* CR-soon mshinwell: use variant *)
   contents : string option; (* None if unknown or mutable *)
@@ -626,10 +677,13 @@ type t = T.t = {
 }
 
 and descr = T.descr =
-  | Unknown of unknown_because_of
+  | Unknown of Value_kind.t * unknown_because_of
   | Union of Unionable.t
-  | Boxed_float of float option
-  | Boxed_int : 'a T.boxed_int * 'a -> descr
+  | Float of Float.Set.t
+  | Int32 of Int32.Set.t
+  | Int64 of Int64.Set.t
+  | Nativeint of Nativeint.Set.t
+  | Boxed_number of boxed_number * t
   | Set_of_closures of value_set_of_closures
   | Closure of value_closure
   | String of T.value_string
@@ -719,6 +773,10 @@ let value_char i = approx (Union (Unionable.value_char i))
 let value_constptr i = approx (Union (Unionable.value_constptr i))
 let value_boxed_float f = approx (Boxed_float (Some f))
 let value_any_float = approx (Boxed_float None)
+let any_unboxed_float = approx (Unknown (Unboxed_float, Other))
+let any_unboxed_int32 = approx (Unknown (Unboxed_int32, Other))
+let any_unboxed_int64 = approx (Unknown (Unboxed_int64, Other))
+let any_unboxed_nativeint = approx (Unknown (Unboxed_nativeint, Other))
 let value_boxed_int bi i = approx (Boxed_int (bi,i))
 
 let value_closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
@@ -782,7 +840,7 @@ let value_set_of_closures ?set_of_closures_var value_set_of_closures =
 
 let value_block t b =
   (* Avoid having multiple possible approximations for e.g. [Int64] values. *)
-  if Tag.if_at_or_above_no_scan_tag then value_unknown Other
+  if Tag.Scannable.if_at_or_above_no_scan_tag then value_unknown Other
   else approx (Union (Unionable.value_block t b))
 
 let value_extern ex = approx (Extern ex)
@@ -813,7 +871,7 @@ let make_const_ptr_named n : Flambda.named * t =
 let make_const_bool_named b : Flambda.named * t =
   make_const_ptr_named (if b then 1 else 0)
 
-let make_const_float_named f : Flambda.named * t =
+let make_const_boxed_float_named f : Flambda.named * t =
   Allocated_const (Float f), value_boxed_float f
 
 let make_const_boxed_int_named (type bi) (t:bi boxed_int) (i:bi)
@@ -849,12 +907,16 @@ let simplify_named t (named : Flambda.named) : simplification_result_named =
         let const, approx = make_const_ptr_named n in
         const, Replaced_term, approx
       end
+
+
     | Boxed_float (Some f) ->
-      let const, approx = make_const_float_named f in
+      let const, approx = make_const_boxed_float_named f in
       const, Replaced_term, approx
     | Boxed_int (t, i) ->
       let const, approx = make_const_boxed_int_named t i in
       const, Replaced_term, approx
+
+
     | Symbol sym ->
       Symbol sym, Replaced_term, t
     | String _ | Float_array _ | Boxed_float None
@@ -881,8 +943,12 @@ let simplify_var t : (Flambda.named * t) option =
     | Ok (Char n) -> Some (make_const_char_named n)
     | Ok (Constptr n) -> Some (make_const_ptr_named n)
     end
-  | Boxed_float (Some f) -> Some (make_const_float_named f)
+
+
+  | Boxed_float (Some f) -> Some (make_const_boxed_float_named f)
   | Boxed_int (t, i) -> Some (make_const_boxed_int_named t i)
+
+
   | Symbol sym -> Some (Symbol sym, t)
   | String _ | Float_array _ | Boxed_float None
   | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Extern _
@@ -919,29 +985,31 @@ let is_bottom t =
   match t.descr with
   | Bottom -> true
   | Unresolved _ | Unknown _ | String _ | Float_array _ | Union _
-  | Set_of_closures _ | Closure _ | Extern _ | Boxed_float _ | Boxed_int _
-  | Symbol _ -> false
+  | Set_of_closures _ | Closure _ | Extern _ | Boxed_number _
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Symbol _ -> false
 
 let known t =
   match t.descr with
   | Unresolved _ | Unknown _ -> false
   | String _ | Float_array _ | Bottom | Union _ | Set_of_closures _ | Closure _
-  | Extern _ | Boxed_float _ | Boxed_int _ | Symbol _ -> true
+  | Extern _ | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint _
+  | Symbol _ -> true
 
 let useful t =
   match t.descr with
   | Unresolved _ | Unknown _ | Bottom -> false
   | Union union -> Unionable.useful union
-  | String _ | Float_array _ | Set_of_closures _ | Boxed_float _ | Boxed_int _
-  | Closure _ | Extern _ | Symbol _ -> true
+  | String _ | Float_array _ | Set_of_closures _ | Boxed_number _
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Closure _ | Extern _
+  | Symbol _ -> true
 
 let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 
 let invalid_to_mutate t =
   match t.descr with
   | Union unionable -> Unionable.invalid_to_mutate unionable
-  | String { contents = Some _ } | Set_of_closures _ | Boxed_float _
-  | Boxed_int _ | Closure _ -> true
+  | String { contents = Some _ } | Set_of_closures _ | Boxed_number _
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Closure _ -> true
   | String { contents = None } | Float_array _ | Unresolved _ | Unknown _
   | Bottom -> false
   | Extern _ | Symbol _ -> assert false
@@ -984,7 +1052,7 @@ Format.eprintf "get_field %d from %a\n%!" i print t;
        change this, although it's probably not Pfield that is used to
        do the projection. *)
     Ok (value_unknown Other)
-  | String _ | Boxed_float _ | Boxed_int _ ->
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ | String _ | Boxed_number _ ->
     (* The user is doing something unsafe. *)
     Unreachable
   | Set_of_closures _ | Closure _
@@ -1007,7 +1075,7 @@ let length_of_array t =
 
 type checked_approx_for_block =
   | Wrong
-  | Ok of Tag.t * t array
+  | Ok of Tag.Scannable.t * t array
 
 let check_approx_for_block t : checked_approx_for_block =
   match t.descr with
@@ -1016,8 +1084,8 @@ let check_approx_for_block t : checked_approx_for_block =
     | Ok (Block (tag, fields)) -> Ok (tag, fields)
     | Ok (Int _ | Char _ | Constptr _) | Ill_typed_code | Anything -> Wrong
     end
-  | Bottom | Float_array _ | String _ | Boxed_float _ | Boxed_int _
-  | Set_of_closures _ | Closure _ | Symbol _ | Extern _
+  | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
+  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong
 
 type checked_approx_for_block_or_immediate =
@@ -1034,9 +1102,9 @@ let check_approx_for_block_or_immediate t
     | Ok (Block _) -> Block
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
-  | Bottom | Float_array _ | String _ | Boxed_float _ | Boxed_int _
-  | Set_of_closures _ | Closure _ | Symbol _ | Extern _
-  | Unknown _ | Unresolved _ -> Wrong
+  | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
+  | Int64 _ | Nativeint _ | | Set_of_closures _ | Closure _ | Symbol _
+  | Extern _ | Unknown _ | Unresolved _ -> Wrong
 
 type checked_approx_for_variant =
   | Wrong
@@ -1047,8 +1115,8 @@ let check_approx_for_variant t : checked_approx_for_variant =
   | Union union ->
     if Unionable.ok_for_variant union then Ok union
     else Wrong
-  | Bottom | Float_array _ | String _ | Boxed_float _ | Boxed_int _
-  | Set_of_closures _ | Closure _ | Symbol _ | Extern _
+  | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
+  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _ | Symbol _ | Extern _
   | Unknown _ | Unresolved _ -> Wrong
 
 (* Given a set-of-closures approximation and a closure ID, apply any
@@ -1092,7 +1160,8 @@ let check_approx_for_set_of_closures t : checked_approx_for_set_of_closures =
        closures via approximations only, with the variable originally bound
        to the set now out of scope. *)
     Ok (t.var, value_set_of_closures)
-  | Closure _ | Union _ | Boxed_float _ | Boxed_int _ | Unknown _ | Bottom
+  | Closure _ | Union _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
+  | Nativeint _ | Unknown _ | Bottom
   | Extern _ | String _ | Float_array _ | Symbol _ -> Wrong
 
 type strict_checked_approx_for_set_of_closures =
@@ -1127,7 +1196,8 @@ let check_approx_for_closure_allowing_unresolved t
             | Set_of_closures value_set_of_closures ->
               value_set_of_closures
             | Unresolved _
-            | Closure _ | Union _ | Boxed_float _ | Boxed_int _ | Unknown _
+            | Closure _ | Union _ | Boxed_number _ | Float _ | Int32 _
+            | Int64 _ | Nativeint _ | Unknown _
             | Bottom | Extern _ | String _ | Float_array _ | Symbol _ ->
               raise Exit)
             value_closure.potential_closures
@@ -1145,13 +1215,15 @@ let check_approx_for_closure_allowing_unresolved t
         Ok (Closure_id.Map.singleton closure_id value_set_of_closures,
             set_of_closures.var, symbol)
       | Unresolved _
-      | Closure _ | Boxed_float _ | Boxed_int _ | Unknown _ | Bottom | Extern _
+      | Closure _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
+      | Nativeint _ | Unknown _ | Bottom | Extern _
       | String _ | Float_array _ | Symbol _ | Union _ -> Wrong
     end
   | Unknown (Unresolved_value value) ->
     Unknown_because_of_unresolved_value value
   | Unresolved value -> Unresolved value
-  | Set_of_closures _ | Union _ | Boxed_float _ | Boxed_int _ | Bottom | Extern _
+  | Set_of_closures _ | Union _ | Boxed_number _
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Bottom | Extern _
   | String _ | Float_array _ | Symbol _ -> Wrong
   (* CR-soon mshinwell: This should be unwound once the reason for a value
      being unknown can be correctly propagated through the export info. *)
@@ -1199,14 +1271,16 @@ let approx_for_bound_var value_set_of_closures var =
 let check_approx_for_int t : int option =
   match t.descr with
   | Union unionable -> Unionable.as_int unionable
-  | Boxed_float _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
-  | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
+  | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint _ | Unresolved _
+  | Unknown _ | String _ | Float_array _ | Bottom | Set_of_closures _
+  | Closure _ | Extern _ | Boxed_number _ | Symbol _ -> None
 
 let check_approx_for_float t : float option =
   match t.descr with
-  | Boxed_float f -> f
+  | Boxed_number f -> f
   | Union _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
-  | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
+  | Set_of_closures _ | Closure _ | Extern _ | Boxed_number _ | Symbol _
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ -> None
 
 let float_array_as_constant (t:value_float_array) : float list option =
   match t.contents with
@@ -1227,8 +1301,9 @@ let float_array_as_constant (t:value_float_array) : float list option =
 let check_approx_for_string t : string option =
   match t.descr with
   | String { contents } -> contents
-  | Union _ | Boxed_float _ | Unresolved _ | Unknown _ | Float_array _ | Bottom
-  | Set_of_closures _ | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
+  | Union _ | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint
+  | Unresolved _ | Unknown _ | Float_array _ | Bottom | Set_of_closures _
+  | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
 
 type switch_branch_selection =
   | Cannot_be_taken
@@ -1252,8 +1327,8 @@ let potentially_taken_const_switch_branch t branch =
     (* In theory symbols cannot contain integers but this shouldn't
        matter as this will always be an imported approximation *)
     Can_be_taken
-  | Boxed_float _ | Float_array _ | String _ | Closure _ | Set_of_closures _
-  | Boxed_int _ | Bottom -> Cannot_be_taken
+  | Boxed_number _ | Float_array _ | String _ | Closure _ | Set_of_closures _
+  | Float | Int32 | Int64 | Nativeint | Bottom -> Cannot_be_taken
 
 let phys_equal (approxs:t list) =
   match approxs with
@@ -1274,17 +1349,20 @@ let phys_equal (approxs:t list) =
 let is_known_to_be_some_kind_of_int (arg:descr) =
   match arg with
   | Union (Immediates _) -> true
-  | Union (Blocks _ | Blocks_and_immediates _) | Boxed_float _ | Set_of_closures _
+  | Union (Blocks _ | Blocks_and_immediates _) | Boxed_number _
+  | Float | Int32 | Int64 | Nativeint | Set_of_closures _
   | Closure _ | String _ | Float_array _
   | Boxed_int _ | Unknown _ | Extern _
   | Symbol _ | Unresolved _ | Bottom -> false
 
+(* CR mshinwell: make name more precise.  Is this only for blocks with
+   tag < No_scan_tag? *)
 let is_known_to_be_some_kind_of_block (arg:descr) =
   match arg with
-  | Union (Blocks _) | Boxed_float _ | Float_array _ | Boxed_int _
+  | Union (Blocks _) | Boxed_number _ | Float_array _
   | Closure _ | String _ -> true
   | Set_of_closures _ | Union (Blocks_and_immediates _ | Immediates _)
-  | Unknown _ | Extern _ | Symbol _
+  | Unknown _ | Float _ | Int32 _ | Int64 _ | Nativeint _ | Extern _ | Symbol _
   | Unresolved _ | Bottom -> false
 
 let rec structurally_different (arg1:t) (arg2:t) =
@@ -1314,10 +1392,11 @@ let rec structurally_different (arg1:t) (arg2:t) =
   | Union ((Immediates s1) as union1), Union ((Immediates s2) as union2)
     when immediates_structurally_different s1 s2 union1 union2 -> true
   | Union (Blocks b1), Union (Blocks b2)
-    when Tag.Map.cardinal b1 = 1 && Tag.Map.cardinal b2 = 1 ->
-    let tag1, fields1 = Tag.Map.min_binding b1 in
-    let tag2, fields2 = Tag.Map.min_binding b2 in
-    not (Tag.equal tag1 tag2)
+    when Tag.Scannable.Map.cardinal b1 = 1
+      && Tag.Scannable.Map.cardinal b2 = 1 ->
+    let tag1, fields1 = Tag.Scannable.Map.min_binding b1 in
+    let tag2, fields2 = Tag.Scannable.Map.min_binding b2 in
+    not (Tag.Scannable.equal tag1 tag2)
     || (Array.length fields1 <> Array.length fields2)
     || Misc.Stdlib.Array.exists2 structurally_different fields1 fields2
   | descr1, descr2 ->

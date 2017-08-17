@@ -28,9 +28,10 @@ type parameter = t
    should think about how to improve this.
    There should for a start be a proper creation function with "with
    default attributes" in the name, or similar. *)
-val wrap : Variable.t -> t
+val wrap : Variable.t -> Value_kind.t -> t
 
 val var : t -> Variable.t
+val kind : t -> Value_kind.t
 
 (** Rename the inner variable of the parameter *)
 val rename
@@ -47,8 +48,6 @@ module Set : sig
   include Identifiable.Set with module T := T
 
   val vars : parameter list -> Variable.Set.t
-
-  val wrap : Variable.Set.t -> t
 end
 
 include Identifiable.S with type t := t
@@ -61,7 +60,7 @@ module List : sig
   (** extract variables from a list of parameters, preserving the order *)
   val vars : t list -> Variable.t list
 
-  val wrap : Variable.t list -> t list
+  val wrap : (Variable.t * Value_kind.t) list -> t list
 
   val equal_vars : t list -> Variable.t list -> bool
 

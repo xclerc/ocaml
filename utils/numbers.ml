@@ -84,3 +84,31 @@ module Float = struct
     let print = Format.pp_print_float
   end)
 end
+
+module Int32 = struct
+  type t = Int32.t
+
+  include Identifiable.Make (struct
+    type t = Int32.t
+
+    let compare x y = Int32.compare x y
+    let output oc x = Printf.fprintf oc "%ld" x
+    let hash f = Hashtbl.hash f
+    let equal (i : float) j = i = j
+    let print ppf t = Format.fprintf ppf "%ld" t
+  end)
+end
+
+module Int64 = struct
+  type t = Int64.t
+
+  include Identifiable.Make (struct
+    type t = Int64.t
+
+    let compare x y = Int64.compare x y
+    let output oc x = Printf.fprintf oc "%ld" x
+    let hash f = Hashtbl.hash f
+    let equal (i : float) j = i = j
+    let print ppf t = Format.fprintf ppf "%ld" t
+  end)
+end

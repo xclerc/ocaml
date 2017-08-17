@@ -43,3 +43,7 @@ module Int16 : sig
 end
 
 module Float : Identifiable.S with type t = float
+
+module Int32 : Identifiable.S with type t = Int32.t
+
+module Int64 : Identifiable.S with type t = Int64.t

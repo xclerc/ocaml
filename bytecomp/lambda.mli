@@ -52,6 +52,10 @@ type is_safe =
   | Safe
   | Unsafe
 
+type boxed =
+  | Boxed
+  | Unboxed
+
 type primitive =
   | Pidentity
   | Pbytes_to_string
@@ -76,6 +80,7 @@ type primitive =
   | Plazyforce
   (* External call *)
   | Pccall of Primitive.description
+  | Pccall_unboxed of Primitive.description
   (* Exceptions *)
   | Praise of raise_kind
   (* Boolean operations *)
@@ -89,10 +94,11 @@ type primitive =
   | Poffsetint of int
   | Poffsetref of int
   (* Float operations *)
-  | Pintoffloat | Pfloatofint
-  | Pnegfloat | Pabsfloat
-  | Paddfloat | Psubfloat | Pmulfloat | Pdivfloat
-  | Pfloatcomp of comparison
+  | Pintoffloat of boxed | Pfloatofint of boxed
+  | Pnegfloat of boxed | Pabsfloat of boxed
+  | Paddfloat of boxed | Psubfloat of boxed | Pmulfloat of boxed
+  | Pdivfloat of boxed
+  | Pfloatcomp of comparison * boxed
   (* String operations *)
   | Pstringlength | Pstringrefu  | Pstringrefs
   | Pbyteslength | Pbytesrefu | Pbytessetu | Pbytesrefs | Pbytessets
@@ -132,9 +138,9 @@ type primitive =
   | Plsrbint of boxed_integer
   | Pasrbint of boxed_integer
   | Pbintcomp of boxed_integer * comparison
-  (* Operations on big arrays: (unsafe, #dimensions, kind, layout) *)
-  | Pbigarrayref of bool * int * bigarray_kind * bigarray_layout
-  | Pbigarrayset of bool * int * bigarray_kind * bigarray_layout
+  (* Operations on big arrays: (unsafe, #dimensions, kind, layout, boxed) *)
+  | Pbigarrayref of bool * int * bigarray_kind * bigarray_layout * boxed
+  | Pbigarrayset of bool * int * bigarray_kind * bigarray_layout * boxed
   (* size of the nth dimension of a big array *)
   | Pbigarraydim of int
   (* load/set 16,32,64 bits from a string: (unsafe)*)
@@ -170,6 +176,8 @@ type primitive =
   (* Construction and destruction of groups of multiple function results *)
   | Pmake_unboxed_tuple
   | Punboxed_tuple_field of int
+  | Punbox_float
+  | Pbox_float
 
 and comparison =
     Ceq | Cneq | Clt | Cgt | Cle | Cge
