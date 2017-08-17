@@ -65,7 +65,7 @@ let simplify_free_variable_internal env original_var =
   | Current, approx -> No_binding var, approx  (* avoid useless [let] *)
   | Outer, approx ->
     let module W = Flambda.With_free_variables in
-    match A.simplify_var approx with
+    match T.simplify_var approx with
     | None -> No_binding var, approx
     | Some (named, approx) -> Binding (original_var, W.of_named named), approx
 
@@ -140,14 +140,14 @@ let simplify_free_variable_named env var ~f =
 let simplify_named_using_approx r named (approx, value_kind)
       : (Variable.t * Flambda.named) list * Flambda.named_reachable
           * Value_kind.t * R.t =
-  let named, _summary, approx = A.simplify_named approx named in
+  let named, _summary, approx = T.simplify_named approx named in
   [], Reachable named, value_kind, R.set_approx r approx
 
 let simplify_named_using_approx_and_env env r original_named approx
       : (Variable.t * Flambda.named) list * Flambda.named_reachable
           * R.t =
   let named, summary, approx =
-    A.simplify_named_using_env approx ~is_present_in_env:(E.mem env)
+    T.simplify_named_using_env approx ~is_present_in_env:(E.mem env)
       original_named
   in
   let r =
@@ -160,26 +160,26 @@ let simplify_named_using_approx_and_env env r original_named approx
 
 let approx_for_const (const : Flambda.const) =
   match const with
-  | Int i -> A.value_int i
-  | Char c -> A.value_char c
-  | Const_pointer i -> A.value_constptr i
-  | Unboxed_float f -> A.unboxed_float f
-  | Unboxed_int32 n -> A.unboxed_int32 n
-  | Unboxed_int64 n -> A.unboxed_int64 n
-  | Unboxed_nativeint n -> A.unboxed_nativeint n
+  | Int i -> T.int i
+  | Char c -> T.char c
+  | Const_pointer i -> T.constptr i
+  | Unboxed_float f -> T.unboxed_float f
+  | Unboxed_int32 n -> T.unboxed_int32 n
+  | Unboxed_int64 n -> T.unboxed_int64 n
+  | Unboxed_nativeint n -> T.unboxed_nativeint n
 
 let approx_for_allocated_const (const : Allocated_const.t) =
   match const with
-  | String s -> A.value_string (String.length s) None
-  | Immutable_string s -> A.value_string (String.length s) (Some s)
-  | Int32 i -> A.value_boxed_int Int32 i
-  | Int64 i -> A.value_boxed_int Int64 i
-  | Nativeint i -> A.value_boxed_int Nativeint i
-  | Boxed_float f -> A.value_boxed_float f
-  | Float_array a -> A.value_mutable_float_array ~size:(List.length a)
+  | String s -> T.string (String.length s) None
+  | Immutable_string s -> T.string (String.length s) (Some s)
+  | Int32 i -> T.boxed_int Int32 i
+  | Int64 i -> T.boxed_int Int64 i
+  | Nativeint i -> T.boxed_int Nativeint i
+  | Boxed_float f -> T.boxed_float f
+  | Float_array a -> T.mutable_float_array ~size:(List.length a)
   | Immutable_float_array a ->
-      A.value_immutable_float_array
-        (Array.map A.value_boxed_float (Array.of_list a))
+      T.immutable_float_array
+        (Array.map T.boxed_float (Array.of_list a))
 
 type filtered_switch_branches =
   | Must_be_taken of Continuation.t
@@ -203,7 +203,7 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
           * Flambda.named_reachable * R.t =
   simplify_free_variable_named env project_closure.set_of_closures
     ~f:(fun _env set_of_closures set_of_closures_approx ->
-      match A.check_approx_for_set_of_closures set_of_closures_approx with
+      match T.reify_as_set_of_closures set_of_closures_approx with
       | Wrong ->
         Misc.fatal_errorf "Wrong approximation when projecting closure: %a"
           Flambda.print_project_closure project_closure
@@ -214,22 +214,22 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
         [], Reachable (Project_closure {
           set_of_closures;
           closure_id = project_closure.closure_id;
-        }), ret r (A.value_unresolved value)
+        }), ret r (T.unresolved value)
       | Unknown ->
         (* CR-soon mshinwell: see CR comment in e.g. simple_value_approx.ml
            [check_approx_for_closure_allowing_unresolved] *)
         [], Reachable (Project_closure {
           set_of_closures;
           closure_id = project_closure.closure_id;
-        }), ret r (A.value_unknown Other)
+        }), ret r (T.unknown Other)
       | Unknown_because_of_unresolved_value value ->
         [], Reachable (Project_closure {
           set_of_closures;
           closure_id = project_closure.closure_id;
-        }), ret r (A.value_unknown (Unresolved_value value))
+        }), ret r (T.unknown (Unresolved_value value))
       | Ok (set_of_closures_var, value_set_of_closures) ->
         let closure_id =
-          A.freshen_and_check_closure_id value_set_of_closures
+          T.freshen_and_check_closure_id value_set_of_closures
             project_closure.closure_id
         in
         let () =
@@ -237,12 +237,12 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
           | _ :: _ :: _ ->
             Format.printf "Set of closures approximation is not a singleton \
                 in project closure@ %a@ %a@."
-              A.print set_of_closures_approx
+              T.print set_of_closures_approx
               Projection.print_project_closure project_closure
           | [] ->
             Format.printf "Set of closures approximation is empty in project \
                 closure@ %a@ %a@."
-              A.print set_of_closures_approx
+              T.print set_of_closures_approx
               Projection.print_project_closure project_closure
           | _ ->
             ()
@@ -277,7 +277,7 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
               | Some _ | None -> None
             in
             let approx =
-              A.value_closure ?set_of_closures_var
+              T.closure ?set_of_closures_var
                 (Closure_id.Map.of_set (fun _ -> value_set_of_closures)
                    closure_id)
             in
@@ -302,24 +302,24 @@ let simplify_move_within_set_of_closures env r
           * Flambda.named_reachable * R.t =
   simplify_free_variable_named env move_within_set_of_closures.closure
     ~f:(fun _env closure closure_approx ->
-    match A.check_approx_for_closure_allowing_unresolved closure_approx with
+    match T.reify_as_closure_allowing_unresolved closure_approx with
     | Wrong ->
       Misc.fatal_errorf "Wrong approximation when moving within set of \
           closures.  Approximation: %a  Term: %a"
-        A.print closure_approx
+        T.print closure_approx
         Flambda.print_move_within_set_of_closures move_within_set_of_closures
     | Unresolved sym ->
       [], Reachable (Move_within_set_of_closures {
           closure;
           move = move_within_set_of_closures.move;
         }),
-        ret r (A.value_unresolved sym)
+        ret r (T.unresolved sym)
     | Unknown ->
       [], Reachable (Move_within_set_of_closures {
           closure;
           move = move_within_set_of_closures.move;
         }),
-        ret r (A.value_unknown Other)
+        ret r (T.unknown Other)
     | Unknown_because_of_unresolved_value value ->
       (* For example: a move upon a (move upon a closure whose .cmx file
          is missing). *)
@@ -327,19 +327,19 @@ let simplify_move_within_set_of_closures env r
           closure;
           move = move_within_set_of_closures.move;
         }),
-        ret r (A.value_unknown (Unresolved_value value))
+        ret r (T.unknown (Unresolved_value value))
     | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
       let () =
         match Closure_id.Map.bindings value_closures with
         | _ :: _ :: _ ->
           Format.printf "Closure approximation is not a singleton in \
               move@ %a@ %a@."
-            A.print closure_approx
+            T.print closure_approx
             Projection.print_move_within_set_of_closures
             move_within_set_of_closures
         | [] ->
           Format.printf "Closure approximation is empty in move@ %a@ %a@."
-            A.print closure_approx
+            T.print closure_approx
             Projection.print_move_within_set_of_closures
             move_within_set_of_closures
         | _ ->
@@ -349,7 +349,7 @@ let simplify_move_within_set_of_closures env r
       let move, approx_map =
         Closure_id.Map.fold
           (fun closure_id_in_approx
-               (value_set_of_closures:A.value_set_of_closures)
+               (value_set_of_closures:T.set_of_closures)
                (move, approx_map) ->
             (* Pas efficace: on refait le freshening de tout pour ne
                garder que la partie pertinente, mais n'est pas très
@@ -370,7 +370,7 @@ let simplify_move_within_set_of_closures env r
                     move_within_set_of_closures
                   (Closure_id.Map.print Closure_id.print) freshened_move
                   Closure_id.print start_from
-                  (Closure_id.Map.print A.print_value_set_of_closures)
+                  (Closure_id.Map.print T.print_value_set_of_closures)
                     value_closures
                   E.print env
             in
@@ -392,7 +392,7 @@ let simplify_move_within_set_of_closures env r
            cardinality *)
         assert false
       | None, None ->
-        let approx = A.value_closure approx_map in
+        let approx = T.closure approx_map in
         let move_within : Flambda.move_within_set_of_closures =
           { closure; move; }
         in
@@ -425,7 +425,7 @@ let simplify_move_within_set_of_closures env r
                 }
               in
               let approx =
-                A.value_closure ~set_of_closures_var
+                T.closure ~set_of_closures_var
                   (Closure_id.Map.singleton move_to value_set_of_closures)
               in
               [], Reachable (Project_closure project_closure), ret r approx
@@ -439,7 +439,7 @@ let simplify_move_within_set_of_closures env r
                   }
                 in
                 let approx =
-                  A.value_closure ~set_of_closures_var ~set_of_closures_symbol
+                  T.closure ~set_of_closures_var ~set_of_closures_symbol
                     (Closure_id.Map.singleton move_to value_set_of_closures)
                 in
                 let bindings : (Variable.t * Flambda.named) list = [
@@ -454,7 +454,7 @@ let simplify_move_within_set_of_closures env r
                 let move_within : Flambda.move_within_set_of_closures =
                   { closure; move; }
                 in
-                let approx = A.value_closure approx_map in
+                let approx = T.closure approx_map in
                 [], Reachable (Move_within_set_of_closures move_within),
                   ret r approx)
 
@@ -508,17 +508,17 @@ let simplify_move_within_set_of_closures env r
 let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
   simplify_free_variable_named env project_var.closure
     ~f:(fun _env closure approx ->
-      match A.check_approx_for_closure_allowing_unresolved approx with
+      match T.reify_as_closure_allowing_unresolved approx with
       | Ok (value_closures, _set_of_closures_var, _set_of_closures_symbol) -> begin
         let () =
           match Closure_id.Map.bindings value_closures with
            | _ :: _ :: _ ->
              Format.printf "Closure approximation is not a singleton in project@ %a@ %a@."
-               A.print approx
+               T.print approx
                Projection.print_project_var project_var
            | [] ->
              Format.printf "Closure approximation is empty in project@ %a@ %a@."
-               A.print approx
+               T.print approx
                Projection.print_project_var project_var
            | _ ->
              ()
@@ -527,7 +527,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
         let project_var_var, approx =
           Closure_id.Map.fold
             (fun closure_id_in_approx
-              (value_set_of_closures:A.value_set_of_closures)
+              (value_set_of_closures:T.set_of_closures)
               (project_var_var, set_approx) ->
               let freshened_var =
                 Freshening.freshen_project_var project_var.var
@@ -548,13 +548,13 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
                     Simple_value_approx.print approx
               in
               let set_approx =
-                let approx = A.approx_for_bound_var value_set_of_closures var in
+                let approx = T.approx_for_bound_var value_set_of_closures var in
                 let really_import_approx = E.really_import_approx env in
-                A.join ~really_import_approx approx set_approx
+                T.join ~really_import_approx approx set_approx
               in
               Closure_id.Map.add closure_id var project_var_var,
               set_approx)
-            value_closures (Closure_id.Map.empty, A.value_bottom)
+            value_closures (Closure_id.Map.empty, T.bottom)
         in
         let projection : Projection.t =
           Project_var {
@@ -591,13 +591,13 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
           have been renamed.  So we don't need to change the variable or
           closure ID in the [Project_var] expression. *)
         [], Reachable (Project_var { project_var with closure }),
-          ret r (A.value_unresolved value)
+          ret r (T.unresolved value)
       | Unknown ->
         [], Reachable (Project_var { project_var with closure }),
-          ret r (A.value_unknown Other)
+          ret r (T.unknown Other)
       | Unknown_because_of_unresolved_value value ->
         [], Reachable (Project_var { project_var with closure }),
-          ret r (A.value_unknown (Unresolved_value value))
+          ret r (T.unknown (Unresolved_value value))
       | Wrong ->
         (* We must have the correct approximation of the value to ensure
           we take account of all freshenings. *)
@@ -807,7 +807,7 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
       function_decls ~backend:(E.backend env))
   in
   let value_set_of_closures =
-    A.create_value_set_of_closures ~function_decls
+    T.create_value_set_of_closures ~function_decls
       ~bound_vars:internal_value_set_of_closures.bound_vars
       ~invariant_params
       ~specialised_args:internal_value_set_of_closures.specialised_args
@@ -828,7 +828,7 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
       ~specialised_args
       ~direct_call_surrogates
   in
-  let r = ret r (A.value_set_of_closures value_set_of_closures) in
+  let r = ret r (T.set_of_closures value_set_of_closures) in
   set_of_closures, r, value_set_of_closures.freshening
 
 and simplify_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
@@ -843,7 +843,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
       simplify_free_variables env apply.args ~f:(fun env args _args_approxs ->
         let continuation, r =
           simplify_apply_cont_to_cont env r apply.continuation
-            ~args_approxs:[A.value_unknown Other]
+            ~args_approxs:[T.unknown Other]
         in
         let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
         let apply : Flambda.apply = {
@@ -857,7 +857,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
           specialise = apply.specialise;
         }
         in
-        Apply apply, ret r (A.value_unknown Other))))
+        Apply apply, ret r (T.unknown Other))))
 
 and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
   let {
@@ -882,7 +882,7 @@ Format.eprintf "...freshened cont is %a\n%!"
            (even if the application is currently [Indirect]).  If
            successful---in which case we then have a direct
            application---consider inlining. *)
-        match A.check_approx_for_closure_singleton lhs_of_application_approx with
+        match T.reify_as_closure_singleton lhs_of_application_approx with
         | Ok (closure_id_being_applied, set_of_closures_var,
               set_of_closures_symbol, value_set_of_closures) ->
           let lhs_of_application, closure_id_being_applied,
@@ -912,7 +912,7 @@ Format.eprintf "...freshened cont is %a\n%!"
                 }
               in
               let approx_for_surrogate =
-                A.value_closure ~closure_var:surrogate_var
+                T.closure ~closure_var:surrogate_var
                   ?set_of_closures_var ?set_of_closures_symbol
                   (Closure_id.Map.singleton surrogate value_set_of_closures)
               in
@@ -994,24 +994,24 @@ let joins =
 in
 Format.eprintf "Continuation args join:\n@ %a\n%!"
   (Continuation.Map.print
-    (Format.pp_print_list A.print)) joins;
+    (Format.pp_print_list T.print)) joins;
 *)
           wrap result, r
         | Wrong ->  (* Insufficient approximation information to simplify. *)
           let args_approxs =
             match call_kind with
-            | Indirect -> [A.value_unknown Other]
+            | Indirect -> [T.unknown Other]
             | Direct { return_arity; _ }
                 when E.less_precise_approximations env ->
               Array.to_list (Array.init return_arity (fun _ ->
-                A.value_unknown Other))
+                T.unknown Other))
             | Direct _ ->
               Misc.fatal_errorf "Application of function %a (%a) is marked as \
                   a direct call but the approximation of the function was \
                   wrong: %a@ \nEnvironment:@ %a\n%!"
                 Variable.print lhs_of_application
                 Variable.print_list args
-                A.print lhs_of_application_approx
+                T.print lhs_of_application_approx
                 E.print env
           in
           let continuation, r =
@@ -1024,7 +1024,7 @@ Format.eprintf "Continuation args join:\n@ %a\n%!"
           Apply ({ kind; func = lhs_of_application; args; call_kind;
               dbg; inline = inline_requested; specialise = specialise_requested;
               continuation; }),
-            ret r (A.value_unknown Other)))
+            ret r (T.unknown Other)))
 
 and simplify_full_application env r ~function_decls ~lhs_of_application
       ~closure_id_being_applied ~function_decl ~value_set_of_closures ~args
@@ -1042,7 +1042,7 @@ and simplify_partial_application env r ~lhs_of_application
   let continuation, r =
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity
-        (fun _index -> A.value_unknown Other))
+        (fun _index -> T.unknown Other))
     in
     simplify_apply_cont_to_cont env r continuation
       ~args_approxs
@@ -1125,7 +1125,7 @@ and simplify_over_application env r ~args ~args_approxs ~continuation
   let continuation, r =
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity
-        (fun _index -> A.value_unknown Other))
+        (fun _index -> T.unknown Other))
     in
     simplify_apply_cont_to_cont env r continuation
       ~args_approxs
@@ -1215,14 +1215,14 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_approxs:[A.value_unknown Other]
+          ~args_approxs:[T.unknown Other]
       in
       Flambda.Push { id; exn_handler; }, r
     | Pop { id; exn_handler; } ->
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_approxs:[A.value_unknown Other]
+          ~args_approxs:[T.unknown Other]
       in
       Flambda.Pop { id; exn_handler; }, r
   in
@@ -1273,7 +1273,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
 (*
 Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
   Continuation.print cont
-  (Format.pp_print_list A.print) args_approxs;
+  (Format.pp_print_list T.print) args_approxs;
 *)
     let r =
       let kind : Inline_and_simplify_aux.Continuation_uses.Use.Kind.t =
@@ -1291,7 +1291,7 @@ Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
         let trap_action, r = freshen_trap_action env r trap_action in
         Some trap_action, r
     in
-    Apply_cont (cont, trap_action, args), ret r (A.value_unknown Other)
+    Apply_cont (cont, trap_action, args), ret r (T.unknown Other)
 
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm) and there are no opportunities
@@ -1312,7 +1312,7 @@ and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_approxs =
         (Not_inlinable_or_specialisable args_approxs)
     | Some () -> r
   in
-  cont, ret r (A.value_unknown Other)
+  cont, ret r (T.unknown Other)
 
 (** [simplify_named] returns:
     - extra [Let]-bindings to be inserted prior to the one being simplified;
@@ -1343,14 +1343,14 @@ and simplify_named env r (tree : Flambda.named)
     let mut_var =
       Freshening.apply_mutable_variable (E.freshening env) mut_var
     in
-    [], Reachable (Read_mutable mut_var), ret r (A.value_unknown Other)
+    [], Reachable (Read_mutable mut_var), ret r (T.unknown Other)
   | Read_symbol_field (symbol, field_index) ->
     let approx = E.find_or_load_symbol env symbol in
-    begin match A.get_field approx ~field_index with
+    begin match T.get_field approx ~field_index with
     (* CR-someday mshinwell: Think about [Unreachable] vs. [Bottom]. *)
     | Unreachable -> [], Unreachable, r
     | Ok approx ->
-      let approx = A.augment_with_symbol_field approx symbol field_index in
+      let approx = T.augment_with_symbol_field approx symbol field_index in
       simplify_named_using_approx_and_env env r tree approx
     end
   | Set_of_closures set_of_closures -> begin
@@ -1381,21 +1381,21 @@ and simplify_named env r (tree : Flambda.named)
       in
       let approx = R.approx r in
       let value_set_of_closures =
-        match A.strict_check_approx_for_set_of_closures approx with
+        match T.strict_check_approx_for_set_of_closures approx with
         | Wrong ->
           Misc.fatal_errorf "Unexpected approximation returned from \
               simplification of [%s] result: %a"
-            pass_name A.print approx
+            pass_name T.print approx
         | Ok (_var, value_set_of_closures) ->
           let freshening =
             Freshening.Project_var.compose ~earlier:first_freshening
               ~later:value_set_of_closures.freshening
           in
-          A.update_freshening_of_value_set_of_closures value_set_of_closures
+          T.update_freshening_of_value_set_of_closures value_set_of_closures
             ~freshening
       in
       bindings, set_of_closures,
-        (ret r (A.value_set_of_closures value_set_of_closures))
+        (ret r (T.set_of_closures value_set_of_closures))
     in
     (* This does the actual substitutions of specialised args introduced
        by [Unbox_closures] for free variables.  (Apart from simplifying
@@ -1458,7 +1458,7 @@ and simplify_named env r (tree : Flambda.named)
     in
     simplify_free_variable_named env new_value ~f:(fun _env new_value _approx ->
       [], Reachable (Assign { being_assigned; new_value; }, Value_kind.Value),
-        ret r (A.value_unknown Other))
+        ret r (T.unknown Other))
   | Prim (prim, args, dbg) ->
     let dbg = E.add_inlined_debuginfo env ~dbg in
     simplify_free_variables_named env args ~f:(fun env args args_approxs ->
@@ -1483,7 +1483,7 @@ and simplify_named env r (tree : Flambda.named)
           let r = R.map_benefit r (B.(+) benefit) in
           let approx =
             match prim with
-            | Popaque -> A.value_unknown Other
+            | Popaque -> T.unknown Other
             | _ -> approx
           in
           [], Reachable (named, value_kind), ret r approx
@@ -1499,11 +1499,11 @@ and simplify_named env r (tree : Flambda.named)
               let r = R.map_benefit r (B.remove_projection projection) in
               [], Reachable (Var var), ret r var_approx)
           | None ->
-            begin match A.get_field arg_approx ~field_index with
+            begin match T.get_field arg_approx ~field_index with
             | Unreachable ->
 (*
 Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
-  field_index Variable.print arg A.print arg_approx;
+  field_index Variable.print arg T.print arg_approx;
 *)
               [], Unreachable, r
             | Ok approx ->
@@ -1513,7 +1513,7 @@ Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
                    the expression to [Read_symbol_field]. *)
                 | Some (symbol, None) ->
                   let approx =
-                    A.augment_with_symbol_field approx symbol field_index
+                    T.augment_with_symbol_field approx symbol field_index
                   in
                   Flambda.Read_symbol_field (symbol, field_index), approx
                 | None | Some (_, Some _ ) ->
@@ -1530,17 +1530,17 @@ Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
         | (Parraysetu kind | Parraysets kind),
             [_block; _field; _value],
             [block_approx; field_approx; value_approx] ->
-          if A.invalid_to_mutate block_approx then begin
+          if T.invalid_to_mutate block_approx then begin
             Location.prerr_warning (Debuginfo.to_location dbg)
               Warnings.Assignment_to_non_mutable_value;
             if !Clflags.treat_invalid_code_as_dead then
               [], Flambda.Unreachable, r
             else
               [], Flambda.Reachable (Prim (prim, args, dbg)),
-                ret r (A.value_unknown Other)
+                ret r (T.unknown Other)
           end else begin
-            let size = A.length_of_array block_approx in
-            let index = A.check_approx_for_int field_approx in
+            let size = T.length_of_array block_approx in
+            let index = T.reify_as_int field_approx in
             let bounds_check_definitely_fails =
               match size, index with
               | Some size, _ when size <= 0 ->
@@ -1582,10 +1582,10 @@ Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
                 ]
               in
               bindings, Reachable (Prim (Praise Raise_regular, [exn_var], dbg)),
-                ret r A.value_bottom
+                ret r T.bottom
             end else begin
               let kind =
-                match A.descr block_approx, A.descr value_approx with
+                match T.descr block_approx, T.descr value_approx with
                 | (Float_array _, _)
                 | (_, Boxed_float _) ->
                   begin match kind with
@@ -1608,57 +1608,57 @@ Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
                 | _ -> assert false
               in
               [], Reachable (Prim (prim, args, dbg)),
-                ret r (A.value_unknown Other)
+                ret r (T.unknown Other)
             end
           end
         | Psetfield _, _block::_, block_approx::_ ->
-          if A.invalid_to_mutate block_approx then begin
+          if T.invalid_to_mutate block_approx then begin
             Location.prerr_warning (Debuginfo.to_location dbg)
               Warnings.Assignment_to_non_mutable_value;
             if !Clflags.treat_invalid_code_as_dead then
               [], Flambda.Unreachable, r
             else
               [], Flambda.Reachable (Prim (prim, args, dbg)),
-                ret r (A.value_unknown Other)
+                ret r (T.unknown Other)
           end else begin
-            [], Reachable tree, ret r (A.value_unknown Other)
+            [], Reachable tree, ret r (T.unknown Other)
           end
         | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
           Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
         | Pisint, [_arg], [arg_approx] ->
-          begin match A.check_approx_for_block_or_immediate arg_approx with
+          begin match T.reify_as_block_or_immediate arg_approx with
           | Wrong -> default ()
           | Immediate ->
             let r = R.map_benefit r B.remove_prim in
             let const_true = Variable.create "true" in
             [const_true, Const (Int 1)], Reachable (Var const_true),
-              ret r (A.value_int 1)
+              ret r (T.int 1)
           | Block ->
             let r = R.map_benefit r B.remove_prim in
             let const_false = Variable.create "false" in
             [const_false, Const (Int 0)], Reachable (Var const_false),
-              ret r (A.value_int 0)
+              ret r (T.int 0)
           end
         | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
         | Pgettag, [_arg], [arg_approx] ->
-          begin match A.check_approx_for_block arg_approx with
+          begin match T.reify_as_block arg_approx with
           | Wrong -> default ()
           | Ok (tag, _fields) ->
             let r = R.map_benefit r B.remove_prim in
             let const_tag = Variable.create "tag" in
             let tag = Tag.to_int tag in
             [const_tag, Const (Int tag)], Reachable (Var const_tag),
-              ret r (A.value_int tag)
+              ret r (T.int tag)
           end
         | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
         | Parraylength _, [_arg], [arg_approx] ->
-          begin match A.length_of_array arg_approx with
+          begin match T.length_of_array arg_approx with
           | None -> default ()
           | Some length ->
             let r = R.map_benefit r B.remove_prim in
             let const_length = Variable.create "length" in
             [const_length, Const (Int length)], Reachable (Var const_length),
-              ret r (A.value_int length)
+              ret r (T.int length)
           end
         | Parraylength _, _, _ -> Misc.fatal_error "Parraylength arity error"
         | (Psequand | Psequor), _, _ ->
@@ -1745,7 +1745,7 @@ and for_defining_expr_of_let (env, r) var defining_expr =
     | Reachable defining_expr ->
       (* Cause subsequent code to be deleted if the evaluation of this
          [Let]'s defining expression doesn't terminate. *)
-      if A.is_bottom (R.approx r) then Non_terminating defining_expr
+      if T.is_bottom (R.approx r) then Non_terminating defining_expr
       else Reachable defining_expr
   in
   let var, sb = Freshening.add_variable (E.freshening env) var in
@@ -1774,7 +1774,7 @@ and simplify_let_cont_handler ~env ~r ~cont
 (*
 Format.eprintf "Handler of %a has args_approxs (%a)\n%!"
   Continuation.print cont
-  (Format.pp_print_list A.print) args_approxs;
+  (Format.pp_print_list T.print) args_approxs;
 *)
   let { Flambda. params = vars; stub; is_exn_handler; handler;
     specialised_args; } = handler
@@ -1830,7 +1830,7 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
             end;
             let var =
               match
-                A.simplify_var_to_var_using_env (E.find_exn env var)
+                T.follow_variable_equality (E.find_exn env var)
                   ~is_present_in_env:(fun var -> E.mem env var)
               with
               | None -> var
@@ -1930,7 +1930,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs
           let args_approxs =
             let unknown () =
               Array.to_list (Array.init (List.length handler.params)
-                (fun _ -> A.value_unknown Other))
+                (fun _ -> T.unknown Other))
             in
             match args_approxs with
             | None ->
@@ -2090,7 +2090,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       in
       let env = E.set_freshening env sb in
       let body, r =
-        simplify (E.add_mutable env mut_var (A.value_unknown Other)) r body
+        simplify (E.add_mutable env mut_var (T.unknown Other)) r body
       in
       Flambda.Let_mutable
         { var = mut_var;
@@ -2272,7 +2272,7 @@ body, r
         in
 (*
 Format.eprintf "args_approxs override:@ %a\n%!"
-  (Continuation.Map.print (Format.pp_print_list A.print)) args_approxs;
+  (Continuation.Map.print (Format.pp_print_list T.print)) args_approxs;
 *)
         let handlers = original_handlers in
         let r = original_r in
@@ -2335,7 +2335,7 @@ Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
     simplify_free_variable env arg ~f:(fun env arg arg_approx ->
 (*
 Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
-  Variable.print arg A.print arg_approx;
+  Variable.print arg T.print arg_approx;
 *)
       let destination_is_unreachable cont =
         (* CR mshinwell: This unreachable thing should be tidied up and also
@@ -2357,17 +2357,17 @@ Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
             filter_branches filter branches compatible_branches
           else
             match filter arg_approx c with
-            | A.Cannot_be_taken ->
+            | T.Cannot_be_taken ->
 (*
 Format.eprintf "Switch arm %a cannot_be_taken\n%!" Continuation.print cont;
 *)
               filter_branches filter branches compatible_branches
-            | A.Can_be_taken ->
+            | T.Can_be_taken ->
 (*
 Format.eprintf "Switch arm %a can_be_taken\n%!" Continuation.print cont;
 *)
               filter_branches filter branches (branch :: compatible_branches)
-            | A.Must_be_taken ->
+            | T.Must_be_taken ->
 (*
 Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
 *)
@@ -2377,7 +2377,7 @@ Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
          will be taken, or may be taken.  (Note that the "Union" case in
          [Simple_value_approx] helps here.) *)
       let filtered_consts =
-        filter_branches A.potentially_taken_const_switch_branch sw.consts []
+        filter_branches T.potentially_taken_const_switch_branch sw.consts []
       in
       begin match filtered_consts with
       | Must_be_taken cont ->
@@ -2437,7 +2437,7 @@ Format.eprintf "%a branch simplifies to: %a\n%!"
             in
             (i, cont)::acc, r
           in
-          let r = R.set_approx r A.value_bottom in
+          let r = R.set_approx r T.bottom in
           let consts, r = List.fold_left f ([], r) consts in
           let failaction, r =
             match sw.failaction with
@@ -2467,7 +2467,7 @@ Format.eprintf "%a branch simplifies to: %a\n%!"
             used_conts;
           switch, !r
       end)
-  | Proved_unreachable -> Proved_unreachable, ret r A.value_bottom
+  | Proved_unreachable -> Proved_unreachable, ret r T.bottom
 
 and simplify_toplevel env r expr ~continuation ~descr =
   if not (Continuation.Map.mem continuation (E.continuations_in_scope env))
@@ -2656,12 +2656,12 @@ let constant_defining_value_approx
           | Flambda.Symbol sym -> begin
               match E.find_symbol_opt env sym with
               | Some approx -> approx
-              | None -> A.value_unresolved (Symbol sym)
+              | None -> T.unresolved (Symbol sym)
             end
           | Flambda.Const cst -> approx_for_const cst)
         fields
     in
-    A.value_block tag (Array.of_list fields)
+    T.block tag (Array.of_list fields)
   | Set_of_closures { function_decls; free_vars; specialised_args } ->
     (* At toplevel, there is no freshening currently happening (this
        cannot be the body of a currently inlined function), so we can
@@ -2674,34 +2674,34 @@ let constant_defining_value_approx
         function_decls ~backend:(E.backend env))
     in
     let value_set_of_closures =
-      A.create_value_set_of_closures ~function_decls
+      T.create_value_set_of_closures ~function_decls
         ~bound_vars:Var_within_closure.Map.empty
         ~invariant_params
         ~specialised_args:Variable.Map.empty
         ~freshening:Freshening.Project_var.empty
         ~direct_call_surrogates:Closure_id.Map.empty
     in
-    A.value_set_of_closures value_set_of_closures
+    T.set_of_closures value_set_of_closures
   | Project_closure (set_of_closures_symbol, closure_id) -> begin
       match E.find_symbol_opt env set_of_closures_symbol with
       | None ->
-        A.value_unresolved (Symbol set_of_closures_symbol)
+        T.unresolved (Symbol set_of_closures_symbol)
       | Some set_of_closures_approx ->
         let checked_approx =
-          A.check_approx_for_set_of_closures set_of_closures_approx
+          T.reify_as_set_of_closures set_of_closures_approx
         in
         match checked_approx with
         | Ok (_, value_set_of_closures) ->
           let closure_id =
-            A.freshen_and_check_closure_id value_set_of_closures
+            T.freshen_and_check_closure_id value_set_of_closures
               (Closure_id.Set.singleton closure_id)
           in
-          A.value_closure
+          T.closure
             (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
-        | Unresolved sym -> A.value_unresolved sym
-        | Unknown -> A.value_unknown Other
+        | Unresolved sym -> T.unresolved sym
+        | Unknown -> T.unknown Other
         | Unknown_because_of_unresolved_value value ->
-          A.value_unknown (Unresolved_value value)
+          T.unknown (Unresolved_value value)
         | Wrong ->
           Misc.fatal_errorf "Wrong approximation for [Project_closure] \
                              when being used as a [constant_defining_value]: %a"
@@ -2713,7 +2713,7 @@ let define_let_rec_symbol_approx env defs =
   (* First declare an empty version of the symbols *)
   let env =
     List.fold_left (fun env (symbol, _) ->
-        E.add_symbol env symbol (A.value_unresolved (Symbol symbol)))
+        E.add_symbol env symbol (T.unresolved (Symbol symbol)))
       env defs
   in
   let rec loop times env =
@@ -2747,7 +2747,7 @@ let simplify_constant_defining_value
             | Flambda.Const cst -> approx_for_const cst)
           fields
       in
-      r, constant_defining_value, A.value_block tag (Array.of_list fields)
+      r, constant_defining_value, T.block tag (Array.of_list fields)
     | Set_of_closures set_of_closures ->
       if Variable.Map.cardinal set_of_closures.free_vars <> 0 then begin
         Misc.fatal_errorf "Set of closures bound by [Let_symbol] is not \
@@ -2765,18 +2765,18 @@ let simplify_constant_defining_value
         E.find_symbol_exn env set_of_closures_symbol
       in
       let closure_approx =
-        match A.check_approx_for_set_of_closures set_of_closures_approx with
+        match T.reify_as_set_of_closures set_of_closures_approx with
         | Ok (_, value_set_of_closures) ->
           let closure_id =
-            A.freshen_and_check_closure_id value_set_of_closures
+            T.freshen_and_check_closure_id value_set_of_closures
               (Closure_id.Set.singleton closure_id)
           in
-          A.value_closure
+          T.closure
             (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
-        | Unresolved sym -> A.value_unresolved sym
-        | Unknown -> A.value_unknown Other
+        | Unresolved sym -> T.unresolved sym
+        | Unknown -> T.unknown Other
         | Unknown_because_of_unresolved_value value ->
-          A.value_unknown (Unresolved_value value)
+          T.unknown (Unresolved_value value)
         | Wrong ->
           Misc.fatal_errorf "Wrong approximation for [Project_closure] \
                              when being used as a [constant_defining_value]: %a"
@@ -2784,7 +2784,7 @@ let simplify_constant_defining_value
       in
       r, constant_defining_value, closure_approx
   in
-  let approx = A.augment_with_symbol approx symbol in
+  let approx = T.augment_with_symbol approx symbol in
   let r = ret r approx in
   r, constant_defining_value, approx
 
@@ -2798,7 +2798,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
           let r, def, approx =
             simplify_constant_defining_value env r symbol def
           in
-          let approx = A.augment_with_symbol approx symbol in
+          let approx = T.augment_with_symbol approx symbol in
           let env = E.redefine_symbol env symbol approx in
           (env, r, (symbol, def) :: defs))
         (env, r, []) defs
@@ -2809,7 +2809,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     let r, constant_defining_value, approx =
       simplify_constant_defining_value env r symbol constant_defining_value
     in
-    let approx = A.augment_with_symbol approx symbol in
+    let approx = T.augment_with_symbol approx symbol in
     let env = E.add_symbol env symbol approx in
     let program, r = simplify_program_body env r program in
     Let_symbol (symbol, constant_defining_value, program), r
@@ -2849,12 +2849,12 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
     in
     let fields, approxs, r = simplify_fields env r fields in
     let approx =
-      A.augment_with_symbol (A.value_block tag (Array.of_list approxs)) symbol
+      T.augment_with_symbol (T.block tag (Array.of_list approxs)) symbol
     in
 (*
 Format.eprintf "Symbol %a has approximation %a\n%!"
   Symbol.print symbol
-  A.print (A.value_block tag (Array.of_list approxs));
+  T.print (T.block tag (Array.of_list approxs));
 *)
     let module Backend = (val (E.backend env) : Backend_intf.S) in
     let env = E.add_symbol env symbol approx in
@@ -2912,12 +2912,12 @@ let add_predef_exns_to_environment ~env ~backend =
       let symbol = Backend.symbol_for_global' predef_exn in
       let name = Ident.name predef_exn in
       let approx =
-        A.value_block Tag.object_tag
-          [| A.value_string (String.length name) (Some name);
-             A.value_unknown Other;
+        T.block Tag.object_tag
+          [| T.string (String.length name) (Some name);
+             T.unknown Other;
           |]
       in
-      E.add_symbol env symbol (A.augment_with_symbol approx symbol))
+      E.add_symbol env symbol (T.augment_with_symbol approx symbol))
     env
     Predef.all_predef_exns
 

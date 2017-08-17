@@ -14,538 +14,222 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** The type system of Flambda.  The types give approximations to the results
-    of evaluating Flambda terms at runtime. *)
+(** The type system of Flambda including various functions to analyse types.
+    (The basic definitions are in [Flambda_types0], which does not
+    depend on [Flambda].) *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Boxed_number_kind : sig
-  type t = private
-    | Float
-    | Int32
-    | Int64
-    | Nativeint
-end
+(** Types of Flambda terms. *)
+type t
 
-type value_string = {
-  contents : string option;  (* [None] if unknown or mutable *)
-  size : int;
-}
+(** Means of making and examining types. *)
+include Flambda_types0.Constructors_and_accessors
 
-type unresolved_value =
-  | Set_of_closures_id of Set_of_closures_id.t
-  | Symbol of Symbol.t
-
-type unknown_because_of =
-  | Unresolved_value of unresolved_value
-  | Other
-
-(* CR-someday mshinwell: move to separate module and make [Identifiable].
-  (Or maybe nearly Identifiable; having a special map that enforces invariants
-  might be good.) *)
-(* CR-someday mshinwell: This should perhaps be altered so that the
-   specialisation isn't just to a variable, or some particular projection,
-   but is instead to an actual approximation (which would be enhanced to
-   describe the projection too). *)
-type specialised_to = {
-  var : Variable.t option;
-  (** The "outer variable".  For non-specialised arguments of continuations
-      (which may still be involved in projection relations) this may be
-      [None]. *)
-  projection : Projection.t option;
-  (** The [projecting_from] value (see projection.mli) of any [projection]
-      must be another free variable or specialised argument (depending on
-      whether this record type is involved in [free_vars] or
-      [specialised_args] respectively) in the same set of closures.
-      As such, this field describes a relation of projections between
-      either the [free_vars] or the [specialised_args]. *)
-}
-
-type specialised_args = specialised_to Variable.Map.t
-
-(** A value of type [t] corresponds to an "approximation" of the result of
-    a computation in the program being compiled.  That is to say, it
-    represents what knowledge we have about such a result at compile time.
-    The simplification pass exploits this information to partially evaluate
-    computations.
-
-    At a high level, an approximation for a value [v] has three parts:
-    - the "description" (for example, "the constant integer 42");
-    - an optional variable;
-    - an optional symbol or symbol field.
-    If the variable (resp. symbol) is present then that variable (resp.
-    symbol) may be used to obtain the value [v].
-
-    The exact semantics of the variable and symbol fields follows.
-
-    Approximations are deduced at particular points in an expression tree,
-    but may subsequently be propagated to other locations.
-
-    At the point at which an approximation is built for some value [v], we can
-    construct a set of variables (call the set [S]) that are known to alias the
-    same value [v].  Each member of [S] will have the same or a more precise
-    [descr] field in its approximation relative to the approximation for [v].
-    (An increase in precision may currently be introduced for pattern
-    matches.)  If [S] is non-empty then it is guaranteed that there is a
-    unique member of [S] that was declared in a scope further out ("earlier")
-    than all other members of [S].  If such a member exists then it is
-    recorded in the [var] field.  Otherwise [var] is [None].
-
-    Analogous to the construction of the set [S], we can construct a set [T]
-    consisting of all symbols that are known to alias the value whose
-    approximation is being constructed.  If [T] is non-empty then the
-    [symbol] field is set to some member of [T]; it does not matter which
-    one.  (There is no notion of scope for symbols.)
-
-    Note about mutable blocks:
-
-    Mutable blocks are always represented by [Unknown] or
-    [Bottom].  Any other approximation could leave the door open to
-    a miscompilation.   Such bad scenarios are most likely a user using
-    [Obj.magic] or [Obj.set_field] in an inappropriate situation.
-    Such a situation might be:
-    [let x = (1, 1) in
-     Obj.set_field (Obj.repr x) 0 (Obj.repr 2);
-     assert(fst x = 2)]
-    The user would probably expect the assertion to be true, but the
-    compiler could in fact propagate the value of [x] across the
-    [Obj.set_field].
-
-    Insisting that mutable blocks have [Unknown] or [Value_bottom]
-    approximations certainly won't always prevent this kind of error, but
-    should help catch many of them.
-
-    It is possible that there may be some false positives, with correct
-    but unreachable code causing this check to fail.  However the likelihood
-    of this seems sufficiently low, especially compared to the advantages
-    gained by performing the check, that we include it.
-
-    An example of a pattern that might trigger a false positive is:
-    [type a = { a : int }
-     type b = { mutable b : int }
-     type _ t =
-       | A : a t
-       | B : b t
-     let f (type x) (v:x t) (r:x) =
-       match v with
-       | A -> r.a
-       | B -> r.b <- 2; 3
-
-    let v =
-    let r =
-      ref A in
-      r := A; (* Some pattern that the compiler can't understand *)
-      f !r { a = 1 }]
-    When inlining [f], the B branch is unreachable, yet the compiler
-    cannot prove it and must therefore keep it.
-*)
-
-module rec T : sig
-  type ('decls, 'freshening) t = private {
-    descr : descr;
-    var : Variable.t option;
-    symbol : (Symbol.t * int option) option;
-  }
-
-  (** Approximations form a partial order.
-
-      [Bottom] is, well, bottom.
-      Each [Unknown (k, _)] gives a top element.
-
-      [Bottom] means "no value can flow to this point".
-      [Unknown (k, _)] means "any value of kind [k] might flow to this point".
-  *)
-  (* CR mshinwell: After the closure reworking patch has been merged and
-     the work on classic mode closure approximations has been merged (the
-     latter introducing a type of function declarations in this module), then
-     the only circularity between this type and Flambda will be for
-     Flambda.expr on function bodies. *)
-  and ('decls, 'freshening) descr = private 
-    | Unknown of Value_kind.t * unknown_because_of
-    | Union of Unionable.t
-    (* CR mshinwell: Should we call this "Unboxed_float" and the same for
-       the others? *)
-    | Float of Float.Set.t
-    | Int32 of Int32.Set.t
-    | Int64 of Int64.Set.t
-    | Nativeint of Nativeint.Set.t
-    | Boxed_number of boxed_number_kind * t
-    | Set_of_closures of ('decls, 'freshening) value_set_of_closures
-    | Closure of ('decls, 'freshening) value_closure
-    | String of value_string
-    | Float_array of value_float_array
-    | Extern of Export_id.t
-    | Symbol of Symbol.t
-    | Unresolved of unresolved_value
-    | Bottom
-
-  and ('decls, 'freshening) value_closure = {
-    potential_closures : ('decls, 'freshening) t Closure_id.Map.t;
-    (** Map of closures ids to set of closures *)
-  } [@@unboxed]
-
-  (* CR-soon mshinwell: add support for the approximations of the results, so we
-     can do all of the tricky higher-order cases. *)
-  and ('decls, 'freshening) value_set_of_closures = private {
-    function_decls : 'decls;
-    bound_vars : t Var_within_closure.Map.t;
-    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-    size : int option Variable.Map.t lazy_t;
-    (** For functions that are very likely to be inlined, the size of the
-        function's body. *)
-    specialised_args : specialised_args;
-    freshening : 'freshening;
-    (** Any freshening that has been applied to [function_decls]. *)
-    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
-  }
-
-  and value_float_array_contents =
-    | Contents of t array
-    | Unknown_or_mutable
-
-  and value_float_array = {
-    contents : value_float_array_contents;
-    size : int;
-  }
-
-  (* CR-soon mshinwell for pchambart: Add comment describing semantics.  (Maybe
-     we should move the comment from the .ml file into here.) *)
-  val join : really_import_approx:(t -> t) -> t -> t -> t
-
-  val print : Format.formatter -> t -> unit
-  val print_descr : Format.formatter -> descr -> unit
-  val print_value_set_of_closures
-    : Format.formatter
-    -> value_set_of_closures
-    -> unit
-end and Unionable : sig
-  module Immediate : sig
-    type t = private
-      (* CR mshinwell: We could consider splitting these again *)
-      | Int of int
-      | Char of char
-      | Constptr of int
-
-    include Identifiable.S with type t := t
-  end
-
-  type blocks = T.t array Tag.Scannable.Map.t
-
-  (** Values of type [t] represent unions of approximations, that is to say,
-      disjunctions of properties known to hold of a value at one or more of
-      its use points. *)
-  type t = private
-    | Blocks of blocks
-    | Blocks_and_immediates of blocks * Immediate.Set.t
-    | Immediates of Immediate.Set.t
-
-  val print : Format.formatter -> t -> unit
-
-  (** Partial ordering:
-        Ill_typed_code <= Ok _ <= Anything
-  *)
-  type 'a or_bottom =
-    | Anything
-    | Ok of 'a
-    | Ill_typed_code
-
-  val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
-
-  type singleton = private
-    | Block of Tag.Scannable.t * T.t array
-    | Int of int
-    | Char of char
-    | Constptr of int
-
-  (** Find the properties that are guaranteed to hold of a value with union
-      approximation at every point it is used. *)
-  val flatten : t -> singleton or_bottom
-end
-
-include (module type of T)
-
-(** Extraction of the description of approximation(s). *)
-val descr : t -> descr
-val descrs : t list -> descr list
-
-val create_value_set_of_closures
-   : function_decls:Flambda.function_declarations
-  -> bound_vars:t Var_within_closure.Map.t
-  -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
-  -> specialised_args:Flambda.specialised_to Variable.Map.t
-  -> freshening:Freshening.Project_var.t
-  -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
-  -> value_set_of_closures
-
-val update_freshening_of_value_set_of_closures
-   : value_set_of_closures
-  -> freshening:Freshening.Project_var.t
-  -> value_set_of_closures
-
-(** Basic construction of approximations. *)
-(* CR mshinwell: ditch "value_" prefixes *)
-val value_unknown : Value_kind.t -> unknown_because_of -> t
-val value_int : int -> t
-val value_char : char -> t
-val value_boxed_float : float -> t
-val value_any_float : t
-val any_unboxed_float : t
-val any_unboxed_int32 : t
-val any_unboxed_int64 : t
-val any_unboxed_nativeint : t
-val unboxed_float : float -> t
-val unboxed_int32 : Int32.t -> t
-val unboxed_int64 : Int64.t -> t
-val unboxed_nativeint : Nativeint.t -> t
-val boxed_float : float -> t
-val boxed_int32 : Int32.t -> t
-val boxed_int64 : Int64.t -> t
-val boxed_nativeint : Nativeint.t -> t
-val value_mutable_float_array : size:int -> t
-val value_immutable_float_array : t array -> t
-val value_string : int -> string option -> t
-val value_boxed_int : 'i boxed_int -> 'i -> t
-val value_constptr : int -> t
-val value_block : Tag.Scannable.t -> t array -> t
-val value_extern : Export_id.t -> t
-val value_symbol : Symbol.t -> t
-val value_bottom : t
-val value_unresolved : unresolved_value -> t
-
-(** Construct a closure approximation given the approximation of the
-    corresponding set of closures and the closure ID of the closure to
-    be projected from such set.  [closure_var] and/or [set_of_closures_var]
-    may be specified to augment the approximation with variables that may
-    be used to access the closure value itself, so long as they are in
-    scope at the proposed point of use. *)
-val value_closure
-   : ?closure_var:Variable.t
-  -> ?set_of_closures_var:Variable.t
-  -> ?set_of_closures_symbol:Symbol.t
-  -> value_set_of_closures Closure_id.Map.t
-  -> t
-
-(** Construct a set of closures approximation.  [set_of_closures_var] is as for
-    the parameter of the same name in [value_closure], above. *)
-val value_set_of_closures
-   : ?set_of_closures_var:Variable.t
-  -> value_set_of_closures
-  -> t
-
-(** Take the given constant and produce an appropriate approximation for it
-    together with an Flambda term representing it. *)
-val make_const_int_named : int -> Flambda.named * t
-val make_const_char_named : char -> Flambda.named * t
-val make_const_ptr_named : int -> Flambda.named * t
-val make_const_bool_named : bool -> Flambda.named * t
-val make_const_float_named : float -> Flambda.named * t
-val make_const_boxed_int_named : 'i boxed_int -> 'i -> Flambda.named * t
-
-(** Augment an approximation with a given variable (see comment above).
-    If the approximation was already augmented with a variable, the one
-    passed to this function replaces it within the approximation. *)
-val augment_with_variable : t -> Variable.t -> t
-
-(** Like [augment_with_variable], but for symbol information. *)
-val augment_with_symbol : t -> Symbol.t -> t
-
-(** Like [augment_with_symbol], but for symbol field information. *)
-val augment_with_symbol_field : t -> Symbol.t -> int -> t
-
-(** Replace the description within an approximation. *)
-val replace_description : t -> descr -> t
-
-(** Improve the description by taking the kind into account *)
-val augment_with_kind : t -> Lambda.value_kind -> t
-
-(** Improve the kind by taking the description into account *)
-val augment_kind_with_approx : t -> Lambda.value_kind -> Lambda.value_kind
-
-val equal_boxed_int : 'a boxed_int -> 'a -> 'b boxed_int -> 'b -> bool
-
+(** Whether the given type says that a term of that type is unreachable. *)
 val is_bottom : t -> bool
 
-(** An approximation is "known" iff it is not [Unknown]. *)
+(** Determine whether the given type provides any information about an
+    Flambda term of that type.  (This holds just when the type is not
+    one of the [Unknown]s.) *)
 val known : t -> bool
 
-(** An approximation is "useful" iff it is neither unknown nor bottom. *)
+(** Determine whether the given type provides useful information about an
+    Flambda term of that type.  To be "useful" the type must satisfy
+    [known] and not correspond to an unreachable term ([Bottom]). *)
 val useful : t -> bool
 
-(** Whether all approximations in the given list do *not* satisfy [useful]. *)
+(** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : t list -> bool
 
-(** Whether code that mutates a value with the given approximation is to be
+(** Whether code that mutates a value with the given type is to be
     treated as invalid.  Cannot be called with an [Extern] or [Symbol]
-    approximation; these need to be resolved first. *)
+    type; these need to be resolved first. *)
 val invalid_to_mutate : t -> bool
 
-val length_of_array : t -> int option
+(** Find the type for a bound variable in a set-of-closures
+    type.  A fatal error is produced if the variable is not bound in
+    the given type. *)
+val type_for_bound_var : value_set_of_closures -> Var_within_closure.t -> t
 
-type simplification_summary =
-  | Nothing_done
-  | Replaced_term
-
-type simplification_result_named = Flambda.named * simplification_summary * t
-
-(* CR mshinwell: update comments *)
-(** Given an expression and its approximation, attempt to simplify the
-    expression to a constant (with associated approximation), taking into
-    account whether the expression has any side effects.
-    As for [simplify], but also enables us to simplify based on equalities
-    between variables.  The caller must provide a function that tells us
-    whether, if we simplify to a given variable, the value of that variable
-    will be accessible in the current environment. *)
-
-val simplify_named : t -> Flambda.named -> simplification_result_named
-
-val simplify_named_using_env
-   : t
-  -> is_present_in_env:(Variable.t -> bool)
-  -> Flambda.named
-  -> simplification_result_named
-
-(** If the given approximation identifies another variable and
-    [is_present_in_env] deems it to be in scope, return that variable (wrapped
-    in a [Some]), otherwise return [None]. *)
-val simplify_var_to_var_using_env
-   : t
-  -> is_present_in_env:(Variable.t -> bool)
-  -> Variable.t option
-
-val simplify_var : t -> (Flambda.named * t) option
-
-type get_field_result =
-  | Ok of t
-  | Unreachable
-
-(** Given the approximation [t] of a value, expected to correspond to a block
-    (in the [Pmakeblock] sense of the word), and a field index then return
-    an appropriate approximation for that field of the block (or
-    [Unreachable] if the code with the approximation [t] is unreachable).
-    N.B. Not all cases of unreachable code are returned as [Unreachable].
-*)
-val get_field : t -> field_index:int -> get_field_result
-
-type checked_approx_for_block =
-  | Wrong
-  | Ok of Tag.t * t array
-
-(** Try to prove that a value with the given approximation may be used
-    as a block. *)
-val check_approx_for_block : t -> checked_approx_for_block
-
-type checked_approx_for_variant =
-  | Wrong
-  | Ok of Unionable.t
-
-(** Try to prove that a value with the given approximation may be used
-    as a variant (with any combination of constant and non-constant
-    constructors). *)
-val check_approx_for_variant : t -> checked_approx_for_variant
-
-type checked_approx_for_block_or_immediate =
-  | Wrong
-  | Immediate
-  | Block
-
-(** Try to prove that a value with the given approximation may be used
-    as a block_or_immediate (with any combination of constant and non-constant
-    constructors). *)
-val check_approx_for_block_or_immediate
-   : t
-  -> checked_approx_for_block_or_immediate
-
-(** Find the approximation for a bound variable in a set-of-closures
-    approximation.  A fatal error is produced if the variable is not bound in
-    the given approximation. *)
-val approx_for_bound_var : value_set_of_closures -> Var_within_closure.t -> t
-
-(** Given a set-of-closures approximation and a closure ID, apply any
-    freshening specified by the approximation to the closure ID, and return
+(** Given a set-of-closures type and a closure ID, apply any
+    freshening specified by the type to the closure ID, and return
     the resulting ID.  Causes a fatal error if the resulting closure ID does
-    not correspond to any function declaration in the approximation. *)
+    not correspond to any function declaration in the type. *)
 val freshen_and_check_closure_id
    : value_set_of_closures
   -> Closure_id.Set.t
   -> Closure_id.Set.t
 
-type strict_checked_approx_for_set_of_closures =
-  | Wrong
-  | Ok of Variable.t option * value_set_of_closures
+(** Returns [true] when it can be proved that the provided types identify a
+    unique value (with respect to physical equality) at runtime.  The input
+    list must have length two. *)
+val physically_same_values : t list -> bool
 
-val strict_check_approx_for_set_of_closures
+(** Returns [true] when it can be proved that the provided types identify
+    different values (with respect to physical equality) at runtime.  The
+    input list must have length two. *)
+val physically_different_values : t list -> bool
+
+type get_field_result =
+  | Ok of t
+  | Unreachable
+
+(** Given the type [t] of a value, expected to correspond to a block
+    (in the [Pmakeblock] sense of the word), and a field index then return
+    an appropriate type for that field of the block (or
+    [Unreachable] if the code with the type [t] is unreachable).
+    N.B. Not _all_ cases of unreachable code are returned as [Unreachable]. *)
+val get_field : t -> field_index:int -> get_field_result
+
+(** If the given Flambda type corresponds to an array, return the length
+    of that array; in all other cases return [None]. *)
+val length_of_array : t -> int option
+
+(** If the given type identifies another variable and [is_present_in_env]
+    deems it to be in scope, return that variable (wrapped in a [Some]),
+     otherwise return [None]. *)
+val follow_variable_equality
    : t
-  -> strict_checked_approx_for_set_of_closures
+  -> is_present_in_env:(Variable.t -> bool)
+  -> Variable.t option
 
-type checked_approx_for_set_of_closures =
+type reification_summary
+  | Nothing_done
+  | Replaced_term
+
+type reification_result = Flambda.named * reification_summary * t
+
+(** Try to produce a canonical Flambda term that has the given Flambda type. *)
+val reify : t -> (Flambda.named * t) option
+
+(** When there are no side effects performed by the given term, return a
+    replacement for that term produced from the given Flambda type
+    (cf. [reify]), the replacement being expected to be a less complex term. *)
+val maybe_replace_term_with_reified_term
+   : t
+  -> Flambda.named
+  -> reification_result
+
+(** As for [maybe_replace_term_with_reified_term], but also enables us to
+    simplify based on equalities between variables.  The caller must provide
+    a function that tells us whether, if we simplify to a given variable,
+    the value of that variable will be accessible in the current
+    environment. *)
+val maybe_replace_term_with_reified_term_using_env
+   : t
+  -> is_present_in_env:(Variable.t -> bool)
+  -> Flambda.named
+  -> reification_result
+
+(** As for [reify] but only produces terms when the type describes a
+    unique integer. *)
+val reify_as_int : t -> int option
+
+(** As for [reify_as_int], but for boxed floats. *)
+val reify_as_boxed_float : t -> float option
+
+(** As for [reify_as_int], but for constant float arrays. *)
+val reify_as_constant_float_array : value_float_array -> float list option
+
+(** As for [reify_as_int], but for strings. *)
+val reify_as_string : t -> string option
+
+type reified_as_block =
+  | Wrong
+  | Ok of Tag.t * t array
+
+(** Try to prove that a value with the given type may be used as a block.
+    (The tag of the block may be equal to or exceed [No_scan_tag].) *)
+val reify_as_block : t -> reified_as_block
+
+type reified_as_variant =
+  | Wrong
+  | Ok of Unionable.t
+
+(** Try to prove that the given type is of the expected form for the
+    Flambda type of a value of variant type. *)
+val reify_as_variant : t -> reified_as_variant
+
+type reified_as_block_or_immediate =
+  | Wrong
+  | Immediate
+  | Block
+
+(** Try to prove that the given type is of the expected form to describe
+    either a block or an immediate. *)
+val reify_as_block_or_immediate
+   : t
+  -> reified_as_block_or_immediate
+
+type reified_as_set_of_closures =
   | Wrong
   | Unresolved of unresolved_value
   | Unknown
   | Unknown_because_of_unresolved_value of unresolved_value
-  (* In the [Ok] case, there may not be a variable associated with the set of
-     closures; it might be out of scope. *)
+  | Ok of Variable.t option * value_set_of_closures
+  (** In the [Ok] case, there may not be a variable associated with the set of
+      closures; it might be out of scope. *)
+
+(** Try to prove that a value with the given type may be used as a
+    set of closures.  Values coming from external compilation units with
+    unresolved types are permitted. *)
+val reify_as_set_of_closures : t -> reified_as_set_of_closures
+
+type strict_reified_as_set_of_closures =
+  | Wrong
   | Ok of Variable.t option * value_set_of_closures
 
-(** Try to prove that a value with the given approximation may be used as a
-    set of closures.  Values coming from external compilation units with
-    unresolved approximations are permitted. *)
-val check_approx_for_set_of_closures : t -> checked_approx_for_set_of_closures
+(** As for [reify_as_set_of_closures], but disallows unresolved or
+    unknown types. *)
+val strict_reify_as_set_of_closures
+   : t
+  -> strict_reified_as_set_of_closures
 
-type checked_approx_for_closure =
+type reified_as_closure =
   | Wrong
   | Ok of value_set_of_closures Closure_id.Map.t
-          * Variable.t option * Symbol.t option
+      * Variable.t option * Symbol.t option
 
-(** Try to prove that a value with the given approximation may be used as a
+(** Try to prove that a value with the given type may be used as a
     closure.  Values coming from external compilation units with unresolved
-    approximations are not permitted. *)
-(* CR-someday mshinwell: naming is inconsistent: this is as "strict"
-   as "strict_check_approx_for_set_of_closures" *)
-val check_approx_for_closure : t -> checked_approx_for_closure
+    types are not permitted. *)
+val strict_reify_as_closure : t -> reified_as_closure
 
-type checked_approx_for_closure_singleton =
+type reified_as_closure_singleton =
   | Wrong
   | Ok of Closure_id.t * Variable.t option
-          * Symbol.t option * value_set_of_closures
+      * Symbol.t option * value_set_of_closures
 
-val check_approx_for_closure_singleton : t -> checked_approx_for_closure_singleton
+(** As for [strict_reify_as_closure] but disallows situations where
+    multiple different closures flow to the same program point. *)
+val strict_reify_as_closure_singleton
+   : t
+  -> reified_as_closure_singleton
 
-type checked_approx_for_closure_allowing_unresolved =
+type reified_as_closure_allowing_unresolved =
   | Wrong
   | Unresolved of unresolved_value
   | Unknown
   | Unknown_because_of_unresolved_value of unresolved_value
   | Ok of value_set_of_closures Closure_id.Map.t
-          * Variable.t option * Symbol.t option
+      * Variable.t option * Symbol.t option
 
-(** As for [check_approx_for_closure], but values coming from external
-    compilation units with unresolved approximations are permitted. *)
-val check_approx_for_closure_allowing_unresolved
+(** As for [reify_as_closure], but values coming from external
+    compilation units with unresolved types are permitted. *)
+val reify_as_closure_allowing_unresolved
    : t
-  -> checked_approx_for_closure_allowing_unresolved
-
-(** Returns the value if it can be proved to be a constant int *)
-val check_approx_for_int : t -> int option
-
-(** Returns the value if it can be proved to be a constant float *)
-val check_approx_for_float : t -> float option
-
-(** Returns the value if it can be proved to be a constant float array *)
-val float_array_as_constant : value_float_array -> float list option
-
-(** Returns the value if it can be proved to be a constant string *)
-val check_approx_for_string : t -> string option
+  -> reified_as_closure_allowing_unresolved
 
 type switch_branch_selection =
   | Cannot_be_taken
   | Can_be_taken
   | Must_be_taken
 
-(** Check that the branch is compatible with the approximation *)
+(** Given the type of a [Switch] scrutinee, determine whether the case of
+    the corresponding switch with the given integer label either cannot be
+    taken, can be taken or will always be taken. *)
 val potentially_taken_const_switch_branch
    : t
   -> int
   -> switch_branch_selection
-
-val phys_equal : t list -> bool
-val phys_different : t list -> bool
