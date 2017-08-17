@@ -290,7 +290,7 @@ and continuation_handler = {
      It was also suggested that maybe specialised args information on functions
      should move from the set of closures into the function declaration
      structure. *)
-  specialised_args : specialised_args;
+  specialised_args : Flambda_types.specialised_args;
 }
 
 (** The representation of a set of function declarations (possibly mutually
@@ -328,7 +328,7 @@ and set_of_closures = private {
       variables in scope at the definition point of the [set_of_closures].
       The domain of this map is sometimes known as the "variables bound by
       the closure". *)
-  specialised_args : specialised_args;
+  specialised_args : Flambda_types.specialised_args;
   (** Parameters whose corresponding arguments are known to always alias a
       particular value.  These are the only parameters that may, during
       [Inline_and_simplify], have non-unknown approximations.
@@ -560,7 +560,7 @@ val free_variables_of_let_cont_handlers
   -> Variable.Set.t
 
 val free_variables_of_specialised_args
-   : specialised_args
+   : Flambda_types.specialised_args
   -> Variable.Set.t
 
 (** Compute _all_ variables occurring inside an expression. *)
@@ -801,7 +801,7 @@ val import_function_declarations_for_pack
 val create_set_of_closures
    : function_decls:function_declarations
   -> free_vars:free_vars
-  -> specialised_args:specialised_args
+  -> specialised_args:Flambda_types.specialised_args
   -> direct_call_surrogates:Variable.t Variable.Map.t
   -> set_of_closures
 
@@ -867,7 +867,7 @@ val print_set_of_closures
 
 val print_specialised_args
    : Format.formatter
-  -> specialised_args
+  -> Flambda_types.specialised_args
   -> unit
 
 val print_specialised_to
