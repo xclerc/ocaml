@@ -935,15 +935,16 @@ let iter_general ~toplevel f f_named maybe_named =
 module With_free_variables = struct
   type 'a t =
     | Expr : expr * Variable.Set.t -> expr t
-    | Named : named * Variable.Set.t -> named t
+    | Named : Flambda_kind.t * named * Variable.Set.t -> named t
 
   let print (type a) ppf (t : a t) =
     match t with
     | Expr (expr, _) -> print ppf expr
-    | Named (named, _) -> print_named ppf named
+    | Named (_, named, _) -> print_named ppf named
 
   let of_defining_expr_of_let let_expr =
-    Named (let_expr.defining_expr, let_expr.free_vars_of_defining_expr)
+    Named (let_expr.kind, let_expr.defining_expr,
+      let_expr.free_vars_of_defining_expr)
 
   let of_body_of_let let_expr =
     Expr (let_expr.body, let_expr.free_vars_of_body)
@@ -951,18 +952,19 @@ module With_free_variables = struct
   let of_expr expr =
     Expr (expr, free_variables expr)
 
-  let of_named named =
-    Named (named, free_variables_named named)
+  let of_named kind named =
+    Named (kind, named, free_variables_named named)
 
   let to_named (t : named t) =
     match t with
-    | Named (named, _) -> named
+    | Named (_, named, _) -> named
 
   let create_let_reusing_defining_expr var (t : named t) body =
     match t with
-    | Named (defining_expr, free_vars_of_defining_expr) ->
+    | Named (kind, defining_expr, free_vars_of_defining_expr) ->
       Let {
         var;
+        kind;
         defining_expr;
         body;
         free_vars_of_defining_expr;
@@ -983,11 +985,11 @@ module With_free_variables = struct
 
   let create_let_reusing_both var (t1 : named t) (t2 : expr t) =
     match t1, t2 with
-    | Named (defining_expr, free_vars_of_defining_expr),
+    | Named (kind, defining_expr, free_vars_of_defining_expr),
         Expr (body, free_vars_of_body) ->
       Let {
         var;
-        kind = Flambda_type0.kind_exn ty;
+        kind;
         defining_expr;
         body;
         free_vars_of_defining_expr;
@@ -997,12 +999,12 @@ module With_free_variables = struct
   let contents (type a) (t : a t) : a =
     match t with
     | Expr (expr, _) -> expr
-    | Named (named, _) -> named
+    | Named (_, named, _) -> named
 
   let free_variables (type a) (t : a t) =
     match t with
     | Expr (_, free_vars) -> free_vars
-    | Named (_, free_vars) -> free_vars
+    | Named (_, _, free_vars) -> free_vars
 end
 
 type named_reachable =

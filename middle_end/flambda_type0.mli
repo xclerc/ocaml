@@ -108,25 +108,8 @@ module rec T : sig
     contents : float_array_contents;
     size : int;
   }
-  (* CR-someday mshinwell: This should probably be altered so that the
-     specialisation isn't just to a variable, or some particular projection,
-     but is instead to an actual type (which would be enhanced to describe
-     the projection too). *)
-  and specialised_to = {
-    var : Variable.t option;
-    (** The "outer variable".  For non-specialised arguments of continuations
-        (which may still be involved in projection relations) this may be
-        [None]. *)
-    projection : Projection.t option;
-    (** The [projecting_from] value (see projection.mli) of any [projection]
-        must be another free variable or specialised argument (depending on
-        whether this record type is involved in [free_vars] or
-        [specialised_args] respectively) in the same set of closures.
-        As such, this field describes a relation of projections between
-        either the [free_vars] or the [specialised_args]. *)
-  }
 
-  and specialised_args = specialised_to Variable.Map.t
+  (** The [var] members of the range of the map give the "outer variables". *)
 
   (** Form the type of a join point in the control flow graph where the values
       on the incoming edges have the given types. *)
@@ -204,7 +187,7 @@ module type Constructors_and_accessors = sig
   val immutable_float_array : t array -> t
   val mutable_string : length:int -> t
   val immutable_string : string -> t
-  val block : Tag.Scannable.t -> t array -> t
+  val block : Tag.t -> t array -> t
   val extern : Export_id.t -> t
   val symbol : Symbol.t -> t
   val unresolved : unresolved_value -> t

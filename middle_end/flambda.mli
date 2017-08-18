@@ -268,6 +268,7 @@ and continuation_handlers =
 
 and continuation_handler = {
   params : Parameter.t list;
+  equations : Projection.t Variable.Map.t;
   stub : bool;
   is_exn_handler : bool;
   (** Continuations used as exception handlers must always be [Nonrecursive]
@@ -280,17 +281,6 @@ and continuation_handler = {
       exception handler.)
   *)
   handler : t;
-  (* CR-someday mshinwell: For the moment the [specialised_args] structure
-     here matches that used for functions, even though for continuations
-     (unlike for functions) it is possible to use [specialised_args] to provide
-     projection relation information for non-specialised parameters.  Arguably
-     we should just have this information directly in [params].  One point
-     about doing that is whether we could turn [params] into a map, or
-     whether ordering is still important.
-     It was also suggested that maybe specialised args information on functions
-     should move from the set of closures into the function declaration
-     structure. *)
-  specialised_args : Flambda_types0.T.specialised_args;
 }
 
 (** The representation of a set of function declarations (possibly mutually
@@ -328,60 +318,6 @@ and set_of_closures = private {
       variables in scope at the definition point of the [set_of_closures].
       The domain of this map is sometimes known as the "variables bound by
       the closure". *)
-  specialised_args : Flambda_types0.T.specialised_args;
-  (** Parameters whose corresponding arguments are known to always alias a
-      particular value.  These are the only parameters that may, during
-      [Simplify], have non-unknown approximations.
-
-      An argument may only be specialised to a variable in the scope of the
-      corresponding set of closures declaration.  Usually, that variable
-      itself also appears in the position of the specialised argument at
-      all call sites of the function.  However it may also be the case (for
-      example in code generated as a result of [Augment_specialised_args])
-      that the various call sites of such a function have differing
-      variables in the position of the specialised argument.  This is
-      permissible *so long as it is certain they all alias the same value*.
-      Great care must be taken in transformations that result in this
-      situation since there are no invariant checks for correctness.
-
-      As an example, supposing all call sites of f are represented here:
-        [let x = ... in
-         let f a b c = ... in
-         let y = ... in
-         f x y 1;
-         f x y 1]
-      the specialised arguments of f can (but does not necessarily) contain
-      the association [a] -> [x], but cannot contain [b] -> [y] because [f]
-      is not in the scope of [y]. If f were the recursive function
-      [let rec f a b c = f a 1 2 in], [a] -> [x] would still be a valid
-      specialised argument because all recursive calls maintain the invariant.
-
-      This information is used for optimization purposes, if such a binding is
-      known, it is possible to specialise the body of the function according
-      to its parameter. This is usually introduced when specialising a
-      recursive function, for instance.
-        [let rec map f = function
-           | [] -> []
-           | h :: t -> f h :: map f t
-         let map_succ l =
-           let succ x = x + 1 in
-           map succ l]
-      [map] can be duplicated in [map_succ] to be specialised for the argument
-      [f]. This will result in
-        [let map_succ l =
-           let succ x = x + 1 in
-           let rec map f = function
-             | [] -> []
-             | h :: t -> f h :: map f t in
-           map succ l]
-      with map having [f] -> [succ] in its [specialised_args] field.
-
-      Specialised argument information for arguments that are used must
-      never be erased.  This ensures that specialised arguments whose
-      approximations describe closures maintain those approximations, which
-      is essential to transport the closure freshening information to the
-      point of use (e.g. a [Project_var] from such an argument).
-  *)
   direct_call_surrogates : Variable.t Variable.Map.t;
   (** If [direct_call_surrogates] maps [fun_var1] to [fun_var2] then direct
       calls to [fun_var1] should be redirected to [fun_var2].  This is used
@@ -389,6 +325,8 @@ and set_of_closures = private {
       functions (which will be inlined at direct call sites, but will
       penalise indirect call sites).
       [direct_call_surrogates] may not be transitively closed. *)
+  (* CR-soon mshinwell: move [equations] into [function_declarations] *)
+  equations : Projection.t Variable.Map.t;
 }
 
 and function_declarations = private {
@@ -420,7 +358,11 @@ and function_declaration = private {
       (This encodes whether the function returns multiple and/or unboxed
       values, for example.) *)
   params : Parameter.t list;
-  (** The normal (variable) parameters of the function. *)
+  (** The normal (variable) parameters of the function together with their
+      types.  Some of the parameters may have non-trivial types that
+      indicate previous specialisation of the function.  Types of parameters
+      must never regress in preciseness. *)
+  (* CR mshinwell: check non-regression property with xclerc's code *)
   body : t;
   (** The code of the function's body. *)
   (* CR-soon mshinwell: inconsistent naming free_variables/free_vars here and
@@ -692,9 +634,7 @@ module With_free_variables : sig
   val to_named : named t -> named
 
   (** Takes the time required to calculate the free variables of the given
-      [expr].  The specified Flambda type must be fully resolved (i.e. no
-      occurrences of [Load_lazily]) or a fatal error will result. *)
-
+      [expr]. *)
   val create_let_reusing_defining_expr
      : Variable.t
     -> named t
@@ -711,11 +651,9 @@ module With_free_variables : sig
     -> expr t
     -> expr
 
-  (** O(1) time.  The same condition on the specified type as for
-      [create_let_reusing_body] applies. *)
+  (** O(1) time. *)
   val create_let_reusing_both
      : Variable.t
-    -> Flambda_type0.t
     -> named t
     -> expr t
     -> expr

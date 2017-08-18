@@ -134,11 +134,25 @@ val length_of_array : t -> int option
 
 (** If the given type identifies another variable and [is_present_in_env]
     deems it to be in scope, return that variable (wrapped in a [Some]),
-     otherwise return [None]. *)
+    otherwise return [None]. *)
 val follow_variable_equality
    : t
   -> is_present_in_env:(Variable.t -> bool)
   -> Variable.t option
+
+type cleaning_spec =
+  | Available
+  | Available_different_name of Variable.t
+  | Unavailable
+
+(** Adjust a type so that all of the variables it references are in scope
+    in some context.  The context is expressed by a function that says
+    whether the variable is available under its existing name, available under
+    another name, or unavailable. *)
+val clean
+   : t
+  -> (Variable.t -> cleaning_spec)
+  -> t
 
 module Reification_summary : sig
   type t

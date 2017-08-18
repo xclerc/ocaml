@@ -29,17 +29,15 @@ val prepare_to_simplify_set_of_closures
   -> function_decls:Flambda.function_declarations
   -> freshen:bool
   -> only_for_function_decl:Flambda.function_declaration option
-  -> (Flambda.free_var * Simple_value_approx.t) Variable.Map.t  (* fvs *)
-    * Flambda.specialised_to Variable.Map.t         (* specialised arguments *)
+  -> (Flambda.free_var * Flambda_type.t) Variable.Map.t  (* fvs *)
+    * Flambda_type0.T.specialised_args
     * Flambda.function_declarations
-    * Simple_value_approx.t Variable.Map.t       (* parameter approximations *)
-    * Simple_value_approx.value_set_of_closures
+    * Flambda_type0.T.set_of_closures
     * Env.t
 
 val prepare_to_simplify_closure
    : function_decl:Flambda.function_declaration
-  -> free_vars:(Flambda.free_var * Simple_value_approx.t) Variable.Map.t
-  -> specialised_args:Flambda.specialised_to Variable.Map.t
-  -> parameter_approximations:Simple_value_approx.t Variable.Map.t
+  -> free_vars:(Flambda.free_var * Flambda_type.t) Variable.Map.t
+  -> specialised_args:Flambda_type0.T.specialised_args
   -> set_of_closures_env:Env.t
   -> Env.t

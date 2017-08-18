@@ -53,9 +53,9 @@ let simplify_free_variable_internal env original_var =
   *)
   let var =
     let ty = E.find_exn env var in
-    match ty.var with
-    | Some var when E.mem env var -> var
-    | Some _ | None -> var
+    match T.follow_variable_equality ty ~is_present_in_env:(E.mem env) with
+    | None -> var
+    | Some var -> var
   in
   (* CR-soon mshinwell: Should we update [r] when we *add* code?
      Aside from that, it looks like maybe we don't need [r] in this function,
@@ -1643,18 +1643,18 @@ and simplify_newly_introduced_let_bindings env r ~bindings
         if stop then
           acc
         else
-          let (env, r), new_bindings, var, defining_expr =
+          let (env, r), new_bindings, var, ty, defining_expr =
             for_defining_expr_of_let (env, r) var defining_expr
           in
           match (defining_expr : Flambda.named_reachable) with
           | Reachable defining_expr ->
             let bindings =
-              (var, defining_expr) :: (List.rev new_bindings) @ bindings
+              (var, ty, defining_expr) :: (List.rev new_bindings) @ bindings
             in
             bindings, env, r, false
           | Non_terminating defining_expr ->
             let bindings =
-              (var, defining_expr) :: (List.rev new_bindings) @ bindings
+              (var, ty, defining_expr) :: (List.rev new_bindings) @ bindings
             in
             bindings, env, r, true
           | Unreachable ->
@@ -1671,7 +1671,7 @@ and simplify_newly_introduced_let_bindings env r ~bindings
     | Unreachable -> Variable.Set.empty
   in
   let bindings, r, _fvs =
-    List.fold_left (fun (bindings, r, fvs) (var, defining_expr) ->
+    List.fold_left (fun (bindings, r, fvs) (var, ty, defining_expr) ->
         let r, var, defining_expr =
           filter_defining_expr_of_let r var defining_expr fvs
         in
@@ -1681,7 +1681,7 @@ and simplify_newly_introduced_let_bindings env r ~bindings
             Variable.Set.union (Flambda.free_variables_named defining_expr)
               (Variable.Set.remove var fvs)
           in
-          (var, defining_expr)::bindings, r, fvs
+          (var, ty, defining_expr)::bindings, r, fvs
         | None ->
           bindings, r, fvs)
       ([], r, around_fvs)
@@ -1693,18 +1693,18 @@ and for_defining_expr_of_let (env, r) var defining_expr =
   let new_bindings, defining_expr, r =
     simplify_named env r defining_expr
   in
+  let ty = R.inferred_type r in
   let defining_expr : Flambda.named_reachable =
     match defining_expr with
     | Non_terminating _ | Unreachable -> defining_expr
     | Reachable defining_expr ->
       (* Cause subsequent code to be deleted if the evaluation of this
          [Let]'s defining expression doesn't terminate. *)
-      if T.is_bottom (R.inferred_type r) then Non_terminating defining_expr
+      if T.is_bottom ty then Non_terminating defining_expr
       else Reachable defining_expr
   in
   let var, sb = Freshening.add_variable (E.freshening env) var in
   let env = E.set_freshening env sb in
-  let ty = R.inferred_type r in
   let env = E.add env var ty in
   (env, r), new_bindings, var, ty, defining_expr
 
@@ -1753,6 +1753,10 @@ and simplify_let_cont_handler ~env ~r ~cont
     Variable.Map.of_list freshened_params_to_args_types
   in
   let specialised_args =
+    Freshening.freshen_specialised_args specialised_args ~freshening:sb
+      ~closure_freshening:None
+  in
+(*
     let specialised_args =
       Variable.Map.map_keys (Freshening.apply_variable sb) specialised_args
     in
@@ -1789,6 +1793,11 @@ and simplify_let_cont_handler ~env ~r ~cont
     Freshening.freshen_specialised_args_projection_relation
       specialised_args
       ~freshening:sb
+      ~closure_freshening:None
+  in
+*)
+  let equations =
+    Freshening.freshen_equations equations ~freshening:sb
       ~closure_freshening:None
   in
   let param_tys =
@@ -2188,13 +2197,13 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
                   Continuation.Map.add new_cont new_handler
                     (Continuation.Map.add cont wrapper_handler handlers)
                 in
-                let type =
+                let ty =
                   Continuation_approx.create_unknown ~name:new_cont
                     ~num_params:(List.length new_handler.params)
                 in
-                let env = E.add_continuation env new_cont type in
+                let env = E.add_continuation env new_cont ty in
                 let update_use_env =
-                  (cont, (new_cont, type)) :: update_use_env
+                  (cont, (new_cont, ty)) :: update_use_env
                 in
                 handlers, env, update_use_env)
             with_wrappers
@@ -2611,10 +2620,10 @@ let define_let_rec_symbol_type env defs =
     else
       let env =
         List.fold_left (fun env (symbol, constant_defining_value) ->
-            let type =
-              constant_defining_value_type env constant_defining_value
+            let ty =
+              constant_defining_value_ty env constant_defining_value
             in
-            E.redefine_symbol env symbol type)
+            E.redefine_symbol env symbol ty)
           env defs
       in
       loop (times-1) env
@@ -2624,7 +2633,7 @@ let define_let_rec_symbol_type env defs =
 let simplify_constant_defining_value
     env r symbol
     (constant_defining_value : Flambda.constant_defining_value) =
-  let r, constant_defining_value, type =
+  let r, constant_defining_value, ty =
     match constant_defining_value with
     (* No simplifications are possible for [Allocated_const] or [Block]. *)
     | Allocated_const const ->
@@ -2671,9 +2680,9 @@ let simplify_constant_defining_value
       in
       r, constant_defining_value, closure_type
   in
-  let type = T.augment_with_symbol type symbol in
-  let r = ret r type in
-  r, constant_defining_value, type
+  let ty = T.augment_with_symbol ty symbol in
+  let r = ret r ty in
+  r, constant_defining_value, ty
 
 let rec simplify_program_body env r (program : Flambda.program_body)
   : Flambda.program_body * R.t =
@@ -2682,22 +2691,22 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     let env = define_let_rec_symbol_type env defs in
     let env, r, defs =
       List.fold_left (fun (env, r, defs) (symbol, def) ->
-          let r, def, type =
+          let r, def, ty =
             simplify_constant_defining_value env r symbol def
           in
-          let type = T.augment_with_symbol type symbol in
-          let env = E.redefine_symbol env symbol type in
+          let ty = T.augment_with_symbol ty symbol in
+          let env = E.redefine_symbol env symbol ty in
           (env, r, (symbol, def) :: defs))
         (env, r, []) defs
     in
     let program, r = simplify_program_body env r program in
     Let_rec_symbol (defs, program), r
   | Let_symbol (symbol, constant_defining_value, program) ->
-    let r, constant_defining_value, type =
+    let r, constant_defining_value, ty =
       simplify_constant_defining_value env r symbol constant_defining_value
     in
-    let type = T.augment_with_symbol type symbol in
-    let env = E.add_symbol env symbol type in
+    let ty = T.augment_with_symbol ty symbol in
+    let env = E.add_symbol env symbol ty in
     let program, r = simplify_program_body env r program in
     Let_symbol (symbol, constant_defining_value, program), r
   | Initialize_symbol (symbol, tag, fields, program) ->
@@ -2731,11 +2740,11 @@ let rec simplify_program_body env r (program : Flambda.program_body)
         else (h', cont) :: t', types, r
     in
     let fields, types, r = simplify_fields env r fields in
-    let type =
-      T.augment_with_symbol (T.block tag (Array.of_list types)) symbol
+    let ty =
+      T.augment_with_symbol (T.block tag (Array.of_list tys)) symbol
     in
     let module Backend = (val (E.backend env) : Backend_intf.S) in
-    let env = E.add_symbol env symbol type in
+    let env = E.add_symbol env symbol ty in
     let program, r = simplify_program_body env r program in
     (* CR mshinwell: This should turn things into [Effect] when it can, no? *)
     Initialize_symbol (symbol, tag, fields, program), r
@@ -2765,17 +2774,17 @@ let rec simplify_program_body env r (program : Flambda.program_body)
 let simplify_program env r (program : Flambda.program) =
   let env, r =
     Symbol.Set.fold (fun symbol (env, r) ->
-        let env, flambda_type =
+        let env, ty =
           match E.find_symbol_exn env symbol with
           | exception Not_found ->
             let module Backend = (val (E.backend env) : Backend_intf.S) in
             (* CR-someday mshinwell for mshinwell: Is there a reason we cannot
                use [simplify_named_using_type_and_env] here? *)
-            let flambda_type = Backend.import_symbol symbol in
-            E.add_symbol env symbol flambda_type, flambda_type
-          | flambda_type -> env, flambda_type
+            let ty = Backend.import_symbol symbol in
+            E.add_symbol env symbol ty, ty
+          | ty -> env, ty
         in
-        env, ret r flambda_type)
+        env, ret r ty)
       program.imported_symbols
       (env, r)
   in
@@ -2789,13 +2798,13 @@ let add_predef_exns_to_environment ~env ~backend =
       assert (Ident.is_predef_exn predef_exn);
       let symbol = Backend.symbol_for_global' predef_exn in
       let name = Ident.name predef_exn in
-      let flambda_type =
+      let ty =
         T.block Tag.object_tag
           [| T.string (String.length name) (Some name);
              T.unknown Value Other;
           |]
       in
-      E.add_symbol env symbol (T.augment_with_symbol flambda_type symbol))
+      E.add_symbol env symbol (T.augment_with_symbol ty symbol))
     env
     Predef.all_predef_exns
 
