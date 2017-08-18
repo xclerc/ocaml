@@ -214,19 +214,19 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
         [], Reachable (Project_closure {
           set_of_closures;
           closure_id = project_closure.closure_id;
-        }), ret r (T.unknown ... value)
+        }), ret r (T.unknown Value value)
       | Unknown ->
         (* CR-soon mshinwell: see CR comment in e.g. simple_value_approx.ml
            [check_approx_for_closure_allowing_unresolved] *)
         [], Reachable (Project_closure {
           set_of_closures;
           closure_id = project_closure.closure_id;
-        }), ret r (T.unknown Other)
+        }), ret r (T.unknown Value Other)
       | Unknown_because_of_unresolved_value value ->
         [], Reachable (Project_closure {
           set_of_closures;
           closure_id = project_closure.closure_id;
-        }), ret r (T.unknown (Unresolved_value value))
+        }), ret r (T.unknown Value (Unresolved_value value))
       | Ok (set_of_closures_var, value_set_of_closures) ->
         let closure_id =
           T.freshen_and_check_closure_id value_set_of_closures
@@ -1314,6 +1314,215 @@ and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_approxs =
   in
   cont, ret r (T.unknown Other)
 
+and simplify_primitive env r prim args dbg =
+  let dbg = E.add_inlined_debuginfo env ~dbg in
+  simplify_free_variables_named env args ~f:(fun env args args_approxs ->
+    let tree = Flambda.Prim (prim, args, dbg) in
+    let projection : Projection.t = Prim (prim, args) in
+    begin match E.find_projection env ~projection with
+    | Some var ->
+      (* CSE of pure primitives.
+          The [Pisint] case in particular is also used when unboxing
+          continuation parameters of variant type. *)
+      simplify_free_variable_named env var ~f:(fun _env var var_approx ->
+        let r = R.map_benefit r (B.remove_projection projection) in
+        [], Reachable (Var var), ret r var_approx)
+    | None ->
+      let default () : (Variable.t * Flambda.named) list
+            * Flambda.named_reachable * R.t =
+        let named, approx, benefit =
+          let module Backend = (val (E.backend env) : Backend_intf.S) in
+          Simplify_primitives.primitive prim (args, args_approxs) tree dbg
+            ~size_int:Backend.size_int ~big_endian:Backend.big_endian
+        in
+        let r = R.map_benefit r (B.(+) benefit) in
+        let approx =
+          match prim with
+          | Popaque -> T.unknown Other
+          | _ -> approx
+        in
+        [], Reachable (named, value_kind), ret r approx
+      in
+      begin match prim, args, args_approxs with
+      | Pgetglobal _, _, _ ->
+        Misc.fatal_error "Pgetglobal is forbidden in Simplify"
+      | Pfield field_index, [arg], [arg_approx] ->
+        let projection : Projection.t = Field (field_index, arg) in
+        begin match E.find_projection env ~projection with
+        | Some var ->
+          simplify_free_variable_named env var ~f:(fun _env var var_approx ->
+            let r = R.map_benefit r (B.remove_projection projection) in
+            [], Reachable (Var var), ret r var_approx)
+        | None ->
+          begin match T.get_field arg_approx ~field_index with
+          | Unreachable ->
+(*
+Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
+field_index Variable.print arg T.print arg_approx;
+*)
+            [], Unreachable, r
+          | Ok approx ->
+            let tree, approx =
+              match arg_approx.symbol with
+              (* If the [Pfield] is projecting directly from a symbol, rewrite
+                  the expression to [Read_symbol_field]. *)
+              | Some (symbol, None) ->
+                let approx =
+                  T.augment_with_symbol_field approx symbol field_index
+                in
+                Flambda.Read_symbol_field (symbol, field_index), approx
+              | None | Some (_, Some _ ) ->
+                (* This [Pfield] is either not projecting from a symbol at
+                    all, or it is the projection of a projection from a
+                    symbol. *)
+                let approx' = E.really_import_approx env approx in
+                tree, approx'
+            in
+            simplify_named_using_approx_and_env env r tree approx
+          end
+        end
+      | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
+      | (Parraysetu kind | Parraysets kind),
+          [_block; _field; _value],
+          [block_approx; field_approx; value_approx] ->
+        if T.invalid_to_mutate block_approx then begin
+          Location.prerr_warning (Debuginfo.to_location dbg)
+            Warnings.Assignment_to_non_mutable_value;
+          if !Clflags.treat_invalid_code_as_dead then
+            [], Flambda.Unreachable, r
+          else
+            [], Flambda.Reachable (Prim (prim, args, dbg)),
+              ret r (T.unknown Other)
+        end else begin
+          let size = T.length_of_array block_approx in
+          let index = T.reify_as_int field_approx in
+          let bounds_check_definitely_fails =
+            match size, index with
+            | Some size, _ when size <= 0 ->
+              assert (size = 0);  (* see [Simple_value_approx] *)
+              true
+            | Some size, Some index ->
+              (* This is ok even in the presence of [Obj.truncate], since that
+                  can only make blocks smaller. *)
+              index >= 0 && index < size
+            | _, _ -> false
+          in
+          let convert_to_raise =
+            match prim with
+            | Parraysets _ -> bounds_check_definitely_fails
+            | Parraysetu _ -> false
+            | _ -> assert false  (* see above *)
+          in
+          if convert_to_raise then begin
+            (* CR mshinwell: move to separate function *)
+            let invalid_argument_var = Variable.create "invalid_argument" in
+            let invalid_argument : Flambda.named =
+              let module Backend = (val (E.backend env) : Backend_intf.S) in
+              Symbol (Backend.symbol_for_global'
+                Predef.ident_invalid_argument)
+            in
+            let msg_var = Variable.create "msg" in
+            let msg : Flambda.named =
+              Allocated_const (String "index out of bounds")
+            in
+            let exn_var = Variable.create "exn" in
+            let exn : Flambda.named =
+              Prim (Pmakeblock (0, Immutable, None),
+                [invalid_argument_var; msg_var], dbg)
+            in
+            let bindings = [
+                invalid_argument_var, invalid_argument;
+                msg_var, msg;
+                exn_var, exn;
+              ]
+            in
+            bindings, Reachable (Prim (Praise Raise_regular, [exn_var], dbg)),
+              ret r T.bottom
+          end else begin
+            let kind =
+              match T.descr block_approx, T.descr value_approx with
+              | (Float_array _, _)
+              | (_, Boxed_float _) ->
+                begin match kind with
+                | Pfloatarray | Pgenarray -> ()
+                | Paddrarray | Pintarray ->
+                  (* CR pchambart: Do a proper warning here *)
+                  Misc.fatal_errorf "Assignment of a float to a specialised \
+                                    non-float array: %a"
+                    Flambda.print_named tree
+                end;
+                Lambda.Pfloatarray
+                (* CR pchambart: This should be accounted by the benefit *)
+              | _ ->
+                kind
+            in
+            let prim : Lambda.primitive =
+              match prim with
+              | Parraysetu _ -> Parraysetu kind
+              | Parraysets _ -> Parraysets kind
+              | _ -> assert false
+            in
+            [], Reachable (Prim (prim, args, dbg)),
+              ret r (T.unknown Other)
+          end
+        end
+      | Psetfield _, _block::_, block_approx::_ ->
+        if T.invalid_to_mutate block_approx then begin
+          Location.prerr_warning (Debuginfo.to_location dbg)
+            Warnings.Assignment_to_non_mutable_value;
+          if !Clflags.treat_invalid_code_as_dead then
+            [], Flambda.Unreachable, r
+          else
+            [], Flambda.Reachable (Prim (prim, args, dbg)),
+              ret r (T.unknown Other)
+        end else begin
+          [], Reachable tree, ret r (T.unknown Other)
+        end
+      | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
+        Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
+      | Pisint, [_arg], [arg_approx] ->
+        begin match T.reify_as_block_or_immediate arg_approx with
+        | Wrong -> default ()
+        | Immediate ->
+          let r = R.map_benefit r B.remove_prim in
+          let const_true = Variable.create "true" in
+          [const_true, Const (Int 1)], Reachable (Var const_true),
+            ret r (T.int 1)
+        | Block ->
+          let r = R.map_benefit r B.remove_prim in
+          let const_false = Variable.create "false" in
+          [const_false, Const (Int 0)], Reachable (Var const_false),
+            ret r (T.int 0)
+        end
+      | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
+      | Pgettag, [_arg], [arg_approx] ->
+        begin match T.reify_as_block arg_approx with
+        | Wrong -> default ()
+        | Ok (tag, _fields) ->
+          let r = R.map_benefit r B.remove_prim in
+          let const_tag = Variable.create "tag" in
+          let tag = Tag.to_int tag in
+          [const_tag, Const (Int tag)], Reachable (Var const_tag),
+            ret r (T.int tag)
+        end
+      | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
+      | Parraylength _, [_arg], [arg_approx] ->
+        begin match T.length_of_array arg_approx with
+        | None -> default ()
+        | Some length ->
+          let r = R.map_benefit r B.remove_prim in
+          let const_length = Variable.create "length" in
+          [const_length, Const (Int length)], Reachable (Var const_length),
+            ret r (T.int length)
+        end
+      | Parraylength _, _, _ -> Misc.fatal_error "Parraylength arity error"
+      | (Psequand | Psequor), _, _ ->
+        Misc.fatal_error "Psequand and Psequor must be expanded (see \
+            handling in closure_conversion.ml)"
+      | _, _, _ -> default ()
+      end
+    end)
+
 (** [simplify_named] returns:
     - extra [Let]-bindings to be inserted prior to the one being simplified;
     - the simplified [named];
@@ -1442,8 +1651,7 @@ and simplify_named env r (tree : Flambda.named)
           | Some set_of_closures ->
             simplify env r ~bindings:[] ~set_of_closures
               ~pass_name:"Remove_unused_arguments"
-          | None ->
-                [], Reachable (Set_of_closures set_of_closures), r
+          | None -> [], Reachable (Set_of_closures set_of_closures), r
     end
   | Project_closure project_closure ->
     simplify_project_closure env r ~project_closure
@@ -1460,213 +1668,7 @@ and simplify_named env r (tree : Flambda.named)
       [], Reachable (Assign { being_assigned; new_value; }, Value_kind.Value),
         ret r (T.unknown Other))
   | Prim (prim, args, dbg) ->
-    let dbg = E.add_inlined_debuginfo env ~dbg in
-    simplify_free_variables_named env args ~f:(fun env args args_approxs ->
-      let tree = Flambda.Prim (prim, args, dbg) in
-      let projection : Projection.t = Prim (prim, args) in
-      begin match E.find_projection env ~projection with
-      | Some var ->
-        (* CSE of pure primitives.
-           The [Pisint] case in particular is also used when unboxing
-           continuation parameters of variant type. *)
-        simplify_free_variable_named env var ~f:(fun _env var var_approx ->
-          let r = R.map_benefit r (B.remove_projection projection) in
-          [], Reachable (Var var), ret r var_approx)
-      | None ->
-        let default () : (Variable.t * Flambda.named) list
-              * Flambda.named_reachable * R.t =
-          let named, approx, benefit =
-            let module Backend = (val (E.backend env) : Backend_intf.S) in
-            Simplify_primitives.primitive prim (args, args_approxs) tree dbg
-              ~size_int:Backend.size_int ~big_endian:Backend.big_endian
-          in
-          let r = R.map_benefit r (B.(+) benefit) in
-          let approx =
-            match prim with
-            | Popaque -> T.unknown Other
-            | _ -> approx
-          in
-          [], Reachable (named, value_kind), ret r approx
-        in
-        begin match prim, args, args_approxs with
-        | Pgetglobal _, _, _ ->
-          Misc.fatal_error "Pgetglobal is forbidden in Simplify"
-        | Pfield field_index, [arg], [arg_approx] ->
-          let projection : Projection.t = Field (field_index, arg) in
-          begin match E.find_projection env ~projection with
-          | Some var ->
-            simplify_free_variable_named env var ~f:(fun _env var var_approx ->
-              let r = R.map_benefit r (B.remove_projection projection) in
-              [], Reachable (Var var), ret r var_approx)
-          | None ->
-            begin match T.get_field arg_approx ~field_index with
-            | Unreachable ->
-(*
-Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
-  field_index Variable.print arg T.print arg_approx;
-*)
-              [], Unreachable, r
-            | Ok approx ->
-              let tree, approx =
-                match arg_approx.symbol with
-                (* If the [Pfield] is projecting directly from a symbol, rewrite
-                   the expression to [Read_symbol_field]. *)
-                | Some (symbol, None) ->
-                  let approx =
-                    T.augment_with_symbol_field approx symbol field_index
-                  in
-                  Flambda.Read_symbol_field (symbol, field_index), approx
-                | None | Some (_, Some _ ) ->
-                  (* This [Pfield] is either not projecting from a symbol at
-                     all, or it is the projection of a projection from a
-                     symbol. *)
-                  let approx' = E.really_import_approx env approx in
-                  tree, approx'
-              in
-              simplify_named_using_approx_and_env env r tree approx
-            end
-          end
-        | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
-        | (Parraysetu kind | Parraysets kind),
-            [_block; _field; _value],
-            [block_approx; field_approx; value_approx] ->
-          if T.invalid_to_mutate block_approx then begin
-            Location.prerr_warning (Debuginfo.to_location dbg)
-              Warnings.Assignment_to_non_mutable_value;
-            if !Clflags.treat_invalid_code_as_dead then
-              [], Flambda.Unreachable, r
-            else
-              [], Flambda.Reachable (Prim (prim, args, dbg)),
-                ret r (T.unknown Other)
-          end else begin
-            let size = T.length_of_array block_approx in
-            let index = T.reify_as_int field_approx in
-            let bounds_check_definitely_fails =
-              match size, index with
-              | Some size, _ when size <= 0 ->
-                assert (size = 0);  (* see [Simple_value_approx] *)
-                true
-              | Some size, Some index ->
-                (* This is ok even in the presence of [Obj.truncate], since that
-                   can only make blocks smaller. *)
-                index >= 0 && index < size
-              | _, _ -> false
-            in
-            let convert_to_raise =
-              match prim with
-              | Parraysets _ -> bounds_check_definitely_fails
-              | Parraysetu _ -> false
-              | _ -> assert false  (* see above *)
-            in
-            if convert_to_raise then begin
-              (* CR mshinwell: move to separate function *)
-              let invalid_argument_var = Variable.create "invalid_argument" in
-              let invalid_argument : Flambda.named =
-                let module Backend = (val (E.backend env) : Backend_intf.S) in
-                Symbol (Backend.symbol_for_global'
-                  Predef.ident_invalid_argument)
-              in
-              let msg_var = Variable.create "msg" in
-              let msg : Flambda.named =
-                Allocated_const (String "index out of bounds")
-              in
-              let exn_var = Variable.create "exn" in
-              let exn : Flambda.named =
-                Prim (Pmakeblock (0, Immutable, None),
-                  [invalid_argument_var; msg_var], dbg)
-              in
-              let bindings = [
-                  invalid_argument_var, invalid_argument;
-                  msg_var, msg;
-                  exn_var, exn;
-                ]
-              in
-              bindings, Reachable (Prim (Praise Raise_regular, [exn_var], dbg)),
-                ret r T.bottom
-            end else begin
-              let kind =
-                match T.descr block_approx, T.descr value_approx with
-                | (Float_array _, _)
-                | (_, Boxed_float _) ->
-                  begin match kind with
-                  | Pfloatarray | Pgenarray -> ()
-                  | Paddrarray | Pintarray ->
-                    (* CR pchambart: Do a proper warning here *)
-                    Misc.fatal_errorf "Assignment of a float to a specialised \
-                                      non-float array: %a"
-                      Flambda.print_named tree
-                  end;
-                  Lambda.Pfloatarray
-                  (* CR pchambart: This should be accounted by the benefit *)
-                | _ ->
-                  kind
-              in
-              let prim : Lambda.primitive =
-                match prim with
-                | Parraysetu _ -> Parraysetu kind
-                | Parraysets _ -> Parraysets kind
-                | _ -> assert false
-              in
-              [], Reachable (Prim (prim, args, dbg)),
-                ret r (T.unknown Other)
-            end
-          end
-        | Psetfield _, _block::_, block_approx::_ ->
-          if T.invalid_to_mutate block_approx then begin
-            Location.prerr_warning (Debuginfo.to_location dbg)
-              Warnings.Assignment_to_non_mutable_value;
-            if !Clflags.treat_invalid_code_as_dead then
-              [], Flambda.Unreachable, r
-            else
-              [], Flambda.Reachable (Prim (prim, args, dbg)),
-                ret r (T.unknown Other)
-          end else begin
-            [], Reachable tree, ret r (T.unknown Other)
-          end
-        | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
-          Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
-        | Pisint, [_arg], [arg_approx] ->
-          begin match T.reify_as_block_or_immediate arg_approx with
-          | Wrong -> default ()
-          | Immediate ->
-            let r = R.map_benefit r B.remove_prim in
-            let const_true = Variable.create "true" in
-            [const_true, Const (Int 1)], Reachable (Var const_true),
-              ret r (T.int 1)
-          | Block ->
-            let r = R.map_benefit r B.remove_prim in
-            let const_false = Variable.create "false" in
-            [const_false, Const (Int 0)], Reachable (Var const_false),
-              ret r (T.int 0)
-          end
-        | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
-        | Pgettag, [_arg], [arg_approx] ->
-          begin match T.reify_as_block arg_approx with
-          | Wrong -> default ()
-          | Ok (tag, _fields) ->
-            let r = R.map_benefit r B.remove_prim in
-            let const_tag = Variable.create "tag" in
-            let tag = Tag.to_int tag in
-            [const_tag, Const (Int tag)], Reachable (Var const_tag),
-              ret r (T.int tag)
-          end
-        | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
-        | Parraylength _, [_arg], [arg_approx] ->
-          begin match T.length_of_array arg_approx with
-          | None -> default ()
-          | Some length ->
-            let r = R.map_benefit r B.remove_prim in
-            let const_length = Variable.create "length" in
-            [const_length, Const (Int length)], Reachable (Var const_length),
-              ret r (T.int length)
-          end
-        | Parraylength _, _, _ -> Misc.fatal_error "Parraylength arity error"
-        | (Psequand | Psequor), _, _ ->
-          Misc.fatal_error "Psequand and Psequor must be expanded (see \
-              handling in closure_conversion.ml)"
-        | _, _, _ -> default ()
-        end
-      end)
+    simplify_primitive env r prim args dbg
 
 (** Simplify a set of [Let]-bindings introduced by a pass such as
     [Unbox_specialised_args] surrounding the term [around] that is in turn
@@ -2069,10 +2071,376 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
           Some (Flambda.Nonrecursive { name; handler; }), r
         | None -> Some (Flambda.Recursive handlers), r
 
+and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
+  (* In two stages we form the environment to be used for simplifying the
+      [body].  If the continuations in [handlers] are recursive then
+      that environment will also be used for simplifying the continuations
+      themselves (otherwise the environment of the [Let_cont] is used). *)
+(*Format.eprintf "Simplifying Let_cont:@ \n%a\n%!" Flambda.print tree;*)
+  let conts_and_approxs, freshening =
+    let normal_case ~handlers =
+      Continuation.Map.fold (fun name
+              (handler : Flambda.continuation_handler)
+              (conts_and_approxs, freshening) ->
+          let freshened_name, freshening =
+            Freshening.add_static_exception freshening name
+          in
+          let num_params = List.length handler.params in
+          let approx =
+            (* If it's a stub, we put the code for [handler] in the
+                environment; this is unfreshened, but will be freshened up
+                if we inline it.
+                Note that stubs are not allowed to call themselves.
+                The code for [handler] is also put in the environment if
+                the continuation is just an [Apply_cont] acting as a
+                continuation alias or just contains [Proved_unreachable].  This
+                enables earlier [Switch]es that branch to such continuation
+                to be simplified, in some cases removing them entirely. *)
+            let alias_or_unreachable =
+              match handler.handler with
+              | Proved_unreachable -> true
+              (* CR mshinwell: share somehow with [Continuation_approx].
+                  Also, think about this in the multi-argument case -- need
+                  to freshen. *)
+              | Apply_cont (_cont, None, []) -> true
+              | _ -> false
+            in
+            if handler.stub || alias_or_unreachable then begin
+              assert (not (Continuation.Set.mem name
+                (Flambda.free_continuations handler.handler)));
+              Continuation_approx.create ~name:freshened_name
+                ~handlers:(Nonrecursive handler)
+                ~num_params
+            end else begin
+              Continuation_approx.create_unknown ~name:freshened_name
+                ~num_params
+            end
+          in
+          let conts_and_approxs =
+            Continuation.Map.add freshened_name (name, approx)
+              conts_and_approxs
+          in
+          conts_and_approxs, freshening)
+        handlers
+        (Continuation.Map.empty, E.freshening env)
+    in
+    let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+    normal_case ~handlers
+  in
+  (* CR mshinwell: Is _unfreshened_name redundant? *)
+  let body_env =
+    let env = E.set_freshening env freshening in
+    Continuation.Map.fold (fun name (_unfreshened_name, approx) env ->
+        E.add_continuation env name approx)
+      conts_and_approxs
+      env
+  in
+(*Format.eprintf "Simplifying body:\n%a" Flambda.print body;*)
+  let body, r = simplify body_env r body in
+(*Format.eprintf "Simplifying body finished.\n";*)
+  begin match handlers with
+  | Nonrecursive { name; handler; } ->
+    let with_wrapper : Flambda_utils.with_wrapper =
+      (* CR mshinwell: Tidy all this up somehow. *)
+      (* Unboxing of continuation parameters is done now so that in one pass
+          of [Simplify] such unboxing will go all the way down the
+          control flow. *)
+      if handler.stub || E.never_unbox_continuations env
+      then Unchanged { handler; }
+      else
+        let args_approxs =
+          R.continuation_args_approxs r name
+            ~num_params:(List.length handler.params)
+        in
+        Unbox_continuation_params.for_non_recursive_continuation ~handler
+          ~args_approxs ~name ~backend:(E.backend env)
+    in
+    let simplify_one_handler env r ~name ~handler ~body
+            : Flambda.expr * R.t =
+      (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
+          non-recursive ones before simplifying their body.  I'm not sure we
+          need to, since we already ensure such continuations aren't in the
+          environment when simplifying the [handlers].
+          ...except for stubs... *)
+      let handlers =
+        Continuation.Map.add name handler Continuation.Map.empty
+      in
+      let handlers, r =
+        simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs:None
+          ~recursive:Asttypes.Nonrecursive ~freshening
+      in
+      match handlers with
+      | None -> body, r
+      | Some handlers -> Let_cont { body; handlers; }, r
+    in
+    begin match with_wrapper with
+    | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
+    | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
+      let approx =
+        Continuation_approx.create_unknown ~name:new_cont
+          ~num_params:(List.length new_handler.params)
+      in
+      let body, r =
+        let env = E.add_continuation env new_cont approx in
+        simplify_one_handler env r ~name ~handler:wrapper_handler ~body
+      in
+      let body, r =
+        simplify_one_handler env r ~name:new_cont ~handler:new_handler ~body
+      in
+      let r =
+        R.update_all_continuation_use_environments r
+          ~if_present_in_env:name ~then_add_to_env:(new_cont, approx)
+      in
+      body, r
+(*
+Format.eprintf "With wrappers applied:\n@ %a\n%!"
+Flambda.print body;
+body, r
+*)
+    end
+  | Recursive handlers ->
+    (* The sequence is:
+        1. Simplify the recursive handlers assuming that all of their
+          parameters have [Value_unknown] approximation.  This may result in
+          simplifying terms with less precise approximations than when
+          they were previously simplified (e.g. there might have been a
+          direct call to a closure whose approximation is now unknown).
+          We mark the environment to avoid causing errors as a result of
+          this.
+        2. If all of the handlers are unused, there's nothing more to do.
+        3. Extract the (hopefully more precise) approximations for the
+          handlers' parameters from [r].  These will be at least as precise
+          as the approximations deduced in any previous round of
+          simplification.
+        4. The code from the simplification is discarded.
+        5. The continuation(s) is/are unboxed as required.
+        6. The continuation(s) are simplified once again using the
+          approximations deduced in step 2.
+    *)
+    let original_r = r in
+    let original_handlers = handlers in
+    let handlers, r =
+      let env = E.allow_less_precise_approximations body_env in
+      simplify_let_cont_handlers ~env ~r ~handlers
+        ~args_approxs:None ~recursive:Asttypes.Recursive ~freshening
+    in
+    begin match handlers with
+    | None -> body, r
+    | Some _handlers ->
+      let args_approxs =
+        Continuation.Map.mapi (fun cont
+                  (handler : Flambda.continuation_handler) ->
+            let num_params = List.length handler.params in
+            let cont =
+              Freshening.apply_static_exception (E.freshening body_env) cont
+            in
+            (* N.B. If [cont]'s handler was deleted, the following function
+                will produce [Value_bottom] for the arguments, rather than
+                failing. *)
+            R.defined_continuation_args_approxs r cont ~num_params)
+          original_handlers
+      in
+(*
+Format.eprintf "args_approxs override:@ %a\n%!"
+(Continuation.Map.print (Format.pp_print_list T.print)) args_approxs;
+*)
+      let handlers = original_handlers in
+      let r = original_r in
+      let handlers, env, update_use_env =
+        if E.never_unbox_continuations env then
+          handlers, body_env, []
+        else
+          let with_wrappers =
+            Unbox_continuation_params.for_recursive_continuations
+              ~handlers ~args_approxs ~backend:(E.backend env)
+          in
+          (* CR mshinwell: move to Flambda_utils, probably *)
+          Continuation.Map.fold (fun cont
+                  (with_wrapper : Flambda_utils.with_wrapper)
+                  (handlers, env, update_use_env) ->
+              match with_wrapper with
+              | Unchanged { handler; } ->
+                Continuation.Map.add cont handler handlers, env,
+                  update_use_env
+              | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
+                let handlers =
+                  Continuation.Map.add new_cont new_handler
+                    (Continuation.Map.add cont wrapper_handler handlers)
+                in
+                let approx =
+                  Continuation_approx.create_unknown ~name:new_cont
+                    ~num_params:(List.length new_handler.params)
+                in
+                let env = E.add_continuation env new_cont approx in
+                let update_use_env =
+                  (cont, (new_cont, approx)) :: update_use_env
+                in
+                handlers, env, update_use_env)
+            with_wrappers
+            (Continuation.Map.empty, body_env, [])
+      in
+      let handlers, r =
+        simplify_let_cont_handlers ~env ~r ~handlers
+          ~args_approxs:(Some args_approxs) ~recursive:Asttypes.Recursive
+          ~freshening
+      in
+      let r =
+        List.fold_left (fun r (if_present_in_env, then_add_to_env) ->
+            R.update_all_continuation_use_environments r
+              ~if_present_in_env ~then_add_to_env)
+          r
+          update_use_env
+      in
+      begin match handlers with
+      | None -> body, r
+      | Some handlers -> Let_cont { body; handlers; }, r
+      end
+    end
+(*
+Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
+Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
+*)
+  end
+
+let simplify_switch env r arg sw : Flambda.t * R.t =
+  simplify_free_variable env arg ~f:(fun env arg arg_approx ->
+(*
+Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
+Variable.print arg T.print arg_approx;
+*)
+    let destination_is_unreachable cont =
+      (* CR mshinwell: This unreachable thing should be tidied up and also
+          done on [Apply_cont]. *)
+      let cont = Freshening.apply_static_exception (E.freshening env) cont in
+      let cont_approx = E.find_continuation env cont in
+      match Continuation_approx.handlers cont_approx with
+      | None | Some (Recursive _) -> false
+      | Some (Nonrecursive handler) ->
+        match handler.handler with
+        | Proved_unreachable -> true
+        | _ -> false
+    in
+    let rec filter_branches filter branches compatible_branches =
+      match branches with
+      | [] -> Can_be_taken compatible_branches
+      | (c, cont) as branch :: branches ->
+        if destination_is_unreachable cont then
+          filter_branches filter branches compatible_branches
+        else
+          match filter arg_approx c with
+          | T.Cannot_be_taken ->
+(*
+Format.eprintf "Switch arm %a cannot_be_taken\n%!" Continuation.print cont;
+*)
+            filter_branches filter branches compatible_branches
+          | T.Can_be_taken ->
+(*
+Format.eprintf "Switch arm %a can_be_taken\n%!" Continuation.print cont;
+*)
+            filter_branches filter branches (branch :: compatible_branches)
+          | T.Must_be_taken ->
+(*
+Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
+*)
+            Must_be_taken cont
+    in
+    (* Use approximation information to determine which branches definitely
+        will be taken, or may be taken.  (Note that the "Union" case in
+        [Simple_value_approx] helps here.) *)
+    let filtered_consts =
+      filter_branches T.potentially_taken_const_switch_branch sw.consts []
+    in
+    begin match filtered_consts with
+    | Must_be_taken cont ->
+(*
+      let cont_approx =
+        E.find_continuation env
+          (Freshening.apply_static_exception (E.freshening env) cont)
+      in
+Format.eprintf "Switch branch must be taken: %a approx %a\n%!"
+Continuation.print cont
+Continuation_approx.print cont_approx;
+*)
+      let expr, r =
+        simplify_apply_cont env r cont ~trap_action:None
+          ~args:[] ~args_approxs:[]
+      in
+(*
+Format.eprintf "%a branch simplifies to: %a\n%!"
+Continuation.print cont Flambda.print expr;
+*)
+      expr, R.map_benefit r B.remove_branch
+    | Can_be_taken consts ->
+      match consts, sw.failaction with
+      | [], None ->
+        (* If the switch is applied to a statically-known value that does not
+          match any case:
+          * if there is a default action take that case;
+          * otherwise this is something that is guaranteed not to
+            be reachable by the type checker.  For example:
+            [type 'a t = Int : int -> int t | Boxed_float : float -> float t
+              match Int 1 with
+              | Int _ -> ...
+              | Boxed_float f as v ->
+                match v with   <-- This match is unreachable
+                | Boxed_float f -> ...]
+        *)
+        Proved_unreachable, r
+      | [_, cont], None ->
+        let cont, r =
+          simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+        in
+        Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
+      | [], Some cont ->
+        if destination_is_unreachable cont then
+          Proved_unreachable, R.map_benefit r B.remove_branch
+        else
+          let cont, r =
+            simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+          in
+          Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
+      | _ ->
+        let env = E.inside_branch env in
+        let f (acc, r) (i, cont) =
+          let cont, r =
+            simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+              ~don't_record_use:()
+          in
+          (i, cont)::acc, r
+        in
+        let r = R.set_approx r T.bottom in
+        let consts, r = List.fold_left f ([], r) consts in
+        let failaction, r =
+          match sw.failaction with
+          | None -> None, r
+          | Some cont ->
+            if destination_is_unreachable cont then
+              None, r
+            else
+              let cont, r =
+                simplify_apply_cont_to_cont env r cont ~args_approxs:[]
+                  ~don't_record_use:()
+              in
+              Some cont, r
+        in
+        let switch, used_conts =
+          Flambda.create_switch' ~scrutinee:arg
+            ~all_possible_values:sw.numconsts
+            ~arms:consts
+            ~default:failaction
+        in
+        let r = ref r in
+        Continuation.Map.iter (fun cont num_uses ->
+            for _use = 1 to num_uses do
+              r := R.use_continuation !r env cont
+                (Not_inlinable_or_specialisable [])
+            done)
+          used_conts;
+        switch, !r
+    end)
+
 and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
   match tree with
-  | Apply apply ->
-    simplify_apply env r ~apply
   | Let _ ->
     let for_last_body (env, r) body =
       simplify env r body
@@ -2098,375 +2466,12 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
           body;
           contents_kind },
       r)
+  | Let_cont { body; handlers; } -> simplify_let_cont env r ~body ~handlers
+  | Apply apply -> simplify_apply env r ~apply
   | Apply_cont (cont, trap_action, args) ->
     simplify_free_variables env args ~f:(fun env args args_approxs ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_approxs)
-  | Let_cont { body; handlers; } ->
-    (* In two stages we form the environment to be used for simplifying the
-       [body].  If the continuations in [handlers] are recursive then
-       that environment will also be used for simplifying the continuations
-       themselves (otherwise the environment of the [Let_cont] is used). *)
-(*Format.eprintf "Simplifying Let_cont:@ \n%a\n%!" Flambda.print tree;*)
-    let conts_and_approxs, freshening =
-      let normal_case ~handlers =
-        Continuation.Map.fold (fun name
-                (handler : Flambda.continuation_handler)
-                (conts_and_approxs, freshening) ->
-            let freshened_name, freshening =
-              Freshening.add_static_exception freshening name
-            in
-            let num_params = List.length handler.params in
-            let approx =
-              (* If it's a stub, we put the code for [handler] in the
-                 environment; this is unfreshened, but will be freshened up
-                 if we inline it.
-                 Note that stubs are not allowed to call themselves.
-                 The code for [handler] is also put in the environment if
-                 the continuation is just an [Apply_cont] acting as a
-                 continuation alias or just contains [Proved_unreachable].  This
-                 enables earlier [Switch]es that branch to such continuation
-                 to be simplified, in some cases removing them entirely. *)
-              let alias_or_unreachable =
-                match handler.handler with
-                | Proved_unreachable -> true
-                (* CR mshinwell: share somehow with [Continuation_approx].
-                   Also, think about this in the multi-argument case -- need
-                   to freshen. *)
-                | Apply_cont (_cont, None, []) -> true
-                | _ -> false
-              in
-              if handler.stub || alias_or_unreachable then begin
-                assert (not (Continuation.Set.mem name
-                  (Flambda.free_continuations handler.handler)));
-                Continuation_approx.create ~name:freshened_name
-                  ~handlers:(Nonrecursive handler)
-                  ~num_params
-              end else begin
-                Continuation_approx.create_unknown ~name:freshened_name
-                  ~num_params
-              end
-            in
-            let conts_and_approxs =
-              Continuation.Map.add freshened_name (name, approx)
-                conts_and_approxs
-            in
-            conts_and_approxs, freshening)
-          handlers
-          (Continuation.Map.empty, E.freshening env)
-      in
-      let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
-      normal_case ~handlers
-    in
-    (* CR mshinwell: Is _unfreshened_name redundant? *)
-    let body_env =
-      let env = E.set_freshening env freshening in
-      Continuation.Map.fold (fun name (_unfreshened_name, approx) env ->
-          E.add_continuation env name approx)
-        conts_and_approxs
-        env
-    in
-(*Format.eprintf "Simplifying body:\n%a" Flambda.print body;*)
-    let body, r = simplify body_env r body in
-(*Format.eprintf "Simplifying body finished.\n";*)
-    begin match handlers with
-    | Nonrecursive { name; handler; } ->
-      let with_wrapper : Flambda_utils.with_wrapper =
-        (* CR mshinwell: Tidy all this up somehow. *)
-        (* Unboxing of continuation parameters is done now so that in one pass
-           of [Simplify] such unboxing will go all the way down the
-           control flow. *)
-        if handler.stub || E.never_unbox_continuations env
-        then Unchanged { handler; }
-        else
-          let args_approxs =
-            R.continuation_args_approxs r name
-              ~num_params:(List.length handler.params)
-          in
-          Unbox_continuation_params.for_non_recursive_continuation ~handler
-            ~args_approxs ~name ~backend:(E.backend env)
-      in
-      let simplify_one_handler env r ~name ~handler ~body
-              : Flambda.expr * R.t =
-        (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
-           non-recursive ones before simplifying their body.  I'm not sure we
-           need to, since we already ensure such continuations aren't in the
-           environment when simplifying the [handlers].
-           ...except for stubs... *)
-        let handlers =
-          Continuation.Map.add name handler Continuation.Map.empty
-        in
-        let handlers, r =
-          simplify_let_cont_handlers ~env ~r ~handlers ~args_approxs:None
-            ~recursive:Asttypes.Nonrecursive ~freshening
-        in
-        match handlers with
-        | None -> body, r
-        | Some handlers -> Let_cont { body; handlers; }, r
-      in
-      begin match with_wrapper with
-      | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
-      | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
-        let approx =
-          Continuation_approx.create_unknown ~name:new_cont
-            ~num_params:(List.length new_handler.params)
-        in
-        let body, r =
-          let env = E.add_continuation env new_cont approx in
-          simplify_one_handler env r ~name ~handler:wrapper_handler ~body
-        in
-        let body, r =
-          simplify_one_handler env r ~name:new_cont ~handler:new_handler ~body
-        in
-        let r =
-          R.update_all_continuation_use_environments r
-            ~if_present_in_env:name ~then_add_to_env:(new_cont, approx)
-        in
-        body, r
-(*
-Format.eprintf "With wrappers applied:\n@ %a\n%!"
-  Flambda.print body;
-body, r
-*)
-      end
-    | Recursive handlers ->
-      (* The sequence is:
-         1. Simplify the recursive handlers assuming that all of their
-            parameters have [Value_unknown] approximation.  This may result in
-            simplifying terms with less precise approximations than when
-            they were previously simplified (e.g. there might have been a
-            direct call to a closure whose approximation is now unknown).
-            We mark the environment to avoid causing errors as a result of
-            this.
-         2. If all of the handlers are unused, there's nothing more to do.
-         3. Extract the (hopefully more precise) approximations for the
-            handlers' parameters from [r].  These will be at least as precise
-            as the approximations deduced in any previous round of
-            simplification.
-         4. The code from the simplification is discarded.
-         5. The continuation(s) is/are unboxed as required.
-         6. The continuation(s) are simplified once again using the
-            approximations deduced in step 2.
-      *)
-      let original_r = r in
-      let original_handlers = handlers in
-      let handlers, r =
-        let env = E.allow_less_precise_approximations body_env in
-        simplify_let_cont_handlers ~env ~r ~handlers
-          ~args_approxs:None ~recursive:Asttypes.Recursive ~freshening
-      in
-      begin match handlers with
-      | None -> body, r
-      | Some _handlers ->
-        let args_approxs =
-          Continuation.Map.mapi (fun cont
-                    (handler : Flambda.continuation_handler) ->
-              let num_params = List.length handler.params in
-              let cont =
-                Freshening.apply_static_exception (E.freshening body_env) cont
-              in
-              (* N.B. If [cont]'s handler was deleted, the following function
-                 will produce [Value_bottom] for the arguments, rather than
-                 failing. *)
-              R.defined_continuation_args_approxs r cont ~num_params)
-            original_handlers
-        in
-(*
-Format.eprintf "args_approxs override:@ %a\n%!"
-  (Continuation.Map.print (Format.pp_print_list T.print)) args_approxs;
-*)
-        let handlers = original_handlers in
-        let r = original_r in
-        let handlers, env, update_use_env =
-          if E.never_unbox_continuations env then
-            handlers, body_env, []
-          else
-            let with_wrappers =
-              Unbox_continuation_params.for_recursive_continuations
-                ~handlers ~args_approxs ~backend:(E.backend env)
-            in
-            (* CR mshinwell: move to Flambda_utils, probably *)
-            Continuation.Map.fold (fun cont
-                    (with_wrapper : Flambda_utils.with_wrapper)
-                    (handlers, env, update_use_env) ->
-                match with_wrapper with
-                | Unchanged { handler; } ->
-                  Continuation.Map.add cont handler handlers, env,
-                    update_use_env
-                | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
-                  let handlers =
-                    Continuation.Map.add new_cont new_handler
-                      (Continuation.Map.add cont wrapper_handler handlers)
-                  in
-                  let approx =
-                    Continuation_approx.create_unknown ~name:new_cont
-                      ~num_params:(List.length new_handler.params)
-                  in
-                  let env = E.add_continuation env new_cont approx in
-                  let update_use_env =
-                    (cont, (new_cont, approx)) :: update_use_env
-                  in
-                  handlers, env, update_use_env)
-              with_wrappers
-              (Continuation.Map.empty, body_env, [])
-        in
-        let handlers, r =
-          simplify_let_cont_handlers ~env ~r ~handlers
-            ~args_approxs:(Some args_approxs) ~recursive:Asttypes.Recursive
-            ~freshening
-        in
-        let r =
-          List.fold_left (fun r (if_present_in_env, then_add_to_env) ->
-              R.update_all_continuation_use_environments r
-                ~if_present_in_env ~then_add_to_env)
-            r
-            update_use_env
-        in
-        begin match handlers with
-        | None -> body, r
-        | Some handlers -> Let_cont { body; handlers; }, r
-        end
-      end
-(*
-Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
-  Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
-*)
-    end
-  | Switch (arg, sw) ->
-    simplify_free_variable env arg ~f:(fun env arg arg_approx ->
-(*
-Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
-  Variable.print arg T.print arg_approx;
-*)
-      let destination_is_unreachable cont =
-        (* CR mshinwell: This unreachable thing should be tidied up and also
-           done on [Apply_cont]. *)
-        let cont = Freshening.apply_static_exception (E.freshening env) cont in
-        let cont_approx = E.find_continuation env cont in
-        match Continuation_approx.handlers cont_approx with
-        | None | Some (Recursive _) -> false
-        | Some (Nonrecursive handler) ->
-          match handler.handler with
-          | Proved_unreachable -> true
-          | _ -> false
-      in
-      let rec filter_branches filter branches compatible_branches =
-        match branches with
-        | [] -> Can_be_taken compatible_branches
-        | (c, cont) as branch :: branches ->
-          if destination_is_unreachable cont then
-            filter_branches filter branches compatible_branches
-          else
-            match filter arg_approx c with
-            | T.Cannot_be_taken ->
-(*
-Format.eprintf "Switch arm %a cannot_be_taken\n%!" Continuation.print cont;
-*)
-              filter_branches filter branches compatible_branches
-            | T.Can_be_taken ->
-(*
-Format.eprintf "Switch arm %a can_be_taken\n%!" Continuation.print cont;
-*)
-              filter_branches filter branches (branch :: compatible_branches)
-            | T.Must_be_taken ->
-(*
-Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
-*)
-              Must_be_taken cont
-      in
-      (* Use approximation information to determine which branches definitely
-         will be taken, or may be taken.  (Note that the "Union" case in
-         [Simple_value_approx] helps here.) *)
-      let filtered_consts =
-        filter_branches T.potentially_taken_const_switch_branch sw.consts []
-      in
-      begin match filtered_consts with
-      | Must_be_taken cont ->
-(*
-        let cont_approx =
-          E.find_continuation env
-            (Freshening.apply_static_exception (E.freshening env) cont)
-        in
-Format.eprintf "Switch branch must be taken: %a approx %a\n%!"
-  Continuation.print cont
-  Continuation_approx.print cont_approx;
-*)
-        let expr, r =
-          simplify_apply_cont env r cont ~trap_action:None
-            ~args:[] ~args_approxs:[]
-        in
-(*
-Format.eprintf "%a branch simplifies to: %a\n%!"
-  Continuation.print cont Flambda.print expr;
-*)
-        expr, R.map_benefit r B.remove_branch
-      | Can_be_taken consts ->
-        match consts, sw.failaction with
-        | [], None ->
-          (* If the switch is applied to a statically-known value that does not
-            match any case:
-            * if there is a default action take that case;
-            * otherwise this is something that is guaranteed not to
-              be reachable by the type checker.  For example:
-              [type 'a t = Int : int -> int t | Boxed_float : float -> float t
-                match Int 1 with
-                | Int _ -> ...
-                | Boxed_float f as v ->
-                  match v with   <-- This match is unreachable
-                  | Boxed_float f -> ...]
-          *)
-          Proved_unreachable, r
-        | [_, cont], None ->
-          let cont, r =
-            simplify_apply_cont_to_cont env r cont ~args_approxs:[]
-          in
-          Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
-        | [], Some cont ->
-          if destination_is_unreachable cont then
-            Proved_unreachable, R.map_benefit r B.remove_branch
-          else
-            let cont, r =
-              simplify_apply_cont_to_cont env r cont ~args_approxs:[]
-            in
-            Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
-        | _ ->
-          let env = E.inside_branch env in
-          let f (acc, r) (i, cont) =
-            let cont, r =
-              simplify_apply_cont_to_cont env r cont ~args_approxs:[]
-                ~don't_record_use:()
-            in
-            (i, cont)::acc, r
-          in
-          let r = R.set_approx r T.bottom in
-          let consts, r = List.fold_left f ([], r) consts in
-          let failaction, r =
-            match sw.failaction with
-            | None -> None, r
-            | Some cont ->
-              if destination_is_unreachable cont then
-                None, r
-              else
-                let cont, r =
-                  simplify_apply_cont_to_cont env r cont ~args_approxs:[]
-                    ~don't_record_use:()
-                in
-                Some cont, r
-          in
-          let switch, used_conts =
-            Flambda.create_switch' ~scrutinee:arg
-              ~all_possible_values:sw.numconsts
-              ~arms:consts
-              ~default:failaction
-          in
-          let r = ref r in
-          Continuation.Map.iter (fun cont num_uses ->
-              for _use = 1 to num_uses do
-                r := R.use_continuation !r env cont
-                  (Not_inlinable_or_specialisable [])
-              done)
-            used_conts;
-          switch, !r
-      end)
+  | Switch (arg, sw) -> simplify_switch env r arg sw
   | Proved_unreachable -> Proved_unreachable, ret r T.bottom
 
 and simplify_toplevel env r expr ~continuation ~descr =
@@ -2918,7 +2923,7 @@ let add_predef_exns_to_environment ~env ~backend =
       let approx =
         T.block Tag.object_tag
           [| T.string (String.length name) (Some name);
-             T.unknown Other;
+             T.unknown Value Other;
           |]
       in
       E.add_symbol env symbol (T.augment_with_symbol approx symbol))

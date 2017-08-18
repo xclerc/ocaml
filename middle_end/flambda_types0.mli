@@ -183,7 +183,7 @@ end
 
 module type Constructors_and_accessors = sig
   (** Each type has a unique kind. *)
-  val kind : t -> really_import_approx:(t -> t) Flambda_kind.t
+  val kind : t -> really_import_approx:(t -> t) -> Flambda_kind.t
 
   (** Construction of types involving equalities to runtime values. *)
   val unknown : Value_kind.t -> unknown_because_of -> t
