@@ -694,7 +694,7 @@ and simplify_set_of_closures original_env r
           function_decl.continuation_param
       in
       let cont_flambda_type =
-        Continuation_flambda_type.create_unknown ~name:continuation_param
+        Continuation_approx.create_unknown ~name:continuation_param
           ~num_params:function_decl.return_arity
       in
       let closure_env =
@@ -1145,7 +1145,7 @@ and simplify_over_application env r ~args ~args_flambda_types ~continuation
   in
   let after_full_application = Continuation.create () in
   let after_full_application_flambda_type =
-    Continuation_flambda_type.create ~name:after_full_application
+    Continuation_approx.create ~name:after_full_application
       ~handlers:(Nonrecursive handler) ~num_params:1
   in
   let full_application, r =
@@ -1188,7 +1188,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       ~args ~args_flambda_types : Flambda.t * R.t =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_flambda_type = E.find_continuation env cont in
-  let cont = Continuation_flambda_type.name cont_flambda_type in
+  let cont = Continuation_approx.name cont_flambda_type in
   let freshen_trap_action env r (trap_action : Flambda.trap_action) =
     match trap_action with
     | Push { id; exn_handler; } ->
@@ -1206,7 +1206,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       in
       Flambda.Pop { id; exn_handler; }, r
   in
-  match Continuation_flambda_type.handlers cont_flambda_type with
+  match Continuation_approx.handlers cont_flambda_type with
   | Some (Nonrecursive handler) when handler.stub && trap_action = None ->
     (* Stubs are unconditionally inlined out now for two reasons:
        - [Continuation_inlining] cannot do non-linear inlining;
@@ -1274,8 +1274,8 @@ and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_flambda_types
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_flambda_type = E.find_continuation env cont in
   let cont =
-    match Continuation_flambda_type.is_alias cont_flambda_type with
-    | None -> Continuation_flambda_type.name cont_flambda_type
+    match Continuation_approx.is_alias cont_flambda_type with
+    | None -> Continuation_approx.name cont_flambda_type
     | Some alias_of ->
       Freshening.apply_static_exception (E.freshening env) alias_of
   in
@@ -1979,7 +1979,7 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
                 (r, handlers') ->
             let flambda_type =
               let num_params = List.length handler.params in
-              let handlers : Continuation_flambda_type.continuation_handlers =
+              let handlers : Continuation_approx.continuation_handlers =
                 match recursive with
                 | Nonrecursive ->
                   begin match Continuation.Map.bindings handlers with
@@ -1996,7 +1996,7 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
                   in
                   Recursive handlers
               in
-              Continuation_flambda_type.create ~name:cont ~handlers ~num_params
+              Continuation_approx.create ~name:cont ~handlers ~num_params
             in
             let r =
               R.define_continuation r cont env recursive uses flambda_type
@@ -2057,7 +2057,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
             let alias_or_unreachable =
               match handler.handler with
               | Proved_unreachable -> true
-              (* CR mshinwell: share somehow with [Continuation_flambda_type].
+              (* CR mshinwell: share somehow with [Continuation_approx].
                  Also, think about this in the multi-argument case -- need
                  to freshen. *)
               | Apply_cont (_cont, None, []) -> true
@@ -2066,11 +2066,11 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
             if handler.stub || alias_or_unreachable then begin
               assert (not (Continuation.Set.mem name
                 (Flambda.free_continuations handler.handler)));
-              Continuation_flambda_type.create ~name:freshened_name
+              Continuation_approx.create ~name:freshened_name
                 ~handlers:(Nonrecursive handler)
                 ~num_params
             end else begin
-              Continuation_flambda_type.create_unknown ~name:freshened_name
+              Continuation_approx.create_unknown ~name:freshened_name
                 ~num_params
             end
           in
@@ -2133,7 +2133,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
     | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
     | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
       let flambda_type =
-        Continuation_flambda_type.create_unknown ~name:new_cont
+        Continuation_approx.create_unknown ~name:new_cont
           ~num_params:(List.length new_handler.params)
       in
       let body, r =
@@ -2215,7 +2215,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
                     (Continuation.Map.add cont wrapper_handler handlers)
                 in
                 let flambda_type =
-                  Continuation_flambda_type.create_unknown ~name:new_cont
+                  Continuation_approx.create_unknown ~name:new_cont
                     ~num_params:(List.length new_handler.params)
                 in
                 let env = E.add_continuation env new_cont flambda_type in
@@ -2252,7 +2252,7 @@ let simplify_switch env r arg sw : Flambda.t * R.t =
          done on [Apply_cont]. *)
       let cont = Freshening.apply_static_exception (E.freshening env) cont in
       let cont_flambda_type = E.find_continuation env cont in
-      match Continuation_flambda_type.handlers cont_flambda_type with
+      match Continuation_approx.handlers cont_flambda_type with
       | None | Some (Recursive _) -> false
       | Some (Nonrecursive handler) ->
         match handler.handler with
@@ -2520,7 +2520,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
       ~set_of_closures_env
   in
   let cont_flambda_type =
-    Continuation_flambda_type.create_unknown ~name:function_decl.continuation_param
+    Continuation_approx.create_unknown ~name:function_decl.continuation_param
       ~num_params:1
   in
   let closure_env =
@@ -2733,7 +2733,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
       | (h, cont) :: t ->
         let t', flambda_types, r = simplify_fields env r t in
         let cont_flambda_type =
-          Continuation_flambda_type.create_unknown ~name:cont ~num_params:1
+          Continuation_approx.create_unknown ~name:cont ~num_params:1
         in
         let env = E.add_continuation env cont cont_flambda_type in
         let h', r, uses =
@@ -2767,7 +2767,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     Initialize_symbol (symbol, tag, fields, program), r
   | Effect (expr, cont, program) ->
     let cont_flambda_type =
-      Continuation_flambda_type.create_unknown ~name:cont ~num_params:1
+      Continuation_approx.create_unknown ~name:cont ~num_params:1
     in
     let env = E.add_continuation env cont cont_flambda_type in
     let expr, r, uses =
