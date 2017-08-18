@@ -268,7 +268,6 @@ and continuation_handlers =
 
 and continuation_handler = {
   params : Parameter.t list;
-  equations : Projection.t Variable.Map.t;
   stub : bool;
   is_exn_handler : bool;
   (** Continuations used as exception handlers must always be [Nonrecursive]
@@ -310,9 +309,6 @@ and set_of_closures = private {
         Variable.Map.map (Env.find_approx env) set.free_vars
       in
      in [Build_export_info]. *)
-  (* CR-soon mshinwell: I'd like to arrange these maps so that it's impossible
-     to put invalid projection information into them (in particular, so that
-     we enforce that the relation stays within the domain of the map). *)
   free_vars : free_vars;
   (** Mapping from all variables free in the body of the [function_decls] to
       variables in scope at the definition point of the [set_of_closures].
@@ -324,9 +320,7 @@ and set_of_closures = private {
       to reduce the overhead of transformations that introduce wrapper
       functions (which will be inlined at direct call sites, but will
       penalise indirect call sites).
-      [direct_call_surrogates] may not be transitively closed. *)
-  (* CR-soon mshinwell: move [equations] into [function_declarations] *)
-  equations : Projection.t Variable.Map.t;
+      N.B. [direct_call_surrogates] might not be transitively closed. *)
 }
 
 and function_declarations = private {

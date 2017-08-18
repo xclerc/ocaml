@@ -131,24 +131,20 @@ let prepare_to_simplify_set_of_closures ~env
   free_vars, specialised_args, function_decls,
     internal_value_set_of_closures, set_of_closures_env
 
-(* CR mshinwell: do we need [equations] or can it come from [function_decl]? *)
 let prepare_to_simplify_closure ~(function_decl : Flambda.function_declaration)
-      ~free_vars ~specialised_args ~equations ~set_of_closures_env =
+      ~free_vars ~specialised_args ~set_of_closures_env =
   let closure_env =
     Variable.Map.fold (fun inner_var (_outer_var, ty) env ->
         E.add_outer_scope env inner_var ty)
       free_vars set_of_closures_env
   in
-  let closure_env =
-    Parameter.Map.fold (fun env param ty ->
-        E.add env (Parameter.var param) ty)
-      env specialised_args
-  in
-  Variable.Map.fold (fun var projection env ->
-      let from = Projection.projecting_from projection in
-      if Variable.Set.mem from function_decl.free_variables then
-        E.add_projection env ~projection ~bound_to:inner_var
-      else
-        env)
-    equations
-    closure_env
+  (* CR mshinwell: Freshening? *)
+  List.fold_left (fun env param ->
+      let var = Parameter.var param in
+      let ty = Parameter.ty param in
+      let env = E.add env var ty in
+      match T.projection ty with
+      | None -> env
+      | Some (var, projection) ->
+        E.add_projection env ~projection ~bound_to:var)
+    env function_decl.params

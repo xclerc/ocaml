@@ -29,6 +29,10 @@ include Flambda_types0.Constructors_and_accessors
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
 val unresolved_symbol : Symbol.t -> t
 
+(** If a value with the given type is known to be some kind of projection
+    from another variable, return that variable and the projection. *)
+val projection : t -> (Variable.t * Projection.t) option
+
 (** Take the given integer and produce an appropriate type for it
     together with an Flambda term (that can be [Let]-bound) representing it. *)
 val make_const_int_named : int -> Flambda.named * t

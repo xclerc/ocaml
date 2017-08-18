@@ -48,8 +48,14 @@ module rec T : sig
   (** The type of an Flambda term. *)
   type ('decls, 'freshening) t = private {
     descr : descr;
-    var : Variable.t option;
+    (** The main description of the type. *)
+    var : (Variable.t * (Projection.t option)) option;
+    (** An optional equality to a variable, possibly also stating that the
+        value associated with the type is known to be a particular projection
+        from that variable. *)
     symbol : (Symbol.t * int option) option;
+    (** An optional equality to a symbol, or if the integer field number is
+        specified, to a field of a symbol. *)
   } 
 
   (** Types are equipped with a subtyping relation given by a partial order.

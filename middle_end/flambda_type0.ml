@@ -147,7 +147,7 @@ module rec T : sig
   (** The type of an Flambda term. *)
   type ('decls, 'freshening) t = {
     descr : descr;
-    var : Variable.t option;
+    var : (Variable.t * (Projection.t option)) option;
     symbol : (Symbol.t * int option) option;
   } 
 
@@ -209,23 +209,6 @@ module rec T : sig
   and float_array = {
     contents : float_array_contents;
     size : int;
-  }
-  (* CR-someday mshinwell: This should perhaps be altered so that the
-     specialisation isn't just to a variable, or some particular projection,
-     but is instead to an actual approximation (which would be enhanced to
-     describe the projection too). *)
-  and specialised_to = {
-    var : Variable.t option;
-    (** The "outer variable".  For non-specialised arguments of continuations
-        (which may still be involved in projection relations) this may be
-        [None]. *)
-    projection : Projection.t option;
-    (** The [projecting_from] value (see projection.mli) of any [projection]
-        must be another free variable or specialised argument (depending on
-        whether this record type is involved in [free_vars] or
-        [specialised_args] respectively) in the same set of closures.
-        As such, this field describes a relation of projections between
-        either the [free_vars] or the [specialised_args]. *)
   }
 
   and specialised_args = specialised_to Variable.Map.t
