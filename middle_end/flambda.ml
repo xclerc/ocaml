@@ -969,11 +969,12 @@ module With_free_variables = struct
         free_vars_of_body = free_variables body;
       }
 
-  let create_let_reusing_body var defining_expr (t : expr t) =
+  let create_let_reusing_body var ty defining_expr (t : expr t) =
     match t with
     | Expr (body, free_vars_of_body) ->
       Let {
         var;
+        kind = Flambda_type0.kind_exn ty;
         defining_expr;
         body;
         free_vars_of_defining_expr = free_variables_named defining_expr;
@@ -986,6 +987,7 @@ module With_free_variables = struct
         Expr (body, free_vars_of_body) ->
       Let {
         var;
+        kind = Flambda_type0.kind_exn ty;
         defining_expr;
         body;
         free_vars_of_defining_expr;
@@ -1013,23 +1015,17 @@ let fold_lets_option t ~init ~for_defining_expr ~for_last_body
   let finish ~last_body ~acc ~rev_lets =
     let module W = With_free_variables in
     let acc, t =
-      List.fold_left (fun (acc, t) (var, defining_expr) ->
+      List.fold_left (fun (acc, t) (var, ty, defining_expr) ->
           let free_vars_of_body = W.free_variables t in
           let acc, var, defining_expr =
             filter_defining_expr acc var defining_expr free_vars_of_body
           in
           match defining_expr with
           | None ->
-(*
-Format.eprintf "Deleting binding of %a.  FVs of body %a.  Body:\n%a\n\
-    Backtrace:\n%s%!"
-  Variable.print var Variable.Set.print free_vars_of_body W.print t
-  (Printexc.raw_backtrace_to_string (Printexc.get_callstack 100));
-*)
             acc, t
           | Some defining_expr ->
             let let_expr =
-              W.create_let_reusing_body var defining_expr t
+              W.create_let_reusing_body var ty defining_expr t
             in
             acc, W.of_expr let_expr)
         (acc, W.of_expr last_body)
@@ -1040,22 +1036,18 @@ Format.eprintf "Deleting binding of %a.  FVs of body %a.  Body:\n%a\n\
   let rec loop (t : t) ~acc ~rev_lets =
     match t with
     | Let { var; defining_expr; body; _ } ->
-      let acc, bindings, var, (defining_expr : named_reachable) =
-        for_defining_expr acc var defining_expr
+      let acc, bindings, var, ty, (defining_expr : named_reachable) =
+        for_defining_expr acc var ty defining_expr
       in
       begin match defining_expr with
       | Reachable defining_expr ->
         let rev_lets =
-          (var, defining_expr) :: (List.rev bindings) @ rev_lets
+          (var, ty, defining_expr) :: (List.rev bindings) @ rev_lets
         in
         loop body ~acc ~rev_lets
       | Non_terminating defining_expr ->
-(*
-Format.eprintf "This defining expression doesn't terminate:\n@ %a\n%!"
-  print_named defining_expr;
-*)
         let rev_lets =
-          (var, defining_expr) :: (List.rev bindings) @ rev_lets
+          (var, ty, defining_expr) :: (List.rev bindings) @ rev_lets
         in
         let last_body, acc = for_last_body acc Proved_unreachable in
         finish ~last_body ~acc ~rev_lets

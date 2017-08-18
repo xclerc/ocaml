@@ -34,10 +34,10 @@ let find_unboxings ~continuation_uses ~handlers =
 Format.eprintf "No definition for %a\n%!" Continuation.print cont;
 *)
             None
-          | args_approxs ->
+          | args_tys ->
             let params = Parameter.List.vars params in
             let params_to_approxs =
-              Variable.Map.of_list (List.combine params args_approxs)
+              Variable.Map.of_list (List.combine params args_tys)
             in
             let unboxings =
               Variable.Map.filter_map params_to_approxs
@@ -251,7 +251,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
     Some with_wrappers
   end
 
-let for_non_recursive_continuation ~name ~handler ~args_approxs ~backend
+let for_non_recursive_continuation ~name ~handler ~args_tys ~backend
       : Flambda_utils.with_wrapper =
 (*
 Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
@@ -261,7 +261,7 @@ Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
     Continuation.Map.add name handler Continuation.Map.empty
   in
   let continuation_uses =
-    Continuation.Map.add name args_approxs Continuation.Map.empty
+    Continuation.Map.add name args_tys Continuation.Map.empty
   in
   let result = for_continuations ~continuation_uses ~handlers ~backend in
   match result with
@@ -273,13 +273,13 @@ Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
       with_wrapper
     | _ -> assert false
 
-let for_recursive_continuations ~handlers ~args_approxs ~backend =
+let for_recursive_continuations ~handlers ~args_tys ~backend =
 (*
 Format.eprintf "Unbox_continuation_params starting: recursive %a\n%!"
   Continuation.Set.print (Continuation.Map.keys handlers);
 *)
   let result =
-    for_continuations ~continuation_uses:args_approxs ~handlers ~backend
+    for_continuations ~continuation_uses:args_tys ~handlers ~backend
   in
   match result with
   | None ->

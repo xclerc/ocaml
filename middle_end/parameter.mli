@@ -28,10 +28,10 @@ type parameter = t
    should think about how to improve this.
    There should for a start be a proper creation function with "with
    default attributes" in the name, or similar. *)
-val wrap : Variable.t -> Value_kind.t -> t
+val wrap : Variable.t -> Flambda_kind.t -> t
 
 val var : t -> Variable.t
-val kind : t -> Value_kind.t
+val kind : t -> Flambda_kind.t
 
 (** Rename the inner variable of the parameter *)
 val rename

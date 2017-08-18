@@ -26,7 +26,7 @@
     describe the overall structure of a compilation unit.
 *)
 
-type return_arity = Value_kind.t list
+type return_arity = Flambda_kind.t list
 
 (** Whether the callee in a function application is known at compile time. *)
 type call_kind =
@@ -204,7 +204,7 @@ and named =
 
 and let_expr = private {
   var : Variable.t;
-  kind : Value_kind.t;
+  kind : Flambda_kind.t;
   defining_expr : named;
   body : t;
   (* CR-someday mshinwell: we could consider having these be keys into some
@@ -628,8 +628,8 @@ val fold_lets_option
       'a
     -> Variable.t
     -> named
-    -> 'a * (Variable.t * Value_kind.t * named) list
-      * Variable.t * Value_kind.t * named_reachable)
+    -> 'a * (Variable.t * Flambda_type0.t * named) list
+      * Variable.t * Flambda_type0.t * named_reachable)
   -> for_last_body:('a -> t -> t * 'b)
   (* CR-someday mshinwell: consider making [filter_defining_expr]
      optional *)
@@ -692,7 +692,9 @@ module With_free_variables : sig
   val to_named : named t -> named
 
   (** Takes the time required to calculate the free variables of the given
-      [expr]. *)
+      [expr].  The specified Flambda type must be fully resolved (i.e. no
+      occurrences of [Load_lazily]) or a fatal error will result. *)
+
   val create_let_reusing_defining_expr
      : Variable.t
     -> named t
@@ -700,16 +702,20 @@ module With_free_variables : sig
     -> expr
 
   (** Takes the time required to calculate the free variables of the given
-      [named]. *)
+      [named].  The specified Flambda type must be fully resolved (i.e. no
+      occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
      : Variable.t
+    -> Flambda_type0.t
     -> named
     -> expr t
     -> expr
 
-  (** O(1) time. *)
+  (** O(1) time.  The same condition on the specified type as for
+      [create_let_reusing_body] applies. *)
   val create_let_reusing_both
      : Variable.t
+    -> Flambda_type0.t
     -> named t
     -> expr t
     -> expr

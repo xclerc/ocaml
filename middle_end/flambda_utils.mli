@@ -256,3 +256,5 @@ val make_let_cont_alias
   -> alias_of:Continuation.t
   -> arity:int
   -> Flambda.let_cont_handlers
+
+val arity_of_call_kind : call_kind -> return_arity

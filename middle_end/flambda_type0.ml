@@ -261,6 +261,14 @@ end = struct
     | Bottom -> Bottom
     | Load_lazily _ -> kind (really_import_approx t) ~really_import_approx
 
+  let kind_exn t =
+    let really_import_approx t =
+      Misc.fatal_errorf "With_free_variables.create_let_reusing_body: \
+          Flambda type is not fully resolved: %a"
+        Flambda_type0.T.print t
+    in
+    kind t ~really_import_approx
+
   (* Closures and set of closures descriptions cannot be merged.
 
     let f x =

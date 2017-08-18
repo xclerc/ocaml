@@ -993,3 +993,8 @@ let make_let_cont_alias ~name ~alias_of ~arity : Flambda.let_cont_handlers =
       specialised_args = Variable.Map.empty;
     };
   }
+
+let arity_of_call_kind (kind : Flambda.call_kind) =
+  match kind with
+  | Indirect -> [Flambda_kind.Value]
+  | Direct { return_arity; _ } -> return_arity

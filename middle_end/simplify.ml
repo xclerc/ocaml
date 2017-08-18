@@ -19,11 +19,11 @@
 module B = Inlining_cost.Benefit
 module E = Simplify_env
 module R = Simplify_result
-module T = types
+module T = Flambda_types
 
 (** Values of two types hold the information propagated during simplification:
     - [E.t] "environments", top-down, almost always called "env";
-    - [R.t] "results", bottom-up typeimately following the evaluation order,
+    - [R.t] "results", bottom-up approximately following the evaluation order,
       almost always called "r".  These results come along with rewritten
       Flambda terms.
     The environments map variables to Flambda types, which enable various
@@ -31,7 +31,7 @@ module T = types
     to always hold a particular constant.
 *)
 
-let ret = R.set_type
+let ret = R.record_inferred_type
 
 type simplify_variable_result =
   | No_binding of Variable.t
@@ -52,47 +52,51 @@ let simplify_free_variable_internal env original_var =
      eliminate the [let].
   *)
   let var =
-    let type = E.find_exn env var in
-    match type.var with
+    let ty = E.find_exn env var in
+    match ty.var with
     | Some var when E.mem env var -> var
     | Some _ | None -> var
   in
   (* CR-soon mshinwell: Should we update [r] when we *add* code?
      Aside from that, it looks like maybe we don't need [r] in this function,
-     because the Flambda type within it wouldn't be used by any of the
+     because the Flambda ty within it wouldn't be used by any of the
      call sites. *)
   match E.find_with_scope_exn env var with
-  | Current, type -> No_binding var, type  (* avoid useless [let] *)
-  | Outer, type ->
+  | Current, ty ->
+    No_binding var, ty  (* avoid useless [let] *)
+  | Outer, ty ->
     let module W = Flambda.With_free_variables in
-    match T.simplify_var type with
-    | None -> No_binding var, type
-    | Some (named, type) -> Binding (original_var, W.of_named named), type
+    match T.reify ty with
+    | None -> No_binding var, ty
+    | Some (named, ty) ->
+      Binding (original_var, W.of_named named), ty
 
 let simplify_free_variable env var ~f : Flambda.t * R.t =
   match simplify_free_variable_internal env var with
-  | No_binding var, type -> f env var type
-  | Binding (var, named), type ->
+  | No_binding var, ty -> f env var ty
+  | Binding (var, named), ty ->
     let module W = Flambda.With_free_variables in
     let var = Variable.rename var in
-    let env = E.add env var type in
-    let body, r = f env var type in
+    let env = E.add env var ty in
+    let body, r = f env var ty in
     (W.create_let_reusing_defining_expr var named body), r
 
 let simplify_free_variables env vars ~f : Flambda.t * R.t =
   let rec collect_bindings vars env bound_vars types : Flambda.t * R.t =
     match vars with
-    | [] -> f env (List.rev bound_vars) (List.rev types)
+    | [] -> f env (List.rev bound_vars) (List.rev tys)
     | var::vars ->
       match simplify_free_variable_internal env var with
-      | No_binding var, type ->
-        collect_bindings vars env (var::bound_vars) (type::types)
-      | Binding (var, named), type ->
+      | No_binding var, ty ->
+        collect_bindings vars env (var::bound_vars)
+          (ty::tys)
+      | Binding (var, named), ty ->
         let module W = Flambda.With_free_variables in
         let var = Variable.rename var in
-        let env = E.add env var type in
+        let env = E.add env var ty in
         let body, r =
-          collect_bindings vars env (var::bound_vars) (type::types)
+          collect_bindings vars env (var::bound_vars)
+            (ty::tys)
         in
         (W.create_let_reusing_defining_expr var named body), r
   in
@@ -100,20 +104,19 @@ let simplify_free_variables env vars ~f : Flambda.t * R.t =
 
 let simplify_free_variables_named env vars ~f =
   let rec collect_bindings vars env bound_vars types
-        : (Variable.t * Flambda.named) list * Flambda.named_reachable
-            * R.t =
+        : (Variable.t * Flambda.named) list * Flambda.named_reachable * R.t =
     match vars with
     | [] -> f env (List.rev bound_vars) (List.rev types)
     | var::vars ->
       match simplify_free_variable_internal env var with
-      | No_binding var, type ->
-        collect_bindings vars env (var::bound_vars) (type::types)
-      | Binding (var, named), type ->
+      | No_binding var, ty ->
+        collect_bindings vars env (var::bound_vars) (ty::tys)
+      | Binding (var, named), ty ->
         let named = Flambda.With_free_variables.to_named named in
         let var = Variable.rename var in
-        let env = E.add env var type in
+        let env = E.add env var ty in
         let bindings, body_named, r =
-          collect_bindings vars env (var::bound_vars) (type::types)
+          collect_bindings vars env (var::bound_vars) (ty::tys)
         in
         (var, named) :: bindings, body_named, r
   in
@@ -121,26 +124,25 @@ let simplify_free_variables_named env vars ~f =
 
 (* CR-soon mshinwell: tidy this up *)
 let simplify_free_variable_named env var ~f =
-  simplify_free_variables_named env [var] ~f:(fun env vars vars_types ->
-    match vars, vars_types with
-    | [var], [type] -> f env var type
+  simplify_free_variables_named env [var] ~f:(fun env vars vars_tys ->
+    match vars, vars_tys with
+    | [var], [ty] -> f env var ty
     | _ -> assert false)
 
-let simplify_named_using_type r named (type, value_kind)
+let simplify_named_using_ty r named (ty, value_kind)
       : (Variable.t * Flambda.named) list * Flambda.named_reachable
           * Value_kind.t * R.t =
-  let named, _summary, type = T.simplify_named type named in
-  [], Reachable named, value_kind, R.set_type r type
+  let named, _summary, ty = T.simplify_named ty named in
+  [], Reachable named, value_kind, ret r ty
 
-let simplify_named_using_type_and_env env r original_named type
-      : (Variable.t * Flambda.named) list * Flambda.named_reachable
-          * R.t =
-  let named, summary, type =
-    T.simplify_named_using_env type ~is_present_in_env:(E.mem env)
-      original_named
+let simplify_named_using_ty_and_env env r original_named ty
+      : (Variable.t * Flambda.named) list * Flambda.named_reachable * R.t =
+  let named, summary, ty =
+    T.maybe_replace_term_with_reified_term_using_env original_named
+      ~is_present_in_env:(E.mem env)
   in
   let r =
-    let r = ret r type in
+    let r = ret r ty in
     match summary with
     | Replaced_term -> R.map_benefit r (B.remove_code_named original_named)
     | Nothing_done -> r
@@ -159,16 +161,15 @@ let type_for_const (const : Flambda.const) =
 
 let type_for_allocated_const (const : Allocated_const.t) =
   match const with
-  | String s -> T.string (String.length s) None
-  | Immutable_string s -> T.string (String.length s) (Some s)
-  | Int32 i -> T.boxed_int Int32 i
-  | Int64 i -> T.boxed_int Int64 i
-  | Nativeint i -> T.boxed_int Nativeint i
+  | String s -> T.mutable_string s
+  | Immutable_string s -> T.immutable_string s
+  | Int32 i -> T.boxed_int32 i
+  | Int64 i -> T.boxed_int64 i
+  | Nativeint i -> T.boxed_nativeint i
   | Boxed_float f -> T.boxed_float f
   | Float_array a -> T.mutable_float_array ~size:(List.length a)
   | Immutable_float_array a ->
-      T.immutable_float_array
-        (Array.map T.boxed_float (Array.of_list a))
+    T.immutable_float_array (Array.map T.boxed_float (Array.of_list a))
 
 type filtered_switch_branches =
   | Must_be_taken of Continuation.t
@@ -183,7 +184,7 @@ let reference_recursive_function_directly env closure_id =
   let closure_id = Closure_id.unwrap closure_id in
   match E.find_opt env closure_id with
   | None -> None
-  | Some type -> Some (Flambda.Var closure_id, type)
+  | Some ty -> Some (Flambda.Var closure_id, ty)
 
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)
@@ -252,9 +253,9 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
         in
         match projecting_from with
         | Some (var, projection) ->
-          simplify_free_variable_named env var ~f:(fun _env var var_type ->
+          simplify_free_variable_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_type)
+            [], Reachable (Var var), ret r var_ty)
         | None ->
           let if_not_reference_recursive_function_directly ()
             : (Variable.t * Flambda.named) list * Flambda.named_reachable
@@ -265,20 +266,20 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
                 set_of_closures_var
               | Some _ | None -> None
             in
-            let type =
+            let ty =
               T.closure ?set_of_closures_var
                 (Closure_id.Map.of_set (fun _ -> value_set_of_closures)
                    closure_id)
             in
             [], Reachable (Project_closure { set_of_closures; closure_id; }),
-              ret r type
+              ret r ty
           in
           match Closure_id.Set.get_singleton closure_id with
           | None ->
             if_not_reference_recursive_function_directly ()
           | Some closure_id ->
             match reference_recursive_function_directly env closure_id with
-            | Some (flam, type) -> [], Reachable flam, ret r type
+            | Some (flam, ty) -> [], Reachable flam, ret r ty
             | None ->
               if_not_reference_recursive_function_directly ())
 
@@ -290,25 +291,25 @@ let simplify_move_within_set_of_closures env r
       : (Variable.t * Flambda.named) list
           * Flambda.named_reachable * R.t =
   simplify_free_variable_named env move_within_set_of_closures.closure
-    ~f:(fun _env closure closure_type ->
-    match T.reify_as_closure_allowing_unresolved closure_type with
+    ~f:(fun _env closure closure_ty ->
+    match T.reify_as_closure_allowing_unresolved closure_ty with
     | Wrong ->
       Misc.fatal_errorf "Wrong Flambda type when moving within set of \
           closures.  Flambda type: %a  Term: %a"
-        T.print closure_type
+        T.print closure_ty
         Flambda.print_move_within_set_of_closures move_within_set_of_closures
     | Unresolved sym ->
       [], Reachable (Move_within_set_of_closures {
           closure;
           move = move_within_set_of_closures.move;
         }),
-        ret r (T.unresolved sym)
+        ret r (T.unresolved_symbol sym)
     | Unknown ->
       [], Reachable (Move_within_set_of_closures {
           closure;
           move = move_within_set_of_closures.move;
         }),
-        ret r (T.unknown Other)
+        ret r (T.unknown Value Other)
     | Unknown_because_of_unresolved_value value ->
       (* For example: a move upon a (move upon a closure whose .cmx file
          is missing). *)
@@ -316,19 +317,19 @@ let simplify_move_within_set_of_closures env r
           closure;
           move = move_within_set_of_closures.move;
         }),
-        ret r (T.unknown (Unresolved_value value))
+        ret r (T.unknown Value (Unresolved_value value))
     | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
       let () =
         match Closure_id.Map.bindings value_closures with
         | _ :: _ :: _ ->
           Format.printf "Closure type is not a singleton in \
               move@ %a@ %a@."
-            T.print closure_type
+            T.print closure_ty
             Projection.print_move_within_set_of_closures
             move_within_set_of_closures
         | [] ->
           Format.printf "Closure type is empty in move@ %a@ %a@."
-            T.print closure_type
+            T.print closure_ty
             Projection.print_move_within_set_of_closures
             move_within_set_of_closures
         | _ ->
@@ -381,71 +382,70 @@ let simplify_move_within_set_of_closures env r
            cardinality *)
         assert false
       | None, None ->
-        let type = T.closure type_map in
+        let ty = T.closure ty_map in
         let move_within : Flambda.move_within_set_of_closures =
           { closure; move; }
         in
-        [], Reachable (Move_within_set_of_closures move_within),
-          ret r type
+        [], Reachable (Move_within_set_of_closures move_within), ret r ty
       | Some (_start_from, value_set_of_closures),
         Some (start_from, move_to) ->
-      match E.find_projection env ~projection with
-      | Some var ->
-        simplify_free_variable_named env var ~f:(fun _env var var_type ->
-          let r = R.map_benefit r (B.remove_projection projection) in
-          [], Reachable (Var var), ret r var_type)
-      | None ->
-        match reference_recursive_function_directly env move_to with
-        | Some (flam, type) -> [], Reachable flam, ret r type
+        match E.find_projection env ~projection with
+        | Some var ->
+          simplify_free_variable_named env var ~f:(fun _env var var_ty ->
+            let r = R.map_benefit r (B.remove_projection projection) in
+            [], Reachable (Var var), ret r var_ty)
         | None ->
-          if Closure_id.equal start_from move_to then
-            (* Moving from one closure to itself is a no-op.  We can return an
-               [Var] since we already have a variable bound to the closure. *)
-            [], Reachable (Var closure), ret r closure_type
-          else
-            match set_of_closures_var with
-            | Some set_of_closures_var when E.mem env set_of_closures_var ->
-              (* A variable bound to the set of closures is in scope,
-                 meaning we can rewrite the [Move_within_set_of_closures] to a
-                 [Project_closure]. *)
-              let project_closure : Flambda.project_closure =
-                { set_of_closures = set_of_closures_var;
-                  closure_id = Closure_id.Set.singleton move_to;
-                }
-              in
-              let type =
-                T.closure ~set_of_closures_var
-                  (Closure_id.Map.singleton move_to value_set_of_closures)
-              in
-              [], Reachable (Project_closure project_closure), ret r type
-            | Some _ | None ->
-              match set_of_closures_symbol with
-              | Some set_of_closures_symbol ->
-                let set_of_closures_var = Variable.create "symbol" in
+          match reference_recursive_function_directly env move_to with
+          | Some (flam, ty) -> [], Reachable flam, ret r ty
+          | None ->
+            if Closure_id.equal start_from move_to then
+              (* Moving from one closure to itself is a no-op.  We can return an
+                 [Var] since we already have a variable bound to the closure. *)
+              [], Reachable (Var closure), ret r closure_ty
+            else
+              match set_of_closures_var with
+              | Some set_of_closures_var when E.mem env set_of_closures_var ->
+                (* A variable bound to the set of closures is in scope,
+                  meaning we can rewrite the [Move_within_set_of_closures] to a
+                  [Project_closure]. *)
                 let project_closure : Flambda.project_closure =
                   { set_of_closures = set_of_closures_var;
                     closure_id = Closure_id.Set.singleton move_to;
                   }
                 in
-                let type =
-                  T.closure ~set_of_closures_var ~set_of_closures_symbol
+                let ty =
+                  T.closure ~set_of_closures_var
                     (Closure_id.Map.singleton move_to value_set_of_closures)
                 in
-                let bindings : (Variable.t * Flambda.named) list = [
-                  set_of_closures_var, Symbol set_of_closures_symbol;
-                ]
-                in
-                bindings, Reachable (Project_closure project_closure),
-                  ret r type
-              | None ->
-                (* The set of closures is not available in scope, and we
-                   have no other information by which to simplify the move. *)
-                let move_within : Flambda.move_within_set_of_closures =
-                  { closure; move; }
-                in
-                let type = T.closure type_map in
-                [], Reachable (Move_within_set_of_closures move_within),
-                  ret r type)
+                [], Reachable (Project_closure project_closure), ret r ty
+              | Some _ | None ->
+                match set_of_closures_symbol with
+                | Some set_of_closures_symbol ->
+                  let set_of_closures_var = Variable.create "symbol" in
+                  let project_closure : Flambda.project_closure =
+                    { set_of_closures = set_of_closures_var;
+                      closure_id = Closure_id.Set.singleton move_to;
+                    }
+                  in
+                  let ty =
+                    T.closure ~set_of_closures_var ~set_of_closures_symbol
+                      (Closure_id.Map.singleton move_to value_set_of_closures)
+                  in
+                  let bindings : (Variable.t * Flambda.named) list = [
+                    set_of_closures_var, Symbol set_of_closures_symbol;
+                  ]
+                  in
+                  bindings, Reachable (Project_closure project_closure),
+                    ret r ty
+                | None ->
+                  (* The set of closures is not available in scope, and we
+                    have no other information by which to simplify the move. *)
+                  let move_within : Flambda.move_within_set_of_closures =
+                    { closure; move; }
+                  in
+                  let ty = T.closure ty_map in
+                  [], Reachable (Move_within_set_of_closures move_within),
+                    ret r ty)
 
 (* Transform an expression denoting an access to a variable bound in
    a closure.  Variables in the closure ([project_var.closure]) may
@@ -496,28 +496,28 @@ let simplify_move_within_set_of_closures env r
 *)
 let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
   simplify_free_variable_named env project_var.closure
-    ~f:(fun _env closure type ->
-      match T.reify_as_closure_allowing_unresolved type with
-      | Ok (value_closures, _set_of_closures_var, _set_of_closures_symbol) -> begin
+    ~f:(fun _env closure ty ->
+      match T.reify_as_closure_allowing_unresolved ty with
+      | Ok (value_closures, _set_of_closures_var, _set_of_closures_symbol) ->
         let () =
           match Closure_id.Map.bindings value_closures with
            | _ :: _ :: _ ->
              Format.printf "Closure type is not a singleton in \
                  project@ %a@ %a@."
-               T.print type
+               T.print ty
                Projection.print_project_var project_var
            | [] ->
              Format.printf "Closure type is empty in project@ %a@ %a@."
-               T.print type
+               T.print ty
                Projection.print_project_var project_var
            | _ ->
              ()
         in
         (* Freshening of the projection *)
-        let project_var_var, type =
+        let project_var_var, ty =
           Closure_id.Map.fold
             (fun closure_id_in_type
-              (value_set_of_closures:T.set_of_closures)
+              (value_set_of_closures : T.set_of_closures)
               (project_var_var, set_type) ->
               let freshened_var =
                 Freshening.freshen_project_var project_var.var
@@ -554,9 +554,9 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
         in
         begin match E.find_projection env ~projection with
         | Some var ->
-          simplify_free_variable_named env var ~f:(fun _env var var_type ->
+          simplify_free_variable_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_type)
+            [], Reachable (Var var), ret r var_ty)
         | None ->
           let expr : Flambda.named =
             Project_var { closure; var = project_var_var; }
@@ -572,22 +572,21 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
               else
                 expr
           in
-          simplify_named_using_type_and_env env r expr type
+          simplify_named_using_type_and_env env r expr ty
         end
-      end
       | Unresolved value ->
         (* This value comes from a symbol for which we couldn't find any
           Flambda type, telling us that names within the closure couldn't
           have been renamed.  So we don't need to change the variable or
           closure ID in the [Project_var] expression. *)
         [], Reachable (Project_var { project_var with closure }),
-          ret r (T.unresolved value)
+          ret r (T.unknown Value (Unresolved_value value))
       | Unknown ->
         [], Reachable (Project_var { project_var with closure }),
-          ret r (T.unknown Other)
+          ret r (T.unknown Value Other)
       | Unknown_because_of_unresolved_value value ->
         [], Reachable (Project_var { project_var with closure }),
-          ret r (T.unknown (Unresolved_value value))
+          ret r (T.unknown Value (Unresolved_value value))
       | Wrong ->
         (* We must have the correct Flambda type of the value to ensure
           we take account of all freshenings. *)
@@ -595,7 +594,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
             type: %a@.closure=%a@.type of closure=%a@."
           Flambda.print_project_var project_var
           Variable.print closure
-          Simple_value_type.print type)
+          Simple_value_type.print ty)
 
 (* Transforms closure definitions by applying [loop] on the code of every
    one of the set and on the expressions of the free variables.
@@ -828,7 +827,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
       simplify_free_variables env apply.args ~f:(fun env args _args_types ->
         let continuation, r =
           simplify_apply_cont_to_cont env r apply.continuation
-            ~args_types:[T.unknown Other]
+            ~arity:(Flambda_utils.arity_of_call_kind apply.call_kind)
         in
         let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
         let apply : Flambda.apply = {
@@ -983,13 +982,11 @@ Format.eprintf "Continuation args join:\n@ %a\n%!"
 *)
           wrap result, r
         | Wrong ->  (* Insufficient Flambda type information to simplify. *)
-          let args_types =
+          let arity =
             match call_kind with
-            | Indirect -> [T.unknown Other]
-            | Direct { return_arity; _ }
-                when E.less_precise_types env ->
-              Array.to_list (Array.init return_arity (fun _ ->
-                T.unknown Other))
+            | Indirect _ -> Flambda_utils.arity_of_call_kind call_kind
+            | Direct _ when E.less_precise_types env ->
+              Flambda_utils.arity_of_call_kind call_kind
             | Direct _ ->
               Misc.fatal_errorf "Application of function %a (%a) is marked as \
                   a direct call but the Flambda type of the function was \
@@ -1000,7 +997,7 @@ Format.eprintf "Continuation args join:\n@ %a\n%!"
                 E.print env
           in
           let continuation, r =
-            simplify_apply_cont_to_cont env r continuation ~args_types
+            simplify_apply_cont_to_cont env r continuation ~arity
           in
           let call_kind : Flambda.call_kind =
             if E.less_precise_types env then call_kind
@@ -1023,16 +1020,6 @@ and simplify_partial_application env r ~lhs_of_application
       ~closure_id_being_applied
       ~(function_decl : Flambda.function_declaration) ~args ~continuation ~dbg
       ~inline_requested ~specialise_requested =
-(*
-  let continuation, r =
-    let args_types =
-      Array.to_list (Array.init function_decl.return_arity
-        (fun _index -> T.unknown Other))
-    in
-    simplify_apply_cont_to_cont env r continuation
-      ~args_types
-  in
-*)
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity > List.length args);
   (* For simplicity, we disallow [@inline] attributes on partial
@@ -1108,12 +1095,8 @@ and simplify_over_application env r ~args ~args_types ~continuation
       ~(function_decl : Flambda.function_declaration) ~value_set_of_closures
       ~dbg ~inline_requested ~specialise_requested =
   let continuation, r =
-    let args_types =
-      Array.to_list (Array.init function_decl.return_arity
-        (fun _index -> T.unknown Other))
-    in
     simplify_apply_cont_to_cont env r continuation
-      ~args_types
+      ~arity:function_decl.return_arity
   in
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity < List.length args);
@@ -1187,26 +1170,26 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
 and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       ~args ~args_types : Flambda.t * R.t =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
-  let cont_type = E.find_continuation env cont in
-  let cont = Continuation_approx.name cont_type in
+  let cont_approx = E.find_continuation env cont in
+  let cont = Continuation_approx.name cont_approx in
   let freshen_trap_action env r (trap_action : Flambda.trap_action) =
     match trap_action with
     | Push { id; exn_handler; } ->
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_types:[T.unknown Other]
+          ~arity:[Flambda_kind.Value]
       in
       Flambda.Push { id; exn_handler; }, r
     | Pop { id; exn_handler; } ->
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_apply_cont_to_cont env r exn_handler
-          ~args_types:[T.unknown Other]
+          ~arity:[Flambda_kind.Value]
       in
       Flambda.Pop { id; exn_handler; }, r
   in
-  match Continuation_approx.handlers cont_type with
+  match Continuation_approx.handlers cont_approx with
   | Some (Nonrecursive handler) when handler.stub && trap_action = None ->
     (* Stubs are unconditionally inlined out now for two reasons:
        - [Continuation_inlining] cannot do non-linear inlining;
@@ -1270,7 +1253,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
 (** Simplify an application of a continuation for a context where only a
     continuation is valid (e.g. a switch arm) and there are no opportunities
     for inlining or specialisation. *)
-and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_types =
+and simplify_apply_cont_to_cont ?don't_record_use env r cont ~arity =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_type = E.find_continuation env cont in
   let cont =
@@ -1282,6 +1265,7 @@ and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_types =
   let r =
     match don't_record_use with
     | None ->
+      let args_types = List.map (fun kind -> T.unknown kind Other) in
       R.use_continuation r env cont
         (Not_inlinable_or_specialisable args_types)
     | Some () -> r
@@ -1290,7 +1274,7 @@ and simplify_apply_cont_to_cont ?don't_record_use env r cont ~args_types =
 
 and simplify_primitive env r prim args dbg =
   let dbg = E.add_inlined_debuginfo env ~dbg in
-  simplify_free_variables_named env args ~f:(fun env args args_types ->
+  simplify_free_variables_named env args ~f:(fun env args args_tys ->
     let tree = Flambda.Prim (prim, args, dbg) in
     let projection : Projection.t = Prim (prim, args) in
     begin match E.find_projection env ~projection with
@@ -1298,64 +1282,64 @@ and simplify_primitive env r prim args dbg =
       (* CSE of pure primitives.
          The [Pisint] case in particular is also used when unboxing
          continuation parameters of variant type. *)
-      simplify_free_variable_named env var ~f:(fun _env var var_type ->
+      simplify_free_variable_named env var ~f:(fun _env var var_ty ->
         let r = R.map_benefit r (B.remove_projection projection) in
-        [], Reachable (Var var), ret r var_type)
+        [], Reachable (Var var), ret r var_ty)
     | None ->
       let default () : (Variable.t * Flambda.named) list
             * Flambda.named_reachable * R.t =
-        let named, type, benefit =
+        let named, ty, benefit =
           let module Backend = (val (E.backend env) : Backend_intf.S) in
-          Simplify_primitives.primitive prim (args, args_types) tree dbg
+          Simplify_primitives.primitive prim (args, args_tys) tree dbg
             ~size_int:Backend.size_int ~big_endian:Backend.big_endian
         in
         let r = R.map_benefit r (B.(+) benefit) in
-        let type =
+        let ty =
           match prim with
           | Popaque -> T.unknown Other
-          | _ -> type
+          | _ -> ty
         in
-        [], Reachable (named, value_kind), ret r type
+        [], Reachable (named, value_kind), ret r ty
       in
-      begin match prim, args, args_types with
+      begin match prim, args, args_tys with
       | Pgetglobal _, _, _ ->
         Misc.fatal_error "Pgetglobal is forbidden in Simplify"
-      | Pfield field_index, [arg], [arg_type] ->
+      | Pfield field_index, [arg], [arg_ty] ->
         let projection : Projection.t = Field (field_index, arg) in
         begin match E.find_projection env ~projection with
         | Some var ->
-          simplify_free_variable_named env var ~f:(fun _env var var_type ->
+          simplify_free_variable_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_type)
+            [], Reachable (Var var), ret r var_ty)
         | None ->
-          begin match T.get_field arg_type ~field_index with
+          begin match T.get_field arg_ty ~field_index with
           | Unreachable ->
             [], Unreachable, r
-          | Ok type ->
-            let tree, type =
-              match arg_type.symbol with
+          | Ok ty ->
+            let tree, ty =
+              match arg_ty.symbol with
               (* If the [Pfield] is projecting directly from a symbol, rewrite
                   the expression to [Read_symbol_field]. *)
               | Some (symbol, None) ->
-                let type =
-                  T.augment_with_symbol_field type symbol field_index
+                let ty =
+                  T.augment_with_symbol_field ty symbol field_index
                 in
-                Flambda.Read_symbol_field (symbol, field_index), type
+                Flambda.Read_symbol_field (symbol, field_index), ty
               | None | Some (_, Some _ ) ->
                 (* This [Pfield] is either not projecting from a symbol at
                    all, or it is the projection of a projection from a
                    symbol. *)
-                let type' = E.really_import_type env type in
-                tree, type'
+                let ty' = E.really_import_ty env ty in
+                tree, ty'
             in
-            simplify_named_using_type_and_env env r tree type
+            simplify_named_using_ty_and_env env r tree ty
           end
         end
       | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
       | (Parraysetu kind | Parraysets kind),
           [_block; _field; _value],
-          [block_type; field_type; value_type] ->
-        if T.invalid_to_mutate block_type then begin
+          [block_ty; field_ty; value_ty] ->
+        if T.invalid_to_mutate block_ty then begin
           Location.prerr_warning (Debuginfo.to_location dbg)
             Warnings.Assignment_to_non_mutable_value;
           if !Clflags.treat_invalid_code_as_dead then
@@ -1364,12 +1348,12 @@ and simplify_primitive env r prim args dbg =
             [], Flambda.Reachable (Prim (prim, args, dbg)),
               ret r (T.unknown Other)
         end else begin
-          let size = T.length_of_array block_type in
-          let index = T.reify_as_int field_type in
+          let size = T.length_of_array block_ty in
+          let index = T.reify_as_int field_ty in
           let bounds_check_definitely_fails =
             match size, index with
             | Some size, _ when size <= 0 ->
-              assert (size = 0);  (* see [Simple_value_type] *)
+              assert (size = 0);  (* see [Simple_value_ty] *)
               true
             | Some size, Some index ->
               (* This is ok even in the presence of [Obj.truncate], since that
@@ -1410,9 +1394,9 @@ and simplify_primitive env r prim args dbg =
               ret r T.bottom
           end else begin
             let kind =
-              match T.descr block_type, T.descr value_type with
-              | (Float_array _, _)
-              | (_, Boxed_float _) ->
+              match T.is_float_array block_ty, T.is_boxed_float value_ty with
+              | (true, _)
+              | (_, true) ->
                 begin match kind with
                 | Pfloatarray | Pgenarray -> ()
                 | Paddrarray | Pintarray ->
@@ -1432,12 +1416,11 @@ and simplify_primitive env r prim args dbg =
               | Parraysets _ -> Parraysets kind
               | _ -> assert false
             in
-            [], Reachable (Prim (prim, args, dbg)),
-              ret r (T.unknown Other)
+            [], Reachable (Prim (prim, args, dbg)), ret r (T.unknown Other)
           end
         end
-      | Psetfield _, _block::_, block_type::_ ->
-        if T.invalid_to_mutate block_type then begin
+      | Psetfield _, _block::_, block_ty::_ ->
+        if T.invalid_to_mutate block_ty then begin
           Location.prerr_warning (Debuginfo.to_location dbg)
             Warnings.Assignment_to_non_mutable_value;
           if !Clflags.treat_invalid_code_as_dead then
@@ -1450,8 +1433,8 @@ and simplify_primitive env r prim args dbg =
         end
       | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
         Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
-      | Pisint, [_arg], [arg_type] ->
-        begin match T.reify_as_block_or_immediate arg_type with
+      | Pisint, [_arg], [arg_ty] ->
+        begin match T.reify_as_block_or_immediate arg_ty with
         | Wrong -> default ()
         | Immediate ->
           let r = R.map_benefit r B.remove_prim in
@@ -1465,8 +1448,8 @@ and simplify_primitive env r prim args dbg =
             ret r (T.int 0)
         end
       | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
-      | Pgettag, [_arg], [arg_type] ->
-        begin match T.reify_as_block arg_type with
+      | Pgettag, [_arg], [arg_ty] ->
+        begin match T.reify_as_block arg_ty with
         | Wrong -> default ()
         | Ok (tag, _fields) ->
           let r = R.map_benefit r B.remove_prim in
@@ -1476,8 +1459,8 @@ and simplify_primitive env r prim args dbg =
             ret r (T.int tag)
         end
       | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
-      | Parraylength _, [_arg], [arg_type] ->
-        begin match T.length_of_array arg_type with
+      | Parraylength _, [_arg], [arg_ty] ->
+        begin match T.length_of_array arg_ty with
         | None -> default ()
         | Some length ->
           let r = R.map_benefit r B.remove_prim in
@@ -1522,14 +1505,14 @@ and simplify_named env r (tree : Flambda.named)
     let mut_var =
       Freshening.apply_mutable_variable (E.freshening env) mut_var
     in
-    [], Reachable (Read_mutable mut_var), ret r (T.unknown Other)
+    [], Reachable (Read_mutable mut_var), ret r (T.unknown Value Other)
   | Read_symbol_field (symbol, field_index) ->
     let type = E.find_or_load_symbol env symbol in
     begin match T.get_field type ~field_index with
     (* CR-someday mshinwell: Think about [Unreachable] vs. [Bottom]. *)
     | Unreachable -> [], Unreachable, r
-    | Ok type ->
-      let type = T.augment_with_symbol_field type symbol field_index in
+    | Ok flambda_type ->
+      let flambda_type = T.augment_with_symbol_field type symbol field_index in
       simplify_named_using_type_and_env env r tree type
     end
   | Set_of_closures set_of_closures -> begin
@@ -1635,10 +1618,9 @@ and simplify_named env r (tree : Flambda.named)
       Freshening.apply_mutable_variable (E.freshening env) being_assigned
     in
     simplify_free_variable_named env new_value ~f:(fun _env new_value _type ->
-      [], Reachable (Assign { being_assigned; new_value; }, Value_kind.Value),
-        ret r (T.unknown Other))
-  | Prim (prim, args, dbg) ->
-    simplify_primitive env r prim args dbg
+      [], Reachable (Assign { being_assigned; new_value; }),
+        ret r (T.unknown Value Other))
+  | Prim (prim, args, dbg) -> simplify_primitive env r prim args dbg
 
 (** Simplify a set of [Let]-bindings introduced by a pass such as
     [Unbox_specialised_args] surrounding the term [around] that is in turn
@@ -1708,7 +1690,7 @@ and simplify_newly_introduced_let_bindings env r ~bindings
   bindings, around, r
 
 and for_defining_expr_of_let (env, r) var defining_expr =
-  let new_bindings, defining_expr, value_kind, r =
+  let new_bindings, defining_expr, r =
     simplify_named env r defining_expr
   in
   let defining_expr : Flambda.named_reachable =
@@ -1717,13 +1699,14 @@ and for_defining_expr_of_let (env, r) var defining_expr =
     | Reachable defining_expr ->
       (* Cause subsequent code to be deleted if the evaluation of this
          [Let]'s defining expression doesn't terminate. *)
-      if T.is_bottom (R.type r) then Non_terminating defining_expr
+      if T.is_bottom (R.inferred_type r) then Non_terminating defining_expr
       else Reachable defining_expr
   in
   let var, sb = Freshening.add_variable (E.freshening env) var in
   let env = E.set_freshening env sb in
-  let env = E.add env var (R.type r) in
-  (env, r), new_bindings, var, value_kind, defining_expr
+  let ty = R.inferred_type r in
+  let env = E.add env var ty in
+  (env, r), new_bindings, var, ty, defining_expr
 
 and filter_defining_expr_of_let r var (defining_expr : Flambda.named)
       free_vars_of_body =
@@ -1763,9 +1746,9 @@ and simplify_let_cont_handler ~env ~r ~cont
       List.combine (Parameter.List.vars vars) args_types
     in
     let freshened_params_to_args_types =
-      List.map (fun (param, type) ->
-          Freshening.apply_variable sb param, type)
-        params_to_args_types
+      List.map (fun (param, ty) ->
+          Freshening.apply_variable sb param, ty)
+        params_to_args_tys
     in
     Variable.Map.of_list freshened_params_to_args_types
   in
@@ -1808,12 +1791,12 @@ and simplify_let_cont_handler ~env ~r ~cont
       ~freshening:sb
       ~closure_freshening:None
   in
-  let param_types =
+  let param_tys =
     List.map (fun param ->
         let not_specialised () =
-          match Variable.Map.find param freshened_params_to_args_types with
+          match Variable.Map.find param freshened_params_to_args_tys with
           | exception Not_found -> assert false
-          | arg_type -> arg_type
+          | arg_ty -> arg_ty
         in
         match Variable.Map.find param specialised_args with
         | exception Not_found -> not_specialised ()
@@ -1821,15 +1804,15 @@ and simplify_let_cont_handler ~env ~r ~cont
           match spec_to.var with
           | None -> not_specialised ()
           (* CR mshinwell: Maybe this should do a *meet* (not a join) with
-             the args_types, in the specialised args case *)
+             the args_tys, in the specialised args case *)
           | Some var -> E.find_exn env var)
       freshened_vars
   in
   let vars = freshened_vars in
-  let params_and_types = List.combine vars param_types in
+  let params_and_tys = List.combine vars param_tys in
   let env =
-    List.fold_left (fun env (id, type) -> E.add env id type)
-      (E.set_freshening env sb) params_and_types
+    List.fold_left (fun env (id, ty) -> E.add env id ty)
+      (E.set_freshening env sb) params_and_tys
   in
   let env =
     Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
@@ -1914,17 +1897,9 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
               end
           in
           let r, handler =
-(*
-Format.eprintf "Simplifying handler for %a:@ \n%a\n%!"
-  Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
-*)
             simplify_let_cont_handler ~env ~r:(R.create ()) ~cont:cont' ~handler
               ~args_types
           in
-(*
-Format.eprintf "New handler for %a is:@ \n%a\n%!"
-  Continuation.print cont Flambda.print ((handler : Flambda.continuation_handler).handler);
-*)
           Continuation.Map.add cont' (handler, r) handlers)
         handlers
         Continuation.Map.empty
@@ -1970,7 +1945,6 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
         assert (R.continuation_unused r cont))
       handlers;
     if Continuation.Map.is_empty handlers then begin
-(*Format.eprintf "No handlers left!\n%!";*)
       None, r
     end else
       let r, handlers =
@@ -2088,8 +2062,8 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
   (* CR mshinwell: Is _unfreshened_name redundant? *)
   let body_env =
     let env = E.set_freshening env freshening in
-    Continuation.Map.fold (fun name (_unfreshened_name, type) env ->
-        E.add_continuation env name type)
+    Continuation.Map.fold (fun name (_unfreshened_name, flambda_type) env ->
+        E.add_continuation env name flambda_type)
       conts_and_types
       env
   in

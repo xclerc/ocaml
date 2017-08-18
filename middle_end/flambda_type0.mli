@@ -128,8 +128,6 @@ module rec T : sig
 
   and specialised_args = specialised_to Variable.Map.t
 
-  (* CR-soon mshinwell for pchambart: Add comment describing semantics.  (Maybe
-     we should move the comment from the .ml file into here.) *)
   (** Form the type of a join point in the control flow graph where the values
       on the incoming edges have the given types. *)
   val join : really_import_approx:(t -> t) -> t -> t -> t
@@ -185,6 +183,10 @@ module type Constructors_and_accessors = sig
   (** Each type has a unique kind. *)
   val kind : t -> really_import_approx:(t -> t) -> Flambda_kind.t
 
+  (** Like [kind], but causes a fatal error if the type has not been fully
+      resolved. *)
+  val kind_exn : t -> Flambda_kind.t
+
   (** Construction of types involving equalities to runtime values. *)
   val unknown : Value_kind.t -> unknown_because_of -> t
   val int : int -> t
@@ -200,7 +202,8 @@ module type Constructors_and_accessors = sig
   val boxed_nativeint : Nativeint.t -> t
   val mutable_float_array : size:int -> t
   val immutable_float_array : t array -> t
-  val string : int -> string option -> t
+  val mutable_string : length:int -> t
+  val immutable_string : string -> t
   val block : Tag.Scannable.t -> t array -> t
   val extern : Export_id.t -> t
   val symbol : Symbol.t -> t
@@ -277,3 +280,5 @@ module type Constructors_and_accessors = sig
 end
 
 include S
+
+type t = T.t

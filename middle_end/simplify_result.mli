@@ -22,14 +22,14 @@ module Continuation_uses : sig
   module Use : sig
     module Kind : sig
       type t =
-        | Not_inlinable_or_specialisable of Simple_value_approx.t list
+        | Not_inlinable_or_specialisable of Flambda_type.t list
           (** Do not attempt to inline or specialise the continuation at this
               use point. *)
         | Inlinable_and_specialisable of
-            (Variable.t * Simple_value_approx.t) list
+            (Variable.t * Flambda_type.t) list
           (** The continuation may be inlined or specialised at this
               use point. *)
-        | Only_specialisable of (Variable.t * Simple_value_approx.t) list
+        | Only_specialisable of (Variable.t * Flambda_type.t) list
           (** The continuation may be specialised but not inlined at this use
               point.  (Used for [Apply_cont] which have a [trap_action].) *)
 
@@ -83,16 +83,16 @@ val create : unit -> t
 
 val union : t -> t -> t
 
-(** The approximation of the subexpression that has just been
+(** The inferred Flambda type of the subexpression that has just been
     simplified. *)
-val approx : t -> Simple_value_approx.t
+val inferred_type : t -> Simple_value_approx.t
 
-(** Set the approximation of the subexpression that has just been
+(** Record the inferred Flambda type of the subexpression that has just been
     simplified.  Typically used just before returning from a case of the
     simplification algorithm. *)
-val set_approx : t -> Simple_value_approx.t -> t
+val record_inferred_type : t -> Simple_value_approx.t -> t
 
-(** Set the approximation of the subexpression to the meet of the
+(** Set the Flambda type of the subexpression to the meet of the
     current return approximation and the provided one. Typically
     used just before returning from a branch case of the
     simplification algorithm. *)

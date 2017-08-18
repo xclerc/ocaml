@@ -82,6 +82,12 @@ val useful : t -> bool
 (** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : t list -> bool
 
+(** Whether the given type describes a float array. *)
+val is_float_array : t -> bool
+
+(** Whether the given type describes a boxed float. *)
+val is_boxed_float : t -> bool
+
 (** Whether code that mutates a value with the given type is to be
     treated as invalid.  Cannot be called with an [Extern] or [Symbol]
     type; these need to be resolved first. *)
