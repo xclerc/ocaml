@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -26,7 +26,7 @@ module T = Flambda_types
     - [R.t] "results", bottom-up approximately following the evaluation order,
       almost always called "r".  These results come along with rewritten
       Flambda terms.
-    The environments map variables to approximations, which enable various
+    The environments map variables to Flambda types, which enable various
     simplifications to be performed; for example, some variable may be known
     to always hold a particular constant.
 *)
@@ -40,12 +40,12 @@ type simplify_variable_result =
 let simplify_free_variable_internal env original_var =
   let var = Freshening.apply_variable (E.freshening env) original_var in
   let original_var = var in
-  (* In the case where an approximation is useful, we introduce a [let]
+  (* In the case where an Flambda type is useful, we introduce a [let]
      to bind (e.g.) the constant or symbol replacing [var], unless this
      would introduce a useless [let] as a consequence of [var] already being
      in the current scope.
 
-     Even when the approximation is not useful, this simplification helps.
+     Even when the Flambda type is not useful, this simplification helps.
      In particular, it squashes aliases of the form:
       let var1 = var2 in ... var2 ...
      by replacing [var2] in the body with [var1].  Simplification can then
@@ -59,7 +59,7 @@ let simplify_free_variable_internal env original_var =
   in
   (* CR-soon mshinwell: Should we update [r] when we *add* code?
      Aside from that, it looks like maybe we don't need [r] in this function,
-     because the approximation within it wouldn't be used by any of the
+     because the Flambda type within it wouldn't be used by any of the
      call sites. *)
   match E.find_with_scope_exn env var with
   | Current, approx -> No_binding var, approx  (* avoid useless [let] *)
@@ -68,17 +68,6 @@ let simplify_free_variable_internal env original_var =
     match T.simplify_var approx with
     | None -> No_binding var, approx
     | Some (named, approx) -> Binding (original_var, W.of_named named), approx
-
-(*
-let _simplify_free_variable env var ~f =
-  match simplify_free_variable_internal env var with
-  | No_binding var, approx -> f env var approx
-  | Binding (var, named), approx ->
-    let var = Variable.rename var in
-    let env = E.add env var approx in
-    let body, r = f env var approx in
-    Flambda.create_let var named body, r
-*)
 
 let simplify_free_variable env var ~f : Flambda.t * R.t =
   match simplify_free_variable_internal env var with
@@ -205,7 +194,7 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
     ~f:(fun _env set_of_closures set_of_closures_approx ->
       match T.reify_as_set_of_closures set_of_closures_approx with
       | Wrong ->
-        Misc.fatal_errorf "Wrong approximation when projecting closure: %a"
+        Misc.fatal_errorf "Wrong Flambda type when projecting closure: %a"
           Flambda.print_project_closure project_closure
       | Unresolved value ->
         (* A set of closures coming from another compilation unit, whose .cmx is
@@ -235,12 +224,12 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
         let () =
           match Closure_id.Set.elements closure_id with
           | _ :: _ :: _ ->
-            Format.printf "Set of closures approximation is not a singleton \
+            Format.printf "Set of closures type is not a singleton \
                 in project closure@ %a@ %a@."
               T.print set_of_closures_approx
               Projection.print_project_closure project_closure
           | [] ->
-            Format.printf "Set of closures approximation is empty in project \
+            Format.printf "Set of closures type is empty in project \
                 closure@ %a@ %a@."
               T.print set_of_closures_approx
               Projection.print_project_closure project_closure
@@ -304,8 +293,8 @@ let simplify_move_within_set_of_closures env r
     ~f:(fun _env closure closure_approx ->
     match T.reify_as_closure_allowing_unresolved closure_approx with
     | Wrong ->
-      Misc.fatal_errorf "Wrong approximation when moving within set of \
-          closures.  Approximation: %a  Term: %a"
+      Misc.fatal_errorf "Wrong Flambda type when moving within set of \
+          closures.  Flambda type: %a  Term: %a"
         T.print closure_approx
         Flambda.print_move_within_set_of_closures move_within_set_of_closures
     | Unresolved sym ->
@@ -332,13 +321,13 @@ let simplify_move_within_set_of_closures env r
       let () =
         match Closure_id.Map.bindings value_closures with
         | _ :: _ :: _ ->
-          Format.printf "Closure approximation is not a singleton in \
+          Format.printf "Closure type is not a singleton in \
               move@ %a@ %a@."
             T.print closure_approx
             Projection.print_move_within_set_of_closures
             move_within_set_of_closures
         | [] ->
-          Format.printf "Closure approximation is empty in move@ %a@ %a@."
+          Format.printf "Closure type is empty in move@ %a@ %a@."
             T.print closure_approx
             Projection.print_move_within_set_of_closures
             move_within_set_of_closures
@@ -364,7 +353,7 @@ let simplify_move_within_set_of_closures env r
               try Closure_id.Map.find start_from freshened_move with
               | Not_found ->
                 Misc.fatal_errorf "Move %a freshened to %a does not contain \
-                                   projection for %a@. Approximation is:@ %a@.\
+                                   projection for %a@.  Type is:@ %a@.\
                                    Environment:@ %a@."
                   Projection.print_move_within_set_of_closures
                     move_within_set_of_closures
@@ -462,8 +451,8 @@ let simplify_move_within_set_of_closures env r
    a closure.  Variables in the closure ([project_var.closure]) may
    have been freshened since [expr] was constructed; as such, we
    must ensure the same happens to [expr].  The renaming information is
-   contained within the approximation deduced from [closure] (as
-   such, that approximation *must* identify which closure it is).
+   contained within the Flambda type deduced from [closure] (as
+   such, that type *must* identify which closure it is).
 
    For instance in some imaginary syntax for flambda:
 
@@ -513,11 +502,12 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
         let () =
           match Closure_id.Map.bindings value_closures with
            | _ :: _ :: _ ->
-             Format.printf "Closure approximation is not a singleton in project@ %a@ %a@."
+             Format.printf "Closure type is not a singleton in \
+                 project@ %a@ %a@."
                T.print approx
                Projection.print_project_var project_var
            | [] ->
-             Format.printf "Closure approximation is empty in project@ %a@ %a@."
+             Format.printf "Closure type is empty in project@ %a@ %a@."
                T.print approx
                Projection.print_project_var project_var
            | _ ->
@@ -538,10 +528,10 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
                 try Closure_id.Map.find closure_id_in_approx freshened_var with
                 | Not_found ->
                   Misc.fatal_errorf "When simplifying [Project_var], the \
-                    closure ID %a in the approximation of the set of closures \
+                    closure ID %a in the type of the set of closures \
                     did not match any closure ID in the [Project_var] term %a \
                     freshened to %a. \
-                    Approximation: %a@."
+                    Type: %a@."
                     Closure_id.print closure_id_in_approx
                     Projection.print_project_var project_var
                     (Closure_id.Map.print Var_within_closure.print) freshened_var
@@ -587,7 +577,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
       end
       | Unresolved value ->
         (* This value comes from a symbol for which we couldn't find any
-          approximation, telling us that names within the closure couldn't
+          Flambda type, telling us that names within the closure couldn't
           have been renamed.  So we don't need to change the variable or
           closure ID in the [Project_var] expression. *)
         [], Reachable (Project_var { project_var with closure }),
@@ -599,10 +589,10 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
         [], Reachable (Project_var { project_var with closure }),
           ret r (T.unknown (Unresolved_value value))
       | Wrong ->
-        (* We must have the correct approximation of the value to ensure
+        (* We must have the correct Flambda type of the value to ensure
           we take account of all freshenings. *)
         Misc.fatal_errorf "[Project_var] from a value with wrong \
-            approximation: %a@.closure=%a@.approx of closure=%a@."
+            type: %a@.closure=%a@.approx of closure=%a@."
           Flambda.print_project_var project_var
           Variable.print closure
           Simple_value_approx.print approx)
@@ -621,14 +611,14 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
    [simplify_using_approx_and_env].
 
    The rewriting occurs in an environment filled with:
-   * The approximation of the free variables
-   * An explicitely unknown approximation for function parameters,
+   * The Flambda type of the free variables
+   * An explicitly-unknown Flambda type for function parameters,
      except for those where it is known to be safe: those present in the
      [specialised_args] set.
-   * An approximation for the closures in the set. It contains the code of
+   * An Flambda type for the closures in the set. It contains the code of
      the functions before rewriting.
 
-   The approximation of the currently defined closures is available to
+   The Flambda type of the currently defined closures is available to
    allow marking recursives calls as direct and in some cases, allow
    inlining of one closure from the set inside another one. For this to
    be correct an alpha renaming is first applied on the expressions by
@@ -648,7 +638,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
      x_1 -> x_2;
      z_1 -> z_2 }
 
-   And the approximation for the closure will contain
+   And the Flambda type for the closure will contain
 
    { f_2:
        fun x_2 ->
@@ -683,7 +673,7 @@ and simplify_set_of_closures original_env r
       ~make_closure_symbol:Backend.closure_symbol
   in
   let env = E.increase_closure_depth original_env in
-  let free_vars, specialised_args, function_decls, parameter_approximations,
+  let free_vars, specialised_args, function_decls, parameter_flambda_types,
       internal_value_set_of_closures, set_of_closures_env =
     Simplify_aux.prepare_to_simplify_set_of_closures ~env
       ~set_of_closures ~function_decls ~only_for_function_decl:None
@@ -695,7 +685,7 @@ and simplify_set_of_closures original_env r
         : Flambda.function_declaration Variable.Map.t * Variable.Set.t * R.t =
     let closure_env =
       Simplify_aux.prepare_to_simplify_closure ~function_decl
-        ~free_vars ~specialised_args ~parameter_approximations
+        ~free_vars ~specialised_args ~parameter_flambda_types
         ~set_of_closures_env
     in
     let continuation_param, closure_env =
@@ -711,11 +701,6 @@ and simplify_set_of_closures original_env r
         E.add_continuation (E.set_freshening closure_env freshening)
           continuation_param cont_approx
       in
-(*
-Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
-  Continuation.print function_decl.continuation_param
-  Continuation.print continuation_param;
-*)
       continuation_param, closure_env
     in
     let body, r =
@@ -877,7 +862,7 @@ Format.eprintf "...freshened cont is %a\n%!"
   simplify_free_variable env lhs_of_application
     ~f:(fun env lhs_of_application lhs_of_application_approx ->
       simplify_free_variables env args ~f:(fun env args args_approxs ->
-        (* By using the approximation of the left-hand side of the
+        (* By using the Flambda_type of the left-hand side of the
            application, attempt to determine which function is being applied
            (even if the application is currently [Indirect]).  If
            successful---in which case we then have a direct
@@ -932,7 +917,7 @@ Format.eprintf "...freshened cont is %a\n%!"
             with
             | Not_found ->
               Misc.fatal_errorf "When handling application expression, \
-                  approximation references non-existent closure %a@."
+                  Flambda_type references non-existent closure %a@."
                 Closure_id.print closure_id_being_applied
           in
           let arity_of_application =
@@ -997,17 +982,17 @@ Format.eprintf "Continuation args join:\n@ %a\n%!"
     (Format.pp_print_list T.print)) joins;
 *)
           wrap result, r
-        | Wrong ->  (* Insufficient approximation information to simplify. *)
+        | Wrong ->  (* Insufficient Flambda type information to simplify. *)
           let args_approxs =
             match call_kind with
             | Indirect -> [T.unknown Other]
             | Direct { return_arity; _ }
-                when E.less_precise_approximations env ->
+                when E.less_precise_flambda_types env ->
               Array.to_list (Array.init return_arity (fun _ ->
                 T.unknown Other))
             | Direct _ ->
               Misc.fatal_errorf "Application of function %a (%a) is marked as \
-                  a direct call but the approximation of the function was \
+                  a direct call but the Flambda type of the function was \
                   wrong: %a@ \nEnvironment:@ %a\n%!"
                 Variable.print lhs_of_application
                 Variable.print_list args
@@ -1018,7 +1003,7 @@ Format.eprintf "Continuation args join:\n@ %a\n%!"
             simplify_apply_cont_to_cont env r continuation ~args_approxs
           in
           let call_kind : Flambda.call_kind =
-            if E.less_precise_approximations env then call_kind
+            if E.less_precise_flambda_types env then call_kind
             else Indirect
           in
           Apply ({ kind; func = lhs_of_application; args; call_kind;
@@ -1201,12 +1186,7 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
       ~args ~args_approxs : Flambda.t * R.t =
-(*let orig_cont = cont in*)
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
-(*
-Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
-  Continuation.print orig_cont;
-*)
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
   let freshen_trap_action env r (trap_action : Flambda.trap_action) =
@@ -1248,7 +1228,6 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
         (E.set_freshening env freshening)
         params_and_approxs
     in
-(*Format.eprintf "Inlining stub: %a\n%!" Continuation.print cont;*)
     let stub's_body : Flambda.expr =
       match trap_action with
       | None -> handler.handler
@@ -1270,11 +1249,6 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
     in
     simplify env r stub's_body
   | Some _ | None ->
-(*
-Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
-  Continuation.print cont
-  (Format.pp_print_list T.print) args_approxs;
-*)
     let r =
       let kind : Simplify_aux.Continuation_uses.Use.Kind.t =
         let args_and_approxs = List.combine args args_approxs in
@@ -1322,8 +1296,8 @@ and simplify_primitive env r prim args dbg =
     begin match E.find_projection env ~projection with
     | Some var ->
       (* CSE of pure primitives.
-          The [Pisint] case in particular is also used when unboxing
-          continuation parameters of variant type. *)
+         The [Pisint] case in particular is also used when unboxing
+         continuation parameters of variant type. *)
       simplify_free_variable_named env var ~f:(fun _env var var_approx ->
         let r = R.map_benefit r (B.remove_projection projection) in
         [], Reachable (Var var), ret r var_approx)
@@ -1356,10 +1330,6 @@ and simplify_primitive env r prim args dbg =
         | None ->
           begin match T.get_field arg_approx ~field_index with
           | Unreachable ->
-(*
-Format.eprintf "get_field %d from %a returns Unreachable (approx %a)\n%!"
-field_index Variable.print arg T.print arg_approx;
-*)
             [], Unreachable, r
           | Ok approx ->
             let tree, approx =
@@ -1373,8 +1343,8 @@ field_index Variable.print arg T.print arg_approx;
                 Flambda.Read_symbol_field (symbol, field_index), approx
               | None | Some (_, Some _ ) ->
                 (* This [Pfield] is either not projecting from a symbol at
-                    all, or it is the projection of a projection from a
-                    symbol. *)
+                   all, or it is the projection of a projection from a
+                   symbol. *)
                 let approx' = E.really_import_approx env approx in
                 tree, approx'
             in
@@ -1403,7 +1373,7 @@ field_index Variable.print arg T.print arg_approx;
               true
             | Some size, Some index ->
               (* This is ok even in the presence of [Obj.truncate], since that
-                  can only make blocks smaller. *)
+                 can only make blocks smaller. *)
               index >= 0 && index < size
             | _, _ -> false
           in
@@ -1533,7 +1503,7 @@ and simplify_named env r (tree : Flambda.named)
   match tree with
   | Var var ->
     let var = Freshening.apply_variable (E.freshening env) var in
-    (* If from the approximations we can simplify [var], then we will be
+    (* If from the Flambda types we can simplify [var], then we will be
        forced to insert [let]-expressions to bind a [named].  This has an
        important consequence: it brings bindings of constants closer to their
        use points. *)
@@ -1580,7 +1550,7 @@ and simplify_named env r (tree : Flambda.named)
       (* CR-someday mshinwell: It was mooted that maybe we could try
          structurally-typed closures (i.e. where we would never rename the
          closure elements), or something else, to try to remove
-         the "closure freshening" thing in the approximation which is hard
+         the "closure freshening" thing in the Flambda type which is hard
          to deal with. *)
       let r = R.roll_back_continuation_uses r cont_usage_snapshot in
       let bindings, set_of_closures, r =
@@ -1592,7 +1562,7 @@ and simplify_named env r (tree : Flambda.named)
       let value_set_of_closures =
         match T.strict_check_approx_for_set_of_closures approx with
         | Wrong ->
-          Misc.fatal_errorf "Unexpected approximation returned from \
+          Misc.fatal_errorf "Unexpected Flambda type returned from \
               simplification of [%s] result: %a"
             pass_name T.print approx
         | Ok (_var, value_set_of_closures) ->
@@ -1660,7 +1630,7 @@ and simplify_named env r (tree : Flambda.named)
     simplify_move_within_set_of_closures env r ~move_within_set_of_closures
   | Assign { being_assigned; new_value; } ->
     (* No need to use something like [simplify_free_variable]: the
-       approximation of [being_assigned] is always unknown. *)
+       Flambda type of [being_assigned] is always unknown. *)
     let being_assigned =
       Freshening.apply_mutable_variable (E.freshening env) being_assigned
     in
@@ -1763,7 +1733,7 @@ and filter_defining_expr_of_let r var (defining_expr : Flambda.named)
     match defining_expr with
     | Set_of_closures _ ->
       (* Don't delete closure definitions: there might be a reference to them
-         (propagated through approximations) that is not in scope. *)
+         (propagated through Flambda types) that is not in scope. *)
       r, var, Some defining_expr
     | _ ->
       let r = R.map_benefit r (B.remove_code_named defining_expr) in
@@ -1773,11 +1743,6 @@ and filter_defining_expr_of_let r var (defining_expr : Flambda.named)
 
 and simplify_let_cont_handler ~env ~r ~cont
       ~(handler : Flambda.continuation_handler) ~args_approxs =
-(*
-Format.eprintf "Handler of %a has args_approxs (%a)\n%!"
-  Continuation.print cont
-  (Format.pp_print_list T.print) args_approxs;
-*)
   let { Flambda. params = vars; stub; is_exn_handler; handler;
     specialised_args; } = handler
   in
@@ -1786,12 +1751,6 @@ Format.eprintf "Handler of %a has args_approxs (%a)\n%!"
     Freshening.add_variables' (E.freshening env)
       (Parameter.List.vars vars)
   in
-(*
-Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%!"
-  Continuation.print cont
-  Variable.print_list vars
-  Variable.print_list freshened_vars;
-*)
   if List.length vars <> List.length args_approxs then begin
     Misc.fatal_errorf "simplify_let_cont_handler (%a): params are %a but \
         args_approxs has length %d"
@@ -2073,10 +2032,9 @@ Format.eprintf "New handler for %a is:@ \n%a\n%!"
 
 and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
   (* In two stages we form the environment to be used for simplifying the
-      [body].  If the continuations in [handlers] are recursive then
-      that environment will also be used for simplifying the continuations
-      themselves (otherwise the environment of the [Let_cont] is used). *)
-(*Format.eprintf "Simplifying Let_cont:@ \n%a\n%!" Flambda.print tree;*)
+     [body].  If the continuations in [handlers] are recursive then
+     that environment will also be used for simplifying the continuations
+     themselves (otherwise the environment of the [Let_cont] is used). *)
   let conts_and_approxs, freshening =
     let normal_case ~handlers =
       Continuation.Map.fold (fun name
@@ -2088,20 +2046,20 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
           let num_params = List.length handler.params in
           let approx =
             (* If it's a stub, we put the code for [handler] in the
-                environment; this is unfreshened, but will be freshened up
-                if we inline it.
-                Note that stubs are not allowed to call themselves.
-                The code for [handler] is also put in the environment if
-                the continuation is just an [Apply_cont] acting as a
-                continuation alias or just contains [Proved_unreachable].  This
-                enables earlier [Switch]es that branch to such continuation
-                to be simplified, in some cases removing them entirely. *)
+               environment; this is unfreshened, but will be freshened up
+               if we inline it.
+               Note that stubs are not allowed to call themselves.
+               The code for [handler] is also put in the environment if
+               the continuation is just an [Apply_cont] acting as a
+               continuation alias or just contains [Proved_unreachable].  This
+               enables earlier [Switch]es that branch to such continuation
+               to be simplified, in some cases removing them entirely. *)
             let alias_or_unreachable =
               match handler.handler with
               | Proved_unreachable -> true
               (* CR mshinwell: share somehow with [Continuation_approx].
-                  Also, think about this in the multi-argument case -- need
-                  to freshen. *)
+                 Also, think about this in the multi-argument case -- need
+                 to freshen. *)
               | Apply_cont (_cont, None, []) -> true
               | _ -> false
             in
@@ -2135,16 +2093,14 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
       conts_and_approxs
       env
   in
-(*Format.eprintf "Simplifying body:\n%a" Flambda.print body;*)
   let body, r = simplify body_env r body in
-(*Format.eprintf "Simplifying body finished.\n";*)
   begin match handlers with
   | Nonrecursive { name; handler; } ->
     let with_wrapper : Flambda_utils.with_wrapper =
       (* CR mshinwell: Tidy all this up somehow. *)
       (* Unboxing of continuation parameters is done now so that in one pass
-          of [Simplify] such unboxing will go all the way down the
-          control flow. *)
+         of [Simplify] such unboxing will go all the way down the
+         control flow. *)
       if handler.stub || E.never_unbox_continuations env
       then Unchanged { handler; }
       else
@@ -2158,10 +2114,10 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
     let simplify_one_handler env r ~name ~handler ~body
             : Flambda.expr * R.t =
       (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
-          non-recursive ones before simplifying their body.  I'm not sure we
-          need to, since we already ensure such continuations aren't in the
-          environment when simplifying the [handlers].
-          ...except for stubs... *)
+         non-recursive ones before simplifying their body.  I'm not sure we
+         need to, since we already ensure such continuations aren't in the
+         environment when simplifying the [handlers].
+         ...except for stubs... *)
       let handlers =
         Continuation.Map.add name handler Continuation.Map.empty
       in
@@ -2192,35 +2148,30 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
           ~if_present_in_env:name ~then_add_to_env:(new_cont, approx)
       in
       body, r
-(*
-Format.eprintf "With wrappers applied:\n@ %a\n%!"
-Flambda.print body;
-body, r
-*)
     end
   | Recursive handlers ->
     (* The sequence is:
-        1. Simplify the recursive handlers assuming that all of their
-          parameters have [Value_unknown] approximation.  This may result in
-          simplifying terms with less precise approximations than when
+       1. Simplify the recursive handlers assuming that all of their
+          parameters have [Value_unknown] Flambda type.  This may result in
+          simplifying terms with less precise Flambda types than when
           they were previously simplified (e.g. there might have been a
-          direct call to a closure whose approximation is now unknown).
+          direct call to a closure whose Flambda type is now unknown).
           We mark the environment to avoid causing errors as a result of
           this.
-        2. If all of the handlers are unused, there's nothing more to do.
-        3. Extract the (hopefully more precise) approximations for the
+       2. If all of the handlers are unused, there's nothing more to do.
+       3. Extract the (hopefully more precise) Flambda types for the
           handlers' parameters from [r].  These will be at least as precise
-          as the approximations deduced in any previous round of
+          as the Flambda types deduced in any previous round of
           simplification.
-        4. The code from the simplification is discarded.
-        5. The continuation(s) is/are unboxed as required.
-        6. The continuation(s) are simplified once again using the
-          approximations deduced in step 2.
+       4. The code from the simplification is discarded.
+       5. The continuation(s) is/are unboxed as required.
+       6. The continuation(s) are simplified once again using the
+          Flambda types deduced in step 2.
     *)
     let original_r = r in
     let original_handlers = handlers in
     let handlers, r =
-      let env = E.allow_less_precise_approximations body_env in
+      let env = E.allow_less_precise_flambda_types body_env in
       simplify_let_cont_handlers ~env ~r ~handlers
         ~args_approxs:None ~recursive:Asttypes.Recursive ~freshening
     in
@@ -2235,15 +2186,11 @@ body, r
               Freshening.apply_static_exception (E.freshening body_env) cont
             in
             (* N.B. If [cont]'s handler was deleted, the following function
-                will produce [Value_bottom] for the arguments, rather than
-                failing. *)
+               will produce [Value_bottom] for the arguments, rather than
+               failing. *)
             R.defined_continuation_args_approxs r cont ~num_params)
           original_handlers
       in
-(*
-Format.eprintf "args_approxs override:@ %a\n%!"
-(Continuation.Map.print (Format.pp_print_list T.print)) args_approxs;
-*)
       let handlers = original_handlers in
       let r = original_r in
       let handlers, env, update_use_env =
@@ -2296,21 +2243,13 @@ Format.eprintf "args_approxs override:@ %a\n%!"
       | Some handlers -> Let_cont { body; handlers; }, r
       end
     end
-(*
-Format.eprintf "After Unbox_continuation_params, Recursive, handlers are:\n%a%!"
-Flambda.print_let_cont_handlers (Flambda.Recursive handlers);
-*)
   end
 
 let simplify_switch env r arg sw : Flambda.t * R.t =
   simplify_free_variable env arg ~f:(fun env arg arg_approx ->
-(*
-Format.eprintf "Switch on %a: approx of scrutinee is %a\n%!"
-Variable.print arg T.print arg_approx;
-*)
     let destination_is_unreachable cont =
       (* CR mshinwell: This unreachable thing should be tidied up and also
-          done on [Apply_cont]. *)
+         done on [Apply_cont]. *)
       let cont = Freshening.apply_static_exception (E.freshening env) cont in
       let cont_approx = E.find_continuation env cont in
       match Continuation_approx.handlers cont_approx with
@@ -2329,61 +2268,35 @@ Variable.print arg T.print arg_approx;
         else
           match filter arg_approx c with
           | T.Cannot_be_taken ->
-(*
-Format.eprintf "Switch arm %a cannot_be_taken\n%!" Continuation.print cont;
-*)
             filter_branches filter branches compatible_branches
           | T.Can_be_taken ->
-(*
-Format.eprintf "Switch arm %a can_be_taken\n%!" Continuation.print cont;
-*)
             filter_branches filter branches (branch :: compatible_branches)
           | T.Must_be_taken ->
-(*
-Format.eprintf "Switch arm %a must_be_taken\n%!" Continuation.print cont;
-*)
             Must_be_taken cont
     in
-    (* Use approximation information to determine which branches definitely
-        will be taken, or may be taken.  (Note that the "Union" case in
-        [Simple_value_approx] helps here.) *)
-    let filtered_consts =
-      filter_branches T.potentially_taken_const_switch_branch sw.consts []
-    in
-    begin match filtered_consts with
+    (* Use type information to determine which branches definitely
+       will be taken, or may be taken. *)
+    begin match filter_branches T.classify_switch_branch sw.consts [] with
     | Must_be_taken cont ->
-(*
-      let cont_approx =
-        E.find_continuation env
-          (Freshening.apply_static_exception (E.freshening env) cont)
-      in
-Format.eprintf "Switch branch must be taken: %a approx %a\n%!"
-Continuation.print cont
-Continuation_approx.print cont_approx;
-*)
       let expr, r =
         simplify_apply_cont env r cont ~trap_action:None
           ~args:[] ~args_approxs:[]
       in
-(*
-Format.eprintf "%a branch simplifies to: %a\n%!"
-Continuation.print cont Flambda.print expr;
-*)
       expr, R.map_benefit r B.remove_branch
     | Can_be_taken consts ->
       match consts, sw.failaction with
       | [], None ->
         (* If the switch is applied to a statically-known value that does not
-          match any case:
-          * if there is a default action take that case;
-          * otherwise this is something that is guaranteed not to
-            be reachable by the type checker.  For example:
-            [type 'a t = Int : int -> int t | Boxed_float : float -> float t
-              match Int 1 with
-              | Int _ -> ...
-              | Boxed_float f as v ->
-                match v with   <-- This match is unreachable
-                | Boxed_float f -> ...]
+           match any case:
+           * if there is a default action take that case;
+           * otherwise this is something that is guaranteed not to
+             be reachable by the type checker.  For example:
+             [type 'a t = Int : int -> int t | Boxed_float : float -> float t
+               match Int 1 with
+               | Int _ -> ...
+               | Boxed_float f as v ->
+                 match v with   <-- This match is unreachable
+                 | Boxed_float f -> ...]
         *)
         Proved_unreachable, r
       | [_, cont], None ->
@@ -2492,16 +2405,10 @@ and simplify_toplevel env r expr ~continuation ~descr =
   let continuation_uses_snapshot, r =
     R.snapshot_and_forget_continuation_uses r
   in
-(*
-Format.eprintf "Simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
-*)
   let expr, r = simplify env r expr in
   Flambda_invariants.check_toplevel_simplification_result r expr
     ~continuation ~descr;
   let expr, r =
-(*
-Format.eprintf "After simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
-*)
     let expr, r =
       if E.never_inline_continuations env then begin
         expr, r
@@ -2515,9 +2422,6 @@ Format.eprintf "After simplifying at toplevel:@ \n%a\n%!" Flambda.print expr;
         let expr, r =
           Continuation_inlining.for_toplevel_expression expr r
         in
-(*
-Format.eprintf "After continuation inlining:@ \n%a\n%!" Flambda.print expr;
-*)
         Flambda_invariants.check_toplevel_simplification_result r expr
           ~continuation ~descr;
         expr, r
@@ -2540,11 +2444,11 @@ Format.eprintf "After continuation inlining:@ \n%a\n%!" Flambda.print expr;
     end
   in
   (* Continuation specialisation could theoretically improve the precision
-     of the approximation for [continuation].  However tracking changes to 
+     of the Flambda type for [continuation].  However tracking changes to 
      continuation usage during specialisation is complicated and error-prone,
-     so instead, we accept an approximation for [continuation] that may be
+     so instead, we accept an Flambda type for [continuation] that may be
      slightly less precise.  Any subsequent round of simplification will
-     calculate the improved approximation anyway. *)
+     calculate the improved Flambda type anyway. *)
   (* CR mshinwell: try to fix the above *)
   let r, uses = R.exit_scope_catch r env continuation in
   let r = R.roll_back_continuation_uses r continuation_uses_snapshot in
@@ -2597,7 +2501,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
     | function_decl -> function_decl
   in
   let env = E.activate_freshening (E.set_never_inline env) in
-  let free_vars, specialised_args, function_decls, parameter_approximations,
+  let free_vars, specialised_args, function_decls, parameter_flambda_types,
       _internal_value_set_of_closures, set_of_closures_env =
     Simplify_aux.prepare_to_simplify_set_of_closures ~env
       ~set_of_closures ~function_decls:set_of_closures.function_decls
@@ -2612,7 +2516,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
   in
   let closure_env =
     Simplify_aux.prepare_to_simplify_closure ~function_decl
-      ~free_vars ~specialised_args ~parameter_approximations
+      ~free_vars ~specialised_args ~parameter_flambda_types
       ~set_of_closures_env
   in
   let cont_approx =
@@ -2670,7 +2574,7 @@ let constant_defining_value_approx
   | Set_of_closures { function_decls; free_vars; specialised_args } ->
     (* At toplevel, there is no freshening currently happening (this
        cannot be the body of a currently inlined function), so we can
-       keep the original set_of_closures in the approximation. *)
+       keep the original set_of_closures in the Flambda type. *)
     assert(E.freshening env = Freshening.empty);
     assert(Variable.Map.is_empty free_vars);
     assert(Variable.Map.is_empty specialised_args);
@@ -2787,7 +2691,7 @@ let simplify_constant_defining_value
         | Unresolved sym -> T.unresolved_symbol sym
         | Unknown -> T.unknown Other
         | Wrong ->
-          Misc.fatal_errorf "Wrong approximation for [Project_closure] \
+          Misc.fatal_errorf "Wrong Flambda type for [Project_closure] \
                              when being used as a [constant_defining_value]: %a"
             Flambda.print_constant_defining_value constant_defining_value
       in
@@ -2832,10 +2736,6 @@ let rec simplify_program_body env r (program : Flambda.program_body)
           Continuation_approx.create_unknown ~name:cont ~num_params:1
         in
         let env = E.add_continuation env cont cont_approx in
-(*
-Format.eprintf "Simplifying initialize_symbol field:@;%a"
-  Flambda.print h;
-*)
         let h', r, uses =
           let descr =
             Format.asprintf "Initialize_symbol %a" Symbol.print symbol
@@ -2860,11 +2760,6 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
     let approx =
       T.augment_with_symbol (T.block tag (Array.of_list approxs)) symbol
     in
-(*
-Format.eprintf "Symbol %a has approximation %a\n%!"
-  Symbol.print symbol
-  T.print (T.block tag (Array.of_list approxs));
-*)
     let module Backend = (val (E.backend env) : Backend_intf.S) in
     let env = E.add_symbol env symbol approx in
     let program, r = simplify_program_body env r program in

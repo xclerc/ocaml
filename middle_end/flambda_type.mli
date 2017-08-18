@@ -26,11 +26,11 @@ type t = Flambda_types0.T.t
 (** Means of making and examining types. *)
 include Flambda_types0.Constructors_and_accessors
 
-(** The type of a symbol that cannot be resolved. *)
+(** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
 val unresolved_symbol : Symbol.t -> t
 
 (** Take the given integer and produce an appropriate type for it
-    together with an Flambda term representing it. *)
+    together with an Flambda term (that can be [Let]-bound) representing it. *)
 val make_const_int_named : int -> Flambda.named * t
 
 (** As for [make_const_int_named], but for characters. *)
