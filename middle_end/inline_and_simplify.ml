@@ -214,7 +214,7 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
         [], Reachable (Project_closure {
           set_of_closures;
           closure_id = project_closure.closure_id;
-        }), ret r (T.unresolved value)
+        }), ret r (T.unknown ... value)
       | Unknown ->
         (* CR-soon mshinwell: see CR comment in e.g. simple_value_approx.ml
            [check_approx_for_closure_allowing_unresolved] *)
@@ -2656,7 +2656,7 @@ let constant_defining_value_approx
           | Flambda.Symbol sym -> begin
               match E.find_symbol_opt env sym with
               | Some approx -> approx
-              | None -> T.unresolved (Symbol sym)
+              | None -> T.unknown Value (Unresolved_value (Symbol sym))
             end
           | Flambda.Const cst -> approx_for_const cst)
         fields
@@ -2684,13 +2684,12 @@ let constant_defining_value_approx
     T.set_of_closures value_set_of_closures
   | Project_closure (set_of_closures_symbol, closure_id) -> begin
       match E.find_symbol_opt env set_of_closures_symbol with
-      | None ->
-        T.unresolved (Symbol set_of_closures_symbol)
-      | Some set_of_closures_approx ->
-        let checked_approx =
-          T.reify_as_set_of_closures set_of_closures_approx
+      | None -> T.unresolved_symbol set_of_closures_symbol
+      | Some set_of_closures_type ->
+        let reified_type =
+          T.reify_as_set_of_closures set_of_closures_type
         in
-        match checked_approx with
+        match reified_type with
         | Ok (_, value_set_of_closures) ->
           let closure_id =
             T.freshen_and_check_closure_id value_set_of_closures
@@ -2698,13 +2697,20 @@ let constant_defining_value_approx
           in
           T.closure
             (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
-        | Unresolved sym -> T.unresolved sym
-        | Unknown -> T.unknown Other
-        | Unknown_because_of_unresolved_value value ->
-          T.unknown (Unresolved_value value)
+        | Unresolved sym -> T.unresolved_symbol sym
+        | Unknown kind ->
+          begin match kind with
+          | Value -> ()
+          | _ ->
+            Misc.fatal_errorf "Project_closure %a from %a has wrong kind %a"
+              Closure_id.print closure_id
+              Symbol.print set_of_closures_symbol
+              Flambda_kind.print kind
+          end;
+          T.unknown Value Other
         | Wrong ->
-          Misc.fatal_errorf "Wrong approximation for [Project_closure] \
-                             when being used as a [constant_defining_value]: %a"
+          Misc.fatal_errorf "Wrong type for [Project_closure] when being used \
+              as a [constant_defining_value]: %a"
             Flambda.print_constant_defining_value constant_defining_value
     end
 
@@ -2773,10 +2779,8 @@ let simplify_constant_defining_value
           in
           T.closure
             (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
-        | Unresolved sym -> T.unresolved sym
+        | Unresolved sym -> T.unresolved_symbol sym
         | Unknown -> T.unknown Other
-        | Unknown_because_of_unresolved_value value ->
-          T.unknown (Unresolved_value value)
         | Wrong ->
           Misc.fatal_errorf "Wrong approximation for [Project_closure] \
                              when being used as a [constant_defining_value]: %a"

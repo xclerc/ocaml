@@ -68,6 +68,12 @@ let replace_description = T0.replace_description
 let augment_with_kind = T0.augment_with_kind
 let augment_kind_with_type = T0.augment_kind_with_type
 
+let unresolved_symbol sym =
+  (* CR mshinwell: check with Pierre about this comment *)
+  (* We don't know anything, but we must remember that it comes
+     from another compilation unit in case it contains a closure. *)
+  unknown Value (Unresolved_value (Symbol sym))
+
 let make_const_int_named n : Flambda.named * t =
   Const (Int n), value_int n
 
@@ -108,23 +114,22 @@ let is_bottom t =
   match t.descr with
   | Bottom -> true
   | Unresolved _ | Unknown _ | String _ | Float_array _ | Union _
-  | Set_of_closures _ | Closure _ | Extern _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Symbol _ -> false
+  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ -> false
 
 let known t =
   match t.descr with
   | Unresolved _ | Unknown _ -> false
   | String _ | Float_array _ | Bottom | Union _ | Set_of_closures _ | Closure _
-  | Extern _ | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint _
-  | Symbol _ -> true
+  | Load_lazily _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
+  | Nativeint _ -> true
 
 let useful t =
   match t.descr with
   | Unresolved _ | Unknown _ | Bottom -> false
   | Union union -> Unionable.useful union
   | String _ | Float_array _ | Set_of_closures _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Closure _ | Extern _
-  | Symbol _ -> true
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Closure _ | Load_lazily _ -> true
 
 let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 
@@ -135,7 +140,7 @@ let invalid_to_mutate t =
   | Float _ | Int32 _ | Int64 _ | Nativeint _ | Closure _ -> true
   | String { contents = None } | Float_array _ | Unresolved _ | Unknown _
   | Bottom -> false
-  | Extern _ | Symbol _ -> assert false
+  | Load_lazily _ -> assert false
 
 let type_for_bound_var value_set_of_closures var =
   try Var_within_closure.Map.find var value_set_of_closures.bound_vars
@@ -187,36 +192,15 @@ let physically_same_values (types : t list) =
     | _ -> false
 
 let physically_different_values (types : t list) =
-
-let is_known_to_be_some_kind_of_int (arg : descr) =
-  match arg with
-  | Union (Immediates _) -> true
-  | Union (Blocks _ | Blocks_and_immediates _) | Boxed_number _
-  | Unboxed_float | Unboxed_int32 | Unboxed_int64 | Unboxed_nativeint
-  | Set_of_closures _ | Closure _ | String _ | Float_array _ | Unknown _
-  | Extern _ | Symbol _ | Unresolved _ | Bottom -> false
-
-(* CR mshinwell: make name more precise.  Is this only for blocks with
-   tag < No_scan_tag? *)
-let is_known_to_be_some_kind_of_block (arg:descr) =
-  match arg with
-  | Union (Blocks _) | Boxed_number _ | Float_array _ | Closure _
-  | String _ -> true
-  | Set_of_closures _ | Union (Blocks_and_immediates _ | Immediates _)
-  | Unknown _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ | Extern _ | Symbol _ | Unresolved _ | Bottom -> false
-
-  let rec different (arg1 : t) (arg2 : t) =
+  let rec definitely_different (arg1 : t) (arg2 : t) =
     let module Int = Numbers.Int in
     let module Immediate = Unionable.Immediate in
-    let immediates_different s1 s2 union1 union2 =
-      Unionable.invariant union1;
-      Unionable.invariant union2;
+    let immediates_different s1 s2 =
       (* The frontend isn't precise about "int" and "const pointer", for
          example generating "(!= b/1006 0)" for a match against a bool, which
          is a "const pointer".  The same presumably might happen with "char".
-         As such for "structurally different" purposes we treat immediates whose
-         runtime representations are the same as equal. *)
+         As such for we treat immediates whose runtime representations are
+         the same as equal. *)
       let s1 =
         Immediate.Set.fold (fun imm s1 ->
             Int.Set.add (Immediate.represents imm) s1)
@@ -229,49 +213,69 @@ let is_known_to_be_some_kind_of_block (arg:descr) =
       in
       Int.Set.is_empty (Int.Set.inter s1 s2)
     in
+    let blocks_different b1 b2 =
+      let tags1 = Tag.Scannable.Map.keys b1 in
+      let tags2 = Tag.Scannable.Map.keys b2 in
+      let overlapping_tags = Tag.Scannable.Set.inter tags1 tags2 in
+      Tag.Scannable.Set.exists (fun tag ->
+          let fields1 = Tag.Scannable.Map.find tag tags1 in
+          let fields2 = Tag.Scannable.Map.find tag tags2 in
+          Array.length fields1 <> Array.length fields2
+            || Misc.Stdlib.Array.exists2 definitely_different fields1 fields2)
+    in
     match arg1.descr, arg2.descr with
-    | Union ((Immediates s1) as union1), Union ((Immediates s2) as union2)
-      when immediates_different s1 s2 union1 union2 -> true
+    | Unknown _, _ | _, Unknown _
+    (* CR mshinwell: Should [Load_lazily] be an error here?  What about for the
+       reification functions below?  [invalid_to_mutate] above has an
+       assertion failure for this. *)
+    | Load_lazily _, _ | _, Load_lazily
+    | Bottom, _ | _, Bottom -> false
+    | Union (Immediates s1), Union (Immediates s2) ->
+      immediates_different s1 s2
     | Union (Blocks b1), Union (Blocks b2)
-      when Tag.Scannable.Map.cardinal b1 = 1
-        && Tag.Scannable.Map.cardinal b2 = 1 ->
-      let tag1, fields1 = Tag.Scannable.Map.min_binding b1 in
-      let tag2, fields2 = Tag.Scannable.Map.min_binding b2 in
-      not (Tag.Scannable.equal tag1 tag2)
-        || (Array.length fields1 <> Array.length fields2)
-        || Misc.Stdlib.Array.exists2 different fields1 fields2
-    | Union (Blocks b1), Union (Blocks b2)
- 
+      blocks_different b1 b2
+    | Union (Blocks_and_immediates (b1, imms1)),
+      Union (Blocks_and_immediates (b2, imms2)) ->
+      immediates_different imms1 imms2 || blocks_different b1 b2
+    | Union _, Union _ -> false
+    | Union _, _ | _, Union _ -> true
     | Unboxed_float fs1, Unboxed_float fs2 ->
       Float.Set.is_empty (Float.Set.inter fs1 fs2)
+    | Unboxed_float _, _ | _, Unboxed_float _ -> true
     | Unboxed_int32 ns1, Unboxed_int32 ns2 ->
       Int32.Set.is_empty (Int32.Set.inter ns1 ns2)
+    | Unboxed_int32 _, _ | _, Unboxed_int32 _ -> true
     | Unboxed_int64 ns1, Unboxed_int64 ns2 ->
       Int64.Set.is_empty (Int64.Set.inter ns1 ns2)
+    | Unboxed_int64 _, _ | _, Unboxed_int64 _ -> true
     | Unboxed_nativeint ns1, Unboxed_nativeint ns2 ->
       Nativeint.Set.is_empty (Nativeint.Set.inter ns1 ns2)
+    | Unboxed_nativeint _, _ | _, Unboxed_nativeint _ -> true
     | Boxed_number (kind1, t1), Boxed_number (kind2, t2) ->
       (not (Boxed_number_kind.equal kind1 kind2))
-        || different t1 t2
+        || definitely_different t1 t2
+    | Boxed_number _, _ | _, Boxed_number _ -> true
     | Set_of_closures _, Set_of_closures _ -> false
-    | Set_of_closures
+    | Set_of_closures _, _ | _, Set_of_closures _ -> true
+    | Closure _, Closure _ -> false
+    | Closure _, _ | _, Closure _ -> true
     | String s1, String s2 -> String.compare s1 s2 <> 0
     | String _, _ | _, String -> true
-
-    | descr1, descr2 ->
-      (* This is not very precise as this won't allow to distinguish
-         blocks from strings for instance. This can be improved if it
-         is deemed valuable. *)
-      (is_known_to_be_some_kind_of_int descr1
-      && is_known_to_be_some_kind_of_block descr2)
-      || (is_known_to_be_some_kind_of_block descr1
-          && is_known_to_be_some_kind_of_int descr2)
+    | Float_array { contents = contents1; size = size1; },
+      Float_array { contents = contents2; size = size2; } ->
+      size1 <> size2
+        || begin match contents1, contents2 with
+           | Contents ts1, Contents ts2 ->
+             Array.exists definitely_different ts1 ts2
+           | Contents _, Unknown_or_mutable
+           | Unknown_or_mutable, Contents _
+           | Unknown_or_mutable, Unknown_or_mutable -> false
+           end
   in
   match types with
   | [] | [_] | _ :: _ :: _ :: _ ->
     Misc.fatal_error "Wrong number of arguments for physical inequality"
-  | [a1; a2] ->
-    different a1 a2
+  | [a1; a2] -> definitely_different a1 a2
 
 type get_field_result =
   | Ok of t
@@ -312,16 +316,16 @@ let get_field t ~field_index:i : get_field_result =
     (* The user is doing something unsafe. *)
     Unreachable
   | Set_of_closures _ | Closure _
-    (* This is used by [CamlinternalMod]. *)
-  | Symbol _ | Extern _ ->
+    (* These are used by [CamlinternalMod]. *)
+  | Load_lazily _ ->
     (* These should have been resolved. *)
+    (* CR mshinwell: Shouldn't this propagate the reason into
+       the [Unknown] (which would require extending [unresolved_value] to
+       have an [Export_id.t] case)?   (Also see comment above about
+       what should happen in this [Load_lazily] case.) *)
     Ok (value_unknown Other)
   | Unknown reason ->
     Ok (value_unknown reason)
-  | Unresolved value ->
-    (* We don't know anything, but we must remember that it comes
-       from another compilation unit in case it contains a closure. *)
-    Ok (value_unknown (Unresolved_value value))
 
 let length_of_array t =
   match t.descr with
@@ -347,7 +351,7 @@ module Reification_summary =
     | false, Nothing_done -> Nothing_done
 end
 
-type simplification_result_named = Flambda.named * reification_summary * t
+type reification_result = Flambda.named * reification_summary * t
 
 let reify t : (Flambda.named * t) option =
   let try_symbol () : (Flambda.named * t) option =
@@ -406,10 +410,10 @@ let reify t : (Flambda.named * t) option =
     end
   | Symbol sym -> Some (Symbol sym, t)
   | Boxed_number _ | String _ | Float_array _ | Set_of_closures _
-  | Closure _ | Unknown _ | Bottom | Extern _ | Unresolved _ -> try_symbol ()
+  | Closure _ | Unknown _ | Bottom | Load_lazily _ | Unresolved _ -> try_symbol ()
 
 let maybe_replace_term_with_reified_term t (named : Flambda.named)
-      : simplification_result_named =
+      : reification_result =
   if Effect_analysis.no_effects_named named then
     match reify t with
     | Some (named, t) ->
@@ -439,13 +443,13 @@ let reify_as_int t : int option =
   | Union unionable -> Unionable.as_int unionable
   | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint _ | Unresolved _
   | Unknown _ | String _ | Float_array _ | Bottom | Set_of_closures _
-  | Closure _ | Extern _ | Boxed_number _ | Symbol _ -> None
+  | Closure _ | Load_lazily _ | Boxed_number _ -> None
 
 let reify_as_boxed_float t : float option =
   match t.descr with
   | Boxed_number f -> f
   | Union _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
-  | Set_of_closures _ | Closure _ | Extern _ | Boxed_number _ | Symbol _
+  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
   | Float _ | Int32 _ | Int64 _ | Nativeint _ -> None
 
 let reify_as_constant_float_array (t:value_float_array) : float list option =
@@ -460,8 +464,7 @@ let reify_as_constant_float_array (t:value_float_array) : float list option =
         | Some _,
           (Boxed_float None | Unresolved _ | Unknown _ | String _
             | Float_array _
-            | Bottom | Union _ | Set_of_closures _ | Closure _ | Extern _
-            | Boxed_int _ | Symbol _)
+            | Bottom | Union _ | Set_of_closures _ | Closure _ | Load_lazily _)
           -> None)
       contents (Some [])
 
@@ -470,7 +473,7 @@ let reify_as_string t : string option =
   | String { contents } -> contents
   | Union _ | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint
   | Unresolved _ | Unknown _ | Float_array _ | Bottom | Set_of_closures _
-  | Closure _ | Extern _ | Boxed_int _ | Symbol _ -> None
+  | Closure _ | Load_lazily _ -> None
 
 type reified_as_scannable_block =
   | Wrong
@@ -484,7 +487,7 @@ let reify_as_scannable_block t : reified_as_scannable_block =
     | Ok (Int _ | Char _ | Constptr _) | Ill_typed_code | Anything -> Wrong
     end
   | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
-  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _ | Symbol _ | Extern _
+  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
   | Unknown _ | Unresolved _ -> Wrong
 
 type reified_as_variant =
@@ -497,7 +500,7 @@ let reify_as_variant t : reified_as_variant =
     if Unionable.ok_for_variant union then Ok union
     else Wrong
   | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
-  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _ | Symbol _ | Extern _
+  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
   | Unknown _ | Unresolved _ -> Wrong
 
 type reified_as_scannable_block_or_immediate =
@@ -515,8 +518,8 @@ let reify_as_scannable_block_or_immediate t
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
   | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
-  | Int64 _ | Nativeint _ | | Set_of_closures _ | Closure _ | Symbol _
-  | Extern _ | Unknown _ | Unresolved _ -> Wrong
+  | Int64 _ | Nativeint _ | | Set_of_closures _ | Closure _ 
+  | Load_lazily _ | Unknown _ | Unresolved _ -> Wrong
 
 type reified_as_set_of_closures =
   | Wrong
@@ -537,7 +540,7 @@ let reify_as_set_of_closures t : reified_as_set_of_closures =
     Ok (t.var, value_set_of_closures)
   | Closure _ | Union _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
   | Nativeint _ | Unknown _ | Bottom
-  | Extern _ | String _ | Float_array _ | Symbol _ -> Wrong
+  | Load_lazily _ | String _ | Float_array _  -> Wrong
 
 type strict_reified_as_set_of_closures =
   | Wrong
@@ -584,7 +587,6 @@ type reified_as_closure_allowing_unresolved =
   | Wrong
   | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_value of unresolved_value
   | Ok of value_set_of_closures Closure_id.Map.t * Variable.t option
       * Symbol.t option
 
@@ -603,7 +605,7 @@ let reify_as_closure_allowing_unresolved t
             | Unresolved _
             | Closure _ | Union _ | Boxed_number _ | Float _ | Int32 _
             | Int64 _ | Nativeint _ | Unknown _
-            | Bottom | Extern _ | String _ | Float_array _ | Symbol _ ->
+            | Bottom | Load_lazily _ | String _ | Float_array _  ->
               raise Exit)
             value_closure.potential_closures
         in
@@ -621,15 +623,13 @@ let reify_as_closure_allowing_unresolved t
             set_of_closures.var, symbol)
       | Unresolved _
       | Closure _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
-      | Nativeint _ | Unknown _ | Bottom | Extern _
-      | String _ | Float_array _ | Symbol _ | Union _ -> Wrong
+      | Nativeint _ | Unknown _ | Bottom | Load_lazily _
+      | String _ | Float_array _  | Union _ -> Wrong
     end
-  | Unknown (Unresolved_value value) ->
-    Unknown_because_of_unresolved_value value
-  | Unresolved value -> Unresolved value
+  | Unknown (Unresolved_value value) -> Unresolved value
   | Set_of_closures _ | Union _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Bottom | Extern _
-  | String _ | Float_array _ | Symbol _ -> Wrong
+  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Bottom | Load_lazily _
+  | String _ | Float_array _  -> Wrong
   (* CR-soon mshinwell: This should be unwound once the reason for a value
      being unknown can be correctly propagated through the export info. *)
   | Unknown Other -> Unknown
@@ -652,7 +652,7 @@ let switch_branch_classification t branch : switch_branch_classification =
     if must_be_taken then Must_be_taken
     else if Unionable.maybe_is_immediate_value union branch then Can_be_taken
     else Cannot_be_taken
-  | Unresolved _ | Unknown _ | Extern _ | Symbol _ ->
+  | Unresolved _ | Unknown _ | Load_lazily _  ->
     (* In theory symbols cannot contain integers but this shouldn't
        matter as this will always be an imported type. *)
     Can_be_taken

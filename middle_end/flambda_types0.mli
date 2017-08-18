@@ -40,7 +40,7 @@ type unknown_because_of =
   | Unresolved_value of unresolved_value
   | Other
 
-type have_not_yet_tried_to_import =
+type load_lazily =
   | Export_id of Export_id.t
   | Symbol of Symbol.t
 

@@ -26,6 +26,9 @@ type t = Flambda_types0.T.t
 (** Means of making and examining types. *)
 include Flambda_types0.Constructors_and_accessors
 
+(** The type of a symbol that cannot be resolved. *)
+val unresolved_symbol : Symbol.t -> t
+
 (** Take the given integer and produce an appropriate type for it
     together with an Flambda term representing it. *)
 val make_const_int_named : int -> Flambda.named * t
@@ -207,7 +210,6 @@ type reified_as_set_of_closures =
   | Wrong
   | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_value of unresolved_value
   | Ok of Variable.t option * value_set_of_closures
   (** In the [Ok] case, there may not be a variable associated with the set of
       closures; it might be out of scope. *)
@@ -252,7 +254,6 @@ type reified_as_closure_allowing_unresolved =
   | Wrong
   | Unresolved of unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_value of unresolved_value
   | Ok of value_set_of_closures Closure_id.Map.t
       * Variable.t option * Symbol.t option
 

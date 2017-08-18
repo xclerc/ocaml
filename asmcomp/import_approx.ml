@@ -137,7 +137,8 @@ let rec import_ex ex =
         ~what:(Format.asprintf "Value_closure %a" Closure_id.print closure_id)
     in
     begin match value_set_of_closures with
-    | None -> A.value_unresolved (Set_of_closures_id set_of_closures_id)
+    | None ->
+      A.value_unknown (Unresolved_value (Set_of_closures_id set_of_closures_id))
     | Some value_set_of_closures ->
       A.value_closure ?set_of_closures_symbol:aliased_symbol
         (Closure_id.Map.add closure_id value_set_of_closures
@@ -150,7 +151,7 @@ let rec import_ex ex =
     in
     match value_set_of_closures with
     | None ->
-      A.value_unresolved (Set_of_closures_id set_of_closures_id)
+      A.value_unknown (Unresolved_value (Set_of_closures_id set_of_closures_id))
     | Some value_set_of_closures ->
       let approx = A.value_set_of_closures value_set_of_closures in
       match aliased_symbol with
@@ -174,7 +175,7 @@ let import_symbol sym =
     match Symbol.Map.find sym symbol_id_map with
     | approx -> A.augment_with_symbol (import_ex approx) sym
     | exception Not_found ->
-      A.value_unresolved (Symbol sym)
+      A.value_unknown (Unresolved_value (Symbol sym))
 
 (* Note for code reviewers: Observe that [really_import] iterates until
    the approximation description is fully resolved (or a necessary .cmx
