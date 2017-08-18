@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
+module T = Flambda_types
 module E = Simplify_aux.Env
 
 (* CR-soon pchambart: should we restrict only to cases
@@ -36,7 +36,7 @@ let known_valid_projections ~get_approx ~projections =
       let approx = get_approx from in
       match projection with
       | Project_var project_var ->
-        begin match A.check_approx_for_closure approx with
+        begin match T.check_approx_for_closure approx with
         | Ok (value_closures, _approx_var, _approx_sym) ->
           Closure_id.Map.for_all (fun closure_id var ->
             match Closure_id.Map.find closure_id value_closures with
@@ -45,7 +45,7 @@ let known_valid_projections ~get_approx ~projections =
                                  the approximation %a"
                 Closure_id.print closure_id
                 Projection.print_project_var project_var
-                A.print approx
+                T.print approx
             | value_set_of_closures ->
               Var_within_closure.Map.mem var
                 value_set_of_closures.bound_vars)
@@ -53,7 +53,7 @@ let known_valid_projections ~get_approx ~projections =
         | Wrong -> false
         end
       | Project_closure project_closure ->
-        begin match A.strict_check_approx_for_set_of_closures approx with
+        begin match T.strict_check_approx_for_set_of_closures approx with
         | Ok (_var, value_set_of_closures) ->
           let closures_of_the_set =
             Variable.Map.keys value_set_of_closures.function_decls.funs
@@ -65,7 +65,7 @@ let known_valid_projections ~get_approx ~projections =
         | Wrong -> false
         end
       | Move_within_set_of_closures move ->
-        begin match A.check_approx_for_closure approx with
+        begin match T.check_approx_for_closure approx with
         | Ok (value_closures, _approx_var, _approx_sym) ->
           (* We could check that [move_to] (the image of [move.move])
              is in [value_set_of_closures], but this is unnecessary,
@@ -76,7 +76,7 @@ let known_valid_projections ~get_approx ~projections =
         | Wrong -> false
         end
       | Field (field_index, _) ->
-        begin match A.check_approx_for_block approx with
+        begin match T.check_approx_for_block approx with
         | Wrong -> false
         | Ok (_tag, fields) ->
           field_index >= 0 && field_index < Array.length fields

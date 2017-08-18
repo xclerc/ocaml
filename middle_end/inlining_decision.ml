@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
+module T = Flambda_types
 module E = Simplify_aux.Env
 module R = Simplify_aux.Result
 module U = Flambda_utils
@@ -106,7 +106,7 @@ let inline env r ~lhs_of_application
       in
       Don't_try_it (S.Not_inlined.Above_threshold threshold)
     else if not (toplevel && branch_depth = 0)
-         && A.all_not_useful (E.find_list_exn env args) then
+         && T.all_not_useful (E.find_list_exn env args) then
       (* When all of the arguments to the function being inlined are unknown,
          then we cannot materially simplify the function.  As such, we know
          what the benefit of inlining it would be: just removing the call.
@@ -144,9 +144,9 @@ let inline env r ~lhs_of_application
                 try
                   let t =
                     Var_within_closure.Map.find (Var_within_closure.wrap v)
-                      value_set_of_closures.A.bound_vars
+                      value_set_of_closures.T.bound_vars
                   in
-                  match t.A.var with
+                  match t.T.var with
                   | Some v ->
                     if (E.mem env v) then Inlining_cost.Benefit.remove_prim acc
                     else acc
@@ -301,7 +301,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
              exists if the body of the function is in fact inlined.
              If the function approximation contained an approximation that
              does not depend on the actual values of its arguments, it
-             could be returned instead of [A.value_unknown]. *)
+             could be returned instead of [T.value_unknown]. *)
           let decision =
             S.Not_inlined.With_subfunctions (wsb, wsb_with_subfunctions)
           in
@@ -358,7 +358,7 @@ let specialise env r ~lhs_of_application
     lazy
       (List.for_all2
          (fun id approx ->
-            not ((A.useful approx)
+            not ((T.useful approx)
                  && Variable.Map.mem id (Lazy.force invariant_params)))
          (Parameter.List.vars function_decl.params) args_approxs)
   in
@@ -572,7 +572,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
     let continuation, r =
       let args_approxs =
         Array.to_list (Array.init function_decl.return_arity
-          (fun _index -> A.value_unknown Other))
+          (fun _index -> T.value_unknown Other))
       in
       simplify_apply_cont_to_cont ?don't_record_use:None env r continuation
         ~args_approxs
@@ -597,12 +597,12 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
 *)
   let original_r =
     let r =
-      R.set_approx (R.seen_direct_application r) (A.value_unknown Other)
+      R.set_approx (R.seen_direct_application r) (T.value_unknown Other)
     in
 (*
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity (fun _index ->
-        A.value_bottom))
+        T.value_bottom))
     in
 (*
 Format.eprintf "for_call_site: use of continuation %a has %d args\n%!"
@@ -716,7 +716,7 @@ Continuation.print continuation (List.length args_approxs);
                 Misc.fatal_errorf "Approximation does not give a size for the \
                   function having fun_var %a.  value_set_of_closures: %a"
                   Variable.print fun_var
-                  A.print_value_set_of_closures value_set_of_closures
+                  T.print_value_set_of_closures value_set_of_closures
           in
           let r = R.roll_back_continuation_uses r cont_usage_snapshot in
           let inline_result =

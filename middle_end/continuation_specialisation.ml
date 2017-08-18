@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
+module T = Flambda_types
 module E = Simplify_aux.Env
 module R = Simplify_aux.Result
 
@@ -317,7 +317,7 @@ let can_specialise_param ~(handler : Flambda.continuation_handler) ~param
   (not handler.stub)
     && Variable.Map.mem param invariant_params
     && (not (Variable.Map.mem param handler.specialised_args))
-    && A.useful arg_approx
+    && T.useful arg_approx
 
 let examine_use ~specialisations ~cont
       ~(handler : Flambda.continuation_handler) ~invariant_params

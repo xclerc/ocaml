@@ -788,7 +788,7 @@ let join = T.join
 
 (* CR mshinwell: Sort out all this namespacing crap *)
 
-type value_string = T.value_string = {
+type value_string = T.string = {
   (* CR-soon mshinwell: use variant *)
   contents : string option; (* None if unknown or mutable *)
   size : int;

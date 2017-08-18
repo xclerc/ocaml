@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
+module T = Flambda_types
 
 module How_to_unbox = struct
   type t = {
@@ -500,19 +500,19 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   }
 
 let how_to_unbox ~being_unboxed ~being_unboxed_approx ~unbox_returns =
-  match A.check_approx_for_variant being_unboxed_approx with
+  match T.check_approx_for_variant being_unboxed_approx with
   | Wrong -> None
   | Ok approx ->
 (*
 Format.eprintf "how_to_unbox %a: %a\n%!"
   Variable.print being_unboxed
-  A.print being_unboxed_approx;
+  T.print being_unboxed_approx;
 *)
     let constant_ctors =
       match approx with
       | Blocks _ -> Numbers.Int.Set.empty
       | Blocks_and_immediates (_, imms) | Immediates imms ->
-        let module I = A.Unionable.Immediate in
+        let module I = T.Unionable.Immediate in
         I.Set.fold (fun (approx : I.t) ctor_indexes ->
             let ctor_index =
               match approx with

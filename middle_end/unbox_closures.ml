@@ -17,7 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module ASA = Augment_specialised_args
-module W = ASA.What_to_specialise
+module W = AST.What_to_specialise
 module E = Simplify_aux.Env
 
 module Transform = struct
@@ -84,4 +84,4 @@ module Transform = struct
     end
 end
 
-include ASA.Make (Transform)
+include AST.Make (Transform)

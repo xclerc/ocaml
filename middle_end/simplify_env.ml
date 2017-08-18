@@ -517,7 +517,7 @@ Can_inline_if_no_larger_than
   (unscaled * Inlining_cost.scale_inline_threshold_by)
 
 module Continuation_uses = struct
-module A = Simple_value_approx
+module T = Flambda_types
 
 module Use = struct
   module Kind = struct
@@ -531,12 +531,12 @@ module Use = struct
       let print_arg_and_approx ppf (arg, approx) =
         Format.fprintf ppf "(%a %a)"
           Variable.print arg
-          A.print approx
+          T.print approx
       in
       match t with
       | Not_inlinable_or_specialisable args_approxs ->
         Format.fprintf ppf "(Not_inlinable_or_specialisable %a)"
-          (Format.pp_print_list A.print) args_approxs
+          (Format.pp_print_list T.print) args_approxs
       | Inlinable_and_specialisable args_and_approxs ->
         Format.fprintf ppf "(Inlinable_and_specialisable %a)"
           (Format.pp_print_list print_arg_and_approx) args_and_approxs
@@ -560,7 +560,7 @@ module Use = struct
 
 (*
     let has_useful_approx t =
-      List.exists (fun approx -> A.useful approx) (args_approxs t)
+      List.exists (fun approx -> T.useful approx) (args_approxs t)
 *)
 
     let is_inlinable t =
@@ -669,10 +669,10 @@ t.continuation;
             let module Backend = (val (t.backend) : Backend_intf.S) in
 (*
 Format.eprintf "approx1=%a approx2=%a\n%!"
-A.print approx1
-A.print approx2;
+T.print approx1
+T.print approx2;
 *)
-            A.join approx1 approx2
+            T.join approx1 approx2
               ~really_import_approx:Backend.really_import_approx)
           args_approxs args_approxs')
       (Use.Kind.args_approxs use.kind)
@@ -680,7 +680,7 @@ A.print approx2;
 
 let meet_of_args_approxs t ~num_params =
   match meet_of_args_approxs_opt t with
-  | None -> Array.to_list (Array.make num_params A.value_bottom)
+  | None -> Array.to_list (Array.make num_params T.value_bottom)
   | Some join -> join
 
 let application_points t = t.application_points

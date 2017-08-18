@@ -17,7 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module ASA = Augment_specialised_args
-module W = ASA.What_to_specialise
+module W = AST.What_to_specialise
 
 module Transform = struct
   let pass_name = "unbox-specialised-args"
@@ -101,4 +101,4 @@ module Transform = struct
         what_to_specialise
 end
 
-include ASA.Make (Transform)
+include AST.Make (Transform)
