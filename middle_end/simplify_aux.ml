@@ -40,38 +40,6 @@ let prepare_to_simplify_set_of_closures ~env
         var, approx)
       set_of_closures.free_vars
   in
-  let specialised_args =
-    Variable.Map.filter_map set_of_closures.specialised_args
-      ~f:(fun param ty ->
-        let keep =
-          match only_for_function_decl with
-          | None -> true
-          | Some function_decl ->
-            Variable.Set.mem param (Parameter.Set.vars function_decl.params)
-        in
-        if not keep then None
-        else Freshening.freshen_type (E.freshening env) ty)
-  in
-
-(*
-          match spec_to.var with
-          | Some external_var ->
-            let var =
-              Freshening.apply_variable (E.freshening env) external_var
-            in
-            let var =
-              match
-                T.simplify_var_to_var_using_env (E.find_exn env var)
-                  ~is_present_in_env:(fun var -> E.mem env var)
-              with
-              | None -> var
-              | Some var -> var
-            in
-            let projection = spec_to.projection in
-            Some ({ var = Some var; projection; } : Flambda.specialised_to)
-          | None ->
-            Misc.fatal_errorf "No equality to variable for specialised arg %a"
-              Variable.print param)*)
   let environment_before_cleaning = env in
   (* [E.local] helps us to catch bugs whereby variables escape their scope. *)
   let env = E.local env in
@@ -138,13 +106,13 @@ let prepare_to_simplify_closure ~(function_decl : Flambda.function_declaration)
         E.add_outer_scope env inner_var ty)
       free_vars set_of_closures_env
   in
-  (* CR mshinwell: Freshening? *)
+  (* CR mshinwell: Freshening?  And cleaning? *)
   List.fold_left (fun env param ->
       let var = Parameter.var param in
       let ty = Parameter.ty param in
       let env = E.add env var ty in
       match T.projection ty with
       | None -> env
-      | Some (var, projection) ->
+      | Some projection ->
         E.add_projection env ~projection ~bound_to:var)
     env function_decl.params
