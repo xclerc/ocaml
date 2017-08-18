@@ -46,6 +46,13 @@ type unknown_because_of =
   | Unresolved_value of unresolved_value
   | Other
 
+(** Types from other compilation units are loaded lazily.  There are two
+    kinds of cross-compilation unit reference to be resolved: via
+    [Export_id.t] values and via [Symbol.t] values. *)
+type have_not_yet_tried_to_import =
+  | Export_id of Export_id.t
+  | Symbol of Symbol.t
+
 type specialised_to = {
   var : Variable.t option;
   projection : Projection.t option;
@@ -145,6 +152,9 @@ module rec T : sig
   } 
 
   (** Types are equipped with a subtyping relation given by a partial order.
+      For the purposes of this order, [Load_lazily] is excluded, since that
+      will have been squashed (either yielding a known type or an [Unknown])
+      by the time we make a judgement about the order.
 
       [Bottom] is, well, bottom.
       Each [Unknown (k, _)] gives a top element.
@@ -158,7 +168,7 @@ module rec T : sig
      the only circularity between this type and Flambda will be for
      Flambda.expr on function bodies. *)
   and ('decls, 'freshening) descr = private 
-    | Unknown of Value_kind.t * unknown_because_of
+    | Unknown of Flambda_kind.t * unknown_because_of
     | Union of Unionable.t
     | Unboxed_float of Float.Set.t
     | Unboxed_int32 of Int32.Set.t
@@ -169,10 +179,8 @@ module rec T : sig
     | Closure of ('decls, 'freshening) closure
     | String of string
     | Float_array of float_array
-    | Extern of Export_id.t
-    | Symbol of Symbol.t
-    | Unresolved of unresolved_value
     | Bottom
+    | Load_lazily of load_lazily
 
   and ('decls, 'freshening) closure = {
     potential_closures : ('decls, 'freshening) t Closure_id.Map.t;
@@ -222,7 +230,7 @@ module rec T : sig
 
   and specialised_args = specialised_to Variable.Map.t
 
-  val infer_value_kind : t -> Value_kind.t
+  val kind : t -> Flambda_kind.t
 
   val join : really_import_approx:(t -> t) -> t -> t -> t
 
@@ -237,32 +245,21 @@ module rec T : sig
 end = struct
   include T
 
-  let infer_value_kind t : Value_kind.t =
+  let kind t ~really_import_approx : Flambda_kind.t =
     match t.descr with
-    | Unknown (kind, _) -> Some kind
-    | Float _ -> Some Unboxed_float
-    | Int32 _ -> Some Unboxed_int32
-    | Int64 _ -> Some Unboxed_int64
-    | Nativeint _ -> Some Unboxed_nativeint
+    | Unknown (kind, _) -> kind
+    | Float _ -> Unboxed_float
+    | Int32 _ -> Unboxed_int32
+    | Int64 _ -> Unboxed_int64
+    | Nativeint _ -> Unboxed_nativeint
     | Union _
     | Boxed_number _
     | Set_of_closures _
     | Closure _
     | String _
-    | Float_array _
-    | Extern _
-    | Symbol _
-    | Unresolved _ -> Some Other
-    | Bottom -> None
-
-  let value_kinds_are_compatible a1 a2 =
-    let kind1 = infer_value_kind a1 in
-    let kind2 = infer_value_kind a2 in
-    match kind1, kind2 with
-    | None, None
-    | None, Some _
-    | Some _, None -> true
-    | Some kind1, Some kind2 -> Value_kind.equal kind1 kind2
+    | Float_array _ -> Other
+    | Bottom -> Bottom
+    | Load_lazily _ -> kind (really_import_approx t) ~really_import_approx
 
   (* Closures and set of closures descriptions cannot be merged.
 
@@ -340,7 +337,7 @@ end = struct
     | _ -> Unknown Other
 
   and join ~really_import_approx a1 a2 =
-    if value_kinds_are_compatible a1 a2 then begin
+    if Flambda_kind.compatible a1 a2 ~really_import_approx then begin
       match a1, a2 with
       | { descr = Bottom }, _ -> a2
       | _, { descr = Bottom } -> a1
@@ -408,9 +405,9 @@ end = struct
       begin match reason with
       | Unresolved_value value ->
         Format.fprintf ppf "?(%a)(due to unresolved %a)"
-          Value_kind.print kind
+          Flambda_kind.print kind
           print_unresolved_value value
-      | Other -> Format.fprintf ppf "?(%a)" Value_kind.print kind
+      | Other -> Format.fprintf ppf "?(%a)" Flambda_kind.print kind
       end;
     | Bottom -> Format.fprintf ppf "bottom"
     | Extern id -> Format.fprintf ppf "_%a_" Export_id.print id
@@ -804,7 +801,7 @@ type t = T.t = {
 }
 
 and descr = T.descr =
-  | Unknown of Value_kind.t * unknown_because_of
+  | Unknown of Flambda_kind.t * unknown_because_of
   | Union of Unionable.t
   | Float of Float.Set.t
   | Int32 of Int32.Set.t
@@ -855,21 +852,25 @@ let augment_with_symbol_field t symbol field =
   match t.symbol with
   | None -> { t with symbol = Some (symbol, Some field) }
   | Some _ -> t
+
 let replace_description t descr = { t with descr }
 
-let value_unknown kind reason = approx (Unknown (kind, reason))
-let value_int i = approx (Union (Unionable.value_int i))
-let value_char i = approx (Union (Unionable.value_char i))
-let value_constptr i = approx (Union (Unionable.value_constptr i))
-let value_boxed_float f = approx (Boxed_float (Some f))
-let value_any_float = approx (Boxed_float None)
+let unknown kind reason = approx (Unknown (kind, reason))
+let int i = approx (Union (Unionable.int i))
+let char i = approx (Union (Unionable.char i))
+let constptr i = approx (Union (Unionable.constptr i))
+let boxed_float f = approx (Boxed_float (Some f))
+let boxed_int32 i = approx (Boxed_number (Int32, unboxed_int32 i))
+let boxed_int64 i = approx (Boxed_number (Int64, unboxed_int64 i))
+let boxed_nativeint i = approx (Boxed_number (Nativeint, unboxed_nativeint i))
+
+let any_float = approx (Boxed_float None)
 let any_unboxed_float = approx (Unknown (Unboxed_float, Other))
 let any_unboxed_int32 = approx (Unknown (Unboxed_int32, Other))
 let any_unboxed_int64 = approx (Unknown (Unboxed_int64, Other))
 let any_unboxed_nativeint = approx (Unknown (Unboxed_nativeint, Other))
-let value_boxed_int bi i = approx (Boxed_int (bi,i))
 
-let value_closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
+let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
       closures =
   let approx_set_of_closures value_set_of_closures =
     { descr = Set_of_closures value_set_of_closures;
@@ -885,7 +886,7 @@ let value_closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
     symbol = None;
   }
 
-let create_value_set_of_closures
+let create_set_of_closures
       ~(function_decls : Flambda.function_declarations) ~bound_vars
       ~invariant_params ~specialised_args ~freshening
       ~direct_call_surrogates =
@@ -916,33 +917,33 @@ let create_value_set_of_closures
     direct_call_surrogates;
   }
 
-let update_freshening_of_value_set_of_closures value_set_of_closures
+let update_freshening_of_set_of_closures set_of_closures
       ~freshening =
   (* CR-someday mshinwell: We could maybe check that [freshening] is
      reasonable. *)
-  { value_set_of_closures with freshening; }
+  { set_of_closures with freshening; }
 
-let value_set_of_closures ?set_of_closures_var value_set_of_closures =
-  { descr = Set_of_closures value_set_of_closures;
+let set_of_closures ?set_of_closures_var set_of_closures =
+  { descr = Set_of_closures set_of_closures;
     var = set_of_closures_var;
     symbol = None;
   }
 
-let value_block t b =
+let block t b =
   (* Avoid having multiple possible approximations for e.g. [Int64] values. *)
-  if Tag.Scannable.if_at_or_above_no_scan_tag then value_unknown Other
-  else approx (Union (Unionable.value_block t b))
+  if Tag.Scannable.if_at_or_above_no_scan_tag then unknown Other
+  else approx (Union (Unionable.block t b))
 
-let value_extern ex = approx (Extern ex)
-let value_symbol sym =
+let extern ex = approx (Extern ex)
+let symbol sym =
   { (approx (Symbol sym)) with symbol = Some (sym, None) }
-let value_bottom = approx Bottom
-let value_unresolved value = approx (Unresolved value)
+let bottom = approx Bottom
+let unresolved value = approx (Unresolved value)
 
-let value_string size contents = approx (String {size; contents })
-let value_mutable_float_array ~size =
+let string size contents = approx (String {size; contents })
+let mutable_float_array ~size =
   approx (Float_array { contents = Unknown_or_mutable; size; } )
-let value_immutable_float_array (contents:t array) =
+let immutable_float_array (contents:t array) =
   let size = Array.length contents in
   let contents =
     Array.map (fun t -> augment_with_kind t Pfloatval) contents
@@ -996,6 +997,7 @@ let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
   | _ -> kind
 
 module type Constructors_and_accessors = sig
+  val kind : t -> Flambda_kind.t
   val descr : t -> descr
   val descrs : t list -> descr list
   val create_set_of_closures
@@ -1010,7 +1012,7 @@ module type Constructors_and_accessors = sig
      : set_of_closures
     -> freshening:Freshening.Project_var.t
     -> set_of_closures
-  val unknown : Value_kind.t -> unknown_because_of -> t
+  val unknown : Flambda_kind.t -> unknown_because_of -> t
   val int : int -> t
   val char : char -> t
   val boxed_float : float -> t

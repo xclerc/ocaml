@@ -15,8 +15,8 @@
 (**************************************************************************)
 
 (** Basic definitions and constructors for the type system of Flambda.
-    The types give types to the results of evaluating Flambda
-    terms at runtime.
+    The types give approximations to the results of evaluating Flambda
+    terms at runtime.  Each type has a kind, as per [Flambda_kind].
     This type system is in fact parameterised over the type of Flambda
     expressions.
     Normal Flambda passes should use the interface provided in
@@ -40,6 +40,9 @@ type unknown_because_of =
   | Unresolved_value of unresolved_value
   | Other
 
+type have_not_yet_tried_to_import =
+  | Export_id of Export_id.t
+  | Symbol of Symbol.t
 
 module rec T : sig
   (** The type of an Flambda term. *)
@@ -63,7 +66,7 @@ module rec T : sig
      the only circularity between this type and Flambda will be for
      Flambda.expr on function bodies. *)
   and ('decls, 'freshening) descr = private 
-    | Unknown of Value_kind.t * unknown_because_of
+    | Unknown of Flambda_kind.t * unknown_because_of
     | Union of Unionable.t
     | Unboxed_float of Float.Set.t
     | Unboxed_int32 of Int32.Set.t
@@ -74,10 +77,8 @@ module rec T : sig
     | Closure of ('decls, 'freshening) closure
     | String of string
     | Float_array of float_array
-    | Extern of Export_id.t
-    | Symbol of Symbol.t
-    | Unresolved of unresolved_value
     | Bottom
+    | Load_lazily of load_lazily
 
   and ('decls, 'freshening) closure = {
     potential_closures : ('decls, 'freshening) t Closure_id.Map.t;
@@ -181,6 +182,9 @@ end and Unionable : sig
 end
 
 module type Constructors_and_accessors = sig
+  (** Each type has a unique kind. *)
+  val kind : t -> really_import_approx:(t -> t) Flambda_kind.t
+
   (** Construction of types involving equalities to runtime values. *)
   val unknown : Value_kind.t -> unknown_because_of -> t
   val int : int -> t

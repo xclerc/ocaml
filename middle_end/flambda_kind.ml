@@ -16,14 +16,20 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Kinds of function parameters, continuation parameters, function return
-    values, etc. *)
-
 type t =
   | Value
   | Unboxed_float
   | Unboxed_int32
   | Unboxed_int64
   | Unboxed_nativeint
+  | Bottom
 
-val equal : t -> t -> bool
+let compatible t1 t2 =
+  match t1, t2 with
+  | Bottom, _ | _, Bottom
+  | Value, Value
+  | Unboxed_float, Unboxed_float
+  | Unboxed_int32, Unboxed_int32
+  | Unboxed_int64, Unboxed_int64
+  | Unboxed_nativeint, Unboxed_nativeint -> true
+  | (Value | Unboxed_float | Unboxed_int32 | Unboxed_int64), _ -> false
