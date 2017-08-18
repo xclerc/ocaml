@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
-module R = Inline_and_simplify_aux.Result
+module R = Simplify_aux.Result
 
 type flambda_kind =
   | Normal
@@ -102,7 +102,7 @@ exception Flambda_invariants_failed
 
 (* CR-someday mshinwell: We should make "direct applications should not have
   overapplication" be an invariant throughout.  At the moment I think this is
-  only true after [Inline_and_simplify] has split overapplications. *)
+  only true after [Simplify] has split overapplications. *)
 
 (* CR-someday mshinwell: What about checks for shadowed variables and
   symbols? *)
@@ -1206,18 +1206,18 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
           | count -> count
         in
         let num_in_r =
-          Inline_and_simplify_aux.Continuation_uses.num_uses uses
+          Simplify_aux.Continuation_uses.num_uses uses
         in
 (*
 let application_points =
-  Inline_and_simplify_aux.Continuation_uses.application_points uses
+  Simplify_aux.Continuation_uses.application_points uses
 in
 Format.eprintf "Uses of continuation %a:\n" Continuation.print cont;
 let count = ref 1 in
-List.iter (fun (use : Inline_and_simplify_aux.Continuation_uses.Use.t) ->
+List.iter (fun (use : Simplify_aux.Continuation_uses.Use.t) ->
   let env = use.env in
   Format.eprintf "Use %d: %a@ \n%!"
-    (!count) Inline_and_simplify_aux.Env.print env;
+    (!count) Simplify_aux.Env.print env;
   incr count)
 application_points;
 *)
@@ -1227,7 +1227,7 @@ application_points;
             Continuation.print cont
             num_in_term
             num_in_r
-            Inline_and_simplify_aux.Continuation_uses.print uses
+            Simplify_aux.Continuation_uses.print uses
             Flambda.print expr
         end)
       continuation_definitions_with_uses

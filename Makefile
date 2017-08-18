@@ -239,7 +239,9 @@ MIDDLE_END=\
   middle_end/inlining_stats.cmo \
   middle_end/invariant_params.cmo \
   middle_end/unrecursify.cmo \
-  middle_end/inline_and_simplify_aux.cmo \
+  middle_end/simplify_env.cmo \
+  middle_end/simplify_result.cmo \
+  middle_end/simplify_aux.cmo \
   middle_end/flambda_invariants.cmo \
   middle_end/inlining_transforms.cmo \
   middle_end/inlining_decision.cmo \
@@ -257,7 +259,7 @@ MIDDLE_END=\
   middle_end/unbox_closures.cmo \
   middle_end/unbox_continuation_params.cmo \
   middle_end/unbox_returns.cmo \
-  middle_end/inline_and_simplify.cmo \
+  middle_end/simplify.cmo \
   middle_end/lift_let_cont.cmo \
   middle_end/sink_lets.cmo \
   middle_end/remove_unused_program_constructs.cmo \

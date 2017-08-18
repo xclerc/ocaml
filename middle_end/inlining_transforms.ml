@@ -17,8 +17,8 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module B = Inlining_cost.Benefit
-module E = Inline_and_simplify_aux.Env
-module R = Inline_and_simplify_aux.Result
+module E = Simplify_aux.Env
+module R = Simplify_aux.Result
 
 let new_var name =
   Variable.create name

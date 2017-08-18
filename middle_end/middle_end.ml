@@ -107,8 +107,8 @@ let middle_end ppf ~prefixname ~backend
         +-+ ("Share_constants", Share_constants.share_constants)
         +-+ ("Lift_let_to_initialize_symbol",
              Lift_let_to_initialize_symbol.lift ~backend)
-        +-+ ("Inline_and_simplify",
-             Inline_and_simplify.run ~never_inline:false
+        +-+ ("Simplify",
+             Simplify.run ~never_inline:false
                ~allow_continuation_inlining:true
                ~allow_continuation_specialisation:false
                ~backend ~prefixname ~round)
@@ -143,8 +143,8 @@ let middle_end ppf ~prefixname ~backend
           +-+ ("Remove_unused_closure_vars 1",
                Remove_unused_closure_vars.remove_unused_closure_variables
                 ~remove_direct_call_surrogates:false)
-          +-+ ("Inline_and_simplify",
-               Inline_and_simplify.run ~never_inline:false
+          +-+ ("Simplify",
+               Simplify.run ~never_inline:false
                  ~allow_continuation_inlining:false
                  ~allow_continuation_specialisation:false
                  ~backend ~prefixname ~round)
@@ -153,15 +153,15 @@ let middle_end ppf ~prefixname ~backend
                 ~remove_direct_call_surrogates:false)
           +-+ ("Lift_let_cont 3", Lift_let_cont.run)
           +-+ ("Sink_lets 3", Sink_lets.run)
-          +-+ ("Inline_and_simplify continuation unboxing & specialisation",
-              Inline_and_simplify.run ~never_inline:true
+          +-+ ("Simplify continuation unboxing & specialisation",
+              Simplify.run ~never_inline:true
                 ~allow_continuation_inlining:false
                 ~allow_continuation_specialisation:true
                 ~backend ~prefixname ~round)
           +-+ ("Remove_unused_continuation_params",
                 Remove_unused_continuation_params.run ~backend)
-          +-+ ("Inline_and_simplify (func. inlining off, cont. inlining on)",
-                Inline_and_simplify.run ~never_inline:true
+          +-+ ("Simplify (func. inlining off, cont. inlining on)",
+                Simplify.run ~never_inline:true
                   ~allow_continuation_inlining:true
                   ~allow_continuation_specialisation:false
                   ~backend ~prefixname ~round)

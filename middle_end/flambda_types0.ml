@@ -280,7 +280,7 @@ end = struct
     And we must never make the descrition for a function less
     precise that it used to be: its information are needed for
     rewriting [Project_var] and [Project_closure] constructions
-    in [Inline_and_simplify].
+    in [Simplify].
   *)
   let rec join_descr ~really_import_approx d1 d2 =
     match d1, d2 with

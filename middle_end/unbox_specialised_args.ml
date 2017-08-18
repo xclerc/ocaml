@@ -46,7 +46,7 @@ module Transform = struct
       let invariant_params_flow =
         Invariant_params.Functions.invariant_param_sources
           set_of_closures.function_decls
-          ~backend:(Inline_and_simplify_aux.Env.backend env)
+          ~backend:(Simplify_aux.Env.backend env)
       in
       Variable.Map.fold (fun fun_var extractions what_to_specialise ->
           Projection.Set.fold (fun (projection : Projection.t)

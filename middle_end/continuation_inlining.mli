@@ -25,5 +25,5 @@
 
 val for_toplevel_expression
    : Flambda.expr
-  -> Inline_and_simplify_aux.Result.t
-  -> Flambda.expr * Inline_and_simplify_aux.Result.t
+  -> Simplify_aux.Result.t
+  -> Flambda.expr * Simplify_aux.Result.t

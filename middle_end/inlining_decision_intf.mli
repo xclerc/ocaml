@@ -19,18 +19,18 @@
 (* CR-someday mshinwell: name of this source file could now be improved *)
 
 type 'a by_copying_function_body =
-     env:Inline_and_simplify_aux.Env.t
-  -> r:Inline_and_simplify_aux.Result.t
+     env:Simplify_aux.Env.t
+  -> r:Simplify_aux.Result.t
   -> clos:Flambda.function_declarations
   -> lfunc:Flambda.t
   -> fun_id:Closure_id.t
   -> func:Flambda.function_declaration
   -> args:Flambda.t list
-  -> Flambda.t * Inline_and_simplify_aux.Result.t
+  -> Flambda.t * Simplify_aux.Result.t
 
 type 'a by_copying_function_declaration =
-     env:Inline_and_simplify_aux.Env.t
-  -> r:Inline_and_simplify_aux.Result.t
+     env:Simplify_aux.Env.t
+  -> r:Simplify_aux.Result.t
   -> funct:Flambda.t
   -> clos:Flambda.function_declarations
   -> fun_id:Closure_id.t
@@ -40,10 +40,10 @@ type 'a by_copying_function_declaration =
   -> invariant_params:Variable.Set.t
   -> specialised_args:Variable.Set.t
   -> dbg:Debuginfo.t
-  -> (Flambda.t * Inline_and_simplify_aux.Result.t) option
+  -> (Flambda.t * Simplify_aux.Result.t) option
 
 type simplify =
-     Inline_and_simplify_aux.Env.t
-  -> Inline_and_simplify_aux.Result.t
+     Simplify_aux.Env.t
+  -> Simplify_aux.Result.t
   -> Flambda.t
-  -> Flambda.t * Inline_and_simplify_aux.Result.t
+  -> Flambda.t * Simplify_aux.Result.t

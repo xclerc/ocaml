@@ -29,7 +29,7 @@ val check_exn
   -> unit
 
 val check_toplevel_simplification_result
-   : Inline_and_simplify_aux.Result.t
+   : Simplify_aux.Result.t
   -> Flambda.expr
   -> continuation:Continuation.t
   -> descr:string

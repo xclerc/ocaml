@@ -16,10 +16,10 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
 module B = Inlining_cost.Benefit
-module E = Inline_and_simplify_aux.Env
-module R = Inline_and_simplify_aux.Result
+module E = Simplify_env
+module R = Simplify_result
+module T = Flambda_types
 
 (** Values of two types hold the information propagated during simplification:
     - [E.t] "environments", top-down, almost always called "env";
@@ -685,7 +685,7 @@ and simplify_set_of_closures original_env r
   let env = E.increase_closure_depth original_env in
   let free_vars, specialised_args, function_decls, parameter_approximations,
       internal_value_set_of_closures, set_of_closures_env =
-    Inline_and_simplify_aux.prepare_to_simplify_set_of_closures ~env
+    Simplify_aux.prepare_to_simplify_set_of_closures ~env
       ~set_of_closures ~function_decls ~only_for_function_decl:None
       ~freshen:true
   in
@@ -694,7 +694,7 @@ and simplify_set_of_closures original_env r
         (funs, used_params, r)
         : Flambda.function_declaration Variable.Map.t * Variable.Set.t * R.t =
     let closure_env =
-      Inline_and_simplify_aux.prepare_to_simplify_closure ~function_decl
+      Simplify_aux.prepare_to_simplify_closure ~function_decl
         ~free_vars ~specialised_args ~parameter_approximations
         ~set_of_closures_env
     in
@@ -745,7 +745,7 @@ Format.eprintf "Function's return continuation renaming: %a -> %a\n%!"
              definition site (here). If the function is small enough
              (below the -inline threshold) it will always be inlined. *)
           let inlining_threshold =
-            Inline_and_simplify_aux.initial_inlining_threshold
+            Simplify_aux.initial_inlining_threshold
               ~round:(E.round env)
           in
           if Inlining_cost.can_inline body inlining_threshold ~bonus:0
@@ -985,10 +985,10 @@ Format.eprintf "After simplifying application of %a to %a, r contains:\n@ %a\n%!
   Variable.print lhs_of_application
   Variable.print_list args
   (Continuation.Map.print
-    Inline_and_simplify_aux.Continuation_uses.print) used_conts;
+    Simplify_aux.Continuation_uses.print) used_conts;
 let joins =
   Continuation.Map.map (fun uses ->
-    Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs uses
+    Simplify_aux.Continuation_uses.meet_of_args_approxs uses
       ~num_params:0)
     used_conts
 in
@@ -1231,7 +1231,7 @@ Format.eprintf "APPLICATION of %a (was %a)\n%!" Continuation.print cont
     (* Stubs are unconditionally inlined out now for two reasons:
        - [Continuation_inlining] cannot do non-linear inlining;
        - Even if it could, we don't want to have to run that pass when
-         doing a "noinline" run of [Inline_and_simplify].
+         doing a "noinline" run of [Simplify].
        Note that we don't call [R.use_continuation] here, because we're going
        to eliminate the use. *)
     let env = E.activate_freshening env in
@@ -1276,7 +1276,7 @@ Format.eprintf "Recording use of %a in Apply_cont with approxs: %a\n%!"
   (Format.pp_print_list T.print) args_approxs;
 *)
     let r =
-      let kind : Inline_and_simplify_aux.Continuation_uses.Use.Kind.t =
+      let kind : Simplify_aux.Continuation_uses.Use.Kind.t =
         let args_and_approxs = List.combine args args_approxs in
         match trap_action with
         | None -> Inlinable_and_specialisable args_and_approxs
@@ -1490,7 +1490,7 @@ and simplify_named env r (tree : Flambda.named)
         in
         begin match prim, args, args_approxs with
         | Pgetglobal _, _, _ ->
-          Misc.fatal_error "Pgetglobal is forbidden in Inline_and_simplify"
+          Misc.fatal_error "Pgetglobal is forbidden in Simplify"
         | Pfield field_index, [arg], [arg_approx] ->
           let projection : Projection.t = Field (field_index, arg) in
           begin match E.find_projection env ~projection with
@@ -1814,7 +1814,7 @@ Format.eprintf "simplify_let_cont_handler %a (params %a, freshened params %a)\n%
     in
     let specialised_args =
       (* CR mshinwell: Duplicate of a part of
-          [Inline_and_simplify_aux.prepare_to_simplify_set_of_closures]
+          [Simplify_aux.prepare_to_simplify_set_of_closures]
       *)
       Variable.Map.mapi (fun param (spec_to : Flambda.specialised_to) ->
           match spec_to.var with
@@ -2173,7 +2173,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
       let with_wrapper : Flambda_utils.with_wrapper =
         (* CR mshinwell: Tidy all this up somehow. *)
         (* Unboxing of continuation parameters is done now so that in one pass
-           of [Inline_and_simplify] such unboxing will go all the way down the
+           of [Simplify] such unboxing will go all the way down the
            control flow. *)
         if handler.stub || E.never_unbox_continuations env
         then Unchanged { handler; }
@@ -2594,7 +2594,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
   let env = E.activate_freshening (E.set_never_inline env) in
   let free_vars, specialised_args, function_decls, parameter_approximations,
       _internal_value_set_of_closures, set_of_closures_env =
-    Inline_and_simplify_aux.prepare_to_simplify_set_of_closures ~env
+    Simplify_aux.prepare_to_simplify_set_of_closures ~env
       ~set_of_closures ~function_decls:set_of_closures.function_decls
       ~freshen:false ~only_for_function_decl:(Some function_decl)
   in
@@ -2606,7 +2606,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
     | function_decl -> function_decl
   in
   let closure_env =
-    Inline_and_simplify_aux.prepare_to_simplify_closure ~function_decl
+    Simplify_aux.prepare_to_simplify_closure ~function_decl
       ~free_vars ~specialised_args ~parameter_approximations
       ~set_of_closures_env
   in
@@ -2838,7 +2838,7 @@ Format.eprintf "Simplifying initialize_symbol field:@;%a"
           simplify_toplevel env r h ~continuation:cont ~descr
         in
         let approx =
-          Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+          Simplify_aux.Continuation_uses.meet_of_args_approxs
             uses ~num_params:1
         in
         let approx =
@@ -2878,7 +2878,7 @@ Format.eprintf "Symbol %a has approximation %a\n%!"
       simplify_toplevel env r expr ~continuation:cont ~descr
     in
     begin match
-      Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+      Simplify_aux.Continuation_uses.meet_of_args_approxs
         uses ~num_params:1
     with
     | [_] -> ()

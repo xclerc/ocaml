@@ -17,7 +17,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module U = Inline_and_simplify_aux.Continuation_uses
+module U = Simplify_aux.Continuation_uses
 
 (* CR mshinwell: Think carefully about function return approximations in
    the context of potentially turning tail calls into non-tail calls via

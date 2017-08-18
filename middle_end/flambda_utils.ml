@@ -322,7 +322,7 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
       free_variables Variable.Map.empty
   in
   (* CR-soon mshinwell: try to eliminate this [toplevel_substitution].  This
-     function is only called from [Inline_and_simplify], so we should be able
+     function is only called from [Simplify], so we should be able
      to do something similar to what happens in [Inlining_transforms] now. *)
   let body = toplevel_substitution sb body in
   let subst id = Variable.Map.find id sb in

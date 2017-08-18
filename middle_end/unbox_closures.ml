@@ -18,7 +18,7 @@
 
 module ASA = Augment_specialised_args
 module W = ASA.What_to_specialise
-module E = Inline_and_simplify_aux.Env
+module E = Simplify_aux.Env
 
 module Transform = struct
   let pass_name = "unbox-closures"

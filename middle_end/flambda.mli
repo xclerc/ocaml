@@ -190,7 +190,7 @@ and named =
       [Read_symbol_field] may only be used when the definition of the symbol
       is in scope in the [program].  For external unresolved symbols, [Pfield]
       may still be used; it will be changed to [Read_symbol_field] by
-      [Inline_and_simplify] when (and if) the symbol is imported. *)
+      [Simplify] when (and if) the symbol is imported. *)
   | Allocated_const of Allocated_const.t
   | Set_of_closures of set_of_closures
   | Project_closure of project_closure
@@ -256,7 +256,7 @@ and let_cont = {
 (** Note: any continuation used as an exception handler must be non-recursive
     by the point it reaches [Flambda_to_clambda].  (This means that it is
     permissible to introduce mutual recursion through stubs associated with
-    such continuations, so long as [Inline_and_simplify] is run afterwards
+    such continuations, so long as [Simplify] is run afterwards
     to inline them out and turn the resulting single [Recursive] handler into
     a [Nonrecursive] one. *)
 and let_cont_handlers =
@@ -272,7 +272,7 @@ and continuation_handler = {
   is_exn_handler : bool;
   (** Continuations used as exception handlers must always be [Nonrecursive]
       and must have exactly one argument.  To enable identification of them
-      in passes not invoked from [Inline_and_simplify] (where they could be
+      in passes not invoked from [Simplify] (where they could be
       identified by looking at the [Apply_cont]s that reference them) they
       are marked explicitly.
       (Relevant piece of background info: the backend cannot compile
@@ -331,7 +331,7 @@ and set_of_closures = private {
   specialised_args : Flambda_types0.T.specialised_args;
   (** Parameters whose corresponding arguments are known to always alias a
       particular value.  These are the only parameters that may, during
-      [Inline_and_simplify], have non-unknown approximations.
+      [Simplify], have non-unknown approximations.
 
       An argument may only be specialised to a variable in the scope of the
       corresponding set of closures declaration.  Usually, that variable
@@ -508,10 +508,10 @@ type program_body =
         and f_closure = Project_closure (set_of_closures_symbol, f)
 
       Use of [Let_rec_symbol], by virtue of the special handling in
-      [Inline_and_simplify.define_let_rec_symbol_approx], enables the
+      [Simplify.define_let_rec_symbol_approx], enables the
       approximation of the set of closures to be present in order to
       correctly simplify the [Project_closure] construction.  (See
-      [Inline_and_simplify.simplify_project_closure] for that part.) *)
+      [Simplify.simplify_project_closure] for that part.) *)
   | Initialize_symbol of Symbol.t * Tag.t * (t * Continuation.t) list
       * program_body
   (** Define the given symbol as a constant block of the given size and

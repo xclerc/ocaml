@@ -23,19 +23,19 @@
     the "existing inner vars".
 *)
 val from_function's_free_vars
-   : env:Inline_and_simplify_aux.Env.t
+   : env:Simplify_aux.Env.t
   -> free_vars:Flambda.free_vars
   -> function_decl:Flambda.function_declaration
   -> Projection.Set.t
 
 val from_function's_specialised_args
-   : env:Inline_and_simplify_aux.Env.t
+   : env:Simplify_aux.Env.t
   -> specialised_args:Flambda.specialised_args
   -> function_decl:Flambda.function_declaration
   -> Projection.Set.t
 
 (** For continuations, all parameters are checked for potential projections. *)
 val from_continuation
-   : uses:Inline_and_simplify_aux.Continuation_uses.t
+   : uses:Simplify_aux.Continuation_uses.t
   -> handler:Flambda.continuation_handler
   -> Projection.Set.t

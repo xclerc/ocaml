@@ -17,7 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module A = Simple_value_approx
-module E = Inline_and_simplify_aux.Env
+module E = Simplify_aux.Env
 
 (* CR-soon pchambart: should we restrict only to cases
   when the field is aliased to a variable outside
@@ -242,7 +242,7 @@ let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
   let handler_params = Parameter.List.vars handler.params in
   let which_variables = Variable.Set.of_list handler_params in
   let param_approxs =
-    Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs uses
+    Simplify_aux.Continuation_uses.meet_of_args_approxs uses
       ~num_params:(List.length handler_params)
   in
   let params_to_approxs =

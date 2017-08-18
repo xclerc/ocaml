@@ -37,10 +37,10 @@
 *)
 
 val rewrite_set_of_closures
-   : env:Inline_and_simplify_aux.Env.t
+   : env:Simplify_aux.Env.t
   (* CR-soon mshinwell: eliminate superfluous parameter *)
   -> duplicate_function:(
-       env:Inline_and_simplify_aux.Env.t
+       env:Simplify_aux.Env.t
     -> set_of_closures:Flambda.set_of_closures
     -> fun_var:Variable.t
     -> new_fun_var:Variable.t

@@ -17,8 +17,8 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module A = Simple_value_approx
-module E = Inline_and_simplify_aux.Env
-module R = Inline_and_simplify_aux.Result
+module E = Simplify_aux.Env
+module R = Simplify_aux.Result
 
 let pass_name = "continuation-specialisation"
 let () = Pass_wrapper.register ~pass_name
@@ -149,7 +149,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
             Continuation.Set.print
             (Continuation.Map.keys definitions_with_uses)
         | (uses, _approx, _env, _recursive) ->
-          Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+          Simplify_aux.Continuation_uses.meet_of_args_approxs
             uses ~num_params:(List.length handler.params)
       in
       let freshened_cont =
@@ -322,10 +322,10 @@ let can_specialise_param ~(handler : Flambda.continuation_handler) ~param
 let examine_use ~specialisations ~cont
       ~(handler : Flambda.continuation_handler) ~invariant_params
       ~invariant_params_flow ~handlers ~recursive
-      ~(use : Inline_and_simplify_aux.Continuation_uses.Use.t) =
+      ~(use : Simplify_aux.Continuation_uses.Use.t) =
   let module CA = Continuation.With_args in
   let module CSA = Continuation_with_specialised_args in
-  let module U = Inline_and_simplify_aux.Continuation_uses in
+  let module U = Simplify_aux.Continuation_uses in
   match U.Use.Kind.is_specialisable use.kind with
   | None -> specialisations
   | Some args_and_approxs ->
@@ -387,7 +387,7 @@ let examine_use ~specialisations ~cont
 
 let find_candidate_specialisations r ~backend =
   let module N = Num_continuation_uses in
-  let module U = Inline_and_simplify_aux.Continuation_uses in
+  let module U = Simplify_aux.Continuation_uses in
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   (* The result of this fold is a map that groups together uses of a
      continuation where some subset of its invariant parameters have the same

@@ -16,11 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module R = Inline_and_simplify_aux.Result
+module R = Simplify_aux.Result
 
 let for_toplevel_expression expr r =
   (* This pass only performs linear inlining, even for stubs.  Non-linear
-     inlining for stubs is done by [Inline_and_simplify]. *)
+     inlining for stubs is done by [Simplify]. *)
   let used_linearly =
     R.non_recursive_continuations_used_linearly_in_inlinable_position r
   in

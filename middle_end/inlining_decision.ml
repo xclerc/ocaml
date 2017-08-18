@@ -17,8 +17,8 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module A = Simple_value_approx
-module E = Inline_and_simplify_aux.Env
-module R = Inline_and_simplify_aux.Result
+module E = Simplify_aux.Env
+module R = Simplify_aux.Result
 module U = Flambda_utils
 module W = Inlining_cost.Whether_sufficient_benefit
 module T = Inlining_cost.Threshold
@@ -641,10 +641,10 @@ Continuation.print continuation (List.length args_approxs);
     let raw_inlining_threshold = R.inlining_threshold r in
     let max_inlining_threshold =
       if E.at_toplevel env then
-        Inline_and_simplify_aux.initial_inlining_toplevel_threshold
+        Simplify_aux.initial_inlining_toplevel_threshold
           ~round:(E.round env)
       else
-        Inline_and_simplify_aux.initial_inlining_threshold ~round:(E.round env)
+        Simplify_aux.initial_inlining_threshold ~round:(E.round env)
     in
     let unthrottled_inlining_threshold =
       match raw_inlining_threshold with
