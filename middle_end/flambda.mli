@@ -267,7 +267,7 @@ and continuation_handlers =
   continuation_handler Continuation.Map.t
 
 and continuation_handler = {
-  params : Parameter.t list;
+  params : parameter list;
   stub : bool;
   is_exn_handler : bool;
   (** Continuations used as exception handlers must always be [Nonrecursive]
@@ -351,7 +351,7 @@ and function_declaration = private {
   (** The kinds of the parameters of the [continuation_param] continuation.
       (This encodes whether the function returns multiple and/or unboxed
       values, for example.) *)
-  params : Parameter.t list;
+  params : parameter list;
   (** The normal (variable) parameters of the function together with their
       types.  Some of the parameters may have non-trivial types that
       indicate previous specialisation of the function.  Types of parameters
@@ -383,6 +383,10 @@ and function_declaration = private {
   is_a_functor : bool;
   (** Whether the function is known definitively to be a functor. *)
 }
+
+(** A parameter (to a function, continuation, etc.) together with its
+    type. *)
+and parameter = Parameter.t * (function_declarations Flambda_type0.t)
 
 (** Equivalent to the similar type in [Ilambda]. *)
 and switch = private {
@@ -496,7 +500,7 @@ val free_variables_of_let_cont_handlers
   -> Variable.Set.t
 
 val free_variables_of_specialised_args
-   : Flambda_types0.T.specialised_args
+   : Flambda_type0.T.specialised_args
   -> Variable.Set.t
 
 (** Compute _all_ variables occurring inside an expression. *)
@@ -689,7 +693,7 @@ val create_switch'
     existing [closure_origin].
 *)
 val create_function_declaration
-   : params:Parameter.t list
+   : params:parameter list
   -> continuation_param:Continuation.t
   -> return_arity:int
   -> body:t
@@ -717,7 +721,7 @@ val update_body_of_function_declaration
 (* CR-soon mshinwell: rename this to match new update function above *)
 val update_function_decl's_params_and_body
    : function_declaration
-  -> params:Parameter.t list
+  -> params:parameter list
   -> body:expr
   -> function_declaration
 
@@ -739,7 +743,7 @@ val import_function_declarations_for_pack
 val create_set_of_closures
    : function_decls:function_declarations
   -> free_vars:free_vars
-  -> specialised_args:Flambda_types0.T.specialised_args
+  -> specialised_args:Flambda_type0.T.specialised_args
   -> direct_call_surrogates:Variable.t Variable.Map.t
   -> set_of_closures
 
@@ -760,6 +764,8 @@ val iter_general
   -> maybe_named
   -> unit
 
+(* CR mshinwell: Move these "print" functions into individual recursive
+   modules along with the types *)
 val print : Format.formatter -> t -> unit
 
 val print_named : Format.formatter -> named -> unit
@@ -801,11 +807,6 @@ val print_project_var
 val print_set_of_closures
    : Format.formatter
   -> set_of_closures
-  -> unit
-
-val print_specialised_args
-   : Format.formatter
-  -> Flambda_types0.T.specialised_args
   -> unit
 
 val print_specialised_to

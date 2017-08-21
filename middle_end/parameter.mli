@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,8 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** [Parameter.t] carries a unique [Variable.t] used as function parameter.
-    It can also carry annotations about the usage of the variable. *)
+(** [Parameter.t] carries a unique [Variable.t] used as function parameter. *)
 
 type t
 type parameter = t
@@ -28,10 +27,9 @@ type parameter = t
    should think about how to improve this.
    There should for a start be a proper creation function with "with
    default attributes" in the name, or similar. *)
-val wrap : Variable.t -> Flambda_type0.t -> t
+val wrap : Variable.t -> t
 
 val var : t -> Variable.t
-val ty : t -> Flambda_type0.t
 
 (** Rename the inner variable of the parameter *)
 val rename
@@ -60,7 +58,7 @@ module List : sig
   (** extract variables from a list of parameters, preserving the order *)
   val vars : t list -> Variable.t list
 
-  val wrap : (Variable.t * Value_kind.t) list -> t list
+  val wrap : Variable.t list -> t list
 
   val equal_vars : t list -> Variable.t list -> bool
 

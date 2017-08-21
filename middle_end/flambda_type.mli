@@ -26,6 +26,10 @@ type t =
 
 (** Means of making and examining types. *)
 include Flambda_types0.Constructors_and_accessors
+  with type 'decls t := Flambda.function_declarations Flambda_types0.t
+  with type 'decls descr := Flambda.function_declarations Flambda_types0.descr
+  with type 'decls set_of_closures :=
+    Flambda.function_declarations Flambda_types0.set_of_closures
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr

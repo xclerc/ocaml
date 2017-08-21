@@ -22,13 +22,11 @@
 
 type parameter = {
   var : Variable.t;
-  kind : Flambda_kind.t;
 }
 
-let wrap var kind = { var; kind; }
+let wrap var = { var; }
 
 let var t = t.var
-let kind t = t.kind
 
 module M =
   Identifiable.Make (struct

@@ -94,8 +94,7 @@ val rewrite_recursive_calls_with_symbols
   -> make_closure_symbol:(Closure_id.t -> Symbol.t)
   -> Flambda.function_declarations
 
-(* CR-soon mshinwell for mshinwell: maybe inaccurate module name, it freshens
-   closure IDs as well.  Check use points though *)
+(* CR mshinwell: To be removed after Pierre's patch lands *)
 module Project_var : sig
   (** A table used for freshening of identifiers in [Project_closure] and
       [Move_within_set_of_closures] ("ids of closures"); and [Project_var]
@@ -115,7 +114,7 @@ module Project_var : sig
       table such that later the access to the field x of g and selection of
       g in the closure can be substituted.
    *)
-  type t
+  type t = Flambda_type0.closure_freshening
 
   (* The freshening that does nothing. *)
   val empty : t

@@ -270,7 +270,7 @@ let rewrite_recursive_calls_with_symbols t
     end
 
 module Project_var = struct
-  type t =
+  type t = Flambda_type0.closure_freshening =
     { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
       closure_id : Closure_id.t Closure_id.Map.t }
 

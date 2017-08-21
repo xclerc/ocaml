@@ -60,6 +60,12 @@ type specialised_to = {
 
 type specialised_args = specialised_to Variable.Map.t
 
+(* CR mshinwell: Remove this once Pierre's patch lands *)
+type closure_freshening =
+  { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
+    closure_id : Closure_id.t Closure_id.Map.t;
+  }
+
 (* A value of type [T.t] corresponds to an "approximation" of the result of
     a computation in the program being compiled.  That is to say, it
     represents what knowledge we have about such a result at compile time.
@@ -145,7 +151,7 @@ module rec T : sig
   }
 
   (** The type of an Flambda term. *)
-  type ('decls, 'freshening) t = {
+  type 'decls t = {
     descr : descr;
     var : (Variable.t * (Projection.t option)) option;
     symbol : (Symbol.t * int option) option;
@@ -167,29 +173,29 @@ module rec T : sig
      latter introducing a type of function declarations in this module), then
      the only circularity between this type and Flambda will be for
      Flambda.expr on function bodies. *)
-  and ('decls, 'freshening) descr = private 
+  and 'decls descr = private 
     | Unknown of Flambda_kind.t * unknown_because_of
-    | Union of Unionable.t
-    | Unboxed_float of Float.Set.t
-    | Unboxed_int32 of Int32.Set.t
-    | Unboxed_int64 of Int64.Set.t
-    | Unboxed_nativeint of Nativeint.Set.t
-    | Boxed_number of boxed_number_kind * t
-    | Set_of_closures of ('decls, 'freshening) set_of_closures
-    | Closure of ('decls, 'freshening) closure
+    | Union of 'decls Unionable.t
+    | Unboxed_float of Numbers.Float.Set.t
+    | Unboxed_int32 of Numbers.Int32.Set.t
+    | Unboxed_int64 of Numbers.Int64.Set.t
+    | Unboxed_nativeint of Numbers.Nativeint.Set.t
+    | Boxed_number of Boxed_number_kind.t * 'decls t
+    | Set_of_closures of 'decls set_of_closures
+    | Closure of 'decls closure
     | String of string
-    | Float_array of float_array
+    | Float_array of 'decls float_array
     | Bottom
     | Load_lazily of load_lazily
 
-  and ('decls, 'freshening) closure = {
-    potential_closures : ('decls, 'freshening) t Closure_id.Map.t;
+  and 'decls closure = {
+    potential_closures : 'decls t Closure_id.Map.t;
     (** Map of closures ids to set of closures *)
   } [@@unboxed]
 
   (* CR-soon mshinwell: add support for the approximations of the results, so we
      can do all of the tricky higher-order cases. *)
-  and ('decls, 'freshening) set_of_closures = private {
+  and 'decls set_of_closures = private {
     function_decls : 'decls;
     bound_vars : t Var_within_closure.Map.t;
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
