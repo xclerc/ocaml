@@ -46,6 +46,8 @@ module Set : sig
   include Identifiable.Set with module T := T
 
   val vars : parameter list -> Variable.Set.t
+
+  val wrap : Variable.Set.t -> t
 end
 
 include Identifiable.S with type t := t

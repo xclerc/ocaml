@@ -22,7 +22,7 @@
 val run
    : continuation_uses:
        Simplify_aux.Continuation_uses.t Continuation.Map.t
-  -> function_decls:Flambda.function_declarations
+  -> function_decls:Flambda.Function_declarations.t
   -> specialised_args:Flambda.specialised_args
   -> backend:(module Backend_intf.S)
-  -> Flambda.function_declarations * Flambda.specialised_args
+  -> Flambda.Function_declarations.t * Flambda.specialised_args

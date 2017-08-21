@@ -224,7 +224,7 @@ let apply_mutable_variable t mut_var =
    | Not_found -> mut_var
 
 let rewrite_recursive_calls_with_symbols t
-      (function_declarations : Flambda.function_declarations)
+      (function_declarations : Flambda.Function_declarations.t)
       ~make_closure_symbol =
   match t with
   | Inactive -> function_declarations
@@ -251,7 +251,7 @@ let rewrite_recursive_calls_with_symbols t
       function_declarations
     end else begin
       let funs =
-        Variable.Map.map (fun (func_decl : Flambda.function_declaration) ->
+        Variable.Map.map (fun (func_decl : Flambda.Function_declaration.t) ->
           let body =
             Flambda_iterators.map_toplevel_named
               (* CR-someday pchambart: This may be worth deep substituting
@@ -279,12 +279,7 @@ module Project_var = struct
       closure_id = Closure_id.Map.empty;
     }
 
-  let print ppf t =
-    Format.fprintf ppf "{ vars_within_closure %a, closure_id %a }"
-      (Var_within_closure.Map.print Var_within_closure.print)
-      t.vars_within_closure
-      (Closure_id.Map.print Closure_id.print)
-      t.closure_id
+  let print = Flambda_type0.print_closure_freshening
 
   let new_subst_fv t id subst =
     match subst with
@@ -331,12 +326,12 @@ module Project_var = struct
       subst_free_vars must have been used to build off_sb
    *)
   let func_decls_subst t (subst : subst)
-        (func_decls : Flambda.function_declarations)
+        (func_decls : Flambda.Function_declarations.t)
         ~only_freshen_parameters =
     match subst with
     | Inactive -> func_decls, subst, t
     | Active subst ->
-      let subst_func_decl _fun_id (func_decl : Flambda.function_declaration)
+      let subst_func_decl _fun_id (func_decl : Flambda.Function_declaration.t)
           subst =
         let params, subst = active_add_parameters' subst func_decl.params in
         (* Since all parameters are distinct, even between functions, we can
@@ -514,30 +509,6 @@ let freshen_free_vars_projection_relation relation ~freshening
 let freshen_free_vars_projection_relation' relation ~freshening
       ~closure_freshening =
   Variable.Map.map (fun ((spec_to : Flambda.free_var), data) ->
-      let projection =
-        match spec_to.projection with
-        | None -> None
-        | Some projection ->
-          Some (freshen_projection projection ~freshening ~closure_freshening)
-      in
-      { spec_to with projection; }, data)
-    relation
-
-let freshen_specialised_args_projection_relation relation ~freshening
-      ~closure_freshening =
-  Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
-      let projection =
-        match spec_to.projection with
-        | None -> None
-        | Some projection ->
-          Some (freshen_projection projection ~freshening ~closure_freshening)
-      in
-      { spec_to with projection; })
-    relation
-
-let freshen_specialised_args_projection_relation' relation ~freshening
-      ~closure_freshening =
-  Variable.Map.map (fun ((spec_to : Flambda.specialised_to), data) ->
       let projection =
         match spec_to.projection with
         | None -> None

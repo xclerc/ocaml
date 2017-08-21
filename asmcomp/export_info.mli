@@ -43,9 +43,11 @@ type descr =
   | Value_int of int
   | Value_char of char
   | Value_constptr of int
-  | Value_float of float
+  | Value_float of float  (* CR mshinwell: -> Unboxed_float *)
   | Value_float_array of value_float_array
-  | Value_boxed_int : 'a Simple_value_approx.boxed_int * 'a -> descr
+  | Value_unboxed_int32 of Int32.t
+  | Value_unboxed_int64 of Int64.t
+  | Value_unboxed_nativeint of Nativeint.t
   | Value_string of value_string
   | Value_closure of value_closure
   | Value_set_of_closures of value_set_of_closures
@@ -78,9 +80,9 @@ val join_approx : approx -> approx -> approx
 
 (** A structure that describes what a single compilation unit exports. *)
 type t = private {
-  sets_of_closures : Flambda.function_declarations Set_of_closures_id.Map.t;
+  sets_of_closures : Flambda.Function_declarations.t Set_of_closures_id.Map.t;
   (** Code of exported functions indexed by set of closures IDs. *)
-  closures : Flambda.function_declarations Closure_id.Map.t;
+  closures : Flambda.Function_declarations.t Closure_id.Map.t;
   (** Code of exported functions indexed by closure IDs. *)
   values : descr Export_id.Map.t Compilation_unit.Map.t;
   (** Structure of exported values. *)
@@ -102,8 +104,8 @@ val empty : t
 
 (** Create a new export information structure. *)
 val create
-   : sets_of_closures:Flambda.function_declarations Set_of_closures_id.Map.t
-  -> closures:Flambda.function_declarations Closure_id.Map.t
+   : sets_of_closures:Flambda.Function_declarations.t Set_of_closures_id.Map.t
+  -> closures:Flambda.Function_declarations.t Closure_id.Map.t
   -> values:descr Export_id.Map.t Compilation_unit.Map.t
   -> symbol_id:Export_id.t Symbol.Map.t
   -> offset_fun:int Closure_id.Map.t

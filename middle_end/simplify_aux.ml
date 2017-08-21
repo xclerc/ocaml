@@ -22,7 +22,7 @@ module T = Flambda_types
 let prepare_to_simplify_set_of_closures ~env
       ~(set_of_closures : Flambda.set_of_closures)
       ~function_decls ~freshen
-      ~(only_for_function_decl : Flambda.function_declaration option) =
+      ~(only_for_function_decl : Flambda.Function_declaration.t option) =
   let free_vars =
     Variable.Map.map (fun (external_var : Flambda.free_var) ->
         let var =
@@ -99,7 +99,7 @@ let prepare_to_simplify_set_of_closures ~env
   free_vars, specialised_args, function_decls,
     internal_value_set_of_closures, set_of_closures_env
 
-let prepare_to_simplify_closure ~(function_decl : Flambda.function_declaration)
+let prepare_to_simplify_closure ~(function_decl : Flambda.Function_declaration.t)
       ~free_vars ~specialised_args ~set_of_closures_env =
   let closure_env =
     Variable.Map.fold (fun inner_var (_outer_var, ty) env ->

@@ -233,7 +233,7 @@ val fold_function_decls_ignoring_stubs
    : Flambda.set_of_closures
   -> init:'a
   -> f:(fun_var:Variable.t
-    -> function_decl:Flambda.function_declaration
+    -> function_decl:Flambda.Function_declaration.t
     -> 'a
     -> 'a)
   -> 'a

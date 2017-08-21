@@ -19,7 +19,7 @@
 (* CR mshinwell: check specialisation behaviour is preserved *)
 
 let unrecursify_function ~fun_var:function_variable
-    ~(function_decl : Flambda.function_declaration) =
+    ~(function_decl : Flambda.Function_declaration.t) =
   let closure_id = Closure_id.wrap function_variable in
   let loop_continuation = Continuation.create () in
   let did_something = ref false in

@@ -22,12 +22,12 @@
 
 (** [find_declaration f decl] raises [Not_found] if [f] is not in [decl]. *)
 val find_declaration :
-  Closure_id.t -> Flambda.function_declarations -> Flambda.function_declaration
+  Closure_id.t -> Flambda.Function_declarations.t -> Flambda.Function_declaration.t
 
 (** [find_declaration_variable f decl] raises [Not_found] if [f] is not in
     [decl]. *)
 val find_declaration_variable :
-  Closure_id.t -> Flambda.function_declarations -> Variable.t
+  Closure_id.t -> Flambda.Function_declarations.t -> Variable.t
 
 (** [find_free_variable v clos] raises [Not_found] if [c] is not in [clos]. *)
 val find_free_variable :
@@ -35,7 +35,7 @@ val find_free_variable :
 
 (** Utility functions *)
 
-val function_arity : Flambda.function_declaration -> int
+val function_arity : Flambda.Function_declaration.t -> int
 
 (** Variables "bound by a closure" are those variables free in the
     corresponding function's body that are neither:
@@ -46,7 +46,7 @@ val function_arity : Flambda.function_declaration -> int
     [f], [g] or [h] are bound in any of the closures for [f], [g] and [h].
 *)
 val variables_bound_by_the_closure :
-  Closure_id.t -> Flambda.function_declarations -> Variable.Set.t
+  Closure_id.t -> Flambda.Function_declarations.t -> Variable.Set.t
 
 (** If [can_be_merged f1 f2] is [true], it is safe to merge switch
     branches containing [f1] and [f2]. *)
@@ -108,13 +108,13 @@ val root_symbol : Flambda.program -> Symbol.t
     all sets of closures in the given program. *)
 val make_closure_map
    : Flambda.program
-  -> Flambda.function_declarations Closure_id.Map.t
+  -> Flambda.Function_declarations.t Closure_id.Map.t
 
 (** Like [make_closure_map], but takes a mapping from set of closures IDs to
     function declarations, instead of a [program]. *)
 val make_closure_map'
-   : Flambda.function_declarations Set_of_closures_id.Map.t
-  -> Flambda.function_declarations Closure_id.Map.t
+   : Flambda.Function_declarations.t Set_of_closures_id.Map.t
+  -> Flambda.Function_declarations.t Closure_id.Map.t
 
 (** The definitions of all constants that have been lifted out to [Let_symbol]
     or [Let_rec_symbol] constructions. *)
@@ -143,11 +143,11 @@ val all_sets_of_closures_map
 
 val all_function_decls_indexed_by_set_of_closures_id
    : Flambda.program
-  -> Flambda.function_declarations Set_of_closures_id.Map.t
+  -> Flambda.Function_declarations.t Set_of_closures_id.Map.t
 
 val all_function_decls_indexed_by_closure_id
    : Flambda.program
-  -> Flambda.function_declarations Closure_id.Map.t
+  -> Flambda.Function_declarations.t Closure_id.Map.t
 
 val make_variable_symbol : Variable.t -> Symbol.t
 val make_variables_symbol : Variable.t list -> Symbol.t
@@ -181,7 +181,7 @@ end
     with that "fun_var".
 *)
 val fun_vars_referenced_in_decls
-   : Flambda.function_declarations
+   : Flambda.Function_declarations.t
   -> backend:(module Backend_intf.S)
   -> Variable.Set.t Variable.Map.t
 
@@ -190,14 +190,14 @@ val fun_vars_referenced_in_decls
 val closures_required_by_entry_point
    : entry_point:Closure_id.t
   -> backend:(module Backend_intf.S)
-  -> Flambda.function_declarations
+  -> Flambda.Function_declarations.t
   -> Variable.Set.t
 
-val all_functions_parameters : Flambda.function_declarations -> Variable.Set.t
+val all_functions_parameters : Flambda.Function_declarations.t -> Variable.Set.t
 
-val all_free_symbols : Flambda.function_declarations -> Symbol.Set.t
+val all_free_symbols : Flambda.Function_declarations.t -> Symbol.Set.t
 
-val contains_stub : Flambda.function_declarations -> bool
+val contains_stub : Flambda.Function_declarations.t -> bool
 
 (* Ensure that projection information is suitably erased from
    free_vars and specialised_args if we have deleted the variable being
@@ -220,7 +220,7 @@ type specialised_to_same_as =
     componentwise to the usual [params] list in the corresponding function
     declaration. *)
 val parameters_specialised_to_the_same_variable
-   : function_decls:Flambda.function_declarations
+   : function_decls:Flambda.Function_declarations.t
   -> specialised_args:Flambda.specialised_to Variable.Map.t
   -> specialised_to_same_as list Variable.Map.t
 

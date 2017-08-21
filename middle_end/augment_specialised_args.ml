@@ -110,7 +110,7 @@ end
 module Processed_what_to_specialise = struct
   type for_one_function = {
     fun_var : Variable.t;
-    function_decl : Flambda.function_declaration;
+    function_decl : Flambda.Function_declaration.t;
     make_direct_call_surrogates : bool;
     new_definitions_indexed_by_new_inner_vars : Definition.t Variable.Map.t;
     all_new_definitions : Definition.Set.t;
@@ -251,7 +251,7 @@ module Processed_what_to_specialise = struct
           match Variable.Map.find fun_var t.set_of_closures.function_decls.funs
         with
         | exception Not_found -> assert false
-        | (function_decl : Flambda.function_declaration) ->
+        | (function_decl : Flambda.Function_declaration.t) ->
           let params = Parameter.Set.vars function_decl.params in
           let existing_specialised_args =
             Variable.Map.filter (fun inner_var _spec_to ->
@@ -293,7 +293,7 @@ module Processed_what_to_specialise = struct
 
   let create ~env ~(what_to_specialise : W.t) ~variable_suffix =
     let existing_definitions_via_spec_args_indexed_by_fun_var =
-      Variable.Map.map (fun (function_decl : Flambda.function_declaration) ->
+      Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
           if function_decl.stub then
             Definition.Set.empty
           else
@@ -378,7 +378,7 @@ let check_invariants ~pass_name ~(set_of_closures : Flambda.set_of_closures)
       ~original_set_of_closures =
   if !Clflags.flambda_invariant_checks then begin
     Variable.Map.iter (fun fun_var
-              (function_decl : Flambda.function_declaration) ->
+              (function_decl : Flambda.Function_declaration.t) ->
         let params = Parameter.Set.vars function_decl.params in
         Variable.Map.iter (fun inner_var
                     (outer_var : Flambda.specialised_to) ->
@@ -418,7 +418,7 @@ module Make (T : S) = struct
   let () = Pass_wrapper.register ~pass_name:T.pass_name
 
   let rename_function_and_parameters ~fun_var
-        ~(function_decl : Flambda.function_declaration) =
+        ~(function_decl : Flambda.Function_declaration.t) =
     let new_fun_var = Variable.rename fun_var ~append:T.variable_suffix in
     let params_renaming_list =
       List.map (fun param ->

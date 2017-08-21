@@ -339,7 +339,7 @@ and lift_expr (expr : Flambda.expr) ~state =
 and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
   let funs =
     Variable.Map.map (fun
-            (function_decl : Flambda.function_declaration) ->
+            (function_decl : Flambda.Function_declaration.t) ->
         Flambda.update_body_of_function_declaration function_decl
           ~body:(lift function_decl.body))
       set_of_closures.function_decls.funs

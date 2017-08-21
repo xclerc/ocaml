@@ -22,14 +22,17 @@
 
 (** The type of an Flambda term. *)
 type t =
-  (Flambda.function_declarations, Freshening.Project_var.t) Flambda_types0.t
+  (Flambda.Function_declarations.t, Freshening.Project_var.t) Flambda_types0.t
 
 (** Means of making and examining types. *)
 include Flambda_types0.Constructors_and_accessors
-  with type 'decls t := Flambda.function_declarations Flambda_types0.t
-  with type 'decls descr := Flambda.function_declarations Flambda_types0.descr
+  with type 'decls t := Flambda.Function_declarations.t Flambda_types0.t
+  with type 'decls descr := Flambda.Function_declarations.t Flambda_types0.descr
   with type 'decls set_of_closures :=
-    Flambda.function_declarations Flambda_types0.set_of_closures
+    Flambda.Function_declarations.t Flambda_types0.set_of_closures
+
+(** Free variables in a type. *)
+val free_variables : t -> Variable.Set.t
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr
@@ -37,8 +40,9 @@ val descr : t -> descr
 (** Extraction of the description fields from a list of types. *)
 val descrs : t list -> descr list
 
-(** Attempt to use a value kind to refine a type. *)
-val refine_using_value_kind : t -> Lambda.value_kind -> t
+(** Like [kind], but causes a fatal error if the type has not been fully
+    resolved. *)
+val kind_exn : _ t -> Flambda_kind.t
 
 (** Attempt to use a type to refine a value kind. *)
 val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind

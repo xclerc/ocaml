@@ -33,7 +33,7 @@ type t = {
     calls another function with arguments extracted in the obvious
     manner from the tuple. *)
 let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
-      : Flambda.function_declaration =
+      : Flambda.Function_declaration.t =
   let continuation_param = Continuation.create () in
   let tuple_param_var =
     Variable.rename ~append:"tupled_stub_param" unboxed_version

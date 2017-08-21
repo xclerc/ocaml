@@ -21,10 +21,10 @@
 type 'a by_copying_function_body =
      env:Simplify_aux.Env.t
   -> r:Simplify_aux.Result.t
-  -> clos:Flambda.function_declarations
+  -> clos:Flambda.Function_declarations.t
   -> lfunc:Flambda.t
   -> fun_id:Closure_id.t
-  -> func:Flambda.function_declaration
+  -> func:Flambda.Function_declaration.t
   -> args:Flambda.t list
   -> Flambda.t * Simplify_aux.Result.t
 
@@ -32,9 +32,9 @@ type 'a by_copying_function_declaration =
      env:Simplify_aux.Env.t
   -> r:Simplify_aux.Result.t
   -> funct:Flambda.t
-  -> clos:Flambda.function_declarations
+  -> clos:Flambda.Function_declarations.t
   -> fun_id:Closure_id.t
-  -> func:Flambda.function_declaration
+  -> func:Flambda.Function_declaration.t
   -> args_with_approxs:
       (Flambda.t list) * (Simple_value_approx.t list)
   -> invariant_params:Variable.Set.t

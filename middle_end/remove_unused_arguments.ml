@@ -23,7 +23,7 @@ let rename_var var =
   Variable.rename var
     ~current_compilation_unit:(Compilation_unit.get_current_exn ())
 
-let remove_params unused (fun_decl: Flambda.function_declaration) =
+let remove_params unused (fun_decl: Flambda.Function_declaration.t) =
   let unused_params, used_params =
     List.partition (fun v -> Variable.Set.mem (Parameter.var v) unused)
       fun_decl.params
@@ -40,7 +40,7 @@ let remove_params unused (fun_decl: Flambda.function_declaration) =
   Flambda.update_function_decl's_params_and_body fun_decl
     ~params:used_params ~body
 
-let make_stub unused var (fun_decl : Flambda.function_declaration)
+let make_stub unused var (fun_decl : Flambda.Function_declaration.t)
     ~specialised_args ~additional_specialised_args =
   let renamed = rename_var var in
   let args' =
@@ -116,7 +116,7 @@ let separate_unused_arguments ~only_specialised
     Invariant_params.Functions.unused_arguments ~backend function_decls
   in
   let non_stub_arguments =
-    Variable.Map.fold (fun _ (decl : Flambda.function_declaration) acc ->
+    Variable.Map.fold (fun _ (decl : Flambda.Function_declaration.t) acc ->
         if decl.stub then
           acc
         else
@@ -133,7 +133,7 @@ let separate_unused_arguments ~only_specialised
   then None
   else begin
     let funs, additional_specialised_args =
-      Variable.Map.fold (fun fun_id (fun_decl : Flambda.function_declaration)
+      Variable.Map.fold (fun fun_id (fun_decl : Flambda.Function_declaration.t)
                           (funs, additional_specialised_args) ->
           if List.exists (fun v -> Variable.Set.mem (Parameter.var v) unused)
               fun_decl.params
@@ -182,7 +182,7 @@ let separate_unused_arguments ~only_specialised
    args should always be beneficial since they should not be used in
    indirect calls. *)
 let should_split_only_specialised_args
-    (fun_decls : Flambda.function_declarations)
+    (fun_decls : Flambda.Function_declarations.t)
     ~backend =
   if not !Clflags.remove_unused_arguments then begin
     true

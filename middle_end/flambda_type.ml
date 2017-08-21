@@ -19,7 +19,7 @@
 module T0 = Flambda_types0
 
 type t =
-  (Flambda.function_declarations, Freshening.Project_var.t) Flambda_types0.t
+  (Flambda.Function_declarations.t, Freshening.Project_var.t) Flambda_types0.t
 
 let descr = T0.descr
 let descrs = T0.descrs
@@ -67,6 +67,71 @@ let augment_with_symbol_field = T0.augment_with_symbol_field
 let replace_description = T0.replace_description
 let augment_with_kind = T0.augment_with_kind
 let augment_kind_with_type = T0.augment_kind_with_type
+
+let free_variables (t : t) =
+  let rec free_variables (t : t) acc =
+    let acc =
+      match t.var with
+      | None -> acc
+      | Some var -> Variable.Set.add var acc
+    in
+    match t.descr with
+    | Union unionable ->
+      begin match unionable with
+      | Blocks blocks
+      | Blocks_and_immediates (blocks, _) ->
+        Tag.Scannable.Map.fold (fun _tag t acc -> free_variables t acc)
+          blocks acc
+      | Immediates _ -> acc
+      end
+    | Unknown _
+    | Unboxed_float _
+    | Unboxed_int32 _
+    | Unboxed_int64 _
+    | Unboxed_nativeint _ -> acc
+    | Boxed_number (_, t) -> free_variables t acc
+    | Set_of_closures set_of_closures ->
+      Var_within_closure.Map.fold (fun _var t acc -> free_variables t acc)
+        set_of_closures.bound_vars
+    | Closure { potential_closures; } ->
+      Closure_id.Map.fold (fun _closure_id t acc -> free_variables t acc)
+        potential_closures
+    | Immutable_string _
+    | Mutable_string _ -> acc
+    | Float_array { contents; size = _; } ->
+      begin match contents with
+      | Contents ts -> Array.fold_left (fun acc t -> free_variables t acc) ts
+      | Unknown_or_mutable -> acc
+      end
+    | Bottom
+    | Load_lazily _ -> acc
+  in
+  free_variables t Variable.Set.empty
+
+let kind_exn t =
+  let really_import_approx t =
+    let dummy_print_decls ppf _ =
+      Format.fprintf ppf "<function declarations>"
+    in
+    Misc.fatal_errorf "With_free_variables.create_let_reusing_body: \
+        Flambda type is not fully resolved: %a"
+      (print dummy_print_decls) t
+  in
+  kind t ~really_import_approx
+
+let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
+  match t.descr with
+  | Boxed_number (Float, { descr = Float _; _ }) -> Pfloatval
+  | Boxed_number (Int32, { descr = Int32 _; _ }) -> Pboxedintval Pint32
+  | Boxed_number (Int64, { descr = Int64 _; _ }) -> Pboxedintval Pint64
+  | Boxed_number (Nativeint, { descr = Nativeint _; _ }) ->
+    Pboxedintval Pnativeint
+  | Union union ->
+    begin match Unionable.flatten union with
+    | Ok (Int _) -> Pintval
+    | _ -> kind
+    end
+  | _ -> kind
 
 let unresolved_symbol sym =
   (* CR mshinwell: check with Pierre about this comment *)
@@ -337,6 +402,65 @@ let follow_variable_equality t ~is_present_in_env =
   match t.var with
   | Some var when is_present_in_env var -> Some var
   | _ -> None
+
+type cleaning_spec =
+  | Available
+  | Available_different_name of Variable.t
+  | Unavailable
+
+let rec clean t classify =
+  let clean_var var_opt =
+    match var_opt with
+    | None -> None
+    | Some var ->
+      match classify var with
+      | Available -> var_opt
+      | Available_different_name new_var -> Some new_var
+      | Unavailable -> None
+  in
+  let t = { t with var = clean_var var; } in
+  match t.descr with
+  | Union unionable ->
+    let clean_blocks blocks =
+      Tag.Scannable.Map.map (fun t -> clean t classify) blocks
+    in
+    let unionable =
+      match unionable with
+      | Blocks blocks -> Blocks (clean_blocks blocks)
+      | Blocks_and_immediates (blocks, imms) ->
+        Blocks_and_immediates (clean_blocks blocks, imms)
+      | Immediates _ -> unionable
+    in
+    { t with descr = Union unionable; }
+  | Unknown _
+  | Unboxed_float _
+  | Unboxed_int32 _
+  | Unboxed_int64 _
+  | Unboxed_nativeint _ -> t
+  | Boxed_number (kind, contents) ->
+    { t with descr = Boxed_number (kind, clean contents classify); }
+  | Set_of_closures set_of_closures ->
+    let bound_vars =
+      Var_within_closure.Map.map (fun t -> clean t classify)
+        set_of_closures.bound_vars
+    in
+    { t with descr = Set_of_closures { set_of_closures with bound_vars; }; }
+  | Closure closure ->
+    let potential_closures =
+      Closure_id.Map.map (fun t -> clean t classify) closure.potential_closures
+    in
+    { t with descr = Closure { potential_closures; }; }
+  | Immutable_string _
+  | Mutable_string _
+  | Float_array { contents; size; } ->
+    let contents =
+      match contents with
+      | Contents ts -> Contents (Array.map (fun t -> clean t classify) ts)
+      | Unknown_or_mutable -> Unknown_or_mutable
+    in
+    Float_array { contents; size; }
+  | Bottom
+  | Load_lazily _ -> acc
 
 module Reification_summary = struct
   type t =

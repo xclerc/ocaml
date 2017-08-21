@@ -22,7 +22,7 @@ let _dump_function_sizes flam ~backend =
   Flambda_iterators.iter_on_set_of_closures_of_program flam
     ~f:(fun ~constant:_ (set_of_closures : Flambda.set_of_closures) ->
       Variable.Map.iter (fun fun_var
-            (function_decl : Flambda.function_declaration) ->
+            (function_decl : Flambda.Function_declaration.t) ->
           let closure_id = Closure_id.wrap fun_var in
           let symbol = Backend.closure_symbol closure_id in
           match Inlining_cost.lambda_smaller' function_decl.body ~than with

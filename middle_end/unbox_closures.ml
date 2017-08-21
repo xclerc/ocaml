@@ -44,7 +44,7 @@ module Transform = struct
       in
       Flambda_iterators.fold_function_decls_ignoring_stubs set_of_closures
         ~init:what_to_specialise
-        ~f:(fun ~fun_var ~(function_decl : Flambda.function_declaration)
+        ~f:(fun ~fun_var ~(function_decl : Flambda.Function_declaration.t)
               what_to_specialise ->
           let body_size = Inlining_cost.lambda_size function_decl.body in
           (* If the function is small enough, make a direct call surrogate

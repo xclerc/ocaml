@@ -67,12 +67,12 @@
 val inline_by_copying_function_body
    : env:Simplify_aux.Env.t
   -> r:Simplify_aux.Result.t
-  -> function_decls:Flambda.function_declarations
+  -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
   -> inline_requested:Lambda.inline_attribute
   -> specialise_requested:Lambda.specialise_attribute
   -> closure_id_being_applied:Closure_id.t
-  -> function_decl:Flambda.function_declaration
+  -> function_decl:Flambda.Function_declaration.t
   -> args:Variable.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
@@ -89,11 +89,11 @@ val inline_by_copying_function_body
 val inline_by_copying_function_declaration
    : env:Simplify_aux.Env.t
   -> r:Simplify_aux.Result.t
-  -> function_decls:Flambda.function_declarations
+  -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
   -> inline_requested:Lambda.inline_attribute
   -> closure_id_being_applied:Closure_id.t
-  -> function_decl:Flambda.function_declaration
+  -> function_decl:Flambda.Function_declaration.t
   -> args:Variable.t list
   -> args_approxs:Simple_value_approx.t list
   -> continuation:Continuation.t

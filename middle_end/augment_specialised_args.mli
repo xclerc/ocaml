@@ -59,7 +59,7 @@ module Make (T : S) : sig
       -> set_of_closures:Flambda.set_of_closures
       -> fun_var:Variable.t
       -> new_fun_var:Variable.t
-      -> Flambda.function_declaration
+      -> Flambda.Function_declaration.t
         * Flambda.specialised_to Variable.Map.t)
     -> set_of_closures:Flambda.set_of_closures
     (* CR mshinwell: Add a type for "new let-bindings" like this? *)

@@ -19,7 +19,7 @@
 type for_one_or_more_units = {
   fun_offset_table : int Closure_id.Map.t;
   fv_offset_table : int Var_within_closure.Map.t;
-  closures : Flambda.function_declarations Closure_id.Map.t;
+  closures : Flambda.Function_declarations.t Closure_id.Map.t;
   constant_sets_of_closures : Set_of_closures_id.Set.t;
   arity_table : int Closure_id.Map.t;
 }
@@ -650,7 +650,7 @@ and to_clambda_project_closure t env named set_of_closures closure_id
             Misc.fatal_errorf "Flambda_to_clambda: missing closure %a"
               Closure_id.print closure_id
         in
-        let (first_closure_var, ({ params } : Flambda.function_declaration)) =
+        let (first_closure_var, ({ params } : Flambda.Function_declaration.t)) =
           (* The set fields order follow is the comparison function order *)
           Variable.Map.min_binding function_declarations.funs
         in
@@ -778,7 +778,7 @@ and to_clambda_set_of_closures t env
   let all_functions = Variable.Map.bindings function_decls.funs in
   let env_var = Ident.create "env" in
   let to_clambda_function
-        (closure_id, (function_decl : Flambda.function_declaration))
+        (closure_id, (function_decl : Flambda.Function_declaration.t))
         : Clambda.ufunction =
     let closure_id = Closure_id.wrap closure_id in
     let fun_offset =
@@ -851,7 +851,7 @@ and to_clambda_closed_set_of_closures t env symbol
       ({ function_decls; } : Flambda.set_of_closures)
       : Clambda.ustructured_constant =
   let functions = Variable.Map.bindings function_decls.funs in
-  let to_clambda_function (id, (function_decl : Flambda.function_declaration))
+  let to_clambda_function (id, (function_decl : Flambda.Function_declaration.t))
         : Clambda.ufunction =
     (* All that we need in the environment, for translating one closure from
        a closed set of closures, is the substitutions for variables bound to
@@ -1013,7 +1013,7 @@ let closure_arities program =
   Flambda_iterators.iter_on_set_of_closures_of_program program
     ~f:(fun ~constant:_ { function_decls = { funs } } ->
         Variable.Map.iter
-          (fun closure_var ({ params }:Flambda.function_declaration) ->
+          (fun closure_var ({ params }:Flambda.Function_declaration.t) ->
              table :=
                Closure_id.Map.add (Closure_id.wrap closure_var)
                  (List.length params)
@@ -1023,9 +1023,9 @@ let closure_arities program =
 
 let import_arities ({sets_of_closures}:Export_info.t) =
   let table = ref Closure_id.Map.empty in
-  Set_of_closures_id.Map.iter (fun _ ({ funs } : Flambda.function_declarations) ->
+  Set_of_closures_id.Map.iter (fun _ ({ funs } : Flambda.Function_declarations.t) ->
       Variable.Map.iter
-        (fun closure_var ({ params }:Flambda.function_declaration) ->
+        (fun closure_var ({ params }:Flambda.Function_declaration.t) ->
            table :=
              Closure_id.Map.add (Closure_id.wrap closure_var)
                (List.length params)

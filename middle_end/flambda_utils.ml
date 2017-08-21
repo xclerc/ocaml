@@ -16,10 +16,10 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let find_declaration cf ({ funs } : Flambda.function_declarations) =
+let find_declaration cf ({ funs } : Flambda.Function_declarations.t) =
   Variable.Map.find (Closure_id.unwrap cf) funs
 
-let find_declaration_variable cf ({ funs } : Flambda.function_declarations) =
+let find_declaration_variable cf ({ funs } : Flambda.Function_declarations.t) =
   let var = Closure_id.unwrap cf in
   if not (Variable.Map.mem var funs)
   then raise Not_found
@@ -31,10 +31,10 @@ let find_free_variable cv ({ free_vars } : Flambda.set_of_closures) =
   in
   free_var.var
 
-let function_arity (f : Flambda.function_declaration) = List.length f.params
+let function_arity (f : Flambda.Function_declaration.t) = List.length f.params
 
 let variables_bound_by_the_closure cf
-      (decls : Flambda.function_declarations) =
+      (decls : Flambda.Function_declarations.t) =
   let func = find_declaration cf decls in
   let params = Parameter.Set.vars func.params in
   let functions = Variable.Map.keys decls.funs in
@@ -173,8 +173,8 @@ and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
   | Prim (p1, al1, _), Prim (p2, al2, _) ->
     p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
 
-and sameclosure (c1 : Flambda.function_declaration)
-      (c2 : Flambda.function_declaration) =
+and sameclosure (c1 : Flambda.Function_declaration.t)
+      (c2 : Flambda.Function_declaration.t) =
   Misc.Stdlib.List.equal Parameter.equal c1.params c2.params
     && same c1.body c2.body
 
@@ -457,7 +457,7 @@ let make_closure_map program =
 
 let make_closure_map' input =
   let map = ref Closure_id.Map.empty in
-  let add_set_of_closures _ (function_decls : Flambda.function_declarations) =
+  let add_set_of_closures _ (function_decls : Flambda.Function_declarations.t) =
     Variable.Map.iter (fun var _ ->
         let closure_id = Closure_id.wrap var in
         map := Closure_id.Map.add closure_id function_decls !map)
@@ -690,7 +690,7 @@ module Switch_storer =
     end)
 
 let fun_vars_referenced_in_decls
-      (function_decls : Flambda.function_declarations) ~backend =
+      (function_decls : Flambda.Function_declarations.t) ~backend =
   let fun_vars = Variable.Map.keys function_decls.funs in
   let symbols_to_fun_vars =
     let module Backend = (val backend : Backend_intf.S) in
@@ -701,7 +701,7 @@ let fun_vars_referenced_in_decls
       fun_vars
       Symbol.Map.empty
   in
-  Variable.Map.map (fun (func_decl : Flambda.function_declaration) ->
+  Variable.Map.map (fun (func_decl : Flambda.Function_declaration.t) ->
       let from_symbols =
         Symbol.Set.fold (fun symbol fun_vars' ->
             match Symbol.Map.find symbol symbols_to_fun_vars with
@@ -719,7 +719,7 @@ let fun_vars_referenced_in_decls
     function_decls.funs
 
 let closures_required_by_entry_point ~(entry_point : Closure_id.t) ~backend
-    (function_decls : Flambda.function_declarations) =
+    (function_decls : Flambda.Function_declarations.t) =
   let dependencies =
     fun_vars_referenced_in_decls function_decls ~backend
   in
@@ -744,18 +744,18 @@ let closures_required_by_entry_point ~(entry_point : Closure_id.t) ~backend
   done;
   !set
 
-let all_functions_parameters (function_decls : Flambda.function_declarations) =
-  Variable.Map.fold (fun _ ({ params } : Flambda.function_declaration) set ->
+let all_functions_parameters (function_decls : Flambda.Function_declarations.t) =
+  Variable.Map.fold (fun _ ({ params } : Flambda.Function_declaration.t) set ->
       Variable.Set.union set (Parameter.Set.vars params))
     function_decls.funs Variable.Set.empty
 
-let all_free_symbols (function_decls : Flambda.function_declarations) =
-  Variable.Map.fold (fun _ (function_decl : Flambda.function_declaration)
+let all_free_symbols (function_decls : Flambda.Function_declarations.t) =
+  Variable.Map.fold (fun _ (function_decl : Flambda.Function_declaration.t)
           syms ->
       Symbol.Set.union syms function_decl.free_symbols)
     function_decls.funs Symbol.Set.empty
 
-let contains_stub (fun_decls : Flambda.function_declarations) =
+let contains_stub (fun_decls : Flambda.Function_declarations.t) =
   let number_of_stub_functions =
     Variable.Map.cardinal
       (Variable.Map.filter (fun _ { Flambda.stub } -> stub)
@@ -803,7 +803,7 @@ type specialised_to_same_as =
   | Specialised_and_aliased_to of Variable.Set.t
 
 let parameters_specialised_to_the_same_variable
-      ~(function_decls : Flambda.function_declarations)
+      ~(function_decls : Flambda.Function_declarations.t)
       ~(specialised_args : Flambda.specialised_to Variable.Map.t) =
   let specialised_arg_aliasing =
     (* For each external variable involved in a specialisation, which
@@ -812,7 +812,7 @@ let parameters_specialised_to_the_same_variable
       (Variable.Map.filter_map specialised_args
         ~f:(fun _param ({ var; _ } : Flambda.specialised_to) -> var))
   in
-  Variable.Map.map (fun ({ params; _ } : Flambda.function_declaration) ->
+  Variable.Map.map (fun ({ params; _ } : Flambda.Function_declaration.t) ->
       List.map (fun param ->
           match Variable.Map.find (Parameter.var param) specialised_args with
           | exception Not_found -> Not_specialised

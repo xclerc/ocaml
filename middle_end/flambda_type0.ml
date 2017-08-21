@@ -22,6 +22,7 @@
 module Float = Numbers.Float
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
+module Nativeint = Numbers.Nativeint
 
 module Boxed_number_kind = struct
   type t =
@@ -32,10 +33,10 @@ module Boxed_number_kind = struct
 
   let print ppf t =
     match t with
-    | Float -> fprintf ppf "float"
-    | Int32 -> fprintf ppf "int32"
-    | Int64 -> fprintf ppf "int64"
-    | Nativeint -> fprintf ppf "nativeint"
+    | Float -> Format.fprintf ppf "float"
+    | Int32 -> Format.fprintf ppf "int32"
+    | Int64 -> Format.fprintf ppf "int64"
+    | Nativeint -> Format.fprintf ppf "nativeint"
 end
 
 type unresolved_value =
@@ -53,18 +54,84 @@ type have_not_yet_tried_to_import =
   | Export_id of Export_id.t
   | Symbol of Symbol.t
 
-type specialised_to = {
-  var : Variable.t option;
-  projection : Projection.t option;
-}
-
-type specialised_args = specialised_to Variable.Map.t
+type load_lazily =
+  | Export_id of Export_id.t
+  | Symbol of Symbol.t
 
 (* CR mshinwell: Remove this once Pierre's patch lands *)
 type closure_freshening =
   { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
     closure_id : Closure_id.t Closure_id.Map.t;
   }
+
+let print_closure_freshening ppf t =
+  Format.fprintf ppf "{ vars_within_closure %a, closure_id %a }"
+    (Var_within_closure.Map.print Var_within_closure.print)
+    t.vars_within_closure
+    (Closure_id.Map.print Closure_id.print)
+    t.closure_id
+
+module type Constructors_and_accessors = sig
+  type 'd t
+  type 'd descr
+  type 'd set_of_closures
+
+  val kind
+     : 'd t
+    -> really_import_approx:('d t -> 'd t)
+    -> Flambda_kind.t
+  val unknown : Flambda_kind.t -> unknown_because_of -> _ t
+  val int : int -> _ t
+  val constptr : int -> _ t
+  val char : char -> _ t
+  val unboxed_float : float -> _ t
+  val unboxed_int32 : Int32.t -> _ t
+  val unboxed_int64 : Int64.t -> _ t
+  val unboxed_nativeint : Nativeint.t -> _ t
+  val boxed_float : float -> _ t
+  val boxed_int32 : Int32.t -> _ t
+  val boxed_int64 : Int64.t -> _ t
+  val boxed_nativeint : Nativeint.t -> _ t
+  val mutable_float_array : size:int -> _ t
+  val immutable_float_array : 'd t array -> 'd t
+  val mutable_string : length:int -> _ t
+  val immutable_string : string -> _ t
+  val block : Tag.t -> 'd t array -> 'd t
+  val extern : Export_id.t -> _ t
+  val symbol : Symbol.t -> _ t
+  val unresolved : unresolved_value -> _ t
+  val bottom : _ t
+  val any_float : _ t
+  val any_unboxed_float : _ t
+  val any_unboxed_int32 : _ t
+  val any_unboxed_int64 : _ t
+  val any_unboxed_nativeint : _ t
+  val closure
+     : ?closure_var:Variable.t
+    -> ?set_of_closures_var:Variable.t
+    -> ?set_of_closures_symbol:Symbol.t
+    -> 'd set_of_closures Closure_id.Map.t
+    -> 'd t
+  val create_set_of_closures
+     : function_decls:'d
+    -> bound_vars:'d t Var_within_closure.Map.t
+    -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
+    -> freshening:closure_freshening
+    -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
+    -> 'd set_of_closures
+  val set_of_closures
+     : ?set_of_closures_var:Variable.t
+    -> 'd set_of_closures
+    -> 'd t
+  val update_freshening_of_set_of_closures
+     : 'd set_of_closures
+    -> freshening:closure_freshening
+    -> 'd set_of_closures
+  val augment_with_variable : 'd t -> Variable.t -> 'd t
+  val augment_with_symbol : 'd t -> Symbol.t -> 'd t
+  val augment_with_symbol_field : 'd t -> Symbol.t -> int -> 'd t
+  val replace_description : 'd t -> 'd descr -> 'd t
+end
 
 (* A value of type [T.t] corresponds to an "approximation" of the result of
     a computation in the program being compiled.  That is to say, it
@@ -152,8 +219,9 @@ module rec T : sig
 
   (** The type of an Flambda term. *)
   type 'decls t = {
-    descr : descr;
-    var : (Variable.t * (Projection.t option)) option;
+    descr : 'decls descr;
+    var : Variable.t option;
+    projection : Projection.t option;
     symbol : (Symbol.t * int option) option;
   } 
 
@@ -173,7 +241,7 @@ module rec T : sig
      latter introducing a type of function declarations in this module), then
      the only circularity between this type and Flambda will be for
      Flambda.expr on function bodies. *)
-  and 'decls descr = private 
+  and 'decls descr =
     | Unknown of Flambda_kind.t * unknown_because_of
     | Union of 'decls Unionable.t
     | Unboxed_float of Numbers.Float.Set.t
@@ -183,7 +251,8 @@ module rec T : sig
     | Boxed_number of Boxed_number_kind.t * 'decls t
     | Set_of_closures of 'decls set_of_closures
     | Closure of 'decls closure
-    | String of string
+    | Immutable_string of string
+    | Mutable_string of { size : int; }
     | Float_array of 'decls float_array
     | Bottom
     | Load_lazily of load_lazily
@@ -195,68 +264,153 @@ module rec T : sig
 
   (* CR-soon mshinwell: add support for the approximations of the results, so we
      can do all of the tricky higher-order cases. *)
-  and 'decls set_of_closures = private {
+  and 'decls set_of_closures = {
     function_decls : 'decls;
-    bound_vars : t Var_within_closure.Map.t;
+    bound_vars : 'decls t Var_within_closure.Map.t;
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
     size : int option Variable.Map.t lazy_t;
     (** For functions that are very likely to be inlined, the size of the
         function's body. *)
-    specialised_args : specialised_args;
-    freshening : 'freshening;
+    freshening : closure_freshening;
     (** Any freshening that has been applied to [function_decls]. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
-  and float_array_contents =
-    | Contents of t array
+  and 'decls float_array_contents =
+    | Contents of 'decls t array
     | Unknown_or_mutable
 
-  and float_array = {
-    contents : float_array_contents;
+  and 'decls float_array = {
+    contents : 'decls float_array_contents;
     size : int;
   }
 
-  and specialised_args = specialised_to Variable.Map.t
+  val kind
+     : 'd t
+    -> really_import_approx:('d t -> 'd t)
+    -> Flambda_kind.t
 
-  val kind : t -> Flambda_kind.t
+  val join
+     : really_import_approx:('d t -> 'd t)
+    -> 'd t
+    -> 'd t
+    -> 'd t
 
-  val join : really_import_approx:(t -> t) -> t -> t -> t
+  val print
+     : (Format.formatter -> 'd -> unit)
+    -> Format.formatter
+    -> 'd t
+    -> unit
 
-  val equal_boxed_int : 'a boxed_int -> 'a -> 'b boxed_int -> 'b -> bool
+  val print_descr
+     : (Format.formatter -> 'd -> unit)
+    -> Format.formatter
+    -> 'd descr
+    -> unit
 
-  val print : Format.formatter -> t -> unit
-  val print_descr : Format.formatter -> descr -> unit
-  val print_value_set_of_closures
-    : Format.formatter
-    -> value_set_of_closures
+  val print_set_of_closures
+     : (Format.formatter -> 'd -> unit)
+    -> Format.formatter
+    -> 'd set_of_closures
     -> unit
 end = struct
   include T
 
+  let print_value_set_of_closures print_decls ppf
+        { function_decls; invariant_params; freshening; _ } =
+    Format.fprintf ppf
+      "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
+      print_decls function_decls
+      (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
+      print_closure_freshening freshening
+
+  let print_unresolved_value ppf (unresolved : unresolved_value) =
+    match unresolved with
+    | Set_of_closures_id set ->
+      Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
+    | Symbol symbol ->
+      Format.fprintf ppf "Symbol %a" Symbol.print symbol
+
+  let rec print_descr print_decls ppf = function
+    | Union union -> Unionable.print print_decls ppf union
+    | Unknown (kind, reason) ->
+      begin match reason with
+      | Unresolved_value value ->
+        Format.fprintf ppf "?(%a)(due to unresolved %a)"
+          Flambda_kind.print kind
+          print_unresolved_value value
+      | Other -> Format.fprintf ppf "?(%a)" Flambda_kind.print kind
+      end;
+    | Bottom -> Format.fprintf ppf "bottom"
+    | Load_lazily (Export_id id) ->
+      Format.fprintf ppf "_%a_" Export_id.print id
+    | Load_lazily (Symbol sym) ->
+      Format.fprintf ppf "%a" Symbol.print sym
+    | Closure { potential_closures } ->
+      Format.fprintf ppf "(closure:@ @[<2>[@ ";
+      Closure_id.Map.iter (fun closure_id set_of_closures ->
+        Format.fprintf ppf "%a @[<2>from@ %a@];@ "
+          Closure_id.print closure_id
+          (print print_decls) set_of_closures)
+        potential_closures;
+      Format.fprintf ppf "]@])";
+    | Set_of_closures set_of_closures ->
+      print_value_set_of_closures print_decls ppf set_of_closures
+    | Unboxed_float fs -> Format.fprintf ppf "float(%a)" Float.Set.print fs
+    | Unboxed_int32 ns -> Format.fprintf ppf "int32(%a)" Int32.Set.print ns
+    | Unboxed_int64 ns -> Format.fprintf ppf "int64(%a)" Int64.Set.print ns
+    | Unboxed_nativeint ns ->
+      Format.fprintf ppf "nativeint(%a)" Nativeint.Set.print ns
+    | Boxed_number (bn, t) ->
+      Format.fprintf ppf "box_%a(%a)"
+        Boxed_number_kind.print bn
+        (print print_decls) t
+    | Immutable_string contents ->
+      let size = String.length contents in
+      let contents =
+        if size > 10
+        then String.sub contents 0 8 ^ "..."
+        else contents
+      in
+      Format.fprintf ppf "immut_string %i %S" size contents
+    | Mutable_string { size; } ->
+      Format.fprintf ppf "mut_string %i" size
+    | Float_array float_array ->
+      begin match float_array.contents with
+      | Unknown_or_mutable ->
+        Format.fprintf ppf "float_array %i" float_array.size
+      | Contents _ ->
+        Format.fprintf ppf "float_array_imm %i" float_array.size
+      end
+
+  and print print_decls ppf { descr; var; symbol; } =
+    let print ppf = function
+      | None -> Symbol.print_opt ppf None
+      | Some (sym, None) -> Symbol.print ppf sym
+      | Some (sym, Some field) ->
+          Format.fprintf ppf "%a.(%i)" Symbol.print sym field
+    in
+    Format.fprintf ppf "{ descr=%a var=%a symbol=%a }"
+      (print_descr print_decls) descr
+      Variable.print_opt var
+      print symbol
+
   let kind t ~really_import_approx : Flambda_kind.t =
     match t.descr with
     | Unknown (kind, _) -> kind
-    | Float _ -> Unboxed_float
-    | Int32 _ -> Unboxed_int32
-    | Int64 _ -> Unboxed_int64
-    | Nativeint _ -> Unboxed_nativeint
+    | Unboxed_float _ -> Unboxed_float
+    | Unboxed_int32 _ -> Unboxed_int32
+    | Unboxed_int64 _ -> Unboxed_int64
+    | Unboxed_nativeint _ -> Unboxed_nativeint
     | Union _
     | Boxed_number _
     | Set_of_closures _
     | Closure _
-    | String _
-    | Float_array _ -> Other
+    | Immutable_string _
+    | Mutable_string _
+    | Float_array _ -> Value
     | Bottom -> Bottom
     | Load_lazily _ -> kind (really_import_approx t) ~really_import_approx
-
-  let kind_exn t =
-    let really_import_approx t =
-      Misc.fatal_errorf "With_free_variables.create_let_reusing_body: \
-          Flambda type is not fully resolved: %a"
-        Flambda_type0.T.print t
-    in
-    kind t ~really_import_approx
 
   (* Closures and set of closures descriptions cannot be merged.
 
@@ -279,28 +433,34 @@ end = struct
     rewriting [Project_var] and [Project_closure] constructions
     in [Simplify].
   *)
-  let rec join_descr ~really_import_approx d1 d2 =
+  let rec join_descr kind ~really_import_approx d1 d2 =
     match d1, d2 with
     | Union union1, Union union2 ->
       begin match Unionable.join union1 union2 ~really_import_approx with
       | Ok union -> Union union
       | Ill_typed_code -> Bottom
-      | Anything -> Unknown Other
+      | Anything -> Unknown (Value, Other)
       end
-    | Float fs1, Float fs2 -> Float (Float.Set.union fs1 fs2)
-    | Int32 is1, Int32 is2 -> Int32 (Int32.Set.union is1 is2)
-    | Int64 is1, Int64 is2 -> Int64 (Int64.Set.union is1 is2)
-    | Nativeint is1, Nativeint is2 -> Nativeint (Nativeint.Set.union is1 is2)
+    | Unboxed_float fs1, Unboxed_float fs2 ->
+      Unboxed_float (Float.Set.union fs1 fs2)
+    | Unboxed_int32 is1, Unboxed_int32 is2 ->
+      Unboxed_int32 (Int32.Set.union is1 is2)
+    | Unboxed_int64 is1, Unboxed_int64 is2 ->
+      Unboxed_int64 (Int64.Set.union is1 is2)
+    | Unboxed_nativeint is1, Unboxed_nativeint is2 ->
+      Unboxed_nativeint (Nativeint.Set.union is1 is2)
     | Boxed_number (Float, t1), Boxed_number (Float, t2) ->
-      Boxed_number (Float, join t1 t2)
+      Boxed_number (Float, join ~really_import_approx t1 t2)
     | Boxed_number (Int32, t1), Boxed_number (Int32, t2) ->
-      Boxed_number (Int32, join t1 t2)
+      Boxed_number (Int32, join ~really_import_approx t1 t2)
     | Boxed_number (Int64, t1), Boxed_number (Int64, t2) ->
-      Boxed_number (Int64, join t1 t2)
+      Boxed_number (Int64, join ~really_import_approx t1 t2)
     | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2) ->
-      Boxed_number (Nativeint, join t1 t2)
-    | Extern e1, Extern e2 when Export_id.equal e1 e2 -> d1
-    | Symbol s1, Symbol s2 when Symbol.equal s1 s2 -> d1
+      Boxed_number (Nativeint, join ~really_import_approx t1 t2)
+    | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
+        when Export_id.equal e1 e2 -> d1
+    | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
+        when Symbol.equal s1 s2 -> d1
     | Closure { potential_closures = map1 },
       Closure { potential_closures = map2 } ->
       let potential_closures =
@@ -331,15 +491,17 @@ end = struct
           map1 map2
       in
       Closure { potential_closures }
-    | _ -> Unknown Other
+    | _ -> Unknown (kind, Other)
 
   and join ~really_import_approx a1 a2 =
-    if Flambda_kind.compatible a1 a2 ~really_import_approx then begin
+    let kind1 = kind a1 ~really_import_approx in
+    let kind2 = kind a2 ~really_import_approx in
+    if Flambda_kind.compatible kind1 kind2 then begin
       match a1, a2 with
       | { descr = Bottom }, _ -> a2
       | _, { descr = Bottom } -> a1
-      | { descr = (Symbol _ | Extern _) }, _
-      | _, { descr = (Symbol _ | Extern _) } ->
+      | { descr = Load_lazily _ }, _
+      | _, { descr = Load_lazily _ } ->
         join ~really_import_approx
           (really_import_approx a1) (really_import_approx a2)
       | _ ->
@@ -349,6 +511,12 @@ end = struct
             | Some v1, Some v2 ->
               if Variable.equal v1 v2 then Some v1
               else None
+          in
+          let projection =
+            match a1.projection, a2.projection with
+            | None, _ | _, None -> None
+            | Some proj1, Some proj2 ->
+              if Projection.equal proj1 proj2 then Some proj1 else None
           in
           let symbol =
             match a1.symbol, a2.symbol with
@@ -361,108 +529,170 @@ end = struct
                 | _ -> None
               else None
           in
-          let descr = join_descr ~really_import_approx a1.descr a2.descr in
-          match descr with
-          | Union union when not (Unionable.is_singleton union) ->
-            (* CR mshinwell: Think about whether we need to do better here *)
-            { descr;
-              var = None;
-              symbol = None;
-            }
-          | _ ->
-            { descr;
-              var;
-              symbol;
-            }
+          let descr =
+            join_descr kind1 ~really_import_approx a1.descr a2.descr
+          in
+          { descr;
+            var;
+            projection;
+            symbol;
+          }
     end else begin
+      let dummy_print_decls ppf _ =
+        Format.fprintf ppf "<function declarations>"
+      in
       Misc.fatal_errorf "Values with incompatible kinds must not flow to \
           the same place: %a and %a"
-        print a1
-        print a2
-    end
-
-  let print_value_set_of_closures ppf
-        { function_decls = { funs }; invariant_params; freshening; _ } =
-    Format.fprintf ppf
-      "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
-      (fun ppf -> Variable.Map.iter (fun id _ -> Variable.print ppf id)) funs
-      (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
-      Freshening.Project_var.print freshening
-
-  let print_unresolved_value ppf (unresolved : unresolved_value) =
-    match unresolved with
-    | Set_of_closures_id set ->
-      Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
-    | Symbol symbol ->
-      Format.fprintf ppf "Symbol %a" Symbol.print symbol
-
-  let rec print_descr ppf = function
-    | Union union -> Unionable.print ppf union
-    | Unknown (kind, reason) ->
-      begin match reason with
-      | Unresolved_value value ->
-        Format.fprintf ppf "?(%a)(due to unresolved %a)"
-          Flambda_kind.print kind
-          print_unresolved_value value
-      | Other -> Format.fprintf ppf "?(%a)" Flambda_kind.print kind
-      end;
-    | Bottom -> Format.fprintf ppf "bottom"
-    | Extern id -> Format.fprintf ppf "_%a_" Export_id.print id
-    | Symbol sym -> Format.fprintf ppf "%a" Symbol.print sym
-    | Closure { potential_closures } ->
-      Format.fprintf ppf "(closure:@ @[<2>[@ ";
-      Closure_id.Map.iter (fun closure_id set_of_closures ->
-        Format.fprintf ppf "%a @[<2>from@ %a@];@ "
-          Closure_id.print closure_id
-          print set_of_closures)
-        potential_closures;
-      Format.fprintf ppf "]@])";
-    | Set_of_closures set_of_closures ->
-      print_value_set_of_closures ppf set_of_closures
-    | Unresolved value ->
-      Format.fprintf ppf "(unresolved %a)" print_unresolved_value value
-    | Float fs -> Format.fprintf ppf "float(%a)" Float.Set.print fs
-    | Int32 ns -> Format.fprintf ppf "int32(%a)" Int32.Set.print ns
-    | Int64 ns -> Format.fprintf ppf "int64(%a)" Int64.Set.print ns
-    | Nativeint ns -> Format.fprintf ppf "nativeint(%a)" Nativeint.Set.print ns
-    | Boxed_number (bn, t) ->
-      Format.fprintf ppf "box_%a(%a)"
-        Boxed_number_kind.print bn
-        print t
-    | String { contents; size } -> begin
-        match contents with
-        | None ->
-            Format.fprintf ppf "string %i" size
-        | Some s ->
-            let s =
-              if size > 10
-              then String.sub s 0 8 ^ "..."
-              else s
-            in
-            Format.fprintf ppf "string %i %S" size s
-      end
-    | Float_array float_array ->
-      begin match float_array.contents with
-      | Unknown_or_mutable ->
-        Format.fprintf ppf "float_array %i" float_array.size
-      | Contents _ ->
-        Format.fprintf ppf "float_array_imm %i" float_array.size
+        (print dummy_print_decls) a1
+        (print dummy_print_decls) a2
       end
 
-  and print ppf { descr; var; symbol; } =
-    let print ppf = function
-      | None -> Symbol.print_opt ppf None
-      | Some (sym, None) -> Symbol.print ppf sym
-      | Some (sym, Some field) ->
-          Format.fprintf ppf "%a.(%i)" Symbol.print sym field
+  let refine_using_value_kind t (kind : Lambda.value_kind) =
+    match kind with
+    | Pgenval -> t
+    | Pfloatval ->
+      begin match t.descr with
+      | Boxed_number (Float, { descr = Float _; _ }) ->
+        t
+      | Unknown (Other, _) | Unresolved _ ->
+        { t with descr = Boxed_number (Float, value_unknown Float Other); }
+      | Unknown (Unboxed_float | Unboxed_int32 | Unboxed_int64
+          | Unboxed_nativeint, _) ->
+        Misc.fatal_errorf "An unboxed value cannot have Pfloatval kind: %a"
+          print t
+      | Union _
+      | Float _
+      | Int32 _
+      | Int64 _
+      | Nativeint _
+      | Boxed_number _
+      | Set_of_closures _
+      | Closure _
+      | String _
+      | Float_array _
+      | Bottom ->
+        (* Unreachable *)
+        { t with descr = Bottom }
+      | Extern _ | Symbol _ ->
+        (* We don't know yet *)
+        t
+      end
+    | _ -> t
+
+  let descr t = t.descr
+  let descrs ts = List.map (fun t -> t.descr) ts
+
+  let just_descr descr = { descr; var = None; symbol = None }
+
+  let augment_with_variable t var = { t with var = Some var }
+  let augment_with_symbol t symbol = { t with symbol = Some (symbol, None) }
+  let augment_with_symbol_field t symbol field =
+    match t.symbol with
+    | None -> { t with symbol = Some (symbol, Some field) }
+    | Some _ -> t
+
+  let replace_description t descr = { t with descr }
+
+  let unknown kind reason = just_descr (Unknown (kind, reason))
+  let int i = just_descr (Union (Unionable.int i))
+  let char i = just_descr (Union (Unionable.char i))
+  let constptr i = just_descr (Union (Unionable.constptr i))
+  let boxed_float f = just_descr (Boxed_float (Some f))
+  let boxed_int32 i = just_descr (Boxed_number (Int32, unboxed_int32 i))
+  let boxed_int64 i = just_descr (Boxed_number (Int64, unboxed_int64 i))
+  let boxed_nativeint i =
+    just_descr (Boxed_number (Nativeint, unboxed_nativeint i))
+  let export_id_loaded_lazily ex = just_descr (Load_lazily (Export_id ex))
+  let symbol_loaded_lazily sym =
+    { (just_descr (Load_lazily (Symbol sym))) with symbol = Some (sym, None); }
+  let immutable_string str = just_descr (Immutable_string str)
+  let mutable_string ~size = just_descr (Mutable_string ~size)
+  (* CR mshinwell: Split Float_array into immutable and mutable as for
+     strings? *)
+  let mutable_float_array ~size =
+    just_descr (Float_array { contents = Unknown_or_mutable; size; } )
+  let immutable_float_array (contents : t array) =
+    let size = Array.length contents in
+    let contents =
+      Array.map (fun t -> refine_using_value_kind t Pfloatval) contents
     in
-    Format.fprintf ppf "{ descr=%a var=%a symbol=%a }"
-      print_descr descr
-      Variable.print_opt var
-      print symbol
+    just_descr (Float_array { contents = Contents contents; size; } )
+  let bottom = approx Bottom
+
+  let any_float = just_descr (Boxed_float None)
+  let any_unboxed_float = just_descr (Unknown (Unboxed_float, Other))
+  let any_unboxed_int32 = just_descr (Unknown (Unboxed_int32, Other))
+  let any_unboxed_int64 = just_descr (Unknown (Unboxed_int64, Other))
+  let any_unboxed_nativeint = just_descr (Unknown (Unboxed_nativeint, Other))
+
+  let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
+        closures =
+    let approx_set_of_closures value_set_of_closures =
+      { descr = Set_of_closures value_set_of_closures;
+        var = set_of_closures_var;
+        symbol = Misc.may_map (fun s -> s, None) set_of_closures_symbol;
+      }
+    in
+    let potential_closures =
+      Closure_id.Map.map approx_set_of_closures closures
+    in
+    { descr = Closure { potential_closures };
+      var = closure_var;
+      symbol = None;
+    }
+
+  let create_set_of_closures
+        ~(function_decls : Flambda.Function_declarations.t) ~bound_vars
+        ~invariant_params ~specialised_args ~freshening
+        ~direct_call_surrogates =
+    let size =
+      lazy (
+        let functions = Variable.Map.keys function_decls.funs in
+        Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
+            let params = Parameter.Set.vars function_decl.params in
+            let free_vars =
+              Variable.Set.diff
+                (Variable.Set.diff function_decl.free_variables params)
+                functions
+            in
+            let num_free_vars = Variable.Set.cardinal free_vars in
+            let max_size =
+              Inlining_cost.maximum_interesting_size_of_function_body
+                num_free_vars
+            in
+            Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
+          function_decls.funs)
+    in
+    { function_decls;
+      bound_vars;
+      invariant_params;
+      size;
+      specialised_args;
+      freshening;
+      direct_call_surrogates;
+    }
+
+  let update_freshening_of_set_of_closures set_of_closures
+        ~freshening =
+    (* CR-someday mshinwell: We could maybe check that [freshening] is
+       reasonable. *)
+    { set_of_closures with freshening; }
+
+  let set_of_closures ?set_of_closures_var set_of_closures =
+    { descr = Set_of_closures set_of_closures;
+      var = set_of_closures_var;
+      symbol = None;
+    }
+
+  let block t b =
+    (* We avoid having multiple possible approximations for e.g. [Int64]
+       values. *)
+    if Tag.Scannable.if_at_or_above_no_scan_tag then unknown Other
+    else just_descr (Union (Unionable.block t b))
 end and Unionable : sig
   module Immediate : sig
     type t = private
+      (* CR mshinwell: We could consider splitting these again *)
       | Int of int
       | Char of char
       | Constptr of int
@@ -472,57 +702,70 @@ end and Unionable : sig
     val represents : t -> int
   end
 
-  type blocks = T.t array Tag.Scannable.Map.t
+  type 'd blocks = 'd T.t array Tag.Scannable.Map.t
 
-  (* Values of type [t] represent unions of approximations, that is to say,
+  (* Values of type [_ t] represent unions of approximations, that is to say,
      disjunctions of properties known to hold of a value at one or more of
      its use points.
 
      Other representations are possible, but this one has two nice properties:
-     1. It doesn't involve any comparison on values of type [T.t].
+     1. It doesn't involve any comparison on values of type [_ T.t].
      2. It lines up with the classification of approximations required when
         unboxing (cf. [Unbox_one_variable]). *)
-  type t =
-    | Blocks of blocks
-    | Blocks_and_immediates of blocks * Immediate.Set.t
+  type 'd t = private
+    | Blocks of 'd blocks
+    | Blocks_and_immediates of 'd blocks * Immediate.Set.t
     | Immediates of Immediate.Set.t
 
-  val invariant : t -> unit
+  val invariant : _ t -> unit
 
-  val print : Format.formatter -> t -> unit
+  val print
+     : (Format.formatter -> 'd -> unit)
+    -> Format.formatter
+    -> 'd t
+    -> unit
 
-  val is_singleton : t -> bool
-
-  val value_int : int -> t
-  val value_char : char -> t
-  val value_constptr : int -> t
-  val value_block : Tag.Scannable.t -> T.t array -> t
-
-  val useful : t -> bool
-
+  (** Partial ordering:
+        Ill_typed_code <= Ok _ <= Anything
+  *)
   type 'a or_bottom =
     | Anything
     | Ok of 'a
     | Ill_typed_code
 
-  val join : t -> t -> really_import_approx:(T.t -> T.t) -> t or_bottom
+  val join
+     : 'd t
+    -> 'd t
+    -> really_import_approx:('d T.t -> 'd T.t)
+    -> 'd t or_bottom
 
-  type singleton = private
-    | Block of Tag.Scannable.t * T.t array
+  type 'd singleton = private
+    | Block of Tag.Scannable.t * ('d T.t array)
     | Int of int
     | Char of char
     | Constptr of int
 
-  val flatten : t -> singleton or_bottom
+  (** Find the properties that are guaranteed to hold of a value with union type
+      at every point it is used. *)
+  val flatten : 'd t -> 'd singleton or_bottom
 
-  val maybe_is_immediate_value : t -> int -> bool
+  val is_singleton : _ t -> bool
 
-  val ok_for_variant : t -> bool
+  val int : int -> _ t
+  val char : char -> _ t
+  val constptr : int -> _ t
+  val block : Tag.Scannable.t -> 'd T.t array -> 'd t
 
-  val as_int : t -> int option
-  val size_of_block : t -> int option
+  val useful : _ t -> bool
 
-  val invalid_to_mutate : t -> bool
+  val maybe_is_immediate_value : _ t -> int -> bool
+
+  val ok_for_variant : _ t -> bool
+
+  val as_int : _ t -> int option
+  val size_of_block : _ t -> int option
+
+  val invalid_to_mutate : _ t -> bool
 end = struct
   type 'a or_bottom =  (* CR mshinwell: rename type *)
     | Anything
@@ -570,14 +813,14 @@ end = struct
       | Char c -> Char.code c
   end
 
-  type blocks = T.t array Tag.Scannable.Map.t
+  type 'd blocks = 'd T.t array Tag.Scannable.Map.t
 
-  let print_blocks ppf (by_tag : blocks) =
+  let print_blocks print_decls ppf (by_tag : 'd blocks) =
     let print_binding ppf (tag, fields) =
       Format.fprintf ppf "@[[|%a: %a|]@]"
         Tag.Scannable.print tag
         (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
-          T.print)
+          (T.print print_decls))
         (Array.to_list fields)
     in
     Format.fprintf ppf "@[%a@]"
@@ -585,9 +828,9 @@ end = struct
         print_binding)
       (Tag.Scannable.Map.bindings by_tag)
 
-  type t =
-    | Blocks of blocks
-    | Blocks_and_immediates of blocks * Immediate.Set.t
+  type 'd t =
+    | Blocks of 'd blocks
+    | Blocks_and_immediates of 'd blocks * Immediate.Set.t
     | Immediates of Immediate.Set.t
 
   let invariant t =
@@ -601,14 +844,14 @@ end = struct
         assert (Immediate.Set.cardinal immediates >= 1)
     end
 
-  let print ppf t =
+  let print print_decls ppf t =
     match t with
     | Blocks by_tag ->
       Format.fprintf ppf "@[(blocks (%a))@]"
-        print_blocks by_tag
+        (print_blocks print_decls) by_tag
     | Blocks_and_immediates (by_tag, imms) ->
       Format.fprintf ppf "@[(blocks (%a)) U (immediates (%a))@]"
-        print_blocks by_tag
+        (print_blocks print_decls) by_tag
         Immediate.Set.print imms
     | Immediates imms ->
       Format.fprintf ppf "@[(immediates (%a))@]"
@@ -623,16 +866,16 @@ end = struct
         || (Tag.Scannable.Map.is_empty blocks && Immediate.Set.cardinal imms = 1)
     | Immediates imms -> Immediate.Set.cardinal imms = 1
 
-  let value_int i =
+  let int i =
     Immediates (Immediate.Set.singleton (Int i))
 
-  let value_char c =
+  let char c =
     Immediates (Immediate.Set.singleton (Char c))
 
-  let value_constptr p =
+  let constptr p =
     Immediates (Immediate.Set.singleton (Constptr p))
 
-  let value_block tag fields =
+  let block tag fields =
     Blocks (Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty)
 
   (* CR mshinwell: Bad name? *)
@@ -680,7 +923,7 @@ end = struct
       else check_immediates imms
     | Immediates imms -> check_immediates imms
 
-  let join (t1 : t) (t2 : t) ~really_import_approx : t or_bottom =
+  let join (t1 : _ t) (t2 : _ t) ~really_import_approx : _ t or_bottom =
     invariant t1;
     invariant t2;
     let get_immediates t =
@@ -727,13 +970,13 @@ end = struct
         || (not (Immediate.Set.is_empty immediates))
     | Immediates immediates -> not (Immediate.Set.is_empty immediates)
 
-  type singleton =
-    | Block of Tag.Scannable.t * T.t array
+  type 'd singleton =
+    | Block of Tag.Scannable.t * 'd T.t array
     | Int of int
     | Char of char
     | Constptr of int
 
-  let rec flatten t : singleton or_bottom =
+  let rec flatten t : _ singleton or_bottom =
     invariant t;
     match t with
     | Blocks by_tag ->
@@ -775,287 +1018,4 @@ end = struct
     | None -> true
     | Some 0 -> false  (* empty arrays are treated as mutable *)
     | Some _ -> true
-end
-
-let equal_boxed_int = T.equal_boxed_int
-let print_value_set_of_closures = T.print_value_set_of_closures
-let print_descr = T.print_descr
-let print = T.print
-let join = T.join
-
-(* CR mshinwell: Sort out all this namespacing crap *)
-
-type value_string = T.string = {
-  (* CR-soon mshinwell: use variant *)
-  contents : string option; (* None if unknown or mutable *)
-  size : int;
-}
-
-type t = T.t = {
-  descr : descr;
-  var : Variable.t option;
-  symbol : (Symbol.t * int option) option;
-}
-
-and descr = T.descr =
-  | Unknown of Flambda_kind.t * unknown_because_of
-  | Union of Unionable.t
-  | Float of Float.Set.t
-  | Int32 of Int32.Set.t
-  | Int64 of Int64.Set.t
-  | Nativeint of Nativeint.Set.t
-  | Boxed_number of boxed_number * t
-  | Set_of_closures of set_of_closures
-  | Closure of closure
-  | String of T.string
-  | Float_array of float_array
-  | Extern of Export_id.t
-  | Symbol of Symbol.t
-  | Unresolved of unresolved_value
-    (** No description was found for this symbol *)
-  | Bottom
-
-and closure = T.closure = {
-  potential_closures : t Closure_id.Map.t;
-} [@@unboxed]
-
-and set_of_closures = T.set_of_closures = {
-  function_decls : Flambda.function_declarations;
-  bound_vars : t Var_within_closure.Map.t;
-  invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-  size : int option Variable.Map.t lazy_t;
-  specialised_args : Flambda.specialised_args;
-  freshening : Freshening.Project_var.t;
-  direct_call_surrogates : Closure_id.t Closure_id.Map.t;
-}
-
-and float_array_contents = T.float_array_contents =
-  | Contents of t array
-  | Unknown_or_mutable
-
-and float_array = T.float_array = {
-  ontents : float_array_contents;
-  size : int;
-}
-
-let descr t = t.descr
-let descrs ts = List.map (fun t -> t.descr) ts
-
-let approx descr = { descr; var = None; symbol = None }
-
-let augment_with_variable t var = { t with var = Some var }
-let augment_with_symbol t symbol = { t with symbol = Some (symbol, None) }
-let augment_with_symbol_field t symbol field =
-  match t.symbol with
-  | None -> { t with symbol = Some (symbol, Some field) }
-  | Some _ -> t
-
-let replace_description t descr = { t with descr }
-
-let unknown kind reason = approx (Unknown (kind, reason))
-let int i = approx (Union (Unionable.int i))
-let char i = approx (Union (Unionable.char i))
-let constptr i = approx (Union (Unionable.constptr i))
-let boxed_float f = approx (Boxed_float (Some f))
-let boxed_int32 i = approx (Boxed_number (Int32, unboxed_int32 i))
-let boxed_int64 i = approx (Boxed_number (Int64, unboxed_int64 i))
-let boxed_nativeint i = approx (Boxed_number (Nativeint, unboxed_nativeint i))
-
-let any_float = approx (Boxed_float None)
-let any_unboxed_float = approx (Unknown (Unboxed_float, Other))
-let any_unboxed_int32 = approx (Unknown (Unboxed_int32, Other))
-let any_unboxed_int64 = approx (Unknown (Unboxed_int64, Other))
-let any_unboxed_nativeint = approx (Unknown (Unboxed_nativeint, Other))
-
-let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
-      closures =
-  let approx_set_of_closures value_set_of_closures =
-    { descr = Set_of_closures value_set_of_closures;
-      var = set_of_closures_var;
-      symbol = Misc.may_map (fun s -> s, None) set_of_closures_symbol;
-    }
-  in
-  let potential_closures =
-    Closure_id.Map.map approx_set_of_closures closures
-  in
-  { descr = Closure { potential_closures };
-    var = closure_var;
-    symbol = None;
-  }
-
-let create_set_of_closures
-      ~(function_decls : Flambda.function_declarations) ~bound_vars
-      ~invariant_params ~specialised_args ~freshening
-      ~direct_call_surrogates =
-  let size =
-    lazy (
-      let functions = Variable.Map.keys function_decls.funs in
-      Variable.Map.map (fun (function_decl : Flambda.function_declaration) ->
-          let params = Parameter.Set.vars function_decl.params in
-          let free_vars =
-            Variable.Set.diff
-              (Variable.Set.diff function_decl.free_variables params)
-              functions
-          in
-          let num_free_vars = Variable.Set.cardinal free_vars in
-          let max_size =
-            Inlining_cost.maximum_interesting_size_of_function_body
-              num_free_vars
-          in
-          Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
-        function_decls.funs)
-  in
-  { function_decls;
-    bound_vars;
-    invariant_params;
-    size;
-    specialised_args;
-    freshening;
-    direct_call_surrogates;
-  }
-
-let update_freshening_of_set_of_closures set_of_closures
-      ~freshening =
-  (* CR-someday mshinwell: We could maybe check that [freshening] is
-     reasonable. *)
-  { set_of_closures with freshening; }
-
-let set_of_closures ?set_of_closures_var set_of_closures =
-  { descr = Set_of_closures set_of_closures;
-    var = set_of_closures_var;
-    symbol = None;
-  }
-
-let block t b =
-  (* Avoid having multiple possible approximations for e.g. [Int64] values. *)
-  if Tag.Scannable.if_at_or_above_no_scan_tag then unknown Other
-  else approx (Union (Unionable.block t b))
-
-let extern ex = approx (Extern ex)
-let symbol sym =
-  { (approx (Symbol sym)) with symbol = Some (sym, None) }
-let bottom = approx Bottom
-let unresolved value = approx (Unresolved value)
-
-let string size contents = approx (String {size; contents })
-let mutable_float_array ~size =
-  approx (Float_array { contents = Unknown_or_mutable; size; } )
-let immutable_float_array (contents:t array) =
-  let size = Array.length contents in
-  let contents =
-    Array.map (fun t -> augment_with_kind t Pfloatval) contents
-  in
-  approx (Float_array { contents = Contents contents; size; } )
-
-let refine_using_value_kind t (kind : Lambda.value_kind) =
-  match kind with
-  | Pgenval -> t
-  | Pfloatval ->
-    begin match t.descr with
-    | Boxed_number (Float, { descr = Float _; _ }) ->
-      t
-    | Unknown (Other, _) | Unresolved _ ->
-      { t with descr = Boxed_number (Float, value_unknown Float Other); }
-    | Unknown (Unboxed_float | Unboxed_int32 | Unboxed_int64
-        | Unboxed_nativeint, _) ->
-      Misc.fatal_errorf "An unboxed value cannot have Pfloatval kind: %a"
-        print t
-    | Union _
-    | Float _
-    | Int32 _
-    | Int64 _
-    | Nativeint _
-    | Boxed_number _
-    | Set_of_closures _
-    | Closure _
-    | String _
-    | Float_array _
-    | Bottom ->
-      (* Unreachable *)
-      { t with descr = Bottom }
-    | Extern _ | Symbol _ ->
-      (* We don't know yet *)
-      t
-    end
-  | _ -> t
-
-let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
-  match t.descr with
-  | Boxed_number (Float, { descr = Float _; _ }) -> Pfloatval
-  | Boxed_number (Int32, { descr = Int32 _; _ }) -> Pboxedintval Pint32
-  | Boxed_number (Int64, { descr = Int64 _; _ }) -> Pboxedintval Pint64
-  | Boxed_number (Nativeint, { descr = Nativeint _; _ }) ->
-    Pboxedintval Pnativeint
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Int _) -> Pintval
-    | _ -> kind
-    end
-  | _ -> kind
-
-module type Constructors_and_accessors = sig
-  val kind : t -> Flambda_kind.t
-  val descr : t -> descr
-  val descrs : t list -> descr list
-  val create_set_of_closures
-     : function_decls:Flambda.function_declarations
-    -> bound_vars:t Var_within_closure.Map.t
-    -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
-    -> specialised_args:Flambda.specialised_to Variable.Map.t
-    -> freshening:Freshening.Project_var.t
-    -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
-    -> set_of_closures
-  val update_freshening_of_set_of_closures
-     : set_of_closures
-    -> freshening:Freshening.Project_var.t
-    -> set_of_closures
-  val unknown : Flambda_kind.t -> unknown_because_of -> t
-  val int : int -> t
-  val char : char -> t
-  val boxed_float : float -> t
-  val any_float : t
-  val any_unboxed_float : t
-  val any_unboxed_int32 : t
-  val any_unboxed_int64 : t
-  val any_unboxed_nativeint : t
-  val unboxed_float : float -> t
-  val unboxed_int32 : Int32.t -> t
-  val unboxed_int64 : Int64.t -> t
-  val unboxed_nativeint : Nativeint.t -> t
-  val boxed_float : float -> t
-  val boxed_int32 : Int32.t -> t
-  val boxed_int64 : Int64.t -> t
-  val boxed_nativeint : Nativeint.t -> t
-  val mutable_float_array : size:int -> t
-  val immutable_float_array : t array -> t
-  val string : int -> string option -> t
-  val boxed_int : 'i boxed_int -> 'i -> t
-  val constptr : int -> t
-  val block : Tag.Scannable.t -> t array -> t
-  val extern : Export_id.t -> t
-  val symbol : Symbol.t -> t
-  val bottom : t
-  val unresolved : unresolved_value -> t
-  val closure
-     : ?closure_var:Variable.t
-    -> ?set_of_closures_var:Variable.t
-    -> ?set_of_closures_symbol:Symbol.t
-    -> set_of_closures Closure_id.Map.t
-    -> t
-  val set_of_closures
-     : ?set_of_closures_var:Variable.t
-    -> set_of_closures
-    -> t
-  val make_const_int_named : int -> Flambda.named * t
-  val make_const_char_named : char -> Flambda.named * t
-  val make_const_ptr_named : int -> Flambda.named * t
-  val make_const_bool_named : bool -> Flambda.named * t
-  val make_const_float_named : float -> Flambda.named * t
-  val make_const_boxed_int_named : 'i boxed_int -> 'i -> Flambda.named * t
-  val augment_with_variable : t -> Variable.t -> t
-  val augment_with_symbol : t -> Symbol.t -> t
-  val augment_with_symbol_field : t -> Symbol.t -> int -> t
-  val replace_description : t -> descr -> t
-  val refine_using_value_kind : t -> Lambda.value_kind -> t
-  val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 end

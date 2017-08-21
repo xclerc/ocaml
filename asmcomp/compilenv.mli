@@ -26,7 +26,7 @@ open Cmx_format
    improvement feature.
 *)
 val imported_sets_of_closures_table
-  : Flambda.function_declarations option Set_of_closures_id.Tbl.t
+  : Flambda.Function_declarations.t option Set_of_closures_id.Tbl.t
         (* flambda-only *)
 
 val reset: ?packname:string -> string -> unit

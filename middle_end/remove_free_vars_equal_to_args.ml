@@ -19,7 +19,7 @@
 let pass_name = "remove-free-vars-equal-to-args"
 let () = Pass_wrapper.register ~pass_name
 
-let rewrite_one_function_decl ~(function_decl : Flambda.function_declaration)
+let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
       ~back_free_vars ~specialised_args =
   let params_for_equal_free_vars =
     List.fold_left (fun subst param ->

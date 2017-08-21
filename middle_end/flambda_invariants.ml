@@ -73,7 +73,7 @@ exception Specialised_arg_that_is_not_a_parameter of Variable.t
 exception Projection_must_be_a_free_var of Projection.t
 exception Projection_must_be_a_specialised_arg of Projection.t
 exception Free_variables_set_is_lying of
-  Variable.t * Variable.Set.t * Variable.Set.t * Flambda.function_declaration
+  Variable.t * Variable.Set.t * Variable.Set.t * Flambda.Function_declaration.t
 exception Set_of_closures_free_vars_map_has_wrong_range of Variable.Set.t
 exception Continuation_not_caught of Continuation.t * string
 exception Continuation_called_with_wrong_arity of Continuation.t * int * int

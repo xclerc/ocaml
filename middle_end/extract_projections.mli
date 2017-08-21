@@ -25,13 +25,13 @@
 val from_function's_free_vars
    : env:Simplify_aux.Env.t
   -> free_vars:Flambda.free_vars
-  -> function_decl:Flambda.function_declaration
+  -> function_decl:Flambda.Function_declaration.t
   -> Projection.Set.t
 
 val from_function's_specialised_args
    : env:Simplify_aux.Env.t
   -> specialised_args:Flambda.specialised_args
-  -> function_decl:Flambda.function_declaration
+  -> function_decl:Flambda.Function_declaration.t
   -> Projection.Set.t
 
 (** For continuations, all parameters are checked for potential projections. *)

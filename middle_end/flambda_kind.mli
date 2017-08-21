@@ -35,3 +35,5 @@ type t =
 (** Two value kinds are "compatible" iff they are both the same kind, or one
     of them is [Bottom]. *)
 val compatible : t -> t -> bool
+
+val print : Format.formatter -> t -> unit

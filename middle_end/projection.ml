@@ -22,26 +22,30 @@ module Project_closure = struct
     closure_id : Closure_id.Set.t;
   }
 
-  let compare
-        ({ set_of_closures = set_of_closures1; closure_id = closure_id1; }
-          : t) =
-        ({ set_of_closures = set_of_closures2; closure_id = closure_id2; }
-          : t) =
-    let c = Variable.compare set_of_closures1 set_of_closures2 in
-    if c <> 0 then c
-    else Closure_id.Set.compare closure_id1 closure_id2
+  include Identifiable.Make (struct
+    type nonrec t = t
 
-  let equal t1 t2 =
-    (compare t1 t2) = 0
+    let compare
+          ({ set_of_closures = set_of_closures1; closure_id = closure_id1; }
+            : t)
+          ({ set_of_closures = set_of_closures2; closure_id = closure_id2; }
+            : t) =
+      let c = Variable.compare set_of_closures1 set_of_closures2 in
+      if c <> 0 then c
+      else Closure_id.Set.compare closure_id1 closure_id2
 
-  let hash = Hashtbl.hash
+    let equal t1 t2 =
+      (compare t1 t2) = 0
 
-  let print ppf (t : t) =
-    Format.fprintf ppf "@[<2>(project_closure@ %a@ from@ %a)@]"
-      Closure_id.Set.print t.closure_id
-      Variable.print t.set_of_closures
+    let hash = Hashtbl.hash
 
-  let output _ _ = failwith "Project_closure.output: not yet implemented"
+    let print ppf (t : t) =
+      Format.fprintf ppf "@[<2>(project_closure@ %a@ from@ %a)@]"
+        Closure_id.Set.print t.closure_id
+        Variable.print t.set_of_closures
+
+    let output _ _ = failwith "Project_closure.output: not yet implemented"
+  end)
 end
 
 module Move_within_set_of_closures = struct
@@ -50,53 +54,60 @@ module Move_within_set_of_closures = struct
     move : Closure_id.t Closure_id.Map.t;
   }
 
-  let compare =
-        ({ closure = closure1; move = move1; } : t)
-        ({ closure = closure2; move = move2; } : t) =
-    let c = Variable.compare closure1 closure2 in
-    if c <> 0 then c
-    else Closure_id.Map.compare Closure_id.compare move1 move2
+  include Identifiable.Make (struct
+    type nonrec t = t
 
-  let equal t1 t2 =
-    (compare t1 t2) = 0
+    let compare
+          ({ closure = closure1; move = move1; } : t)
+          ({ closure = closure2; move = move2; } : t) =
+      let c = Variable.compare closure1 closure2 in
+      if c <> 0 then c
+      else Closure_id.Map.compare Closure_id.compare move1 move2
 
-  let hash = Hashtbl.hash
+    let equal t1 t2 =
+      (compare t1 t2) = 0
 
-  let print ppf (t : t) =
-    Format.fprintf ppf
-      "@[<2>(move_within_set_of_closures@ %a@ (closure = %a))@]"
-      (Closure_id.Map.print Closure_id.print) t.move
-      Variable.print t.closure
+    let hash = Hashtbl.hash
 
-  let output _ _ =
-    failwith "Move_within_set_of_closures.output: not yet implemented"
+    let print ppf (t : t) =
+      Format.fprintf ppf
+        "@[<2>(move_within_set_of_closures@ %a@ (closure = %a))@]"
+        (Closure_id.Map.print Closure_id.print) t.move
+        Variable.print t.closure
+
+    let output _ _ =
+      failwith "Move_within_set_of_closures.output: not yet implemented"
+  end)
 end
 
 module Project_var = struct
   type t = {
     closure : Variable.t;
-    (* closure_id : Closure_id.Set.t; *)
     var : Var_within_closure.t Closure_id.Map.t;
   }
 
-  let compare =
-        ({ closure = closure1; var = var1; } : t)
-        ({ closure = closure2; var = var2; } : t) =
-    let c = Variable.compare closure1 closure2 in
-    if c <> 0 then c
-    else Closure_id.Map.compare Var_within_closure.compare var1 var2
+  include Identifiable.Make (struct
+    type nonrec t = t
 
-  let equal t1 t2 =
-    (compare t1 t2) = 0
+    let compare
+          ({ closure = closure1; var = var1; } : t)
+          ({ closure = closure2; var = var2; } : t) =
+      let c = Variable.compare closure1 closure2 in
+      if c <> 0 then c
+      else Closure_id.Map.compare Var_within_closure.compare var1 var2
 
-  let hash = Hashtbl.hash
+    let equal t1 t2 =
+      (compare t1 t2) = 0
 
-  let print ppf (t : t) =
-    Format.fprintf ppf "@[<2>(project_var@ %a@ from %a)@]"
-      (Closure_id.Map.print Var_within_closure.print) t.var
-      Variable.print t.closure
+    let hash = Hashtbl.hash
 
-  let output _ _ = failwith "Project_var.output: not yet implemented"
+    let print ppf (t : t) =
+      Format.fprintf ppf "@[<2>(project_var@ %a@ from %a)@]"
+        (Closure_id.Map.print Var_within_closure.print) t.var
+        Variable.print t.closure
+
+    let output _ _ = failwith "Project_var.output: not yet implemented"
+  end)
 end
 
 type t =
@@ -113,11 +124,11 @@ include Identifiable.Make (struct
   let compare t1 t2 =
     match t1, t2 with
     | Project_var project_var1, Project_var project_var2 ->
-      compare_project_var project_var1 project_var2
+      Project_var.compare project_var1 project_var2
     | Project_closure project_closure1, Project_closure project_closure2 ->
-      compare_project_closure project_closure1 project_closure2
+      Project_closure.compare project_closure1 project_closure2
     | Move_within_set_of_closures move1, Move_within_set_of_closures move2 ->
-      compare_move_within_set_of_closures move1 move2
+      Move_within_set_of_closures.compare move1 move2
     | Field (index1, var1), Field (index2, var2) ->
       let c = compare index1 index2 in
       if c <> 0 then c
@@ -146,10 +157,10 @@ include Identifiable.Make (struct
   let print ppf t =
     match t with
     | Project_closure (project_closure) ->
-      print_project_closure ppf project_closure
-    | Project_var (project_var) -> print_project_var ppf project_var
+      Project_closure.print ppf project_closure
+    | Project_var (project_var) -> Project_var.print ppf project_var
     | Move_within_set_of_closures (move_within_set_of_closures) ->
-      print_move_within_set_of_closures ppf move_within_set_of_closures
+      Move_within_set_of_closures.print ppf move_within_set_of_closures
     | Field (field_index, var) ->
       Format.fprintf ppf "Field (%a, %d)" Variable.print var field_index
     | Prim (prim, args) ->

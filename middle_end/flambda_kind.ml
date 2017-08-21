@@ -32,4 +32,14 @@ let compatible t1 t2 =
   | Unboxed_int32, Unboxed_int32
   | Unboxed_int64, Unboxed_int64
   | Unboxed_nativeint, Unboxed_nativeint -> true
-  | (Value | Unboxed_float | Unboxed_int32 | Unboxed_int64), _ -> false
+  | (Value | Unboxed_float | Unboxed_int32 | Unboxed_int64
+      | Unboxed_nativeint), _ -> false
+
+let print ppf t =
+  match t with
+  | Value -> Format.pp_print_string ppf "value"
+  | Unboxed_float -> Format.pp_print_string ppf "unboxed_float"
+  | Unboxed_int32 -> Format.pp_print_string ppf "unboxed_int32"
+  | Unboxed_int64 -> Format.pp_print_string ppf "unboxed_int64"
+  | Unboxed_nativeint -> Format.pp_print_string ppf "unboxed_nativeint"
+  | Bottom -> Format.pp_print_string ppf "bottom"

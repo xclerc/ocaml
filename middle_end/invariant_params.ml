@@ -95,7 +95,7 @@ module For_functions = struct
   end
 
   module Declaration = struct
-    type t = Flambda.function_declaration
+    type t = Flambda.Function_declaration.t
     let params (t : t) = Parameter.List.vars t.params
     let body (t : t) = t.body
 
@@ -105,7 +105,7 @@ module For_functions = struct
   end
 
   module Declarations = struct
-    type t = Flambda.function_declarations
+    type t = Flambda.Function_declarations.t
     let declarations (t : t) = t.funs
 
     (* CR-soon pchambart: to move to Flambda_utils and document
@@ -125,7 +125,7 @@ module For_functions = struct
       the association [g -> f]
     *)
     let function_variable_aliases
-        (function_decls : Flambda.function_declarations) ~backend =
+        (function_decls : Flambda.Function_declarations.t) ~backend =
       let fun_vars = Variable.Map.keys function_decls.funs in
       let symbols_to_fun_vars =
         let module Backend = (val backend : Backend_intf.S) in
@@ -137,7 +137,7 @@ module For_functions = struct
           Symbol.Map.empty
       in
       let fun_var_bindings = ref Variable.Map.empty in
-      Variable.Map.iter (fun _ (function_decl : Flambda.function_declaration) ->
+      Variable.Map.iter (fun _ (function_decl : Flambda.Function_declaration.t) ->
           Flambda_iterators.iter_all_toplevel_immutable_let_and_let_rec_bindings
             ~f:(fun var named ->
               (* CR-soon mshinwell: consider having the body passed to this

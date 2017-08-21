@@ -679,9 +679,9 @@ and simplify_set_of_closures original_env r
       ~freshen:true
   in
   let continuation_param_uses = Continuation.Tbl.create 42 in
-  let simplify_function fun_var (function_decl : Flambda.function_declaration)
+  let simplify_function fun_var (function_decl : Flambda.Function_declaration.t)
         (funs, used_params, r)
-        : Flambda.function_declaration Variable.Map.t * Variable.Set.t * R.t =
+        : Flambda.Function_declaration.t Variable.Map.t * Variable.Set.t * R.t =
     let closure_env =
       Simplify_aux.prepare_to_simplify_closure ~function_decl
         ~free_vars ~specialised_args ~parameter_types
@@ -1018,7 +1018,7 @@ and simplify_full_application env r ~function_decls ~lhs_of_application
 
 and simplify_partial_application env r ~lhs_of_application
       ~closure_id_being_applied
-      ~(function_decl : Flambda.function_declaration) ~args ~continuation ~dbg
+      ~(function_decl : Flambda.Function_declaration.t) ~args ~continuation ~dbg
       ~inline_requested ~specialise_requested =
   let arity = Flambda_utils.function_arity function_decl in
   assert (arity > List.length args);
@@ -1092,7 +1092,7 @@ and simplify_partial_application env r ~lhs_of_application
 
 and simplify_over_application env r ~args ~args_types ~continuation
       ~function_decls ~lhs_of_application ~closure_id_being_applied
-      ~(function_decl : Flambda.function_declaration) ~value_set_of_closures
+      ~(function_decl : Flambda.Function_declaration.t) ~value_set_of_closures
       ~dbg ~inline_requested ~specialise_requested =
   let continuation, r =
     simplify_apply_cont_to_cont env r continuation

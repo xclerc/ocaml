@@ -60,7 +60,7 @@ let add_default_argument_wrappers lam =
   in
   L.map f lam
 
-type block_type = Normal | Float
+type block_type = Normal | Boxed_float
 
 type letrec = {
   blocks : (Ident.t * block_type * int) list;

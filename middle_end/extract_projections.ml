@@ -159,7 +159,7 @@ let rec analyse_expr ~which_variables expr =
           aliasing_free_vars aliasing_specialised_args
       in
       if not (Variable.Map.is_empty aliasing_vars) then begin
-        Variable.Map.iter (fun _ (fun_decl : Flambda.function_declaration) ->
+        Variable.Map.iter (fun _ (fun_decl : Flambda.Function_declaration.t) ->
           (* We ignore projections from within nested sets of closures. *)
           let _, used =
             analyse_expr fun_decl.body
@@ -207,7 +207,7 @@ let from_expr ~get_approx ~which_variables expr =
     projections
 
 let from_function's_free_vars ~env ~free_vars
-      ~(function_decl : Flambda.function_declaration) =
+      ~(function_decl : Flambda.Function_declaration.t) =
   let which_variables = Variable.Map.keys free_vars in
   let get_approx from =
     let outer_var =
@@ -221,7 +221,7 @@ let from_function's_free_vars ~env ~free_vars
   from_expr ~get_approx ~which_variables function_decl.body
 
 let from_function's_specialised_args ~env ~specialised_args
-      ~(function_decl : Flambda.function_declaration) =
+      ~(function_decl : Flambda.Function_declaration.t) =
   let which_variables = Variable.Map.keys specialised_args in
   let get_approx from =
     let outer_var =

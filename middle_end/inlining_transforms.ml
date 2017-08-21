@@ -80,7 +80,7 @@ let set_inline_attribute_on_all_apply body inline specialise =
 (** Assign fresh names for a function's parameters and rewrite the body to
     use these new names. *)
 let copy_of_function's_body_with_freshened_params env
-      ~(function_decl : Flambda.function_declaration) =
+      ~(function_decl : Flambda.Function_declaration.t) =
   let params = function_decl.params in
   let param_vars = Parameter.List.vars params in
   (* We cannot avoid the substitution in the case where we are inlining
@@ -114,12 +114,12 @@ let copy_of_function's_body_with_freshened_params env
     (= "variables bound by the closure"), and any function identifiers
     introduced by the corresponding set of closures. *)
 let inline_by_copying_function_body ~env ~r
-      ~(function_decls : Flambda.function_declarations)
+      ~(function_decls : Flambda.Function_declarations.t)
       ~lhs_of_application
       ~(inline_requested : Lambda.inline_attribute)
       ~(specialise_requested : Lambda.specialise_attribute)
       ~closure_id_being_applied
-      ~(function_decl : Flambda.function_declaration) ~args
+      ~(function_decl : Flambda.Function_declaration.t) ~args
       ~continuation ~dbg ~simplify =
   assert (E.mem env lhs_of_application);
   assert (List.for_all (E.mem env) args);
@@ -194,11 +194,11 @@ let inline_by_copying_function_body ~env ~r
   simplify env r expr
 
 let inline_by_copying_function_declaration ~env ~r
-    ~(function_decls : Flambda.function_declarations)
+    ~(function_decls : Flambda.Function_declarations.t)
     ~lhs_of_application
     ~(inline_requested : Lambda.inline_attribute)
     ~closure_id_being_applied
-    ~(function_decl : Flambda.function_declaration)
+    ~(function_decl : Flambda.Function_declaration.t)
     ~args ~args_approxs ~continuation
     ~(invariant_params:Variable.Set.t Variable.Map.t lazy_t)
     ~(specialised_args : Flambda.specialised_to Variable.Map.t)
@@ -409,7 +409,7 @@ let inline_by_copying_function_declaration ~env ~r
         ~function_decls
         ~specialised_args:specialisable_args
     in
-    let rewrite_function (fun_decl:Flambda.function_declaration) =
+    let rewrite_function (fun_decl:Flambda.Function_declaration.t) =
       (* First rewrite every use of the closure(s) defined by the current set
          of closures to free variable(s) corresponding to the original
          (non-specialised) closure(s).

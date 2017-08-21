@@ -34,8 +34,8 @@ type 'b good_idea =
   | Don't_try_it of 'b
 
 let inline env r ~lhs_of_application
-    ~(function_decls : Flambda.function_declarations)
-    ~closure_id_being_applied ~(function_decl : Flambda.function_declaration)
+    ~(function_decls : Flambda.Function_declarations.t)
+    ~closure_id_being_applied ~(function_decl : Flambda.Function_declaration.t)
     ~value_set_of_closures ~only_use_of_function ~original ~recursive
     ~(args : Variable.t list) ~continuation ~size_from_approximation ~dbg
     ~simplify ~(inline_requested : Lambda.inline_attribute)
@@ -314,8 +314,8 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
    precision of the argument approximations.  (Will act as a backstop to
    prevent unbounded recursion during specialisation.) *)
 let specialise env r ~lhs_of_application
-      ~(function_decls : Flambda.function_declarations)
-      ~(function_decl : Flambda.function_declaration)
+      ~(function_decls : Flambda.Function_declarations.t)
+      ~(function_decl : Flambda.Function_declaration.t)
       ~closure_id_being_applied
       ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
       ~args ~args_approxs ~continuation ~dbg ~simplify ~original ~recursive
@@ -529,9 +529,9 @@ Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
         Original decision
     end
 
-let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
+let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
       ~lhs_of_application ~closure_id_being_applied
-      ~(function_decl : Flambda.function_declaration)
+      ~(function_decl : Flambda.Function_declaration.t)
       ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
       ~args ~args_approxs ~continuation ~dbg ~simplify
       ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested =
@@ -754,5 +754,5 @@ Continuation.print continuation (List.length args_approxs);
    Inlining inside the declaration of a stub could result in more code than
    expected being inlined (e.g. the body of a function that was transformed
    by adding the stub). *)
-let should_inline_inside_declaration (decl : Flambda.function_declaration) =
+let should_inline_inside_declaration (decl : Flambda.Function_declaration.t) =
   not decl.stub

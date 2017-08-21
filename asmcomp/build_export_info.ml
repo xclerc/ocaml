@@ -455,7 +455,7 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
         results =
           Closure_id.wrap_map
             (Variable.Map.map (fun
-                    (function_decl : Flambda.function_declaration) ->
+                    (function_decl : Flambda.Function_declaration.t) ->
                 let approxs =
                   Array.init function_decl.return_arity (fun _ ->
                     Export_info.Value_unknown)
@@ -480,7 +480,7 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
       [closures_approx; bound_vars_approx; specialised_args_approx]
   in
   let results =
-    let result_approx _var (function_decl : Flambda.function_declaration) =
+    let result_approx _var (function_decl : Flambda.Function_declaration.t) =
       let r =
         approx_of_expr closure_env (Result.create ()) function_decl.body
       in

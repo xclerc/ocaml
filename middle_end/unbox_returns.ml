@@ -38,7 +38,7 @@ module U = Simplify_aux.Continuation_uses
    and all normal parameters to the function being unboxed, together with
    existing specialised args. *)
 
-let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
+let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.t)
       ~(how_to_unbox : Unbox_one_variable.How_to_unbox.t) ~return_cont_param
       ~specialised_args ~return_arity =
   let dbg = Debuginfo.none in
@@ -164,7 +164,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
     fun_wrapper_specialised_args
 
 let for_function_decl ~continuation_uses ~fun_var
-        ~(function_decl : Flambda.function_declaration)
+        ~(function_decl : Flambda.Function_declaration.t)
         ~specialised_args ~recursively_used =
   if function_decl.stub || Variable.Set.mem fun_var recursively_used then
     None
@@ -223,7 +223,7 @@ let for_function_decl ~continuation_uses ~fun_var
                 Some (function_decls, new_specialised_args)
             end
 
-let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
+let run ~continuation_uses ~(function_decls : Flambda.Function_declarations.t)
       ~specialised_args ~backend =
   let recursively_used =
     Find_recursive_functions.in_function_declarations function_decls ~backend
