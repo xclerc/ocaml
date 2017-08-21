@@ -17,6 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type t = int
+type tag = t
 
 include Identifiable.Make (Numbers.Int)
 
@@ -36,11 +37,19 @@ module Scannable = struct
 
   include Identifiable.Make (Numbers.Int)
 
+  let create tag =
+    if tag < 0 || tag >= Obj.no_scan_tag then None
+    else Some tag
+
   let create_exn tag =
-    if tag < 0 || tag >= Obj.no_scan_tag then
+    match create tag with
+    | Some tag -> tag
+    | None ->
       Misc.fatal_error (Printf.sprintf "Tag.Scannable.create_exn %d" tag)
-    else
-      tag
 
   let to_int t = t
+
+  let of_tag tag =
+    if tag < 0 || tag >= Obj.no_scan_tag then None
+    else Some tag
 end

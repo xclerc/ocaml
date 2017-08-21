@@ -64,8 +64,14 @@ module type Constructors_and_accessors = sig
     -> really_import_approx:('d t -> 'd t)
     -> Flambda_kind.t
 
-  (** Construction of types involving equalities to runtime values. *)
+  (** Construct one of the various top types ("any value of the given kind
+      can flow to this point"). *)
   val unknown : Flambda_kind.t -> unknown_because_of -> _ t
+
+  (** The unique bottom type ("no value can flow to this point"). *)
+  val bottom : unit -> _ t
+
+  (** Construction of types involving equalities to runtime values. *)
   val int : int -> _ t
   val constptr : int -> _ t
   val char : char -> _ t
@@ -79,20 +85,21 @@ module type Constructors_and_accessors = sig
   val boxed_nativeint : Nativeint.t -> _ t
   val mutable_float_array : size:int -> _ t
   val immutable_float_array : 'd t array -> 'd t
-  val mutable_string : length:int -> _ t
+  val mutable_string : size:int -> _ t
   val immutable_string : string -> _ t
   val block : Tag.t -> 'd t array -> 'd t
-  val extern : Export_id.t -> _ t
-  val symbol : Symbol.t -> _ t
-  val unresolved : unresolved_value -> _ t
-  val bottom : _ t
+
+  (** Construction of types that link to other types which have not yet
+      been loaded into memory (from a .cmx file). *)
+  val export_id_loaded_lazily : Export_id.t -> _ t
+  val symbol_loaded_lazily : Symbol.t -> _ t
 
   (** Construction of types without equalities to runtime values. *)
-  val any_float : _ t
-  val any_unboxed_float : _ t
-  val any_unboxed_int32 : _ t
-  val any_unboxed_int64 : _ t
-  val any_unboxed_nativeint : _ t
+  val any_boxed_float : unit -> _ t
+  val any_unboxed_float : unit -> _ t
+  val any_unboxed_int32 : unit -> _ t
+  val any_unboxed_int64 : unit -> _ t
+  val any_unboxed_nativeint : unit -> _ t
 
   (** Construct a closure type given the type of the corresponding set of
       closures and the closure ID of the closure to be projected from such set.
@@ -110,6 +117,7 @@ module type Constructors_and_accessors = sig
       describing a set of closures. *)
   val create_set_of_closures
      : function_decls:'d
+    -> size:int option Variable.Map.t lazy_t
     -> bound_vars:'d t Var_within_closure.Map.t
     -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
     -> freshening:closure_freshening
@@ -144,7 +152,7 @@ module type Constructors_and_accessors = sig
   val replace_description : 'd t -> 'd descr -> 'd t
 
   (** Attempt to use a value kind to refine a type. *)
-  val refine_using_value_kind : t -> Lambda.value_kind -> t
+  val refine_using_value_kind : 'd t -> Lambda.value_kind -> 'd t
 end
 
 module rec T : sig
@@ -243,6 +251,11 @@ module rec T : sig
     -> Format.formatter
     -> 'd set_of_closures
     -> unit
+
+  include Constructors_and_accessors
+    with type 'd t := 'd t
+    with type 'd descr := 'd descr
+    with type 'd set_of_closures := 'd set_of_closures
 end and Unionable : sig
   module Immediate : sig
     type t = private
@@ -252,6 +265,8 @@ end and Unionable : sig
       | Constptr of int
 
     include Identifiable.S with type t := t
+
+    val represents : t -> int
   end
 
   type 'd blocks = 'd T.t array Tag.Scannable.Map.t
@@ -260,6 +275,8 @@ end and Unionable : sig
     | Blocks of 'd blocks
     | Blocks_and_immediates of 'd blocks * Immediate.Set.t
     | Immediates of Immediate.Set.t
+
+  val invariant : _ t -> unit
 
   val print
      : (Format.formatter -> 'd -> unit)
@@ -287,12 +304,23 @@ end and Unionable : sig
     | Char of char
     | Constptr of int
 
+  (* CR mshinwell: review names of the following & add comments *)
+
+  val useful : _ t -> bool
+
+  val maybe_is_immediate_value : _ t -> int -> bool
+
+  val ok_for_variant : _ t -> bool
+
+  val is_singleton : _ t -> bool
+
+  val size_of_block : _ t -> int option
+
+  val invalid_to_mutate : _ t -> bool
+
+  val as_int : _ t -> int option
+
   (** Find the properties that are guaranteed to hold of a value with union type
       at every point it is used. *)
   val flatten : 'd t -> 'd singleton or_bottom
-
-  include Constructors_and_accessors
-    with type 'd t := 'd t
-    with type 'd descr := 'd descr
-    with type 'd set_of_closures := 'd set_of_closures
 end

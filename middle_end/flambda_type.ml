@@ -21,8 +21,6 @@ module T0 = Flambda_types0
 type t =
   (Flambda.Function_declarations.t, Freshening.Project_var.t) Flambda_types0.t
 
-let descr = T0.descr
-let descrs = T0.descrs
 let create_set_of_closures = T0.create_set_of_closures
 let update_freshening_of_set_of_closures =
   T0.update_freshening_of_set_of_closures
@@ -67,6 +65,32 @@ let augment_with_symbol_field = T0.augment_with_symbol_field
 let replace_description = T0.replace_description
 let augment_with_kind = T0.augment_with_kind
 let augment_kind_with_type = T0.augment_kind_with_type
+
+let descr t = t.descr
+let descrs ts = List.map (fun t -> t.descr) ts
+
+let create_set_of_closures ~function_decls ~bound_vars ~invariant_params
+      ~freshening ~direct_call_surrogates =
+  let size =
+    lazy (
+      let functions = Variable.Map.keys function_decls.funs in
+      Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
+          let params = Parameter.Set.vars function_decl.params in
+          let free_vars =
+            Variable.Set.diff
+              (Variable.Set.diff function_decl.free_variables params)
+              functions
+          in
+          let num_free_vars = Variable.Set.cardinal free_vars in
+          let max_size =
+            Inlining_cost.maximum_interesting_size_of_function_body
+              num_free_vars
+          in
+          Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
+        function_decls.funs)
+  in
+  create_set_of_closures ~function_decls ~size ~bound_vars ~invariant_params
+    ~freshening ~direct_call_surrogates
 
 let free_variables (t : t) =
   let rec free_variables (t : t) acc =

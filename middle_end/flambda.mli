@@ -189,9 +189,9 @@ module rec Expr : sig
       -> Variable.t
       -> Named.t
       -> 'a
-        * (Variable.t * Function_declarations.t Flambda_type0.t * Named.t) list
+        * (Variable.t * Function_declarations.t Flambda_type0.T.t * Named.t) list
         * Variable.t
-        * Function_declarations.t Flambda_type0.t
+        * Function_declarations.t Flambda_type0.T.t
         * Named.Reachable.t)
     -> for_last_body:('a -> t -> t * 'b)
     (* CR-someday mshinwell: consider making [filter_defining_expr]
@@ -610,7 +610,7 @@ end and Function_declaration : sig
 end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)
-  type t = Parameter.t * (Function_declarations.t Flambda_type0.t)
+  type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
 end and Switch : sig
 (** Equivalent to the similar type in [Ilambda]. *)
   type t = private {
@@ -744,7 +744,7 @@ module With_free_variables : sig
       occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
      : Variable.t
-    -> Function_declarations.t Flambda_type0.t
+    -> Function_declarations.t Flambda_type0.T.t
     -> Named.t
     -> Expr.t t
     -> Expr.t

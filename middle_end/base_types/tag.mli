@@ -20,6 +20,8 @@
 
 include Identifiable.S
 
+type tag = t
+
 val create_exn : int -> t
 
 val to_int : t -> int
@@ -35,6 +37,8 @@ module Scannable : sig
   (** Raises not only if the supplied integer is less than 0 but also if
       it is greater than or equal to [No_scan_tag]. *)
   val create_exn : int -> t
+
+  val of_tag : tag -> t option
 
   val to_int : t -> int
 
