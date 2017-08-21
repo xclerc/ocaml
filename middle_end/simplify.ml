@@ -535,12 +535,12 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
                     Closure_id.print closure_id_in_type
                     Projection.print_project_var project_var
                     (Closure_id.Map.print Var_within_closure.print) freshened_var
-                    Simple_value_type.print type
+                    Flambda_type.print ty
               in
               let set_type =
-                let type = T.type_for_bound_var value_set_of_closures var in
+                let ty = T.type_for_bound_var value_set_of_closures var in
                 let really_import_type = E.really_import_type env in
-                T.join ~really_import_type type set_type
+                T.join ~really_import_type ty set_type
               in
               Closure_id.Map.add closure_id var project_var_var,
               set_type)
@@ -1495,8 +1495,8 @@ and simplify_named env r (tree : Flambda.named)
     (* New Symbol construction could have been introduced during
        transformation (by simplify_named_using_type_and_env).
        When this comes from another compilation unit, we must load it. *)
-    let type = E.find_or_load_symbol env sym in
-    simplify_named_using_type r tree type
+    let ty = E.find_or_load_symbol env sym in
+    simplify_named_using_type r tree ty
   | Const cst -> [], Reachable tree, ret r (type_for_const cst)
   | Allocated_const cst ->
     [], Reachable tree, ret r (type_for_allocated_const cst)
@@ -1507,13 +1507,13 @@ and simplify_named env r (tree : Flambda.named)
     in
     [], Reachable (Read_mutable mut_var), ret r (T.unknown Value Other)
   | Read_symbol_field (symbol, field_index) ->
-    let type = E.find_or_load_symbol env symbol in
-    begin match T.get_field type ~field_index with
+    let ty = E.find_or_load_symbol env symbol in
+    begin match T.get_field ty ~field_index with
     (* CR-someday mshinwell: Think about [Unreachable] vs. [Bottom]. *)
     | Unreachable -> [], Unreachable, r
     | Ok flambda_type ->
-      let flambda_type = T.augment_with_symbol_field type symbol field_index in
-      simplify_named_using_type_and_env env r tree type
+      let flambda_type = T.augment_with_symbol_field ty symbol field_index in
+      simplify_named_using_type_and_env env r tree ty
     end
   | Set_of_closures set_of_closures -> begin
     let backend = E.backend env in
@@ -1541,13 +1541,13 @@ and simplify_named env r (tree : Flambda.named)
         simplify_newly_introduced_let_bindings env r ~bindings
           ~around:((Set_of_closures set_of_closures) : Flambda.named)
       in
-      let type = R.type r in
+      let ty = R.inferred_type r in
       let value_set_of_closures =
-        match T.strict_check_type_for_set_of_closures type with
+        match T.strict_check_type_for_set_of_closures ty with
         | Wrong ->
           Misc.fatal_errorf "Unexpected Flambda type returned from \
               simplification of [%s] result: %a"
-            pass_name T.print type
+            pass_name T.print ty
         | Ok (_var, value_set_of_closures) ->
           let freshening =
             Freshening.Project_var.compose ~earlier:first_freshening
@@ -1960,7 +1960,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
         Continuation.Map.fold (fun cont
                 ((handler : Flambda.continuation_handler), uses)
                 (r, handlers') ->
-            let type =
+            let ty =
               let num_params = List.length handler.params in
               let handlers : Continuation_approx.continuation_handlers =
                 match recursive with
@@ -1982,7 +1982,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
               Continuation_approx.create ~name:cont ~handlers ~num_params
             in
             let r =
-              R.define_continuation r cont env recursive uses type
+              R.define_continuation r cont env recursive uses ty
             in
             let handlers' = Continuation.Map.add cont handler handlers' in
             r, handlers')
@@ -2027,7 +2027,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
             Freshening.add_static_exception freshening name
           in
           let num_params = List.length handler.params in
-          let type =
+          let ty =
             (* If it's a stub, we put the code for [handler] in the
                environment; this is unfreshened, but will be freshened up
                if we inline it.
@@ -2058,8 +2058,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
             end
           in
           let conts_and_types =
-            Continuation.Map.add freshened_name (name, type)
-              conts_and_types
+            Continuation.Map.add freshened_name (name, ty) conts_and_types
           in
           conts_and_types, freshening)
         handlers
@@ -2115,12 +2114,12 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
     begin match with_wrapper with
     | Unchanged _ -> simplify_one_handler env r ~name ~handler ~body
     | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
-      let type =
+      let ty =
         Continuation_approx.create_unknown ~name:new_cont
           ~num_params:(List.length new_handler.params)
       in
       let body, r =
-        let env = E.add_continuation env new_cont type in
+        let env = E.add_continuation env new_cont ty in
         simplify_one_handler env r ~name ~handler:wrapper_handler ~body
       in
       let body, r =
@@ -2128,7 +2127,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
       in
       let r =
         R.update_all_continuation_use_environments r
-          ~if_present_in_env:name ~then_add_to_env:(new_cont, type)
+          ~if_present_in_env:name ~then_add_to_env:(new_cont, ty)
       in
       body, r
     end
@@ -2547,7 +2546,7 @@ let constant_defining_value_type
         (function
           | Flambda.Symbol sym -> begin
               match E.find_symbol_opt env sym with
-              | Some type -> type
+              | Some ty -> ty
               | None -> T.unknown Value (Unresolved_value (Symbol sym))
             end
           | Flambda.Const cst -> type_for_const cst)
@@ -2656,7 +2655,7 @@ let simplify_constant_defining_value
         simplify_set_of_closures env r set_of_closures
       in
       r, ((Set_of_closures set_of_closures) : Flambda.constant_defining_value),
-        R.type r
+        R.inferred_type r
     | Project_closure (set_of_closures_symbol, closure_id) ->
       (* No simplifications are necessary here. *)
       let set_of_closures_type =
@@ -2725,21 +2724,21 @@ let rec simplify_program_body env r (program : Flambda.program_body)
           in
           simplify_toplevel env r h ~continuation:cont ~descr
         in
-        let type =
+        let ty =
           Simplify_aux.Continuation_uses.meet_of_args_types
             uses ~num_params:1
         in
-        let type =
-          match type with
-          | [type] -> type
+        let ty =
+          match ty with
+          | [ty] -> ty
           | _ -> assert false
         in
-        let types = type :: types in
+        let tys = ty :: tys in
         if t' == t && h' == h
-        then l, types, r
-        else (h', cont) :: t', types, r
+        then l, tys, r
+        else (h', cont) :: t', tys, r
     in
-    let fields, types, r = simplify_fields env r fields in
+    let fields, tys, r = simplify_fields env r fields in
     let ty =
       T.augment_with_symbol (T.block tag (Array.of_list tys)) symbol
     in

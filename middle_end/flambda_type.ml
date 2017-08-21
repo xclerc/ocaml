@@ -102,10 +102,10 @@ let make_const_unboxed_float_named f : Flambda.named * t =
   Const (Unboxed_float f), unboxed_float f
 
 let make_const_unboxed_int32_named n : Flambda.named * t =
-  Const (Unboxed_int32 n) unboxed_int32 f
+  Const (Unboxed_int32 n), unboxed_int32 f
 
 let make_const_unboxed_int64_named n : Flambda.named * t =
-  Const (Unboxed_int64 n) unboxed_int64 f
+  Const (Unboxed_int64 n), unboxed_int64 f
 
 let make_const_unboxed_nativeint_named n : Flambda.named * t =
   Const (Unboxed_nativeint n), unboxed_nativeint f
@@ -232,7 +232,7 @@ let physically_different_values (types : t list) =
     | Bottom, _ | _, Bottom -> false
     | Union (Immediates s1), Union (Immediates s2) ->
       immediates_different s1 s2
-    | Union (Blocks b1), Union (Blocks b2)
+    | Union (Blocks b1), Union (Blocks b2) ->
       blocks_different b1 b2
     | Union (Blocks_and_immediates (b1, imms1)),
       Union (Blocks_and_immediates (b2, imms2)) ->
@@ -338,7 +338,7 @@ let follow_variable_equality t ~is_present_in_env =
   | Some var when is_present_in_env var -> Some var
   | _ -> None
 
-module Reification_summary =
+module Reification_summary = struct
   type t =
     | Nothing_done
     | Replaced_term
@@ -435,8 +435,8 @@ let maybe_replace_term_with_reified_term_using_env t ~is_present_in_env named =
         true, Flambda.Read_symbol_field (sym, field)
       | None -> false, named
   in
-  let const, summary, type = simplify_named t named in
-  const, Reification_summary.join summary ~replaced_by_var_or_symbol, type
+  let const, summary, ty = simplify_named t named in
+  const, Reification_summary.join summary ~replaced_by_var_or_symbol, ty
 
 let reify_as_int t : int option =
   match t.descr with
@@ -518,7 +518,7 @@ let reify_as_scannable_block_or_immediate t
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
   | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
-  | Int64 _ | Nativeint _ | | Set_of_closures _ | Closure _ 
+  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _ 
   | Load_lazily _ | Unknown _ | Unresolved _ -> Wrong
 
 type reified_as_set_of_closures =

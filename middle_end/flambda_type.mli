@@ -159,7 +159,7 @@ val clean
   -> t
 
 module Reification_summary : sig
-  type t
+  type t =
     | Nothing_done
     | Replaced_term
 end

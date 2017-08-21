@@ -23,7 +23,7 @@ module Float = Numbers.Float
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 
-module Boxed_number_kind : sig
+module Boxed_number_kind = struct
   type t =
     | Float
     | Int32
@@ -285,13 +285,13 @@ end = struct
     | Int32 is1, Int32 is2 -> Int32 (Int32.Set.union is1 is2)
     | Int64 is1, Int64 is2 -> Int64 (Int64.Set.union is1 is2)
     | Nativeint is1, Nativeint is2 -> Nativeint (Nativeint.Set.union is1 is2)
-    | Boxed_number (Float, t1), Boxed_number (Float, t2)
+    | Boxed_number (Float, t1), Boxed_number (Float, t2) ->
       Boxed_number (Float, join t1 t2)
-    | Boxed_number (Int32, t1), Boxed_number (Int32, t2)
+    | Boxed_number (Int32, t1), Boxed_number (Int32, t2) ->
       Boxed_number (Int32, join t1 t2)
-    | Boxed_number (Int64, t1), Boxed_number (Int64, t2)
+    | Boxed_number (Int64, t1), Boxed_number (Int64, t2) ->
       Boxed_number (Int64, join t1 t2)
-    | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2)
+    | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2) ->
       Boxed_number (Nativeint, join t1 t2)
     | Extern e1, Extern e2 when Export_id.equal e1 e2 -> d1
     | Symbol s1, Symbol s2 when Symbol.equal s1 s2 -> d1
