@@ -21,63 +21,53 @@
 (** The selection of one closure given a set of closures, required before
     a function defined by said set of closures can be applied.  See more
     detailed documentation below on [set_of_closures]. *)
-type project_closure = {
-  set_of_closures : Variable.t; (** must yield a set of closures *)
-  closure_id : Closure_id.Set.t;
-  (** Every closure_id from the set must come from a different set.
-      A projection with multiple potential closure represents a
-      conditionnal projection depending on the given set of closures.
-      The set of closure is implicit as there can also be only one
-      set defining a given closure_id *)
-}
+module Project_closure : sig
+  type t = {
+    set_of_closures : Variable.t; (** must yield a set of closures *)
+    closure_id : Closure_id.Set.t;
+    (** Every closure_id from the set must come from a different set.
+        A projection with multiple potential closure represents a
+        conditionnal projection depending on the given set of closures.
+        The set of closure is implicit as there can also be only one
+        set defining a given closure_id *)
+  }
+
+  include Identifiable.S with type t := t
+end
 
 (** The selection of one closure given another closure in the same set of
     closures.  See more detailed documentation below on [set_of_closures].
     The [move_to] closure must be part of the free variables of
     [start_from]. *)
-type move_within_set_of_closures = {
-  closure : Variable.t;  (** must yield a closure *)
-  move : Closure_id.t Closure_id.Map.t;
-  (** For each possible value of closures, get a different closure
-      from the set. *)
-}
+module Move_within_set_of_closures : sig
+  type t = {
+    closure : Variable.t;  (** must yield a closure *)
+    move : Closure_id.t Closure_id.Map.t;
+    (** For each possible value of closures, get a different closure
+        from the set. *)
+  }
+
+  include Identifiable.S with type t := t
+end
 
 (** The selection from a closure of a variable bound by said closure.
     In other words, access to a function's environment.  Also see more
     detailed documentation below on [set_of_closures]. *)
-type project_var = {
-  closure : Variable.t;  (** must yield a closure *)
-  var : Var_within_closure.t Closure_id.Map.t;
-  (** For each possible value of closure, get a different field of the
-      closure. *)
-}
+module Project_var : sig
+  type t = {
+    closure : Variable.t;  (** must yield a closure *)
+    var : Var_within_closure.t Closure_id.Map.t;
+    (** For each possible value of closure, get a different field of the
+        closure. *)
+  }
 
-val print_project_closure
-   : Format.formatter
-  -> project_closure
-  -> unit
-
-val print_move_within_set_of_closures
-   : Format.formatter
-  -> move_within_set_of_closures
-  -> unit
-
-val print_project_var
-   : Format.formatter
-  -> project_var
-  -> unit
-
-val compare_project_var : project_var -> project_var -> int
-val compare_project_closure : project_closure -> project_closure -> int
-val compare_move_within_set_of_closures
-   : move_within_set_of_closures
-  -> move_within_set_of_closures
-  -> int
+  include Identifiable.S with type t := t
+end
 
 type t =
-  | Project_var of project_var
-  | Project_closure of project_closure
-  | Move_within_set_of_closures of move_within_set_of_closures
+  | Project_var of Project_var.t
+  | Project_closure of Project_closure.t
+  | Move_within_set_of_closures of Move_within_set_of_closures.t
   | Field of int * Variable.t
   | Prim of Lambda.primitive * Variable.t list
   | Switch of Variable.t
