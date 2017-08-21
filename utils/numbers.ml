@@ -94,7 +94,7 @@ module Int32 = struct
     let compare x y = Int32.compare x y
     let output oc x = Printf.fprintf oc "%ld" x
     let hash f = Hashtbl.hash f
-    let equal (i : float) j = i = j
+    let equal (i : Int32.t) j = i = j
     let print ppf t = Format.fprintf ppf "%ld" t
   end)
 end
@@ -106,9 +106,9 @@ module Int64 = struct
     type t = Int64.t
 
     let compare x y = Int64.compare x y
-    let output oc x = Printf.fprintf oc "%ld" x
+    let output oc x = Printf.fprintf oc "%Ld" x
     let hash f = Hashtbl.hash f
-    let equal (i : float) j = i = j
-    let print ppf t = Format.fprintf ppf "%ld" t
+    let equal (i : Int64.t) j = i = j
+    let print ppf t = Format.fprintf ppf "%Ld" t
   end)
 end

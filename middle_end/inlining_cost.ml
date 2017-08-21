@@ -54,8 +54,8 @@ let prim_size (prim : Lambda.primitive) args =
   | Parraysets Pgenarray -> 22
   | Parraysets _ -> 10
   | Pbittest -> 3
-  | Pbigarrayref (_, ndims, _, _) -> 4 + ndims * 6
-  | Pbigarrayset (_, ndims, _, _) -> 4 + ndims * 6
+  | Pbigarrayref (_, ndims, _, _, _) -> 4 + ndims * 6
+  | Pbigarrayset (_, ndims, _, _, _) -> 4 + ndims * 6
   | Psequand | Psequor ->
     Misc.fatal_error "Psequand and Psequor are not allowed in Prim \
         expressions; translate out instead (cf. closure_conversion.ml)"
@@ -246,10 +246,11 @@ module Benefit = struct
     match named with
     | Assign _ -> b := remove_prim !b
     | Set_of_closures _
-    | Prim ((Pmakearray _ | Pmakeblock _ | Pduprecord _), _, _) ->
+    | Prim ((Pmakearray _ | Pmakeblock _ | Pduprecord _ | Pbox_float), _, _) ->
       b := remove_alloc !b
-      (* CR-soon pchambart: should we consider that boxed integer and float
-         operations are allocations ? *)
+      (* CR pchambart: should we consider that boxed integer and float
+         operations are allocations ?
+         mshinwell: CR-soon -> CR *)
     | Prim _ | Project_closure _ | Project_var _
     | Move_within_set_of_closures _
     | Read_symbol_field _ -> b := remove_prim !b

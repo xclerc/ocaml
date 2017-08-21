@@ -21,6 +21,7 @@
 include Identifiable.S
 
 val create_exn : int -> t
+
 val to_int : t -> int
 
 val zero : t
@@ -30,6 +31,12 @@ module Scannable : sig
   (** Tags that are strictly less than [No_scan_tag], corresponding to
       blocks that can be scanned by the GC. *)
   type t
+
+  (** Raises not only if the supplied integer is less than 0 but also if
+      it is greater than or equal to [No_scan_tag]. *)
+  val create_exn : int -> t
+
+  val to_int : t -> int
 
   include Identifiable.S with type t := t
 end

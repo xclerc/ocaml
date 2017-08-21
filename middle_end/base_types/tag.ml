@@ -30,3 +30,17 @@ let to_int t = t
 
 let zero = 0
 let object_tag = Obj.object_tag
+
+module Scannable = struct
+  type nonrec t = t
+
+  include Identifiable.Make (Numbers.Int)
+
+  let create_exn tag =
+    if tag < 0 || tag >= Obj.no_scan_tag then
+      Misc.fatal_error (Printf.sprintf "Tag.Scannable.create_exn %d" tag)
+    else
+      tag
+
+  let to_int t = t
+end
