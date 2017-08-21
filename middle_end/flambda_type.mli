@@ -21,10 +21,23 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** The type of an Flambda term. *)
-type t = Flambda_types0.T.t
+type t =
+  (Flambda.function_declarations, Freshening.Project_var.t) Flambda_types0.t
 
 (** Means of making and examining types. *)
 include Flambda_types0.Constructors_and_accessors
+
+(** Extraction of the description field from a type. *)
+val descr : t -> descr
+
+(** Extraction of the description fields from a list of types. *)
+val descrs : t list -> descr list
+
+(** Attempt to use a value kind to refine a type. *)
+val refine_using_value_kind : t -> Lambda.value_kind -> t
+
+(** Attempt to use a type to refine a value kind. *)
+val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
 val unresolved_symbol : Symbol.t -> t

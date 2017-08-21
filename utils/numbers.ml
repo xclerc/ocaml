@@ -112,3 +112,17 @@ module Int64 = struct
     let print ppf t = Format.fprintf ppf "%Ld" t
   end)
 end
+
+module Nativeint = struct
+  type t = Nativeint.t
+
+  include Identifiable.Make (struct
+    type t = Nativeint.t
+
+    let compare x y = Nativeint.compare x y
+    let output oc x = Printf.fprintf oc "%nd" x
+    let hash f = Hashtbl.hash f
+    let equal (i : Nativeint.t) j = i = j
+    let print ppf t = Format.fprintf ppf "%nd" t
+  end)
+end
