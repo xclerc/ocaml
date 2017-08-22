@@ -1667,7 +1667,7 @@ and simplify_newly_introduced_let_bindings env r ~bindings
   let around_fvs =
     match around with
     | Reachable around
-    | Non_terminating around -> Flambda.free_variables_named around
+    | Non_terminating around -> Flambda.Named.free_variables around
     | Unreachable -> Variable.Set.empty
   in
   let bindings, r, _fvs =
@@ -1678,7 +1678,7 @@ and simplify_newly_introduced_let_bindings env r ~bindings
         match defining_expr with
         | Some defining_expr ->
           let fvs =
-            Variable.Set.union (Flambda.free_variables_named defining_expr)
+            Variable.Set.union (Flambda.Named.free_variables defining_expr)
               (Variable.Set.remove var fvs)
           in
           (var, ty, defining_expr)::bindings, r, fvs

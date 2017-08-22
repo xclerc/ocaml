@@ -152,7 +152,7 @@ Format.eprintf "Passing binding of %a\n%!" Continuation.print name;
             let pending = Continuation.Map.remove name state.pending in
             let needed_fvs =
               Variable.Set.diff
-                (Flambda.free_variables_of_let_cont_handlers new_handlers)
+                (Flambda.Expr.free_variables_of_let_cont_handlers new_handlers)
                 state.vars_in_scope
             in
             let being_placed =

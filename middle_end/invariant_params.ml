@@ -100,7 +100,7 @@ module For_functions = struct
     let body (t : t) = t.body
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =
-      Flambda.free_variables ~ignore_uses_as_callee:()
+      Flambda.Expr.free_variables ~ignore_uses_as_callee:()
         ~ignore_uses_as_argument:() t.body
   end
 
@@ -208,7 +208,7 @@ module For_continuations = struct
     let body (t : t) = t.handler
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =
-      Flambda.free_variables
+      Flambda.Expr.free_variables
         ~ignore_uses_as_continuation_argument:() t.handler
   end
 

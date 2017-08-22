@@ -38,14 +38,14 @@ let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
     | Symbol _ |Const _ | Allocated_const _ | Read_mutable _
     | Read_symbol_field _ | Project_closure _
     | Move_within_set_of_closures _ | Project_var _ ->
-      set := Variable.Set.union !set (Flambda.free_variables_named flam)
+      set := Variable.Set.union !set (Flambda.Named.free_variables flam)
     | Set_of_closures set_of_closures ->
-      set := Variable.Set.union !set (Flambda.free_variables_named flam);
+      set := Variable.Set.union !set (Flambda.Named.free_variables flam);
       Variable.Map.iter (fun _ (function_decl : Flambda.Function_declaration.t) ->
           loop function_decl.body)
         set_of_closures.function_decls.funs
     | Assign _ ->
-      set := Variable.Set.union !set (Flambda.free_variables_named flam)
+      set := Variable.Set.union !set (Flambda.Named.free_variables flam)
   and loop (flam : Flambda.Expr.t) =
     match flam with
     | Let { defining_expr; body; _ } ->
@@ -65,7 +65,7 @@ let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
           loop handler.handler)
         handlers
     | Apply _ | Apply_cont _ | Switch _ ->
-      set := Variable.Set.union !set (Flambda.free_variables flam)
+      set := Variable.Set.union !set (Flambda.Expr.free_variables flam)
     | Proved_unreachable -> ()
   in
   loop tree;

@@ -196,7 +196,7 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
                 Flambda.free_continuations_of_let_cont_handlers ~handlers
               in
               let fvs =
-                Flambda.free_variables_of_let_cont_handlers handlers
+                Flambda.Expr.free_variables_of_let_cont_handlers handlers
               in
               (* Note that we don't have to check any uses of mutable variables
                  in [handler], since any such uses would prevent [handler] from
@@ -222,7 +222,7 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
         in
         let handlers = Continuation.Map.add cont handler handlers in
         let fvs_specialised_args =
-          Flambda.free_variables_of_specialised_args
+          Flambda.Expr.free_variables_of_specialised_args
             handler.specialised_args
         in
         let fvs_mut = State.mutable_variables_used handler_state in
@@ -248,7 +248,7 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
       | _ -> assert false
   in
   let fcs = Flambda.free_continuations_of_let_cont_handlers ~handlers in
-  let fvs = Flambda.free_variables_of_let_cont_handlers handlers in
+  let fvs = Flambda.Expr.free_variables_of_let_cont_handlers handlers in
   let can_lift_handler =
     (not cannot_lift)
       && State.can_lift_if_using_continuations state fcs

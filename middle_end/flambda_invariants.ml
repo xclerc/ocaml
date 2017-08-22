@@ -600,7 +600,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
             ignore_debuginfo dbg;
             (* Check that [free_variables], which is only present as an
               optimization, is not lying. *)
-            let free_variables' = Flambda.free_variables body in
+            let free_variables' = Flambda.Expr.free_variables body in
             if not (Variable.Set.subset free_variables' free_variables) then
               raise (Free_variables_set_is_lying (fun_var,
                 free_variables, free_variables', function_decl));
@@ -949,7 +949,7 @@ let _every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
         | _ -> ());
   Flambda_iterators.iter_on_set_of_closures_of_program program
     ~f:(fun ~constant:_ { Flambda.function_decls = { funs; _ }; _ } ->
-        Variable.Map.iter (fun fun_var { Flambda.free_variables; _ } ->
+        Variable.Map.iter (fun fun_var { Flambda.Expr.free_variables; _ } ->
             match Closure_id.Map.find (Closure_id.wrap fun_var) !moves with
             | exception Not_found -> ()
             | moved_to ->
@@ -1045,7 +1045,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
         Projection.print var
     | Free_variables_set_is_lying (var, claimed, calculated, function_decl) ->
       Format.eprintf ">> Function declaration whose [free_variables] set (%a) \
-          is not a superset of the result of [Flambda.free_variables] \
+          is not a superset of the result of [Flambda.Expr.free_variables] \
           applied to the body of the function (%a).  Declaration: %a"
         Variable.Set.print claimed
         Variable.Set.print calculated

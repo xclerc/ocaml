@@ -136,7 +136,7 @@ let run program ~backend =
             is_exn_handler = true; _ }; }; } -> expr
         | Let_cont { body; handlers = Nonrecursive { name; handler; } } ->
           let unused =
-            let fvs = Flambda.free_variables handler.handler in
+            let fvs = Flambda.Expr.free_variables handler.handler in
             let params = Parameter.Set.of_list handler.params in
             Parameter.Set.filter (fun param ->
                 not (Variable.Set.mem (Parameter.var param) fvs))

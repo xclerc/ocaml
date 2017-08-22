@@ -256,9 +256,9 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
           let new_handler = sink handler.handler in
           let fvs =
             Variable.Set.union
-              (Flambda.free_variables_of_specialised_args
+              (Flambda.Expr.free_variables_of_specialised_args
                  handler.specialised_args)
-              (Flambda.free_variables new_handler)
+              (Flambda.Expr.free_variables new_handler)
           in
           let state =
             State.add_candidates_to_sink state
@@ -277,7 +277,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
-        ~candidates_to_sink:(Flambda.free_variables body)
+        ~candidates_to_sink:(Flambda.Expr.free_variables body)
     in
     Let_cont { body; handlers = Recursive handlers; }, state
   | Let_cont { body; handlers =
@@ -299,7 +299,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
       State.add_candidates_to_sink state
         ~sink_into:[]
         ~candidates_to_sink:
-          (Flambda.free_variables_of_specialised_args specialised_args)
+          (Flambda.Expr.free_variables_of_specialised_args specialised_args)
     in
     Let_cont { body; handlers =
       Nonrecursive { name; handler = {
@@ -308,7 +308,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
-        ~candidates_to_sink:(Flambda.free_variables expr)
+        ~candidates_to_sink:(Flambda.Expr.free_variables expr)
     in
     expr, state
 

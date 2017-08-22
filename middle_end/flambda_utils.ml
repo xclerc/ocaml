@@ -311,7 +311,7 @@ let toplevel_substitution_named sb named =
 
 let make_closure_declaration ~id ~body ~params ~continuation_param
       ~stub ~continuation : Flambda.Expr.t =
-  let free_variables = Flambda.free_variables body in
+  let free_variables = Flambda.Expr.free_variables body in
   let param_set = Parameter.Set.vars params in
   if not (Variable.Set.subset param_set free_variables) then begin
     Misc.fatal_error "Flambda_utils.make_closure_declaration"
@@ -616,7 +616,7 @@ let substitute_read_symbol_field_for_variables
       let to_substitute =
         Variable.Set.filter
           (fun v -> Variable.Map.mem v substitution)
-          (Flambda.free_variables_named named)
+          (Flambda.Named.free_variables named)
       in
       if Variable.Set.is_empty to_substitute then
         expr
