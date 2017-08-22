@@ -153,6 +153,9 @@ module type Constructors_and_accessors = sig
 
   (** Attempt to use a value kind to refine a type. *)
   val refine_using_value_kind : 'd t -> Lambda.value_kind -> 'd t
+
+  (** Free variables in a type. *)
+  val free_variables : 'd t -> Variable.Set.t
 end
 
 module rec T : sig

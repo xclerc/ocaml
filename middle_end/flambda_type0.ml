@@ -130,6 +130,7 @@ module type Constructors_and_accessors = sig
   val augment_with_symbol_field : 'd t -> Symbol.t -> int -> 'd t
   val replace_description : 'd t -> 'd descr -> 'd t
   val refine_using_value_kind : 'd t -> Lambda.value_kind -> 'd t
+  val free_variables : 'd t -> Variable.Set.t
 end
 
 (* A value of type [T.t] corresponds to an "approximation" of the result of
@@ -678,6 +679,49 @@ end = struct
     match Tag.Scannable.of_tag tag with
     | None -> unknown Value Other
     | Some tag -> just_descr (Union (Unionable.block tag b))
+
+  let free_variables t =
+    let rec free_variables t acc =
+      let acc =
+        match t.var with
+        | None -> acc
+        | Some var -> Variable.Set.add var acc
+      in
+      match t.descr with
+      | Union unionable ->
+        begin match unionable with
+        | Blocks blocks
+        | Blocks_and_immediates (blocks, _) ->
+          Tag.Scannable.Map.fold (fun _tag t_array acc ->
+              Array.fold_left (fun acc t -> free_variables t acc)
+                acc t_array)
+            blocks acc
+        | Immediates _ -> acc
+        end
+      | Unknown _
+      | Unboxed_float _
+      | Unboxed_int32 _
+      | Unboxed_int64 _
+      | Unboxed_nativeint _ -> acc
+      | Boxed_number (_, t) -> free_variables t acc
+      | Set_of_closures set_of_closures ->
+        Var_within_closure.Map.fold (fun _var t acc -> free_variables t acc)
+          set_of_closures.bound_vars acc
+      | Closure { potential_closures; } ->
+        Closure_id.Map.fold (fun _closure_id t acc -> free_variables t acc)
+          potential_closures acc
+      | Immutable_string _
+      | Mutable_string _ -> acc
+      | Float_array { contents; size = _; } ->
+        begin match contents with
+        | Contents ts ->
+          Array.fold_left (fun acc t -> free_variables t acc) acc ts
+        | Unknown_or_mutable -> acc
+        end
+      | Bottom
+      | Load_lazily _ -> acc
+    in
+    free_variables t Variable.Set.empty
 end and Unionable : sig
   module Immediate : sig
     type t = private

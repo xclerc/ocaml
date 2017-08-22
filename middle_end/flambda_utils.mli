@@ -258,3 +258,66 @@ val make_let_cont_alias
   -> Flambda.let_cont_handlers
 
 val arity_of_call_kind : call_kind -> return_arity
+
+type maybe_named =
+  | Is_expr of Expr.t
+  | Is_named of Named.t
+
+(** This function is designed for the internal use of [Flambda_iterators].
+    See that module for iterators to be used over Flambda terms. *)
+val iter_general
+   : toplevel:bool
+  -> (Expr.t -> unit)
+  -> (Named.t -> unit)
+  -> maybe_named
+  -> unit
+
+module Reachable : sig
+  type nonrec t =
+    | Reachable of t
+    | Non_terminating of t
+    | Unreachable
+end
+
+(** Used to avoid exceeding the stack limit when handling expressions with
+    multiple consecutive nested [Let]-expressions.  This saves rewriting large
+    simplification functions in CPS.  This function provides for the
+    rewriting or elimination of expressions during the fold. *)
+val fold_lets_option
+    : t
+  -> init:'a
+  -> for_defining_expr:(
+      'a
+    -> Variable.t
+    -> Named.t
+    -> 'a
+      * (Variable.t * Function_declarations.t Flambda_type0.T.t * Named.t) list
+      * Variable.t
+      * Function_declarations.t Flambda_type0.T.t
+      * Named.Reachable.t)
+  -> for_last_body:('a -> t -> t * 'b)
+  (* CR-someday mshinwell: consider making [filter_defining_expr]
+    optional *)
+  -> filter_defining_expr:('b -> Variable.t -> Named.t -> Variable.Set.t ->
+                          'b * Variable.t * Named.t option)
+  -> t * 'b
+
+(** Like [fold_lets_option], but just a map. *)
+(* CR mshinwell: consider enhancing this in the same way as for
+  [fold_lets_option] in the [defining_expr] type.  This would be useful eg
+  for Ref_to_variables.  Maybe in fact there should be a new iterator that
+  uses this function for such situations? *)
+val map_lets
+  : t
+  -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
+  -> for_last_body:(t -> t)
+  -> after_rebuild:(t -> t)
+  -> t
+
+(** Like [map_lets], but just an iterator. *)
+val iter_lets
+  : t
+  -> for_defining_expr:(Variable.t -> Named.t -> unit)
+  -> for_last_body:(t -> unit)
+  -> for_each_let:(t -> unit)
+  -> unit

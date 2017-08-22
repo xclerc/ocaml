@@ -31,9 +31,6 @@ include Flambda_types0.Constructors_and_accessors
   with type 'decls set_of_closures :=
     Flambda.Function_declarations.t Flambda_types0.set_of_closures
 
-(** Free variables in a type. *)
-val free_variables : t -> Variable.Set.t
-
 (** Extraction of the description field from a type. *)
 val descr : t -> descr
 

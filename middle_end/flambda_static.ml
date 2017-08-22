@@ -123,21 +123,71 @@ end = struct
     | Const const -> Const.print ppf const
 end
 
-type program_body =
-  | Let_symbol of Symbol.t * constant_defining_value * program_body
-  | Let_rec_symbol of (Symbol.t * constant_defining_value) list * program_body
-  | Initialize_symbol of Symbol.t * Tag.t * (t * Continuation.t) list
-      * program_body
-  | Effect of t * Continuation.t * program_body
-  | End of Symbol.t
+module Program_body = struct
+  type t =
+    | Let_symbol of Symbol.t * constant_defining_value * t
+    | Let_rec_symbol of (Symbol.t * constant_defining_value) list * t
+    | Initialize_symbol of Symbol.t * Tag.t * (t * Continuation.t) list
+        * t
+    | Effect of t * Continuation.t * t
+    | End of Symbol.t
 
-module Program : sig
+  let rec print ppf (program : t) =
+    match program with
+    | Let_symbol (symbol, constant_defining_value, body) ->
+      let rec letbody (ul : t) =
+        match ul with
+        | Let_symbol (symbol, constant_defining_value, body) ->
+          fprintf ppf "@ @[<2>(%a@ %a)@]" Symbol.print symbol
+            Constant_defining_value.print constant_defining_value;
+          letbody body
+        | _ -> ul
+      in
+      fprintf ppf "@[<2>let_symbol@ @[<hv 1>(@[<2>%a@ %a@])@]@ "
+        Symbol.print symbol
+        Constant_defining_value.print constant_defining_value;
+      let program = letbody body in
+      fprintf ppf "@]@.";
+      print ppf program
+    | Let_rec_symbol (defs, program) ->
+      let bindings ppf id_arg_list =
+        let spc = ref false in
+        List.iter
+          (fun (symbol, constant_defining_value) ->
+            if !spc then fprintf ppf "@ " else spc := true;
+            fprintf ppf "@[<2>%a@ %a@]"
+              Symbol.print symbol
+              Constant_defining_value.print constant_defining_value)
+          id_arg_list in
+      fprintf ppf
+        "@[<2>let_rec_symbol@ (@[<hv 1>%a@])@]@."
+        bindings defs;
+      print ppf program
+    | Initialize_symbol (symbol, tag, fields, program) ->
+      let lam_and_cont ppf (field, defn, cont) =
+        fprintf ppf "Field %d, return continuation %a:@;@[<h>@ @ %a@]"
+          field Continuation.print cont lam defn
+      in
+      let pp_sep ppf () = fprintf ppf "@ " in
+      fprintf ppf
+        "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
+        Symbol.print symbol
+        Tag.print tag
+        (Format.pp_print_list ~pp_sep lam_and_cont)
+        (List.mapi (fun i (defn, cont) -> i, defn, cont) fields);
+      print ppf program
+    | Effect (lam, cont, program) ->
+      fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
+        Continuation.print cont print lam;
+      print ppf program;
+    | End root -> fprintf ppf "End %a" Symbol.print root
+end
+
+module Program = struct
   type t = {
     imported_symbols : Symbol.Set.t;
     program_body : program_body;
   }
-end = struct
-  include Program
 
   let free_symbols (program : t) =
     let symbols = ref Symbol.Set.empty in
@@ -164,4 +214,10 @@ end = struct
     (* Note that there is no need to count the [imported_symbols]. *)
     loop program.program_body;
     !symbols
+
+  let print ppf t =
+    Symbol.Set.iter (fun symbol ->
+        fprintf ppf "@[import_symbol@ %a@]@." Symbol.print symbol)
+      program.imported_symbols;
+    Program_body.print ppf program.program_body
 end

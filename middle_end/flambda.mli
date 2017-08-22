@@ -115,21 +115,25 @@ end
     a normal continuation (since continuations used as exception handlers
     use a calling convention that may differ from normal).
 *)
-type trap_action =
-  | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
-  (* CR mshinwell: Think about whether we really need the trap IDs now *)
-  | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
+module Trap_action : sig
+  type t =
+    | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
+    (* CR mshinwell: Think about whether we really need the trap IDs now *)
+    | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
+end
 
-(** Equivalent to the similar type in [Ilambda]. *)
-type switch = private {
-  (* CR mshinwell: [numconsts] should move onto the default case. *)
-  numconsts : Numbers.Int.Set.t;
-  (** All possible values that the scrutinee might have. *)
-  consts : (int * Continuation.t) list;
-  (** Branches for specific values of the scrutinee. *)
-  failaction : Continuation.t option;
-  (** Action to take if none of the [consts] matched. *)
-}
+module Switch : sig
+  (** Equivalent to the similar type in [Ilambda]. *)
+  type t = private {
+    (* CR mshinwell: [numconsts] should move onto the default case. *)
+    numconsts : Numbers.Int.Set.t;
+    (** All possible values that the scrutinee might have. *)
+    consts : (int * Continuation.t) list;
+    (** Branches for specific values of the scrutinee. *)
+    failaction : Continuation.t option;
+    (** Action to take if none of the [consts] matched. *)
+  }
+end
 
 module rec Expr : sig
   (** With the exception of applications of primitives ([Prim]), Flambda terms
@@ -161,7 +165,7 @@ module rec Expr : sig
     | Let_mutable of Let_mutable.t
     | Let_cont of Let_cont.t
     | Apply of apply
-    | Apply_cont of Continuation.t * trap_action option * Variable.t list
+    | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
     | Switch of Variable.t * Switch.t
     | Proved_unreachable
 
@@ -187,49 +191,6 @@ module rec Expr : sig
     -> arms:(int * Continuation.t) list
     -> default:Continuation.t option
     -> Expr.t * (int Continuation.Map.t)
-
-  (** Used to avoid exceeding the stack limit when handling expressions with
-      multiple consecutive nested [Let]-expressions.  This saves rewriting large
-      simplification functions in CPS.  This function provides for the
-      rewriting or elimination of expressions during the fold. *)
-  val fold_lets_option
-     : t
-    -> init:'a
-    -> for_defining_expr:(
-        'a
-      -> Variable.t
-      -> Named.t
-      -> 'a
-        * (Variable.t * Function_declarations.t Flambda_type0.T.t * Named.t) list
-        * Variable.t
-        * Function_declarations.t Flambda_type0.T.t
-        * Named.Reachable.t)
-    -> for_last_body:('a -> t -> t * 'b)
-    (* CR-someday mshinwell: consider making [filter_defining_expr]
-      optional *)
-    -> filter_defining_expr:('b -> Variable.t -> Named.t -> Variable.Set.t ->
-                            'b * Variable.t * Named.t option)
-    -> t * 'b
-
-  (** Like [fold_lets_option], but just a map. *)
-  (* CR mshinwell: consider enhancing this in the same way as for
-    [fold_lets_option] in the [defining_expr] type.  This would be useful eg
-    for Ref_to_variables.  Maybe in fact there should be a new iterator that
-    uses this function for such situations? *)
-  val map_lets
-    : t
-    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
-    -> for_last_body:(t -> t)
-    -> after_rebuild:(t -> t)
-    -> t
-
-  (** Like [map_lets], but just an iterator. *)
-  val iter_lets
-    : t
-    -> for_defining_expr:(Variable.t -> Named.t -> unit)
-    -> for_last_body:(t -> unit)
-    -> for_each_let:(t -> unit)
-    -> unit
 
   (** Compute the free variables of a term.  (This is O(1) for [Let]s).
       If [ignore_uses_as_callee], all free variables inside [Apply] expressions
@@ -318,13 +279,6 @@ end and Named : sig
     -> Variable.Set.t
 
   val print : Format.formatter -> t -> unit
-
-  module Reachable : sig
-    type nonrec t =
-      | Reachable of t
-      | Non_terminating of t
-      | Unreachable
-  end
 end and Let : sig
   (* CR-someday mshinwell: Since we lack expression identifiers on every term,
      we should probably introduce [Mutable_var] into [named] if we introduce
@@ -348,7 +302,7 @@ end and Let : sig
 
   (** Apply the specified function [f] to the given defining expression of
       a [Let]. *)
-  val map : t -> f:(Named.t -> Named.t) -> Expr.t
+  val map_defining_expr : Let.t -> f:(Named.t -> Named.t) -> Expr.t
 end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
@@ -376,16 +330,18 @@ end and Let_cont : sig
   }
 end and Let_cont_handlers : sig
   (* CR mshinwell: We need to add the following invariant checks:
-    1. Usual checks on [let_cont.specialised_args].
-    2. Also on that specialised_args map, that only [Field] projections are
-        used.  (The other projections are all things to do with closures.)  We
-        might consider changing the type somehow to make this statically
-        checked.
-    3. Specialised args are only allowed to have [var = None] in the
-        [specialised_to] record iff they are non-specialised parameters of a
-        continuation.
-    4. Exception handlers should be "Handlers" with a single non-recursive
-        continuation.
+     1. Usual checks on [let_cont.specialised_args].
+     2. Also on that specialised_args map, that only [Field] projections are
+         used.  (The other projections are all things to do with closures.)  We
+         might consider changing the type somehow to make this statically
+         checked.
+     3. Specialised args are only allowed to have [var = None] in the
+         [specialised_to] record iff they are non-specialised parameters of a
+         continuation.
+     4. Exception handlers should be "Handlers" with a single non-recursive
+         continuation.
+     mshinwell: comment out of date now, but equivalent things still need
+     doing.
   *)
 
   (** Note: any continuation used as an exception handler must be non-recursive
@@ -403,10 +359,12 @@ end and Let_cont_handlers : sig
 
   val free_variables : t -> Variable.Set.t
 
-  val print : Format.formatter -> t -> unit
-
+  (** Return all continuations bound in the given handlers (traversing all
+      the way down through the handlers, not just the immediately outermost
+      bindings). *)
   val bound_continuations : t -> Continuation.Set.t
 
+  (** Return all continuations free in the given handlers. *)
   val free_continuations : t -> Continuation.Set.t
 
   type free_and_bound = {
@@ -414,6 +372,8 @@ end and Let_cont_handlers : sig
     bound : Continuation.Set.t;
   }
 
+  (** As for [free_continuations] and [bound_continuations], but returning
+      the results together. *)
   val free_and_bound_continuations : t -> free_and_bound
 
   (** Form a map from continuations to their definitions.  This is useful
@@ -425,6 +385,8 @@ end and Let_cont_handlers : sig
       then repacking the result in the same constructor ([Recursive] or
       [Nonrecursive]) as [t]. *)
   val map : t -> f:(Continuation_handlers.t -> Continuation_handlers.t) -> t
+
+  val print : Format.formatter -> t -> unit
 end and Continuation_handlers : sig
   type t = Continuation_handler.t Continuation.Map.t
 end and Continuation_handler : sig
@@ -622,6 +584,23 @@ end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)
   type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
+
+  (** Free variables in the parameter's type.  (The variable corresponding
+      to the parameter is assumed to be always a binding occurrence.) *)
+  val free_variables : t -> Variable.Set.t
+
+  module List : sig
+    type nonrec t = t list
+
+    val free_variables : t -> Variable.Set.t
+
+    (** As for [Parameter.List.vars]. *)
+    val vars : t -> Variable.t list
+
+    val print : Format.formatter -> t -> unit
+  end
+
+  val print : Format.formatter -> t -> unit
 end
 
 (** A module for the manipulation of terms where the recomputation of free
@@ -680,16 +659,3 @@ module With_free_variables : sig
   (** O(1) time. *)
   val free_variables : _ t -> Variable.Set.t
 end
-
-type maybe_named =
-  | Is_expr of Expr.t
-  | Is_named of Named.t
-
-(** This function is designed for the internal use of [Flambda_iterators].
-    See that module for iterators to be used over Flambda terms. *)
-val iter_general
-   : toplevel:bool
-  -> (Expr.t -> unit)
-  -> (Named.t -> unit)
-  -> maybe_named
-  -> unit

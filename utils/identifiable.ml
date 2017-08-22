@@ -35,6 +35,7 @@ module type Set = sig
   val to_string : t -> string
   val of_list : elt list -> t
   val map : (elt -> elt) -> t -> t
+  val union_list : t list -> t
   val get_singleton : t -> elt option
 end
 
@@ -207,6 +208,9 @@ module Make_set (T : Thing) = struct
     | t :: q -> List.fold_left (fun acc e -> add e acc) (singleton t) q
 
   let map f s = of_list (List.map f (elements s))
+
+  let union_list ts =
+    List.fold_left (fun acc t -> union acc t) empty ts
 
   let get_singleton t =
     match elements t with

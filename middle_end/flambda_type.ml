@@ -92,46 +92,6 @@ let create_set_of_closures ~function_decls ~bound_vars ~invariant_params
   create_set_of_closures ~function_decls ~size ~bound_vars ~invariant_params
     ~freshening ~direct_call_surrogates
 
-let free_variables (t : t) =
-  let rec free_variables (t : t) acc =
-    let acc =
-      match t.var with
-      | None -> acc
-      | Some var -> Variable.Set.add var acc
-    in
-    match t.descr with
-    | Union unionable ->
-      begin match unionable with
-      | Blocks blocks
-      | Blocks_and_immediates (blocks, _) ->
-        Tag.Scannable.Map.fold (fun _tag t acc -> free_variables t acc)
-          blocks acc
-      | Immediates _ -> acc
-      end
-    | Unknown _
-    | Unboxed_float _
-    | Unboxed_int32 _
-    | Unboxed_int64 _
-    | Unboxed_nativeint _ -> acc
-    | Boxed_number (_, t) -> free_variables t acc
-    | Set_of_closures set_of_closures ->
-      Var_within_closure.Map.fold (fun _var t acc -> free_variables t acc)
-        set_of_closures.bound_vars
-    | Closure { potential_closures; } ->
-      Closure_id.Map.fold (fun _closure_id t acc -> free_variables t acc)
-        potential_closures
-    | Immutable_string _
-    | Mutable_string _ -> acc
-    | Float_array { contents; size = _; } ->
-      begin match contents with
-      | Contents ts -> Array.fold_left (fun acc t -> free_variables t acc) ts
-      | Unknown_or_mutable -> acc
-      end
-    | Bottom
-    | Load_lazily _ -> acc
-  in
-  free_variables t Variable.Set.empty
-
 let kind_exn t =
   let really_import_approx t =
     let dummy_print_decls ppf _ =

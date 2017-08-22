@@ -998,3 +998,160 @@ let arity_of_call_kind (kind : Flambda.call_kind) =
   match kind with
   | Indirect -> [Flambda_kind.Value]
   | Direct { return_arity; _ } -> return_arity
+
+(** CR-someday lwhite: Why not use two functions? *)
+type maybe_named =
+  | Is_expr of t
+  | Is_named of named
+
+let iter_general ~toplevel f f_named maybe_named =
+  let rec aux (t : t) =
+    match t with
+    | Let _ ->
+      iter_lets t
+        ~for_defining_expr:(fun _var named -> aux_named named)
+        ~for_last_body:aux
+        ~for_each_let:f
+    (* CR mshinwell: add tail recursive case for Let_cont *)
+    | _ ->
+      f t;
+      match t with
+      | Apply _ | Apply_cont _ | Switch _ -> ()
+      | Let _ -> assert false
+      | Let_mutable { body; _ } -> aux body
+      | Let_cont { body; handlers; _ } ->
+        aux body;
+        begin match handlers with
+        | Nonrecursive { name = _; handler = { handler; _ }; } ->
+          aux handler
+        | Recursive handlers ->
+          Continuation.Map.iter (fun _cont { handler; } -> aux handler)
+            handlers
+        end
+      | Proved_unreachable -> ()
+  and aux_named (named : named) =
+    f_named named;
+    match named with
+    | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+    | Read_symbol_field _ | Project_closure _ | Project_var _
+    | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
+    | Set_of_closures ({ function_decls = funcs; free_vars = _;
+          specialised_args = _}) ->
+      if not toplevel then begin
+        Variable.Map.iter (fun _ (decl : function_declaration) ->
+            aux decl.body)
+          funcs.funs
+      end
+  in
+  match maybe_named with
+  | Is_expr expr -> aux expr
+  | Is_named named -> aux_named named
+
+module Reachable = struct
+  type t =
+    | Reachable of Named.t
+    | Non_terminating of Named.t
+    | Unreachable
+end
+
+let iter_lets t ~for_defining_expr ~for_last_body ~for_each_let =
+  let rec loop (t : t) =
+    match t with
+    | Let { var; defining_expr; body; _ } ->
+      for_each_let t;
+      for_defining_expr var defining_expr;
+      loop body
+    | t ->
+      for_last_body t
+  in
+  loop t
+
+let map_lets t ~for_defining_expr ~for_last_body ~after_rebuild =
+  let rec loop (t : t) ~rev_lets =
+    match t with
+    | Let { var; defining_expr; body; _ } ->
+      let new_defining_expr =
+        for_defining_expr var defining_expr
+      in
+      let original =
+        if new_defining_expr == defining_expr then
+          Some t
+        else
+          None
+      in
+      let rev_lets = (var, new_defining_expr, original) :: rev_lets in
+      loop body ~rev_lets
+    | t ->
+      let last_body = for_last_body t in
+      (* As soon as we see a change, we have to rebuild that [Let] and every
+        outer one. *)
+      let seen_change = ref (not (last_body == t)) in
+      List.fold_left (fun t (var, defining_expr, original) ->
+          let let_expr =
+            match original with
+            | Some original when not !seen_change -> original
+            | Some _ | None ->
+              seen_change := true;
+              create_let var defining_expr t
+          in
+          let new_let = after_rebuild let_expr in
+          if not (new_let == let_expr) then begin
+            seen_change := true
+          end;
+          new_let)
+        last_body
+        rev_lets
+  in
+  loop t ~rev_lets:[]
+
+let fold_lets_option (t : Flambda.Expr.t) ~init ~for_defining_expr
+      ~for_last_body ~filter_defining_expr =
+  let finish ~last_body ~acc ~rev_lets =
+    let module W = With_free_variables in
+    let acc, t =
+      List.fold_left (fun (acc, t) (var, ty, defining_expr) ->
+          let free_vars_of_body = W.free_variables t in
+          let acc, var, defining_expr =
+            filter_defining_expr acc var defining_expr free_vars_of_body
+          in
+          match defining_expr with
+          | None ->
+            acc, t
+          | Some defining_expr ->
+            let let_expr =
+              W.create_let_reusing_body var ty defining_expr t
+            in
+            acc, W.of_expr let_expr)
+        (acc, W.of_expr last_body)
+        rev_lets
+    in
+    W.contents t, acc
+  in
+  let rec loop (t : t) ~acc ~rev_lets =
+    match t with
+    | Let { var; defining_expr; body; _ } ->
+      let acc, bindings, var, ty, (defining_expr : named_reachable) =
+        for_defining_expr acc var ty defining_expr
+      in
+      begin match defining_expr with
+      | Reachable defining_expr ->
+        let rev_lets =
+          (var, ty, defining_expr) :: (List.rev bindings) @ rev_lets
+        in
+        loop body ~acc ~rev_lets
+      | Non_terminating defining_expr ->
+        let rev_lets =
+          (var, ty, defining_expr) :: (List.rev bindings) @ rev_lets
+        in
+        let last_body, acc = for_last_body acc Proved_unreachable in
+        finish ~last_body ~acc ~rev_lets
+      | Unreachable ->
+        let rev_lets = (List.rev bindings) @ rev_lets in
+        let last_body, acc = for_last_body acc Proved_unreachable in
+        finish ~last_body ~acc ~rev_lets
+      end
+    | t ->
+      let last_body, acc = for_last_body acc t in
+      finish ~last_body ~acc ~rev_lets
+  in
+  loop t ~acc:init ~rev_lets:[]
