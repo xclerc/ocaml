@@ -181,7 +181,7 @@ module rec Expr : sig
 
   (** Creates a [Let] expression.  (This computes the free variables of the
       defining expression and the body.) *)
-  val create_let : Variable.t -> Named.t -> t -> t
+  val create_let : Variable.t -> Flambda_kind.t -> Named.t -> t -> t
 
   (** Create a suitable [expr] to represent the given switch.  (The result may
       not actually be a [Switch].) *)
@@ -319,7 +319,7 @@ end and Let : sig
     var : Variable.t;
     kind : Flambda_kind.t;
     defining_expr : Named.t;
-    body : t;
+    body : Expr.t;
     (* CR-someday mshinwell: we could consider having these be keys into some
       kind of global cache, to reduce memory usage. *)
     free_vars_of_defining_expr : Variable.Set.t;
@@ -337,8 +337,8 @@ end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
     initial_value : Variable.t;
-    contents_kind : Lambda.value_kind;
-    body : t;
+    contents_kind : Flambda_kind.t;
+    body : Expr.t;
   }
 end and Let_cont : sig
   (** Values of type [t] represent the definitions of continuations:
@@ -355,7 +355,7 @@ end and Let_cont : sig
       non-recursive.  The converse is safe.
   *)
   type t = {
-    body : t;
+    body : Expr.t;
     handlers : Let_cont_handlers.t;
   }
 end and Let_cont_handlers : sig
@@ -416,13 +416,6 @@ end and Let_cont_handlers : sig
       [Nonrecursive]) as [t]. *)
   val map : t -> f:(Continuation_handlers.t -> Continuation_handlers.t) -> t
 
-  val iter_lets
-     : t
-    -> for_defining_expr:(Variable.t -> Named.t -> unit)
-    -> for_last_body:(t -> unit)
-    -> for_each_let:(t -> unit)
-    -> unit
-
   val print : Format.formatter -> t -> unit
 end and Continuation_handlers : sig
   type t = Continuation_handler.t Continuation.Map.t
@@ -440,7 +433,7 @@ end and Continuation_handler : sig
         simultaneously-defined continuations when one or more of them is an
         exception handler.)
     *)
-    handler : t;
+    handler : Expr.t;
   }
 end and Set_of_closures : sig
   type t = private {
@@ -512,16 +505,11 @@ end and Function_declarations : sig
 
   (** Create a set of function declarations given the individual
       declarations. *)
-  val create
-     : funs:Function_declaration.t Variable.Map.t
-    -> t
+  val create : funs:Function_declaration.t Variable.Map.t -> t
 
   (** Create a set of function declarations based on another set of function
       declarations. *)
-  val update_function_declarations
-     : t
-    -> funs:Function_declaration.t Variable.Map.t
-    -> t
+  val update : t -> funs:Function_declaration.t Variable.Map.t -> t
 
   val import_for_pack
      : t
@@ -550,7 +538,7 @@ end and Function_declaration : sig
         indicate previous specialisation of the function.  Types of parameters
         must never regress in preciseness. *)
     (* CR mshinwell: check non-regression property with xclerc's code *)
-    body : t;
+    body : Expr.t;
     (** The code of the function's body. *)
     (* CR-soon mshinwell: inconsistent naming free_variables/free_vars here and
       above *)
@@ -592,7 +580,7 @@ end and Function_declaration : sig
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
     -> return_arity:Return_arity.t
-    -> body:t
+    -> body:Expr.t
     -> stub:bool
     -> dbg:Debuginfo.t
     -> inline:Lambda.inline_attribute
@@ -616,7 +604,7 @@ end and Function_declaration : sig
       are used in the body. *)
   val used_params : t -> Variable.Set.t
 
-  val print : Format.formatter -> t -> unit
+  val print : Variable.t -> Format.formatter -> t -> unit
 end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)
@@ -664,7 +652,7 @@ module With_free_variables : sig
       for [Let] is O(1)). *)
   val of_expr : Expr.t -> Expr.t t
 
-  val of_named : Named.t -> Named.t t
+  val of_named : Flambda_kind.t -> Named.t -> Named.t t
 
   (** This function shouldn't be used to build a let from the [named t];
       use the [create_let_...] functions below.  It is intended to be used

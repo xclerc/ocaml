@@ -92,17 +92,6 @@ let create_set_of_closures ~function_decls ~bound_vars ~invariant_params
   create_set_of_closures ~function_decls ~size ~bound_vars ~invariant_params
     ~freshening ~direct_call_surrogates
 
-let kind_exn t =
-  let really_import_approx t =
-    let dummy_print_decls ppf _ =
-      Format.fprintf ppf "<function declarations>"
-    in
-    Misc.fatal_errorf "With_free_variables.create_let_reusing_body: \
-        Flambda type is not fully resolved: %a"
-      (print dummy_print_decls) t
-  in
-  kind t ~really_import_approx
-
 let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
   match t.descr with
   | Boxed_number (Float, { descr = Float _; _ }) -> Pfloatval

@@ -38,16 +38,7 @@ let compatible t1 t2 =
 include Identifiable.Make (struct
   type nonrec t = t
 
-  let to_int t =
-    match t with
-    | Value -> 0
-    | Unboxed_float -> 1
-    | Unboxed_int32 -> 2
-    | Unboxed_int64 -> 3
-    | Unboxed_nativeint -> 4
-    | Bottom -> 5
-
-  let compare t1 t2 = Pervasives.compare (to_int t1) (to_int t2)
+  let compare t1 t2 = Pervasives.compare t1 t2
   let equal t1 t2 = (compare t1 t2 = 0)
 
   let hash = Hashtbl.hash

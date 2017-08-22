@@ -37,10 +37,6 @@ val descr : t -> descr
 (** Extraction of the description fields from a list of types. *)
 val descrs : t list -> descr list
 
-(** Like [kind], but causes a fatal error if the type has not been fully
-    resolved. *)
-val kind_exn : _ t -> Flambda_kind.t
-
 (** Attempt to use a type to refine a value kind. *)
 val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 

@@ -78,6 +78,7 @@ module type Constructors_and_accessors = sig
      : 'd t
     -> really_import_approx:('d t -> 'd t)
     -> Flambda_kind.t
+  val kind_exn : _ t -> Flambda_kind.t
   val unknown : Flambda_kind.t -> unknown_because_of -> _ t
   val bottom : unit -> _ t
   val int : int -> _ t
@@ -411,6 +412,17 @@ end = struct
     | Float_array _ -> Value
     | Bottom -> Bottom
     | Load_lazily _ -> kind (really_import_approx t) ~really_import_approx
+
+  let kind_exn t =
+    let really_import_approx t =
+      let dummy_print_decls ppf _ =
+        Format.fprintf ppf "<function declarations>"
+      in
+      Misc.fatal_errorf "With_free_variables.create_let_reusing_body: \
+          Flambda type is not fully resolved: %a"
+        (print dummy_print_decls) t
+    in
+    kind t ~really_import_approx
 
   (* Closures and set of closures descriptions cannot be merged.
 

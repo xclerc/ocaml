@@ -64,6 +64,10 @@ module type Constructors_and_accessors = sig
     -> really_import_approx:('d t -> 'd t)
     -> Flambda_kind.t
 
+  (** Like [kind], but causes a fatal error if the type has not been fully
+      resolved. *)
+  val kind_exn : _ t -> Flambda_kind.t
+
   (** Construct one of the various top types ("any value of the given kind
       can flow to this point"). *)
   val unknown : Flambda_kind.t -> unknown_because_of -> _ t

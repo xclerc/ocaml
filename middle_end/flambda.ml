@@ -32,7 +32,7 @@ module Return_arity = struct
 
     let print ppf t =
       Format.fprintf ppf "@(%a@)"
-        (Format.pp_print_list ~pp_sep:(fun () -> Format.fprintf ppf ", ")
+        (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
           Flambda_kind.print)
         t
 
@@ -52,7 +52,7 @@ module Call_kind = struct
     match t with
     (* Functions called indirectly must always return a singleton of
        [Value] kind. *)
-    | Indirect -> [Value]
+    | Indirect -> [Flambda_kind.Value]
     | Direct { return_arity; _ } -> return_arity
 end
 
@@ -61,6 +61,10 @@ module Const = struct
     | Int of int
     | Char of char
     | Const_pointer of int
+    | Unboxed_float of float
+    | Unboxed_int32 of Int32.t
+    | Unboxed_int64 of Int64.t
+    | Unboxed_nativeint of Nativeint.t
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -74,12 +78,14 @@ module Const = struct
       | Int n -> Format.fprintf ppf "%i" n
       | Char c -> Format.fprintf ppf "%C" c
       | Const_pointer n -> Format.fprintf ppf "%ia" n
+      | Unboxed_float f -> Format.fprintf ppf "%f" f
+      | Unboxed_int32 n -> Format.fprintf ppf "%ld" n
+      | Unboxed_int64 n -> Format.fprintf ppf "%Ld" n
+      | Unboxed_nativeint n -> Format.fprintf ppf "%nd" n
 
     let output _ _ = Misc.fatal_error "Not implemented"
   end)
 end
-
-type const = Const.t
 
 type apply_kind =
   | Function
@@ -107,27 +113,35 @@ module Free_var = struct
     projection : Projection.t option;
   }
 
-  let compare (free_var1 : t) (free_var2 : t) =
-    let c = Variable.compare free_var1.var free_var2.var in
-    if c <> 0 then c
-    else
-      match free_var1.projection, free_var2.projection with
-      | None, None -> 0
-      | Some _, None -> 1
-      | None, Some _ -> -1
-      | Some proj1, Some proj2 -> Projection.compare proj1 proj2
+  include Identifiable.Make (struct
+    type nonrec t = t
 
-  let equal (free_var1 : t) (free_var2 : t) =
-    compare free_var1 free_var2 = 0
+    let compare (t1 : t) (t2 : t) =
+      let c = Variable.compare t1.var t2.var in
+      if c <> 0 then c
+      else
+        match t1.projection, t2.projection with
+        | None, None -> 0
+        | Some _, None -> 1
+        | None, Some _ -> -1
+        | Some proj1, Some proj2 -> Projection.compare proj1 proj2
 
-  let print ppf (free_var : t) =
-    match free_var.projection with
-    | None ->
-      fprintf ppf "%a" Variable.print free_var.var
-    | Some projection ->
-      fprintf ppf "%a(= %a)"
-        Variable.print free_var.var
-        Projection.print projection
+    let equal (t1 : t) (t2 : t) =
+      compare t1 t2 = 0
+
+    let hash = Hashtbl.hash
+
+    let print ppf (t : t) =
+      match t.projection with
+      | None ->
+        fprintf ppf "%a" Variable.print t.var
+      | Some projection ->
+        fprintf ppf "%a(= %a)"
+          Variable.print t.var
+          Projection.print projection
+
+    let output _ _ = Misc.fatal_errorf "Not implemented"
+  end)
 end
 
 module Free_vars = struct
@@ -191,7 +205,7 @@ module rec Expr : sig
     | Switch of Variable.t * Switch.t
     | Proved_unreachable
 
-  val create_let : Variable.t -> Named.t -> t -> t
+  val create_let : Variable.t -> Flambda_kind.t -> Named.t -> t -> t
   val create_switch
      : scrutinee:Variable.t
     -> all_possible_values:Numbers.Int.Set.t
@@ -456,7 +470,7 @@ end = struct
       Continuation.Set.union failaction (Continuation.Set.of_list consts)
     | Proved_unreachable -> Continuation.Set.empty
 
-  let create_let var defining_expr body : t =
+  let create_let var kind defining_expr body : t =
     begin match !Clflags.dump_flambda_let with
     | None -> ()
     | Some stamp ->
@@ -468,27 +482,12 @@ end = struct
     let free_vars_of_defining_expr = Named.free_variables defining_expr in
     Let {
       var;
+      kind;
       defining_expr;
       body;
       free_vars_of_defining_expr;
       free_vars_of_body = free_variables body;
     }
-
-  let map_defining_expr_of_let (let_expr : Let.t) ~f : t =
-    let defining_expr = f let_expr.defining_expr in
-    if defining_expr == let_expr.defining_expr then
-      Let let_expr
-    else
-      let free_vars_of_defining_expr =
-        Named.free_variables defining_expr
-      in
-      Let {
-        var = let_expr.var;
-        defining_expr;
-        body = let_expr.body;
-        free_vars_of_defining_expr;
-        free_vars_of_body = let_expr.free_vars_of_body;
-      }
 
   let iter_lets t ~for_defining_expr ~for_last_body ~for_each_let =
     let rec loop (t : t) =
@@ -600,13 +599,8 @@ end = struct
         let expr = letbody body in
         fprintf ppf ")@]@ %a)@]" print expr
     | Let_mutable { var = mut_var; initial_value = var; body; contents_kind } ->
-      let print_kind ppf (kind : Lambda.value_kind) =
-        match kind with
-        | Pgenval -> ()
-        | _ -> Format.fprintf ppf " %s" (Printlambda.value_kind kind)
-      in
       fprintf ppf "@[<2>(let_mutable%a@ @[<2>%a@ %a@]@ %a)@]"
-        print_kind contents_kind
+        Flambda_kind.print contents_kind
         Mutable_variable.print mut_var
         Variable.print var
         print body
@@ -643,12 +637,15 @@ end = struct
         let rec gather_let_conts let_conts (t : t) =
           match t with
           | Let_cont let_cont ->
-            gather_let_conts (let_cont :: let_conts) let_cont.body
+            gather_let_conts (let_cont.handlers :: let_conts) let_cont.body
           | body -> let_conts, body
         in
         let let_conts, body = gather_let_conts [] t in
-        fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]" print body
-          Let_cont_handlers.print_using_where handlers
+        let pp_sep ppf () = fprintf ppf "@ " in
+        fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]"
+          Expr.print body
+          (Format.pp_print_list ~pp_sep
+            Let_cont_handlers.print_using_where) let_conts
       end
     | Proved_unreachable -> fprintf ppf "unreachable"
 
@@ -777,18 +774,38 @@ end = struct
 end and Let : sig
   type t = {
     var : Variable.t;
+    kind : Flambda_kind.t;
     defining_expr : Named.t;
     body : Expr.t;
     free_vars_of_defining_expr : Variable.Set.t;
     free_vars_of_body : Variable.Set.t;
   }
+
+  val map_defining_expr : Let.t -> f:(Named.t -> Named.t) -> Expr.t
 end = struct
   include Let
+
+  let map_defining_expr (let_expr : Let.t) ~f : Expr.t =
+    let defining_expr = f let_expr.defining_expr in
+    if defining_expr == let_expr.defining_expr then
+      Let let_expr
+    else
+      let free_vars_of_defining_expr =
+        Named.free_variables defining_expr
+      in
+      Let {
+        var = let_expr.var;
+        kind = let_expr.kind;
+        defining_expr;
+        body = let_expr.body;
+        free_vars_of_defining_expr;
+        free_vars_of_body = let_expr.free_vars_of_body;
+      }
 end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
     initial_value : Variable.t;
-    contents_kind : Lambda.value_kind;
+    contents_kind : Flambda_kind.t;
     body : Expr.t;
   }
 end = struct
@@ -1021,8 +1038,8 @@ end = struct
     match t with
     | { function_decls; free_vars; } ->
       let funs ppf t =
-        Variable.Map.iter (fun _var decl ->
-            Function_declaration.print ppf decl)
+        Variable.Map.iter (fun var decl ->
+            Function_declaration.print var ppf decl)
           t
       in
       fprintf ppf "@[<2>(set_of_closures id=%a@ %a@ @[<2>free_vars={%a@ }@]@ \
@@ -1031,8 +1048,7 @@ end = struct
         Set_of_closures_id.print function_decls.set_of_closures_id
         funs function_decls.funs
         Free_vars.print free_vars
-        (Variable.Map.print Variable.print)
-        t.direct_call_surrogates
+        (Variable.Map.print Variable.print) t.direct_call_surrogates
         Set_of_closures_origin.print function_decls.set_of_closures_origin
 end and Function_declarations : sig
   type t = {
@@ -1044,7 +1060,7 @@ end and Function_declarations : sig
   val create
      : funs:Function_declaration.t Variable.Map.t
     -> t
-  val update_function_declarations
+  val update
      : t
     -> funs:Function_declaration.t Variable.Map.t
     -> t
@@ -1057,7 +1073,7 @@ end and Function_declarations : sig
 end = struct
   include Function_declarations
 
-  let create_function_declarations ~funs =
+  let create ~funs =
     let compilation_unit = Compilation_unit.get_current_exn () in
     let set_of_closures_id = Set_of_closures_id.create compilation_unit in
     let set_of_closures_origin =
@@ -1068,7 +1084,7 @@ end = struct
       funs;
     }
 
-  let update_function_declarations function_decls ~funs =
+  let update function_decls ~funs =
     let compilation_unit = Compilation_unit.get_current_exn () in
     let set_of_closures_id = Set_of_closures_id.create compilation_unit in
     let set_of_closures_origin = function_decls.set_of_closures_origin in
@@ -1077,8 +1093,8 @@ end = struct
       funs;
     }
 
-  let import_function_declarations_for_pack function_decls
-      import_set_of_closures_id import_set_of_closures_origin =
+  let import_for_pack function_decls
+        import_set_of_closures_id import_set_of_closures_origin =
     { set_of_closures_id =
         import_set_of_closures_id function_decls.set_of_closures_id;
       set_of_closures_origin =
@@ -1088,8 +1104,8 @@ end = struct
 
   let print ppf (t : t) =
     let funs ppf t =
-      Variable.Map.iter (fun _var decl ->
-          Function_declaration.print ppf decl)
+      Variable.Map.iter (fun var decl ->
+          Function_declaration.print var ppf decl)
         t
     in
     fprintf ppf "@[<2>(%a)(origin = %a)@]" funs t.funs
@@ -1114,7 +1130,7 @@ end and Function_declaration : sig
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
     -> return_arity:Return_arity.t
-    -> body:t
+    -> body:Expr.t
     -> stub:bool
     -> dbg:Debuginfo.t
     -> inline:Lambda.inline_attribute
@@ -1129,7 +1145,7 @@ end and Function_declaration : sig
     -> body:Expr.t
     -> t
   val used_params : t -> Variable.Set.t
-  val print : Format.formatter -> t -> unit
+  val print : Variable.t -> Format.formatter -> t -> unit
 end = struct
   include Function_declaration
 
@@ -1167,7 +1183,7 @@ end = struct
       is_a_functor;
     }
 
-  let update_body_of_function_declaration (t : t) ~body : t =
+  let update_body (t : t) ~body : t =
     { closure_origin = t.closure_origin;
       params = t.params;
       continuation_param = t.continuation_param;
@@ -1202,16 +1218,12 @@ end = struct
         Variable.Set.mem param function_decl.free_variables)
       (Typed_parameter.List.var_set function_decl.params)
 
-  let print ppf var (f : t) =
+  let print var ppf (f : t) =
     let stub =
       if f.stub then
         " *stub*"
       else
         ""
-    in
-    let arity =
-      if f.return_arity < 2 then ""
-      else Printf.sprintf " (return arity %d)" f.return_arity
     in
     let is_a_functor =
       if f.is_a_functor then
@@ -1243,9 +1255,6 @@ end = struct
       Continuation.print f.continuation_param
       Typed_parameter.List.print f.params
       Expr.print f.body
-
-  let print ppf (var, t) =
-    print ppf var t
 end and Typed_parameter : sig
   type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
   val var : t -> Variable.t
@@ -1285,38 +1294,38 @@ end = struct
     let var_set t = Variable.Set.of_list (vars t)
 
     let print ppf t =
-      Format.pp_print_list ~pp_sep:Format.pp_print_space print t
+      Format.pp_print_list ~pp_sep:Format.pp_print_space print ppf t
   end
 end
 
 module With_free_variables = struct
   type 'a t =
-    | Expr : expr * Variable.Set.t -> expr t
-    | Named : Flambda_kind.t * named * Variable.Set.t -> named t
+    | Expr : Expr.t * Variable.Set.t -> Expr.t t
+    | Named : Flambda_kind.t * Named.t * Variable.Set.t -> Named.t t
 
   let print (type a) ppf (t : a t) =
     match t with
-    | Expr (expr, _) -> print ppf expr
+    | Expr (expr, _) -> Expr.print ppf expr
     | Named (_, named, _) -> Named.print ppf named
 
-  let of_defining_expr_of_let let_expr =
+  let of_defining_expr_of_let (let_expr : Let.t) =
     Named (let_expr.kind, let_expr.defining_expr,
       let_expr.free_vars_of_defining_expr)
 
-  let of_body_of_let let_expr =
+  let of_body_of_let (let_expr : Let.t) =
     Expr (let_expr.body, let_expr.free_vars_of_body)
 
   let of_expr expr =
-    Expr (expr, free_variables expr)
+    Expr (expr, Expr.free_variables expr)
 
   let of_named kind named =
-    Named (kind, named, free_variables_named named)
+    Named (kind, named, Named.free_variables named)
 
-  let to_named (t : named t) =
+  let to_named (t : Named.t t) =
     match t with
     | Named (_, named, _) -> named
 
-  let create_let_reusing_defining_expr var (t : named t) body =
+  let create_let_reusing_defining_expr var (t : Named.t t) body : Expr.t =
     match t with
     | Named (kind, defining_expr, free_vars_of_defining_expr) ->
       Let {
@@ -1325,22 +1334,22 @@ module With_free_variables = struct
         defining_expr;
         body;
         free_vars_of_defining_expr;
-        free_vars_of_body = free_variables body;
+        free_vars_of_body = Expr.free_variables body;
       }
 
-  let create_let_reusing_body var ty defining_expr (t : expr t) =
+  let create_let_reusing_body var ty defining_expr (t : Expr.t t) : Expr.t =
     match t with
     | Expr (body, free_vars_of_body) ->
       Let {
         var;
-        kind = Flambda_type0.kind_exn ty;
+        kind = Flambda_type0.T.kind_exn ty;
         defining_expr;
         body;
-        free_vars_of_defining_expr = free_variables_named defining_expr;
+        free_vars_of_defining_expr = Named.free_variables defining_expr;
         free_vars_of_body;
       }
 
-  let create_let_reusing_both var (t1 : named t) (t2 : expr t) =
+  let create_let_reusing_both var (t1 : Named.t t) (t2 : Expr.t t) : Expr.t =
     match t1, t2 with
     | Named (kind, defining_expr, free_vars_of_defining_expr),
         Expr (body, free_vars_of_body) ->
