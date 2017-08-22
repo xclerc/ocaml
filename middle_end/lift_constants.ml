@@ -348,7 +348,7 @@ let translate_definition_and_resolve_alias inconstants
       | const_defining_value ->
           Misc.fatal_errorf "Bad definition for float array member %a: %a"
             Symbol.print sym
-            Flambda.print_constant_defining_value
+            Flambda_static.Constant_defining_value.print
             const_defining_value
     in
     let floats =
@@ -404,7 +404,7 @@ let translate_definition_and_resolve_alias inconstants
               wrong constant defining value %a"
             Variable.print var
             Alias_analysis.print_constant_defining_value definition
-            Flambda.print_constant_defining_value wrong
+            Flambda_static.Constant_defining_value.print wrong
         | exception Not_found ->
           let module Backend = (val backend) in
           match (Backend.import_symbol sym).descr with

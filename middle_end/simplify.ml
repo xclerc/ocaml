@@ -2602,7 +2602,7 @@ let constant_defining_value_type
         | Wrong ->
           Misc.fatal_errorf "Wrong type for [Project_closure] when being used \
               as a [constant_defining_value]: %a"
-            Flambda.print_constant_defining_value constant_defining_value
+            Flambda_static.Constant_defining_value.print constant_defining_value
     end
 
 (* See documentation on [Let_rec_symbol] in flambda.mli. *)
@@ -2675,7 +2675,7 @@ let simplify_constant_defining_value
         | Wrong ->
           Misc.fatal_errorf "Wrong Flambda type for [Project_closure] \
                              when being used as a [constant_defining_value]: %a"
-            Flambda.print_constant_defining_value constant_defining_value
+            Flambda_static.Constant_defining_value.print constant_defining_value
       in
       r, constant_defining_value, closure_type
   in
