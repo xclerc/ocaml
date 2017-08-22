@@ -247,7 +247,7 @@ let descr_of_allocated_constant (c : Allocated_const.t) : Export_info.descr =
       size = List.length fs;
     }
 
-let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
+let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.Expr.t)
       : Result.t =
   match flam with
   | Let { var; defining_expr; body; _ } ->
