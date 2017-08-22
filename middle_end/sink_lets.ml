@@ -39,7 +39,7 @@ module State : sig
   val sunken_lets_for_handler
      : t
     -> Continuation.t
-    -> (Variable.t * Flambda.named W.t) list
+    -> (Variable.t * Flambda.Named.t W.t) list
 
   val add_candidates_to_sink
      : t
@@ -68,14 +68,14 @@ module State : sig
      : t
     -> Variable.t
     -> sink_into:Continuation.t
-    -> defining_expr:Flambda.named W.t
+    -> defining_expr:Flambda.Named.t W.t
     -> t
 
   val add_to_sink_from_state : t -> from:t -> t
 end = struct
   type t = {
     to_sink :
-      (Variable.t * Flambda.named W.t) list Continuation.Map.t;
+      (Variable.t * Flambda.Named.t W.t) list Continuation.Map.t;
     variables_to_sink : Variable.Set.t;
     candidates_to_sink :
       (Continuation.t * Asttypes.rec_flag) list Variable.Map.t;
@@ -184,7 +184,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
       match defining_expr with
       | Set_of_closures set_of_closures ->
         let set_of_closures = sink_set_of_closures set_of_closures in
-        let defining_expr : Flambda.named = Set_of_closures set_of_closures in
+        let defining_expr : Flambda.Named.t = Set_of_closures set_of_closures in
         W.of_named defining_expr, state
       | _ -> W.of_defining_expr_of_let let_expr, state
     in

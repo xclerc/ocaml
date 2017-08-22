@@ -41,7 +41,7 @@ let lifted_projections ~existing_inner_to_outer_vars ~benefit
             Projection.print projection
       in
       let benefit = B.add_projection projection benefit in
-      let named : Flambda.named =
+      let named : Flambda.Named.t =
         (* The lifted projection must be in terms of outer variables,
            not inner variables. *)
         let projection =

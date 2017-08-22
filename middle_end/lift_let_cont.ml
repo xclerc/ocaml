@@ -42,14 +42,14 @@ module Constant_or_symbol = struct
     let output _ _ = Misc.fatal_error "Not implemented"
   end)
 
-  let to_named t : Flambda.named =
+  let to_named t : Flambda.Named.t =
     match t with
     | Constant const -> Const const
     | Symbol sym -> Symbol sym
 end
 
 type thing_to_lift =
-  | Let of Variable.t * Flambda.named Flambda.With_free_variables.t
+  | Let of Variable.t * Flambda.Named.t Flambda.With_free_variables.t
   | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
   | Let_cont of Flambda.let_cont_handlers
 
@@ -68,7 +68,7 @@ let bind_things_to_remain ~rev_things ~around =
 
 module State = struct
   type t = {
-    constants : (Variable.t * Flambda.named) list;
+    constants : (Variable.t * Flambda.Named.t) list;
     to_be_lifted : Flambda.let_cont_handlers list;
     to_remain : thing_to_lift list;
     continuations_to_remain : Continuation.Set.t;
@@ -274,7 +274,7 @@ and lift_expr (expr : Flambda.Expr.t) ~state =
         match defining_expr with
         | Set_of_closures set_of_closures ->
           let set_of_closures = lift_set_of_closures set_of_closures in
-          let defining_expr : Flambda.named = Set_of_closures set_of_closures in
+          let defining_expr : Flambda.Named.t = Set_of_closures set_of_closures in
           Flambda.With_free_variables.of_named defining_expr, state
         | Read_mutable mut_var ->
           let state = State.use_mutable_variable state mut_var in
@@ -369,7 +369,7 @@ and lift (expr : Flambda.Expr.t) =
       (State.rev_to_be_lifted state)
   in
   let constants, subst =
-    List.fold_left (fun (constants, subst) (var, (const : Flambda.named)) ->
+    List.fold_left (fun (constants, subst) (var, (const : Flambda.Named.t)) ->
         let const : Constant_or_symbol.t =
           match const with
           | Const const -> Constant const

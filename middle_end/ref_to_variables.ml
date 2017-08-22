@@ -24,7 +24,7 @@ let rename_var var =
 
 let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
   let set = ref Variable.Set.empty in
-  let rec loop_named (flam : Flambda.named) =
+  let rec loop_named (flam : Flambda.Named.t) =
     match flam with
     | Var var ->
       set := Variable.Set.add var !set
@@ -109,7 +109,7 @@ let eliminate_ref_of_expr flam =
       then None (* This case could apply when inlining code containing GADTS *)
       else Some (arr.(field), Array.length arr)
     in
-    let aux_named var (named : Flambda.named) =
+    let aux_named var (named : Flambda.Named.t) =
       match named with
       | Prim(Pfield field, [v], _)
         when convertible_variable v ->

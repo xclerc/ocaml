@@ -54,12 +54,12 @@ let which_function_parameters_can_we_specialise ~params ~args
 (** Fold over all variables bound by the given closure, which is bound to the
     variable [lhs_of_application], and corresponds to the given
     [function_decls].  Each variable bound by the closure is passed to the
-    user-specified function as an [Flambda.named] value that projects the
+    user-specified function as an [Flambda.Named.t] value that projects the
     variable from its closure. *)
 let fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
       ~lhs_of_application ~function_decls ~init ~f =
   Variable.Set.fold (fun var acc ->
-      let expr : Flambda.named =
+      let expr : Flambda.Named.t =
         Project_var {
           closure = lhs_of_application;
           var = Closure_id.Map.singleton closure_id_being_applied
@@ -316,7 +316,7 @@ let inline_by_copying_function_declaration ~env ~r
       Variable.Map.fold (fun fun_var _fun_decl
                 (free_vars, free_vars_for_lets, original_vars) ->
           let var = Variable.create "closure" in
-          let original_closure : Flambda.named =
+          let original_closure : Flambda.Named.t =
             Move_within_set_of_closures
               { closure = lhs_of_application;
                 move = Closure_id.Map.add closure_id_being_applied

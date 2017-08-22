@@ -162,7 +162,7 @@ let iter_exprs_at_toplevels_in_program (program : Flambda.program) ~f =
   iter_exprs_at_toplevel_of_program program
     ~f:(fun ~continuation_arity cont expr ->
       let rec iter_expr ~continuation_arity cont expr =
-        iter_named (fun (named : Flambda.named) ->
+        iter_named (fun (named : Flambda.Named.t) ->
             match named with
             | Set_of_closures set_of_closures ->
               Variable.Map.iter
@@ -287,8 +287,8 @@ let map_general ~toplevel f f_named tree =
               tree
       in
       f exp
-  and aux_named (id : Variable.t) (named : Flambda.named) =
-    let named : Flambda.named =
+  and aux_named (id : Variable.t) (named : Flambda.Named.t) =
+    let named : Flambda.Named.t =
       match named with
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Assign _ | Project_closure _ | Move_within_set_of_closures _
@@ -666,12 +666,12 @@ let map_exprs_at_toplevel_of_program (program : Flambda.program)
   }
 
 let map_named_of_program (program : Flambda.program)
-      ~(f : Variable.t -> Flambda.named -> Flambda.named) : Flambda.program =
+      ~(f : Variable.t -> Flambda.Named.t -> Flambda.Named.t) : Flambda.program =
   map_exprs_at_toplevel_of_program program
       ~f:(fun expr -> map_named_with_id f expr)
 
 let map_all_immutable_let_and_let_rec_bindings (expr : Flambda.Expr.t)
-      ~(f : Variable.t -> Flambda.named -> Flambda.named) : Flambda.Expr.t =
+      ~(f : Variable.t -> Flambda.Named.t -> Flambda.Named.t) : Flambda.Expr.t =
   map_named_with_id f expr
 
 let fold_function_decls_ignoring_stubs

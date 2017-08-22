@@ -395,7 +395,7 @@ module Analyse (CF : Continuations_or_functions) = struct
     in
     CF.Name.Map.iter (fun caller (decl : CF.Declaration.t) ->
         Flambda_iterators.iter (check_expr ~caller)
-          (fun (_ : Flambda.named) -> ())
+          (fun (_ : Flambda.Named.t) -> ())
           (CF.Declaration.body decl);
         Variable.Set.iter
           (fun var -> escaping_function var; used_variable var)

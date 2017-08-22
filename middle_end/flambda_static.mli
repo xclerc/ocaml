@@ -24,8 +24,8 @@ module Constant_defining_value_block_field : sig
 end
 
 module Constant_defining_value : sig
-  (** Like a subset of [Flambda.named], except that instead of [Variable.t]s we
-      have [Symbol.t]s, and everything is a constant (i.e. with a fixed value
+  (** Like a subset of [Flambda.Named.t], except that instead of [Variable.t]s
+      we have [Symbol.t]s, and everything is a constant (i.e. with a fixed value
       known at compile time).  Values of this type describe constants that will
       be directly assigned to symbols in the object file (see below). *)
   type t = private

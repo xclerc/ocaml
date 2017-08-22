@@ -137,7 +137,7 @@ and same_continuation_handler
     && Variable.Map.equal Flambda.equal_specialised_to
       specialised_args1 specialised_args2
 
-and same_named (named1 : Flambda.named) (named2 : Flambda.named) =
+and same_named (named1 : Flambda.Named.t) (named2 : Flambda.Named.t) =
   match named1, named2 with
   | Var var1, Var var2 -> Variable.equal var1 var2
   | Var _, _ | _, Var _ -> false
@@ -249,7 +249,7 @@ let toplevel_substitution sb tree =
       in
       Let_cont { body; handlers = Flambda.map_let_cont_handlers ~handlers ~f; }
   in
-  let aux_named (named : Flambda.named) : Flambda.named =
+  let aux_named (named : Flambda.Named.t) : Flambda.Named.t =
     match named with
     | Var var ->
       let var' = sb var in
@@ -362,7 +362,7 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
       ~specialised_args:Variable.Map.empty
       ~direct_call_surrogates:Variable.Map.empty
   in
-  let project_closure : Flambda.named =
+  let project_closure : Flambda.Named.t =
     Project_closure {
         set_of_closures = set_of_closures_var;
         closure_id = Closure_id.Set.singleton (Closure_id.wrap id);
@@ -526,14 +526,14 @@ let substitute_read_symbol_field_for_variables
     (expr : Flambda.Expr.t) =
   let bind var fresh_var (expr : Flambda.Expr.t) : Flambda.Expr.t =
     let symbol, path = Variable.Map.find var substitution in
-    let make_named (path : int option) : Flambda.named =
+    let make_named (path : int option) : Flambda.Named.t =
       match path with
       | None -> Symbol symbol
       | Some i -> Read_symbol_field (symbol, i)
     in
     Flambda.create_let fresh_var (make_named path) expr
   in
-  let substitute_named bindings (named : Flambda.named) : Flambda.named =
+  let substitute_named bindings (named : Flambda.Named.t) : Flambda.Named.t =
     let sb to_substitute =
       try Variable.Map.find to_substitute bindings
       with Not_found -> to_substitute
@@ -788,7 +788,7 @@ let clean_specialised_args_projections specialised_args =
     specialised_args
 
 (* CR mshinwell: Review this; maybe it can go? *)
-let projection_to_named (projection : Projection.t) : Flambda.named =
+let projection_to_named (projection : Projection.t) : Flambda.Named.t =
   match projection with
   | Project_var project_var -> Project_var project_var
   | Project_closure project_closure -> Project_closure project_closure

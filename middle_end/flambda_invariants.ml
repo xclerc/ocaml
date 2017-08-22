@@ -538,7 +538,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es
     | Proved_unreachable -> ()
-  and loop_named env (named : Flambda.named) =
+  and loop_named env (named : Flambda.Named.t) =
     match named with
     | Var var -> check_variable_is_bound env var
     | Symbol symbol -> check_symbol_is_bound env symbol
@@ -865,7 +865,7 @@ let no_set_of_closures_id_is_bound_multiple_times program =
 
 let used_closure_ids (program:Flambda.program) =
   let used = ref Closure_id.Set.empty in
-  let f (flam : Flambda.named) =
+  let f (flam : Flambda.Named.t) =
     match flam with
     | Project_closure { closure_id; _} ->
       used := Closure_id.Set.union closure_id !used;
@@ -886,7 +886,7 @@ let used_closure_ids (program:Flambda.program) =
 
 let used_vars_within_closures (flam:Flambda.program) =
   let used = ref Var_within_closure.Set.empty in
-  let f (flam : Flambda.named) =
+  let f (flam : Flambda.Named.t) =
     match flam with
     | Project_var { closure = _; var; } ->
       Closure_id.Map.iter (fun _ var ->

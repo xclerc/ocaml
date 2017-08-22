@@ -110,7 +110,7 @@ let rec analyse_expr ~which_variables expr =
       List.iter check_free_variable args
     | Let _ | Let_cont _ | Proved_unreachable -> ()
   in
-  let for_named (named : Flambda.named) =
+  let for_named (named : Flambda.Named.t) =
     match named with
     | Var var -> check_free_variable var
     | Assign { new_value; _ } ->

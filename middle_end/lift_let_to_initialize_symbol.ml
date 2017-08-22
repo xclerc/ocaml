@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let should_copy (named:Flambda.named) =
+let should_copy (named:Flambda.Named.t) =
   match named with
   | Symbol _ | Read_symbol_field _ | Const _ -> true
   | _ -> false
@@ -41,7 +41,7 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
          lifted expression. *)
       let param = Parameter.var param in
       let symbol = Flambda_utils.make_variable_symbol param in
-      let defining_expr : Flambda.named = Read_symbol_field (symbol, 0) in
+      let defining_expr : Flambda.Named.t = Read_symbol_field (symbol, 0) in
       let to_copy = (param, defining_expr)::to_copy in
       let free_conts_handler, lifted', handler = lift handler ~to_copy in
       let lifted =
@@ -85,7 +85,7 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
     (* This let-expression is to be lifted. *)
     let var' = Variable.rename var in
     let symbol = Flambda_utils.make_variable_symbol var in
-    let sym_defining_expr : Flambda.named =
+    let sym_defining_expr : Flambda.Named.t =
       match defining_expr with
       | Prim (Pmakeblock (_tag, Immutable, _shape), _fields, _dbg) ->
         Symbol symbol

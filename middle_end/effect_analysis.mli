@@ -24,6 +24,6 @@
     have any side effects. *)
 val no_effects : Flambda.Expr.t -> bool
 
-val no_effects_named : Flambda.named -> bool
+val no_effects_named : Flambda.Named.t -> bool
 
-val only_generative_effects_named : Flambda.named -> bool
+val only_generative_effects_named : Flambda.Named.t -> bool

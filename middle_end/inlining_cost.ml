@@ -100,7 +100,7 @@ let lambda_smaller' lam ~than:threshold =
           handlers
       end
     | Proved_unreachable -> ()
-  and lambda_named_size (named : Flambda.named) =
+  and lambda_named_size (named : Flambda.Named.t) =
     if !size > threshold then raise Exit;
     match named with
     | Var _ | Symbol _ | Read_mutable _ -> ()
@@ -242,7 +242,7 @@ module Benefit = struct
     | Switch _ | Apply_cont _ | Apply _ -> b := remove_call !b
     | Let _ | Let_mutable _ | Let_cont _ | Proved_unreachable -> ()
 
-  let remove_code_helper_named b (named : Flambda.named) =
+  let remove_code_helper_named b (named : Flambda.Named.t) =
     match named with
     | Assign _ -> b := remove_prim !b
     | Set_of_closures _

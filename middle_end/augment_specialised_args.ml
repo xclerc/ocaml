@@ -516,7 +516,7 @@ module Make (T : S) = struct
           with
           | exception Not_found -> assert false
           | new_inner_var_of_wrapper ->
-            let named : Flambda.named =
+            let named : Flambda.Named.t =
               match definition with
               | Existing_inner_free_var existing_inner_var ->
                 Var existing_inner_var

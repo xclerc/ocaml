@@ -22,7 +22,7 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
   let used_vars_within_closure, used_closure_ids =
     let used = Var_within_closure.Tbl.create 13 in
     let used_fun = Closure_id.Tbl.create 13 in
-    let aux_named (named : Flambda.named) =
+    let aux_named (named : Flambda.Named.t) =
       match named with
       | Project_closure { set_of_closures = _; closure_id } ->
         Closure_id.Set.iter (fun closure_id ->
@@ -44,7 +44,7 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
     Flambda_iterators.iter_named_of_program ~f:aux_named program;
     used, used_fun
   in
-  let aux_named _ (named : Flambda.named) : Flambda.named =
+  let aux_named _ (named : Flambda.Named.t) : Flambda.Named.t =
     match named with
     | Set_of_closures ({ function_decls; free_vars; _ } as set_of_closures) ->
       let direct_call_surrogates =

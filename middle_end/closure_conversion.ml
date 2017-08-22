@@ -58,7 +58,7 @@ let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
   in
   let _, body =
     List.fold_left (fun (pos, body) param ->
-        let lam : Flambda.named =
+        let lam : Flambda.Named.t =
           Prim (Pfield pos, [tuple_param_var], Debuginfo.none)
         in
         pos + 1, Flambda.create_let param lam body)
@@ -119,7 +119,7 @@ let rec declare_const t (const : Lambda.structured_constant)
     register_const t const "const_block"
 
 let close_const t (const : Lambda.structured_constant)
-      : Flambda.named * string =
+      : Flambda.Named.t * string =
   match declare_const t const with
   | Const c, name ->
     Const c, name
@@ -291,7 +291,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       ~default:sw.failaction
   | Event (ilam, _) -> close t env ilam
 
-and close_named t env (named : Ilambda.named) : Flambda.named =
+and close_named t env (named : Ilambda.named) : Flambda.Named.t =
   match named with
   | Var id ->
     if Ident.is_predef_exn id then begin
@@ -327,7 +327,7 @@ and close_named t env (named : Ilambda.named) : Flambda.named =
 (** Perform closure conversion on a set of function declarations, returning a
     set of closures.  (The set will often only contain a single function;
     the only case where it cannot is for "let rec".) *)
-and close_functions t external_env function_declarations : Flambda.named =
+and close_functions t external_env function_declarations : Flambda.Named.t =
   let closure_env_without_parameters =
     Function_decls.closure_env_without_parameters
       external_env function_declarations

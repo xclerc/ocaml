@@ -22,7 +22,7 @@ module I = Simplify_boxed_integer_ops
 module S = Simplify_common
 
 let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
-      ~big_endian : Flambda.named * T.t * Inlining_cost.Benefit.t =
+      ~big_endian : Flambda.Named.t * T.t * Inlining_cost.Benefit.t =
   let fpc = !Clflags.float_const_prop in
   match p with
   | Pmakeblock(tag_int, Asttypes.Immutable, shape) ->

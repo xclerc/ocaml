@@ -61,7 +61,7 @@ let assign_symbols_and_collect_constant_definitions
   let var_to_symbol_tbl = Variable.Tbl.create 42 in
   let var_to_definition_tbl = Variable.Tbl.create 42 in
   let module AA = Alias_analysis in
-  let assign_symbol var (named : Flambda.named) =
+  let assign_symbol var (named : Flambda.Named.t) =
     if not (Inconstant_idents.variable var inconstants) then begin
       let assign_symbol () =
         let symbol = make_variable_symbol "" var in
@@ -239,7 +239,7 @@ let translate_set_of_closures
     (var_to_definition_tbl:
       Alias_analysis.constant_defining_value Variable.Tbl.t)
     (set_of_closures : Flambda.set_of_closures) =
-  let f var (named : Flambda.named) : Flambda.named =
+  let f var (named : Flambda.Named.t) : Flambda.Named.t =
     if Inconstant_idents.variable var inconstants then
       named
     else
@@ -685,7 +685,7 @@ let introduce_free_variables_in_set_of_closures
     match Variable.Tbl.find var_to_block_field_tbl searched_var with
     | def ->
       let fresh = Variable.rename var in
-      let named : Flambda.named = match def with
+      let named : Flambda.Named.t = match def with
         | Symbol sym -> Symbol sym
         | Const c -> Const c
       in
@@ -758,7 +758,7 @@ let introduce_free_variables_in_set_of_closures
 let rewrite_project_var
       (var_to_block_field_tbl
         : Flambda.constant_defining_value_block_field Variable.Tbl.t)
-      (project_var : Flambda.project_var) ~original : Flambda.named =
+      (project_var : Flambda.project_var) ~original : Flambda.Named.t =
   match Closure_id.Map.get_singleton project_var.var with
   | None -> (* it cannot be a constant, no rewriting *)
     original
@@ -872,7 +872,7 @@ let replace_definitions_in_initialize_symbol_and_effects
     (effect_tbl : (Flambda.Expr.t * Continuation.t * Symbol.t option) Symbol.Tbl.t) =
   let rewrite_expr expr =
     Flambda_iterators.map_all_immutable_let_and_let_rec_bindings expr
-      ~f:(fun var (named : Flambda.named) : Flambda.named ->
+      ~f:(fun var (named : Flambda.Named.t) : Flambda.Named.t ->
         if Inconstant_idents.variable var inconstants then
           named
         else

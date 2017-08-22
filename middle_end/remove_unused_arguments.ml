@@ -225,7 +225,7 @@ let separate_unused_arguments_in_set_of_closures set_of_closures ~backend =
     Some result
 
 let separate_unused_arguments_in_closures_expr tree ~backend =
-  let aux_named (named : Flambda.named) : Flambda.named =
+  let aux_named (named : Flambda.Named.t) : Flambda.Named.t =
     match named with
     | Set_of_closures set_of_closures -> begin
         let only_specialised =

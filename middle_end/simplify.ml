@@ -35,7 +35,7 @@ let ret = R.record_inferred_type
 
 type simplify_variable_result =
   | No_binding of Variable.t
-  | Binding of Variable.t * (Flambda.named Flambda.With_free_variables.t)
+  | Binding of Variable.t * (Flambda.Named.t Flambda.With_free_variables.t)
 
 let simplify_free_variable_internal env original_var =
   let var = Freshening.apply_variable (E.freshening env) original_var in
@@ -104,7 +104,7 @@ let simplify_free_variables env vars ~f : Flambda.Expr.t * R.t =
 
 let simplify_free_variables_named env vars ~f =
   let rec collect_bindings vars env bound_vars types
-        : (Variable.t * Flambda.named) list * Flambda.named_reachable * R.t =
+        : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable * R.t =
     match vars with
     | [] -> f env (List.rev bound_vars) (List.rev types)
     | var::vars ->
@@ -130,13 +130,13 @@ let simplify_free_variable_named env var ~f =
     | _ -> assert false)
 
 let simplify_named_using_ty r named (ty, value_kind)
-      : (Variable.t * Flambda.named) list * Flambda.named_reachable
+      : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
           * Value_kind.t * R.t =
   let named, _summary, ty = T.simplify_named ty named in
   [], Reachable named, value_kind, ret r ty
 
 let simplify_named_using_ty_and_env env r original_named ty
-      : (Variable.t * Flambda.named) list * Flambda.named_reachable * R.t =
+      : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable * R.t =
   let named, summary, ty =
     T.maybe_replace_term_with_reified_term_using_env original_named
       ~is_present_in_env:(E.mem env)
@@ -189,8 +189,8 @@ let reference_recursive_function_directly env closure_id =
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)
 let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
-      : (Variable.t * Flambda.named) list
-          * Flambda.named_reachable * R.t =
+      : (Variable.t * Flambda.Named.t) list
+          * Flambda.Named.t_reachable * R.t =
   simplify_free_variable_named env project_closure.set_of_closures
     ~f:(fun _env set_of_closures set_of_closures_type ->
       match T.reify_as_set_of_closures set_of_closures_type with
@@ -258,7 +258,7 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
             [], Reachable (Var var), ret r var_ty)
         | None ->
           let if_not_reference_recursive_function_directly ()
-            : (Variable.t * Flambda.named) list * Flambda.named_reachable
+            : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
                 * R.t =
             let set_of_closures_var =
               match set_of_closures_var with
@@ -288,8 +288,8 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
    same set. *)
 let simplify_move_within_set_of_closures env r
       ~(move_within_set_of_closures : Flambda.move_within_set_of_closures)
-      : (Variable.t * Flambda.named) list
-          * Flambda.named_reachable * R.t =
+      : (Variable.t * Flambda.Named.t) list
+          * Flambda.Named.t_reachable * R.t =
   simplify_free_variable_named env move_within_set_of_closures.closure
     ~f:(fun _env closure closure_ty ->
     match T.reify_as_closure_allowing_unresolved closure_ty with
@@ -431,7 +431,7 @@ let simplify_move_within_set_of_closures env r
                     T.closure ~set_of_closures_var ~set_of_closures_symbol
                       (Closure_id.Map.singleton move_to value_set_of_closures)
                   in
-                  let bindings : (Variable.t * Flambda.named) list = [
+                  let bindings : (Variable.t * Flambda.Named.t) list = [
                     set_of_closures_var, Symbol set_of_closures_symbol;
                   ]
                   in
@@ -558,7 +558,7 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
             let r = R.map_benefit r (B.remove_projection projection) in
             [], Reachable (Var var), ret r var_ty)
         | None ->
-          let expr : Flambda.named =
+          let expr : Flambda.Named.t =
             Project_var { closure; var = project_var_var; }
           in
           let expr =
@@ -1286,8 +1286,8 @@ and simplify_primitive env r prim args dbg =
         let r = R.map_benefit r (B.remove_projection projection) in
         [], Reachable (Var var), ret r var_ty)
     | None ->
-      let default () : (Variable.t * Flambda.named) list
-            * Flambda.named_reachable * R.t =
+      let default () : (Variable.t * Flambda.Named.t) list
+            * Flambda.Named.t_reachable * R.t =
         let named, ty, benefit =
           let module Backend = (val (E.backend env) : Backend_intf.S) in
           Simplify_primitives.primitive prim (args, args_tys) tree dbg
@@ -1370,17 +1370,17 @@ and simplify_primitive env r prim args dbg =
           if convert_to_raise then begin
             (* CR mshinwell: move to separate function *)
             let invalid_argument_var = Variable.create "invalid_argument" in
-            let invalid_argument : Flambda.named =
+            let invalid_argument : Flambda.Named.t =
               let module Backend = (val (E.backend env) : Backend_intf.S) in
               Symbol (Backend.symbol_for_global'
                 Predef.ident_invalid_argument)
             in
             let msg_var = Variable.create "msg" in
-            let msg : Flambda.named =
+            let msg : Flambda.Named.t =
               Allocated_const (String "index out of bounds")
             in
             let exn_var = Variable.create "exn" in
-            let exn : Flambda.named =
+            let exn : Flambda.Named.t =
               Prim (Pmakeblock (0, Immutable, None),
                 [invalid_argument_var; msg_var], dbg)
             in
@@ -1480,8 +1480,8 @@ and simplify_primitive env r prim args dbg =
     - extra [Let]-bindings to be inserted prior to the one being simplified;
     - the simplified [named];
     - the new result environment. *)
-and simplify_named env r (tree : Flambda.named)
-      : (Variable.t * Flambda.named) list * Flambda.named_reachable
+and simplify_named env r (tree : Flambda.Named.t)
+      : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
           * R.t =
   match tree with
   | Var var ->
@@ -1539,7 +1539,7 @@ and simplify_named env r (tree : Flambda.named)
       let bindings, set_of_closures, r =
         let env = E.set_never_inline env in
         simplify_newly_introduced_let_bindings env r ~bindings
-          ~around:((Set_of_closures set_of_closures) : Flambda.named)
+          ~around:((Set_of_closures set_of_closures) : Flambda.Named.t)
       in
       let ty = R.inferred_type r in
       let value_set_of_closures =
@@ -1636,7 +1636,7 @@ and simplify_named env r (tree : Flambda.named)
     (In this example, [bindings] would map [x0] through [xn].)
 *)
 and simplify_newly_introduced_let_bindings env r ~bindings
-      ~(around : Flambda.named) =
+      ~(around : Flambda.Named.t) =
   let bindings, env, r, _stop =
     List.fold_left (fun ((bindings, env, r, stop) as acc)
             (var, defining_expr) ->
@@ -1646,7 +1646,7 @@ and simplify_newly_introduced_let_bindings env r ~bindings
           let (env, r), new_bindings, var, ty, defining_expr =
             for_defining_expr_of_let (env, r) var defining_expr
           in
-          match (defining_expr : Flambda.named_reachable) with
+          match (defining_expr : Flambda.Named.t_reachable) with
           | Reachable defining_expr ->
             let bindings =
               (var, ty, defining_expr) :: (List.rev new_bindings) @ bindings
@@ -1694,7 +1694,7 @@ and for_defining_expr_of_let (env, r) var defining_expr =
     simplify_named env r defining_expr
   in
   let ty = R.inferred_type r in
-  let defining_expr : Flambda.named_reachable =
+  let defining_expr : Flambda.Named.t_reachable =
     match defining_expr with
     | Non_terminating _ | Unreachable -> defining_expr
     | Reachable defining_expr ->
@@ -1708,7 +1708,7 @@ and for_defining_expr_of_let (env, r) var defining_expr =
   let env = E.add env var ty in
   (env, r), new_bindings, var, ty, defining_expr
 
-and filter_defining_expr_of_let r var (defining_expr : Flambda.named)
+and filter_defining_expr_of_let r var (defining_expr : Flambda.Named.t)
       free_vars_of_body =
   if Variable.Set.mem var free_vars_of_body then
     r, var, Some defining_expr

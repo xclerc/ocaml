@@ -63,6 +63,6 @@ module Make (T : S) : sig
         * Flambda.specialised_to Variable.Map.t)
     -> set_of_closures:Flambda.set_of_closures
     (* CR mshinwell: Add a type for "new let-bindings" like this? *)
-    -> ((Variable.t * Flambda.named) list
+    -> ((Variable.t * Flambda.Named.t) list
       * Flambda.set_of_closures * Inlining_cost.Benefit.t) option
 end

@@ -101,7 +101,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   let is_int = Variable.rename ~append:"_is_int" being_unboxed in
   let is_int_in_wrapper = Variable.rename is_int in
   let is_int_known_value =
-    if no_constant_ctors then Some ((Const (Int 0)) : Flambda.named)
+    if no_constant_ctors then Some ((Const (Int 0)) : Flambda.Named.t)
     else None
   in
   (* CR-soon mshinwell: On [discriminant] add information that tells us
@@ -121,7 +121,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
     in
     match Numbers.Int.Set.elements discriminant_possible_values with
     | [] -> assert false  (* see the bottom of [how_to_unbox], below *)
-    | [tag] -> Some ((Const (Int tag)) : Flambda.named)
+    | [tag] -> Some ((Const (Int tag)) : Flambda.Named.t)
     | _tags -> None
   in
   let needs_discriminant =

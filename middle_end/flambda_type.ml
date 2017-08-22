@@ -112,40 +112,40 @@ let unresolved_symbol sym =
      from another compilation unit in case it contains a closure. *)
   unknown Value (Unresolved_value (Symbol sym))
 
-let make_const_int_named n : Flambda.named * t =
+let make_const_int_named n : Flambda.Named.t * t =
   Const (Int n), value_int n
 
-let make_const_char_named n : Flambda.named * t =
+let make_const_char_named n : Flambda.Named.t * t =
   Const (Char n), value_char n
 
-let make_const_ptr_named n : Flambda.named * t =
+let make_const_ptr_named n : Flambda.Named.t * t =
   Const (Const_pointer n), value_constptr n
 
-let make_const_bool_named b : Flambda.named * t =
+let make_const_bool_named b : Flambda.Named.t * t =
   make_const_ptr_named (if b then 1 else 0)
 
-let make_const_boxed_float_named f : Flambda.named * t =
+let make_const_boxed_float_named f : Flambda.Named.t * t =
   Allocated_const (Float f), boxed_float f
 
-let make_const_boxed_int32_named n : Flambda.named * t =
+let make_const_boxed_int32_named n : Flambda.Named.t * t =
   Allocated_const (Int32 f), boxed_int32 f
 
-let make_const_boxed_int64_named n : Flambda.named * t =
+let make_const_boxed_int64_named n : Flambda.Named.t * t =
   Allocated_const (Int64 f), boxed_int64 f
 
-let make_const_boxed_nativeint_named n : Flambda.named * t =
+let make_const_boxed_nativeint_named n : Flambda.Named.t * t =
   Allocated_const (Nativeint f), boxed_nativeint f
 
-let make_const_unboxed_float_named f : Flambda.named * t =
+let make_const_unboxed_float_named f : Flambda.Named.t * t =
   Const (Unboxed_float f), unboxed_float f
 
-let make_const_unboxed_int32_named n : Flambda.named * t =
+let make_const_unboxed_int32_named n : Flambda.Named.t * t =
   Const (Unboxed_int32 n), unboxed_int32 f
 
-let make_const_unboxed_int64_named n : Flambda.named * t =
+let make_const_unboxed_int64_named n : Flambda.Named.t * t =
   Const (Unboxed_int64 n), unboxed_int64 f
 
-let make_const_unboxed_nativeint_named n : Flambda.named * t =
+let make_const_unboxed_nativeint_named n : Flambda.Named.t * t =
   Const (Unboxed_nativeint n), unboxed_nativeint f
 
 let is_bottom t =
@@ -448,10 +448,10 @@ module Reification_summary = struct
     | false, Nothing_done -> Nothing_done
 end
 
-type reification_result = Flambda.named * reification_summary * t
+type reification_result = Flambda.Named.t * reification_summary * t
 
-let reify t : (Flambda.named * t) option =
-  let try_symbol () : (Flambda.named * t) option =
+let reify t : (Flambda.Named.t * t) option =
+  let try_symbol () : (Flambda.Named.t * t) option =
     match t.symbol with
     | Some (sym, None) -> Some (Symbol sym, t)
     | Some (sym, Some field) -> Some (Read_symbol_field (sym, field), t)
@@ -509,7 +509,7 @@ let reify t : (Flambda.named * t) option =
   | Boxed_number _ | String _ | Float_array _ | Set_of_closures _
   | Closure _ | Unknown _ | Bottom | Load_lazily _ | Unresolved _ -> try_symbol ()
 
-let maybe_replace_term_with_reified_term t (named : Flambda.named)
+let maybe_replace_term_with_reified_term t (named : Flambda.Named.t)
       : reification_result =
   if Effect_analysis.no_effects_named named then
     match reify t with
@@ -527,7 +527,7 @@ let maybe_replace_term_with_reified_term_using_env t ~is_present_in_env named =
       true, Flambda.Var var
     | _ ->
       match t.symbol with
-      | Some (sym, None) -> true, (Flambda.Symbol sym:Flambda.named)
+      | Some (sym, None) -> true, (Flambda.Symbol sym:Flambda.Named.t)
       | Some (sym, Some field) ->
         true, Flambda.Read_symbol_field (sym, field)
       | None -> false, named
