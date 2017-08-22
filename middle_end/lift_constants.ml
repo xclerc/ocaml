@@ -119,7 +119,7 @@ let assign_symbols_and_collect_constant_definitions
         record_definition (AA.Field (block, index))
       | Prim (Pfield _, _, _) ->
         Misc.fatal_errorf "[Pfield] with the wrong number of arguments"
-          Flambda.print_named named
+          Flambda.Named.print named
       | Prim (Pmakearray (Pfloatarray as kind, mutability), args, _) ->
         assign_symbol ();
         record_definition (AA.Allocated_const (Array (kind, mutability, args)))
@@ -129,7 +129,7 @@ let assign_symbols_and_collect_constant_definitions
           Duplicate_array (kind, mutability, arg)))
       | Prim _ ->
         Misc.fatal_errorf "Primitive not expected to be constant: @.%a@."
-          Flambda.print_named named
+          Flambda.Named.print named
       | Project_var project_var ->
         let (closure_id, var) =
           closure_id_map_singleton Var_within_closure.print project_var.var

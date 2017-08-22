@@ -1403,7 +1403,7 @@ and simplify_primitive env r prim args dbg =
                   (* CR pchambart: Do a proper warning here *)
                   Misc.fatal_errorf "Assignment of a float to a specialised \
                                     non-float array: %a"
-                    Flambda.print_named tree
+                    Flambda.Named.print tree
                 end;
                 Lambda.Pfloatarray
                 (* CR pchambart: This should be accounted by the benefit *)
