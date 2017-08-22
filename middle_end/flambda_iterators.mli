@@ -86,13 +86,13 @@ val iter_named_toplevel
   -> unit
 
 val iter_on_sets_of_closures
-   : (Flambda.set_of_closures -> unit)
+   : (Flambda.Set_of_closures.t -> unit)
   -> Flambda.Expr.t
   -> unit
 
 val iter_on_set_of_closures_of_program
    : Flambda_static.Program.t
-  -> f:(constant:bool -> Flambda.set_of_closures -> unit)
+  -> f:(constant:bool -> Flambda.Set_of_closures.t -> unit)
   -> unit
 
 val iter_all_immutable_let_and_let_rec_bindings
@@ -179,13 +179,13 @@ val map_symbols
   -> Flambda.Expr.t
 
 val map_symbols_on_set_of_closures
-  : Flambda.set_of_closures
+  : Flambda.Set_of_closures.t
   -> f:(Symbol.t -> Symbol.t)
-  -> Flambda.set_of_closures
+  -> Flambda.Set_of_closures.t
 
 val map_toplevel_sets_of_closures
    : Flambda.Expr.t
-  -> f:(Flambda.set_of_closures -> Flambda.set_of_closures)
+  -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
   -> Flambda.Expr.t
 
 val map_apply
@@ -195,18 +195,18 @@ val map_apply
 
 val map_function_bodies
    : ?ignore_stubs:unit
-  -> Flambda.set_of_closures
+  -> Flambda.Set_of_closures.t
   -> f:(Flambda.Expr.t -> Flambda.Expr.t)
-  -> Flambda.set_of_closures
+  -> Flambda.Set_of_closures.t
 
 val map_sets_of_closures
    : Flambda.Expr.t
-  -> f:(Flambda.set_of_closures -> Flambda.set_of_closures)
+  -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
   -> Flambda.Expr.t
 
 val map_sets_of_closures_of_program
    : Flambda_static.Program.t
-  -> f:(Flambda.set_of_closures -> Flambda.set_of_closures)
+  -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
   -> Flambda_static.Program.t
 
 val map_project_var_to_named_opt
@@ -230,7 +230,7 @@ val map_all_immutable_let_and_let_rec_bindings
   -> Flambda.Expr.t
 
 val fold_function_decls_ignoring_stubs
-   : Flambda.set_of_closures
+   : Flambda.Set_of_closures.t
   -> init:'a
   -> f:(fun_var:Variable.t
     -> function_decl:Flambda.Function_declaration.t

@@ -20,7 +20,7 @@ let _dump_function_sizes flam ~backend =
   let module Backend = (val backend : Backend_intf.S) in
   let than = max_int in
   Flambda_iterators.iter_on_set_of_closures_of_program flam
-    ~f:(fun ~constant:_ (set_of_closures : Flambda.set_of_closures) ->
+    ~f:(fun ~constant:_ (set_of_closures : Flambda.Set_of_closures.t) ->
       Variable.Map.iter (fun fun_var
             (function_decl : Flambda.Function_declaration.t) ->
           let closure_id = Closure_id.wrap fun_var in

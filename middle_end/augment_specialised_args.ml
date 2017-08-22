@@ -59,7 +59,7 @@ module What_to_specialise = struct
   type t = {
     (* [definitions] is indexed by (fun_var, group) *)
     definitions : Definition.t list Variable.Pair.Map.t;
-    set_of_closures : Flambda.set_of_closures;
+    set_of_closures : Flambda.Set_of_closures.t;
     make_direct_call_surrogates_for : Variable.Set.t;
   }
 
@@ -103,7 +103,7 @@ module type S = sig
 
   val what_to_specialise
      : env:Simplify_aux.Env.t
-    -> set_of_closures:Flambda.set_of_closures
+    -> set_of_closures:Flambda.Set_of_closures.t
     -> What_to_specialise.t
 end
 
@@ -121,7 +121,7 @@ module Processed_what_to_specialise = struct
 
   type t = {
     variable_suffix : string;
-    set_of_closures : Flambda.set_of_closures;
+    set_of_closures : Flambda.Set_of_closures.t;
     existing_definitions_via_spec_args_indexed_by_fun_var
       : Definition.Set.t Variable.Map.t;
     (* The following two maps' definitions have already been rewritten
@@ -374,7 +374,7 @@ end
 
 module P = Processed_what_to_specialise
 
-let check_invariants ~pass_name ~(set_of_closures : Flambda.set_of_closures)
+let check_invariants ~pass_name ~(set_of_closures : Flambda.Set_of_closures.t)
       ~original_set_of_closures =
   if !Clflags.flambda_invariant_checks then begin
     Variable.Map.iter (fun fun_var
@@ -693,7 +693,7 @@ module Make (T : S) = struct
       ([], benefit)
 
   let rewrite_set_of_closures_core ~env ~duplicate_function ~benefit
-        ~(set_of_closures : Flambda.set_of_closures) =
+        ~(set_of_closures : Flambda.Set_of_closures.t) =
     let what_to_specialise =
       P.create ~env ~variable_suffix:T.variable_suffix
         ~what_to_specialise:(T.what_to_specialise ~env ~set_of_closures)

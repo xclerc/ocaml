@@ -55,7 +55,7 @@ let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
     in
     Flambda.update_body_of_function_declaration function_decl ~body
 
-let rewrite_one_set_of_closures (set_of_closures : Flambda.set_of_closures) =
+let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let back_free_vars =
     Variable.Map.fold (fun var (outside_var : Flambda.free_var) map ->
         let set =

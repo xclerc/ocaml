@@ -110,7 +110,7 @@ let make_stub unused var (fun_decl : Flambda.Function_declaration.t)
   function_decl, renamed, additional_specialised_args
 
 let separate_unused_arguments ~only_specialised
-      ~backend ~(set_of_closures : Flambda.set_of_closures) =
+      ~backend ~(set_of_closures : Flambda.Set_of_closures.t) =
   let function_decls = set_of_closures.function_decls in
   let unused =
     Invariant_params.Functions.unused_arguments ~backend function_decls

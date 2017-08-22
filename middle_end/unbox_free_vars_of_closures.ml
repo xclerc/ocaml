@@ -53,7 +53,7 @@ let lifted_projections ~existing_inner_to_outer_vars ~benefit
     definitions_indexed_by_new_inner_vars
     ([], benefit)
 
-let run ~env ~(set_of_closures : Flambda.set_of_closures) =
+let run ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
   if not !Clflags.unbox_free_vars_of_closures then
     None
   else

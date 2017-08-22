@@ -26,7 +26,7 @@ module What_to_specialise : sig
   type t
 
   val create
-     : set_of_closures:Flambda.set_of_closures
+     : set_of_closures:Flambda.Set_of_closures.t
     -> t
 
   val new_specialised_arg
@@ -45,7 +45,7 @@ module type S = sig
 
   val what_to_specialise
      : env:Simplify_aux.Env.t
-    -> set_of_closures:Flambda.set_of_closures
+    -> set_of_closures:Flambda.Set_of_closures.t
     -> What_to_specialise.t
 end
 
@@ -56,13 +56,13 @@ module Make (T : S) : sig
      : env:Simplify_aux.Env.t
     -> duplicate_function:(
          env:Simplify_aux.Env.t
-      -> set_of_closures:Flambda.set_of_closures
+      -> set_of_closures:Flambda.Set_of_closures.t
       -> fun_var:Variable.t
       -> new_fun_var:Variable.t
       -> Flambda.Function_declaration.t
         * Flambda.specialised_to Variable.Map.t)
-    -> set_of_closures:Flambda.set_of_closures
+    -> set_of_closures:Flambda.Set_of_closures.t
     (* CR mshinwell: Add a type for "new let-bindings" like this? *)
     -> ((Variable.t * Flambda.Named.t) list
-      * Flambda.set_of_closures * Inlining_cost.Benefit.t) option
+      * Flambda.Set_of_closures.t * Inlining_cost.Benefit.t) option
 end

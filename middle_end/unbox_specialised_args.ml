@@ -23,11 +23,11 @@ module Transform = struct
   let pass_name = "unbox-specialised-args"
   let variable_suffix = ""
 
-  let precondition ~env:_ ~(set_of_closures : Flambda.set_of_closures) =
+  let precondition ~env:_ ~(set_of_closures : Flambda.Set_of_closures.t) =
     !Clflags.unbox_specialised_args
       && not (Variable.Map.is_empty set_of_closures.specialised_args)
 
-  let what_to_specialise ~env ~(set_of_closures : Flambda.set_of_closures) =
+  let what_to_specialise ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
     let what_to_specialise = W.create ~set_of_closures in
     if not (precondition ~env ~set_of_closures) then
       what_to_specialise

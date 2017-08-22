@@ -25,7 +25,7 @@ val initial_inlining_toplevel_threshold
 
 val prepare_to_simplify_set_of_closures
    : env:Env.t
-  -> set_of_closures:Flambda.set_of_closures
+  -> set_of_closures:Flambda.Set_of_closures.t
   -> function_decls:Flambda.Function_declarations.t
   -> freshen:bool
   -> only_for_function_decl:Flambda.Function_declaration.t option

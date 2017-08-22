@@ -312,7 +312,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     in
     expr, state
 
-and sink_set_of_closures (set_of_closures : Flambda.set_of_closures) =
+and sink_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let funs =
     Variable.Map.map (fun
             (function_decl : Flambda.Function_declaration.t) ->

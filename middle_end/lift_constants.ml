@@ -171,7 +171,7 @@ let assign_symbols_and_collect_constant_definitions
   in
   collect_let_and_initialize_symbols program.program_body;
   let record_set_of_closure_equalities
-        (set_of_closures : Flambda.set_of_closures) =
+        (set_of_closures : Flambda.Set_of_closures.t) =
     Variable.Map.iter (fun arg (free_var : Flambda.free_var) ->
         if not (Inconstant_idents.variable arg inconstants) then
           Variable.Tbl.add var_to_definition_tbl arg
@@ -238,7 +238,7 @@ let translate_set_of_closures
     (var_to_symbol_tbl : Symbol.t Variable.Tbl.t)
     (var_to_definition_tbl:
       Alias_analysis.constant_defining_value Variable.Tbl.t)
-    (set_of_closures : Flambda.set_of_closures) =
+    (set_of_closures : Flambda.Set_of_closures.t) =
   let f var (named : Flambda.Named.t) : Flambda.Named.t =
     if Inconstant_idents.variable var inconstants then
       named
@@ -278,7 +278,7 @@ let translate_constant_set_of_closures
             (var_to_symbol_tbl : Symbol.t Variable.Tbl.t)
             (var_to_definition_tbl:
               Alias_analysis.constant_defining_value Variable.Tbl.t)
-            (set_of_closures : Flambda.set_of_closures)
+            (set_of_closures : Flambda.Set_of_closures.t)
         in
         Flambda.Set_of_closures set_of_closures)
     constant_defining_values

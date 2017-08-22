@@ -20,7 +20,7 @@ module E = Simplify_env
 module T = Flambda_types
 
 let prepare_to_simplify_set_of_closures ~env
-      ~(set_of_closures : Flambda.set_of_closures)
+      ~(set_of_closures : Flambda.Set_of_closures.t)
       ~function_decls ~freshen
       ~(only_for_function_decl : Flambda.Function_declaration.t option) =
   let free_vars =

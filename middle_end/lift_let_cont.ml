@@ -336,7 +336,7 @@ and lift_expr (expr : Flambda.Expr.t) ~state =
     lift_let_cont ~body ~handlers ~state ~recursive
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr, state
 
-and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
+and lift_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let funs =
     Variable.Map.map (fun
             (function_decl : Flambda.Function_declaration.t) ->

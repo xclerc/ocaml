@@ -20,7 +20,7 @@ let dependency (expr:Flambda.Expr.t) = Flambda.free_symbols expr
 
 (* CR-soon pchambart: copied from lift_constant.  Needs remerging *)
 let constant_dependencies (const:Flambda.constant_defining_value) =
-  let closure_dependencies (set_of_closures:Flambda.set_of_closures) =
+  let closure_dependencies (set_of_closures:Flambda.Set_of_closures.t) =
     Flambda.free_symbols_named (Set_of_closures set_of_closures)
   in
   match const with

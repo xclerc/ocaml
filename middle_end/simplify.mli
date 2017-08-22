@@ -34,7 +34,7 @@ val run
 
 val duplicate_function
    : env:Simplify_aux.Env.t
-  -> set_of_closures:Flambda.set_of_closures
+  -> set_of_closures:Flambda.Set_of_closures.t
   -> fun_var:Variable.t
   -> new_fun_var:Variable.t
   -> Flambda.Function_declaration.t

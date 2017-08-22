@@ -67,7 +67,7 @@ exception Unbound_variable of Variable.t
 exception Unbound_mutable_variable of Mutable_variable.t
 exception Unbound_symbol of Symbol.t
 exception Vars_in_function_body_not_bound_by_closure_or_params of
-  Variable.Set.t * Flambda.set_of_closures * Variable.t
+  Variable.Set.t * Flambda.Set_of_closures.t * Variable.t
 exception Function_decls_have_overlapping_parameters of Variable.Set.t
 exception Specialised_arg_that_is_not_a_parameter of Variable.t
 exception Projection_must_be_a_free_var of Projection.t
@@ -571,7 +571,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       ({ Flambda.function_decls; free_vars; specialised_args;
           direct_call_surrogates = _; } as set_of_closures) =
       (* CR-soon mshinwell: check [direct_call_surrogates] *)
-      let { Flambda.set_of_closures_id; set_of_closures_origin; funs; } =
+      let { Flambda.Set_of_closures.t_id; set_of_closures_origin; funs; } =
         function_decls
       in
       ignore_set_of_closures_id set_of_closures_id;

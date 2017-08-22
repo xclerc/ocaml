@@ -659,8 +659,8 @@ let rec simplify_project_var env r ~(project_var : Flambda.project_var) =
    variable.
 *)
 and simplify_set_of_closures original_env r
-      (set_of_closures : Flambda.set_of_closures)
-      : Flambda.set_of_closures * R.t * Freshening.Project_var.t =
+      (set_of_closures : Flambda.Set_of_closures.t)
+      : Flambda.Set_of_closures.t * R.t * Freshening.Project_var.t =
   let function_decls =
     let module Backend = (val (E.backend original_env) : Backend_intf.S) in
     (* CR-soon mshinwell: Does this affect
@@ -2473,7 +2473,7 @@ and simplify_toplevel env r expr ~continuation ~descr =
   end;
   expr, r, uses
 
-and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
+and duplicate_function ~env ~(set_of_closures : Flambda.Set_of_closures.t)
       ~fun_var ~new_fun_var =
   let function_decl =
     match Variable.Map.find fun_var set_of_closures.function_decls.funs with

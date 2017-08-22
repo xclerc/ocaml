@@ -22,6 +22,6 @@
 
 val run
    : env:Simplify_aux.Env.t
-  -> set_of_closures:Flambda.set_of_closures
+  -> set_of_closures:Flambda.Set_of_closures.t
   -> ((Variable.t * Flambda.Named.t) list
-    * Flambda.set_of_closures * Inlining_cost.Benefit.t) option
+    * Flambda.Set_of_closures.t * Inlining_cost.Benefit.t) option

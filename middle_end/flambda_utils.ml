@@ -25,7 +25,7 @@ let find_declaration_variable cf ({ funs } : Flambda.Function_declarations.t) =
   then raise Not_found
   else var
 
-let find_free_variable cv ({ free_vars } : Flambda.set_of_closures) =
+let find_free_variable cv ({ free_vars } : Flambda.Set_of_closures.t) =
   let free_var : Flambda.free_var =
     Variable.Map.find (Var_within_closure.unwrap cv) free_vars
   in
@@ -178,8 +178,8 @@ and sameclosure (c1 : Flambda.Function_declaration.t)
   Misc.Stdlib.List.equal Parameter.equal c1.params c2.params
     && same c1.body c2.body
 
-and same_set_of_closures (c1 : Flambda.set_of_closures)
-      (c2 : Flambda.set_of_closures) =
+and same_set_of_closures (c1 : Flambda.Set_of_closures.t)
+      (c2 : Flambda.Set_of_closures.t) =
   Variable.Map.equal sameclosure c1.function_decls.funs c2.function_decls.funs
     && Variable.Map.equal Flambda.equal_free_var
         c1.free_vars c2.free_vars
@@ -443,7 +443,7 @@ let root_symbol (program : Flambda_static.Program.t) =
 
 let make_closure_map program =
   let map = ref Closure_id.Map.empty in
-  let add_set_of_closures ~constant:_ : Flambda.set_of_closures -> unit = fun
+  let add_set_of_closures ~constant:_ : Flambda.Set_of_closures.t -> unit = fun
     { function_decls } ->
     Variable.Map.iter (fun var _ ->
         let closure_id = Closure_id.wrap var in
@@ -502,7 +502,7 @@ let all_function_decls_indexed_by_closure_id program =
     let closure_id = Closure_id.wrap fun_var in
     Closure_id.Map.add closure_id function_decls map
   in
-  let aux _ ({ function_decls; _ } : Flambda.set_of_closures) map =
+  let aux _ ({ function_decls; _ } : Flambda.Set_of_closures.t) map =
     Variable.Map.fold (aux_fun function_decls) function_decls.funs map
   in
   Set_of_closures_id.Map.fold aux (all_sets_of_closures_map program)

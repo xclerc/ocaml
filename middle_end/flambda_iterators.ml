@@ -445,7 +445,7 @@ let map_project_var_to_named_opt tree ~f =
     tree
 
 let map_function_bodies ?ignore_stubs
-      (set_of_closures : Flambda.set_of_closures) ~f =
+      (set_of_closures : Flambda.Set_of_closures.t) ~f =
   let done_something = ref false in
   let funs =
     Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
@@ -476,9 +476,9 @@ let map_function_bodies ?ignore_stubs
       ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
 let map_sets_of_closures_of_program (program : Flambda_static.Program.t)
-    ~(f : Flambda.set_of_closures -> Flambda.set_of_closures) =
+    ~(f : Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t) =
   let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
-    let map_constant_set_of_closures (set_of_closures:Flambda.set_of_closures) =
+    let map_constant_set_of_closures (set_of_closures:Flambda.Set_of_closures.t) =
       let done_something = ref false in
       let function_decls =
         let funs =
@@ -575,7 +575,7 @@ let map_sets_of_closures_of_program (program : Flambda_static.Program.t)
 let map_exprs_at_toplevel_of_program (program : Flambda_static.Program.t)
     ~(f : Flambda.Expr.t -> Flambda.Expr.t) =
   let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
-    let map_constant_set_of_closures (set_of_closures:Flambda.set_of_closures) =
+    let map_constant_set_of_closures (set_of_closures:Flambda.Set_of_closures.t) =
       let done_something = ref false in
       let funs =
         Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
@@ -675,7 +675,7 @@ let map_all_immutable_let_and_let_rec_bindings (expr : Flambda.Expr.t)
   map_named_with_id f expr
 
 let fold_function_decls_ignoring_stubs
-      (set_of_closures : Flambda.set_of_closures) ~init ~f =
+      (set_of_closures : Flambda.Set_of_closures.t) ~init ~f =
   Variable.Map.fold (fun fun_var function_decl acc ->
       f ~fun_var ~function_decl acc)
     set_of_closures.function_decls.funs
