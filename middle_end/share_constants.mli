@@ -19,4 +19,4 @@
 (** Share lifted constants that are eligible for sharing (e.g. not strings)
     and have equal definitions. *)
 
-val share_constants : Flambda.program -> Flambda.program
+val share_constants : Flambda_static.Program.t -> Flambda_static.Program.t

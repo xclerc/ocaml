@@ -64,8 +64,8 @@ let no_effects_field (expr : Flambda.Expr.t) ~return_continuation =
     true
   | _ -> Effect_analysis.no_effects expr
 
-let rec loop (program : Flambda.program_body)
-      : Flambda.program_body * Symbol.Set.t =
+let rec loop (program : Flambda_static.Program.t_body)
+      : Flambda_static.Program.t_body * Symbol.Set.t =
   match program with
   | Let_symbol (sym, def, program) ->
     let program, dep = loop program in
@@ -112,7 +112,7 @@ let rec loop (program : Flambda.program_body)
     end
   | End symbol -> program, Symbol.Set.singleton symbol
 
-let remove_unused_program_constructs (program : Flambda.program) =
+let remove_unused_program_constructs (program : Flambda_static.Program.t) =
   { program with
     program_body = fst (loop program.program_body);
   }

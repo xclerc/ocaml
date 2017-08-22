@@ -19,5 +19,5 @@
 (** Transform [let]-bound references into variables. *)
 
 val eliminate_ref
-   : Flambda.program
-  -> Flambda.program
+   : Flambda_static.Program.t
+  -> Flambda_static.Program.t

@@ -25,7 +25,7 @@ type flambda_kind =
 val check_exn
    : ?kind:flambda_kind
   -> ?cmxfile:bool
-  -> Flambda.program
+  -> Flambda_static.Program.t
   -> unit
 
 val check_toplevel_simplification_result

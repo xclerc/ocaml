@@ -29,8 +29,8 @@ val run
   -> backend:(module Backend_intf.S)
   -> prefixname:string
   -> round:int
-  -> Flambda.program
-  -> Flambda.program
+  -> Flambda_static.Program.t
+  -> Flambda_static.Program.t
 
 val duplicate_function
    : env:Simplify_aux.Env.t

@@ -18,4 +18,4 @@
 
 (** Transform Initialize_symbol with only constant fields to
     let_symbol construction. *)
-val run : Flambda.program -> Flambda.program
+val run : Flambda_static.Program.t -> Flambda_static.Program.t

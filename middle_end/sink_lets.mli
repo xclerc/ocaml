@@ -37,4 +37,4 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-val run : Flambda.program -> Flambda.program
+val run : Flambda_static.Program.t -> Flambda_static.Program.t

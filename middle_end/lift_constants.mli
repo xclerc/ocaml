@@ -60,6 +60,6 @@
 *)
 
 val lift_constants
-   : Flambda.program
+   : Flambda_static.Program.t
   -> backend:(module Backend_intf.S)
-  -> Flambda.program
+  -> Flambda_static.Program.t

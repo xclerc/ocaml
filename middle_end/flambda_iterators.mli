@@ -91,7 +91,7 @@ val iter_on_sets_of_closures
   -> unit
 
 val iter_on_set_of_closures_of_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(constant:bool -> Flambda.set_of_closures -> unit)
   -> unit
 
@@ -113,7 +113,7 @@ val iter_all_toplevel_immutable_let_and_let_rec_bindings
     [Let] will not be iterated over.)  If you want to iterate over those
     things as well, use [iter_exprs_at_toplevels_in_program]. *)
 val iter_exprs_at_toplevel_of_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(continuation_arity:int -> Continuation.t -> Flambda.Expr.t -> unit)
   -> unit
 
@@ -122,22 +122,22 @@ val iter_exprs_at_toplevel_of_program
       subfunctions; and
     - [Effect] expressions. *)
 val iter_exprs_at_toplevels_in_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(continuation_arity:int -> Continuation.t -> Flambda.Expr.t -> unit)
   -> unit
 
 val iter_named_of_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(Flambda.Named.t -> unit)
   -> unit
 
 val iter_constant_defining_values_on_program
-  : Flambda.program
+  : Flambda_static.Program.t
   -> f:(Flambda.constant_defining_value -> unit)
   -> unit
 
 val iter_apply_on_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(Flambda.apply -> unit)
   -> unit
 
@@ -205,9 +205,9 @@ val map_sets_of_closures
   -> Flambda.Expr.t
 
 val map_sets_of_closures_of_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(Flambda.set_of_closures -> Flambda.set_of_closures)
-  -> Flambda.program
+  -> Flambda_static.Program.t
 
 val map_project_var_to_named_opt
    : Flambda.Expr.t
@@ -215,14 +215,14 @@ val map_project_var_to_named_opt
   -> Flambda.Expr.t
 
 val map_exprs_at_toplevel_of_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(Flambda.Expr.t -> Flambda.Expr.t)
-  -> Flambda.program
+  -> Flambda_static.Program.t
 
 val map_named_of_program
-   : Flambda.program
+   : Flambda_static.Program.t
   -> f:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda.program
+  -> Flambda_static.Program.t
 
 val map_all_immutable_let_and_let_rec_bindings
    : Flambda.Expr.t

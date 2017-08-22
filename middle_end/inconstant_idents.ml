@@ -75,7 +75,7 @@ type result = {
 }
 
 module type Param = sig
-  val program : Flambda.program
+  val program : Flambda_static.Program.t
   val compilation_unit : Compilation_unit.t
 end
 
@@ -443,8 +443,8 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Set_of_closures set_of_closure ->
       mark_loop_set_of_closures ~toplevel:true [] set_of_closure
 
-  let mark_program (program : Flambda.program) =
-    let rec loop (program : Flambda.program_body) =
+  let mark_program (program : Flambda_static.Program.t) =
+    let rec loop (program : Flambda_static.Program.t_body) =
       match program with
       | End _ -> ()
       | Initialize_symbol (symbol,_tag,fields,program) ->
@@ -473,7 +473,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
 end
 
 let inconstants_on_program ~compilation_unit ~backend
-    (program : Flambda.program) =
+    (program : Flambda_static.Program.t) =
   let module P = struct
     let program = program
     let compilation_unit = compilation_unit

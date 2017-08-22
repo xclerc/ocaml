@@ -381,8 +381,8 @@ let bind ~bindings ~body =
       Flambda.Expr.create_let var var_def expr)
     body bindings
 
-let all_lifted_constants (program : Flambda.program) =
-  let rec loop (program : Flambda.program_body) =
+let all_lifted_constants (program : Flambda_static.Program.t) =
+  let rec loop (program : Flambda_static.Program.t_body) =
     match program with
     | Let_symbol (symbol, decl, program) -> (symbol, decl) :: (loop program)
     | Let_rec_symbol (decls, program) ->
@@ -398,8 +398,8 @@ let all_lifted_constants (program : Flambda.program) =
 let all_lifted_constants_as_map program =
   Symbol.Map.of_list (all_lifted_constants program)
 
-let initialize_symbols (program : Flambda.program) =
-  let rec loop (program : Flambda.program_body) =
+let initialize_symbols (program : Flambda_static.Program.t) =
+  let rec loop (program : Flambda_static.Program.t_body) =
     match program with
     | Initialize_symbol (symbol, tag, fields, program) ->
       (symbol, tag, fields) :: (loop program)
@@ -410,10 +410,10 @@ let initialize_symbols (program : Flambda.program) =
   in
   loop program.program_body
 
-let imported_symbols (program : Flambda.program) =
+let imported_symbols (program : Flambda_static.Program.t) =
   program.imported_symbols
 
-let needed_import_symbols (program : Flambda.program) =
+let needed_import_symbols (program : Flambda_static.Program.t) =
   let dependencies = Flambda.free_symbols_program program in
   let defined_symbol =
     Symbol.Set.union
@@ -424,13 +424,13 @@ let needed_import_symbols (program : Flambda.program) =
   in
   Symbol.Set.diff dependencies defined_symbol
 
-let introduce_needed_import_symbols program : Flambda.program =
+let introduce_needed_import_symbols program : Flambda_static.Program.t =
   { program with
     imported_symbols = needed_import_symbols program;
   }
 
-let root_symbol (program : Flambda.program) =
-  let rec loop (program : Flambda.program_body) =
+let root_symbol (program : Flambda_static.Program.t) =
+  let rec loop (program : Flambda_static.Program.t_body) =
     match program with
     | Effect (_, _, program)
     | Let_symbol (_, _, program)

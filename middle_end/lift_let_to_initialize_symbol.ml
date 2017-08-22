@@ -171,7 +171,7 @@ let introduce_symbols expr =
 
 let add_extracted lifted program_body =
   List.fold_left (fun acc (tag, _var, symbol, conts_exprs_and_to_copies)
-            : Flambda.program_body ->
+            : Flambda_static.Program.t_body ->
       let fields =
         List.map (fun (cont, expr, to_copy) ->
             let expr =
@@ -190,7 +190,7 @@ let add_extracted lifted program_body =
     program_body
     (List.rev lifted)
 
-let rec split_program (program : Flambda.program_body) : Flambda.program_body =
+let rec split_program (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
   match program with
   | End s -> End s
   | Let_symbol (s, def, program) ->
@@ -214,7 +214,7 @@ let rec split_program (program : Flambda.program_body) : Flambda.program_body =
     add_extracted introduced
       (Flambda.Initialize_symbol (symbol, tag, [field, cont], program))
 
-let lift ~backend:_ (program : Flambda.program) =
+let lift ~backend:_ (program : Flambda_static.Program.t) =
   { program with
     program_body = split_program program.program_body;
   }

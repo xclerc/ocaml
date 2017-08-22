@@ -2683,8 +2683,8 @@ let simplify_constant_defining_value
   let r = ret r ty in
   r, constant_defining_value, ty
 
-let rec simplify_program_body env r (program : Flambda.program_body)
-  : Flambda.program_body * R.t =
+let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
+  : Flambda_static.Program.t_body * R.t =
   match program with
   | Let_rec_symbol (defs, program) ->
     let env = define_let_rec_symbol_type env defs in
@@ -2770,7 +2770,7 @@ let rec simplify_program_body env r (program : Flambda.program_body)
     Effect (expr, cont, program), r
   | End root -> End root, r
 
-let simplify_program env r (program : Flambda.program) =
+let simplify_program env r (program : Flambda_static.Program.t) =
   let env, r =
     Symbol.Set.fold (fun symbol (env, r) ->
         let env, ty =

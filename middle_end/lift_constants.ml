@@ -56,7 +56,7 @@ let closure_id_map_singleton print map =
     such variables. *)
 let assign_symbols_and_collect_constant_definitions
     ~(backend : (module Backend_intf.S))
-    ~(program : Flambda.program)
+    ~(program : Flambda_static.Program.t)
     ~(inconstants : Inconstant_idents.result) =
   let var_to_symbol_tbl = Variable.Tbl.create 42 in
   let var_to_definition_tbl = Variable.Tbl.create 42 in
@@ -148,7 +148,7 @@ let assign_symbols_and_collect_constant_definitions
     ~f:assign_symbol_program;
   let let_symbol_to_definition_tbl = Symbol.Tbl.create 42 in
   let initialize_symbol_to_definition_tbl = Symbol.Tbl.create 42 in
-  let rec collect_let_and_initialize_symbols (program : Flambda.program_body) =
+  let rec collect_let_and_initialize_symbols (program : Flambda_static.Program.t_body) =
     match program with
     | Let_symbol (symbol, decl, program) ->
       Symbol.Tbl.add let_symbol_to_definition_tbl symbol decl;
@@ -631,7 +631,7 @@ let add_definition_of_symbol constant_definitions
       (Tag.t * (Flambda.Expr.t * Continuation.t) list * Symbol.t option)
         Symbol.Tbl.t)
     (effect_tbl : (Flambda.Expr.t * Continuation.t * Symbol.t option) Symbol.Tbl.t)
-    (program : Flambda.program_body) component : Flambda.program_body =
+    (program : Flambda_static.Program.t_body) component : Flambda_static.Program.t_body =
   let symbol_declaration sym =
     (* A symbol declared through an Initialize_symbol construct
        cannot be recursive, this is not allowed in the construction.
@@ -799,7 +799,7 @@ let var_to_block_field
     var_to_definition_tbl;
   var_to_block_field_tbl
 
-let program_symbols ~backend (program : Flambda.program) =
+let program_symbols ~backend (program : Flambda_static.Program.t) =
   let new_fake_symbol =
     let r = ref 0 in
     fun () ->
@@ -827,7 +827,7 @@ let program_symbols ~backend (program : Flambda.program) =
     | Allocated_const _
     | Block _ -> ()
   in
-  let rec loop (program : Flambda.program_body) previous_effect =
+  let rec loop (program : Flambda_static.Program.t_body) previous_effect =
     match program with
     | Flambda.Let_symbol (symbol, def, program) ->
       add_project_closure_definitions symbol def;
@@ -923,7 +923,7 @@ let project_closure_map symbol_definition_map =
 
 let the_dead_constant_index = ref 0
 
-let lift_constants (program : Flambda.program) ~backend =
+let lift_constants (program : Flambda_static.Program.t) ~backend =
   let the_dead_constant =
     let index = !the_dead_constant_index in
     incr the_dead_constant_index;
@@ -931,11 +931,11 @@ let lift_constants (program : Flambda.program) ~backend =
     Symbol.create (Compilation_unit.get_current_exn ())
       (Linkage_name.create name)
   in
-  let program_body : Flambda.program_body =
+  let program_body : Flambda_static.Program.t_body =
     Let_symbol (the_dead_constant, Allocated_const (Nativeint 0n),
       program.program_body)
   in
-  let program : Flambda.program =
+  let program : Flambda_static.Program.t =
     { program with program_body; }
   in
   let inconstants =

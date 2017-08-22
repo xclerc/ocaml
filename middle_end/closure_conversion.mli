@@ -54,4 +54,4 @@ val ilambda_to_flambda
   -> size:int
   -> filename:string
   -> Ilambda.t * Continuation.t
-  -> Flambda.program
+  -> Flambda_static.Program.t

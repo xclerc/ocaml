@@ -125,8 +125,8 @@ let iter_on_sets_of_closures f t =
       | Move_within_set_of_closures _ | Project_var _ | Prim _ -> ())
     t
 
-let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
-  let rec loop (program : Flambda.program_body) =
+let iter_exprs_at_toplevel_of_program (program : Flambda_static.Program.t) ~f =
+  let rec loop (program : Flambda_static.Program.t_body) =
     match program with
     | Let_symbol (_, Set_of_closures set_of_closures, program) ->
       Variable.Map.iter (fun _ (function_decl : Flambda.Function_declaration.t) ->
@@ -158,7 +158,7 @@ let iter_exprs_at_toplevel_of_program (program : Flambda.program) ~f =
   loop program.program_body
 
 (* CR mshinwell: think of a better name *)
-let iter_exprs_at_toplevels_in_program (program : Flambda.program) ~f =
+let iter_exprs_at_toplevels_in_program (program : Flambda_static.Program.t) ~f =
   iter_exprs_at_toplevel_of_program program
     ~f:(fun ~continuation_arity cont expr ->
       let rec iter_expr ~continuation_arity cont expr =
@@ -181,8 +181,8 @@ let iter_named_of_program program ~f =
   iter_exprs_at_toplevel_of_program program
     ~f:(fun ~continuation_arity:_ _ e -> iter_named f e)
 
-let iter_on_set_of_closures_of_program (program : Flambda.program) ~f =
-  let rec loop (program : Flambda.program_body) =
+let iter_on_set_of_closures_of_program (program : Flambda_static.Program.t) ~f =
+  let rec loop (program : Flambda_static.Program.t_body) =
     match program with
     | Let_symbol (_, Set_of_closures set_of_closures, program) ->
       f ~constant:true set_of_closures;
@@ -214,8 +214,8 @@ let iter_on_set_of_closures_of_program (program : Flambda.program) ~f =
   in
   loop program.program_body
 
-let iter_constant_defining_values_on_program (program : Flambda.program) ~f =
-  let rec loop (program : Flambda.program_body) =
+let iter_constant_defining_values_on_program (program : Flambda_static.Program.t) ~f =
+  let rec loop (program : Flambda_static.Program.t_body) =
     match program with
     | Let_symbol (_, const, program) ->
       f const;
@@ -475,9 +475,9 @@ let map_function_bodies ?ignore_stubs
       ~specialised_args:set_of_closures.specialised_args
       ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
-let map_sets_of_closures_of_program (program : Flambda.program)
+let map_sets_of_closures_of_program (program : Flambda_static.Program.t)
     ~(f : Flambda.set_of_closures -> Flambda.set_of_closures) =
-  let rec loop (program : Flambda.program_body) : Flambda.program_body =
+  let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
     let map_constant_set_of_closures (set_of_closures:Flambda.set_of_closures) =
       let done_something = ref false in
       let function_decls =
@@ -572,9 +572,9 @@ let map_sets_of_closures_of_program (program : Flambda.program)
     program_body = loop program.program_body;
   }
 
-let map_exprs_at_toplevel_of_program (program : Flambda.program)
+let map_exprs_at_toplevel_of_program (program : Flambda_static.Program.t)
     ~(f : Flambda.Expr.t -> Flambda.Expr.t) =
-  let rec loop (program : Flambda.program_body) : Flambda.program_body =
+  let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
     let map_constant_set_of_closures (set_of_closures:Flambda.set_of_closures) =
       let done_something = ref false in
       let funs =
@@ -665,8 +665,8 @@ let map_exprs_at_toplevel_of_program (program : Flambda.program)
     program_body = loop program.program_body;
   }
 
-let map_named_of_program (program : Flambda.program)
-      ~(f : Variable.t -> Flambda.Named.t -> Flambda.Named.t) : Flambda.program =
+let map_named_of_program (program : Flambda_static.Program.t)
+      ~(f : Variable.t -> Flambda.Named.t -> Flambda.Named.t) : Flambda_static.Program.t =
   map_exprs_at_toplevel_of_program program
       ~f:(fun expr -> map_named_with_id f expr)
 

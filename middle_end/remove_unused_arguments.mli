@@ -29,9 +29,9 @@
        and fact n unused = fact' n]
 *)
 val separate_unused_arguments_in_closures
-   : Flambda.program
+   : Flambda_static.Program.t
   -> backend:(module Backend_intf.S)
-  -> Flambda.program
+  -> Flambda_static.Program.t
 
 val separate_unused_arguments_in_set_of_closures
    : Flambda.set_of_closures

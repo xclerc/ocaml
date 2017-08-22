@@ -70,7 +70,7 @@ let share_definition constant_to_symbol_tbl sharing_symbol_tbl
     end
 
 (* CR-soon mshinwell: move to [Flambda_utils] *)
-let rec end_symbol (program : Flambda.program_body) =
+let rec end_symbol (program : Flambda_static.Program.t_body) =
   match program with
   | End symbol -> symbol
   | Let_symbol (_, _, program)
@@ -78,11 +78,11 @@ let rec end_symbol (program : Flambda.program_body) =
   | Initialize_symbol (_, _, _, program)
   | Effect (_, _, program) -> end_symbol program
 
-let share_constants (program : Flambda.program) =
+let share_constants (program : Flambda_static.Program.t) =
   let end_symbol = end_symbol program.program_body in
   let sharing_symbol_tbl = Symbol.Tbl.create 42 in
   let constant_to_symbol_tbl = Constant_defining_value.Tbl.create 42 in
-  let rec loop (program : Flambda.program_body) : Flambda.program_body =
+  let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
     match program with
     | Let_symbol (symbol, def, program) ->
       begin match

@@ -181,6 +181,6 @@ let eliminate_ref_of_expr flam =
     in
     Flambda_iterators.map_expr aux flam
 
-let eliminate_ref (program:Flambda.program) =
+let eliminate_ref (program:Flambda_static.Program.t) =
   Flambda_iterators.map_exprs_at_toplevel_of_program program
     ~f:eliminate_ref_of_expr

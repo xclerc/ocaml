@@ -415,7 +415,7 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
   Set_of_closures set_of_closures
 
 let ilambda_to_flambda ~backend ~module_ident ~size ~filename
-      (ilam, ilam_result_cont) : Flambda.program =
+      (ilam, ilam_result_cont) : Flambda_static.Program.t =
   let module Backend = (val backend : Backend_intf.S) in
   let compilation_unit = Compilation_unit.get_current_exn () in
   let t =
@@ -453,7 +453,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       in
       flam, continuation)
   in
-  let module_initializer : Flambda.program_body =
+  let module_initializer : Flambda_static.Program.t_body =
     Initialize_symbol (
       block_symbol,
       Tag.create_exn 0,
@@ -466,7 +466,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   in
   let program_body =
     List.fold_left
-      (fun program_body (symbol, constant) : Flambda.program_body ->
+      (fun program_body (symbol, constant) : Flambda_static.Program.t_body ->
          Let_symbol (symbol, constant, program_body))
       module_initializer
       t.declared_symbols
