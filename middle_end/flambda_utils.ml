@@ -62,8 +62,8 @@ let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
   | Char _, _ -> -1
   | _, Char _ -> 1
 
-let trap_action_equal (trap1 : Flambda.trap_action option)
-      (trap2 : Flambda.trap_action option) =
+let trap_action_equal (trap1 : Flambda.Trap_action.t option)
+      (trap2 : Flambda.Trap_action.t option) =
   match trap1, trap2 with
   | None, None -> true
   | Some (Push { id = id1; exn_handler = exn_handler1; }),

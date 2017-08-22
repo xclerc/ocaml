@@ -71,7 +71,7 @@ let simplify_free_variable_internal env original_var =
     | Some (named, ty) ->
       Binding (original_var, W.of_named named), ty
 
-let simplify_free_variable env var ~f : Flambda.t * R.t =
+let simplify_free_variable env var ~f : Flambda.Expr.t * R.t =
   match simplify_free_variable_internal env var with
   | No_binding var, ty -> f env var ty
   | Binding (var, named), ty ->
@@ -81,8 +81,8 @@ let simplify_free_variable env var ~f : Flambda.t * R.t =
     let body, r = f env var ty in
     (W.create_let_reusing_defining_expr var named body), r
 
-let simplify_free_variables env vars ~f : Flambda.t * R.t =
-  let rec collect_bindings vars env bound_vars types : Flambda.t * R.t =
+let simplify_free_variables env vars ~f : Flambda.Expr.t * R.t =
+  let rec collect_bindings vars env bound_vars types : Flambda.Expr.t * R.t =
     match vars with
     | [] -> f env (List.rev bound_vars) (List.rev tys)
     | var::vars ->
@@ -815,7 +815,7 @@ and simplify_set_of_closures original_env r
   let r = ret r (T.set_of_closures value_set_of_closures) in
   set_of_closures, r, value_set_of_closures.freshening
 
-and simplify_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
+and simplify_apply env r ~(apply : Flambda.apply) : Flambda.Expr.t * R.t =
   match apply.kind with
   | Function -> simplify_function_apply env r ~apply
   | Method { kind; obj; } ->
@@ -843,7 +843,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
         in
         Apply apply, ret r (T.unknown Other))))
 
-and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.t * R.t =
+and simplify_function_apply env r ~(apply : Flambda.apply) : Flambda.Expr.t * R.t =
   let {
     Flambda. func = lhs_of_application; args; call_kind; dbg;
     inline = inline_requested; specialise = specialise_requested;
@@ -1055,7 +1055,7 @@ and simplify_partial_application env r ~lhs_of_application
   in
   let wrapper_continuation_param = Continuation.create () in
   let wrapper_accepting_remaining_args =
-    let body : Flambda.t =
+    let body : Flambda.Expr.t =
       Apply {
         kind = Function;
         continuation = wrapper_continuation_param;
@@ -1155,7 +1155,7 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
     R.define_continuation r after_full_application env Nonrecursive
       after_full_application_uses after_full_application_type
   in
-  let expr : Flambda.t =
+  let expr : Flambda.Expr.t =
     Let_cont {
       body = full_application;
       handlers = Nonrecursive {
@@ -1167,12 +1167,12 @@ Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
   expr, r
 
 (** Simplify an application of a continuation. *)
-and simplify_apply_cont env r cont ~(trap_action : Flambda.trap_action option)
-      ~args ~args_types : Flambda.t * R.t =
+and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
+      ~args ~args_types : Flambda.Expr.t * R.t =
   let cont = Freshening.apply_static_exception (E.freshening env) cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
-  let freshen_trap_action env r (trap_action : Flambda.trap_action) =
+  let freshen_trap_action env r (trap_action : Flambda.Trap_action.t) =
     match trap_action with
     | Push { id; exn_handler; } ->
       let id = Freshening.apply_trap (E.freshening env) id in
@@ -2013,7 +2013,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
           Some (Flambda.Nonrecursive { name; handler; }), r
         | None -> Some (Flambda.Recursive handlers), r
 
-and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
+and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
   (* In two stages we form the environment to be used for simplifying the
      [body].  If the continuations in [handlers] are recursive then
      that environment will also be used for simplifying the continuations
@@ -2227,7 +2227,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.t * R.t =
     end
   end
 
-let simplify_switch env r arg sw : Flambda.t * R.t =
+let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
   simplify_free_variable env arg ~f:(fun env arg arg_type ->
     let destination_is_unreachable cont =
       (* CR mshinwell: This unreachable thing should be tidied up and also
@@ -2334,7 +2334,7 @@ let simplify_switch env r arg sw : Flambda.t * R.t =
         switch, !r
     end)
 
-and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
+and simplify env r (tree : Flambda.Expr.t) : Flambda.Expr.t * R.t =
   match tree with
   | Let _ ->
     let for_last_body (env, r) body =
