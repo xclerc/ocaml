@@ -743,7 +743,7 @@ and simplify_set_of_closures original_env r
         inline
     in
     let function_decl =
-      Flambda.create_function_declaration ~params:function_decl.params
+      Flambda.Function_declaration.create ~params:function_decl.params
         ~continuation_param:continuation_param
         ~return_arity:function_decl.return_arity
         ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
@@ -2524,7 +2524,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.Set_of_closures.t)
     R.exit_scope_catch r env function_decl.continuation_param
   in
   let function_decl =
-    Flambda.create_function_declaration ~params:function_decl.params
+    Flambda.Function_declaration.create ~params:function_decl.params
       ~continuation_param:function_decl.continuation_param
       ~return_arity:function_decl.return_arity
       ~body ~stub:function_decl.stub ~dbg:function_decl.dbg

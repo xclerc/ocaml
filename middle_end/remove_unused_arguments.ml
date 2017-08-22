@@ -101,7 +101,7 @@ let make_stub unused var (fun_decl : Flambda.Function_declaration.t)
     }
   in
   let function_decl =
-    Flambda.create_function_declaration ~continuation_param
+    Flambda.Function_declaration.create ~continuation_param
       ~params:(List.map snd args') ~return_arity:fun_decl.return_arity ~body
       ~stub:true ~dbg:fun_decl.dbg ~inline:Default_inline
       ~specialise:Default_specialise ~is_a_functor:fun_decl.is_a_functor

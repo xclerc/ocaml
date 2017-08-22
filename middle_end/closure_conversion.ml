@@ -65,7 +65,7 @@ let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
       (0, call) params
   in
   let tuple_param = Parameter.wrap tuple_param_var in
-  Flambda.create_function_declaration ~params:[tuple_param] ~continuation_param
+  Flambda.Function_declaration.create ~params:[tuple_param] ~continuation_param
     ~return_arity:1 ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
     ~specialise:Default_specialise ~is_a_functor:false
     ~closure_origin:(Closure_origin.create (Closure_id.wrap closure_bound_var))
@@ -368,7 +368,7 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
       let closure_origin =
         Closure_origin.create (Closure_id.wrap unboxed_version)
       in
-      Flambda.create_function_declaration ~params
+      Flambda.Function_declaration.create ~params
         ~continuation_param:(Function_decl.continuation_param decl)
         ~return_arity:1 ~body ~stub ~dbg
         ~inline:(Function_decl.inline decl)

@@ -551,7 +551,7 @@ module Make (T : S) = struct
         Variable.Map.empty
     in
     let new_function_decl =
-      Flambda.create_function_declaration
+      Flambda.Function_declaration.create
         ~continuation_param:wrapper_continuation_param
         ~return_arity:function_decl.return_arity
         ~params:wrapper_params
@@ -638,7 +638,7 @@ module Make (T : S) = struct
         function_decl.params @ new_params
       in
       let rewritten_function_decl =
-        Flambda.create_function_declaration
+        Flambda.Function_declaration.create
           ~continuation_param:function_decl.continuation_param
           ~return_arity:function_decl.return_arity
           ~params:all_params

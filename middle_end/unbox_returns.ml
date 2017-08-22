@@ -90,7 +90,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.
   in
   let new_fun_var = Variable.rename fun_var in
   let function_decl =
-    Flambda.create_function_declaration ~continuation_param:new_return_cont
+    Flambda.Function_declaration.create ~continuation_param:new_return_cont
       ~return_arity
       ~params:function_decl.params
       ~body:new_function_body
@@ -147,7 +147,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.
     };
   in
   let function_stub_decl =
-    Flambda.create_function_declaration ~continuation_param:wrapper_return_cont
+    Flambda.Function_declaration.create ~continuation_param:wrapper_return_cont
       ~return_arity:1
       ~params:fun_wrapper_params
       ~body:function_stub_body
