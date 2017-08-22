@@ -57,7 +57,7 @@ let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
 
 let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let back_free_vars =
-    Variable.Map.fold (fun var (outside_var : Flambda.free_var) map ->
+    Variable.Map.fold (fun var (outside_var : Flambda.Free_var.t) map ->
         let set =
           match Variable.Map.find outside_var.var map with
           | exception Not_found -> Variable.Set.singleton var

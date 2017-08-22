@@ -290,7 +290,7 @@ let inline_by_copying_function_declaration ~env ~r
       fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
         ~lhs_of_application ~function_decls ~init:(Variable.Map.empty, [])
         ~f:(fun ~acc:(map, for_lets) ~var:internal_var ~expr ->
-          let from_closure : Flambda.free_var =
+          let from_closure : Flambda.Free_var.t =
             { var = new_var "from_closure";
               projection = None;
             }
@@ -326,7 +326,7 @@ let inline_by_copying_function_declaration ~env ~r
           let internal_var = Variable.rename ~append:"_original" fun_var in
           let free_vars =
             Variable.Map.add internal_var
-              ({ var; projection = None; } : Flambda.free_var)
+              ({ var; projection = None; } : Flambda.Free_var.t)
               free_vars
           in
           free_vars,

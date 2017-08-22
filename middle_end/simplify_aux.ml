@@ -24,7 +24,7 @@ let prepare_to_simplify_set_of_closures ~env
       ~function_decls ~freshen
       ~(only_for_function_decl : Flambda.Function_declaration.t option) =
   let free_vars =
-    Variable.Map.map (fun (external_var : Flambda.free_var) ->
+    Variable.Map.map (fun (external_var : Flambda.Free_var.t) ->
         let var =
           let var =
             Freshening.apply_variable (E.freshening env) external_var.var

@@ -26,7 +26,7 @@ let find_declaration_variable cf ({ funs } : Flambda.Function_declarations.t) =
   else var
 
 let find_free_variable cv ({ free_vars } : Flambda.Set_of_closures.t) =
-  let free_var : Flambda.free_var =
+  let free_var : Flambda.Free_var.t =
     Variable.Map.find (Var_within_closure.unwrap cv) free_vars
   in
   free_var.var
@@ -266,7 +266,7 @@ let toplevel_substitution sb tree =
         Flambda.create_set_of_closures
           ~function_decls:set_of_closures.function_decls
           ~free_vars:
-            (Variable.Map.map (fun (free_var : Flambda.free_var) ->
+            (Variable.Map.map (fun (free_var : Flambda.Free_var.t) ->
                 { free_var with var = sb free_var.var; })
               set_of_closures.free_vars)
           ~specialised_args:
@@ -337,7 +337,7 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
     function_declaration.free_variables);
   let free_vars =
     Variable.Map.fold (fun id id' fv' ->
-        let free_var : Flambda.free_var =
+        let free_var : Flambda.Free_var.t =
           { var = id;
             projection = None;
           }
@@ -565,7 +565,7 @@ let substitute_read_symbol_field_for_variables
         Flambda.create_set_of_closures
           ~function_decls:set_of_closures.function_decls
           ~free_vars:
-            (Variable.Map.map (fun (free_var : Flambda.free_var) ->
+            (Variable.Map.map (fun (free_var : Flambda.Free_var.t) ->
                 { free_var with var = sb free_var.var; })
               set_of_closures.free_vars)
           ~specialised_args:
@@ -764,7 +764,7 @@ let contains_stub (fun_decls : Flambda.Function_declarations.t) =
   number_of_stub_functions > 0
 
 let clean_free_vars_projections free_vars =
-  Variable.Map.map (fun (free_var : Flambda.free_var) ->
+  Variable.Map.map (fun (free_var : Flambda.Free_var.t) ->
       match free_var.projection with
       | None -> free_var
       | Some projection ->
@@ -772,7 +772,7 @@ let clean_free_vars_projections free_vars =
         if Variable.Map.mem from free_vars then
           free_var
         else
-          ({ free_var with projection = None; } : Flambda.free_var))
+          ({ free_var with projection = None; } : Flambda.Free_var.t))
     free_vars
 
 let clean_specialised_args_projections specialised_args =

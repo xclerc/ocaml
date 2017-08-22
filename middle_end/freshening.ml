@@ -306,7 +306,7 @@ module Project_var = struct
       * a fresh ffunction_subst with only the substitution of free variables
    *)
   let subst_free_vars fv subst ~only_freshen_parameters
-      : (Flambda.free_var * _) Variable.Map.t * _ * _ =
+      : (Flambda.Free_var.t * _) Variable.Map.t * _ * _ =
     Variable.Map.fold (fun id lam (fv, subst, t) ->
         let id, subst, t =
           if only_freshen_parameters then
@@ -496,7 +496,7 @@ let freshen_projection (projection : Projection.t) ~freshening
 
 let freshen_free_vars_projection_relation relation ~freshening
       ~closure_freshening =
-  Variable.Map.map (fun (spec_to : Flambda.free_var) ->
+  Variable.Map.map (fun (spec_to : Flambda.Free_var.t) ->
       let projection =
         match spec_to.projection with
         | None -> None
@@ -508,7 +508,7 @@ let freshen_free_vars_projection_relation relation ~freshening
 
 let freshen_free_vars_projection_relation' relation ~freshening
       ~closure_freshening =
-  Variable.Map.map (fun ((spec_to : Flambda.free_var), data) ->
+  Variable.Map.map (fun ((spec_to : Flambda.Free_var.t), data) ->
       let projection =
         match spec_to.projection with
         | None -> None

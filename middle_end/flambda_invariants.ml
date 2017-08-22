@@ -578,7 +578,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       ignore_set_of_closures_origin set_of_closures_origin;
       let functions_in_closure = Variable.Map.keys funs in
       let variables_in_closure =
-        Variable.Map.fold (fun var (var_in_closure : Flambda.free_var)
+        Variable.Map.fold (fun var (var_in_closure : Flambda.Free_var.t)
                   variables_in_closure ->
             (* [var] may occur in the body, but will effectively be renamed
               to [var_in_closure], so the latter is what we check to make
@@ -675,7 +675,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       (* Check that every "specialised arg" is a parameter of one of the
         functions being declared, and that the variable to which the
         parameter is being specialised is bound. *)
-      Variable.Map.iter (fun _inner_var (free_var : Flambda.free_var) ->
+      Variable.Map.iter (fun _inner_var (free_var : Flambda.Free_var.t) ->
           check_variable_is_bound env free_var.var;
           match free_var.projection with
           | None -> ()

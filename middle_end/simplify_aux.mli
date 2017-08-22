@@ -29,7 +29,7 @@ val prepare_to_simplify_set_of_closures
   -> function_decls:Flambda.Function_declarations.t
   -> freshen:bool
   -> only_for_function_decl:Flambda.Function_declaration.t option
-  -> (Flambda.free_var * Flambda_type.t) Variable.Map.t  (* fvs *)
+  -> (Flambda.Free_var.t * Flambda_type.t) Variable.Map.t  (* fvs *)
     * Flambda_type0.T.specialised_args
     * Flambda.Function_declarations.t
     * Flambda_type0.T.set_of_closures
@@ -37,7 +37,7 @@ val prepare_to_simplify_set_of_closures
 
 val prepare_to_simplify_closure
    : function_decl:Flambda.Function_declaration.t
-  -> free_vars:(Flambda.free_var * Flambda_type.t) Variable.Map.t
+  -> free_vars:(Flambda.Free_var.t * Flambda_type.t) Variable.Map.t
   -> specialised_args:Flambda_type0.T.specialised_args
   -> set_of_closures_env:Env.t
   -> Env.t

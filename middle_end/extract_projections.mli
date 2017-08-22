@@ -24,7 +24,7 @@
 *)
 val from_function's_free_vars
    : env:Simplify_aux.Env.t
-  -> free_vars:Flambda.free_vars
+  -> free_vars:Flambda.Free_var.ts
   -> function_decl:Flambda.Function_declaration.t
   -> Projection.Set.t
 

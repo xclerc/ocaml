@@ -135,7 +135,7 @@ let rec analyse_expr ~which_variables expr =
     | Set_of_closures set_of_closures ->
       let aliasing_free_vars =
         Variable.Map.filter_map set_of_closures.free_vars
-          ~f:(fun _ (free_var : Flambda.free_var) ->
+          ~f:(fun _ (free_var : Flambda.Free_var.t) ->
             if not (Variable.Set.mem free_var.var which_variables) then
               None
             else
@@ -213,7 +213,7 @@ let from_function's_free_vars ~env ~free_vars
     let outer_var =
       match Variable.Map.find from free_vars with
       | exception Not_found -> assert false
-      | (outer_var : Flambda.free_var) ->
+      | (outer_var : Flambda.Free_var.t) ->
         Freshening.apply_variable (E.freshening env) outer_var.var
     in
     E.find_exn env outer_var
