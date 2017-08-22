@@ -246,7 +246,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
   | Let_cont { body; handlers = Recursive handlers; } ->
     let body = sink body in
     let handlers, state =
-      Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
+      Continuation.Map.fold (fun name (handler : Flambda.Continuation_handler.t)
               (handlers, state) ->
           (* We don't sink anything into a recursive continuation. *)
           (* CR mshinwell: This is actually required for correctness at the
@@ -359,7 +359,7 @@ and sink (expr : Flambda.Expr.t) =
     | Let_cont { body; handlers = Recursive handlers; } ->
       let body = sink body in
       let handlers =
-        Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
+        Continuation.Map.map (fun (handler : Flambda.Continuation_handler.t) ->
             { handler with
               handler = sink handler.handler;
             })

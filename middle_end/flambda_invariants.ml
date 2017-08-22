@@ -195,7 +195,7 @@ module Push_pop_invariants = struct
               env
           in
           Continuation.Map.iter (fun _cont
-                  (handler : Flambda.continuation_handler) ->
+                  (handler : Flambda.Continuation_handler.t) ->
               loop recursive_env handler_stack handler.handler)
             handlers;
           Continuation.Map.fold (fun cont _handler env ->
@@ -291,7 +291,7 @@ module Continuation_scoping = struct
         | Recursive handlers ->
           let recursive_env =
             Continuation.Map.fold (fun cont
-                    (handler : Flambda.continuation_handler) env ->
+                    (handler : Flambda.Continuation_handler.t) env ->
                 let arity = List.length handler.params in
                 let kind =
                   if handler.is_exn_handler then Exn_handler else Normal
@@ -302,7 +302,7 @@ module Continuation_scoping = struct
           in
           Continuation.Map.iter (fun name
                   ({ params; stub; is_exn_handler; handler; specialised_args; }
-                    : Flambda.continuation_handler) ->
+                    : Flambda.Continuation_handler.t) ->
               ignore_continuation name;
               ignore_parameter_list params;
               loop recursive_env handler;
@@ -311,7 +311,7 @@ module Continuation_scoping = struct
               ignore specialised_args (* CR mshinwell: fixme *) )
             handlers;
           Continuation.Map.fold (fun cont
-                  (handler : Flambda.continuation_handler) env ->
+                  (handler : Flambda.Continuation_handler.t) env ->
               let arity = List.length handler.params in
               let kind =
                 if handler.is_exn_handler then Exn_handler else Normal
@@ -484,7 +484,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       | Recursive handlers ->
         Continuation.Map.iter (fun name
                 ({ params; stub; is_exn_handler; handler; specialised_args; }
-                  : Flambda.continuation_handler) ->
+                  : Flambda.Continuation_handler.t) ->
             ignore_bool stub;
             if is_exn_handler then begin
               Misc.fatal_errorf "Continuation %a is declared [Recursive] but \

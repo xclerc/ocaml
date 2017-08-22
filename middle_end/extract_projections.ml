@@ -238,7 +238,7 @@ let from_function's_specialised_args ~env ~specialised_args
   in
   from_expr ~get_approx ~which_variables function_decl.body
 
-let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
+let from_continuation ~uses ~(handler : Flambda.Continuation_handler.t) =
   let handler_params = Parameter.List.vars handler.params in
   let which_variables = Variable.Set.of_list handler_params in
   let param_approxs =

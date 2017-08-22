@@ -95,7 +95,7 @@ let lambda_smaller' lam ~than:threshold =
         lambda_size handler
       | Recursive handlers ->
         Continuation.Map.iter (fun _cont
-                (handler : Flambda.continuation_handler) ->
+                (handler : Flambda.Continuation_handler.t) ->
             lambda_size handler.handler)
           handlers
       end

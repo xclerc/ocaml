@@ -240,7 +240,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_curr curr;
       mark_loop ~toplevel [] body;
       Continuation.Map.iter (fun _cont
-              (handler : Flambda.continuation_handler) ->
+              (handler : Flambda.Continuation_handler.t) ->
           List.iter (fun param -> mark_curr [Var (Parameter.var param)])
             handler.params;
           mark_loop ~toplevel:false [] handler.handler)

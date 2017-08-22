@@ -20,7 +20,7 @@
    enough between functions and continuations then we can probably share
    code for doing remove-unused-parameters. *)
 
-let remove_parameters ~(handler : Flambda.continuation_handler)
+let remove_parameters ~(handler : Flambda.Continuation_handler.t)
         ~to_remove : Flambda_utils.with_wrapper =
   let freshened_params =
     List.map (fun param -> param, Parameter.rename param) handler.params
@@ -71,7 +71,7 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
       Variable.Map.empty
   in
   let new_cont = Continuation.create () in
-  let wrapper_handler : Flambda.continuation_handler =
+  let wrapper_handler : Flambda.Continuation_handler.t =
     { params = wrapper_params;
       stub = true;
       is_exn_handler = false;
@@ -86,7 +86,7 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
       to_remove
       handler.handler
   in
-  let new_handler : Flambda.continuation_handler =
+  let new_handler : Flambda.Continuation_handler.t =
     { params = new_params;
       stub = handler.stub;
       is_exn_handler = false;
@@ -100,14 +100,14 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
     wrapper_handler;
   }
 
-let for_continuation ~body ~unused ~(handlers : Flambda.continuation_handlers)
+let for_continuation ~body ~unused ~(handlers : Flambda.Continuation_handler.ts)
       ~original ~recursive : Flambda.Expr.t =
   if Parameter.Set.is_empty unused then
     original
   else
     let handlers =
       Continuation.Map.fold (fun cont
-              (handler : Flambda.continuation_handler) handlers ->
+              (handler : Flambda.Continuation_handler.t) handlers ->
           let to_remove =
             Parameter.Set.inter unused (Parameter.Set.of_list handler.params)
           in

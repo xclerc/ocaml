@@ -69,7 +69,7 @@ end
 
 type being_placed = {
   handlers : Flambda.let_cont_handlers;
-  handlers_as_map : Flambda.continuation_handlers;
+  handlers_as_map : Flambda.Continuation_handler.ts;
   needed_fvs : Variable.Set.t;
 }
 
@@ -182,7 +182,7 @@ Variable.Set.print needed_fvs;
     in
     let enter_continuation_handlers ~handlers ~state =
       Continuation.Map.fold (fun name
-              (handler : Flambda.continuation_handler) state ->
+              (handler : Flambda.Continuation_handler.t) state ->
           let params =
             Variable.Set.of_list (Parameter.List.vars handler.params)
           in

@@ -225,7 +225,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       close t body_env let_cont.body
     end else begin
       let handler_env, params = Env.add_vars_like env let_cont.params in
-      let handler : Flambda.continuation_handler =
+      let handler : Flambda.Continuation_handler.t =
         { params = Parameter.List.wrap params;
           stub = false;
           is_exn_handler = let_cont.is_exn_handler;

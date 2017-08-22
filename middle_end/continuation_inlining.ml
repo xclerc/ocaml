@@ -83,7 +83,7 @@ let for_toplevel_expression expr r =
       | Let_cont { body; handlers = Recursive handlers; } ->
         let body = substitute env body in
         let handlers =
-          Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
+          Continuation.Map.map (fun (handler : Flambda.Continuation_handler.t) ->
               { handler with
                 (* Do not inline continuations into recursive continuations.
                    This can cause high nesting depth of [catch rec] in the
@@ -94,7 +94,7 @@ let for_toplevel_expression expr r =
             handlers
         in
         Continuation.Map.iter (fun name
-                (handler : Flambda.continuation_handler) ->
+                (handler : Flambda.Continuation_handler.t) ->
             let approx =
               Continuation_approx.create ~name
                 ~handlers:(Recursive handlers)
@@ -106,7 +106,7 @@ let for_toplevel_expression expr r =
       | Apply_cont (cont, trap_action, args) ->
         begin match Continuation.Map.find cont env with
         | exception Not_found -> expr
-        | (handler : Flambda.continuation_handler) ->
+        | (handler : Flambda.Continuation_handler.t) ->
           begin match trap_action with
           | None -> ()
           | Some _ ->

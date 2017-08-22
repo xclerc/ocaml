@@ -37,5 +37,5 @@ val from_function's_specialised_args
 (** For continuations, all parameters are checked for potential projections. *)
 val from_continuation
    : uses:Simplify_aux.Continuation_uses.t
-  -> handler:Flambda.continuation_handler
+  -> handler:Flambda.Continuation_handler.t
   -> Projection.Set.t

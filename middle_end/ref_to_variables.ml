@@ -61,7 +61,7 @@ let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
     | Let_cont { body; handlers = Recursive handlers; } ->
       loop body;
       Continuation.Map.iter (fun _cont
-            (handler : Flambda.continuation_handler) ->
+            (handler : Flambda.Continuation_handler.t) ->
           loop handler.handler)
         handlers
     | Apply _ | Apply_cont _ | Switch _ ->

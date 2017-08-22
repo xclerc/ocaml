@@ -43,7 +43,7 @@ let environment_for_simplification ~env ~old_handlers =
         E.set_never_inline (E.set_freshening env freshening)))
   in
   let env =
-    Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+    Continuation.Map.fold (fun cont (handler : Flambda.Continuation_handler.t)
               env ->
         let cont = Freshening.apply_static_exception (E.freshening env) cont in
         let approx =
@@ -58,7 +58,7 @@ let environment_for_simplification ~env ~old_handlers =
 
 let handlers_for_simplification ~old_handlers ~newly_specialised_args
       ~entry_point_cont ~freshening ~invariant_params_flow =
-  Continuation.Map.fold (fun cont (old_handler : Flambda.continuation_handler)
+  Continuation.Map.fold (fun cont (old_handler : Flambda.Continuation_handler.t)
           new_handlers ->
       let wrong_spec_args =
         Variable.Set.inter (Variable.Map.keys old_handler.specialised_args)
@@ -139,7 +139,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
      Apart from this information, the [r] used for simplification is
      empty. *)
   Continuation.Map.fold (fun cont
-          (handler : Flambda.continuation_handler) r ->
+          (handler : Flambda.Continuation_handler.t) r ->
       let join_approxs =
         match Continuation.Map.find cont definitions_with_uses with
         | exception Not_found ->
@@ -158,7 +158,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
       let specialised_args =
         match Continuation.Map.find freshened_cont new_handlers with
         | exception Not_found -> assert false  (* see above *)
-        | (handler : Flambda.continuation_handler) -> handler.specialised_args
+        | (handler : Flambda.Continuation_handler.t) -> handler.specialised_args
       in
       let args_approxs =
         List.map2 (fun param join_approx ->
@@ -198,7 +198,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
    parameters flow information.  This saves multiple rounds of simplification
    being required to propagate around mutually-recursive continuations.
 *)
-let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
+let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handler.ts)
       ~(newly_specialised_args : Flambda.specialised_args)
       ~invariant_params_flow ~env ~(recursive : Asttypes.rec_flag)
       ~simplify_let_cont_handlers ~definitions_with_uses
@@ -255,7 +255,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
     let module W = Inlining_cost.Whether_sufficient_benefit in
     let wsb =
       let _originals =
-        List.map (fun (handler : Flambda.continuation_handler) ->
+        List.map (fun (handler : Flambda.Continuation_handler.t) ->
             handler.handler)
           (Continuation.Map.data old_handlers)
       in
@@ -263,7 +263,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
         match (new_handlers : Flambda.let_cont_handlers) with
         | Nonrecursive { handler; _ } -> [handler.handler]
         | Recursive handlers ->
-          List.map (fun (handler : Flambda.continuation_handler) ->
+          List.map (fun (handler : Flambda.Continuation_handler.t) ->
               handler.handler)
             (Continuation.Map.data handlers)
       in
@@ -312,7 +312,7 @@ let handlers_and_invariant_params ~cont ~approx ~backend =
       in
       Some (handlers, invariant_params, invariant_params_flow)
 
-let can_specialise_param ~(handler : Flambda.continuation_handler) ~param
+let can_specialise_param ~(handler : Flambda.Continuation_handler.t) ~param
       ~arg_approx ~invariant_params =
   (not handler.stub)
     && Variable.Map.mem param invariant_params
@@ -320,7 +320,7 @@ let can_specialise_param ~(handler : Flambda.continuation_handler) ~param
     && T.useful arg_approx
 
 let examine_use ~specialisations ~cont
-      ~(handler : Flambda.continuation_handler) ~invariant_params
+      ~(handler : Flambda.Continuation_handler.t) ~invariant_params
       ~invariant_params_flow ~handlers ~recursive
       ~(use : Simplify_aux.Continuation_uses.Use.t) =
   let module CA = Continuation.With_args in
@@ -503,7 +503,7 @@ let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
         let done_something = ref false in
         let f handlers =
           Continuation.Map.mapi (fun name
-                  (handler : Flambda.continuation_handler) ->
+                  (handler : Flambda.Continuation_handler.t) ->
               let placement : Placement.t = Just_inside_continuation name in
               begin match place ~placement ~around:handler.handler with
               | None -> handler

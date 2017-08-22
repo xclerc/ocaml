@@ -127,10 +127,10 @@ and same_continuation_handlers handlers =
 and same_continuation_handler
       ({ params = params1; stub = stub1;
          handler = handler1; specialised_args = specialised_args1; }
-        : Flambda.continuation_handler)
+        : Flambda.Continuation_handler.t)
       ({ params = params2; stub = stub2;
          handler = handler2; specialised_args = specialised_args2; }
-        : Flambda.continuation_handler) =
+        : Flambda.Continuation_handler.t) =
   Parameter.List.compare params1 params2 = 0
     && stub1 = stub2
     && same handler1 handler2
@@ -237,8 +237,8 @@ let toplevel_substitution sb tree =
     | Let _ | Proved_unreachable -> flam
     | Let_cont { body; handlers; } ->
       let f handlers =
-        Continuation.Map.map (fun (handler : Flambda.continuation_handler)
-                : Flambda.continuation_handler ->
+        Continuation.Map.map (fun (handler : Flambda.Continuation_handler.t)
+                : Flambda.Continuation_handler.t ->
             { handler with
               specialised_args =
                 (Variable.Map.map (fun (spec_to : Flambda.specialised_to) ->
@@ -826,11 +826,11 @@ let parameters_specialised_to_the_same_variable
     function_decls.funs
 
 type with_wrapper =
-  | Unchanged of { handler : Flambda.continuation_handler; }
+  | Unchanged of { handler : Flambda.Continuation_handler.t; }
   | With_wrapper of {
       new_cont : Continuation.t;
-      new_handler : Flambda.continuation_handler;
-      wrapper_handler : Flambda.continuation_handler;
+      new_handler : Flambda.Continuation_handler.t;
+      wrapper_handler : Flambda.Continuation_handler.t;
     }
 
 let build_let_cont_with_wrappers ~body ~(recursive : Asttypes.rec_flag)

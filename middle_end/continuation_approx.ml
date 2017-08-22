@@ -17,8 +17,8 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type continuation_handlers =
-  | Nonrecursive of Flambda.continuation_handler
-  | Recursive of Flambda.continuation_handlers
+  | Nonrecursive of Flambda.Continuation_handler.t
+  | Recursive of Flambda.Continuation_handler.ts
 
 type t = {
   name : Continuation.t;

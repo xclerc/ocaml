@@ -203,7 +203,7 @@ module For_continuations = struct
   end
 
   module Declaration = struct
-    type t = Flambda.continuation_handler
+    type t = Flambda.Continuation_handler.t
     let params (t : t) = Parameter.List.vars t.params
     let body (t : t) = t.handler
 
@@ -213,7 +213,7 @@ module For_continuations = struct
   end
 
   module Declarations = struct
-    type t = Flambda.continuation_handlers
+    type t = Flambda.Continuation_handler.ts
     let declarations (t : t) = t
 
     let function_variable_aliases _t ~backend:_ = Variable.Map.empty

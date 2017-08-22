@@ -21,7 +21,7 @@ module H = Unbox_one_variable.How_to_unbox
 
 let find_unboxings ~continuation_uses ~handlers =
   Continuation.Map.filter_map handlers
-    ~f:(fun cont (handler : Flambda.continuation_handler) ->
+    ~f:(fun cont (handler : Flambda.Continuation_handler.t) ->
       if handler.stub then
         None
       else
@@ -134,7 +134,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
           match Continuation.Map.find cont unboxings_by_cont with
           | exception Not_found -> do_not_unbox ()
           | unboxings ->
-            let handler : Flambda.continuation_handler =
+            let handler : Flambda.Continuation_handler.t =
               match Continuation.Map.find cont handlers with
               | exception Not_found -> assert false
               | handler -> handler

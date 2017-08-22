@@ -1108,7 +1108,7 @@ and simplify_over_application env r ~args ~args_types ~continuation
     Misc.Stdlib.List.split_at arity args_types
   in
   let func_var = Variable.create "full_apply" in
-  let handler : Flambda.continuation_handler =
+  let handler : Flambda.Continuation_handler.t =
     { stub = false;
       is_exn_handler = false;
       params = [Parameter.wrap func_var];
@@ -1725,7 +1725,7 @@ and filter_defining_expr_of_let r var (defining_expr : Flambda.Named.t)
     r, var, Some defining_expr
 
 and simplify_let_cont_handler ~env ~r ~cont
-      ~(handler : Flambda.continuation_handler) ~args_types =
+      ~(handler : Flambda.Continuation_handler.t) ~args_types =
   let { Flambda. params = vars; stub; is_exn_handler; handler;
     specialised_args; } = handler
   in
@@ -1841,7 +1841,7 @@ and simplify_let_cont_handler ~env ~r ~cont
         | None, None -> None
         | _ -> Some spec_to)
   in
-  let handler : Flambda.continuation_handler =
+  let handler : Flambda.Continuation_handler.t =
     { params = Parameter.List.wrap vars;
       stub;
       is_exn_handler;
@@ -1878,7 +1878,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
     (* First we simplify the continuations themselves. *)
     let handlers =
       Continuation.Map.fold (fun cont
-                (handler : Flambda.continuation_handler) handlers ->
+                (handler : Flambda.Continuation_handler.t) handlers ->
           let cont' = Freshening.apply_static_exception freshening cont in
           let args_types =
             let unknown () =
@@ -1929,7 +1929,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
        inlining and specialisation transformations. *)
     let r =
       Continuation.Map.fold (fun cont
-              ((_handler : Flambda.continuation_handler), r_from_handler) r ->
+              ((_handler : Flambda.Continuation_handler.t), r_from_handler) r ->
           if continuation_unused cont then r
           else R.union r r_from_handler)
         handlers
@@ -1937,7 +1937,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
     in
     let r, handlers =
       Continuation.Map.fold (fun cont
-              ((handler : Flambda.continuation_handler), _r_from_handler)
+              ((handler : Flambda.Continuation_handler.t), _r_from_handler)
               (r, handlers) ->
           let r, uses = R.exit_scope_catch r env cont in
           if continuation_unused cont then
@@ -1958,7 +1958,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
     end else
       let r, handlers =
         Continuation.Map.fold (fun cont
-                ((handler : Flambda.continuation_handler), uses)
+                ((handler : Flambda.Continuation_handler.t), uses)
                 (r, handlers') ->
             let ty =
               let num_params = List.length handler.params in
@@ -2000,7 +2000,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
           if Continuation.Map.cardinal handlers > 1 then None
           else
             match Continuation.Map.bindings handlers with
-            | [name, (handler : Flambda.continuation_handler)] ->
+            | [name, (handler : Flambda.Continuation_handler.t)] ->
               let fcs = Flambda.free_continuations handler.handler in
               if not (Continuation.Set.mem name fcs) then
                 Some (name, handler)
@@ -2021,7 +2021,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
   let conts_and_types, freshening =
     let normal_case ~handlers =
       Continuation.Map.fold (fun name
-              (handler : Flambda.continuation_handler)
+              (handler : Flambda.Continuation_handler.t)
               (conts_and_types, freshening) ->
           let freshened_name, freshening =
             Freshening.add_static_exception freshening name
@@ -2162,7 +2162,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
     | Some _handlers ->
       let args_types =
         Continuation.Map.mapi (fun cont
-                  (handler : Flambda.continuation_handler) ->
+                  (handler : Flambda.Continuation_handler.t) ->
             let num_params = List.length handler.params in
             let cont =
               Freshening.apply_static_exception (E.freshening body_env) cont

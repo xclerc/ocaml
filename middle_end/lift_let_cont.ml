@@ -167,7 +167,7 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
     | Recursive -> Continuation.Map.keys handlers
   in
   let handler_terminators_and_states =
-    Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
+    Continuation.Map.map (fun (handler : Flambda.Continuation_handler.t) ->
         let state =
           State.create
             ~variables_to_remain:(Parameter.List.vars handler.params)
@@ -215,7 +215,7 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
           bind_things_to_remain ~rev_things:rev_to_remain
             ~around:handler_terminator
         in
-        let handler : Flambda.continuation_handler =
+        let handler : Flambda.Continuation_handler.t =
           { handler with
             handler = new_handler;
           }
@@ -313,13 +313,13 @@ and lift_expr (expr : Flambda.Expr.t) ~state =
     Flambda.Let_cont { body; handlers; }, state
   | Let_cont { body; handlers = Recursive handlers; }
       when Continuation.Map.exists
-        (fun _ (handler : Flambda.continuation_handler) ->
+        (fun _ (handler : Flambda.Continuation_handler.t) ->
           handler.is_exn_handler)
         handlers ->
     let handlers : Flambda.let_cont_handlers =
       Recursive (Continuation.Map.map (
-          fun (handler : Flambda.continuation_handler)
-                  : Flambda.continuation_handler ->
+          fun (handler : Flambda.Continuation_handler.t)
+                  : Flambda.Continuation_handler.t ->
             { handler with
               handler = lift handler.handler;
             })

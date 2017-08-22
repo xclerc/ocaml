@@ -31,7 +31,7 @@ let apply_on_subexpressions f f_named (flam : Flambda.Expr.t) =
   | Let_cont { body; handlers = Recursive handlers; } ->
     f body;
     Continuation.Map.iter
-      (fun _cont ({ handler; _ } : Flambda.continuation_handler) -> f handler)
+      (fun _cont ({ handler; _ } : Flambda.Continuation_handler.t) -> f handler)
       handlers
 
 let map_subexpressions f f_named (tree:Flambda.Expr.t) : Flambda.Expr.t =
@@ -70,7 +70,7 @@ let map_subexpressions f f_named (tree:Flambda.Expr.t) : Flambda.Expr.t =
       let something_changed = ref false in
       let candidate_handlers =
         Continuation.Map.map
-          (fun (handler : Flambda.continuation_handler) ->
+          (fun (handler : Flambda.Continuation_handler.t) ->
             let new_handler = f handler.handler in
             if not (new_handler == handler.handler) then begin
               something_changed := true
@@ -270,7 +270,7 @@ let map_general ~toplevel f f_named tree =
             let something_changed = ref false in
             let candidate_handlers =
               Continuation.Map.map
-                (fun (handler : Flambda.continuation_handler) ->
+                (fun (handler : Flambda.Continuation_handler.t) ->
                   let new_handler = aux handler.handler in
                   if not (new_handler == handler.handler) then begin
                     something_changed := true
