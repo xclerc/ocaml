@@ -19,17 +19,17 @@
 module Constant_defining_value = Flambda.Constant_defining_value
 
 let update_constant_for_sharing sharing_symbol_tbl const
-      : Flambda.constant_defining_value =
+      : Flambda_static.Constant_defining_value.t =
   let substitute_symbol sym =
     match Symbol.Tbl.find sharing_symbol_tbl sym with
     | exception Not_found -> sym
     | symbol -> symbol
   in
-  match (const:Flambda.constant_defining_value) with
+  match (const:Flambda_static.Constant_defining_value.t) with
   | Allocated_const _ -> const
   | Block (tag, fields) ->
-    let subst_field (field:Flambda.constant_defining_value_block_field) :
-      Flambda.constant_defining_value_block_field =
+    let subst_field (field:Flambda_static.Constant_defining_value.t_block_field) :
+      Flambda_static.Constant_defining_value.t_block_field =
       match field with
       | Const _ -> field
       | Symbol sym ->
@@ -45,7 +45,7 @@ let update_constant_for_sharing sharing_symbol_tbl const
   | Project_closure (sym, closure_id) ->
     Project_closure (substitute_symbol sym, closure_id)
 
-let cannot_share (const : Flambda.constant_defining_value) =
+let cannot_share (const : Flambda_static.Constant_defining_value.t) =
   match const with
   (* Strings and float arrays are mutable; we never share them. *)
   | Allocated_const ((String _) | (Float_array _)) -> true

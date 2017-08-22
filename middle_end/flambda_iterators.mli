@@ -133,7 +133,7 @@ val iter_named_of_program
 
 val iter_constant_defining_values_on_program
   : Flambda_static.Program.t
-  -> f:(Flambda.constant_defining_value -> unit)
+  -> f:(Flambda_static.Constant_defining_value.t -> unit)
   -> unit
 
 val iter_apply_on_program

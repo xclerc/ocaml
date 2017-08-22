@@ -435,7 +435,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
         mark_loop ~toplevel:false [] ffunc.body)
       function_decls.funs
 
-  let mark_constant_defining_value (const:Flambda.constant_defining_value) =
+  let mark_constant_defining_value (const:Flambda_static.Constant_defining_value.t) =
     match const with
     | Allocated_const _
     | Block _

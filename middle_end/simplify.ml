@@ -2536,7 +2536,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.Set_of_closures.t)
 
 let constant_defining_value_type
     env
-    (constant_defining_value:Flambda.constant_defining_value) =
+    (constant_defining_value:Flambda_static.Constant_defining_value.t) =
   match constant_defining_value with
   | Allocated_const const ->
     type_for_allocated_const const
@@ -2631,7 +2631,7 @@ let define_let_rec_symbol_type env defs =
 
 let simplify_constant_defining_value
     env r symbol
-    (constant_defining_value : Flambda.constant_defining_value) =
+    (constant_defining_value : Flambda_static.Constant_defining_value.t) =
   let r, constant_defining_value, ty =
     match constant_defining_value with
     (* No simplifications are possible for [Allocated_const] or [Block]. *)
@@ -2654,7 +2654,7 @@ let simplify_constant_defining_value
       let set_of_closures, r, _freshening =
         simplify_set_of_closures env r set_of_closures
       in
-      r, ((Set_of_closures set_of_closures) : Flambda.constant_defining_value),
+      r, ((Set_of_closures set_of_closures) : Flambda_static.Constant_defining_value.t),
         R.inferred_type r
     | Project_closure (set_of_closures_symbol, closure_id) ->
       (* No simplifications are necessary here. *)

@@ -26,7 +26,7 @@ type t = {
   symbol_for_global' : (Ident.t -> Symbol.t);
   filename : string;
   mutable imported_symbols : Symbol.Set.t;
-  mutable declared_symbols : (Symbol.t * Flambda.constant_defining_value) list;
+  mutable declared_symbols : (Symbol.t * Flambda_static.Constant_defining_value.t) list;
 }
 
 (** Generate a wrapper ("stub") function that accepts a tuple argument and
@@ -70,8 +70,8 @@ let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
     ~specialise:Default_specialise ~is_a_functor:false
     ~closure_origin:(Closure_origin.create (Closure_id.wrap closure_bound_var))
 
-let register_const t (constant:Flambda.constant_defining_value) name
-      : Flambda.constant_defining_value_block_field * string =
+let register_const t (constant:Flambda_static.Constant_defining_value.t) name
+      : Flambda_static.Constant_defining_value.t_block_field * string =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
   (* Create a variable to ensure uniqueness of the symbol *)
   let var = Variable.create ~current_compilation_unit name in
@@ -83,7 +83,7 @@ let register_const t (constant:Flambda.constant_defining_value) name
   Symbol symbol, name
 
 let rec declare_const t (const : Lambda.structured_constant)
-      : Flambda.constant_defining_value_block_field * string =
+      : Flambda_static.Constant_defining_value.t_block_field * string =
   match const with
   | Const_base (Const_int c) -> Const (Int c), "int"
   | Const_base (Const_char c) -> Const (Char c), "char"
@@ -112,7 +112,7 @@ let rec declare_const t (const : Lambda.structured_constant)
       (Allocated_const (Immutable_float_array (List.map float_of_string c)))
       "float_array"
   | Const_block (tag, consts) ->
-    let const : Flambda.constant_defining_value =
+    let const : Flambda_static.Constant_defining_value.t =
       Block (Tag.create_exn tag,
              List.map (fun c -> fst (declare_const t c)) consts)
     in

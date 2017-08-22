@@ -706,13 +706,13 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
         specialised_args
   in
   let loop_constant_defining_value env
-        (const : Flambda.constant_defining_value) =
+        (const : Flambda_static.Constant_defining_value.t) =
     match const with
     | Flambda.Allocated_const c ->
       ignore_allocated_const c
     | Flambda.Block (tag,fields) ->
       ignore_tag tag;
-      List.iter (fun (fields : Flambda.constant_defining_value_block_field) ->
+      List.iter (fun (fields : Flambda_static.Constant_defining_value.t_block_field) ->
           match fields with
           | Const c -> ignore_const c
           | Symbol s -> check_symbol_is_bound env s)

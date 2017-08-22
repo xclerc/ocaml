@@ -49,7 +49,7 @@ type initialize_symbol_field = Variable.t option
 type definitions = {
   variable : constant_defining_value Variable.Tbl.t;
   initialize_symbol : initialize_symbol_field list Symbol.Tbl.t;
-  symbol : Flambda.constant_defining_value Symbol.Tbl.t;
+  symbol : Flambda_static.Constant_defining_value.t Symbol.Tbl.t;
 }
 
 let print_constant_project_var ppf (project_var : constant_project_var) =

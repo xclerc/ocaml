@@ -19,7 +19,7 @@
 let dependency (expr:Flambda.Expr.t) = Flambda.free_symbols expr
 
 (* CR-soon pchambart: copied from lift_constant.  Needs remerging *)
-let constant_dependencies (const:Flambda.constant_defining_value) =
+let constant_dependencies (const:Flambda_static.Constant_defining_value.t) =
   let closure_dependencies (set_of_closures:Flambda.Set_of_closures.t) =
     Flambda.free_symbols_named (Set_of_closures set_of_closures)
   in
@@ -28,7 +28,7 @@ let constant_dependencies (const:Flambda.constant_defining_value) =
   | Block (_, fields) ->
     let symbol_fields =
       Misc.Stdlib.List.filter_map (function
-          | (Symbol s : Flambda.constant_defining_value_block_field) ->
+          | (Symbol s : Flambda_static.Constant_defining_value.t_block_field) ->
             Some s
           | Flambda.Const _ -> None)
         fields

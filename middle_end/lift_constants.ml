@@ -204,7 +204,7 @@ let variable_field_definition
     (var_to_symbol_tbl : Symbol.t Variable.Tbl.t)
     (var_to_definition_tbl :
       Alias_analysis.constant_defining_value Variable.Tbl.t)
-    (var : Variable.t) : Flambda.constant_defining_value_block_field =
+    (var : Variable.t) : Flambda_static.Constant_defining_value.t_block_field =
   try
     Symbol (Variable.Tbl.find var_to_symbol_tbl var)
   with Not_found ->
@@ -223,7 +223,7 @@ let resolve_variable
     (var_to_symbol_tbl : Symbol.t Variable.Tbl.t)
     (var_to_definition_tbl :
       Alias_analysis.constant_defining_value Variable.Tbl.t)
-    (var : Variable.t) : Flambda.constant_defining_value_block_field =
+    (var : Variable.t) : Flambda_static.Constant_defining_value.t_block_field =
   match Variable.Map.find var aliases with
   | exception Not_found ->
     variable_field_definition var_to_symbol_tbl var_to_definition_tbl var
@@ -263,8 +263,8 @@ let translate_constant_set_of_closures
     (var_to_symbol_tbl : Symbol.t Variable.Tbl.t)
     (var_to_definition_tbl:
       Alias_analysis.constant_defining_value Variable.Tbl.t)
-    (constant_defining_values : Flambda.constant_defining_value Symbol.Map.t) =
-  Symbol.Map.map (fun (const : Flambda.constant_defining_value) ->
+    (constant_defining_values : Flambda_static.Constant_defining_value.t Symbol.Map.t) =
+  Symbol.Map.map (fun (const : Flambda_static.Constant_defining_value.t) ->
       match const with
       | Flambda.Allocated_const _
       | Flambda.Block _
@@ -322,11 +322,11 @@ let translate_definition_and_resolve_alias inconstants
     (var_to_symbol_tbl : Symbol.t Variable.Tbl.t)
     (var_to_definition_tbl :
       Alias_analysis.constant_defining_value Variable.Tbl.t)
-    (symbol_definition_map : Flambda.constant_defining_value Symbol.Map.t)
+    (symbol_definition_map : Flambda_static.Constant_defining_value.t Symbol.Map.t)
     (project_closure_map : Symbol.t Symbol.Map.t)
     (definition : Alias_analysis.constant_defining_value)
     ~(backend : (module Backend_intf.S))
-    : Flambda.constant_defining_value option =
+    : Flambda_static.Constant_defining_value.t option =
   let resolve_float_array_involving_variables
         ~(mutability : Asttypes.mutable_flag) ~vars =
     (* Resolve an [Allocated_const] of the form:
@@ -559,14 +559,14 @@ let translate_definitions_and_resolve_alias
 
 (* Resorting of graph including Initialize_symbol *)
 let constant_dependencies ~backend:_
-        (const : Flambda.constant_defining_value) =
+        (const : Flambda_static.Constant_defining_value.t) =
   match const with
   | Allocated_const _ -> Symbol.Set.empty
   | Block (_, fields) ->
     let symbol_fields =
       Misc.Stdlib.List.filter_map
         (function
-          | (Symbol s : Flambda.constant_defining_value_block_field) -> Some s
+          | (Symbol s : Flambda_static.Constant_defining_value.t_block_field) -> Some s
           | Flambda.Const _ -> None)
         fields
     in
@@ -666,7 +666,7 @@ let add_definitions_of_symbols constant_definitions initialize_symbol_tbl
 
 let introduce_free_variables_in_set_of_closures
     (var_to_block_field_tbl :
-      Flambda.constant_defining_value_block_field Variable.Tbl.t)
+      Flambda_static.Constant_defining_value.t_block_field Variable.Tbl.t)
     ({ Flambda.function_decls; free_vars; specialised_args;
         direct_call_surrogates; }
       as set_of_closures) =
@@ -757,7 +757,7 @@ let introduce_free_variables_in_set_of_closures
 
 let rewrite_project_var
       (var_to_block_field_tbl
-        : Flambda.constant_defining_value_block_field Variable.Tbl.t)
+        : Flambda_static.Constant_defining_value.t_block_field Variable.Tbl.t)
       (project_var : Flambda.project_var) ~original : Flambda.Named.t =
   match Closure_id.Map.get_singleton project_var.var with
   | None -> (* it cannot be a constant, no rewriting *)
@@ -771,9 +771,9 @@ let rewrite_project_var
 
 let introduce_free_variables_in_sets_of_closures
     (var_to_block_field_tbl:
-      Flambda.constant_defining_value_block_field Variable.Tbl.t)
-    (translate_definition : Flambda.constant_defining_value Symbol.Map.t) =
-  Symbol.Map.map (fun (def : Flambda.constant_defining_value) ->
+      Flambda_static.Constant_defining_value.t_block_field Variable.Tbl.t)
+    (translate_definition : Flambda_static.Constant_defining_value.t Symbol.Map.t) =
+  Symbol.Map.map (fun (def : Flambda_static.Constant_defining_value.t) ->
       match def with
       | Allocated_const _
       | Block _
@@ -811,7 +811,7 @@ let program_symbols ~backend (program : Flambda_static.Program.t) =
   let effect_tbl = Symbol.Tbl.create 42 in
   let symbol_definition_tbl = Symbol.Tbl.create 42 in
   let add_project_closure_definitions def_symbol
-        (const : Flambda.constant_defining_value) =
+        (const : Flambda_static.Constant_defining_value.t) =
     match const with
     | Set_of_closures { function_decls = { funs } } ->
         Variable.Map.iter (fun fun_var _ ->
@@ -910,7 +910,7 @@ let replace_definitions_in_initialize_symbol_and_effects
 
 (* CR-soon mshinwell: Update the name of [project_closure_map]. *)
 let project_closure_map symbol_definition_map =
-  Symbol.Map.fold (fun sym (const : Flambda.constant_defining_value) acc ->
+  Symbol.Map.fold (fun sym (const : Flambda_static.Constant_defining_value.t) acc ->
       match const with
       | Project_closure (set_of_closures, _) ->
         Symbol.Map.add sym set_of_closures acc
@@ -1000,8 +1000,8 @@ let lift_constants (program : Flambda_static.Program.t) ~backend =
     (* Add previous Let_symbol to the newly discovered ones *)
     Symbol.Map.union
       (fun _sym
-        (c1:Flambda.constant_defining_value)
-        (c2:Flambda.constant_defining_value) ->
+        (c1:Flambda_static.Constant_defining_value.t)
+        (c2:Flambda_static.Constant_defining_value.t) ->
         match c1, c2 with
         | Project_closure (s1, closure_id1),
           Project_closure (s2, closure_id2) when
@@ -1047,7 +1047,7 @@ let lift_constants (program : Flambda_static.Program.t) ~backend =
       expr
   in
   let constant_definitions =
-    Symbol.Map.map (fun (const : Flambda.constant_defining_value) ->
+    Symbol.Map.map (fun (const : Flambda_static.Constant_defining_value.t) ->
         match const with
         | Allocated_const _ | Block _ | Project_closure _ -> const
         | Set_of_closures set_of_closures ->

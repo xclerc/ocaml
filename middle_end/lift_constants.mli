@@ -43,7 +43,7 @@
     variables known to be constant and their defining expressions examined.
     Based on the results of [Alias_analysis], we simplify the destructive
     elements within the defining expressions (specifically, projection of
-    fields from blocks), to eventually yield [Flambda.constant_defining_value]s
+    fields from blocks), to eventually yield [Flambda_static.Constant_defining_value.t]s
     that are entirely constructive.  These will be bound to symbols in the
     resulting program.
 
