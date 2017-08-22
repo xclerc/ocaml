@@ -1024,7 +1024,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
           or the function's parameter list.  Set of closures: %a"
         Variable.Set.print vars
         Variable.print fun_var
-        Flambda.print_set_of_closures set_of_closures
+        Flambda.Set_of_closures.print set_of_closures
     | Function_decls_have_overlapping_parameters vars ->
       Format.eprintf ">> Function declarations whose parameters overlap: \
           %a"

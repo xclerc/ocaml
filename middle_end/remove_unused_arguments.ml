@@ -214,14 +214,14 @@ let separate_unused_arguments_in_set_of_closures set_of_closures ~backend =
   | None ->
     if dump then
       Format.eprintf "No change for Remove_unused_arguments:@ %a@.@."
-        Flambda.print_set_of_closures set_of_closures;
+        Flambda.Set_of_closures.print set_of_closures;
     None
   | Some result ->
     if dump then
       Format.eprintf "Before Remove_unused_arguments:@ %a@.@.\
                       After Remove_unused_arguments:@ %a@.@."
-        Flambda.print_set_of_closures set_of_closures
-        Flambda.print_set_of_closures result;
+        Flambda.Set_of_closures.print set_of_closures
+        Flambda.Set_of_closures.print result;
     Some result
 
 let separate_unused_arguments_in_closures_expr tree ~backend =

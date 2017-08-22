@@ -521,7 +521,7 @@ let inline_by_copying_function_declaration ~env ~r
        declaration(s), but with variables (not yet bound) in place of the
        arguments. *)
     let duplicated_application : Flambda.Expr.t =
-      let project_closure : Flambda.project_closure =
+      let project_closure : Projection.Project_closure =
         { set_of_closures = set_of_closures_var;
           closure_id = Closure_id.Set.singleton closure_id_being_applied;
         }

@@ -186,13 +186,13 @@ and same_set_of_closures (c1 : Flambda.Set_of_closures.t)
     && Variable.Map.equal Flambda.equal_specialised_to c1.specialised_args
         c2.specialised_args
 
-and same_project_closure (s1 : Flambda.project_closure)
-      (s2 : Flambda.project_closure) =
+and same_project_closure (s1 : Projection.Project_closure)
+      (s2 : Projection.Project_closure) =
   Variable.equal s1.set_of_closures s2.set_of_closures
     && Closure_id.Set.equal s1.closure_id s2.closure_id
 
-and same_move_within_set_of_closures (m1 : Flambda.move_within_set_of_closures)
-      (m2 : Flambda.move_within_set_of_closures) =
+and same_move_within_set_of_closures (m1 : Projection.Move_within_set_of_closures)
+      (m2 : Projection.Move_within_set_of_closures) =
   Variable.equal m1.closure m2.closure
     && Closure_id.Map.equal Closure_id.equal m1.move m2.move
 

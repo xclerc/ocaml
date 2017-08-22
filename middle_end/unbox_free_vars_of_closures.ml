@@ -164,8 +164,8 @@ let run ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
 
 let run ~env ~set_of_closures =
   Pass_wrapper.with_dump ~pass_name ~input:set_of_closures
-    ~print_input:Flambda.print_set_of_closures
+    ~print_input:Flambda.Set_of_closures.print
     ~print_output:(fun ppf (_bindings, set_of_closures, _) ->
       (* CR mshinwell: print bindings *)
-      Flambda.print_set_of_closures ppf set_of_closures)
+      Flambda.Set_of_closures.print ppf set_of_closures)
     ~f:(fun () -> run ~env ~set_of_closures)

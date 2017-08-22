@@ -188,7 +188,7 @@ let reference_recursive_function_directly env closure_id =
 
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)
-let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
+let simplify_project_closure env r ~(project_closure : Projection.Project_closure)
       : (Variable.t * Flambda.Named.t) list
           * Flambda.Named.t_reachable * R.t =
   simplify_free_variable_named env project_closure.set_of_closures
@@ -287,7 +287,7 @@ let simplify_project_closure env r ~(project_closure : Flambda.project_closure)
    closures, returns another closure (possibly the same one) within the
    same set. *)
 let simplify_move_within_set_of_closures env r
-      ~(move_within_set_of_closures : Flambda.move_within_set_of_closures)
+      ~(move_within_set_of_closures : Projection.Move_within_set_of_closures)
       : (Variable.t * Flambda.Named.t) list
           * Flambda.Named.t_reachable * R.t =
   simplify_free_variable_named env move_within_set_of_closures.closure
@@ -383,7 +383,7 @@ let simplify_move_within_set_of_closures env r
         assert false
       | None, None ->
         let ty = T.closure ty_map in
-        let move_within : Flambda.move_within_set_of_closures =
+        let move_within : Projection.Move_within_set_of_closures =
           { closure; move; }
         in
         [], Reachable (Move_within_set_of_closures move_within), ret r ty
@@ -408,7 +408,7 @@ let simplify_move_within_set_of_closures env r
                 (* A variable bound to the set of closures is in scope,
                   meaning we can rewrite the [Move_within_set_of_closures] to a
                   [Project_closure]. *)
-                let project_closure : Flambda.project_closure =
+                let project_closure : Projection.Project_closure =
                   { set_of_closures = set_of_closures_var;
                     closure_id = Closure_id.Set.singleton move_to;
                   }
@@ -422,7 +422,7 @@ let simplify_move_within_set_of_closures env r
                 match set_of_closures_symbol with
                 | Some set_of_closures_symbol ->
                   let set_of_closures_var = Variable.create "symbol" in
-                  let project_closure : Flambda.project_closure =
+                  let project_closure : Projection.Project_closure =
                     { set_of_closures = set_of_closures_var;
                       closure_id = Closure_id.Set.singleton move_to;
                     }
@@ -440,7 +440,7 @@ let simplify_move_within_set_of_closures env r
                 | None ->
                   (* The set of closures is not available in scope, and we
                     have no other information by which to simplify the move. *)
-                  let move_within : Flambda.move_within_set_of_closures =
+                  let move_within : Projection.Move_within_set_of_closures =
                     { closure; move; }
                   in
                   let ty = T.closure ty_map in
@@ -2649,7 +2649,7 @@ let simplify_constant_defining_value
       if Variable.Map.cardinal set_of_closures.free_vars <> 0 then begin
         Misc.fatal_errorf "Set of closures bound by [Let_symbol] is not \
                            closed: %a"
-          Flambda.print_set_of_closures set_of_closures
+          Flambda.Set_of_closures.print set_of_closures
       end;
       let set_of_closures, r, _freshening =
         simplify_set_of_closures env r set_of_closures

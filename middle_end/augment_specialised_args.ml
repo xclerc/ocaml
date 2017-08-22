@@ -151,7 +151,7 @@ module Processed_what_to_specialise = struct
             not.  The projection was: %a.  Set of closures: %a"
           Variable.print inner_var
           Projection.print projection
-          Flambda.print_set_of_closures t.set_of_closures
+          Flambda.Set_of_closures.print t.set_of_closures
     in
     Projection.map_projecting_from projection ~f:find_outer_var
 
@@ -194,7 +194,7 @@ module Processed_what_to_specialise = struct
                 of %a in %a"
               Variable.print existing_inner_var
               Variable.print fun_var
-              Flambda.print_set_of_closures t.set_of_closures
+              Flambda.Set_of_closures.print t.set_of_closures
           | existing_outer_var -> existing_outer_var.var, t
           end
         | Projection_from_existing_specialised_arg projection ->
@@ -406,8 +406,8 @@ let check_invariants ~pass_name ~(set_of_closures : Flambda.Set_of_closures.t)
                         Variable.print inner_var
                         Flambda.print_specialised_to outer_var
                         Variable.print fun_var
-                        Flambda.print_set_of_closures original_set_of_closures
-                        Flambda.print_set_of_closures set_of_closures
+                        Flambda.Set_of_closures.print original_set_of_closures
+                        Flambda.Set_of_closures.print set_of_closures
                     end
               end)
           set_of_closures.specialised_args)
@@ -769,10 +769,10 @@ module Make (T : S) = struct
 
   let rewrite_set_of_closures ~env ~duplicate_function ~set_of_closures =
     Pass_wrapper.with_dump ~pass_name:T.pass_name ~input:set_of_closures
-      ~print_input:Flambda.print_set_of_closures
+      ~print_input:Flambda.Set_of_closures.print
       ~print_output:(fun ppf (_bindings, set_of_closures, _) ->
         (* CR mshinwell: print bindings *)
-        Flambda.print_set_of_closures ppf set_of_closures)
+        Flambda.Set_of_closures.print ppf set_of_closures)
       ~f:(fun () ->
         rewrite_set_of_closures_core ~env ~duplicate_function
           ~benefit:B.zero ~set_of_closures)
