@@ -162,6 +162,13 @@ module Stdlib = struct
       match a with
       | None -> default
       | Some a -> f a
+
+    let compare cmp_a t1 t2 =
+      match t1, t2 with
+      | None, None -> 0
+      | None, Some _ -> -1
+      | Some _, None -> 1
+      | Some a1, Some a2 -> cmp_a a1 a2
   end
 
   module Array = struct

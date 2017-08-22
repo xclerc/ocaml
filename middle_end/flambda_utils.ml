@@ -52,28 +52,7 @@ let description_of_toplevel_node (expr : Flambda.Expr.t) =
   | Switch _ -> "switch"
   | Proved_unreachable -> "unreachable"
 
-let compare_const (c1 : Flambda.const) (c2 : Flambda.const) =
-  match c1, c2 with
-  | Int v1, Int v2 -> compare v1 v2
-  | Char v1, Char v2 -> compare v1 v2
-  | Const_pointer v1, Const_pointer v2 -> compare v1 v2
-  | Int _, _ -> -1
-  | _, Int _ -> 1
-  | Char _, _ -> -1
-  | _, Char _ -> 1
-
-let trap_action_equal (trap1 : Flambda.Trap_action.t option)
-      (trap2 : Flambda.Trap_action.t option) =
-  match trap1, trap2 with
-  | None, None -> true
-  | Some (Push { id = id1; exn_handler = exn_handler1; }),
-      Some (Push { id = id2; exn_handler = exn_handler2; })
-  | Some (Pop { id = id1; exn_handler = exn_handler1; }),
-      Some (Pop { id = id2; exn_handler = exn_handler2; }) ->
-    Trap_id.equal id1 id2
-      && Continuation.equal exn_handler1 exn_handler2
-  | _, _ -> false
-
+(* CR mshinwell: Move to flambda.ml *)
 let rec same (l1 : Flambda.Expr.t) (l2 : Flambda.Expr.t) =
   l1 == l2 || (* it is ok for the string case: if they are physically the same,
                  it is the same original branch *)
@@ -97,7 +76,7 @@ let rec same (l1 : Flambda.Expr.t) (l2 : Flambda.Expr.t) =
       && same b1 b2
   | Let_mutable _, _ | _, Let_mutable _ -> false
   | Switch (a1, s1), Switch (a2, s2) ->
-    Variable.equal a1 a2 && sameswitch s1 s2
+    Variable.equal a1 a2 && Flambda.Switch.equal s1 s2
   | Switch _, _ | _, Switch _ -> false
   | Apply_cont (e1, trap1, a1), Apply_cont (e2, trap2, a2) ->
     Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
@@ -131,7 +110,7 @@ and same_continuation_handler
       ({ params = params2; stub = stub2;
          handler = handler2; specialised_args = specialised_args2; }
         : Flambda.Continuation_handler.t) =
-  Parameter.List.compare params1 params2 = 0
+  Flambda.Typed_parameter.List.compare params1 params2 = 0
     && stub1 = stub2
     && same handler1 handler2
     && Variable.Map.equal Flambda.equal_specialised_to
@@ -196,7 +175,7 @@ and same_move_within_set_of_closures (m1 : Projection.Move_within_set_of_closure
   Variable.equal m1.closure m2.closure
     && Closure_id.Map.equal Closure_id.equal m1.move m2.move
 
-and sameswitch (fs1 : Flambda.switch) (fs2 : Flambda.switch) =
+and sameswitch (fs1 : Flambda.Switch.t) (fs2 : Flambda.Switch.t) =
   let samecase (n1, a1) (n2, a2) = n1 = n2 && Continuation.equal a1 a2 in
   fs1.numconsts = fs2.numconsts
     && Misc.Stdlib.List.equal samecase fs1.consts fs2.consts

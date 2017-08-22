@@ -217,8 +217,9 @@ MIDDLE_END=\
   middle_end/cps_conversion.cmo \
   middle_end/flambda_kind.cmo \
   middle_end/flambda_type0.cmo \
-  middle_end/flambda.cmo \
+  middle_end/flambda0.cmo \
   middle_end/flambda_type.cmo \
+  middle_end/flambda1.cmo \
   middle_end/flambda_static.cmo \
   middle_end/continuation_with_specialised_args.cmo \
   middle_end/flambda_iterators.cmo \
