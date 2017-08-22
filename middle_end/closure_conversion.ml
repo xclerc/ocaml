@@ -61,7 +61,7 @@ let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
         let lam : Flambda.Named.t =
           Prim (Pfield pos, [tuple_param_var], Debuginfo.none)
         in
-        pos + 1, Flambda.create_let param lam body)
+        pos + 1, Flambda.Expr.create_let param lam body)
       (0, call) params
   in
   let tuple_param = Parameter.wrap tuple_param_var in
@@ -132,7 +132,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
     let body_env, var = Env.add_var_like env id in
     let defining_expr = close_named t env defining_expr in
     let body = close t body_env body in
-    Flambda.create_let var defining_expr body
+    Flambda.Expr.create_let var defining_expr body
   | Let_mutable { id; initial_value; contents_kind; body; } ->
     (* See comment on [Pread_mutable] below. *)
     let var = Mutable_variable.of_ident id in
@@ -200,7 +200,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
           (* Inside the body of the [let], each function is referred to by
              a [Project_closure] expression, which projects from the set of
              closures. *)
-          (Flambda.create_let let_bound_var
+          (Flambda.Expr.create_let let_bound_var
             (Project_closure {
               set_of_closures = set_of_closures_var;
               closure_id;
@@ -208,7 +208,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
             body))
         (close t env body) function_declarations
     in
-    Flambda.create_let set_of_closures_var set_of_closures body
+    Flambda.Expr.create_let set_of_closures_var set_of_closures body
   | Let_cont let_cont ->
     if let_cont.is_exn_handler then begin
       assert (not let_cont.administrative);
@@ -285,7 +285,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
     end
   | Switch (scrutinee, sw) ->
     let zero_to_n = Numbers.Int.zero_to_n in
-    Flambda.create_switch ~scrutinee:(Env.find_var env scrutinee)
+    Flambda.Expr.create_switch ~scrutinee:(Env.find_var env scrutinee)
       ~all_possible_values:(zero_to_n (sw.numconsts - 1))
       ~arms:sw.consts
       ~default:sw.failaction
@@ -443,11 +443,11 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       let value_v = Variable.create ("block_symbol_get_field_" ^ pos_str) in
       let continuation = Continuation.create () in
       let flam =
-        Flambda.create_let
+        Flambda.Expr.create_let
           sym_v (Symbol block_symbol)
-          (Flambda.create_let result_v
+          (Flambda.Expr.create_let result_v
               (Prim (Pfield 0, [sym_v], Debuginfo.none))
-              (Flambda.create_let value_v
+              (Flambda.Expr.create_let value_v
                 (Prim (Pfield pos, [result_v], Debuginfo.none))
                 (Apply_cont (continuation, None, [value_v]))))
       in

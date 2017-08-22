@@ -168,7 +168,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
     let join_cont = Continuation.create () in
     let tag = Variable.create "tag" in
     let is_int_switch =
-      Flambda.create_switch ~scrutinee:is_int_in_wrapper
+      Flambda.Expr.create_switch ~scrutinee:is_int_in_wrapper
         ~all_possible_values:(Numbers.Int.Set.of_list [0; 1])
         ~arms:[0, is_block_cont]
         ~default:(Some is_int_cont)
@@ -205,7 +205,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
                 match var_opt with
                 | None -> filler
                 | Some var ->
-                    Flambda.create_let var
+                    Flambda.Expr.create_let var
                       (Prim (Pfield index, [wrapper_param_being_unboxed], dbg))
                       filler)
               fields
@@ -251,13 +251,13 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           sizes_to_filler_conts
           []
       in
-      Flambda.create_switch ~scrutinee:tag
+      Flambda.Expr.create_switch ~scrutinee:tag
         ~all_possible_values
         ~arms
         ~default:None
     in
-    Flambda.create_let unit_value (Const (Int 0))
-      (Flambda.create_let is_int_in_wrapper
+    Flambda.Expr.create_let unit_value (Const (Int 0))
+      (Flambda.Expr.create_let is_int_in_wrapper
         (if no_constant_ctors then
            Const (Int 0)
          else
@@ -292,7 +292,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
               handler = {
                 params = [];
                 handler =
-                  Flambda.create_let tag
+                  Flambda.Expr.create_let tag
                     (match discriminant_known_value with
                      | Some known -> known
                      | None ->
@@ -328,7 +328,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   let boxing_is_int_cont = Continuation.create () in
   let boxing_is_block_cont = Continuation.create () in
   let boxing_is_int_switch =
-    Flambda.create_switch ~scrutinee:is_int
+    Flambda.Expr.create_switch ~scrutinee:is_int
       ~all_possible_values:(Numbers.Int.Set.of_list [0; 1])
       ~arms:[0, boxing_is_block_cont]
       ~default:(Some boxing_is_int_cont)
@@ -346,7 +346,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
         tags_to_sizes_and_boxing_conts
         []
     in
-    Flambda.create_switch ~scrutinee:discriminant
+    Flambda.Expr.create_switch ~scrutinee:discriminant
       ~all_possible_values
       ~arms
       ~default:None
@@ -363,7 +363,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           []
       in
       let constant_ctor_switch =
-        Flambda.create_switch ~scrutinee:discriminant
+        Flambda.Expr.create_switch ~scrutinee:discriminant
           ~all_possible_values:constant_ctors
           ~arms:consts
           ~default:None
@@ -371,7 +371,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
       let add_constant_ctor_conts expr =
         List.fold_left (fun expr (ctor_index, cont) ->
             let ctor_index_var = Variable.create "ctor_index" in
-            Flambda.create_let ctor_index_var (Const (Int ctor_index))
+            Flambda.Expr.create_let ctor_index_var (Const (Int ctor_index))
               (Let_cont {
                 body = expr;
                 handlers = Nonrecursive {
@@ -402,7 +402,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
               List.rev fields
             in
             let handler : Flambda.Expr.t =
-              Flambda.create_let boxed
+              Flambda.Expr.create_let boxed
                 (Prim (Pmakeblock (Tag.to_int tag, Immutable, None),
                   fields, dbg))
                 (Flambda.Apply_cont (join_cont, None, [boxed]))
@@ -476,11 +476,11 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
       let body =
         match is_int_known_value with
         | None -> body
-        | Some named -> Flambda.create_let is_int named body
+        | Some named -> Flambda.Expr.create_let is_int named body
       in
       match discriminant_known_value with
       | None -> body
-      | Some named -> Flambda.create_let discriminant named body
+      | Some named -> Flambda.Expr.create_let discriminant named body
     in
     [boxed, build]
   in

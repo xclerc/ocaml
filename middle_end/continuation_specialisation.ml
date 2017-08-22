@@ -497,7 +497,7 @@ let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
         let placement : Placement.t = After_let var in
         begin match place ~placement ~around:body with
         | None -> expr
-        | Some body -> Flambda.create_let var defining_expr body
+        | Some body -> Flambda.Expr.create_let var defining_expr body
         end
       | Let_cont { body; handlers; } ->
         let done_something = ref false in

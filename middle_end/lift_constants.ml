@@ -689,7 +689,7 @@ let introduce_free_variables_in_set_of_closures
         | Symbol sym -> Symbol sym
         | Const c -> Const c
       in
-      (Flambda.create_let fresh named expr), Variable.Map.add var fresh subst
+      (Flambda.Expr.create_let fresh named expr), Variable.Map.add var fresh subst
     | exception Not_found ->
       (* The variable is bound by the closure or the arguments or not
          constant. In either case it does not need to be bound *)

@@ -43,7 +43,7 @@ let map_subexpressions f f_named (tree:Flambda.Expr.t) : Flambda.Expr.t =
     if new_named == defining_expr && new_body == body then
       tree
     else
-      Flambda.create_let var new_named new_body
+      Flambda.Expr.create_let var new_named new_body
   | Let_mutable mutable_let ->
     let new_body = f mutable_let.body in
     if new_body == mutable_let.body then

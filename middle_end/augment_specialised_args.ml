@@ -524,7 +524,7 @@ module Make (T : S) = struct
                 Flambda_utils.projection_to_named projection
             in
             let wrapper_body =
-              Flambda.create_let new_inner_var_of_wrapper named wrapper_body
+              Flambda.Expr.create_let new_inner_var_of_wrapper named wrapper_body
             in
             (wrapper_body, benefit))
       for_one_function.new_definitions_indexed_by_new_inner_vars

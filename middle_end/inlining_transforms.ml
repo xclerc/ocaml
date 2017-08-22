@@ -164,7 +164,7 @@ let inline_by_copying_function_body ~env ~r
   let bindings_for_vars_bound_by_closure_and_params_to_args =
     fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
       ~lhs_of_application ~function_decls ~init:bindings_for_params_to_args
-      ~f:(fun ~acc:body ~var ~expr -> Flambda.create_let var expr body)
+      ~f:(fun ~acc:body ~var ~expr -> Flambda.Expr.create_let var expr body)
   in
   (* Add bindings for variables corresponding to the functions introduced by
      the whole set of closures.  Each such variable will be bound to a closure;
@@ -178,7 +178,7 @@ let inline_by_copying_function_body ~env ~r
            function_decl.free_variables
       in
       if used then
-        Flambda.create_let another_closure_in_the_same_set
+        Flambda.Expr.create_let another_closure_in_the_same_set
           (Move_within_set_of_closures {
             closure = lhs_of_application;
             move = Closure_id.Map.singleton closure_id_being_applied
@@ -528,9 +528,9 @@ let inline_by_copying_function_declaration ~env ~r
       in
       let func = new_var "dup_func" in
       let body : Flambda.Expr.t =
-        Flambda.create_let set_of_closures_var
+        Flambda.Expr.create_let set_of_closures_var
           (Set_of_closures set_of_closures)
-          (Flambda.create_let func (Project_closure project_closure)
+          (Flambda.Expr.create_let func (Project_closure project_closure)
             (Apply {
               kind = Function;
               continuation;

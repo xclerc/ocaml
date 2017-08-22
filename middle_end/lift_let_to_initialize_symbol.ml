@@ -47,7 +47,7 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
       let lifted =
         lifted @ [Tag.zero, param, symbol, [name, body, to_copy]] @ lifted'
       in
-      let expr = Flambda.create_let param defining_expr handler in
+      let expr = Flambda.Expr.create_let param defining_expr handler in
       free_conts_handler, lifted, expr
     end else begin
       let handlers : Flambda.let_cont_handlers =
@@ -76,7 +76,7 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
     let free_conts, lifted, body = lift body ~to_copy in
     let body =
       if Variable.Set.mem var (Flambda.free_variables body) then
-        Flambda.create_let var defining_expr body
+        Flambda.Expr.create_let var defining_expr body
       else
         body
     in
@@ -107,13 +107,13 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
       | _ ->
         let cont = Continuation.create () in
         let expr : Flambda.Expr.t =
-          Flambda.create_let var' defining_expr
+          Flambda.Expr.create_let var' defining_expr
             (Apply_cont (cont, None, [var']))
         in
         Tag.zero, [cont, expr, to_copy]
     in
     let lifted = (tag, var, symbol, conts_exprs_and_to_copies) :: lifted in
-    let body = Flambda.create_let var sym_defining_expr body in
+    let body = Flambda.Expr.create_let var sym_defining_expr body in
     free_conts, lifted, body
   | Let_cont { body; handlers; } ->
     let free_conts_body, lifted, body = lift body ~to_copy in
@@ -177,7 +177,7 @@ let add_extracted lifted program_body =
             let expr =
               List.fold_left (fun expr (var, defining_expr) ->
                   if Variable.Set.mem var (Flambda.free_variables expr) then
-                    Flambda.create_let var defining_expr expr
+                    Flambda.Expr.create_let var defining_expr expr
                   else
                     expr)
                 expr

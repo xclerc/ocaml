@@ -902,7 +902,7 @@ Format.eprintf "...freshened cont is %a\n%!"
               in
               let env = E.add env surrogate_var type_for_surrogate in
               let wrap expr =
-                Flambda.create_let surrogate_var
+                Flambda.Expr.create_let surrogate_var
                   (Move_within_set_of_closures move_to_surrogate)
                   expr
               in
@@ -2319,7 +2319,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
               Some cont, r
         in
         let switch, used_conts =
-          Flambda.create_switch' ~scrutinee:arg
+          Flambda.Expr.create_switch' ~scrutinee:arg
             ~all_possible_values:sw.numconsts
             ~arms:consts
             ~default:failaction

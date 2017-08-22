@@ -303,7 +303,7 @@ let toplevel_substitution_named sb named =
   let var = Variable.create "subst" in
   let cont = Continuation.create () in
   let expr : Flambda.Expr.t =
-    Flambda.create_let var named (Apply_cont (cont, None, []))
+    Flambda.Expr.create_let var named (Apply_cont (cont, None, []))
   in
   match toplevel_substitution sb expr with
   | Let let_expr -> let_expr.defining_expr
@@ -372,13 +372,13 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
     Variable.create "project_closure"
       ~current_compilation_unit:compilation_unit
   in
-  Flambda.create_let set_of_closures_var (Set_of_closures set_of_closures)
-    (Flambda.create_let project_closure_var project_closure
+  Flambda.Expr.create_let set_of_closures_var (Set_of_closures set_of_closures)
+    (Flambda.Expr.create_let project_closure_var project_closure
       (Apply_cont (continuation, None, [project_closure_var])))
 
 let bind ~bindings ~body =
   List.fold_left (fun expr (var, var_def) ->
-      Flambda.create_let var var_def expr)
+      Flambda.Expr.create_let var var_def expr)
     body bindings
 
 let all_lifted_constants (program : Flambda.program) =
@@ -531,7 +531,7 @@ let substitute_read_symbol_field_for_variables
       | None -> Symbol symbol
       | Some i -> Read_symbol_field (symbol, i)
     in
-    Flambda.create_let fresh_var (make_named path) expr
+    Flambda.Expr.create_let fresh_var (make_named path) expr
   in
   let substitute_named bindings (named : Flambda.Named.t) : Flambda.Named.t =
     let sb to_substitute =

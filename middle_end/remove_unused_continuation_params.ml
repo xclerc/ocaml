@@ -82,7 +82,7 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
   assert (not handler.is_exn_handler);
   let new_handler =
     Parameter.Set.fold (fun param body ->
-        Flambda.create_let (Parameter.var param) (Const (Const_pointer 0)) body)
+        Flambda.Expr.create_let (Parameter.var param) (Const (Const_pointer 0)) body)
       to_remove
       handler.handler
   in
