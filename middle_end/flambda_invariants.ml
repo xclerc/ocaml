@@ -210,7 +210,7 @@ module Push_pop_invariants = struct
         | exception Not_found ->
           Misc.fatal_errorf "Unbound continuation %a in Apply_cont %a"
             Continuation.print cont
-            Flambda.print expr
+            Flambda.Expr.print expr
         | cont_stack -> cont_stack
       in
       let stack, cont_stack =
@@ -233,7 +233,7 @@ module Push_pop_invariants = struct
         | exception Not_found ->
           Misc.fatal_errorf "Unbound continuation %a in application %a"
             Continuation.print continuation
-            Flambda.print expr
+            Flambda.Expr.print expr
         | cont_stack -> cont_stack
       in
       unify_stack continuation stack cont_stack
@@ -244,7 +244,7 @@ module Push_pop_invariants = struct
           | exception Not_found ->
             Misc.fatal_errorf "Unbound continuation %a in switch %a"
               Continuation.print cont
-              Flambda.print expr
+              Flambda.Expr.print expr
           | cont_stack -> cont_stack
         in
         unify_stack cont cont_stack current_stack)
@@ -257,7 +257,7 @@ module Push_pop_invariants = struct
           | exception Not_found ->
             Misc.fatal_errorf "Unbound continuation %a in switch %a"
               Continuation.print cont
-              Flambda.print expr
+              Flambda.Expr.print expr
           | cont_stack -> cont_stack
         in
         unify_stack cont cont_stack current_stack
@@ -1140,7 +1140,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
           Term:\n@ %a"
         descr
         Continuation.Set.print bad_without_definitions
-        Flambda.print expr
+        Flambda.Expr.print expr
     end;
     let continuation_definitions_with_uses =
       R.continuation_definitions_with_uses r
@@ -1167,7 +1167,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
         Continuation.Set.print
         (Continuation.Set.diff defined_continuations
           defined_continuations_in_r)
-        Flambda.print expr
+        Flambda.Expr.print expr
     end;
     (* CR mshinwell: The following could check the actual code in the
        continuation approximations matches the code in the term. *)
@@ -1191,7 +1191,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
           (%a):@ \n%a\n"
         Continuation.Set.print all_handlers_in_continuation_approxs
         Continuation.Set.print defined_continuations
-        Flambda.print expr
+        Flambda.Expr.print expr
     end;
     (* Checking the number of uses recorded in [r] is correct helps to catch
        bugs where, for example, some [Value_unknown] approximation for some
@@ -1228,7 +1228,7 @@ application_points;
             num_in_term
             num_in_r
             Simplify_aux.Continuation_uses.print uses
-            Flambda.print expr
+            Flambda.Expr.print expr
         end)
       continuation_definitions_with_uses
   end

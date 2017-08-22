@@ -188,7 +188,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
                   Flambda.print_specialised_args handler.specialised_args
                   Flambda.print_specialised_args new_specialised_args
                   Variable.print_list handler.params
-                  Flambda.print handler.handler
+                  Flambda.Expr.print handler.handler
               in
 *)
               let specialised_args =
@@ -220,11 +220,11 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
     Parameter.print_list wrapper_params
     Flambda.print_specialised_args wrapper_specialised_args
     Continuation.print cont
-    Flambda.print wrapper_body
+    Flambda.Expr.print wrapper_body
     Parameter.print_list params
     Flambda.print_specialised_args specialised_args
     Continuation.print new_cont
-    Flambda.print handler.handler;
+    Flambda.Expr.print handler.handler;
 *)
                 With_wrapper {
                   new_cont;

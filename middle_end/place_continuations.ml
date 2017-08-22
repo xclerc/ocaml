@@ -100,11 +100,11 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
           continuation(s) %a that are not defined in the provided \
           expression:@ \n%a"
         Continuation.Set.print not_defined
-        Flambda.print expr
+        Flambda.Expr.print expr
     end
   end;
 (*
-Format.eprintf "Finding insertion points in:@ \n%a\n%!" Flambda.print expr;
+Format.eprintf "Finding insertion points in:@ \n%a\n%!" Flambda.Expr.print expr;
 *)
   let rec find_insertion_points (expr : Flambda.Expr.t) ~state =
     let passing_var_binder var ~make_placement ~state =

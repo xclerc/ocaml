@@ -192,7 +192,7 @@ let inline env r ~lhs_of_application
          site. *)
 (*
 Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
-  Variable.print lhs_of_application Flambda.print function_decl.body;
+  Variable.print lhs_of_application Flambda.Expr.print function_decl.body;
 *)
       Inlining_transforms.inline_by_copying_function_body ~env
         ~r:(R.reset_benefit r) ~function_decls ~lhs_of_application
@@ -510,7 +510,7 @@ let specialise env r ~lhs_of_application
             let application_env = E.set_never_inline_inside_closures env in
 (*
 Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
-  E.print application_env Flambda.print expr;
+  E.print application_env Flambda.Expr.print expr;
 *)
             let res = simplify application_env r expr in
             let decision =

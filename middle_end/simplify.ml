@@ -961,7 +961,7 @@ Format.eprintf "...freshened cont is %a\n%!"
             else
               Misc.fatal_errorf "Function with arity %d when simplifying \
                   application expression: %a"
-                arity Flambda.print (Flambda.Apply apply)
+                arity Flambda.Expr.print (Flambda.Apply apply)
           in
 (*
 let used_conts = R.continuation_uses r in
@@ -1143,7 +1143,7 @@ and simplify_over_application env r ~args ~args_types ~continuation
       ~specialise_requested
   in
 (*
-Format.eprintf "full_application:@;%a@;" Flambda.print full_application;
+Format.eprintf "full_application:@;%a@;" Flambda.Expr.print full_application;
 *)
   (* CR mshinwell: Maybe it would be better just to build a proper term
      including the full application as a normal Apply node and call simplify
@@ -2452,7 +2452,7 @@ and simplify_toplevel env r expr ~continuation ~descr =
           Continuation.Set.print bad
           descr
           descr'
-          Flambda.print expr
+          Flambda.Expr.print expr
       end
     in
     check_defined r_used "the use information inside";
@@ -2468,7 +2468,7 @@ and simplify_toplevel env r expr ~continuation ~descr =
         descr
         Continuation.print continuation
         Continuation.Set.print free_conts
-        Flambda.print expr
+        Flambda.Expr.print expr
     end
   end;
   expr, r, uses

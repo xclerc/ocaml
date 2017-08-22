@@ -29,7 +29,7 @@ let for_toplevel_expression expr r =
   end else begin
 (*
     Format.eprintf "Continuations used linearly: %a\nTerm:@ \n%a%!"
-      Continuation.Set.print used_linearly Flambda.print expr;
+      Continuation.Set.print used_linearly Flambda.Expr.print expr;
 *)
     let r = ref r in
     (* CR mshinwell: Consider adding phys-equal checks and use of the tail
@@ -61,7 +61,7 @@ let for_toplevel_expression expr r =
               then it should be defined in [r] (note that zero uses does \
               not count as ``linearly used''): %a"
             Continuation.print name
-            Flambda.print expr
+            Flambda.Expr.print expr
         end;
         (* Beware: we may have failed to inline---see comment below.
            In that case the [Let_cont] must stay. *)
@@ -125,7 +125,7 @@ let for_toplevel_expression expr r =
     in
     let expr = substitute Continuation.Map.empty expr in
 (*
-    Format.eprintf "After continuation inlining:@ \n%a" Flambda.print expr;
+    Format.eprintf "After continuation inlining:@ \n%a" Flambda.Expr.print expr;
 *)
     expr, !r
   end
