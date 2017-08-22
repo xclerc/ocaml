@@ -366,7 +366,7 @@ module Analyse (CF : Continuations_or_functions) = struct
       | exception Not_found -> 0
       | func -> List.length (CF.Declaration.params func)
     in
-    let check_expr ~caller (expr : Flambda.t) =
+    let check_expr ~caller (expr : Flambda.Expr.t) =
       match CF.check_application expr with
       | Some { callee; args; } ->
         let callee_var = CF.Name.as_variable callee in

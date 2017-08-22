@@ -329,9 +329,9 @@ and sink_set_of_closures (set_of_closures : Flambda.set_of_closures) =
     ~specialised_args:set_of_closures.specialised_args
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
-and sink (expr : Flambda.t) =
+and sink (expr : Flambda.Expr.t) =
   let expr, state = sink_expr expr ~state:(State.create ()) in
-  let rec sink (expr : Flambda.t) : Flambda.t =
+  let rec sink (expr : Flambda.Expr.t) : Flambda.Expr.t =
     match expr with
     | Let ({ var; body; } as let_expr) ->
       let body = sink body in

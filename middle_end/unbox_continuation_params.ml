@@ -196,7 +196,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
                   new_specialised_args
               in
               let wrapper_body =
-                let initial_body : Flambda.t =
+                let initial_body : Flambda.Expr.t =
                   Apply_cont (new_cont, None,
                     Parameter.List.vars wrapper_params
                       @ how_to_unbox.new_arguments_for_call_in_wrapper)

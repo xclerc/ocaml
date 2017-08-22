@@ -353,7 +353,7 @@ and lift_set_of_closures (set_of_closures : Flambda.set_of_closures) =
     ~specialised_args:set_of_closures.specialised_args
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
-and lift (expr : Flambda.t) =
+and lift (expr : Flambda.Expr.t) =
   let state =
     State.create ~variables_to_remain:[]
       ~continuations_to_remain:Continuation.Set.empty
@@ -363,7 +363,7 @@ and lift (expr : Flambda.t) =
     bind_things_to_remain ~rev_things:(State.rev_to_remain state) ~around:expr
   in
   let expr =
-    List.fold_left (fun body handlers : Flambda.t ->
+    List.fold_left (fun body handlers : Flambda.Expr.t ->
         Let_cont { body; handlers; })
       expr
       (State.rev_to_be_lifted state)

@@ -67,7 +67,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.
   in
   let new_return_cont = Continuation.create () in
   let wrapper_body =
-    let initial_body : Flambda.t =
+    let initial_body : Flambda.Expr.t =
       Apply_cont (new_return_cont, None,
         how_to_unbox.new_arguments_for_call_in_wrapper)
     in

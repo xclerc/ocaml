@@ -46,7 +46,7 @@ let unrecursify_function ~fun_var:function_variable
   if not !did_something then None
   else
     let new_params = Parameter.List.rename function_decl.params in
-    let body : Flambda.t =
+    let body : Flambda.Expr.t =
       Let_cont
         { handlers =
             Recursive (

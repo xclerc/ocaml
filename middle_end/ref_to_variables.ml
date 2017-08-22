@@ -22,7 +22,7 @@ let rename_var var =
   (* Variable.rename var *)
   (*   ~current_compilation_unit:(Compilation_unit.get_current_exn ()) *)
 
-let variables_not_used_as_local_reference (tree:Flambda.t) =
+let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
   let set = ref Variable.Set.empty in
   let rec loop_named (flam : Flambda.named) =
     match flam with
@@ -46,7 +46,7 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
         set_of_closures.function_decls.funs
     | Assign _ ->
       set := Variable.Set.union !set (Flambda.free_variables_named flam)
-  and loop (flam : Flambda.t) =
+  and loop (flam : Flambda.Expr.t) =
     match flam with
     | Let { defining_expr; body; _ } ->
       loop_named defining_expr;
@@ -71,9 +71,9 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
   loop tree;
   !set
 
-let variables_containing_ref (flam:Flambda.t) =
+let variables_containing_ref (flam:Flambda.Expr.t) =
   let map = ref Variable.Map.empty in
-  let aux (flam : Flambda.t) =
+  let aux (flam : Flambda.Expr.t) =
     match flam with
     | Let { var;
             defining_expr = Prim(Pmakeblock(0, Asttypes.Mutable, _), l, _);
@@ -145,7 +145,7 @@ let eliminate_ref_of_expr flam =
       | Move_within_set_of_closures _ | Project_var _ | Assign _ ->
         (), [], var, Flambda.Reachable named
     in
-    let aux (flam : Flambda.t) : Flambda.t =
+    let aux (flam : Flambda.Expr.t) : Flambda.Expr.t =
       match flam with
       | Let { var;
               defining_expr = Prim(Pmakeblock(0, Asttypes.Mutable, shape), l,_);
@@ -164,7 +164,7 @@ let eliminate_ref_of_expr flam =
                 (Let_mutable { var = field_var;
                                initial_value = init;
                                body;
-                               contents_kind = kind } : Flambda.t))
+                               contents_kind = kind } : Flambda.Expr.t))
             (0, body) l shape in
         expr
       | Let _ ->

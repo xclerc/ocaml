@@ -18,7 +18,7 @@
 
 (*
 (* CR-someday mshinwell: move to Flambda_utils *)
-let rec tail_variable : Flambda.t -> Variable.t option = function
+let rec tail_variable : Flambda.Expr.t -> Variable.t option = function
   | Let_mutable { body = e }
   | Let { body = e; _ } -> tail_variable e
   | _ -> None
@@ -578,9 +578,9 @@ let constant_dependencies ~backend:_
 
 let program_graph ~backend imported_symbols symbol_to_constant
     (initialize_symbol_tbl :
-      (Tag.t * (Flambda.t * Continuation.t) list * Symbol.t option)
+      (Tag.t * (Flambda.Expr.t * Continuation.t) list * Symbol.t option)
         Symbol.Tbl.t)
-    (effect_tbl : (Flambda.t * Continuation.t * Symbol.t option) Symbol.Tbl.t) =
+    (effect_tbl : (Flambda.Expr.t * Continuation.t * Symbol.t option) Symbol.Tbl.t) =
   let expression_symbol_dependencies expr = Flambda.free_symbols expr in
   let graph_with_only_constant_parts =
     Symbol.Map.map (fun const ->
@@ -628,9 +628,9 @@ let program_graph ~backend imported_symbols symbol_to_constant
 (* rebuilding the program *)
 let add_definition_of_symbol constant_definitions
     (initialize_symbol_tbl :
-      (Tag.t * (Flambda.t * Continuation.t) list * Symbol.t option)
+      (Tag.t * (Flambda.Expr.t * Continuation.t) list * Symbol.t option)
         Symbol.Tbl.t)
-    (effect_tbl : (Flambda.t * Continuation.t * Symbol.t option) Symbol.Tbl.t)
+    (effect_tbl : (Flambda.Expr.t * Continuation.t * Symbol.t option) Symbol.Tbl.t)
     (program : Flambda.program_body) component : Flambda.program_body =
   let symbol_declaration sym =
     (* A symbol declared through an Initialize_symbol construct
@@ -867,9 +867,9 @@ let replace_definitions_in_initialize_symbol_and_effects
     (var_to_definition_tbl :
       Alias_analysis.constant_defining_value Variable.Tbl.t)
     (initialize_symbol_tbl :
-      (Tag.t * (Flambda.t * Continuation.t) list * Symbol.t option)
+      (Tag.t * (Flambda.Expr.t * Continuation.t) list * Symbol.t option)
         Symbol.Tbl.t)
-    (effect_tbl : (Flambda.t * Continuation.t * Symbol.t option) Symbol.Tbl.t) =
+    (effect_tbl : (Flambda.Expr.t * Continuation.t * Symbol.t option) Symbol.Tbl.t) =
   let rewrite_expr expr =
     Flambda_iterators.map_all_immutable_let_and_let_rec_bindings expr
       ~f:(fun var (named : Flambda.named) : Flambda.named ->

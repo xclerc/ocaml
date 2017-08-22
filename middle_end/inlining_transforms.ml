@@ -151,7 +151,7 @@ let inline_by_copying_function_body ~env ~r
     ~alias_of:continuation
     ~arity:function_decl.return_arity
   in
-  let body : Flambda.t =
+  let body : Flambda.Expr.t =
     Let_cont { body; handlers; }
   in
   let bindings_for_params_to_args =
@@ -453,7 +453,7 @@ let inline_by_copying_function_declaration ~env ~r
         Flambda_utils.toplevel_substitution original_vars fun_decl.body
       in
       let body =
-        Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) ->
+        Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.Expr.t) ->
             match expr with
             | Apply apply ->
               begin match apply.call_kind with
@@ -520,14 +520,14 @@ let inline_by_copying_function_declaration ~env ~r
     (* Generate a copy of the function application, including the function
        declaration(s), but with variables (not yet bound) in place of the
        arguments. *)
-    let duplicated_application : Flambda.t =
+    let duplicated_application : Flambda.Expr.t =
       let project_closure : Flambda.project_closure =
         { set_of_closures = set_of_closures_var;
           closure_id = Closure_id.Set.singleton closure_id_being_applied;
         }
       in
       let func = new_var "dup_func" in
-      let body : Flambda.t =
+      let body : Flambda.Expr.t =
         Flambda.create_let set_of_closures_var
           (Set_of_closures set_of_closures)
           (Flambda.create_let func (Project_closure project_closure)
@@ -549,7 +549,7 @@ let inline_by_copying_function_declaration ~env ~r
     in
     (* Now bind the variables that will hold the arguments from the original
        application. *)
-    let expr : Flambda.t =
+    let expr : Flambda.Expr.t =
       Flambda_utils.bind ~body:duplicated_application ~bindings:args_decl
     in
     let env = E.activate_freshening (E.set_never_inline env) in

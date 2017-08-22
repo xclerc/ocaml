@@ -22,28 +22,28 @@ type 'a by_copying_function_body =
      env:Simplify_aux.Env.t
   -> r:Simplify_aux.Result.t
   -> clos:Flambda.Function_declarations.t
-  -> lfunc:Flambda.t
+  -> lfunc:Flambda.Expr.t
   -> fun_id:Closure_id.t
   -> func:Flambda.Function_declaration.t
-  -> args:Flambda.t list
-  -> Flambda.t * Simplify_aux.Result.t
+  -> args:Flambda.Expr.t list
+  -> Flambda.Expr.t * Simplify_aux.Result.t
 
 type 'a by_copying_function_declaration =
      env:Simplify_aux.Env.t
   -> r:Simplify_aux.Result.t
-  -> funct:Flambda.t
+  -> funct:Flambda.Expr.t
   -> clos:Flambda.Function_declarations.t
   -> fun_id:Closure_id.t
   -> func:Flambda.Function_declaration.t
   -> args_with_approxs:
-      (Flambda.t list) * (Flambda_type.t list)
+      (Flambda.Expr.t list) * (Flambda_type.t list)
   -> invariant_params:Variable.Set.t
   -> specialised_args:Variable.Set.t
   -> dbg:Debuginfo.t
-  -> (Flambda.t * Simplify_aux.Result.t) option
+  -> (Flambda.Expr.t * Simplify_aux.Result.t) option
 
 type simplify =
      Simplify_aux.Env.t
   -> Simplify_aux.Result.t
-  -> Flambda.t
-  -> Flambda.t * Simplify_aux.Result.t
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t * Simplify_aux.Result.t
