@@ -22,34 +22,34 @@
 (** Apply the given functions to the immediate subexpressions of the given
     Flambda expression.  For avoidance of doubt, if a subexpression is
     [Expr], it is passed to the function taking [Flambda.named], rather
-    than being followed and passed to the function taking [Flambda.t]. *)
+    than being followed and passed to the function taking [Flambda.Expr.t]. *)
 val apply_on_subexpressions
-   : (Flambda.t -> unit)
+   : (Flambda.Expr.t -> unit)
   -> (Flambda.named -> unit)
-  -> Flambda.t
+  -> Flambda.Expr.t
   -> unit
 
 val map_subexpressions
-   : (Flambda.t -> Flambda.t)
+   : (Flambda.Expr.t -> Flambda.Expr.t)
   -> (Variable.t -> Flambda.named -> Flambda.named)
-  -> Flambda.t
-  -> Flambda.t
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 (* CR-soon lwhite: add comment to clarify that these recurse unlike the
    ones above *)
 val iter
-   : (Flambda.t -> unit)
+   : (Flambda.Expr.t -> unit)
   -> (Flambda.named -> unit)
-  -> Flambda.t
+  -> Flambda.Expr.t
   -> unit
 
 val iter_expr
-   : (Flambda.t -> unit)
-  -> Flambda.t
+   : (Flambda.Expr.t -> unit)
+  -> Flambda.Expr.t
   -> unit
 
 val iter_on_named
-   : (Flambda.t -> unit)
+   : (Flambda.Expr.t -> unit)
   -> (Flambda.named -> unit)
   -> Flambda.named
   -> unit
@@ -58,7 +58,7 @@ val iter_on_named
    the parameters of the user function for [iter_named] *)
 val iter_named
    : (Flambda.named -> unit)
-  -> Flambda.t
+  -> Flambda.Expr.t
   -> unit
 
 (* CR-someday lwhite: These names are pretty indecipherable, perhaps
@@ -74,20 +74,20 @@ val iter_named_on_named
     In particular, it never applies [f] to the body of a function (which
     will always be contained within an [Set_of_closures] expression). *)
 val iter_toplevel
-   : (Flambda.t -> unit)
+   : (Flambda.Expr.t -> unit)
   -> (Flambda.named -> unit)
-  -> Flambda.t
+  -> Flambda.Expr.t
   -> unit
 
 val iter_named_toplevel
-   : (Flambda.t -> unit)
+   : (Flambda.Expr.t -> unit)
   -> (Flambda.named -> unit)
   -> Flambda.named
   -> unit
 
 val iter_on_sets_of_closures
    : (Flambda.set_of_closures -> unit)
-  -> Flambda.t
+  -> Flambda.Expr.t
   -> unit
 
 val iter_on_set_of_closures_of_program
@@ -96,12 +96,12 @@ val iter_on_set_of_closures_of_program
   -> unit
 
 val iter_all_immutable_let_and_let_rec_bindings
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Variable.t -> Flambda.named -> unit)
   -> unit
 
 val iter_all_toplevel_immutable_let_and_let_rec_bindings
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Variable.t -> Flambda.named -> unit)
   -> unit
 
@@ -114,7 +114,7 @@ val iter_all_toplevel_immutable_let_and_let_rec_bindings
     things as well, use [iter_exprs_at_toplevels_in_program]. *)
 val iter_exprs_at_toplevel_of_program
    : Flambda.program
-  -> f:(continuation_arity:int -> Continuation.t -> Flambda.t -> unit)
+  -> f:(continuation_arity:int -> Continuation.t -> Flambda.Expr.t -> unit)
   -> unit
 
 (** Iterate over all toplevel expressions in the program:
@@ -123,7 +123,7 @@ val iter_exprs_at_toplevel_of_program
     - [Effect] expressions. *)
 val iter_exprs_at_toplevels_in_program
    : Flambda.program
-  -> f:(continuation_arity:int -> Continuation.t -> Flambda.t -> unit)
+  -> f:(continuation_arity:int -> Continuation.t -> Flambda.Expr.t -> unit)
   -> unit
 
 val iter_named_of_program
@@ -142,41 +142,41 @@ val iter_apply_on_program
   -> unit
 
 val map
-   : (Flambda.t -> Flambda.t)
+   : (Flambda.Expr.t -> Flambda.Expr.t)
   -> (Flambda.named -> Flambda.named)
-  -> Flambda.t
-  -> Flambda.t
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 val map_expr
-   : (Flambda.t -> Flambda.t)
-  -> Flambda.t
-  -> Flambda.t
+   : (Flambda.Expr.t -> Flambda.Expr.t)
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 val map_named
    : (Flambda.named -> Flambda.named)
-  -> Flambda.t
-  -> Flambda.t
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 val map_toplevel
-   : (Flambda.t -> Flambda.t)
+   : (Flambda.Expr.t -> Flambda.Expr.t)
   -> (Flambda.named -> Flambda.named)
-  -> Flambda.t
-  -> Flambda.t
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 val map_toplevel_expr
-   : (Flambda.t -> Flambda.t)
-  -> Flambda.t
-  -> Flambda.t
+   : (Flambda.Expr.t -> Flambda.Expr.t)
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 val map_toplevel_named
    : (Flambda.named -> Flambda.named)
-  -> Flambda.t
-  -> Flambda.t
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 val map_symbols
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Symbol.t -> Symbol.t)
-  -> Flambda.t
+  -> Flambda.Expr.t
 
 val map_symbols_on_set_of_closures
   : Flambda.set_of_closures
@@ -184,25 +184,25 @@ val map_symbols_on_set_of_closures
   -> Flambda.set_of_closures
 
 val map_toplevel_sets_of_closures
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Flambda.set_of_closures -> Flambda.set_of_closures)
-  -> Flambda.t
+  -> Flambda.Expr.t
 
 val map_apply
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Flambda.apply -> Flambda.apply)
-  -> Flambda.t
+  -> Flambda.Expr.t
 
 val map_function_bodies
    : ?ignore_stubs:unit
   -> Flambda.set_of_closures
-  -> f:(Flambda.t -> Flambda.t)
+  -> f:(Flambda.Expr.t -> Flambda.Expr.t)
   -> Flambda.set_of_closures
 
 val map_sets_of_closures
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Flambda.set_of_closures -> Flambda.set_of_closures)
-  -> Flambda.t
+  -> Flambda.Expr.t
 
 val map_sets_of_closures_of_program
    : Flambda.program
@@ -210,13 +210,13 @@ val map_sets_of_closures_of_program
   -> Flambda.program
 
 val map_project_var_to_named_opt
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Flambda.project_var -> Flambda.named option)
-  -> Flambda.t
+  -> Flambda.Expr.t
 
 val map_exprs_at_toplevel_of_program
    : Flambda.program
-  -> f:(Flambda.t -> Flambda.t)
+  -> f:(Flambda.Expr.t -> Flambda.Expr.t)
   -> Flambda.program
 
 val map_named_of_program
@@ -225,9 +225,9 @@ val map_named_of_program
   -> Flambda.program
 
 val map_all_immutable_let_and_let_rec_bindings
-   : Flambda.t
+   : Flambda.Expr.t
   -> f:(Variable.t -> Flambda.named -> Flambda.named)
-  -> Flambda.t
+  -> Flambda.Expr.t
 
 val fold_function_decls_ignoring_stubs
    : Flambda.set_of_closures

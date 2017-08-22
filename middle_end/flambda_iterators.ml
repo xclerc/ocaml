@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let apply_on_subexpressions f f_named (flam : Flambda.t) =
+let apply_on_subexpressions f f_named (flam : Flambda.Expr.t) =
   match flam with
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> ()
   | Let { defining_expr; body; _ } ->
@@ -34,7 +34,7 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
       (fun _cont ({ handler; _ } : Flambda.continuation_handler) -> f handler)
       handlers
 
-let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
+let map_subexpressions f f_named (tree:Flambda.Expr.t) : Flambda.Expr.t =
   match tree with
   | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
   | Let { var; defining_expr; body; _ } ->
@@ -92,9 +92,9 @@ let iter f f_named t = iter_general ~toplevel:false f f_named (Is_expr t)
 let iter_expr f t = iter f (fun _ -> ()) t
 let iter_on_named f f_named t =
   iter_general ~toplevel:false f f_named (Is_named t)
-let iter_named f_named t = iter (fun (_ : Flambda.t) -> ()) f_named t
+let iter_named f_named t = iter (fun (_ : Flambda.Expr.t) -> ()) f_named t
 let iter_named_on_named f_named named =
-  iter_general ~toplevel:false (fun (_ : Flambda.t) -> ()) f_named
+  iter_general ~toplevel:false (fun (_ : Flambda.Expr.t) -> ()) f_named
     (Is_named named)
 
 let iter_toplevel f f_named t =
@@ -232,13 +232,13 @@ let iter_constant_defining_values_on_program (program : Flambda.program) ~f =
   loop program.program_body
 
 let map_general ~toplevel f f_named tree =
-  let rec aux (tree : Flambda.t) =
+  let rec aux (tree : Flambda.Expr.t) =
     match tree with
     | Let _ ->
       Flambda.map_lets tree ~for_defining_expr:aux_named ~for_last_body:aux
         ~after_rebuild:f
     | _ ->
-      let exp : Flambda.t =
+      let exp : Flambda.Expr.t =
         match tree with
         | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
         | Let _ -> assert false
@@ -573,7 +573,7 @@ let map_sets_of_closures_of_program (program : Flambda.program)
   }
 
 let map_exprs_at_toplevel_of_program (program : Flambda.program)
-    ~(f : Flambda.t -> Flambda.t) =
+    ~(f : Flambda.Expr.t -> Flambda.Expr.t) =
   let rec loop (program : Flambda.program_body) : Flambda.program_body =
     let map_constant_set_of_closures (set_of_closures:Flambda.set_of_closures) =
       let done_something = ref false in
@@ -670,8 +670,8 @@ let map_named_of_program (program : Flambda.program)
   map_exprs_at_toplevel_of_program program
       ~f:(fun expr -> map_named_with_id f expr)
 
-let map_all_immutable_let_and_let_rec_bindings (expr : Flambda.t)
-      ~(f : Variable.t -> Flambda.named -> Flambda.named) : Flambda.t =
+let map_all_immutable_let_and_let_rec_bindings (expr : Flambda.Expr.t)
+      ~(f : Variable.t -> Flambda.named -> Flambda.named) : Flambda.Expr.t =
   map_named_with_id f expr
 
 let fold_function_decls_ignoring_stubs
