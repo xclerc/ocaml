@@ -17,32 +17,44 @@
 (** Flambda language terms that represent statically-allocated objects
     (lifted closed functions, constants, etc). *)
 
-module rec Constant_defining_value_block_field : sig
+module Constant_defining_value_block_field : sig
   type t =
     | Symbol of Symbol.t
-    | Const of Const.t
-end and Constant_defining_value_T : sig
+    | Const of Flambda.Const.t
+end
+
+module Constant_defining_value : sig
   (** Like a subset of [Flambda.named], except that instead of [Variable.t]s we
       have [Symbol.t]s, and everything is a constant (i.e. with a fixed value
       known at compile time).  Values of this type describe constants that will
       be directly assigned to symbols in the object file (see below). *)
-  type t =
+  type t = private
     | Allocated_const of Allocated_const.t
       (** A single constant.  These are never "simple constants" (type [const])
           but instead more complicated constructions. *)
-    | Block of Tag.t * Constant_defining_value_block_field.t list
+    | Block of Tag.Scannable.t * Constant_defining_value_block_field.t list
       (** A pre-allocated block full of constants (either simple constants
           or references to other constants, see below). *)
-    | Set_of_closures of Set_of_closures.t
+    | Set_of_closures of Flambda.Set_of_closures.t
       (** A closed (and thus constant) set of closures.  (That is to say,
           [free_vars] must be empty.) *)
     | Project_closure of Symbol.t * Closure_id.t
       (** Selection of one closure from a constant set of closures.
           Analogous to the equivalent operation on expressions. *)
 
-  val print : Format.formatter -> t -> unit
-end and Constant_defining_value :
-  Identifiable.S with type t = Constant_defining_value_T.t
+  include Identifiable.S with type t := t
+
+  val create_allocated_const : Allocated_const.t -> t
+
+  val create_block
+     : Tag.Scannable.t
+    -> Constant_defining_value_block_field.t list
+    -> t
+
+  val create_set_of_closures : Flambda.Set_of_closures.t -> t
+
+  val create_project_closure : Symbol.t -> Closure_id.t -> t
+end
 
 (** A "program" is the contents of one compilation unit.  It describes the
     various values that are assigned to symbols (and in some cases fields of
@@ -71,13 +83,13 @@ module Program_body : sig
         approximation of the set of closures to be present in order to
         correctly simplify the [Project_closure] construction.  (See
         [Simplify.simplify_project_closure] for that part.) *)
-    | Initialize_symbol of Symbol.t * Tag.t * (t * Continuation.t) list
-        * t
+    | Initialize_symbol of Symbol.t * Tag.t
+        * (Flambda.Expr.t * Continuation.t) list * t
     (** Define the given symbol as a constant block of the given size and
         tag; but with a possibly non-constant initializer.  The initializer
         will be executed at most once (from the entry point of the compilation
         unit). *)
-    | Effect of t * Continuation.t * t
+    | Effect of Flambda.Expr.t * Continuation.t * t
     (** Cause the given expression, which may have a side effect, to be
         executed.  The resulting value is discarded.  [Effect] constructions
         are never re-ordered. *)

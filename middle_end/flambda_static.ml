@@ -14,16 +14,30 @@
 (*                                                                        *)
 (**************************************************************************)
 
-module rec Constant_defining_value : sig
+module Constant_defining_value_block_field = struct
   type t =
-    | Allocated_const of Allocated_const.t
-    | Block of Tag.t * Constant_defining_value_block_field.t list
-    | Set_of_closures of set_of_closures  (* [free_vars] must be empty *)
-    | Project_closure of Symbol.t * Closure_id.t
+    | Symbol of Symbol.t
+    | Const of Const.t
 
-  include Identifiable.S with type t := t
-end = struct
-  include Constant_defining_value
+  let compare (t1 : t) (t2 : t) =
+    match t1, t2 with
+    | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
+    | Const t1, Const t2 -> Const.compare t1 t2
+    | Symbol _, Const _ -> -1
+    | Const _, Symbol _ -> 1
+
+  let print ppf (field : t) =
+    match field with
+    | Symbol symbol -> Symbol.print ppf symbol
+    | Const const -> Const.print ppf const
+end
+
+module Constant_defining_value = struct
+  type t = private
+    | Allocated_const of Allocated_const.t
+    | Block of Tag.Scannable.t * Constant_defining_value_block_field.t list
+    | Set_of_closures of Flambda.Set_of_closures.t
+    | Project_closure of Symbol.t * Closure_id.t
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -33,7 +47,7 @@ end = struct
       | Allocated_const c1, Allocated_const c2 ->
         Allocated_const.compare c1 c2
       | Block (tag1, fields1), Block (tag2, fields2) ->
-        let c = Tag.compare tag1 tag2 in
+        let c = Tag.Scannable.compare tag1 tag2 in
         if c <> 0 then c
         else
           Misc.Stdlib.List.compare compare_constant_defining_value_block_field
@@ -69,9 +83,10 @@ end = struct
       | Allocated_const const ->
         fprintf ppf "(Allocated_const %a)" Allocated_const.print const
       | Block (tag, []) ->
-        fprintf ppf "(Empty block (tag %a))" (Tag.print tag)
+        fprintf ppf "(Empty block (tag %a))" Tag.print tag
       | Block (tag, fields) ->
-        fprintf ppf "(Block (tag %d, %a))" (Tag.to_int tag)
+        fprintf ppf "(Block (tag %a, %a))"
+          Tag.Scannable.print tag
           (Format.pp_print_list ~sep:pp_print_space
             Constant_defining_value_block_field.print) fields
       | Set_of_closures set_of_closures ->
@@ -85,6 +100,20 @@ end = struct
     let output o v =
       output_string o (Format.asprintf "%a" print v)
   end)
+
+  let create_allocated_const ac = Allocated_const ac
+
+  let create_block tag fields = Block (tag, fields)
+
+  let create_set_of_closures set =
+    if not (Flambda.Set.of_closures.has_empty_environment set) then begin
+      Misc.fatal_errorf "Cannot have set of closures with a non-empty \
+          environment as static data: %a"
+        Flambda.Set_of_closures.print set
+    end;
+    Set_of_closures set
+
+  let create_project_closure sym closure_id = Project_closure (sym, closure_id)
 
   let free_symbols_helper symbols (const : t) =
     match const with
@@ -101,52 +130,32 @@ end = struct
         (free_symbols_named (Set_of_closures set_of_closures))
     | Project_closure (s, _) ->
       symbols := Symbol.Set.add s !symbols
-end and Constant_defining_value_block_field : sig
-  type t =
-    | Symbol of Symbol.t
-    | Const of const
-
-  include Identifiable.S with type t := t
-end = struct
-  include Constant_defining_value_block_field
-
-  let compare (t1 : t) (t2 : t) =
-    match t1, t2 with
-    | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
-    | Const t1, Const t2 -> Const.compare t1 t2
-    | Symbol _, Const _ -> -1
-    | Const _, Symbol _ -> 1
-
-  let print ppf (field : t) =
-    match field with
-    | Symbol symbol -> Symbol.print ppf symbol
-    | Const const -> Const.print ppf const
 end
 
 module Program_body = struct
   type t =
-    | Let_symbol of Symbol.t * constant_defining_value * t
-    | Let_rec_symbol of (Symbol.t * constant_defining_value) list * t
-    | Initialize_symbol of Symbol.t * Tag.t * (t * Continuation.t) list
-        * t
-    | Effect of t * Continuation.t * t
+    | Let_symbol of Symbol.t * Constant_defining_value.t * t
+    | Let_rec_symbol of (Symbol.t * Constant_defining_value.t) list * t
+    | Initialize_symbol of Symbol.t * Tag.t
+        * (Flambda.Expr.t * Continuation.t) list * t
+    | Effect of Expr.t * Continuation.t * t
     | End of Symbol.t
 
   let rec print ppf (program : t) =
     match program with
     | Let_symbol (symbol, constant_defining_value, body) ->
-      let rec letbody (ul : t) =
+      let rec let_body (ul : t) =
         match ul with
         | Let_symbol (symbol, constant_defining_value, body) ->
           fprintf ppf "@ @[<2>(%a@ %a)@]" Symbol.print symbol
             Constant_defining_value.print constant_defining_value;
-          letbody body
+          let_body body
         | _ -> ul
       in
       fprintf ppf "@[<2>let_symbol@ @[<hv 1>(@[<2>%a@ %a@])@]@ "
         Symbol.print symbol
         Constant_defining_value.print constant_defining_value;
-      let program = letbody body in
+      let program = let_body body in
       fprintf ppf "@]@.";
       print ppf program
     | Let_rec_symbol (defs, program) ->
@@ -164,21 +173,24 @@ module Program_body = struct
         bindings defs;
       print ppf program
     | Initialize_symbol (symbol, tag, fields, program) ->
-      let lam_and_cont ppf (field, defn, cont) =
+      let expr_and_cont ppf (field, defn, cont) =
         fprintf ppf "Field %d, return continuation %a:@;@[<h>@ @ %a@]"
-          field Continuation.print cont lam defn
+          field
+          Continuation.print cont
+          Flambda.Expr.print defn
       in
       let pp_sep ppf () = fprintf ppf "@ " in
       fprintf ppf
         "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
         Symbol.print symbol
         Tag.print tag
-        (Format.pp_print_list ~pp_sep lam_and_cont)
+        (Format.pp_print_list ~pp_sep expr_and_cont)
         (List.mapi (fun i (defn, cont) -> i, defn, cont) fields);
       print ppf program
-    | Effect (lam, cont, program) ->
+    | Effect (expr, cont, program) ->
       fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
-        Continuation.print cont print lam;
+        Continuation.print cont
+        Flambda.Expr.print expr;
       print ppf program;
     | End root -> fprintf ppf "End %a" Symbol.print root
 end

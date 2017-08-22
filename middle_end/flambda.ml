@@ -983,6 +983,7 @@ end and Set_of_closures : sig
     -> free_vars:Free_vars.t
     -> direct_call_surrogates:Variable.t Variable.Map.t
     -> t
+  val has_empty_environment : t -> bool
   val print : Format.formatter -> t -> unit
 end = struct
   include Set_of_closures
@@ -1033,6 +1034,9 @@ end = struct
       free_vars;
       direct_call_surrogates;
     }
+
+  let has_empty_environment t =
+    Variable.Map.is_empty t.free_vars
 
   let print ppf t =
     match t with
@@ -1266,21 +1270,31 @@ end and Typed_parameter : sig
     val free_variables : t -> Variable.Set.t
     val print : Format.formatter -> t -> unit
   end
-  val print : Format.formatter -> t -> unit
+  include Identifiable.S with type t := t
 end = struct
   type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
 
   let var (param, _ty) = Parameter.var param
 
-  let print ppf (param, ty) =
-    Format.fprintf ppf "@[(%a : %a)@]"
-      Parameter.print param
-      (Flambda_type0.T.print Function_declarations.print) ty
-
   let free_variables (_param, ty) =
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the type. *)
     Flambda_type0.T.free_variables ty
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare (param1, _ty1) (param2, _ty2) = Parameter.compare param1 param2
+    let equal t1 t2 = (compare t1 t2 = 0)
+    let hash (param, _ty) = Parameter.hash param
+
+    let print ppf (param, ty) =
+      Format.fprintf ppf "@[(%a : %a)@]"
+        Parameter.print param
+        (Flambda_type0.T.print Function_declarations.print) ty
+
+    let output _ _ = Misc.fatal_error "Not implemented"
+                            end)
 
   module List = struct
     type nonrec t = t list

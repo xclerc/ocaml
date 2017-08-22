@@ -468,6 +468,9 @@ end and Set_of_closures : sig
     -> direct_call_surrogates:Variable.t Variable.Map.t
     -> t
 
+  (** Returns true iff the given set of closures has an empty environment. *)
+  val has_empty_environment : t -> bool
+
   val print : Format.formatter -> t -> unit
 end and Function_declarations : sig
   (** The representation of a set of function declarations (possibly mutually
@@ -631,7 +634,9 @@ end and Typed_parameter : sig
     val print : Format.formatter -> t -> unit
   end
 
-  val print : Format.formatter -> t -> unit
+  (** N.B. Sets, maps and hash tables keyed on values of type [t] do not
+      take into account the parameter's type in the comparison relation. *)
+  include Identifiable.S with type t := t
 end
 
 (** A module for the manipulation of terms where the recomputation of free

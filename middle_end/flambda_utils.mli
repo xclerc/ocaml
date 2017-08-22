@@ -21,17 +21,23 @@
 (** Access functions *)
 
 (** [find_declaration f decl] raises [Not_found] if [f] is not in [decl]. *)
-val find_declaration :
-  Closure_id.t -> Flambda.Function_declarations.t -> Flambda.Function_declaration.t
+val find_declaration
+   : Closure_id.t
+  -> Flambda.Function_declarations.t
+  -> Flambda.Function_declaration.t
 
 (** [find_declaration_variable f decl] raises [Not_found] if [f] is not in
     [decl]. *)
-val find_declaration_variable :
-  Closure_id.t -> Flambda.Function_declarations.t -> Variable.t
+val find_declaration_variable
+   : Closure_id.t
+  -> Flambda.Function_declarations.t
+  -> Variable.t
 
 (** [find_free_variable v clos] raises [Not_found] if [c] is not in [clos]. *)
-val find_free_variable :
-  Var_within_closure.t -> Flambda.set_of_closures -> Variable.t
+val find_free_variable
+   : Var_within_closure.t
+  -> Flambda.Set_of_closures.t
+  -> Variable.t
 
 (** Utility functions *)
 
@@ -45,14 +51,16 @@ val function_arity : Flambda.Function_declaration.t -> int
     simultaneous, possibly mutually-recursive [let] binding then none of
     [f], [g] or [h] are bound in any of the closures for [f], [g] and [h].
 *)
-val variables_bound_by_the_closure :
-  Closure_id.t -> Flambda.Function_declarations.t -> Variable.Set.t
+val variables_bound_by_the_closure
+   : Closure_id.t
+  -> Flambda.Function_declarations.t
+  -> Variable.Set.t
 
 (** If [can_be_merged f1 f2] is [true], it is safe to merge switch
     branches containing [f1] and [f2]. *)
-val can_be_merged : Flambda.t -> Flambda.t -> bool
+val can_be_merged : Flambda.Expr.t -> Flambda.Expr.t -> bool
 
-val description_of_toplevel_node : Flambda.t -> string
+val description_of_toplevel_node : Flambda.Expr.t -> string
 
 (* Given an expression, freshen all variables within it, and form a function
    whose body is the resulting expression.  The variables specified by
@@ -64,50 +72,52 @@ val description_of_toplevel_node : Flambda.t -> string
    in the comment. *)
 val make_closure_declaration
    : id:Variable.t
-  -> body:Flambda.t
+  -> body:Flambda.Expr.t
   -> params:Parameter.t list
   -> continuation_param:Continuation.t
   (* CR mshinwell: update comment. *)
   -> stub:bool
   -> continuation:Continuation.t
-  -> Flambda.t
+  -> Flambda.Expr.t
 
 val toplevel_substitution
    : Variable.t Variable.Map.t
-  -> Flambda.expr
-  -> Flambda.expr
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 val toplevel_substitution_named
    : Variable.t Variable.Map.t
-  -> Flambda.named
-  -> Flambda.named
+  -> Flambda.Named.t
+  -> Flambda.Named.t
 
 (** [bind [var1, expr1; ...; varN, exprN] body] binds using
     [Immutable] [Let] expressions the given [(var, expr)] pairs around the
     body. *)
 val bind
-   : bindings:(Variable.t * Flambda.named) list
-  -> body:Flambda.t
-  -> Flambda.t
+   : bindings:(Variable.t * Flambda.Named.t) list
+  -> body:Flambda.Expr.t
+  -> Flambda.Expr.t
 
-val compare_const : Flambda.const -> Flambda.const -> int
+val compare_const : Flambda.Const.t -> Flambda.Const.t -> int
 
 val initialize_symbols
-   : Flambda.program
-  -> (Symbol.t * Tag.t * (Flambda.t * Continuation.t) list) list
+   : Flambda_static.Program.t
+  -> (Symbol.t * Tag.t * (Flambda.Expr.t * Continuation.t) list) list
 
-val imported_symbols : Flambda.program -> Symbol.Set.t
+val imported_symbols : Flambda_static.Program.t -> Symbol.Set.t
 
-val needed_import_symbols : Flambda.program -> Symbol.Set.t
+val needed_import_symbols : Flambda_static.Program.t -> Symbol.Set.t
 
-val introduce_needed_import_symbols : Flambda.program -> Flambda.program
+val introduce_needed_import_symbols
+   : Flambda_static.Program.t
+  -> Flambda_static.Program.t
 
-val root_symbol : Flambda.program -> Symbol.t
+val root_symbol : Flambda_static.Program.t -> Symbol.t
 
 (** Creates a map from closure IDs to function declarations by iterating over
     all sets of closures in the given program. *)
 val make_closure_map
-   : Flambda.program
+   : Flambda_static.Program.t
   -> Flambda.Function_declarations.t Closure_id.Map.t
 
 (** Like [make_closure_map], but takes a mapping from set of closures IDs to
@@ -119,34 +129,36 @@ val make_closure_map'
 (** The definitions of all constants that have been lifted out to [Let_symbol]
     or [Let_rec_symbol] constructions. *)
 val all_lifted_constants
-   : Flambda.program
-  -> (Symbol.t * Flambda.constant_defining_value) list
+   : Flambda_static.Program.t
+  -> (Symbol.t * Flambda_static.Constant_defining_value.t) list
 
 (** Like [all_lifted_constant_symbols], but returns a map instead of a list. *)
 val all_lifted_constants_as_map
-   : Flambda.program
-  -> Flambda.constant_defining_value Symbol.Map.t
+   : Flambda_static.Program.t
+  -> Flambda_static.Constant_defining_value.t Symbol.Map.t
 
 (** The identifiers of all constant sets of closures that have been lifted out
     to [Let_symbol] or [Let_rec_symbol] constructions. *)
 val all_lifted_constant_sets_of_closures
-   : Flambda.program
+   : Flambda_static.Program.t
   -> Set_of_closures_id.Set.t
 
 (** All sets of closures in the given program (whether or not bound to a
     symbol.) *)
-val all_sets_of_closures : Flambda.program -> Flambda.set_of_closures list
+val all_sets_of_closures
+   : Flambda_static.Program.t
+  -> Flambda.Set_of_closures.t list
 
 val all_sets_of_closures_map
-   : Flambda.program
-  -> Flambda.set_of_closures Set_of_closures_id.Map.t
+   : Flambda_static.Program.t
+  -> Flambda.Set_of_closures.t Set_of_closures_id.Map.t
 
 val all_function_decls_indexed_by_set_of_closures_id
-   : Flambda.program
+   : Flambda_static.Program.t
   -> Flambda.Function_declarations.t Set_of_closures_id.Map.t
 
 val all_function_decls_indexed_by_closure_id
-   : Flambda.program
+   : Flambda_static.Program.t
   -> Flambda.Function_declarations.t Closure_id.Map.t
 
 val make_variable_symbol : Variable.t -> Symbol.t
@@ -157,8 +169,8 @@ val make_variables_symbol : Variable.t list -> Symbol.t
    [Read_symbol_field (symbol, 0)]. *)
 val substitute_read_symbol_field_for_variables
    : (Symbol.t * int option) Variable.Map.t
-  -> Flambda.t
-  -> Flambda.t
+  -> Flambda.Expr.t
+  -> Flambda.Expr.t
 
 (** For the compilation of switch statements. *)
 module Switch_storer : sig
@@ -202,13 +214,10 @@ val contains_stub : Flambda.Function_declarations.t -> bool
 (* Ensure that projection information is suitably erased from
    free_vars and specialised_args if we have deleted the variable being
    projected from. *)
-val clean_free_vars_projections : Flambda.free_vars -> Flambda.free_vars
-val clean_specialised_args_projections
-   : Flambda.specialised_args
-  -> Flambda.specialised_args
+val clean_free_vars_projections : Flambda.Free_vars.t -> Flambda.Free_vars.t
 
-val projection_to_named : Projection.t -> Flambda.named
-
+val projection_to_named : Projection.t -> Flambda.Named.t
+(*
 type specialised_to_same_as =
   | Not_specialised
   | Specialised_and_aliased_to of Variable.Set.t
@@ -223,46 +232,48 @@ val parameters_specialised_to_the_same_variable
    : function_decls:Flambda.Function_declarations.t
   -> specialised_args:Flambda.specialised_to Variable.Map.t
   -> specialised_to_same_as list Variable.Map.t
+*)
 
 type with_wrapper =
-  | Unchanged of { handler : Flambda.continuation_handler; }
+  | Unchanged of { handler : Flambda.Continuation_handler.t; }
   | With_wrapper of {
       new_cont : Continuation.t;
-      new_handler : Flambda.continuation_handler;
-      wrapper_handler : Flambda.continuation_handler;
+      new_handler : Flambda.Continuation_handler.t;
+      wrapper_handler : Flambda.Continuation_handler.t;
     }
 
 val build_let_cont_with_wrappers
-   : body:Flambda.t
+   : body:Flambda.Expr.t
   -> recursive:Asttypes.rec_flag
   -> with_wrappers:with_wrapper Continuation.Map.t
-  -> Flambda.expr
+  -> Flambda.Expr.t
 
 val create_wrapper_params
-   : params:Parameter.t list
-  -> specialised_args:Flambda.specialised_args
-  -> freshening_already_assigned:Parameter.t Parameter.Map.t
-  -> Parameter.t Parameter.Map.t * Parameter.t list * Flambda.specialised_args
+   : params:Flambda.Typed_parameter.t list
+  -> freshening_already_assigned:
+    Flambda.Typed_parameter.t Flambda.Typed_parameter.Map.t
+  -> Flambda.Typed_parameter.t Flambda.Typed_parameter.Map.t
+    * Flambda.Typed_parameter.t list
 
 (** All continuations defined at toplevel within the given expression. *)
-val all_defined_continuations_toplevel : Flambda.expr -> Continuation.Set.t
+val all_defined_continuations_toplevel : Flambda.Expr.t -> Continuation.Set.t
 
 val count_continuation_uses_toplevel
-   : Flambda.expr
+   : Flambda.Expr.t
   -> int Continuation.Map.t
 
 val make_let_cont_alias
    : name:Continuation.t
   -> alias_of:Continuation.t
   -> arity:int
-  -> Flambda.let_cont_handlers
+  -> Flambda.Let_cont_handlers.t
 
-val arity_of_call_kind : call_kind -> return_arity
+val arity_of_call_kind : Flambda.Call_kind.t -> Flambda.Return_arity.t
 
 module Reachable : sig
   type nonrec t =
-    | Reachable of t
-    | Non_terminating of t
+    | Reachable of Flambda.Named.t
+    | Non_terminating of Flambda.Named.t
     | Unreachable
 end
 
@@ -271,31 +282,36 @@ end
     simplification functions in CPS.  This function provides for the
     rewriting or elimination of expressions during the fold. *)
 val fold_lets_option
-    : t
+    : Flambda.Expr.t
   -> init:'a
   -> for_defining_expr:(
       'a
     -> Variable.t
-    -> Named.t
+    -> Flambda.Named.t
     -> 'a
-      * (Variable.t * Function_declarations.t Flambda_type0.T.t * Named.t) list
+      * (Variable.t * Flambda.Function_declarations.t Flambda_type0.T.t
+          * Flambda.Named.t) list
       * Variable.t
-      * Function_declarations.t Flambda_type0.T.t
-      * Named.Reachable.t)
-  -> for_last_body:('a -> t -> t * 'b)
+      * Flambda.Function_declarations.t Flambda_type0.T.t
+      * Reachable.t)
+  -> for_last_body:('a -> Flambda.Expr.t -> Flambda.Expr.t * 'b)
   (* CR-someday mshinwell: consider making [filter_defining_expr]
-    optional *)
-  -> filter_defining_expr:('b -> Variable.t -> Named.t -> Variable.Set.t ->
-                          'b * Variable.t * Named.t option)
-  -> t * 'b
+     optional *)
+  -> filter_defining_expr:(
+       'b
+    -> Variable.t
+    -> Flambda.Named.t
+    -> Variable.Set.t
+    -> 'b * Variable.t * (Flambda.Named.t option))
+  -> Flambda.Expr.t * 'b
 
 (* CR mshinwell: consider enhancing this in the same way as for
   [fold_lets_option] in the [defining_expr] type.  This would be useful eg
   for Ref_to_variables.  Maybe in fact there should be a new iterator that
   uses this function for such situations? *)
 val map_lets
-  : t
-  -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
-  -> for_last_body:(t -> t)
-  -> after_rebuild:(t -> t)
-  -> t
+   : Flambda.Expr.t
+  -> for_defining_expr:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
+  -> after_rebuild:(Flambda.Expr.t -> Flambda.Expr.t)
+  -> for_last_body:(Flambda.Expr.t -> Flambda.Expr.t)
+  -> Flambda.Expr.t

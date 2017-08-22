@@ -21,18 +21,20 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** The type of an Flambda term. *)
-type t = Flambda.Function_declarations.t Flambda type0.T.t
+type t = Flambda.Function_declarations.t Flambda_type0.T.t
 
-type descr = Flambda.Function_declarations.t Flambda type0.T.descr
+type descr = Flambda.Function_declarations.t Flambda_type0.T.descr
 type set_of_closures =
-  Flambda.Function_declarations.t Flambda type0.T.set_of_closures
+  Flambda.Function_declarations.t Flambda_type0.T.set_of_closures
+type float_array =
+  Flambda.Function_declarations.t Flambda_type0.T.float_array
 (* CR-soon mshinwell: GPR#792 may enable us to get rid of these aliases. *)
 type _ t' = t
 type _ descr' = descr
 type _ set_of_closures' = set_of_closures
 
 (** Means of making and examining types. *)
-include Flambda type0.Constructors_and_accessors
+include Flambda_type0.Constructors_and_accessors
   with type 'decls t := 'decls t'
   with type 'decls descr := 'decls descr'
   with type 'decls set_of_closures := 'decls set_of_closures'
@@ -120,14 +122,14 @@ val invalid_to_mutate : t -> bool
 (** Find the type for a bound variable in a set-of-closures
     type.  A fatal error is produced if the variable is not bound in
     the given type. *)
-val type_for_bound_var : value_set_of_closures -> Var_within_closure.t -> t
+val type_for_bound_var : set_of_closures -> Var_within_closure.t -> t
 
 (** Given a set-of-closures type and a closure ID, apply any
     freshening specified by the type to the closure ID, and return
     the resulting ID.  Causes a fatal error if the resulting closure ID does
     not correspond to any function declaration in the type. *)
 val freshen_and_check_closure_id
-   : value_set_of_closures
+   : set_of_closures
   -> Closure_id.Set.t
   -> Closure_id.Set.t
 
@@ -216,7 +218,7 @@ val reify_as_int : t -> int option
 val reify_as_boxed_float : t -> float option
 
 (** As for [reify_as_int], but for constant float arrays. *)
-val reify_as_constant_float_array : value_float_array -> float list option
+val reify_as_constant_float_array : float_array -> float list option
 
 (** As for [reify_as_int], but for strings. *)
 val reify_as_string : t -> string option
@@ -231,7 +233,7 @@ val reify_as_scannable_block : t -> reified_as_scannable_block
 
 type reified_as_variant =
   | Wrong
-  | Ok of Unionable.t
+  | Ok of Flambda.Function_declarations.t Flambda_type0.Unionable.t
 
 (** Try to prove that the given type is of the expected form for the
     Flambda type of a value of variant type. *)
@@ -252,9 +254,9 @@ val reify_as_scannable_block_or_immediate
 
 type reified_as_set_of_closures =
   | Wrong
-  | Unresolved of unresolved_value
+  | Unresolved of Flambda_type0.unresolved_value
   | Unknown
-  | Ok of Variable.t option * value_set_of_closures
+  | Ok of Variable.t option * set_of_closures
   (** In the [Ok] case, there may not be a variable associated with the set of
       closures; it might be out of scope. *)
 
@@ -265,7 +267,7 @@ val reify_as_set_of_closures : t -> reified_as_set_of_closures
 
 type strict_reified_as_set_of_closures =
   | Wrong
-  | Ok of Variable.t option * value_set_of_closures
+  | Ok of Variable.t option * set_of_closures
 
 (** As for [reify_as_set_of_closures], but disallows unresolved or
     unknown types. *)
@@ -275,8 +277,7 @@ val strict_reify_as_set_of_closures
 
 type strict_reified_as_closure =
   | Wrong
-  | Ok of value_set_of_closures Closure_id.Map.t
-      * Variable.t option * Symbol.t option
+  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
 
 (** Try to prove that a value with the given type may be used as a
     closure.  Values coming from external compilation units with unresolved
@@ -285,8 +286,7 @@ val strict_reify_as_closure : t -> strict_reified_as_closure
 
 type strict_reified_as_closure_singleton =
   | Wrong
-  | Ok of Closure_id.t * Variable.t option
-      * Symbol.t option * value_set_of_closures
+  | Ok of Closure_id.t * Variable.t option * Symbol.t option * set_of_closures
 
 (** As for [strict_reify_as_closure] but disallows situations where
     multiple different closures flow to the same program point. *)
@@ -296,10 +296,9 @@ val strict_reify_as_closure_singleton
 
 type reified_as_closure_allowing_unresolved =
   | Wrong
-  | Unresolved of unresolved_value
+  | Unresolved of Flambda_type0.unresolved_value
   | Unknown
-  | Ok of value_set_of_closures Closure_id.Map.t
-      * Variable.t option * Symbol.t option
+  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
 
 (** As for [reify_as_closure], but values coming from external
     compilation units with unresolved types are permitted. *)
