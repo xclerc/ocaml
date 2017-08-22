@@ -305,7 +305,7 @@ let map_general ~toplevel f f_named tree =
                   func_decl
                 end else begin
                   done_something := true;
-                  Flambda.update_body_of_function_declaration func_decl
+                  Flambda.Function_declaration.update_body func_decl
                     ~body:new_body
                 end)
               function_decls.funs
@@ -380,7 +380,7 @@ let map_symbols_on_set_of_closures
         if not (body == func_decl.body) then begin
           done_something := true;
         end;
-        Flambda.update_body_of_function_declaration func_decl ~body)
+        Flambda.Function_declaration.update_body func_decl ~body)
       function_decls.funs
   in
   if not !done_something then
@@ -458,7 +458,7 @@ let map_function_bodies ?ignore_stubs
           function_decl
         else begin
           done_something := true;
-          Flambda.update_body_of_function_declaration function_decl
+          Flambda.Function_declaration.update_body function_decl
             ~body:new_body
         end)
       set_of_closures.function_decls.funs
@@ -489,7 +489,7 @@ let map_sets_of_closures_of_program (program : Flambda_static.Program.t)
                 function_decl
               else begin
                 done_something := true;
-                Flambda.update_body_of_function_declaration function_decl ~body
+                Flambda.Function_declaration.update_body function_decl ~body
               end)
             set_of_closures.function_decls.funs
         in
@@ -584,7 +584,7 @@ let map_exprs_at_toplevel_of_program (program : Flambda_static.Program.t)
               function_decl
             else begin
               done_something := true;
-              Flambda.update_body_of_function_declaration function_decl ~body
+              Flambda.Function_declaration.update_body function_decl ~body
             end)
           set_of_closures.function_decls.funs
       in

@@ -53,7 +53,7 @@ let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
         params_for_equal_free_vars
         function_decl.body
     in
-    Flambda.update_body_of_function_declaration function_decl ~body
+    Flambda.Function_declaration.update_body function_decl ~body
 
 let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let back_free_vars =

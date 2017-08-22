@@ -263,7 +263,7 @@ let rewrite_recursive_calls_with_symbols t
                 | e -> e)
               func_decl.body
           in
-          Flambda.update_body_of_function_declaration func_decl ~body)
+          Flambda.Function_declaration.update_body func_decl ~body)
         function_declarations.funs
       in
       Flambda.Function_declarations.update function_declarations ~funs

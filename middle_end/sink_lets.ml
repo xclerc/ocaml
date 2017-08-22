@@ -316,7 +316,7 @@ and sink_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let funs =
     Variable.Map.map (fun
             (function_decl : Flambda.Function_declaration.t) ->
-        Flambda.update_body_of_function_declaration function_decl
+        Flambda.Function_declaration.update_body function_decl
           ~body:(sink function_decl.body))
       set_of_closures.function_decls.funs
   in

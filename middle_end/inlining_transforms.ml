@@ -502,7 +502,7 @@ let inline_by_copying_function_declaration ~env ~r
             | _ -> expr)
           body_substituted
       in
-      Flambda.update_body_of_function_declaration fun_decl ~body
+      Flambda.Function_declaration.update_body fun_decl ~body
     in
     let funs =
       Variable.Map.map rewrite_function function_decls.funs
