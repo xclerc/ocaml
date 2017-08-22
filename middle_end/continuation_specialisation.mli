@@ -28,6 +28,6 @@ val for_toplevel_expression
     -> args_approxs:Flambda_type.t list Continuation.Map.t option
     -> recursive:Asttypes.rec_flag
     -> freshening:Freshening.t
-    -> Flambda.let_cont_handlers option * Simplify_aux.Result.t)
+    -> Flambda.Let_cont_handlers.t option * Simplify_aux.Result.t)
   -> backend:(module Backend_intf.S)
   -> Flambda.Expr.t option

@@ -1853,7 +1853,7 @@ and simplify_let_cont_handler ~env ~r ~cont
 
 and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
       ~(recursive : Asttypes.rec_flag) ~freshening
-      : Flambda.let_cont_handlers option * R.t =
+      : Flambda.Let_cont_handlers.t option * R.t =
   Continuation.Map.iter (fun cont _handler ->
       let cont = Freshening.apply_static_exception freshening cont in
       if R.continuation_defined r cont then begin

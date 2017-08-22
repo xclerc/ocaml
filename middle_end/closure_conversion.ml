@@ -233,7 +233,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
           specialised_args = Variable.Map.empty;
         };
       in
-      let handlers : Flambda.let_cont_handlers =
+      let handlers : Flambda.Let_cont_handlers.t =
         match let_cont.recursive with
         | Nonrecursive -> Nonrecursive { name = let_cont.name; handler; }
         | Recursive ->

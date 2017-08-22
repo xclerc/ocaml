@@ -50,7 +50,7 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
       let expr = Flambda.Expr.create_let param defining_expr handler in
       free_conts_handler, lifted, expr
     end else begin
-      let handlers : Flambda.let_cont_handlers =
+      let handlers : Flambda.Let_cont_handlers.t =
         Nonrecursive {
           name;
           handler = handler_record;

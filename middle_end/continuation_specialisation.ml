@@ -25,7 +25,7 @@ let () = Pass_wrapper.register ~pass_name
 
 type specialising_result =
   | Didn't_specialise
-  | Specialised of Continuation.t * Flambda.let_cont_handlers
+  | Specialised of Continuation.t * Flambda.Let_cont_handlers.t
 
 let environment_for_simplification ~env ~old_handlers =
   let freshening =
@@ -219,7 +219,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handler.ts)
   if !Clflags.flambda_invariant_checks then begin
     (* Unbound continuations will be caught by [simplify_let_cont_handlers]
        but it's nicer for debugging to check now. *)
-    let handlers : Flambda.let_cont_handlers =
+    let handlers : Flambda.Let_cont_handlers.t =
       match recursive with
       | Nonrecursive ->
         begin match Continuation.Map.bindings new_handlers with
@@ -260,7 +260,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handler.ts)
           (Continuation.Map.data old_handlers)
       in
       let new_handlers =
-        match (new_handlers : Flambda.let_cont_handlers) with
+        match (new_handlers : Flambda.Let_cont_handlers.t) with
         | Nonrecursive { handler; _ } -> [handler.handler]
         | Recursive handlers ->
           List.map (fun (handler : Flambda.Continuation_handler.t) ->

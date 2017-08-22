@@ -110,8 +110,8 @@ let rec same (l1 : Flambda.Expr.t) (l2 : Flambda.Expr.t) =
   | Proved_unreachable, Proved_unreachable -> true
   | Proved_unreachable, _ | _, Proved_unreachable -> false
 
-and same_let_cont_handlers (handlers1 : Flambda.let_cont_handlers)
-      (handlers2 : Flambda.let_cont_handlers) =
+and same_let_cont_handlers (handlers1 : Flambda.Let_cont_handlers.t)
+      (handlers2 : Flambda.Let_cont_handlers.t) =
   match handlers1, handlers2 with
   | Nonrecursive { name = name1; handler = handler1; },
       Nonrecursive { name = name2; handler = handler2; } ->
@@ -974,7 +974,7 @@ let count_continuation_uses_toplevel (expr : Flambda.Expr.t) =
     expr;
   Continuation.Tbl.to_map counts
 
-let make_let_cont_alias ~name ~alias_of ~arity : Flambda.let_cont_handlers =
+let make_let_cont_alias ~name ~alias_of ~arity : Flambda.Let_cont_handlers.t =
   let handler_params, apply_params =
     let rec aux n =
       if n <= 0 then []

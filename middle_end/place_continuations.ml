@@ -68,7 +68,7 @@ module Placement = struct
 end
 
 type being_placed = {
-  handlers : Flambda.let_cont_handlers;
+  handlers : Flambda.Let_cont_handlers.t;
   handlers_as_map : Flambda.Continuation_handler.ts;
   needed_fvs : Variable.Set.t;
 }
@@ -76,7 +76,7 @@ type being_placed = {
 type insertion_state = {
   vars_in_scope : Variable.Set.t;
   (* All variables currently in scope. *)
-  pending : Flambda.let_cont_handlers list Continuation.Map.t;
+  pending : Flambda.Let_cont_handlers.t list Continuation.Map.t;
   (* From pre-existing continuations to specialised versions thereof.
      (For each pre-existing, possibly mutually-recursive, set of continuations
      there may be multiple specialised versions; hence the "list".) *)
@@ -84,7 +84,7 @@ type insertion_state = {
   (* Specialised continuations whose corresponding pre-existing continuation
      is in scope and that we are looking to place as soon as all required
      variables are in scope. *)
-  placed : Flambda.let_cont_handlers list Placement.Map.t;
+  placed : Flambda.Let_cont_handlers.t list Placement.Map.t;
   (* Specialised continuations whose placement has been identified.
      There may of course be more than one set of handlers placed at any one
      particular spot. *)
@@ -148,7 +148,7 @@ Format.eprintf "Passing binding of %a\n%!" Continuation.print name;
       | exception Not_found -> state
       | new_handlers_list ->
         List.fold_left (fun state
-                (new_handlers : Flambda.let_cont_handlers) ->
+                (new_handlers : Flambda.Let_cont_handlers.t) ->
             let pending = Continuation.Map.remove name state.pending in
             let needed_fvs =
               Variable.Set.diff

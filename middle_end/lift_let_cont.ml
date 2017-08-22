@@ -51,7 +51,7 @@ end
 type thing_to_lift =
   | Let of Variable.t * Flambda.Named.t Flambda.With_free_variables.t
   | Let_mutable of Mutable_variable.t * Variable.t * Lambda.value_kind
-  | Let_cont of Flambda.let_cont_handlers
+  | Let_cont of Flambda.Let_cont_handlers.t
 
 let bind_things_to_remain ~rev_things ~around =
   List.fold_left (fun body (thing : thing_to_lift) : Flambda.Expr.t ->
@@ -69,7 +69,7 @@ let bind_things_to_remain ~rev_things ~around =
 module State = struct
   type t = {
     constants : (Variable.t * Flambda.Named.t) list;
-    to_be_lifted : Flambda.let_cont_handlers list;
+    to_be_lifted : Flambda.Let_cont_handlers.t list;
     to_remain : thing_to_lift list;
     continuations_to_remain : Continuation.Set.t;
     variables_to_remain : Variable.Set.t;
@@ -239,7 +239,7 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
       handler_terminators_and_states
       (state, Continuation.Map.empty, false)
   in
-  let handlers : Flambda.let_cont_handlers =
+  let handlers : Flambda.Let_cont_handlers.t =
     match recursive with
     | Recursive -> Recursive handlers
     | Nonrecursive ->
@@ -300,7 +300,7 @@ and lift_expr (expr : Flambda.Expr.t) ~state =
        Otherwise we might end up with lifted blocks that could jump (in the
        case of an exception) to a continuation that isn't in scope. *)
     (* CR mshinwell: Maybe we should think about this some more *)
-    let handlers : Flambda.let_cont_handlers =
+    let handlers : Flambda.Let_cont_handlers.t =
       Nonrecursive {
         name;
         handler = {
@@ -316,7 +316,7 @@ and lift_expr (expr : Flambda.Expr.t) ~state =
         (fun _ (handler : Flambda.Continuation_handler.t) ->
           handler.is_exn_handler)
         handlers ->
-    let handlers : Flambda.let_cont_handlers =
+    let handlers : Flambda.Let_cont_handlers.t =
       Recursive (Continuation.Map.map (
           fun (handler : Flambda.Continuation_handler.t)
                   : Flambda.Continuation_handler.t ->
