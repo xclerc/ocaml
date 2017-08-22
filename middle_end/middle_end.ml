@@ -44,7 +44,7 @@ let middle_end ppf ~prefixname ~backend
         with exn ->
           Misc.fatal_errorf "After Flambda pass %d, round %d:@.%s:@.%a"
             !pass_number !round_number (Printexc.to_string exn)
-            Flambda.print_program flam
+            Flambda_static.Program.print flam
       end
     in
     let print_prepared_lambda lam =
@@ -71,7 +71,7 @@ let middle_end ppf ~prefixname ~backend
       if !Clflags.dump_flambda_verbose then begin
         Format.fprintf ppf "@.PASS: %s@." name;
         Format.fprintf ppf "Before pass %d, round %d:@ %a@." !pass_number
-          !round_number Flambda.print_program flam;
+          !round_number Flambda_static.Program.print flam;
         Format.eprintf "\n@?"
       end;
       let flam = Profile.record ~accumulate:true name pass flam in
@@ -95,7 +95,7 @@ let middle_end ppf ~prefixname ~backend
       if !Clflags.dump_rawflambda
       then
         Format.fprintf ppf "After closure conversion:@ %a@."
-          Flambda.print_program flam;
+          Flambda_static.Program.print flam;
       check flam;
       let fast_mode flam =
         pass_number := 0;
@@ -212,7 +212,7 @@ let middle_end ppf ~prefixname ~backend
       if !Clflags.dump_flambda
       then
         Format.fprintf ppf "End of middle end:@ %a@."
-          Flambda.print_program flam;
+          Flambda_static.Program.print flam;
       check flam;
       (* CR-someday mshinwell: add -d... option for this *)
       (* dump_function_sizes flam ~backend; *)

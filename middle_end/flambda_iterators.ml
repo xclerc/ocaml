@@ -314,7 +314,7 @@ let map_general ~toplevel f f_named tree =
             named
           else
             let function_decls =
-              Flambda.update_function_declarations function_decls ~funs
+              Flambda.Function_declarations.update function_decls ~funs
             in
             let set_of_closures =
               Flambda.create_set_of_closures ~function_decls ~free_vars
@@ -387,7 +387,7 @@ let map_symbols_on_set_of_closures
     set_of_closures
   else
     let function_decls =
-      Flambda.update_function_declarations function_decls ~funs
+      Flambda.Function_declarations.update function_decls ~funs
     in
     Flambda.create_set_of_closures ~function_decls ~free_vars
       ~specialised_args ~direct_call_surrogates
@@ -467,7 +467,7 @@ let map_function_bodies ?ignore_stubs
     set_of_closures
   else
     let function_decls =
-      Flambda.update_function_declarations set_of_closures.function_decls ~funs
+      Flambda.Function_declarations.update set_of_closures.function_decls ~funs
     in
     Flambda.create_set_of_closures
       ~function_decls
@@ -496,7 +496,7 @@ let map_sets_of_closures_of_program (program : Flambda_static.Program.t)
         if not !done_something then
           set_of_closures.function_decls
         else
-          Flambda.update_function_declarations set_of_closures.function_decls
+          Flambda.Function_declarations.update set_of_closures.function_decls
             ~funs
       in
       let new_set_of_closures = f set_of_closures in
@@ -592,7 +592,7 @@ let map_exprs_at_toplevel_of_program (program : Flambda_static.Program.t)
         set_of_closures
       else
         let function_decls =
-          Flambda.update_function_declarations set_of_closures.function_decls
+          Flambda.Function_declarations.update set_of_closures.function_decls
             ~funs
         in
         Flambda.create_set_of_closures ~function_decls

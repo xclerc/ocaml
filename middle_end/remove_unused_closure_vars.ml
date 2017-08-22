@@ -93,7 +93,7 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
           free_vars
       in
       let function_decls =
-        Flambda.update_function_declarations function_decls ~funs
+        Flambda.Function_declarations.update function_decls ~funs
       in
       let specialised_args =
         (* Remove specialised args that are used by removed functions *)

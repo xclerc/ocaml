@@ -697,7 +697,7 @@ let introduce_free_variables_in_set_of_closures
   in
   let done_something = ref false in
   let function_decls : Flambda.Function_declarations.t =
-    Flambda.update_function_declarations function_decls
+    Flambda.Function_declarations.update function_decls
       ~funs:(Variable.Map.map
           (fun (func_decl : Flambda.Function_declaration.t) ->
              let variables_to_bind =

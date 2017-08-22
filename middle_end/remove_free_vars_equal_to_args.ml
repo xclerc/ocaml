@@ -83,7 +83,7 @@ let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
     None
   else
     let function_decls =
-      Flambda.update_function_declarations
+      Flambda.Function_declarations.update
         set_of_closures.function_decls ~funs
     in
     let set_of_closures =

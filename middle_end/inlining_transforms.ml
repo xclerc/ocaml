@@ -349,7 +349,7 @@ let inline_by_copying_function_declaration ~env ~r
         Variable.Map.empty
     in
     let function_decls =
-      Flambda.update_function_declarations ~funs function_decls
+      Flambda.Function_declarations.update ~funs function_decls
     in
     let all_functions_parameters =
       Flambda_utils.all_functions_parameters function_decls
@@ -508,7 +508,7 @@ let inline_by_copying_function_declaration ~env ~r
       Variable.Map.map rewrite_function function_decls.funs
     in
     let function_decls =
-      Flambda.update_function_declarations ~funs function_decls
+      Flambda.Function_declarations.update ~funs function_decls
     in
     let set_of_closures =
       (* This is the new set of closures, with more precise specialisation

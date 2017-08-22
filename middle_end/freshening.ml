@@ -266,7 +266,7 @@ let rewrite_recursive_calls_with_symbols t
           Flambda.update_body_of_function_declaration func_decl ~body)
         function_declarations.funs
       in
-      Flambda.update_function_declarations function_declarations ~funs
+      Flambda.Function_declarations.update function_declarations ~funs
     end
 
 module Project_var = struct
@@ -368,7 +368,7 @@ module Project_var = struct
           (Variable.Map.empty, subst)
       in
       let function_decls =
-        Flambda.update_function_declarations func_decls ~funs
+        Flambda.Function_declarations.update func_decls ~funs
       in
       function_decls, Active subst, t
 

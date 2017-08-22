@@ -345,7 +345,7 @@ and lift_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
       set_of_closures.function_decls.funs
   in
   let function_decls =
-    Flambda.update_function_declarations
+    Flambda.Function_declarations.update
       set_of_closures.function_decls ~funs
   in
   Flambda.create_set_of_closures ~function_decls

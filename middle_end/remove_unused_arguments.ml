@@ -164,7 +164,7 @@ let separate_unused_arguments ~only_specialised
       Flambda_utils.clean_specialised_args_projections specialised_args
     in
     let function_decls =
-      Flambda.update_function_declarations function_decls ~funs
+      Flambda.Function_declarations.update function_decls ~funs
     in
     let set_of_closures =
       Flambda.create_set_of_closures ~function_decls

@@ -744,7 +744,7 @@ module Make (T : S) = struct
       None
     else
       let function_decls =
-        Flambda.update_function_declarations set_of_closures.function_decls
+        Flambda.Function_declarations.update set_of_closures.function_decls
           ~funs
       in
       assert (Variable.Map.cardinal specialised_args

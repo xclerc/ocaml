@@ -765,7 +765,7 @@ and simplify_set_of_closures original_env r
       (Variable.Map.empty, Variable.Set.empty, r)
   in
   let function_decls =
-    Flambda.update_function_declarations function_decls ~funs
+    Flambda.Function_declarations.update function_decls ~funs
   in
   let function_decls, new_specialised_args =
     (* CR mshinwell: I'm not sure about this "round" condition.  It seems
@@ -2825,7 +2825,7 @@ let run ~never_inline ~allow_continuation_inlining
     Misc.fatal_errorf "Continuations %a had uses but not definitions recorded \
         in [r] by the end of simplification.  Program:@ \n%a"
       Continuation.Set.print (R.used_continuations r)
-      Flambda.print_program result
+      Flambda_static.Program.print result
   end;
   assert (R.no_continuations_in_scope r);
   if !Clflags.inlining_report then begin
