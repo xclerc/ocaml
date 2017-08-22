@@ -217,7 +217,7 @@ let for_function_decl ~continuation_uses ~fun_var
                 in
 (*
     Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
-      Flambda.print_function_declarations
+      Flambda.Function_declarations.print
         (Flambda.create_function_declarations ~funs:function_decls);
 *)
                 Some (function_decls, new_specialised_args)

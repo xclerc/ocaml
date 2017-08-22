@@ -209,7 +209,7 @@ let freshen_and_check_closure_id
         "Function %a not found in the set of closures@ %a@.%a@."
         Closure_id.print closure_id
         print_value_set_of_closures value_set_of_closures
-        Flambda.print_function_declarations value_set_of_closures.function_decls))
+        Flambda.Function_declarations.print value_set_of_closures.function_decls))
     closure_id;
   closure_id
 

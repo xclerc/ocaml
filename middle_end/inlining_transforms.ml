@@ -391,8 +391,8 @@ let inline_by_copying_function_declaration ~env ~r
                       specialisable_renaming
                     (Variable.Map.print Variable.print)
                       specialisable_args_with_aliases
-                    Flambda.print_function_declarations original_function_decls
-                    Flambda.print_function_declarations function_decls
+                    Flambda.Function_declarations.print original_function_decls
+                    Flambda.Function_declarations.print function_decls
                     (Variable.Map.print Flambda.print_specialised_to)
                       specialised_args
                 | argument_from_the_current_application ->
