@@ -125,7 +125,7 @@ module Project_var : sig
   (** Freshen a closure ID based on the given renaming.  The same ID is
       returned if the renaming does not affect it.
       If dealing with approximations, you probably want to use
-      [Simple_value_approx.freshen_and_check_closure_id] instead of this
+      [Flambda_type.freshen_and_check_closure_id] instead of this
       function.
   *)
   val apply_closure_id : t -> Closure_id.t -> Closure_id.t

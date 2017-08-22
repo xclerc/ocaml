@@ -20,7 +20,7 @@ module Env = Simplify_env
 
 type t =
   (* CR mshinwell: remove [approx]? *)
-  { approx : Simple_value_approx.t;
+  { approx : Flambda_type.t;
     (* CR mshinwell: What about combining these next two? *)
     used_continuations : Continuation_uses.t Continuation.Map.t;
     defined_continuations :
@@ -33,7 +33,7 @@ type t =
   }
 
 let create () =
-  { approx = Simple_value_approx.value_bottom;
+  { approx = Flambda_type.value_bottom;
     used_continuations = Continuation.Map.empty;
     defined_continuations = Continuation.Map.empty;
     inlining_threshold = None;
@@ -42,7 +42,7 @@ let create () =
   }
 
 let union t1 t2 =
-  { approx = Simple_value_approx.value_bottom;
+  { approx = Flambda_type.value_bottom;
     used_continuations =
       Continuation.Map.union_merge Continuation_uses.union
         t1.used_continuations t2.used_continuations;
@@ -61,7 +61,7 @@ let set_approx t approx = { t with approx }
 let meet_approx t env approx =
   let really_import_approx = Env.really_import_approx env in
   let meet =
-    Simple_value_approx.join ~really_import_approx t.approx approx
+    Flambda_type.join ~really_import_approx t.approx approx
   in
   set_approx t meet
 
@@ -80,7 +80,7 @@ if Continuation.to_int cont = k then begin
 Format.eprintf "Adding use of continuation k%d, args %a approxs %a:\n%s\n%!"
   k
   Variable.print_list args
-  (Format.pp_print_list Simple_value_approx.print)
+  (Format.pp_print_list Flambda_type.print)
   (Continuation_uses.Use.Kind.args_approxs kind)
   (Printexc.raw_backtrace_to_string (Printexc.get_callstack 20))
 end;
@@ -96,7 +96,7 @@ end;
 if Continuation.to_int cont = k then begin
 Format.eprintf "Join of args approxs for k%d: %a\n%!"
   k
-  (Format.pp_print_list Simple_value_approx.print)
+  (Format.pp_print_list Flambda_type.print)
   (Continuation_uses.meet_of_args_approxs uses ~num_params:1)
 end;
 *)
@@ -173,7 +173,7 @@ let continuation_args_approxs t i ~num_params =
 Format.eprintf "Continuation %a not in used_continuations, returning bottom\n%!"
 Continuation.print i;
 *)
-    let approxs = Array.make num_params (Simple_value_approx.value_bottom) in
+    let approxs = Array.make num_params (Flambda_type.value_bottom) in
     Array.to_list approxs
   | uses ->
 (*
@@ -184,13 +184,13 @@ let approxs =
 in
 Format.eprintf "Continuation %a IS in used_continuations: %a\n%!"
 Continuation.print i
-(Format.pp_print_list Simple_value_approx.print) approxs;
+(Format.pp_print_list Flambda_type.print) approxs;
 approxs
 *)
 let defined_continuation_args_approxs t i ~num_params =
   match Continuation.Map.find i t.defined_continuations with
   | exception Not_found ->
-    let approxs = Array.make num_params (Simple_value_approx.value_bottom) in
+    let approxs = Array.make num_params (Flambda_type.value_bottom) in
     Array.to_list approxs
   | (uses, _approx, _env, _recursive) ->
     Continuation_uses.meet_of_args_approxs uses ~num_params

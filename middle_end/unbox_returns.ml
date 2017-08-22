@@ -193,7 +193,7 @@ let for_function_decl ~continuation_uses ~fun_var
           in
 (*
     Format.eprintf "Unbox_returns unboxing return with approx %a on:\n@ %a\n%!"
-      Simple_value_approx.print arg_approx
+      Flambda_type.print arg_approx
       Flambda.print_function_declaration (fun_var, function_decl);
 *)
           match how_to_unbox with

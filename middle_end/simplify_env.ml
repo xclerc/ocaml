@@ -21,9 +21,9 @@ type scope = Current | Outer
 type t = {
   backend : (module Backend_intf.S);
   round : int;
-  approx : (scope * Simple_value_approx.t) Variable.Map.t;
-  approx_mutable : Simple_value_approx.t Mutable_variable.Map.t;
-  approx_sym : Simple_value_approx.t Symbol.Map.t;
+  approx : (scope * Flambda_type.t) Variable.Map.t;
+  approx_mutable : Flambda_type.t Mutable_variable.Map.t;
+  approx_sym : Flambda_type.t Symbol.Map.t;
   continuations : Continuation_approx.t Continuation.Map.t;
   projections : Variable.t Projection.Map.t;
   current_functions : Set_of_closures_origin.Set.t;
@@ -112,7 +112,7 @@ let print ppf t =
 
 let mem t var = Variable.Map.mem var t.approx
 
-let add_internal t var (approx : Simple_value_approx.t) ~scope =
+let add_internal t var (approx : Flambda_type.t) ~scope =
   let approx =
     (* The semantics of this [match] are what preserve the property
        described at the top of simple_value_approx.mli, namely that when a
@@ -120,7 +120,7 @@ let add_internal t var (approx : Simple_value_approx.t) ~scope =
        it is the one with the outermost scope. *)
     match approx.var with
     | Some var when mem t var -> approx
-    | _ -> Simple_value_approx.augment_with_variable approx var
+    | _ -> Flambda_type.augment_with_variable approx var
   in
   { t with approx = Variable.Map.add var (scope, approx) t.approx }
 
@@ -213,7 +213,7 @@ let add_symbol t symbol approx =
     Misc.fatal_errorf "Attempt to redefine symbol %a (to %a) in environment \
         for [Simplify]"
       Symbol.print symbol
-      Simple_value_approx.print approx
+      Flambda_type.print approx
 
 let redefine_symbol t symbol approx =
   match find_symbol_exn t symbol with

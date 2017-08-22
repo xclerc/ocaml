@@ -317,7 +317,7 @@ let specialise env r ~lhs_of_application
       ~(function_decls : Flambda.Function_declarations.t)
       ~(function_decl : Flambda.Function_declaration.t)
       ~closure_id_being_applied
-      ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
+      ~(value_set_of_closures : Flambda_type.value_set_of_closures)
       ~args ~args_approxs ~continuation ~dbg ~simplify ~original ~recursive
       ~self_call ~inlining_threshold ~fun_cost
       ~inline_requested ~specialise_requested =
@@ -532,7 +532,7 @@ Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
 let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
       ~lhs_of_application ~closure_id_being_applied
       ~(function_decl : Flambda.Function_declaration.t)
-      ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
+      ~(value_set_of_closures : Flambda_type.value_set_of_closures)
       ~args ~args_approxs ~continuation ~dbg ~simplify
       ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested =
   if List.length args <> List.length args_approxs then begin

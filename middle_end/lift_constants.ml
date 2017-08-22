@@ -416,7 +416,7 @@ let translate_definition_and_resolve_alias inconstants
               Alias_analysis.print_constant_defining_value definition
           | Float_array value_float_array ->
             let contents =
-              Simple_value_approx.float_array_as_constant value_float_array
+              Flambda_type.float_array_as_constant value_float_array
             in
             begin match contents with
             | None ->
@@ -439,7 +439,7 @@ let translate_definition_and_resolve_alias inconstants
                have an export description of an immutable array"
               Variable.print var
               Alias_analysis.print_constant_defining_value definition
-              Simple_value_approx.print_descr wrong
+              Flambda_type.print_descr wrong
     in
     begin match constant_defining_value with
     | Allocated_const (Normal (Float_array _)) ->

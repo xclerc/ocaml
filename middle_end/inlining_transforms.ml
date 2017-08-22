@@ -40,7 +40,7 @@ let which_function_parameters_can_we_specialise ~params ~args
           spec_args
       in
       let worth_specialising_args =
-        if Simple_value_approx.useful approx
+        if Flambda_type.useful approx
           && Variable.Map.mem var (Lazy.force invariant_params)
         then
           Variable.Set.add var worth_specialising_args

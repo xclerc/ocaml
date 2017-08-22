@@ -29,7 +29,7 @@
     about inconstantness of variables and set of closures IDs.
 
     [Alias_analysis] is a "forwards" analysis that is analogous to the
-    propagation of [Simple_value_approx.t] values during [Simplify].
+    propagation of [Flambda_type.t] values during [Simplify].
     It gives us information about relationships between values but not actually
     about their constantness.
 

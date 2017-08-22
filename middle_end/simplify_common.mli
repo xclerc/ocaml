@@ -30,40 +30,40 @@
 val const_int_expr
    : Flambda.named
   -> int
-  -> Flambda.named * Simple_value_approx.t * Inlining_cost.Benefit.t
+  -> Flambda.named * Flambda_type.t * Inlining_cost.Benefit.t
 
 val const_char_expr
    : Flambda.named
   -> char
-  -> Flambda.named * Simple_value_approx.t * Inlining_cost.Benefit.t
+  -> Flambda.named * Flambda_type.t * Inlining_cost.Benefit.t
 
 val const_bool_expr
    : Flambda.named
   -> bool
-  -> Flambda.named * Simple_value_approx.t * Inlining_cost.Benefit.t
+  -> Flambda.named * Flambda_type.t * Inlining_cost.Benefit.t
 
 val const_ptr_expr
    : Flambda.named
   -> int
-  -> Flambda.named * Simple_value_approx.t * Inlining_cost.Benefit.t
+  -> Flambda.named * Flambda_type.t * Inlining_cost.Benefit.t
 
 val const_float_expr
    : Flambda.named
   -> float
-  -> Flambda.named * Simple_value_approx.t * Inlining_cost.Benefit.t
+  -> Flambda.named * Flambda_type.t * Inlining_cost.Benefit.t
 
 val const_boxed_int_expr
    : Flambda.named
-  -> 'a Simple_value_approx.boxed_int
+  -> 'a Flambda_type.boxed_int
   -> 'a
-  -> Flambda.named * Simple_value_approx.t * Inlining_cost.Benefit.t
+  -> Flambda.named * Flambda_type.t * Inlining_cost.Benefit.t
 
 val const_comparison_expr
    : Flambda.named
   -> Lambda.comparison
   -> 'a
   -> 'a
-  -> Flambda.named * Simple_value_approx.t * Inlining_cost.Benefit.t
+  -> Flambda.named * Flambda_type.t * Inlining_cost.Benefit.t
 
 (** Functions for transposing the order of bytes within words of various
     sizes. *)

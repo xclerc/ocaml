@@ -35,7 +35,7 @@ module Continuation_uses : sig
 
       val is_specialisable
          : t
-        -> (Variable.t * Simple_value_approx.t) list option
+        -> (Variable.t * Flambda_type.t) list option
     end
 
     type t = private {
@@ -63,9 +63,9 @@ module Continuation_uses : sig
   val meet_of_args_approxs
      : t
     -> num_params:int
-    -> Simple_value_approx.t list
+    -> Flambda_type.t list
 
-  val meet_of_args_approxs_opt : t -> Simple_value_approx.t list option
+  val meet_of_args_approxs_opt : t -> Flambda_type.t list option
 end
 
 module Continuation_usage_snapshot : sig
@@ -85,18 +85,18 @@ val union : t -> t -> t
 
 (** The inferred Flambda type of the subexpression that has just been
     simplified. *)
-val inferred_type : t -> Simple_value_approx.t
+val inferred_type : t -> Flambda_type.t
 
 (** Record the inferred Flambda type of the subexpression that has just been
     simplified.  Typically used just before returning from a case of the
     simplification algorithm. *)
-val record_inferred_type : t -> Simple_value_approx.t -> t
+val record_inferred_type : t -> Flambda_type.t -> t
 
 (** Set the Flambda type of the subexpression to the meet of the
     current return approximation and the provided one. Typically
     used just before returning from a branch case of the
     simplification algorithm. *)
-val meet_approx : t -> Env.t -> Simple_value_approx.t -> t
+val meet_approx : t -> Env.t -> Flambda_type.t -> t
 
 (** Check that [prepare_for_continuation_uses] has been called on the given
     result structure. *)
@@ -126,14 +126,14 @@ val continuation_args_approxs
    : t
   -> Continuation.t
   -> num_params:int
-  -> Simple_value_approx.t list
+  -> Flambda_type.t list
 
 (* CR mshinwell: improve names of these two functions *)
 val defined_continuation_args_approxs
    : t
   -> Continuation.t
   -> num_params:int
-  -> Simple_value_approx.t list
+  -> Flambda_type.t list
 
 (** Continuation usage information for use after examining the body of
     a [Let_cont] but before [define_continuation] has been called. *)

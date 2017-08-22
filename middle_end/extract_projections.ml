@@ -250,7 +250,7 @@ let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
   in
 (*
 Format.eprintf "params_to_approxs:\n@;%a\n"
-  (Variable.Map.print Simple_value_approx.print)
+  (Variable.Map.print Flambda_type.print)
   params_to_approxs;
 *)
   let get_approx from =

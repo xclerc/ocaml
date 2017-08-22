@@ -43,7 +43,7 @@ val backend : t -> (module Backend_intf.S)
 (** Obtain the really_import_approx function from the backend module. *)
 val really_import_approx
    : t
-  -> (Simple_value_approx.t -> Simple_value_approx.t)
+  -> (Flambda_type.t -> Flambda_type.t)
 
 (** Which simplification round we are currently in. *)
 val round : t -> int
@@ -51,17 +51,17 @@ val round : t -> int
 (** Add the approximation of a variable---that is to say, some knowledge
     about the value(s) the variable may take on at runtime---to the
     environment. *)
-val add : t -> Variable.t -> Value_kind.t -> Simple_value_approx.t -> t
+val add : t -> Variable.t -> Value_kind.t -> Flambda_type.t -> t
 
 val add_outer_scope
    : t
   -> Variable.t
   -> Value_kind.t
-  -> Simple_value_approx.t
+  -> Flambda_type.t
   -> t
 
 (** Like [add], but for mutable variables. *)
-val add_mutable : t -> Mutable_variable.t -> Simple_value_approx.t -> t
+val add_mutable : t -> Mutable_variable.t -> Flambda_type.t -> t
 
 val add_continuation : t -> Continuation.t -> Continuation_approx.t -> t
 
@@ -72,21 +72,21 @@ val mem_continuation : t -> Continuation.t -> bool
 (** Find the approximation of a given variable, raising a fatal error if
     the environment does not know about the variable.  Use [find_opt]
     instead if you need to catch the failure case. *)
-val find_exn : t -> Variable.t -> Simple_value_approx.t * Value_kind.t
+val find_exn : t -> Variable.t -> Flambda_type.t * Value_kind.t
 
 (** Like [find_exn], but for mutable variables. *)
-val find_mutable_exn : t -> Mutable_variable.t -> Simple_value_approx.t
+val find_mutable_exn : t -> Mutable_variable.t -> Flambda_type.t
 
 type scope = Current | Outer
 
-val find_with_scope_exn : t -> Variable.t -> scope * Simple_value_approx.t
+val find_with_scope_exn : t -> Variable.t -> scope * Flambda_type.t
 
 (** Like [find_exn], but intended for use where the "not present in
     environment" case is to be handled by the caller. *)
-val find_opt : t -> Variable.t -> Simple_value_approx.t option
+val find_opt : t -> Variable.t -> Flambda_type.t option
 
 (** Like [find_exn], but for a list of variables. *)
-val find_list_exn : t -> Variable.t list -> Simple_value_approx.t list
+val find_list_exn : t -> Variable.t list -> Flambda_type.t list
 
 val vars_in_scope : t -> Variable.Set.t
 
@@ -94,15 +94,15 @@ val does_not_bind : t -> Variable.t list -> bool
 
 val does_not_freshen : t -> Variable.t list -> bool
 
-val add_symbol : t -> Symbol.t -> Simple_value_approx.t -> t
-val redefine_symbol : t -> Symbol.t -> Simple_value_approx.t -> t
-val find_symbol_exn : t -> Symbol.t -> Simple_value_approx.t
-val find_symbol_opt : t -> Symbol.t -> Simple_value_approx.t option
-val find_symbol_fatal : t -> Symbol.t -> Simple_value_approx.t
+val add_symbol : t -> Symbol.t -> Flambda_type.t -> t
+val redefine_symbol : t -> Symbol.t -> Flambda_type.t -> t
+val find_symbol_exn : t -> Symbol.t -> Flambda_type.t
+val find_symbol_opt : t -> Symbol.t -> Flambda_type.t option
+val find_symbol_fatal : t -> Symbol.t -> Flambda_type.t
 
 (* Like [find_symbol_exn], but load the symbol approximation using
    the backend if not available in the environment. *)
-val find_or_load_symbol : t -> Symbol.t -> Simple_value_approx.t
+val find_or_load_symbol : t -> Symbol.t -> Flambda_type.t
 
 (** Note that the given [bound_to] holds the given [projection]. *)
 val add_projection

@@ -28,9 +28,9 @@ val for_call_site
   -> lhs_of_application:Variable.t
   -> closure_id_being_applied:Closure_id.t
   -> function_decl:Flambda.Function_declaration.t
-  -> value_set_of_closures:Simple_value_approx.value_set_of_closures
+  -> value_set_of_closures:Flambda_type.value_set_of_closures
   -> args:Variable.t list
-  -> args_approxs:Simple_value_approx.t list
+  -> args_approxs:Flambda_type.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
@@ -39,7 +39,7 @@ val for_call_site
     -> Simplify_aux.Env.t
     -> Simplify_aux.Result.t
     -> Continuation.t
-    -> args_approxs:Simple_value_approx.t list
+    -> args_approxs:Flambda_type.t list
     -> Continuation.t * Simplify_aux.Result.t)
   -> inline_requested:Lambda.inline_attribute
   -> specialise_requested:Lambda.specialise_attribute
