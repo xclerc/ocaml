@@ -1211,7 +1211,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
         (E.set_freshening env freshening)
         params_and_types
     in
-    let stub's_body : Flambda.expr =
+    let stub's_body : Flambda.Expr.t =
       match trap_action with
       | None -> handler.handler
       | Some trap_action ->
@@ -2094,7 +2094,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
           ~args_types ~name ~backend:(E.backend env)
     in
     let simplify_one_handler env r ~name ~handler ~body
-            : Flambda.expr * R.t =
+            : Flambda.Expr.t * R.t =
       (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
          non-recursive ones before simplifying their body.  I'm not sure we
          need to, since we already ensure such continuations aren't in the

@@ -43,7 +43,7 @@ end
     [vars_in_scope] must specify all variables in scope around [expr].
 *)
 val find_insertion_points
-   : Flambda.expr
+   : Flambda.Expr.t
   -> vars_in_scope:Variable.Set.t
   -> new_conts:Flambda.let_cont_handlers list Continuation.Map.t
   -> Flambda.let_cont_handlers list Placement.Map.t

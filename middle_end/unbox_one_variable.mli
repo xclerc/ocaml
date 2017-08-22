@@ -21,11 +21,11 @@
 module How_to_unbox : sig
   type t = private {
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
-    add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
+    add_bindings_in_wrapper : Flambda.Expr.t -> Flambda.Expr.t;
     new_arguments_for_call_in_wrapper : Variable.t list;
     new_params : (Variable.t * Projection.t) list;
     build_boxed_value_from_new_params :
-      (Variable.t * (Flambda.expr -> Flambda.expr)) list;
+      (Variable.t * (Flambda.Expr.t -> Flambda.Expr.t)) list;
   }
 
   val new_specialised_args : t -> Flambda.specialised_args

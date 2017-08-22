@@ -34,7 +34,7 @@ let for_toplevel_expression expr r =
     let r = ref r in
     (* CR mshinwell: Consider adding phys-equal checks and use of the tail
       recursive [Let] mapper. *)
-    let rec substitute env (expr : Flambda.expr) : Flambda.expr =
+    let rec substitute env (expr : Flambda.Expr.t) : Flambda.Expr.t =
       match expr with
       | Let ({ var; body; _ } as let_expr) ->
         let module W = Flambda.With_free_variables in

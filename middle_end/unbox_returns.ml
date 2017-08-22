@@ -73,7 +73,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.
     in
     how_to_unbox.add_bindings_in_wrapper initial_body
   in
-  let new_function_body : Flambda.expr =
+  let new_function_body : Flambda.Expr.t =
     Let_cont {
       body = function_decl.body;
       handlers = Nonrecursive {
@@ -108,10 +108,10 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.
       ~specialised_args
       ~freshening_already_assigned:Parameter.Map.empty
   in
-  let function_stub_body : Flambda.expr =
+  let function_stub_body : Flambda.Expr.t =
     let receive_results = Continuation.create () in
     let results = List.map (fun (var, _proj) -> var) how_to_unbox.new_params in
-    let box_results_and_call_return_cont : Flambda.expr =
+    let box_results_and_call_return_cont : Flambda.Expr.t =
       let args_to_return_cont =
         List.map (fun (var, _) -> var)
           how_to_unbox.build_boxed_value_from_new_params

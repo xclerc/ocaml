@@ -21,11 +21,11 @@ module T = Flambda_types
 module How_to_unbox = struct
   type t = {
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
-    add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
+    add_bindings_in_wrapper : Flambda.Expr.t -> Flambda.Expr.t;
     new_arguments_for_call_in_wrapper : Variable.t list;
     new_params : (Variable.t * Projection.t) list;
     build_boxed_value_from_new_params :
-      (Variable.t * (Flambda.expr -> Flambda.expr)) list;
+      (Variable.t * (Flambda.Expr.t -> Flambda.Expr.t)) list;
   }
 
   let create () =
@@ -174,7 +174,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
         ~default:(Some is_int_cont)
     in
     let add_fill_fields_conts expr =
-      Numbers.Int.Map.fold (fun size filler_cont expr : Flambda.expr ->
+      Numbers.Int.Map.fold (fun size filler_cont expr : Flambda.Expr.t ->
           let fields =
             Array.init max_size (fun index ->
               if index < size then
@@ -190,8 +190,8 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
                 | Some var -> var)
               (Array.to_list fields)
           in
-          let filler : Flambda.expr =
-            let filler : Flambda.expr =
+          let filler : Flambda.Expr.t =
+            let filler : Flambda.Expr.t =
               let is_int_in_wrapper =
                 if no_constant_ctors then [] else [is_int_in_wrapper]
               in
@@ -354,7 +354,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   let build_boxed_value_from_new_params =
     let boxed = Variable.rename ~append:"_boxed" being_unboxed in
     let join_cont = Continuation.create () in
-    let build (expr : Flambda.expr) : Flambda.expr =
+    let build (expr : Flambda.Expr.t) : Flambda.Expr.t =
       let consts =
         Numbers.Int.Set.fold (fun ctor_index consts ->
             let cont = Continuation.create () in
@@ -389,7 +389,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           consts
       in
       let add_boxing_conts expr =
-        Tag.Map.fold (fun tag (size, boxing_cont) expr : Flambda.expr ->
+        Tag.Map.fold (fun tag (size, boxing_cont) expr : Flambda.Expr.t ->
             let boxed = Variable.rename boxed in
             let fields =
               let fields, _index =
@@ -401,7 +401,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
               in
               List.rev fields
             in
-            let handler : Flambda.expr =
+            let handler : Flambda.Expr.t =
               Flambda.create_let boxed
                 (Prim (Pmakeblock (Tag.to_int tag, Immutable, None),
                   fields, dbg))
@@ -423,7 +423,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           tags_to_sizes_and_boxing_conts
           expr
       in
-      let body : Flambda.expr =
+      let body : Flambda.Expr.t =
         Let_cont {
           body = Let_cont {
             body = Let_cont {

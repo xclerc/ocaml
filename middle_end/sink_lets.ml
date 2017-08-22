@@ -176,7 +176,7 @@ end = struct
     }
 end
 
-let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
+let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
   match expr with
   | Let ({ var; defining_expr; body; } as let_expr) ->
     let body, state = sink_expr body ~state in

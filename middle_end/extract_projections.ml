@@ -92,7 +92,7 @@ let rec analyse_expr ~which_variables expr =
       used_which_variables := Variable.Set.add var !used_which_variables
     end
   in
-  let for_expr (expr : Flambda.expr) =
+  let for_expr (expr : Flambda.Expr.t) =
     match expr with
     | Let_mutable { initial_value = var } ->
       check_free_variable var

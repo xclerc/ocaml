@@ -188,7 +188,7 @@ module rec T : sig
   (* CR mshinwell: After the work on classic mode closure approximations has
      been merged (the latter introducing a type of function declarations in
      this module), then the only circularity between this type and Flambda
-     will be for Flambda.expr on function bodies. *)
+     will be for Flambda.Expr.t on function bodies. *)
   and 'd descr = private 
     | Unknown of Flambda_kind.t * unknown_because_of
     | Union of 'd Unionable.t

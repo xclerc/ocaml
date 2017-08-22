@@ -24,6 +24,6 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val for_toplevel_expression
-   : Flambda.expr
+   : Flambda.Expr.t
   -> Simplify_aux.Result.t
-  -> Flambda.expr * Simplify_aux.Result.t
+  -> Flambda.Expr.t * Simplify_aux.Result.t

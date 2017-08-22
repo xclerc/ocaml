@@ -19,7 +19,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val for_toplevel_expression
-   : Flambda.expr
+   : Flambda.Expr.t
   -> vars_in_scope:Variable.Set.t
   -> Simplify_aux.Result.t
   -> simplify_let_cont_handlers:(env:Simplify_aux.Env.t
@@ -30,4 +30,4 @@ val for_toplevel_expression
     -> freshening:Freshening.t
     -> Flambda.let_cont_handlers option * Simplify_aux.Result.t)
   -> backend:(module Backend_intf.S)
-  -> Flambda.expr option
+  -> Flambda.Expr.t option

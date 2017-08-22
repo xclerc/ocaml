@@ -567,7 +567,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
       specialise = specialise_requested;
     }
   in
-  let original_expr : Flambda.expr = Apply original_apply in
+  let original_expr : Flambda.Expr.t = Apply original_apply in
   let original r =
     let continuation, r =
       let args_approxs =
@@ -577,7 +577,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
       simplify_apply_cont_to_cont ?don't_record_use:None env r continuation
         ~args_approxs
     in
-    let original_expr : Flambda.expr =
+    let original_expr : Flambda.Expr.t =
       Apply { original_apply with
         continuation;
       }

@@ -834,7 +834,7 @@ type with_wrapper =
     }
 
 let build_let_cont_with_wrappers ~body ~(recursive : Asttypes.rec_flag)
-      ~with_wrappers : Flambda.expr =
+      ~with_wrappers : Flambda.Expr.t =
   match recursive with
   | Nonrecursive ->
     begin match Continuation.Map.bindings with_wrappers with
@@ -936,7 +936,7 @@ let create_wrapper_params ~params ~specialised_args
 
 let all_defined_continuations_toplevel expr =
   let defined_continuations = ref Continuation.Set.empty in
-  Flambda_iterators.iter_toplevel (fun (expr : Flambda.expr) ->
+  Flambda_iterators.iter_toplevel (fun (expr : Flambda.Expr.t) ->
       match expr with
       | Let_cont { handlers; _ } ->
         let conts = Flambda.bound_continuations_of_let_handlers ~handlers in

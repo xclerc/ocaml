@@ -54,7 +54,7 @@ type thing_to_lift =
   | Let_cont of Flambda.let_cont_handlers
 
 let bind_things_to_remain ~rev_things ~around =
-  List.fold_left (fun body (thing : thing_to_lift) : Flambda.expr ->
+  List.fold_left (fun body (thing : thing_to_lift) : Flambda.Expr.t ->
       match thing with
       | Let (var, defining_expr) ->
         Flambda.With_free_variables.create_let_reusing_defining_expr var
@@ -260,7 +260,7 @@ let rec lift_let_cont ~body ~handlers ~state ~(recursive : Asttypes.rec_flag) =
   in
   lift_expr body ~state
 
-and lift_expr (expr : Flambda.expr) ~state =
+and lift_expr (expr : Flambda.Expr.t) ~state =
   match expr with
   | Let ({ var; defining_expr; body; } as let_expr) ->
     begin match defining_expr with

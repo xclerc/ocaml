@@ -101,7 +101,7 @@ let remove_parameters ~(handler : Flambda.continuation_handler)
   }
 
 let for_continuation ~body ~unused ~(handlers : Flambda.continuation_handlers)
-      ~original ~recursive : Flambda.expr =
+      ~original ~recursive : Flambda.Expr.t =
   if Parameter.Set.is_empty unused then
     original
   else
@@ -130,7 +130,7 @@ let run program ~backend =
      should probably be added one by one as they are encountered inside
      [Invariant_params] itself. *)
   Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:(fun expr ->
-    Flambda_iterators.map_expr (fun (expr : Flambda.expr) ->
+    Flambda_iterators.map_expr (fun (expr : Flambda.Expr.t) ->
         match expr with
         | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
             is_exn_handler = true; _ }; }; } -> expr

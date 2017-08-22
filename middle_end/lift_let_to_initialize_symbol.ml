@@ -21,7 +21,7 @@ let should_copy (named:Flambda.named) =
   | Symbol _ | Read_symbol_field _ | Const _ -> true
   | _ -> false
 
-let rec lift (expr : Flambda.expr) ~to_copy =
+let rec lift (expr : Flambda.Expr.t) ~to_copy =
   match expr with
   | Let_cont ({ body; handlers = Nonrecursive { name; handler = ({
       params = [param]; handler; is_exn_handler; _ } as handler_record); }; })
@@ -56,7 +56,7 @@ let rec lift (expr : Flambda.expr) ~to_copy =
           handler = handler_record;
         };
       in
-      let expr : Flambda.expr =
+      let expr : Flambda.Expr.t =
         Let_cont {
           body;
           handlers;
@@ -99,14 +99,14 @@ let rec lift (expr : Flambda.expr) ~to_copy =
         let conts_exprs_and_to_copies =
           List.map (fun field ->
               let cont = Continuation.create () in
-              let expr : Flambda.expr = Apply_cont (cont, None, [field]) in
+              let expr : Flambda.Expr.t = Apply_cont (cont, None, [field]) in
               cont, expr, to_copy)
             fields
         in
         Tag.create_exn tag, conts_exprs_and_to_copies
       | _ ->
         let cont = Continuation.create () in
-        let expr : Flambda.expr =
+        let expr : Flambda.Expr.t =
           Flambda.create_let var' defining_expr
             (Apply_cont (cont, None, [var']))
         in
@@ -117,7 +117,7 @@ let rec lift (expr : Flambda.expr) ~to_copy =
     free_conts, lifted, body
   | Let_cont { body; handlers; } ->
     let free_conts_body, lifted, body = lift body ~to_copy in
-    let expr : Flambda.expr =
+    let expr : Flambda.Expr.t =
       Let_cont {
         body;
         handlers;

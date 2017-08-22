@@ -479,7 +479,7 @@ module Make (T : S) = struct
        also be specialised. *)
     let wrapper_continuation_param = Continuation.create () in
     let wrapper_body, benefit =
-      let apply : Flambda.expr =
+      let apply : Flambda.Expr.t =
         Apply {
           kind = Function;
           func = new_fun_var;

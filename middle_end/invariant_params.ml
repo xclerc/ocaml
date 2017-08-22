@@ -56,7 +56,7 @@ module type Continuations_or_functions = sig
     type t
 
     val params : t -> Variable.t list
-    val body : t -> Flambda.expr
+    val body : t -> Flambda.Expr.t
 
     val free_variables_of_body_excluding_callees_and_args
        : t
@@ -79,7 +79,7 @@ module type Continuations_or_functions = sig
     args : Variable.t list;
   }
 
-  val check_application : Flambda.expr -> application option
+  val check_application : Flambda.Expr.t -> application option
 end
 
 module For_functions = struct
@@ -162,7 +162,7 @@ module For_functions = struct
     args : Variable.t list;
   }
 
-  let check_application (expr : Flambda.expr) : application option =
+  let check_application (expr : Flambda.Expr.t) : application option =
     match expr with
     | Apply { func; args; } -> Some { callee = func; args; }
     | _ -> None
@@ -224,7 +224,7 @@ module For_continuations = struct
     args : Variable.t list;
   }
 
-  let check_application (expr : Flambda.expr) : application option =
+  let check_application (expr : Flambda.Expr.t) : application option =
     match expr with
     | Apply_cont (cont, _trap_action, args) -> Some { callee = cont; args; }
     | Apply { continuation; _ } -> Some { callee = continuation; args = []; }

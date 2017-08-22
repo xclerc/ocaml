@@ -473,7 +473,7 @@ let beneficial_specialisations r ~specialisations ~simplify_let_cont_handlers =
     specialisations
     (Continuation.Map.empty, CA.Map.empty)
 
-let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
+let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
         ~apply_cont_rewrites =
   let module Placement = Place_continuations.Placement in
   let placed =
@@ -484,7 +484,7 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
     | exception Not_found -> None
     | handlers_list ->
       let expr =
-        List.fold_left (fun body handlers : Flambda.expr ->
+        List.fold_left (fun body handlers : Flambda.Expr.t ->
             Let_cont { body; handlers; })
           around
           handlers_list
