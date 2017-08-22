@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let constant_field ((expr : Flambda.t), cont)
+let constant_field ((expr : Flambda.Expr.t), cont)
   : Flambda.constant_defining_value_block_field option =
   match expr with
   | Let { var; defining_expr = Const c;

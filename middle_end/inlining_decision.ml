@@ -26,7 +26,7 @@ module S = Inlining_stats_types
 module D = S.Decision
 
 type ('a, 'b) inlining_result =
-  | Changed of (Flambda.t * R.t) * 'a
+  | Changed of (Flambda.Expr.t * R.t) * 'a
   | Original of 'b
 
 type 'b good_idea =

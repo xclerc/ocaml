@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let dependency (expr:Flambda.t) = Flambda.free_symbols expr
+let dependency (expr:Flambda.Expr.t) = Flambda.free_symbols expr
 
 (* CR-soon pchambart: copied from lift_constant.  Needs remerging *)
 let constant_dependencies (const:Flambda.constant_defining_value) =
@@ -54,7 +54,7 @@ let let_rec_dep defs dep =
   in
   fixpoint dep
 
-let no_effects_field (expr : Flambda.t) ~return_continuation =
+let no_effects_field (expr : Flambda.Expr.t) ~return_continuation =
   match expr with
   | Let { var; defining_expr;
         body = Apply_cont (cont, None, [var']); _ }

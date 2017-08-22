@@ -177,7 +177,7 @@ module Push_pop_invariants = struct
     end;
     Continuation.Map.add k stack table
 
-  let rec loop (env:env) current_stack (expr : Flambda.t) =
+  let rec loop (env:env) current_stack (expr : Flambda.Expr.t) =
     match expr with
     | Let { body; _ } | Let_mutable { body; _ } -> loop env current_stack body
     | Let_cont { body; handlers; } ->
@@ -264,7 +264,7 @@ module Push_pop_invariants = struct
       end
     | Proved_unreachable -> ()
 
-  and well_formed_trap ~continuation_arity:_ k (expr : Flambda.t) =
+  and well_formed_trap ~continuation_arity:_ k (expr : Flambda.Expr.t) =
     let root = ref Root in
     let env = Continuation.Map.singleton k root in
     loop env root expr
@@ -277,7 +277,7 @@ end
 module Continuation_scoping = struct
   type kind = Normal | Exn_handler
 
-  let rec loop env (expr : Flambda.t) =
+  let rec loop env (expr : Flambda.Expr.t) =
     match expr with
     | Let { body; _ } | Let_mutable { body; _ } -> loop env body
     | Let_cont { body; handlers; } ->
@@ -396,7 +396,7 @@ module Continuation_scoping = struct
       end
     | Proved_unreachable -> ()
 
-  and check_expr ~continuation_arity k (expr : Flambda.t) =
+  and check_expr ~continuation_arity k (expr : Flambda.Expr.t) =
     let env = Continuation.Map.singleton k (continuation_arity, Normal) in
     loop env expr
 
@@ -459,7 +459,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       raise (Unbound_mutable_variable mut_var)
     end
   in
-  let rec loop env (flam : Flambda.t) =
+  let rec loop env (flam : Flambda.Expr.t) =
     match flam with
     (* Expressions that can bind [Variable.t]s: *)
     | Let { var; defining_expr; body; _ } ->

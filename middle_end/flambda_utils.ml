@@ -42,7 +42,7 @@ let variables_bound_by_the_closure cf
     (Variable.Set.diff func.free_variables params)
     functions
 
-let description_of_toplevel_node (expr : Flambda.t) =
+let description_of_toplevel_node (expr : Flambda.Expr.t) =
   match expr with
   | Let { var; _ } -> Format.asprintf "let %a" Variable.print var
   | Let_mutable _ -> "let_mutable"
@@ -74,7 +74,7 @@ let trap_action_equal (trap1 : Flambda.trap_action option)
       && Continuation.equal exn_handler1 exn_handler2
   | _, _ -> false
 
-let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
+let rec same (l1 : Flambda.Expr.t) (l2 : Flambda.Expr.t) =
   l1 == l2 || (* it is ok for the string case: if they are physically the same,
                  it is the same original branch *)
   match (l1, l2) with
@@ -212,7 +212,7 @@ let toplevel_substitution sb tree =
     | None -> None
     | Some v -> Some (sb v)
   in
-  let aux (flam : Flambda.t) : Flambda.t =
+  let aux (flam : Flambda.Expr.t) : Flambda.Expr.t =
     match flam with
     | Let_mutable mutable_let ->
       let initial_value = sb mutable_let.initial_value in
@@ -302,7 +302,7 @@ let toplevel_substitution sb tree =
 let toplevel_substitution_named sb named =
   let var = Variable.create "subst" in
   let cont = Continuation.create () in
-  let expr : Flambda.t =
+  let expr : Flambda.Expr.t =
     Flambda.create_let var named (Apply_cont (cont, None, []))
   in
   match toplevel_substitution sb expr with
@@ -310,7 +310,7 @@ let toplevel_substitution_named sb named =
   | _ -> assert false
 
 let make_closure_declaration ~id ~body ~params ~continuation_param
-      ~stub ~continuation : Flambda.t =
+      ~stub ~continuation : Flambda.Expr.t =
   let free_variables = Flambda.free_variables body in
   let param_set = Parameter.Set.vars params in
   if not (Variable.Set.subset param_set free_variables) then begin
@@ -523,8 +523,8 @@ let make_variables_symbol vars =
 (* CR-soon mshinwell: This function should be tidied up. *)
 let substitute_read_symbol_field_for_variables
     (substitution : (Symbol.t * int option) Variable.Map.t)
-    (expr : Flambda.t) =
-  let bind var fresh_var (expr : Flambda.t) : Flambda.t =
+    (expr : Flambda.Expr.t) =
+  let bind var fresh_var (expr : Flambda.Expr.t) : Flambda.Expr.t =
     let symbol, path = Variable.Map.find var substitution in
     let make_named (path : int option) : Flambda.named =
       match path with
@@ -610,7 +610,7 @@ let substitute_read_symbol_field_for_variables
       else
         Flambda.Method { kind; obj; }, (fun x -> x)
   in
-  let f (expr:Flambda.t) : Flambda.t =
+  let f (expr:Flambda.Expr.t) : Flambda.Expr.t =
     match expr with
     | Let ({ var = v; defining_expr = named; _ } as let_expr) ->
       let to_substitute =
@@ -948,14 +948,14 @@ let all_defined_continuations_toplevel expr =
     expr;
   !defined_continuations
 
-let count_continuation_uses_toplevel (expr : Flambda.t) =
+let count_continuation_uses_toplevel (expr : Flambda.Expr.t) =
   let counts = Continuation.Tbl.create 42 in
   let use cont =
     match Continuation.Tbl.find counts cont with
     | exception Not_found -> Continuation.Tbl.add counts cont 1
     | count -> Continuation.Tbl.replace counts cont (count + 1)
   in
-  Flambda_iterators.iter_toplevel (fun (expr : Flambda.t) ->
+  Flambda_iterators.iter_toplevel (fun (expr : Flambda.Expr.t) ->
       match expr with
       | Apply { continuation; _ } -> use continuation
       | Apply_cont (cont, None, _) -> use cont

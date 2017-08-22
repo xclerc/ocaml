@@ -72,7 +72,7 @@ let project_size = 1
 
 let lambda_smaller' lam ~than:threshold =
   let size = ref 0 in
-  let rec lambda_size (lam : Flambda.t) =
+  let rec lambda_size (lam : Flambda.Expr.t) =
     if !size > threshold then raise Exit;
     match lam with
     | Apply ({ func = _; args = _; call_kind = direct }) ->
@@ -237,7 +237,7 @@ module Benefit = struct
     let size = lambda_size size_of in
     { t with requested_inline = t.requested_inline + size; }
 
-  let remove_code_helper b (flam : Flambda.t) =
+  let remove_code_helper b (flam : Flambda.Expr.t) =
     match flam with
     | Switch _ | Apply_cont _ | Apply _ -> b := remove_call !b
     | Let _ | Let_mutable _ | Let_cont _ | Proved_unreachable -> ()

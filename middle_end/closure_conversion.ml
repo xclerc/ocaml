@@ -39,7 +39,7 @@ let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
     Variable.rename ~append:"tupled_stub_param" unboxed_version
   in
   let params = List.map (fun p -> Variable.rename p) original_params in
-  let call : Flambda.t =
+  let call : Flambda.Expr.t =
     Apply ({
         kind = Function;
         continuation = continuation_param;
@@ -126,7 +126,7 @@ let close_const t (const : Lambda.structured_constant)
   | Symbol s, name ->
     Symbol s, name
 
-let rec close t env (lam : Ilambda.t) : Flambda.t =
+let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
   match lam with
   | Let (id, defining_expr, body) ->
     let body_env, var = Env.add_var_like env id in

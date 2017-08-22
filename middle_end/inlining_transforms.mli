@@ -77,7 +77,7 @@ val inline_by_copying_function_body
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
-  -> Flambda.t * Simplify_aux.Result.t
+  -> Flambda.Expr.t * Simplify_aux.Result.t
 
 (** Inlining of recursive function(s) yields a copy of the functions'
     definitions (not just their bodies, unlike the non-recursive case) and
@@ -102,4 +102,4 @@ val inline_by_copying_function_declaration
   -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
-  -> (Flambda.t * Simplify_aux.Result.t) option
+  -> (Flambda.Expr.t * Simplify_aux.Result.t) option

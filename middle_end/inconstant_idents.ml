@@ -222,7 +222,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
      It can be empty when no constraint can be added like in the toplevel
      expression or in the body of a function.
   *)
-  let rec mark_loop ~toplevel (curr : dep list) (flam : Flambda.t) =
+  let rec mark_loop ~toplevel (curr : dep list) (flam : Flambda.Expr.t) =
     match flam with
     | Let { var; defining_expr = lam; body; _ } ->
       mark_named ~toplevel [Var var] lam;

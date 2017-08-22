@@ -88,7 +88,7 @@ let make_stub unused var (fun_decl : Flambda.Function_declaration.t)
     }
   in
   let continuation_param = Continuation.create () in
-  let body : Flambda.t =
+  let body : Flambda.Expr.t =
     Apply {
       kind = Function;
       func = renamed;

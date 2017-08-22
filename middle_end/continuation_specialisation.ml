@@ -491,7 +491,7 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
       in
       Some expr
   in
-  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) : Flambda.t ->
+  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.Expr.t) : Flambda.Expr.t ->
       match expr with
       | Let { var; defining_expr; body } ->
         let placement : Placement.t = After_let var in

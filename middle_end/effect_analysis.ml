@@ -22,7 +22,7 @@ let no_effects_prim (prim : Lambda.primitive) =
     true
   | _ -> false
 
-let rec no_effects (flam : Flambda.t) =
+let rec no_effects (flam : Flambda.Expr.t) =
   match flam with
   | Let { defining_expr; body; _ } ->
     no_effects_named defining_expr && no_effects body
