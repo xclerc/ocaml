@@ -999,72 +999,12 @@ let arity_of_call_kind (kind : Flambda.call_kind) =
   | Indirect -> [Flambda_kind.Value]
   | Direct { return_arity; _ } -> return_arity
 
-(** CR-someday lwhite: Why not use two functions? *)
-type maybe_named =
-  | Is_expr of t
-  | Is_named of named
-
-let iter_general ~toplevel f f_named maybe_named =
-  let rec aux (t : t) =
-    match t with
-    | Let _ ->
-      iter_lets t
-        ~for_defining_expr:(fun _var named -> aux_named named)
-        ~for_last_body:aux
-        ~for_each_let:f
-    (* CR mshinwell: add tail recursive case for Let_cont *)
-    | _ ->
-      f t;
-      match t with
-      | Apply _ | Apply_cont _ | Switch _ -> ()
-      | Let _ -> assert false
-      | Let_mutable { body; _ } -> aux body
-      | Let_cont { body; handlers; _ } ->
-        aux body;
-        begin match handlers with
-        | Nonrecursive { name = _; handler = { handler; _ }; } ->
-          aux handler
-        | Recursive handlers ->
-          Continuation.Map.iter (fun _cont { handler; } -> aux handler)
-            handlers
-        end
-      | Proved_unreachable -> ()
-  and aux_named (named : named) =
-    f_named named;
-    match named with
-    | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-    | Read_symbol_field _ | Project_closure _ | Project_var _
-    | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
-    | Set_of_closures ({ function_decls = funcs; free_vars = _;
-          specialised_args = _}) ->
-      if not toplevel then begin
-        Variable.Map.iter (fun _ (decl : function_declaration) ->
-            aux decl.body)
-          funcs.funs
-      end
-  in
-  match maybe_named with
-  | Is_expr expr -> aux expr
-  | Is_named named -> aux_named named
-
 module Reachable = struct
   type t =
     | Reachable of Named.t
     | Non_terminating of Named.t
     | Unreachable
 end
-
-let iter_lets t ~for_defining_expr ~for_last_body ~for_each_let =
-  let rec loop (t : t) =
-    match t with
-    | Let { var; defining_expr; body; _ } ->
-      for_each_let t;
-      for_defining_expr var defining_expr;
-      loop body
-    | t ->
-      for_last_body t
-  in
-  loop t
 
 let map_lets t ~for_defining_expr ~for_last_body ~after_rebuild =
   let rec loop (t : t) ~rev_lets =

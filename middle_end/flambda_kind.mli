@@ -36,4 +36,4 @@ type t =
     of them is [Bottom]. *)
 val compatible : t -> t -> bool
 
-val print : Format.formatter -> t -> unit
+include Identifiable.S with type t := t

@@ -26,17 +26,26 @@
     describe the overall structure of a compilation unit.
 *)
 
-type return_arity = Flambda_kind.t list
+module Return_arity : sig
+  type t = Flambda_kind.t list
+
+  include Identifiable.S with type t := t
+end
 
 (** Whether the callee in a function application is known at compile time. *)
-type call_kind =
-  | Indirect
-  | Direct of {
-      closure_id : Closure_id.t;
-      return_arity : return_arity;
-      (** [return_arity] describes what the callee returns.  It matches up with
-          the arity of [continuation] in the enclosing [apply] record. *)
-    }
+module Call_kind : sig
+  type t =
+    | Indirect
+    | Direct of {
+        closure_id : Closure_id.t;
+        return_arity : Return_arity.t;
+        (** [return_arity] describes what the callee returns.  It matches up
+            with the arity of [continuation] in the enclosing [apply]
+            record. *)
+      }
+
+  val return_arity : t -> Return_arity.t
+end
 
 (** Simple constants.  ("Structured constants" are rewritten to invocations
     of [Pmakeblock] so that they easily take part in optimizations.) *)
@@ -71,7 +80,7 @@ type apply = {
   continuation : Continuation.t;
   (** Where to send the result of the application. *)
   args : Variable.t list;
-  call_kind : call_kind;
+  call_kind : Call_kind.t;
   dbg : Debuginfo.t;
   inline : Lambda.inline_attribute;
   (** Instructions from the source code as to whether the callee should
@@ -98,6 +107,7 @@ module Free_var : sig
 end
 
 module Free_vars : sig
+  (** For closures: map from "inner" to "outer" variables. *)
   type t = Free_var.t Variable.Map.t
 end
 
@@ -219,6 +229,26 @@ module rec Expr : sig
 
   (* CR mshinwell: Consider if we want to cache these. *)
   val free_continuations : t -> Continuation.Set.t
+
+  val iter_lets
+     : t
+    -> for_defining_expr:(Variable.t -> Named.t -> unit)
+    -> for_last_body:(t -> unit)
+    -> for_each_let:(t -> unit)
+    -> unit
+
+  type maybe_named =
+    | Is_expr of Expr.t
+    | Is_named of Named.t
+
+  (** This function is designed for the internal use of [Flambda_iterators].
+      See that module for iterators to be used over Flambda terms. *)
+  val iter_general
+     : toplevel:bool
+    -> (Expr.t -> unit)
+    -> (Named.t -> unit)
+    -> maybe_named
+    -> unit
 
   val print : Format.formatter -> t -> unit
 end and Named : sig
@@ -386,6 +416,13 @@ end and Let_cont_handlers : sig
       [Nonrecursive]) as [t]. *)
   val map : t -> f:(Continuation_handlers.t -> Continuation_handlers.t) -> t
 
+  val iter_lets
+     : t
+    -> for_defining_expr:(Variable.t -> Named.t -> unit)
+    -> for_last_body:(t -> unit)
+    -> for_each_let:(t -> unit)
+    -> unit
+
   val print : Format.formatter -> t -> unit
 end and Continuation_handlers : sig
   type t = Continuation_handler.t Continuation.Map.t
@@ -503,7 +540,7 @@ end and Function_declaration : sig
         once the result of the function has been computed.  If the continuation
         takes more than one argument then the backend will compile the function
         so that it returns multiple values. *)
-    return_arity : return_arity;
+    return_arity : Return_arity.t;
     (** The kinds of the parameters of the [continuation_param] continuation.
         (This encodes whether the function returns multiple and/or unboxed
         values, for example.) *)
@@ -554,7 +591,7 @@ end and Function_declaration : sig
   val create
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
-    -> return_arity:int
+    -> return_arity:Return_arity.t
     -> body:t
     -> stub:bool
     -> dbg:Debuginfo.t
@@ -585,6 +622,9 @@ end and Typed_parameter : sig
       type. *)
   type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
 
+  (** The underlying variable (cf. [Parameter.var]). *)
+  val var : t -> Variable.t
+
   (** Free variables in the parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)
   val free_variables : t -> Variable.Set.t
@@ -596,6 +636,9 @@ end and Typed_parameter : sig
 
     (** As for [Parameter.List.vars]. *)
     val vars : t -> Variable.t list
+
+    (** As for [vars] but returns a set. *)
+    val var_set : t -> Variable.Set.t
 
     val print : Format.formatter -> t -> unit
   end

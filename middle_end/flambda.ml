@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -20,12 +20,41 @@ module Int = Numbers.Int
 
 let fprintf = Format.fprintf
 
-type call_kind =
-  | Indirect
-  | Direct of {
-      closure_id : Closure_id.t;
-      return_arity : int;
-    }
+module Return_arity = struct
+  type t = Flambda_kind.t list
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare t1 t2 = Misc.Stdlib.List.compare Flambda_kind.compare t1 t2
+    let equal t1 t2 = (compare t1 t2) = 0
+    let hash = Hashtbl.hash
+
+    let print ppf t =
+      Format.fprintf ppf "@(%a@)"
+        (Format.pp_print_list ~pp_sep:(fun () -> Format.fprintf ppf ", ")
+          Flambda_kind.print)
+        t
+
+    let output _ _ = Misc.fatal_error "Not implemented"
+  end)
+end
+
+module Call_kind = struct
+  type t =
+    | Indirect
+    | Direct of {
+        closure_id : Closure_id.t;
+        return_arity : Return_arity.t;
+      }
+
+  let return_arity t : Return_arity.t =
+    match t with
+    (* Functions called indirectly must always return a singleton of
+       [Value] kind. *)
+    | Indirect -> [Value]
+    | Direct { return_arity; _ } -> return_arity
+end
 
 module Const = struct
   type t =
@@ -61,7 +90,7 @@ type apply = {
   func : Variable.t;
   continuation : Continuation.t;
   args : Variable.t list;
-  call_kind : call_kind;
+  call_kind : Call_kind.t;
   dbg : Debuginfo.t;
   inline : Lambda.inline_attribute;
   specialise : Lambda.specialise_attribute;
@@ -72,15 +101,11 @@ type assign = {
   new_value : Variable.t;
 }
 
-module Free_var : sig
+module Free_var = struct
   type t = {
     var : Variable.t;
     projection : Projection.t option;
   }
-
-  include Identifiable.S with type t := t
-end = struct
-  include Free_var
 
   let compare (free_var1 : t) (free_var2 : t) =
     let c = Variable.compare free_var1.var free_var2.var in
@@ -92,10 +117,10 @@ end = struct
       | None, Some _ -> -1
       | Some proj1, Some proj2 -> Projection.compare proj1 proj2
 
-  let equal (free_var1 : free_var) (free_var2 : free_var) =
+  let equal (free_var1 : t) (free_var2 : t) =
     compare free_var1 free_var2 = 0
 
-  let print ppf (free_var : free_var) =
+  let print ppf (free_var : t) =
     match free_var.projection with
     | None ->
       fprintf ppf "%a" Variable.print free_var.var
@@ -109,9 +134,10 @@ module Free_vars = struct
   type t = Free_var.t Variable.Map.t
 
   let print ppf free_vars =
-    Variable.Map.iter (fun id v ->
+    Variable.Map.iter (fun inner_var outer_var ->
         fprintf ppf "@ %a -rename-> %a"
-          Variable.print id print_free_var v)
+          Variable.print inner_var
+          Free_var.print outer_var)
       free_vars
 end
 
@@ -124,14 +150,13 @@ module Trap_action = struct
     match t with
     | None -> ()
     | Some (Push { id; exn_handler; }) ->
-      fprintf ppf "push %a %a then " Trap_id.print id
+      fprintf ppf "push %a %a then "
+        Trap_id.print id
         Continuation.print exn_handler
     | Some (Pop { id; exn_handler; }) ->
-      fprintf ppf "pop %a %a then " Trap_id.print id
+      fprintf ppf "pop %a %a then "
+        Trap_id.print id
         Continuation.print exn_handler
-        (Format.pp_print_list ~pp_sep print_let_cont) let_conts
-      end
-    | Proved_unreachable -> fprintf ppf "unreachable"
 end
 
 module Switch = struct
@@ -143,30 +168,27 @@ module Switch = struct
 
   let print ppf (t : t) =
     let spc = ref false in
-    List.iter
-      (fun (n, l) ->
-          if !spc then fprintf ppf "@ " else spc := true;
-          fprintf ppf "@[<hv 1>| %i ->@ goto %a@]"
-            n Continuation.print l)
-      sw.consts;
-    begin match sw.failaction with
+    List.iter (fun (n, l) ->
+        if !spc then fprintf ppf "@ " else spc := true;
+        fprintf ppf "@[<hv 1>| %i ->@ goto %a@]" n Continuation.print l)
+      t.consts;
+    begin match t.failaction with
     | None  -> ()
     | Some l ->
-        if !spc then fprintf ppf "@ " else spc := true;
-        let module Int = Int in
-        fprintf ppf "@[<hv 1>| _ ->@ goto %a@]"
-          Continuation.print l
+      if !spc then fprintf ppf "@ " else spc := true;
+      let module Int = Int in
+      fprintf ppf "@[<hv 1>| _ ->@ goto %a@]" Continuation.print l
     end
 end
 
 module rec Expr : sig
   type t =
-    | Let of let_expr
-    | Let_mutable of let_mutable
-    | Let_cont of let_cont
+    | Let of Let.t
+    | Let_mutable of Let_mutable.t
+    | Let_cont of Let_cont.t
     | Apply of apply
-    | Apply_cont of Continuation.t * trap_action option * Variable.t list
-    | Switch of Variable.t * switch
+    | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
+    | Switch of Variable.t * Switch.t
     | Proved_unreachable
 
   val create_let : Variable.t -> Named.t -> t -> t
@@ -199,11 +221,26 @@ module rec Expr : sig
     -> t
     -> Variable.Set.t
   val free_continuations : t -> Continuation.Set.t
+  val iter_lets
+     : t
+    -> for_defining_expr:(Variable.t -> Named.t -> unit)
+    -> for_last_body:(t -> unit)
+    -> for_each_let:(t -> unit)
+    -> unit
+  type maybe_named =
+    | Is_expr of t
+    | Is_named of Named.t
+  val iter_general
+     : toplevel:bool
+    -> (Expr.t -> unit)
+    -> (Named.t -> unit)
+    -> maybe_named
+    -> unit
   val print : Format.formatter -> t -> unit
 end = struct
   include Expr
 
-  let rec variable_usage ?ignore_uses_as_callee
+  let variable_usage ?ignore_uses_as_callee
       ?ignore_uses_as_argument ?ignore_uses_as_continuation_argument
       ?ignore_uses_in_project_var ?ignore_uses_in_apply_cont
       ~all_used_variables tree =
@@ -239,9 +276,9 @@ end = struct
             || ignore_uses_in_apply_cont <> None
         then begin
           (* In these cases we can't benefit from the pre-computed free
-              variable sets. *)
+             variable sets. *)
           free_variables
-            (variable_usage_named ?ignore_uses_in_project_var defining_expr);
+            (Named.variable_usage ?ignore_uses_in_project_var defining_expr);
           aux body
         end else begin
           free_variables free_vars_of_defining_expr;
@@ -261,20 +298,20 @@ end = struct
         end
       | Let_cont { handlers; body; } ->
         aux body;
+        (* CR-soon mshinwell: Move the following into a separate function in
+           the [Let_cont] module. *)
         begin match handlers with
-        | Nonrecursive { name = _; handler = {
-            params; handler; specialised_args; _ }; } ->
-          List.iter (fun param -> bound_variable (Parameter.var param)) params;
-          free_variables
-            (free_variables_of_specialised_args specialised_args);
+        | Nonrecursive { name = _; handler = { Continuation_handler.
+            params; handler; _ }; } ->
+          List.iter (fun param -> bound_variable (Typed_parameter.var param))
+            params;
           aux handler
         | Recursive handlers ->
-          Continuation.Map.iter (fun _name { params; handler;
-                  specialised_args; _ } ->
-              List.iter (fun param -> bound_variable (Parameter.var param))
+          Continuation.Map.iter (fun _name { Continuation_handler.
+            params; handler; _ } ->
+              List.iter (fun param ->
+                  bound_variable (Typed_parameter.var param))
                 params;
-              free_variables
-                (free_variables_of_specialised_args specialised_args);
               aux handler)
             handlers
         end
@@ -301,14 +338,14 @@ end = struct
       ~all_used_variables:true tree
 
   let create_switch' ~scrutinee ~all_possible_values ~arms ~default
-        : expr * (int Continuation.Map.t) =
-    let result_switch : switch =
+        : t * (int Continuation.Map.t) =
+    let result_switch : Switch.t =
       { numconsts = all_possible_values;
         consts = arms;
         failaction = default;
       }
     in
-    let result : expr = Switch (scrutinee, result_switch) in
+    let result : t = Switch (scrutinee, result_switch) in
     let arms =
       List.sort (fun (value1, _) (value2, _) -> Pervasives.compare value1 value2)
         arms
@@ -384,8 +421,8 @@ end = struct
     in
     switch
 
-  let rec free_continuations (expr : expr) =
-    match expr with
+  let rec free_continuations (t : t) =
+    match t with
     | Let { body; _ }
     | Let_mutable { body; _ } ->
       (* No continuations occur in a [Named.t] except inside closures---and
@@ -393,11 +430,12 @@ end = struct
          to traverse the defining expression of the let. *)
       free_continuations body
     | Let_cont { body; handlers; } ->
-      let fcs_handlers, bound_conts =
-        Let_cont_handlers.free_continuations' ~handlers
+      let free_and_bound =
+        Let_cont_handlers.free_and_bound_continuations handlers
       in
-      Continuation.Set.union fcs_handlers
-      (Continuation.Set.diff (free_continuations body) bound_conts)
+      Continuation.Set.union free_and_bound.free
+        (Continuation.Set.diff (free_continuations body)
+          free_and_bound.bound)
     | Apply_cont (cont, trap_action, _args) ->
       let trap_action =
         match trap_action with
@@ -427,7 +465,7 @@ end = struct
           stamp
           (Printexc.raw_backtrace_to_string (Printexc.get_callstack max_int)))
     end;
-    let free_vars_of_defining_expr = free_variables_named defining_expr in
+    let free_vars_of_defining_expr = Named.free_variables defining_expr in
     Let {
       var;
       defining_expr;
@@ -436,13 +474,13 @@ end = struct
       free_vars_of_body = free_variables body;
     }
 
-  let map_defining_expr_of_let let_expr ~f : t =
+  let map_defining_expr_of_let (let_expr : Let.t) ~f : t =
     let defining_expr = f let_expr.defining_expr in
     if defining_expr == let_expr.defining_expr then
       Let let_expr
     else
       let free_vars_of_defining_expr =
-        free_variables_named defining_expr
+        Named.free_variables defining_expr
       in
       Let {
         var = let_expr.var;
@@ -452,18 +490,73 @@ end = struct
         free_vars_of_body = let_expr.free_vars_of_body;
       }
 
-  let free_symbols expr =
+  let iter_lets t ~for_defining_expr ~for_last_body ~for_each_let =
+    let rec loop (t : t) =
+      match t with
+      | Let { var; defining_expr; body; _ } ->
+        for_each_let t;
+        for_defining_expr var defining_expr;
+        loop body
+      | t ->
+        for_last_body t
+    in
+    loop t
+
+  let iter_general ~toplevel f f_named maybe_named =
+    let rec aux (t : t) =
+      match t with
+      | Let _ ->
+        iter_lets t
+          ~for_defining_expr:(fun _var named -> aux_named named)
+          ~for_last_body:aux
+          ~for_each_let:f
+      (* CR mshinwell: add tail recursive case for Let_cont *)
+      | _ ->
+        f t;
+        match t with
+        | Apply _ | Apply_cont _ | Switch _ -> ()
+        | Let _ -> assert false
+        | Let_mutable { body; _ } -> aux body
+        | Let_cont { body; handlers; _ } ->
+          aux body;
+          begin match handlers with
+          | Nonrecursive { name = _; handler = { handler; _ }; } ->
+            aux handler
+          | Recursive handlers ->
+            Continuation.Map.iter (fun _cont
+                  { Continuation_handler. handler; } ->
+                aux handler)
+              handlers
+          end
+        | Proved_unreachable -> ()
+    and aux_named (named : Named.t) =
+      f_named named;
+      match named with
+      | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+      | Read_symbol_field _ | Project_closure _ | Project_var _
+      | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
+      | Set_of_closures { function_decls = funcs; _; } ->
+        if not toplevel then begin
+          Variable.Map.iter (fun _ (decl : Function_declaration.t) ->
+              aux decl.body)
+            funcs.funs
+        end
+    in
+    match maybe_named with
+    | Is_expr expr -> aux expr
+    | Is_named named -> aux_named named
+
+  let free_symbols t =
     let symbols = ref Symbol.Set.empty in
     iter_general ~toplevel:true
       (fun (_ : t) -> ())
       (fun (named : Named.t) -> Named.free_symbols_helper symbols named)
-      (Is_expr expr);
+      (Is_expr t);
     !symbols
 
-  let rec print ppf (fprint : t) =
-    match fprint with
-    | Apply({kind; func; continuation; args; call_kind; inline;
-        dbg}) ->
+  let rec print ppf (t : t) =
+    match t with
+    | Apply ({ kind; func; continuation; args; call_kind; inline; dbg; }) ->
       let print_func_and_kind ppf func =
         match kind with
         | Function -> Variable.print ppf func
@@ -486,16 +579,11 @@ end = struct
         | Unroll i -> fprintf ppf "<unroll %i>" i
         | Default_inline -> ()
       in
-      let return_arity =
-        match call_kind with
-        | Indirect -> ""
-        | Direct { return_arity; _ } ->
-          if return_arity < 2 then ""
-          else Printf.sprintf " (return arity %d)" return_arity
-      in
-      fprintf ppf "@[<2>(apply%a%a<%s>%s@ <%a> %a %a)@]" direct () inline ()
+      fprintf ppf "@[<2>(apply%a%a<%s>%a@ <%a> %a %a)@]"
+        direct ()
+        inline ()
         (Debuginfo.to_string dbg)
-        return_arity
+        Return_arity.print (Call_kind.return_arity call_kind)
         Continuation.print continuation
         print_func_and_kind func
         Variable.print_list args
@@ -503,12 +591,12 @@ end = struct
         let rec letbody (ul : t) =
           match ul with
           | Let { var = id; defining_expr = arg; body; _ } ->
-              fprintf ppf "@ @[<2>%a@ %a@]" Variable.print id print_named arg;
+              fprintf ppf "@ @[<2>%a@ %a@]" Variable.print id Named.print arg;
               letbody body
           | _ -> ul
         in
         fprintf ppf "@[<2>(let@ @[<hv 1>(@[<2>%a@ %a@]"
-          Variable.print id print_named arg;
+          Variable.print id Named.print arg;
         let expr = letbody body in
         fprintf ppf ")@]@ %a)@]" print expr
     | Let_mutable { var = mut_var; initial_value = var; body; contents_kind } ->
@@ -525,29 +613,29 @@ end = struct
     | Switch (scrutinee, sw) ->
       fprintf ppf
         "@[<v 1>(switch %a@ @[<v 0>%a@])@]"
-        Variable.print scrutinee print_switch sw
+        Variable.print scrutinee Switch.print sw
     | Apply_cont (i, trap_action, []) ->
       fprintf ppf "@[<2>(%agoto@ %a)@]"
-        print_trap_action trap_action
+        Trap_action.print trap_action
         Continuation.print i
     | Apply_cont (i, trap_action, ls) ->
       fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
-        print_trap_action trap_action
+        Trap_action.print trap_action
         Continuation.print i
         Variable.print_list ls
     | Let_cont { body; handlers; } ->
       (* Printing the same way as for [Let] is easier when debugging lifting
-        passes. *)
+         passes. *)
       if !Clflags.dump_let_cont then begin
         let rec let_cont_body (ul : t) =
           match ul with
           | Let_cont { body; handlers; } ->
-            fprintf ppf "@ @[<2>%a@]" print_let_cont_handlers handlers;
+            fprintf ppf "@ @[<2>%a@]" Let_cont_handlers.print handlers;
             let_cont_body body
           | _ -> ul
         in
         fprintf ppf "@[<2>(let_cont@ @[<hv 1>(@[<2>%a@]"
-          print_let_cont_handlers handlers;
+          Let_cont_handlers.print handlers;
         let expr = let_cont_body body in
         fprintf ppf ")@]@ %a)@]" print expr
       end else begin
@@ -558,56 +646,44 @@ end = struct
             gather_let_conts (let_cont :: let_conts) let_cont.body
           | body -> let_conts, body
         in
-        let let_conts, body = gather_let_conts [] fprint in
-        let print_let_cont ppf { handlers; body = _; } =
-          match handlers with
-          | Nonrecursive { name; handler = { params; stub; handler; }; } ->
-            fprintf ppf "@[<v 2>where %a%s%s@[%a@]%s =@ %a@]"
-              Continuation.print name
-              (if stub then " *stub*" else "")
-              (match params with [] -> "" | _ -> " (")
-              Parameter.List.print params
-              (match params with [] -> "" | _ -> ")")
-              print handler
-          | Recursive handlers ->
-            let first = ref true in
-            fprintf ppf "@[<v 2>where rec ";
-            Continuation.Map.iter (fun name
-                    { params; stub; is_exn_handler; handler; } ->
-                if not !first then fprintf ppf "@ ";
-                fprintf ppf "@[%s%a%s%s%s@[%a@]%s@] =@ %a"
-                  (if !first then "" else "and ")
-                  Continuation.print name
-                  (if stub then " *stub*" else "")
-                  (if is_exn_handler then "*exn* " else "")
-                  (match params with [] -> "" | _ -> " (")
-                  Parameter.List.print params
-                  (match params with [] -> "" | _ -> ")")
-                  print handler;
-                first := false)
-              handlers;
-            fprintf ppf "@]"
-        in
-        let pp_sep ppf () = fprintf ppf "@ " in
+        let let_conts, body = gather_let_conts [] t in
         fprintf ppf "@[<2>(@[<v 0>%a@;@[<v 0>%a@]@])@]" print body
+          Let_cont_handlers.print_using_where handlers
+      end
+    | Proved_unreachable -> fprintf ppf "unreachable"
 
   let print ppf t =
     fprintf ppf "%a@." print t
 end and Named : sig
   type t =
     | Var of Variable.t
-    | Const of const
+    | Const of Const.t
     | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
     | Symbol of Symbol.t
     | Read_symbol_field of Symbol.t * int
     | Allocated_const of Allocated_const.t
-    | Set_of_closures of set_of_closures
-    | Project_closure of project_closure
-    | Move_within_set_of_closures of move_within_set_of_closures
-    | Project_var of project_var
+    | Set_of_closures of Set_of_closures.t
+    | Project_closure of Projection.Project_closure.t
+    | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
+    | Project_var of Projection.Project_var.t
 
+  val free_variables
+     : ?ignore_uses_in_project_var:unit
+    -> t
+    -> Variable.Set.t
+  val free_symbols : t -> Symbol.Set.t
+  val free_symbols_helper : Symbol.Set.t ref -> t -> unit
+  val used_variables
+     : ?ignore_uses_in_project_var:unit
+    -> t
+    -> Variable.Set.t
+  val variable_usage
+     : ?ignore_uses_in_project_var:unit
+    -> t
+    -> Variable.Set.t
+  val print : Format.formatter -> t -> unit
 end = struct
   include Named
 
@@ -616,16 +692,16 @@ end = struct
     | Symbol symbol
     | Read_symbol_field (symbol, _) -> symbols := Symbol.Set.add symbol !symbols
     | Set_of_closures set_of_closures ->
-      Variable.Map.iter (fun _ (function_decl : function_declaration) ->
+      Variable.Map.iter (fun _ (function_decl : Function_declaration.t) ->
           symbols := Symbol.Set.union function_decl.free_symbols !symbols)
         set_of_closures.function_decls.funs
     | _ -> ()
 
   let free_symbols t =
     let symbols = ref Symbol.Set.empty in
-    iter_general ~toplevel:true
-      (fun (_ : t) -> ())
-      (fun (t : t) -> free_symbols_helper symbols named)
+    Expr.iter_general ~toplevel:true
+      (fun (_ : Expr.t) -> ())
+      (fun (t : Named.t) -> free_symbols_helper symbols t)
       (Is_named t);
     !symbols
 
@@ -635,7 +711,7 @@ end = struct
     | _ ->
       let free = ref Variable.Set.empty in
       let free_variable fv = free := Variable.Set.add fv !free in
-      begin match named with
+      begin match t with
       | Var var -> free_variable var
       | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _ -> ()
@@ -645,7 +721,7 @@ end = struct
         (* Sets of closures are, well, closed---except for the free variable and
            specialised argument lists, which may identify variables currently in
            scope outside of the closure. *)
-        Variable.Map.iter (fun _ (renamed_to : free_var) ->
+        Variable.Map.iter (fun _ (renamed_to : Free_var.t) ->
             (* We don't need to do anything with [renamed_to.projectee.var], if
                it is present, since it would only be another free variable
                in the same set of closures. *)
@@ -674,7 +750,7 @@ end = struct
     match t with
     | Var var -> Variable.print ppf var
     | Symbol symbol -> Symbol.print ppf symbol
-    | Const cst -> fprintf ppf "Const(%a)" print_const cst
+    | Const cst -> fprintf ppf "Const(%a)" Const.print cst
     | Allocated_const cst -> fprintf ppf "Aconst(%a)" Allocated_const.print cst
     | Read_mutable mut_var ->
       fprintf ppf "Read_mut(%a)" Mutable_variable.print mut_var
@@ -685,14 +761,17 @@ end = struct
     | Read_symbol_field (symbol, field) ->
       fprintf ppf "%a.(%d)" Symbol.print symbol field
     | Project_closure project_closure ->
-      print_project_closure ppf project_closure
-    | Project_var project_var -> print_project_var ppf project_var
+      Projection.Project_closure.print ppf project_closure
+    | Project_var project_var ->
+      Projection.Project_var.print ppf project_var
     | Move_within_set_of_closures move_within_set_of_closures ->
-      print_move_within_set_of_closures ppf move_within_set_of_closures
+      Projection.Move_within_set_of_closures.print ppf
+        move_within_set_of_closures
     | Set_of_closures set_of_closures ->
-      print_set_of_closures ppf set_of_closures
+      Set_of_closures.print ppf set_of_closures
     | Prim (prim, args, dbg) ->
-      fprintf ppf "@[<2>(%a@ <%s>@ %a)@]" Printlambda.primitive prim
+      fprintf ppf "@[<2>(%a@ <%s>@ %a)@]"
+        Printlambda.primitive prim
         (Debuginfo.to_string dbg)
         Variable.print_list args
 end and Let : sig
@@ -740,22 +819,23 @@ end and Let_cont_handlers : sig
   val to_continuation_map : t -> Continuation_handlers.t
   val map : t -> f:(Continuation_handlers.t -> Continuation_handlers.t) -> t
   val print : Format.formatter -> t -> unit
+  val print_using_where : Format.formatter -> t -> unit
 end = struct
   include Let_cont_handlers
 
-  type free_and_bound = {
-    free : Continuation.Set.t;
-    bound : Continuation.Set.t;
-  }
+  let to_continuation_map t =
+    match t with
+    | Nonrecursive { name; handler } -> Continuation.Map.singleton name handler
+    | Recursive handlers -> handlers
 
   let free_and_bound_continuations (t : t) : free_and_bound =
-    match handlers with
+    match t with
     | Nonrecursive { name; handler = { handler; _ }; } ->
       let fcs = Expr.free_continuations handler in
       if Continuation.Set.mem name fcs then begin
         Misc.fatal_errorf "Nonrecursive [Let_cont] handler appears to be \
             recursive:@ \n%a"
-          print handlers
+          print t
       end;
       { free = fcs;
         bound = Continuation.Set.singleton name;
@@ -763,7 +843,8 @@ end = struct
     | Recursive handlers ->
       let bound_conts = Continuation.Map.keys handlers in
       let fcs =
-        Continuation.Map.fold (fun _name { handler; _ } fcs ->
+        Continuation.Map.fold (fun _name
+              { Continuation_handler. handler; _ } fcs ->
             Continuation.Set.union fcs
               (Continuation.Set.diff (Expr.free_continuations handler)
                 bound_conts))
@@ -777,20 +858,16 @@ end = struct
   let free_continuations t = (free_and_bound_continuations t).free
   let bound_continuations t = (free_and_bound_continuations t).bound
 
-  let free_variables (handlers : let_cont_handlers) =
-    Continuation.Map.fold (fun _name { params; handler; _ } fvs ->
+  let free_variables (t : t) =
+    Continuation.Map.fold (fun _name
+          { Continuation_handler. params; handler; _ } fvs ->
         Variable.Set.union fvs
           (Variable.Set.union
             (Typed_parameter.List.free_variables params)
-            (Variable.Set.diff (free_variables handler)
-              (Typed_parameter.List.vars params))))
-      (continuation_map_of_let_handlers ~handlers)
+            (Variable.Set.diff (Expr.free_variables handler)
+              (Typed_parameter.List.var_set params))))
+      (to_continuation_map t)
       Variable.Set.empty
-
-  let to_continuation_map t =
-    match t with
-    | Nonrecursive { name; handler } -> Continuation.Map.singleton name handler
-    | Recursive handlers -> handlers
 
   let map (t : t) ~f =
     match t with
@@ -803,6 +880,36 @@ end = struct
           returned more than one handler for a [Nonrecursive] binding"
       end
     | Recursive handlers -> Recursive (f handlers)
+
+  let print_using_where ppf (t : t) =
+    match t with
+    | Nonrecursive { name; handler = { params; stub; handler; }; } ->
+      fprintf ppf "@[<v 2>where %a%s%s@[%a@]%s =@ %a@]"
+        Continuation.print name
+        (if stub then " *stub*" else "")
+        (match params with [] -> "" | _ -> " (")
+        Typed_parameter.List.print params
+        (match params with [] -> "" | _ -> ")")
+        Expr.print handler
+    | Recursive handlers ->
+      let first = ref true in
+      fprintf ppf "@[<v 2>where rec ";
+      Continuation.Map.iter (fun name
+              { Continuation_handler. params; stub; is_exn_handler;
+                handler; } ->
+          if not !first then fprintf ppf "@ ";
+          fprintf ppf "@[%s%a%s%s%s@[%a@]%s@] =@ %a"
+            (if !first then "" else "and ")
+            Continuation.print name
+            (if stub then " *stub*" else "")
+            (if is_exn_handler then "*exn* " else "")
+            (match params with [] -> "" | _ -> " (")
+            Typed_parameter.List.print params
+            (match params with [] -> "" | _ -> ")")
+            Expr.print handler;
+          first := false)
+        handlers;
+      fprintf ppf "@]"
 
   let print ppf (t : t) =
     match t with
@@ -818,7 +925,7 @@ end = struct
     | Recursive handlers ->
       let first = ref true in
       Continuation.Map.iter (fun name
-              { params; stub; is_exn_handler; handler; } ->
+              { Continuation_handler.params; stub; is_exn_handler; handler; } ->
           if !first then begin
             fprintf ppf "@;rec "
           end else begin
@@ -835,41 +942,45 @@ end = struct
           first := false)
         handlers
 end and Continuation_handlers : sig
-  type t = {
-    Continuation_handler.t Continuation.Map.t;
-  }
+  type t = Continuation_handler.t Continuation.Map.t
 end = struct
   include Continuation_handlers
-
 end and Continuation_handler : sig
   type t = {
-    params : Parameter.t list;
+    params : Typed_parameter.t list;
     stub : bool;
     is_exn_handler : bool;
     handler : Expr.t;
   }
 end = struct
   include Continuation_handler
-
 end and Set_of_closures : sig
   type t = {
     function_decls : Function_declarations.t;
     free_vars : Free_vars.t;
     direct_call_surrogates : Variable.t Variable.Map.t;
   }
+
+  val create_set_of_closures
+     : function_decls:Function_declarations.t
+    -> free_vars:Free_vars.t
+    -> direct_call_surrogates:Variable.t Variable.Map.t
+    -> t
+  val print : Format.formatter -> t -> unit
 end = struct
   include Set_of_closures
 
-  let create_set_of_closures ~function_decls ~free_vars ~specialised_args
-        ~direct_call_surrogates =
+  let create_set_of_closures ~(function_decls : Function_declarations.t)
+        ~free_vars ~direct_call_surrogates =
     if !Clflags.flambda_invariant_checks then begin
       let all_fun_vars = Variable.Map.keys function_decls.funs in
       let expected_free_vars =
-        Variable.Map.fold (fun _fun_var (function_decl : function_declaration)
+        Variable.Map.fold (fun _fun_var (function_decl : Function_declaration.t)
                   expected_free_vars ->
             let free_vars =
               Variable.Set.diff function_decl.free_variables
-                (Variable.Set.union (Parameter.Set.vars function_decl.params)
+                (Variable.Set.union
+                  (Typed_parameter.List.var_set function_decl.params)
                   all_fun_vars)
             in
             Variable.Set.union free_vars expected_free_vars)
@@ -898,51 +1009,32 @@ end = struct
             %a but only maps %a.)@ \nfunction_decls:@ %a"
           Variable.Set.print expected_free_vars
           Variable.Set.print free_vars_domain
-          print_function_declarations function_decls
-      end;
-      let all_params =
-        Variable.Map.fold (fun _fun_var (function_decl : function_declaration)
-                  all_params ->
-            Variable.Set.union (Parameter.Set.vars function_decl.params)
-              all_params)
-          function_decls.funs
-          Variable.Set.empty
-      in
-      let spec_args_domain = Variable.Map.keys specialised_args in
-      if not (Variable.Set.subset spec_args_domain all_params) then begin
-        Misc.fatal_errorf "create_set_of_closures: [specialised_args] \
-            maps variable(s) that are not parameters of the given function \
-            declarations.  specialised_args domain=%a all_params=%a \n\
-            function_decls:@ %a"
-          Variable.Set.print spec_args_domain
-          Variable.Set.print all_params
-          print_function_declarations function_decls
+          Function_declarations.print function_decls
       end
     end;
     { function_decls;
       free_vars;
-      specialised_args;
       direct_call_surrogates;
     }
 
   let print ppf t =
     match t with
-    | { function_decls; free_vars; specialised_args} ->
-      let funs ppf =
-        Variable.Map.iter (print_function_declaration ppf)
+    | { function_decls; free_vars; } ->
+      let funs ppf t =
+        Variable.Map.iter (fun _var decl ->
+            Function_declaration.print ppf decl)
+          t
       in
       fprintf ppf "@[<2>(set_of_closures id=%a@ %a@ @[<2>free_vars={%a@ }@]@ \
-          @[<2>specialised_args={%a})@]@ \
           @[<2>direct_call_surrogates=%a@]@ \
           @[<2>set_of_closures_origin=%a@]@]"
         Set_of_closures_id.print function_decls.set_of_closures_id
         funs function_decls.funs
-        print_free_vars free_vars
-        print_specialised_args specialised_args
+        Free_vars.print free_vars
         (Variable.Map.print Variable.print)
-        set_of_closures.direct_call_surrogates
+        t.direct_call_surrogates
         Set_of_closures_origin.print function_decls.set_of_closures_origin
-end and Function_declarations : sig =
+end and Function_declarations : sig
   type t = {
     set_of_closures_id : Set_of_closures_id.t;
     set_of_closures_origin : Set_of_closures_origin.t;
@@ -995,17 +1087,19 @@ end = struct
     }
 
   let print ppf (t : t) =
-    let funs ppf =
-      Variable.Map.iter (print_function_declaration ppf)
+    let funs ppf t =
+      Variable.Map.iter (fun _var decl ->
+          Function_declaration.print ppf decl)
+        t
     in
     fprintf ppf "@[<2>(%a)(origin = %a)@]" funs t.funs
       Set_of_closures_origin.print t.set_of_closures_origin
-end and Function_declaration : sig =
+end and Function_declaration : sig
   type t = {
     closure_origin : Closure_origin.t;
     continuation_param : Continuation.t;
-    return_arity : int;
-    params : Parameter.t list;
+    return_arity : Return_arity.t;
+    params : Typed_parameter.t list;
     body : Expr.t;
     free_variables : Variable.Set.t;
     free_symbols : Symbol.Set.t;
@@ -1019,7 +1113,7 @@ end and Function_declaration : sig =
   val create
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
-    -> return_arity:int
+    -> return_arity:Return_arity.t
     -> body:t
     -> stub:bool
     -> dbg:Debuginfo.t
@@ -1049,7 +1143,7 @@ end = struct
     | true, (Always_inline | Unroll _) ->
       Misc.fatal_errorf
         "Stubs may not be annotated as [Always_inline] or [Unroll]: %a"
-        print body
+        Expr.print body
     end;
     begin match stub, specialise with
     | true, (Never_specialise | Default_specialise)
@@ -1057,18 +1151,15 @@ end = struct
     | true, Always_specialise ->
       Misc.fatal_errorf
         "Stubs may not be annotated as [Always_specialise]: %a"
-        print body
-    end;
-    if return_arity < 1 then begin
-      Misc.fatal_errorf "Illegal return arity %d" return_arity
+        Expr.print body
     end;
     { closure_origin;
       params;
       continuation_param;
       return_arity;
       body;
-      free_variables = free_variables body;
-      free_symbols = free_symbols body;
+      free_variables = Expr.free_variables body;
+      free_symbols = Expr.free_symbols body;
       stub;
       dbg;
       inline;
@@ -1082,8 +1173,8 @@ end = struct
       continuation_param = t.continuation_param;
       return_arity = t.return_arity;
       body;
-      free_variables = free_variables body;
-      free_symbols = free_symbols body;
+      free_variables = Expr.free_variables body;
+      free_symbols = Expr.free_symbols body;
       stub = t.stub;
       dbg = t.dbg;
       inline = t.inline;
@@ -1097,8 +1188,8 @@ end = struct
       continuation_param = t.continuation_param;
       return_arity = t.return_arity;
       body;
-      free_variables = free_variables body;
-      free_symbols = free_symbols body;
+      free_variables = Expr.free_variables body;
+      free_symbols = Expr.free_symbols body;
       stub = t.stub;
       dbg = t.dbg;
       inline = t.inline;
@@ -1109,7 +1200,7 @@ end = struct
   let used_params (function_decl : Function_declaration.t) =
     Variable.Set.filter (fun param ->
         Variable.Set.mem param function_decl.free_variables)
-      (Parameter.Set.vars function_decl.params)
+      (Typed_parameter.List.var_set function_decl.params)
 
   let print ppf var (f : t) =
     let stub =
@@ -1142,9 +1233,12 @@ end = struct
       | Default_specialise -> ""
     in
     fprintf ppf
-      "@[<2>(%a%s%s%s%s%s(origin %a)@ =@ fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
+      "@[<2>(%a%s( return arity %a)%s%s%s(origin %a)@ =@ \
+        fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
       Variable.print var
-      stub arity is_a_functor inline specialise
+      stub
+      Return_arity.print f.return_arity
+      is_a_functor inline specialise
       Closure_origin.print f.closure_origin
       Continuation.print f.continuation_param
       Typed_parameter.List.print f.params
@@ -1154,30 +1248,30 @@ end = struct
     print ppf var t
 end and Typed_parameter : sig
   type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
-
+  val var : t -> Variable.t
   val free_variables : t -> Variable.Set.t
-
   module List : sig
     type nonrec t = t list
-
+    val vars : t -> Variable.t list
+    val var_set : t -> Variable.Set.t
     val free_variables : t -> Variable.Set.t
-
     val print : Format.formatter -> t -> unit
   end
-
   val print : Format.formatter -> t -> unit
 end = struct
-  include Typed_parameter
+  type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
+
+  let var (param, _ty) = Parameter.var param
 
   let print ppf (param, ty) =
     Format.fprintf ppf "@[(%a : %a)@]"
       Parameter.print param
       (Flambda_type0.T.print Function_declarations.print) ty
 
-  let free_variables t =
+  let free_variables (_param, ty) =
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the type. *)
-    Flambda_type0.T.free_variables t.ty
+    Flambda_type0.T.free_variables ty
 
   module List = struct
     type nonrec t = t list
@@ -1188,8 +1282,10 @@ end = struct
     let vars t =
       List.map (fun (param, _ty) -> Parameter.var param) t
 
+    let var_set t = Variable.Set.of_list (vars t)
+
     let print ppf t =
-      Format.pp_print_list ~pp_sep:pp_print_space print t
+      Format.pp_print_list ~pp_sep:Format.pp_print_space print t
   end
 end
 
@@ -1201,7 +1297,7 @@ module With_free_variables = struct
   let print (type a) ppf (t : a t) =
     match t with
     | Expr (expr, _) -> print ppf expr
-    | Named (_, named, _) -> print_named ppf named
+    | Named (_, named, _) -> Named.print ppf named
 
   let of_defining_expr_of_let let_expr =
     Named (let_expr.kind, let_expr.defining_expr,
