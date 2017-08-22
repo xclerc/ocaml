@@ -263,7 +263,7 @@ let toplevel_substitution sb tree =
     | Read_symbol_field _ -> named
     | Set_of_closures set_of_closures ->
       let set_of_closures =
-        Flambda.create_set_of_closures
+        Flambda.Set_of_closures.create
           ~function_decls:set_of_closures.function_decls
           ~free_vars:
             (Variable.Map.map (fun (free_var : Flambda.Free_var.t) ->
@@ -355,10 +355,10 @@ let make_closure_declaration ~id ~body ~params ~continuation_param
   in
   let set_of_closures =
     let function_decls =
-      Flambda.create_function_declarations
+      Flambda.Function_declarations.create
         ~funs:(Variable.Map.singleton id function_declaration)
     in
-    Flambda.create_set_of_closures ~function_decls ~free_vars
+    Flambda.Set_of_closures.create ~function_decls ~free_vars
       ~specialised_args:Variable.Map.empty
       ~direct_call_surrogates:Variable.Map.empty
   in
@@ -562,7 +562,7 @@ let substitute_read_symbol_field_for_variables
     | Read_symbol_field _ -> named
     | Set_of_closures set_of_closures ->
       let set_of_closures =
-        Flambda.create_set_of_closures
+        Flambda.Set_of_closures.create
           ~function_decls:set_of_closures.function_decls
           ~free_vars:
             (Variable.Map.map (fun (free_var : Flambda.Free_var.t) ->

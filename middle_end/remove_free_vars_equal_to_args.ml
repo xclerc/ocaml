@@ -87,7 +87,7 @@ let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
         set_of_closures.function_decls ~funs
     in
     let set_of_closures =
-      Flambda.create_set_of_closures
+      Flambda.Set_of_closures.create
         ~function_decls
         ~free_vars:set_of_closures.free_vars
         ~specialised_args:set_of_closures.specialised_args

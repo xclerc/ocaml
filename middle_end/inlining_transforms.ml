@@ -513,7 +513,7 @@ let inline_by_copying_function_declaration ~env ~r
     let set_of_closures =
       (* This is the new set of closures, with more precise specialisation
          information than the one being copied. *)
-      Flambda.create_set_of_closures ~function_decls ~free_vars
+      Flambda.Set_of_closures.create ~function_decls ~free_vars
         ~specialised_args:specialisable_args
         ~direct_call_surrogates
     in

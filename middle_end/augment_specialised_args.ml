@@ -750,7 +750,7 @@ module Make (T : S) = struct
       assert (Variable.Map.cardinal specialised_args
         >= Variable.Map.cardinal original_set_of_closures.specialised_args);
       let set_of_closures =
-        Flambda.create_set_of_closures
+        Flambda.Set_of_closures.create
           ~function_decls
           ~free_vars
           ~specialised_args

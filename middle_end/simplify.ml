@@ -807,7 +807,7 @@ and simplify_set_of_closures original_env r
       Variable.Map.empty
   in
   let set_of_closures =
-    Flambda.create_set_of_closures ~function_decls
+    Flambda.Set_of_closures.create ~function_decls
       ~free_vars:(Variable.Map.map fst free_vars)
       ~specialised_args
       ~direct_call_surrogates

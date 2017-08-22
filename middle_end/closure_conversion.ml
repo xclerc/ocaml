@@ -386,7 +386,7 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
         (Variable.Map.add closure_bound_var generic_function_stub map)
   in
   let function_decls =
-    Flambda.create_function_declarations
+    Flambda.Function_declarations.create
       ~funs:
         (List.fold_left close_one_function Variable.Map.empty
           (Function_decls.to_list function_declarations))
@@ -408,7 +408,7 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
           Variable.Map.add internal_var external_var map)
         all_free_idents Variable.Map.empty
     in
-    Flambda.create_set_of_closures ~function_decls ~free_vars
+    Flambda.Set_of_closures.create ~function_decls ~free_vars
       ~specialised_args:Variable.Map.empty
       ~direct_call_surrogates:Variable.Map.empty
   in

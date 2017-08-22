@@ -324,7 +324,7 @@ and sink_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
     Flambda.Function_declarations.update
       set_of_closures.function_decls ~funs
   in
-  Flambda.create_set_of_closures ~function_decls
+  Flambda.Set_of_closures.create ~function_decls
     ~free_vars:set_of_closures.free_vars
     ~specialised_args:set_of_closures.specialised_args
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates

@@ -29,7 +29,7 @@
 
 (** Determine the recursive functions, if any, bound by the given set of
     function declarations.
-    This is only intended to be used by [Flambda.create_function_declarations].
+    This is only intended to be used by [Flambda.Function_declarations.create].
 *)
 val in_function_declarations
    : Flambda.Function_declarations.t

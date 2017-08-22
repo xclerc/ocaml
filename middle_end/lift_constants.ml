@@ -752,7 +752,7 @@ let introduce_free_variables_in_set_of_closures
   if not !done_something then
     set_of_closures
   else
-    Flambda.create_set_of_closures ~function_decls ~free_vars
+    Flambda.Set_of_closures.create ~function_decls ~free_vars
       ~specialised_args ~direct_call_surrogates
 
 let rewrite_project_var

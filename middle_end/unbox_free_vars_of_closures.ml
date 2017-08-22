@@ -149,7 +149,7 @@ let run ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
       else
 *)
         let set_of_closures =
-          Flambda.create_set_of_closures
+          Flambda.Set_of_closures.create
             ~function_decls:set_of_closures.function_decls
             ~free_vars
             ~specialised_args:set_of_closures.specialised_args

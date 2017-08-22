@@ -167,7 +167,7 @@ let separate_unused_arguments ~only_specialised
       Flambda.Function_declarations.update function_decls ~funs
     in
     let set_of_closures =
-      Flambda.create_set_of_closures ~function_decls
+      Flambda.Set_of_closures.create ~function_decls
         ~free_vars:set_of_closures.free_vars ~specialised_args
         (* CR-soon mshinwell: Use direct_call_surrogates for this
            transformation. *)

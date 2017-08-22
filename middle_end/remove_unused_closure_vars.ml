@@ -121,7 +121,7 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
           Variable.Map.empty
       in
       let set_of_closures =
-        Flambda.create_set_of_closures ~function_decls
+        Flambda.Set_of_closures.create ~function_decls
           ~free_vars ~specialised_args ~direct_call_surrogates
       in
       Set_of_closures set_of_closures
