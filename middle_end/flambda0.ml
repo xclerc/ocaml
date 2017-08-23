@@ -18,6 +18,8 @@
 
 module Int = Numbers.Int
 
+let fprintf = Format.fprintf
+
 module Return_arity = struct
   type t = Flambda_kind.t list
 
@@ -159,6 +161,8 @@ module Trap_action = struct
     | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
 
   include Identifiable.Make (struct
+    type nonrec t = t
+
     let compare t1 t2 =
       match t1, t2 with
       | Push { id = id1; exn_handler = exn_handler1; },
@@ -177,22 +181,30 @@ module Trap_action = struct
     let equal t1 t2 = (compare t1 t2 = 0)
 
     let hash t =
-      Hashtbl.hash (Trap_id.hash t.id, Continuation.hash t.exn_handler)
+      match t with
+      | Push { id; exn_handler; }
+      | Pop { id; exn_handler; } ->
+        Hashtbl.hash (Trap_id.hash id, Continuation.hash exn_handler)
 
     let print ppf t =
       match t with
-      | None -> ()
-      | Some (Push { id; exn_handler; }) ->
+      | Push { id; exn_handler; } ->
         fprintf ppf "push %a %a then "
           Trap_id.print id
           Continuation.print exn_handler
-      | Some (Pop { id; exn_handler; }) ->
+      | Pop { id; exn_handler; } ->
         fprintf ppf "pop %a %a then "
           Trap_id.print id
           Continuation.print exn_handler
 
     let output _ _ = Misc.fatal_error "Not implemented"
   end)
+
+  module Option = struct
+    let print ppf = function
+      | None -> ()
+      | Some t -> print ppf t
+  end
 end
 
 module Switch = struct
@@ -203,6 +215,8 @@ module Switch = struct
   }
 
   include Identifiable.Make (struct
+    type nonrec t = t
+
     let compare t1 t2 =
       let c = Numbers.Int.Set.compare t1.numconsts t2.numconsts in
       if c <> 0 then c
@@ -657,11 +671,11 @@ end = struct
         Variable.print scrutinee Switch.print sw
     | Apply_cont (i, trap_action, []) ->
       fprintf ppf "@[<2>(%agoto@ %a)@]"
-        Trap_action.print trap_action
+        Trap_action.Option.print trap_action
         Continuation.print i
     | Apply_cont (i, trap_action, ls) ->
       fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
-        Trap_action.print trap_action
+        Trap_action.Option.print trap_action
         Continuation.print i
         Variable.print_list ls
     | Let_cont { body; handlers; } ->

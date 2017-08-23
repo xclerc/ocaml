@@ -24,6 +24,20 @@ type t =
   | Unboxed_nativeint
   | Bottom
 
+let value () = Value
+let unboxed_float () = Unboxed_float
+let unboxed_int32 () = Unboxed_int32
+
+let unboxed_int64 () =
+  if Targetint.size < 64 then
+    Misc.fatal_errorf "Cannot create values of [Unboxed_int64] kind on this \
+        target platform"
+  else
+    Unboxed_int64
+
+let unboxed_nativeint () = Unboxed_nativeint
+let bottom () = Bottom
+
 let compatible t1 t2 =
   match t1, t2 with
   | Bottom, _ | _, Bottom
@@ -34,6 +48,15 @@ let compatible t1 t2 =
   | Unboxed_nativeint, Unboxed_nativeint -> true
   | (Value | Unboxed_float | Unboxed_int32 | Unboxed_int64
       | Unboxed_nativeint), _ -> false
+
+let lambda_value_kind t =
+  match t with
+  | Value -> Some Pgenval
+  | Unboxed_float -> Some Pfloatval
+  | Unboxed_int32 -> Some (Pboxedintval Pint32)
+  | Unboxed_int64 -> Some (Pboxedintval Pint64)
+  | Unboxed_nativeint -> Some (Pboxedintval Pnativeint)
+  | Bottom -> None
 
 include Identifiable.Make (struct
   type nonrec t = t

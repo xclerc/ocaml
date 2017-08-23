@@ -19,8 +19,13 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module Constant_defining_value
+  : module type of Flambda_static0.Constant_defining_value
+
+module Program_body : module type of Flambda_static0.Program_body
+
 module Program : sig
-  include module type of Flambda_static.Program
+  include module type of Program
 
   val initialize_symbols
      : t
@@ -40,21 +45,15 @@ module Program : sig
 
   (** The definitions of all constants that have been lifted out to [Let_symbol]
       or [Let_rec_symbol] constructions. *)
-  val all_lifted_constants
-     : t
-    -> (Symbol.t * Flambda_static.Constant_defining_value.t) list
+  val all_lifted_constants : t -> (Symbol.t * Constant_defining_value.t) list
 
   (** Like [all_lifted_constant_symbols], but returns a map instead of a
       list. *)
-  val all_lifted_constants_as_map
-     : t
-    -> Flambda_static.Constant_defining_value.t Symbol.Map.t
+  val all_lifted_constants_as_map : t -> Constant_defining_value.t Symbol.Map.t
 
   (** The identifiers of all constant sets of closures that have been lifted out
       to [Let_symbol] or [Let_rec_symbol] constructions. *)
-  val all_lifted_constant_sets_of_closures
-     : t
-    -> Set_of_closures_id.Set.t
+  val all_lifted_constant_sets_of_closures : t -> Set_of_closures_id.Set.t
 
   (** All sets of closures in the given program (whether or not bound to a
       symbol.) *)

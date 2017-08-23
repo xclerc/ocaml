@@ -54,7 +54,6 @@ module Constant_defining_value : sig
   val create_set_of_closures : Flambda.Set_of_closures.t -> t
 
   val create_project_closure : Symbol.t -> Closure_id.t -> t
-end
 
 (** A "program" is the contents of one compilation unit.  It describes the
     various values that are assigned to symbols (and in some cases fields of

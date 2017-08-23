@@ -19,18 +19,14 @@
 
 module U = Simplify_aux.Continuation_uses
 
-(* CR mshinwell: Think carefully about function return approximations in
-   the context of potentially turning tail calls into non-tail calls via
-   this transformation. e.g.:
-
-   let foo <k> f x =
-     if x < 42 then k (1, 2)
-     else f <k> ()
-
-   Some notion of whether a value can be reconstructed just from its
-   approximation (plus projection information in the environment) is
-   probably required.  We should be careful that all wrapping code goes away
-   in these circumstances, so as not to break tail calls.
+(* New strategy:
+   - Use the approximation only to avoid unnecessary work
+   - Find variables passed to return continuations
+   - For all such variables:
+    - Ensure that it is linear (for the moment assume the definition is
+      in the same continuation as the return continuation's application)
+    - Check that the definition of the variable is really Pmakeblock, etc
+    - If so unbox.
 *)
 
 (* CR mshinwell: This should use direct call surrogates.  Unfortunately this
@@ -38,7 +34,8 @@ module U = Simplify_aux.Continuation_uses
    and all normal parameters to the function being unboxed, together with
    existing specialised args. *)
 
-let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.t)
+let unbox_function_decl ~fun_var
+      ~(function_decl : Flambda.Function_declaration.t)
       ~(how_to_unbox : Unbox_one_variable.How_to_unbox.t) ~return_cont_param
       ~specialised_args ~return_arity =
   let dbg = Debuginfo.none in
@@ -66,6 +63,8 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.Function_declaration.
       ~freshening_already_assigned
   in
   let new_return_cont = Continuation.create () in
+  (* CR mshinwell: [wrapper_body] is misleading here; this is not for the
+     function stub. *)
   let wrapper_body =
     let initial_body : Flambda.Expr.t =
       Apply_cont (new_return_cont, None,

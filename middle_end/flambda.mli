@@ -19,17 +19,15 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Return_arity = Flambda0.Return_arity
+module Return_arity : module type of Flambda0.Return_arity
 
 module Call_kind : sig
   include module type of Flambda0.Call_kind
 
-  val arity_of_call_kind : t -> Flambda0.Return_arity.t
+  val arity_of_call_kind : t -> Return_arity.t
 end
 
-module Const = Flambda0.Const
-
-module Return_arity = Flambda0.Return_arity
+module Const : module type of Flambda0.Const
 
 module Free_vars : sig
   include module type of Flambda0.Free_vars
@@ -40,7 +38,7 @@ module Free_vars : sig
   val clean_free_vars_projections : t -> t
 end
 
-module Expr : sig
+module rec Expr : sig
   include module type of Flambda0.Expr
 
   (** Structural equality (not alpha equivalence). *)
@@ -83,14 +81,14 @@ module Expr : sig
       [Immutable] [Let] expressions the given [(var, expr)] pairs around the
       body. *)
   val bind
-     : bindings:(Variable.t * Flambda0.Named.t) list
+     : bindings:(Variable.t * Named.t) list
     -> body:t
     -> t
 
   module Reachable : sig
     type nonrec t =
-      | Reachable of Flambda0.Named.t
-      | Non_terminating of Flambda0.Named.t
+      | Reachable of Named.t
+      | Non_terminating of Named.t
       | Unreachable
   end
 
@@ -104,22 +102,22 @@ module Expr : sig
     -> for_defining_expr:(
         'a
       -> Variable.t
-      -> Flambda0.Named.t
+      -> Named.t
       -> 'a
-        * (Variable.t * Flambda0.Function_declarations.t Flambda_type0.T.t
-            * Flambda0.Named.t) list
+        * (Variable.t * Flambda_type.t
+            * Named.t) list
         * Variable.t
-        * Flambda0.Function_declarations.t Flambda_type0.T.t
+        * Flambda_type.t
         * Reachable.t)
-    -> for_last_body:('a -> Flambda0.t -> Flambda0.t * 'b)
+    -> for_last_body:('a -> t -> t * 'b)
     (* CR-someday mshinwell: consider making [filter_defining_expr]
        optional *)
     -> filter_defining_expr:(
         'b
       -> Variable.t
-      -> Flambda0.Named.t
+      -> Named.t
       -> Variable.Set.t
-      -> 'b * Variable.t * (Flambda0.Named.t option))
+      -> 'b * Variable.t * (Named.t option))
     -> t * 'b
 
   (* CR mshinwell: consider enhancing this in the same way as for
@@ -127,11 +125,11 @@ module Expr : sig
      for Ref_to_variables.  Maybe in fact there should be a new iterator that
      uses this function for such situations? *)
   val map_lets
-     : Flambda0.Expr.t
-    -> for_defining_expr:(Variable.t -> Flambda0.Named.t -> Flambda0.Named.t)
-    -> after_rebuild:(Flambda0.Expr.t -> Flambda0.Expr.t)
-    -> for_last_body:(Flambda0.Expr.t -> Flambda0.Expr.t)
-    -> Flambda0.Expr.t
+     : Expr.t
+    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
+    -> after_rebuild:(Expr.t -> Expr.t)
+    -> for_last_body:(Expr.t -> Expr.t)
+    -> Expr.t
 
   (** All continuations defined at toplevel within the given expression. *)
   val all_defined_continuations_toplevel : t -> Continuation.Set.t
@@ -139,11 +137,11 @@ module Expr : sig
   val count_continuation_uses_toplevel : t -> int Continuation.Map.t
 
   type with_wrapper =
-    | Unchanged of { handler : Flambda0.Continuation_handler.t; }
+    | Unchanged of { handler : Continuation_handler.t; }
     | With_wrapper of {
         new_cont : Continuation.t;
-        new_handler : Flambda0.Continuation_handler.t;
-        wrapper_handler : Flambda0.Continuation_handler.t;
+        new_handler : Continuation_handler.t;
+        wrapper_handler : Continuation_handler.t;
       }
 
   val build_let_cont_with_wrappers
@@ -151,9 +149,7 @@ module Expr : sig
     -> recursive:Asttypes.rec_flag
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
-end
-
-module Named : sig
+end and Named : sig
   include module type of Flambda0.Named
 
   val toplevel_substitution
@@ -163,33 +159,27 @@ module Named : sig
 
   val of_projection : Projection.t -> t
 end
+and Let : module type of Flambda0.Let
+and Let_mutable : module type of Flambda0.Let_mutable
+and Let_cont : module type of Flambda0.Let_cont
+and Continuation_handler : module type of Flambda0.Continuation_handler
+and Continuation_handlers : module type of Flambda0.Continuation_handlers
+and Set_of_closures : sig
+  include module type of Flambda0.Set_of_closures
 
-module Let = Flambda0.Let
-
-module Let_mutable = Flambda0.Let_mutable
-
-module Let_cont = Flambda0.Let_cont
-
-module Continuation_handler = Flambda0.Continuation_handler
-
-module Continuation_handlers = Flambda0.Continuation_handlers
-
-module Set_of_closures : sig
   (** [find_free_variable v clos] raises [Not_found] if [c] is not in [clos]. *)
   val find_free_variable
      : Var_within_closure.t
     -> t
     -> Variable.t
-end
-
-module Function_declarations : sig
+end and Function_declarations : sig
   include module type of Flambda0.Function_declarations
 
   (** [find f decl] raises [Not_found] if [f] is not in [decl]. *)
   val find
      : Closure_id.t
     -> t
-    -> Flambda0.Function_declaration.t
+    -> Function_declaration.t
 
   (** [find_declaration_variable f decl] raises [Not_found] if [f] is not in
       [decl]. *)
@@ -232,7 +222,8 @@ module Function_declarations : sig
     -> Variable.Set.t Variable.Map.t
 
   (** Computes the set of closure_id in the set of closures that are
-      required used (transitively) the entry_point *)
+      used (transitively) by the [entry_point]. *)
+  (* CR mshinwell: except it returns a set of variables... *)
   val closures_required_by_entry_point
      : entry_point:Closure_id.t
     -> backend:(module Backend_intf.S)
@@ -244,12 +235,13 @@ module Function_declarations : sig
   val all_free_symbols : t -> Symbol.Set.t
 
   val contains_stub : t -> bool
-end
-
-module Function_declaration : sig
+end and Function_declaration : sig
   include module type of Flambda0.Function_declaration
 
   val function_arity : t -> int
+
+  (** Structural equality (not alpha equivalence). *)
+  val equal : t -> t -> bool
 end
 
-module Typed_parameter = Flambda0.Typed_parameter
+module Typed_parameter : module type of Flambda0.Typed_parameter

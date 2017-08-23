@@ -35,8 +35,8 @@ type constant_defining_value =
   | Allocated_const of allocated_const
   | Block of Tag.t * Variable.t list
   | Set_of_closures of Flambda.Set_of_closures.t
-  | Project_closure of Projection.Project_closure
-  | Move_within_set_of_closures of Projection.Move_within_set_of_closures
+  | Project_closure of Projection.Project_closure.t
+  | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
   | Project_var of constant_project_var
   | Field of Variable.t * int
   | Symbol_field of Symbol.t * int

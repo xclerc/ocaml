@@ -36,4 +36,6 @@ type t =
     of them is [Bottom]. *)
 val compatible : t -> t -> bool
 
+val lambda_value_kind : t -> Lambda.value_kind option
+
 include Identifiable.S with type t := t

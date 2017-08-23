@@ -698,7 +698,7 @@ end = struct
       (* CR mshinwell: this should not say Debuginfo.none *)
       Prim (Pfield field_index, [var], Debuginfo.none)
     | Prim _ | Switch _ -> Misc.fatal_error "Unsupported"
-end = struct
+
   let equal t1 t2 =
     match t1, t2 with
     | Var var1, Var var2 -> Variable.equal var1 var2
@@ -735,6 +735,10 @@ end = struct
     | Prim (p1, al1, _), Prim (p2, al2, _) ->
       p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
 end and Let_cont_handlers : sig
+  include module type of F0.Let_cont_handlers
+end = struct
+  include F0.Let_cont_handlers
+
   let equal t1 t2 =
     match t1, t2 with
     | Nonrecursive { name = name1; handler = handler1; },
@@ -745,8 +749,10 @@ end and Let_cont_handlers : sig
       same_continuation_handlers handlers1 handlers2
     | _, _ -> false
 end and Continuation_handler : sig
-
+  include module type of F0.Continuation_handler
 end = struct
+  include F0.Continuation_handler
+
   let equal
         ({ params = params1; stub = stub1; handler = handler1; } : t)
         ({ params = params2; stub = stub2; handler = handler2; } : t) =
@@ -754,14 +760,17 @@ end = struct
       && stub1 = stub2
       && Expr.equal handler1 handler2
 end and Continuation_handlers : sig
-
+  include module type of F0.Continuation_handlers
 end = struct
+  include F0.Continuation_handlers
+
   let equal t1 t2 =
     Continuation.Map.equal Continuation_handler.equal t1 t2
-
 end and Set_of_closures : sig
-
+  include module type of F0.Set_of_closures
 end = struct
+  include F0.Set_of_closures
+
   let find_free_variable cv ({ free_vars } : F0.Set_of_closures.t) =
     let free_var : F0.Free_var.t =
       Variable.Map.find (Var_within_closure.unwrap cv) free_vars
@@ -776,8 +785,44 @@ end = struct
       && Variable.Map.equal F0.equal_specialised_to c1.specialised_args
           c2.specialised_args
 end and Function_declarations : sig
+  include module type of F0.Function_declarations
 
+  val find
+     : Closure_id.t
+    -> t
+    -> Flambda0.Function_declaration.t
+  val find_declaration_variable
+     : Closure_id.t
+    -> t
+    -> Variable.t
+  val variables_bound_by_the_closure
+     : Closure_id.t
+    -> t
+    -> Variable.Set.t
+  val fun_vars_referenced_in_decls
+     : t
+    -> backend:(module Backend_intf.S)
+    -> Variable.Set.t Variable.Map.t
+  val closures_required_by_entry_point
+     : entry_point:Closure_id.t
+    -> backend:(module Backend_intf.S)
+    -> t
+    -> Variable.Set.t
+  val all_functions_parameters : t -> Variable.Set.t
+  val all_free_symbols : t -> Symbol.Set.t
+  val contains_stub : t -> bool
 end = struct
+  include F0.Function_declarations
+
+  let find cf ({ funs } : t) =
+    Variable.Map.find (Closure_id.unwrap cf) funs
+
+  let find_declaration_variable cf ({ funs } : t) =
+    let var = Closure_id.unwrap cf in
+    if not (Variable.Map.mem var funs)
+    then raise Not_found  (* CR mshinwell: think about this *)
+    else var
+
   let variables_bound_by_the_closure cf
         (decls : F0.Function_declarations.t) =
     let func = find_declaration cf decls in
@@ -787,21 +832,7 @@ end = struct
       (Variable.Set.diff func.free_variables params)
       functions
 
-end and Function_declarations : sig
-
-end = struct
-  let find cf ({ funs } : F0.Function_declarations.t) =
-    Variable.Map.find (Closure_id.unwrap cf) funs
-
-  let find_declaration_variable cf
-        ({ funs } : F0.Function_declarations.t) =
-    let var = Closure_id.unwrap cf in
-    if not (Variable.Map.mem var funs)
-    then raise Not_found  (* CR mshinwell: think about this *)
-    else var
-
-  let fun_vars_referenced_in_decls
-        (function_decls : F0.Function_declarations.t) ~backend =
+  let fun_vars_referenced_in_decls (function_decls : t) ~backend =
     let fun_vars = Variable.Map.keys function_decls.funs in
     let symbols_to_fun_vars =
       let module Backend = (val backend : Backend_intf.S) in
@@ -812,7 +843,7 @@ end = struct
         fun_vars
         Symbol.Map.empty
     in
-    Variable.Map.map (fun (func_decl : F0.Function_declaration.t) ->
+    Variable.Map.map (fun (func_decl : Function_declaration.t) ->
         let from_symbols =
           Symbol.Set.fold (fun symbol fun_vars' ->
               match Symbol.Map.find symbol symbols_to_fun_vars with
@@ -830,7 +861,7 @@ end = struct
       function_decls.funs
 
   let closures_required_by_entry_point ~(entry_point : Closure_id.t) ~backend
-      (function_decls : F0.Function_declarations.t) =
+      (function_decls : t) =
     let dependencies =
       fun_vars_referenced_in_decls function_decls ~backend
     in
@@ -855,20 +886,18 @@ end = struct
     done;
     !set
 
-  let all_functions_parameters
-        (function_decls : F0.Function_declarations.t) =
+  let all_functions_parameters (function_decls : t) =
     Variable.Map.fold
-      (fun _ ({ params } : F0.Function_declaration.t) set ->
+      (fun _ ({ params } : Function_declaration.t) set ->
         Variable.Set.union set (Parameter.Set.vars params))
       function_decls.funs Variable.Set.empty
 
-  let all_free_symbols (function_decls : F0.Function_declarations.t) =
-    Variable.Map.fold (fun _ (function_decl : F0.Function_declaration.t)
-            syms ->
+  let all_free_symbols (function_decls : t) =
+    Variable.Map.fold (fun _ (function_decl : Function_declaration.t) syms ->
         Symbol.Set.union syms function_decl.free_symbols)
       function_decls.funs Symbol.Set.empty
 
-  let contains_stub (fun_decls : F0.Function_declarations.t) =
+  let contains_stub (fun_decls : t) =
     let number_of_stub_functions =
       Variable.Map.cardinal
         (Variable.Map.filter (fun _ { F0.stub } -> stub)
@@ -876,12 +905,15 @@ end = struct
     in
     number_of_stub_functions > 0
 end and Function_declaration : sig
+  include module type of F0.Function_declaration
 
+  val function_arity : t -> int
 end = struct
-  let function_arity (f : F0.Function_declaration.t) = List.length f.params
+  include F0.Function_declaration
 
-  and sameclosure (c1 : F0.Function_declaration.t)
-        (c2 : F0.Function_declaration.t) =
-    Misc.Stdlib.List.equal Parameter.equal c1.params c2.params
-      && same c1.body c2.body
+  let function_arity t = List.length t.params
+
+  let equal t1 t2 =
+    Misc.Stdlib.List.equal Parameter.equal t1.params t2.params
+      && Expr.equal t1.body t2.body
 end

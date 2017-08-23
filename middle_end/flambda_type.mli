@@ -21,13 +21,13 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** The type of an Flambda term. *)
-type t = Flambda.Function_declarations.t Flambda_type0.T.t
+type t = Flambda0.Function_declarations.t Flambda_type0.T.t
 
-type descr = Flambda.Function_declarations.t Flambda_type0.T.descr
+type descr = Flambda0.Function_declarations.t Flambda_type0.T.descr
 type set_of_closures =
-  Flambda.Function_declarations.t Flambda_type0.T.set_of_closures
+  Flambda0.Function_declarations.t Flambda_type0.T.set_of_closures
 type float_array =
-  Flambda.Function_declarations.t Flambda_type0.T.float_array
+  Flambda0.Function_declarations.t Flambda_type0.T.float_array
 (* CR-soon mshinwell: GPR#792 may enable us to get rid of these aliases. *)
 type _ t' = t
 type _ descr' = descr
@@ -57,40 +57,40 @@ val projection : t -> (Variable.t * Projection.t) option
 
 (** Take the given integer and produce an appropriate type for it
     together with an Flambda term (that can be [Let]-bound) representing it. *)
-val make_const_int_named : int -> Flambda.Named.t * t
+val make_const_int_named : int -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for characters. *)
-val make_const_char_named : char -> Flambda.Named.t * t
+val make_const_char_named : char -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for "const_pointer"s. *)
-val make_const_ptr_named : int -> Flambda.Named.t * t
+val make_const_ptr_named : int -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for booleans. *)
-val make_const_bool_named : bool -> Flambda.Named.t * t
+val make_const_bool_named : bool -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for boxed floats. *)
-val make_const_boxed_float_named : float -> Flambda.Named.t * t
+val make_const_boxed_float_named : float -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for boxed int32s. *)
-val make_const_boxed_int32_named : Int32.t -> Flambda.Named.t * t
+val make_const_boxed_int32_named : Int32.t -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for boxed int64s. *)
-val make_const_boxed_int64_named : Int64.t -> Flambda.Named.t * t
+val make_const_boxed_int64_named : Int64.t -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for boxed nativeints. *)
-val make_const_boxed_nativeint_named : Nativeint.t -> Flambda.Named.t * t
+val make_const_boxed_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for unboxed floats. *)
-val make_const_unboxed_float_named : float -> Flambda.Named.t * t
+val make_const_unboxed_float_named : float -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for unboxed int32s. *)
-val make_const_unboxed_int32_named : Int32.t -> Flambda.Named.t * t
+val make_const_unboxed_int32_named : Int32.t -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for unboxed int64s. *)
-val make_const_unboxed_int64_named : Int64.t -> Flambda.Named.t * t
+val make_const_unboxed_int64_named : Int64.t -> Flambda0.Named.t * t
 
 (** As for [make_const_int_named], but for unboxed nativeints. *)
-val make_const_unboxed_nativeint_named : Nativeint.t -> Flambda.Named.t * t
+val make_const_unboxed_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
 
 (** Whether the given type says that a term of that type is unreachable. *)
 val is_bottom : t -> bool
@@ -186,17 +186,18 @@ module Reification_summary : sig
     | Replaced_term
 end
 
-type reification_result = Flambda.Named.t * Reification_summary.t * t
+type reification_result = Flambda0.Named.t * Reification_summary.t * t
 
-(** Try to produce a canonical Flambda term that has the given Flambda type. *)
-val reify : t -> (Flambda.Named.t * t) option
+(** Try to produce a canonical Flambda term, with no free variables, that has
+    the given Flambda type. *)
+val simple_reify : t -> Flambda0.Named.t option
 
 (** When there are no side effects performed by the given term, return a
     replacement for that term produced from the given Flambda type
     (cf. [reify]), the replacement being expected to be a less complex term. *)
 val maybe_replace_term_with_reified_term
    : t
-  -> Flambda.Named.t
+  -> Flambda0.Named.t
   -> reification_result
 
 (** As for [maybe_replace_term_with_reified_term], but also enables us to
@@ -207,7 +208,7 @@ val maybe_replace_term_with_reified_term
 val maybe_replace_term_with_reified_term_using_env
    : t
   -> is_present_in_env:(Variable.t -> bool)
-  -> Flambda.Named.t
+  -> Flambda0.Named.t
   -> reification_result
 
 (** As for [reify] but only produces terms when the type describes a
@@ -233,7 +234,7 @@ val reify_as_scannable_block : t -> reified_as_scannable_block
 
 type reified_as_variant =
   | Wrong
-  | Ok of Flambda.Function_declarations.t Flambda_type0.Unionable.t
+  | Ok of Flambda0.Function_declarations.t Flambda_type0.Unionable.t
 
 (** Try to prove that the given type is of the expected form for the
     Flambda type of a value of variant type. *)
