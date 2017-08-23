@@ -185,8 +185,8 @@ end
 module Function_declarations : sig
   include module type of Flambda0.Function_declarations
 
-  (** [find_declaration f decl] raises [Not_found] if [f] is not in [decl]. *)
-  val find_declaration
+  (** [find f decl] raises [Not_found] if [f] is not in [decl]. *)
+  val find
      : Closure_id.t
     -> t
     -> Flambda0.Function_declaration.t

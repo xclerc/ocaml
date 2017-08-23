@@ -790,7 +790,7 @@ end = struct
 end and Function_declarations : sig
 
 end = struct
-  let find_declaration cf ({ funs } : F0.Function_declarations.t) =
+  let find cf ({ funs } : F0.Function_declarations.t) =
     Variable.Map.find (Closure_id.unwrap cf) funs
 
   let find_declaration_variable cf

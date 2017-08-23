@@ -827,7 +827,7 @@ and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
       simplify_free_variables env apply.args ~f:(fun env args _args_types ->
         let continuation, r =
           simplify_apply_cont_to_cont env r apply.continuation
-            ~arity:(Flambda_utils.arity_of_call_kind apply.call_kind)
+            ~arity:(Flambda.Call_kind.return_arity apply.call_kind)
         in
         let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
         let apply : Flambda.apply = {
@@ -911,7 +911,7 @@ Format.eprintf "...freshened cont is %a\n%!"
           let function_decls = value_set_of_closures.function_decls in
           let function_decl =
             try
-              Flambda_utils.find_declaration closure_id_being_applied
+              Flambda.Function_declarations.find closure_id_being_applied
                 function_decls
             with
             | Not_found ->
@@ -942,7 +942,9 @@ Format.eprintf "...freshened cont is %a\n%!"
             | Direct _ -> r
           in
           let nargs = List.length args in
-          let arity = Flambda_utils.function_arity function_decl in
+          let arity =
+            Flambda.Function_declaration.function_arity function_decl
+          in
           let result, r =
             if nargs = arity then
               simplify_full_application env r ~function_decls
@@ -984,9 +986,9 @@ Format.eprintf "Continuation args join:\n@ %a\n%!"
         | Wrong ->  (* Insufficient Flambda type information to simplify. *)
           let arity =
             match call_kind with
-            | Indirect _ -> Flambda_utils.arity_of_call_kind call_kind
+            | Indirect _ -> Flambda.Call_kind.return_arity call_kind
             | Direct _ when E.less_precise_types env ->
-              Flambda_utils.arity_of_call_kind call_kind
+              Flambda.Call_kind.return_arity call_kind
             | Direct _ ->
               Misc.fatal_errorf "Application of function %a (%a) is marked as \
                   a direct call but the Flambda type of the function was \
@@ -1020,7 +1022,7 @@ and simplify_partial_application env r ~lhs_of_application
       ~closure_id_being_applied
       ~(function_decl : Flambda.Function_declaration.t) ~args ~continuation ~dbg
       ~inline_requested ~specialise_requested =
-  let arity = Flambda_utils.function_arity function_decl in
+  let arity = Flambda.Function_declaration.function_arity function_decl in
   assert (arity > List.length args);
   (* For simplicity, we disallow [@inline] attributes on partial
      applications.  The user may always write an explicit wrapper instead
@@ -1075,7 +1077,7 @@ and simplify_partial_application env r ~lhs_of_application
         ~append:"_partial_fun"
         (Closure_id.unwrap closure_id_being_applied)
     in
-    Flambda_utils.make_closure_declaration ~id:closure_variable
+    Flambda.Expr.make_closure_declaration ~id:closure_variable
       ~body
       ~params:remaining_args
       ~stub:true
@@ -1083,7 +1085,7 @@ and simplify_partial_application env r ~lhs_of_application
       ~continuation
   in
   let with_known_args =
-    Flambda_utils.bind
+    Flambda.Expr.bind
       ~bindings:(List.map (fun (param, arg) ->
           Parameter.var param, Flambda.Var arg) applied_args)
       ~body:wrapper_accepting_remaining_args
@@ -1098,7 +1100,7 @@ and simplify_over_application env r ~args ~args_types ~continuation
     simplify_apply_cont_to_cont env r continuation
       ~arity:function_decl.return_arity
   in
-  let arity = Flambda_utils.function_arity function_decl in
+  let arity = Flambda.Function_declarations.function_arity function_decl in
   assert (arity < List.length args);
   assert (List.length args = List.length args_types);
   let full_app_args, remaining_args =
@@ -2078,7 +2080,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
   let body, r = simplify body_env r body in
   begin match handlers with
   | Nonrecursive { name; handler; } ->
-    let with_wrapper : Flambda_utils.with_wrapper =
+    let with_wrapper : Flambda.Expr.with_wrapper =
       (* CR mshinwell: Tidy all this up somehow. *)
       (* Unboxing of continuation parameters is done now so that in one pass
          of [Simplify] such unboxing will go all the way down the
@@ -2183,9 +2185,9 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
             Unbox_continuation_params.for_recursive_continuations
               ~handlers ~args_types ~backend:(E.backend env)
           in
-          (* CR mshinwell: move to Flambda_utils, probably *)
+          (* CR mshinwell: move to Flambda, probably *)
           Continuation.Map.fold (fun cont
-                  (with_wrapper : Flambda_utils.with_wrapper)
+                  (with_wrapper : Flambda.Expr.with_wrapper)
                   (handlers, env, update_use_env) ->
               match with_wrapper with
               | Unchanged { handler; } ->
@@ -2439,7 +2441,7 @@ and simplify_toplevel env r expr ~continuation ~descr =
      - the free continuations of [expr] must be at most the [continuation]
        parameter. *)
   if !Clflags.flambda_invariant_checks then begin
-    let defined_conts = Flambda_utils.all_defined_continuations_toplevel expr in
+    let defined_conts = Flambda.Expr.all_defined_continuations_toplevel expr in
     let r_used = R.used_continuations r in
     let r_defined =
       Continuation.Map.keys (R.continuation_definitions_with_uses r)
@@ -2819,7 +2821,7 @@ let run ~never_inline ~allow_continuation_inlining
       ~backend
   in
   let result, r = simplify_program initial_env r program in
-  let result = Flambda_utils.introduce_needed_import_symbols result in
+  let result = Flambda_static.introduce_needed_import_symbols result in
   if not (R.no_continuations_in_scope r)
   then begin
     Misc.fatal_errorf "Continuations %a had uses but not definitions recorded \
