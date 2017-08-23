@@ -30,6 +30,8 @@ module Return_arity : sig
   type t = Flambda_kind.t list
 
   include Identifiable.S with type t := t
+
+  val single_boxed_value : t
 end
 
 (** Whether the callee in a function application is known at compile time. *)
@@ -38,6 +40,7 @@ module Call_kind : sig
     | Indirect
     | Direct of {
         closure_id : Closure_id.t;
+        (* CR mshinwell: Should this arity really permit "bottom"? *)
         return_arity : Return_arity.t;
         (** [return_arity] describes what the callee returns.  It matches up
             with the arity of [continuation] in the enclosing [apply]

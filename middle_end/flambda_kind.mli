@@ -24,13 +24,20 @@
     else.
 *)
 
-type t =
+type t = private
   | Value
   | Unboxed_float
   | Unboxed_int32
   | Unboxed_int64
   | Unboxed_nativeint
   | Bottom
+
+val value : unit -> t
+val unboxed_float : unit -> t
+val unboxed_int32 : unit -> t
+val unboxed_int64 : unit -> t
+val unboxed_nativeint : unit -> t
+val bottom : unit -> t
 
 (** Two value kinds are "compatible" iff they are both the same kind, or one
     of them is [Bottom]. *)

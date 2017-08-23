@@ -50,12 +50,13 @@ let compatible t1 t2 =
       | Unboxed_nativeint), _ -> false
 
 let lambda_value_kind t =
+  let module L = Lambda in
   match t with
-  | Value -> Some Pgenval
-  | Unboxed_float -> Some Pfloatval
-  | Unboxed_int32 -> Some (Pboxedintval Pint32)
-  | Unboxed_int64 -> Some (Pboxedintval Pint64)
-  | Unboxed_nativeint -> Some (Pboxedintval Pnativeint)
+  | Value -> Some L.Pgenval
+  | Unboxed_float -> Some L.Pfloatval
+  | Unboxed_int32 -> Some (L.Pboxedintval Pint32)
+  | Unboxed_int64 -> Some (L.Pboxedintval Pint64)
+  | Unboxed_nativeint -> Some (L.Pboxedintval Pnativeint)
   | Bottom -> None
 
 include Identifiable.Make (struct

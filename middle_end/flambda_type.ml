@@ -16,14 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module T0 = Flambda_types0
+module F0 = Flambda0
+module T0 = Flambda_type0
 
-type t =
-  (Flambda0.Function_declarations.t, Freshening.Project_var.t) Flambda_types0.t
+type t = F0.Function_declarations.t T0.T.t
 
-let create_set_of_closures = T0.create_set_of_closures
-let update_freshening_of_set_of_closures =
-  T0.update_freshening_of_set_of_closures
 let unknown = T0.unknown
 let int = T0.int
 let char = T0.char
@@ -74,7 +71,7 @@ let create_set_of_closures ~function_decls ~bound_vars ~invariant_params
   let size =
     lazy (
       let functions = Variable.Map.keys function_decls.funs in
-      Variable.Map.map (fun (function_decl : Flambda0.Function_declaration.t) ->
+      Variable.Map.map (fun (function_decl : F0.Function_declaration.t) ->
           let params = Parameter.Set.vars function_decl.params in
           let free_vars =
             Variable.Set.diff
@@ -113,40 +110,40 @@ let unresolved_symbol sym =
      from another compilation unit in case it contains a closure. *)
   unknown Value (Unresolved_value (Symbol sym))
 
-let make_const_int_named n : Flambda0.Named.t * t =
+let make_const_int_named n : F0.Named.t * t =
   Const (Int n), value_int n
 
-let make_const_char_named n : Flambda0.Named.t * t =
+let make_const_char_named n : F0.Named.t * t =
   Const (Char n), value_char n
 
-let make_const_ptr_named n : Flambda0.Named.t * t =
+let make_const_ptr_named n : F0.Named.t * t =
   Const (Const_pointer n), value_constptr n
 
-let make_const_bool_named b : Flambda0.Named.t * t =
+let make_const_bool_named b : F0.Named.t * t =
   make_const_ptr_named (if b then 1 else 0)
 
-let make_const_boxed_float_named f : Flambda0.Named.t * t =
+let make_const_boxed_float_named f : F0.Named.t * t =
   Allocated_const (Float f), boxed_float f
 
-let make_const_boxed_int32_named n : Flambda0.Named.t * t =
+let make_const_boxed_int32_named n : F0.Named.t * t =
   Allocated_const (Int32 f), boxed_int32 f
 
-let make_const_boxed_int64_named n : Flambda0.Named.t * t =
+let make_const_boxed_int64_named n : F0.Named.t * t =
   Allocated_const (Int64 f), boxed_int64 f
 
-let make_const_boxed_nativeint_named n : Flambda0.Named.t * t =
+let make_const_boxed_nativeint_named n : F0.Named.t * t =
   Allocated_const (Nativeint f), boxed_nativeint f
 
-let make_const_unboxed_float_named f : Flambda0.Named.t * t =
+let make_const_unboxed_float_named f : F0.Named.t * t =
   Const (Unboxed_float f), unboxed_float f
 
-let make_const_unboxed_int32_named n : Flambda0.Named.t * t =
+let make_const_unboxed_int32_named n : F0.Named.t * t =
   Const (Unboxed_int32 n), unboxed_int32 f
 
-let make_const_unboxed_int64_named n : Flambda0.Named.t * t =
+let make_const_unboxed_int64_named n : F0.Named.t * t =
   Const (Unboxed_int64 n), unboxed_int64 f
 
-let make_const_unboxed_nativeint_named n : Flambda0.Named.t * t =
+let make_const_unboxed_nativeint_named n : F0.Named.t * t =
   Const (Unboxed_nativeint n), unboxed_nativeint f
 
 let is_bottom t =
@@ -210,7 +207,7 @@ let freshen_and_check_closure_id
         "Function %a not found in the set of closures@ %a@.%a@."
         Closure_id.print closure_id
         print_value_set_of_closures value_set_of_closures
-        Flambda0.Function_declarations.print value_set_of_closures.function_decls))
+        F0.Function_declarations.print value_set_of_closures.function_decls))
     closure_id;
   closure_id
 
@@ -449,10 +446,10 @@ module Reification_summary = struct
     | false, Nothing_done -> Nothing_done
 end
 
-type reification_result = Flambda0.Named.t * reification_summary * t
+type reification_result = F0.Named.t * reification_summary * t
 
-let simple_reify : Flambda0.Named.t option =
-  let try_symbol () : Flambda0.Named.t option =
+let simple_reify : F0.Named.t option =
+  let try_symbol () : F0.Named.t option =
     match t.symbol with
     | Some (sym, None) -> Some (Symbol sym)
     | Some (sym, Some field) -> Some (Read_symbol_field (sym, field))
@@ -507,35 +504,11 @@ let simple_reify : Flambda0.Named.t option =
     | None -> try_symbol ()
     end
   | Symbol sym -> Some (Symbol sym, t)
-  | Boxed_number t ->
-    begin match reify t with
-    | None -> try_symbol ()
-    | 
-    end
-  | Immutable_string _
-  | Mutable_string _
-  | Float_array _ | Set_of_closures _
-  | Closure _ | Unknown _ | Bottom | Load_lazily _ | Unresolved _ ->
-    try_symbol ()
+  | Boxed_number | Immutable_string _ | Mutable_string _ | Float_array _
+  | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Load_lazily _
+  | Unresolved _ -> try_symbol ()
 
-(* Things for later (fixing Unbox_returns):
-let 
-    | Ok (Block (tag, ts)) ->
-      let shape =
-        List.filter_map (fun t ->
-            Flambda_kind.lambda_value_kind (kind_exn t))
-          ts
-      in
-      let ts' = List.filter_map (fun t -> reify ?allow_free_variables ts) in
-      let num_fields = List.length ts in
-      if num_fields <> List.length ts' || num_fields <> List.length shape 
-      then
-        try_symbol_and_var ()
-      else
-        Prim (Pmakeblock (num_fields, Immutable, shape),
-*)
-
-let maybe_replace_term_with_reified_term t (named : Flambda0.Named.t)
+let maybe_replace_term_with_reified_term t (named : F0.Named.t)
       : reification_result =
   if Effect_analysis.no_effects_named named then
     match reify t with
@@ -550,12 +523,12 @@ let maybe_replace_term_with_reified_term_using_env t ~is_present_in_env named =
   let replaced_by_var_or_symbol, named =
     match t.var with
     | Some var when is_present_in_env var ->
-      true, Flambda0.Var var
+      true, F0.Var var
     | _ ->
       match t.symbol with
-      | Some (sym, None) -> true, (Flambda0.Symbol sym:Flambda0.Named.t)
+      | Some (sym, None) -> true, (F0.Symbol sym:F0.Named.t)
       | Some (sym, Some field) ->
-        true, Flambda0.Read_symbol_field (sym, field)
+        true, F0.Read_symbol_field (sym, field)
       | None -> false, named
   in
   let const, summary, ty = simplify_named t named in

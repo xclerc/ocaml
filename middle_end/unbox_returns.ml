@@ -19,7 +19,7 @@
 
 module U = Simplify_aux.Continuation_uses
 
-(* New strategy:
+(* CR mshinwell: To be implemented: new strategy:
    - Use the approximation only to avoid unnecessary work
    - Find variables passed to return continuations
    - For all such variables:
@@ -124,7 +124,7 @@ let unbox_function_decl ~fun_var
         kind = Function;
         func = new_fun_var;
         continuation = receive_results;
-        args = Parameter.List.vars fun_wrapper_params;
+        args = fun_wrapper_params;
         call_kind = Direct {
           closure_id = Closure_id.wrap new_fun_var;
           return_arity = function_decl.return_arity;
@@ -140,14 +140,13 @@ let unbox_function_decl ~fun_var
           handler = box_results_and_call_return_cont;
           stub = true;
           is_exn_handler = false;
-          specialised_args = Variable.Map.empty;
         };
       };
     };
   in
   let function_stub_decl =
     Flambda.Function_declaration.create ~continuation_param:wrapper_return_cont
-      ~return_arity:1
+      ~return_arity:Return_arity.single_boxed_value
       ~params:fun_wrapper_params
       ~body:function_stub_body
       ~stub:true

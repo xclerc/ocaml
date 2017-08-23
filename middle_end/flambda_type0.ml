@@ -399,18 +399,18 @@ end = struct
   let kind t ~really_import_approx : Flambda_kind.t =
     match t.descr with
     | Unknown (kind, _) -> kind
-    | Unboxed_float _ -> Unboxed_float
-    | Unboxed_int32 _ -> Unboxed_int32
-    | Unboxed_int64 _ -> Unboxed_int64
-    | Unboxed_nativeint _ -> Unboxed_nativeint
+    | Unboxed_float _ -> Flambda_kind.unboxed_float ()
+    | Unboxed_int32 _ -> Flambda_kind.unboxed_int32 ()
+    | Unboxed_int64 _ -> Flambda_kind.unboxed_int64 ()
+    | Unboxed_nativeint _ -> Flambda_kind.unboxed_nativeint ()
     | Union _
     | Boxed_number _
     | Set_of_closures _
     | Closure _
     | Immutable_string _
     | Mutable_string _
-    | Float_array _ -> Value
-    | Bottom -> Bottom
+    | Float_array _ -> Flambda_kind.value ()
+    | Bottom -> Flambda_kind.bottom ()
     | Load_lazily _ -> kind (really_import_approx t) ~really_import_approx
 
   let kind_exn t =
@@ -451,7 +451,7 @@ end = struct
       begin match Unionable.join union1 union2 ~really_import_approx with
       | Ok union -> Union union
       | Ill_typed_code -> Bottom
-      | Anything -> Unknown (Value, Other)
+      | Anything -> Unknown (Flambda_kind.value (), Other)
       end
     | Unboxed_float fs1, Unboxed_float fs2 ->
       Unboxed_float (Float.Set.union fs1 fs2)
@@ -569,7 +569,7 @@ end = struct
       | Unknown ((Unboxed_float | Bottom), reason) ->
         { t with
           descr = Boxed_number (Float,
-            just_descr (Unknown (Unboxed_float, reason)));
+            just_descr (Unknown (Flambda_kind.unboxed_float (), reason)));
         }
       | Unknown (
           (Value | Unboxed_int32 | Unboxed_int64 | Unboxed_nativeint), _) ->
@@ -610,7 +610,14 @@ end = struct
   let constptr i = just_descr (Union (Unionable.constptr i))
   let unboxed_float n = just_descr (Unboxed_float (Float.Set.singleton n))
   let unboxed_int32 n = just_descr (Unboxed_int32 (Int32.Set.singleton n))
-  let unboxed_int64 n = just_descr (Unboxed_int64 (Int64.Set.singleton n))
+
+  let unboxed_int64 n =
+    if Targetint.size < 64 then
+      Misc.fatal_errorf "Cannot create unboxed int64 Flambda types on this \
+          target platform"
+    else
+      just_descr (Unboxed_int64 (Int64.Set.singleton n))
+
   let unboxed_nativeint n =
     just_descr (Unboxed_nativeint (Nativeint.Set.singleton n))
   let boxed_float f = just_descr (Boxed_number (Float, unboxed_float f))
@@ -635,10 +642,14 @@ end = struct
     just_descr (Float_array { contents = Contents contents; size; } )
   let bottom () = just_descr Bottom
 
-  let any_unboxed_float () = just_descr (Unknown (Unboxed_float, Other))
-  let any_unboxed_int32 () = just_descr (Unknown (Unboxed_int32, Other))
-  let any_unboxed_int64 () = just_descr (Unknown (Unboxed_int64, Other))
-  let any_unboxed_nativeint () = just_descr (Unknown (Unboxed_nativeint, Other))
+  let any_unboxed_float () =
+    just_descr (Unknown (Flambda_kind.unboxed_float (), Other))
+  let any_unboxed_int32 () =
+    just_descr (Unknown (Flambda_kind.unboxed_int32 (), Other))
+  let any_unboxed_int64 () =
+    just_descr (Unknown (Flambda_kind.unboxed_int64 (), Other))
+  let any_unboxed_nativeint () =
+    just_descr (Unknown (Flambda_kind.unboxed_nativeint (), Other))
 
   let any_boxed_float () =
     just_descr (Boxed_number (Float, any_unboxed_float ()))
@@ -689,7 +700,7 @@ end = struct
     (* We avoid having multiple possible approximations for e.g. [Int64]
        values. *)
     match Tag.Scannable.of_tag tag with
-    | None -> unknown Value Other
+    | None -> unknown (Flambda_kind.value ()) Other
     | Some tag -> just_descr (Union (Unionable.block tag b))
 
   let free_variables t =

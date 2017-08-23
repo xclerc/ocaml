@@ -18,6 +18,8 @@
 
 module F0 = Flambda0
 
+module Free_var = F0.Free_var
+
 module Free_vars = struct
   include Identifiable.Alias (F0.Free_var)
 

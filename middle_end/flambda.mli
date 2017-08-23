@@ -29,6 +29,8 @@ end
 
 module Const : module type of Flambda0.Const
 
+module Free_var = Flambda0.Free_var
+
 module Free_vars : sig
   include module type of Flambda0.Free_vars
 
@@ -162,6 +164,7 @@ end
 and Let : module type of Flambda0.Let
 and Let_mutable : module type of Flambda0.Let_mutable
 and Let_cont : module type of Flambda0.Let_cont
+and Let_cont_handlers : module type of Flambda0.Let_cont_handlers
 and Continuation_handler : module type of Flambda0.Continuation_handler
 and Continuation_handlers : module type of Flambda0.Continuation_handlers
 and Set_of_closures : sig

@@ -38,6 +38,8 @@ module Return_arity = struct
 
     let output _ _ = Misc.fatal_error "Not implemented"
   end)
+
+  let single_boxed_value = [Flambda_kind.value ()]
 end
 
 module Call_kind = struct
@@ -52,7 +54,7 @@ module Call_kind = struct
     match t with
     (* Functions called indirectly must always return a singleton of
        [Value] kind. *)
-    | Indirect -> [Flambda_kind.Value]
+    | Indirect -> [Flambda_kind.value ()]
     | Direct { return_arity; _ } -> return_arity
 end
 
