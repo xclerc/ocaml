@@ -25,11 +25,11 @@ let new_var name =
     ~current_compilation_unit:(Compilation_unit.get_current_exn ())
 
 let which_function_parameters_can_we_specialise ~params ~args
-      ~args_approxs ~(invariant_params:Variable.Set.t Variable.Map.t lazy_t)
+      ~args_tys ~(invariant_params:Variable.Set.t Variable.Map.t lazy_t)
       ~specialised_args =
   assert (List.length params = List.length args);
-  assert (List.length args = List.length args_approxs);
-  List.fold_right2 (fun (var, arg) approx
+  assert (List.length args = List.length args_tys);
+  List.fold_right2 (fun (var, arg) ty
     (worth_specialising_args, spec_args, args, args_decl) ->
       let spec_args =
         if Variable.Map.mem var (Lazy.force invariant_params) ||
@@ -40,7 +40,7 @@ let which_function_parameters_can_we_specialise ~params ~args
           spec_args
       in
       let worth_specialising_args =
-        if Flambda_type.useful approx
+        if Flambda_type.useful ty
           && Variable.Map.mem var (Lazy.force invariant_params)
         then
           Variable.Set.add var worth_specialising_args
@@ -48,7 +48,7 @@ let which_function_parameters_can_we_specialise ~params ~args
           worth_specialising_args
       in
       worth_specialising_args, spec_args, arg :: args, args_decl)
-    (List.combine params args) args_approxs
+    (List.combine params args) args_tys
     (Variable.Set.empty, Variable.Map.empty, [], [])
 
 (** Fold over all variables bound by the given closure, which is bound to the
@@ -67,8 +67,8 @@ let fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
         }
       in
       f ~acc ~var ~expr)
-    (Flambda_utils.variables_bound_by_the_closure closure_id_being_applied
-      function_decls)
+    (Flambda.Function_declarations.variables_bound_by_the_closure
+      closure_id_being_applied function_decls)
     init
 
 let set_inline_attribute_on_all_apply body inline specialise =
@@ -101,7 +101,7 @@ let copy_of_function's_body_with_freshened_params env
       Variable.Map.of_list
         (List.combine param_vars (Parameter.List.vars freshened_params))
     in
-    let body = Flambda_utils.toplevel_substitution subst function_decl.body in
+    let body = Flambda.Expr.toplevel_substitution subst function_decl.body in
     freshened_params, body
 
 (* CR-soon mshinwell: Add a note somewhere to explain why "bound by the closure"
@@ -146,7 +146,7 @@ let inline_by_copying_function_body ~env ~r
   in
   (* Arrange for the continuation through which the function returns to be
      that supplied at the call site. *)
-  let handlers = Flambda_utils.make_let_cont_alias
+  let handlers = Flambda.Expr.make_let_cont_alias
     ~name:function_decl.continuation_param
     ~alias_of:continuation
     ~arity:function_decl.return_arity
@@ -157,7 +157,7 @@ let inline_by_copying_function_body ~env ~r
   let bindings_for_params_to_args =
     (* Bind the function's parameters to the arguments from the call site. *)
     let args = List.map (fun arg -> Flambda.Var arg) args in
-    Flambda_utils.bind ~body
+    Flambda.Expr.bind ~body
       ~bindings:(List.combine (Parameter.List.vars freshened_params) args)
   in
   (* Add bindings for the variables bound by the closure. *)
@@ -199,7 +199,7 @@ let inline_by_copying_function_declaration ~env ~r
     ~(inline_requested : Lambda.inline_attribute)
     ~closure_id_being_applied
     ~(function_decl : Flambda.Function_declaration.t)
-    ~args ~args_approxs ~continuation
+    ~args ~args_tys ~continuation
     ~(invariant_params:Variable.Set.t Variable.Map.t lazy_t)
     ~(specialised_args : Flambda.specialised_to Variable.Map.t)
     ~direct_call_surrogates ~dbg ~simplify =
@@ -220,7 +220,7 @@ let inline_by_copying_function_declaration ~env ~r
   let specialised_args_set = Variable.Map.keys specialised_args in
   let worth_specialising_args, specialisable_args, args, args_decl =
     which_function_parameters_can_we_specialise
-      ~params:(Parameter.List.vars function_decl.params) ~args ~args_approxs
+      ~params:(Parameter.List.vars function_decl.params) ~args ~args_tys
       ~invariant_params
       ~specialised_args:specialised_args_set
   in
@@ -277,7 +277,7 @@ let inline_by_copying_function_declaration ~env ~r
     (* Don't duplicate the function definition if we would make its
        specialisation information worse.  (Note that this judgement is made
        based only on those arguments found to be invariant with known-useful
-       approximations, rather than on all invariant arguments.) *)
+       types, rather than on all invariant arguments.) *)
     None
   else
     let set_of_closures_var = new_var "dup_set_of_closures" in
@@ -299,7 +299,8 @@ let inline_by_copying_function_declaration ~env ~r
             (from_closure.var, expr)::for_lets)
     in
     let required_functions =
-      Flambda_utils.closures_required_by_entry_point ~backend:(E.backend env)
+      Flambda.Function_declarations.closures_required_by_entry_point
+        ~backend:(E.backend env)
         ~entry_point:closure_id_being_applied
         function_decls
     in
@@ -352,7 +353,7 @@ let inline_by_copying_function_declaration ~env ~r
       Flambda.Function_declarations.update ~funs function_decls
     in
     let all_functions_parameters =
-      Flambda_utils.all_functions_parameters function_decls
+      Flambda.Function_declarations.all_functions_parameters function_decls
     in
     let specialisable_args =
       Variable.Map.merge (fun param v1 v2 ->
@@ -450,7 +451,7 @@ let inline_by_copying_function_declaration ~env ~r
         (* The use of [Freshening.rewrite_recursive_calls_with_symbols] above
            ensures that we catch all calls to the functions being defined
            in the current set of closures. *)
-        Flambda_utils.toplevel_substitution original_vars fun_decl.body
+        Flambda.Expr.toplevel_substitution original_vars fun_decl.body
       in
       let body =
         Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.Expr.t) ->
@@ -545,12 +546,12 @@ let inline_by_copying_function_declaration ~env ~r
               specialise = Default_specialise;
             }))
       in
-      Flambda_utils.bind ~bindings:free_vars_for_lets ~body
+      Flambda.Expr.bind ~bindings:free_vars_for_lets ~body
     in
     (* Now bind the variables that will hold the arguments from the original
        application. *)
     let expr : Flambda.Expr.t =
-      Flambda_utils.bind ~body:duplicated_application ~bindings:args_decl
+      Flambda.Expr.bind ~body:duplicated_application ~bindings:args_decl
     in
     let env = E.activate_freshening (E.set_never_inline env) in
     Some (simplify env r expr)
