@@ -19,20 +19,20 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Return_arity = Flambda.Return_arity
+module Return_arity = Flambda0.Return_arity
 
 module Call_kind : sig
-  include module type of Flambda.Call_kind
+  include module type of Flambda0.Call_kind
 
-  val arity_of_call_kind : t -> Flambda.Return_arity.t
+  val arity_of_call_kind : t -> Flambda0.Return_arity.t
 end
 
-module Const = Flambda.Const
+module Const = Flambda0.Const
 
-module Return_arity = Flambda.Return_arity
+module Return_arity = Flambda0.Return_arity
 
 module Free_vars : sig
-  include module type of Flambda.Free_vars
+  include module type of Flambda0.Free_vars
 
   (* Ensure that projection information is suitably erased from
     free_vars and specialised_args if we have deleted the variable being
@@ -41,7 +41,7 @@ module Free_vars : sig
 end
 
 module Expr : sig
-  include module type of Flambda.Expr
+  include module type of Flambda0.Expr
 
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool
@@ -77,24 +77,20 @@ module Expr : sig
     -> t
     -> t
 
-  (** If [can_be_merged f1 f2] is [true], it is safe to merge switch
-      branches containing [f1] and [f2]. *)
-  val can_be_merged : t -> t -> bool
-
   val description_of_toplevel_node : t -> string
 
   (** [bind [var1, expr1; ...; varN, exprN] body] binds using
       [Immutable] [Let] expressions the given [(var, expr)] pairs around the
       body. *)
   val bind
-     : bindings:(Variable.t * Flambda.Named.t) list
+     : bindings:(Variable.t * Flambda0.Named.t) list
     -> body:t
     -> t
 
   module Reachable : sig
     type nonrec t =
-      | Reachable of Flambda.Named.t
-      | Non_terminating of Flambda.Named.t
+      | Reachable of Flambda0.Named.t
+      | Non_terminating of Flambda0.Named.t
       | Unreachable
   end
 
@@ -108,22 +104,22 @@ module Expr : sig
     -> for_defining_expr:(
         'a
       -> Variable.t
-      -> Flambda.Named.t
+      -> Flambda0.Named.t
       -> 'a
-        * (Variable.t * Flambda.Function_declarations.t Flambda_type0.T.t
-            * Flambda.Named.t) list
+        * (Variable.t * Flambda0.Function_declarations.t Flambda_type0.T.t
+            * Flambda0.Named.t) list
         * Variable.t
-        * Flambda.Function_declarations.t Flambda_type0.T.t
+        * Flambda0.Function_declarations.t Flambda_type0.T.t
         * Reachable.t)
-    -> for_last_body:('a -> Flambda.t -> Flambda.t * 'b)
+    -> for_last_body:('a -> Flambda0.t -> Flambda0.t * 'b)
     (* CR-someday mshinwell: consider making [filter_defining_expr]
        optional *)
     -> filter_defining_expr:(
         'b
       -> Variable.t
-      -> Flambda.Named.t
+      -> Flambda0.Named.t
       -> Variable.Set.t
-      -> 'b * Variable.t * (Flambda.Named.t option))
+      -> 'b * Variable.t * (Flambda0.Named.t option))
     -> t * 'b
 
   (* CR mshinwell: consider enhancing this in the same way as for
@@ -131,11 +127,11 @@ module Expr : sig
      for Ref_to_variables.  Maybe in fact there should be a new iterator that
      uses this function for such situations? *)
   val map_lets
-     : Flambda.Expr.t
-    -> for_defining_expr:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
-    -> after_rebuild:(Flambda.Expr.t -> Flambda.Expr.t)
-    -> for_last_body:(Flambda.Expr.t -> Flambda.Expr.t)
-    -> Flambda.Expr.t
+     : Flambda0.Expr.t
+    -> for_defining_expr:(Variable.t -> Flambda0.Named.t -> Flambda0.Named.t)
+    -> after_rebuild:(Flambda0.Expr.t -> Flambda0.Expr.t)
+    -> for_last_body:(Flambda0.Expr.t -> Flambda0.Expr.t)
+    -> Flambda0.Expr.t
 
   (** All continuations defined at toplevel within the given expression. *)
   val all_defined_continuations_toplevel : t -> Continuation.Set.t
@@ -143,11 +139,11 @@ module Expr : sig
   val count_continuation_uses_toplevel : t -> int Continuation.Map.t
 
   type with_wrapper =
-    | Unchanged of { handler : Flambda.Continuation_handler.t; }
+    | Unchanged of { handler : Flambda0.Continuation_handler.t; }
     | With_wrapper of {
         new_cont : Continuation.t;
-        new_handler : Flambda.Continuation_handler.t;
-        wrapper_handler : Flambda.Continuation_handler.t;
+        new_handler : Flambda0.Continuation_handler.t;
+        wrapper_handler : Flambda0.Continuation_handler.t;
       }
 
   val build_let_cont_with_wrappers
@@ -158,7 +154,7 @@ module Expr : sig
 end
 
 module Named : sig
-  include module type of Flambda.Named
+  include module type of Flambda0.Named
 
   val toplevel_substitution
      : Variable.t Variable.Map.t
@@ -168,15 +164,15 @@ module Named : sig
   val of_projection : Projection.t -> t
 end
 
-module Let = Flambda.Let
+module Let = Flambda0.Let
 
-module Let_mutable = Flambda.Let_mutable
+module Let_mutable = Flambda0.Let_mutable
 
-module Let_cont = Flambda.Let_cont
+module Let_cont = Flambda0.Let_cont
 
-module Continuation_handler = Flambda.Continuation_handler
+module Continuation_handler = Flambda0.Continuation_handler
 
-module Continuation_handlers = Flambda.Continuation_handlers
+module Continuation_handlers = Flambda0.Continuation_handlers
 
 module Set_of_closures : sig
   (** [find_free_variable v clos] raises [Not_found] if [c] is not in [clos]. *)
@@ -187,13 +183,13 @@ module Set_of_closures : sig
 end
 
 module Function_declarations : sig
-  include module type of Flambda.Function_declarations
+  include module type of Flambda0.Function_declarations
 
   (** [find_declaration f decl] raises [Not_found] if [f] is not in [decl]. *)
   val find_declaration
      : Closure_id.t
     -> t
-    -> Flambda.Function_declaration.t
+    -> Flambda0.Function_declaration.t
 
   (** [find_declaration_variable f decl] raises [Not_found] if [f] is not in
       [decl]. *)
@@ -251,9 +247,9 @@ module Function_declarations : sig
 end
 
 module Function_declaration : sig
-  include module type of Flambda.Function_declaration
+  include module type of Flambda0.Function_declaration
 
   val function_arity : t -> int
 end
 
-module Typed_parameter = Flambda.Typed_parameter
+module Typed_parameter = Flambda0.Typed_parameter

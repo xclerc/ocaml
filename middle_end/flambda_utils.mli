@@ -14,7 +14,8 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Miscellaneous utility functions on Flambda terms. *)
+(** Miscellaneous utility functions on Flambda terms that don't really
+    belong in any of the submodules of [Flambda]. *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
