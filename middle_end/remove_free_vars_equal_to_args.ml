@@ -49,7 +49,7 @@ let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
     function_decl
   else
     let body =
-      Flambda_utils.toplevel_substitution
+      Flambda.Expr.toplevel_substitution
         params_for_equal_free_vars
         function_decl.body
     in

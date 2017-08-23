@@ -154,13 +154,13 @@ let introduce_symbols expr =
               let to_copy =
                 List.map (fun (var, defining_expr) ->
                     let defining_expr =
-                      Flambda_utils.toplevel_substitution_named subst
+                      Flambda.Expr.toplevel_substitution_named subst
                         defining_expr
                     in
                     var, defining_expr)
                   to_copy
               in
-              let expr = Flambda_utils.toplevel_substitution subst expr in
+              let expr = Flambda.Expr.toplevel_substitution subst expr in
               cont, expr, to_copy)
             conts_exprs_and_to_copies
         in

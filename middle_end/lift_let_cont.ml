@@ -391,7 +391,7 @@ and lift (expr : Flambda.Expr.t) =
       (State.constants state)
   in
   (* CR mshinwell: Do this substitution more efficiently *)
-  let expr = Flambda_utils.toplevel_substitution subst expr in
+  let expr = Flambda.Expr.toplevel_substitution subst expr in
   Constant_or_symbol.Map.fold (fun const var expr ->
       Flambda.Expr.create_let var (Constant_or_symbol.to_named const) expr)
     constants

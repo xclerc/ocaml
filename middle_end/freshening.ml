@@ -337,7 +337,7 @@ module Project_var = struct
         (* Since all parameters are distinct, even between functions, we can
            just use a single substitution. *)
         let body =
-          Flambda_utils.toplevel_substitution subst.sb_var func_decl.body
+          Flambda.Expr.toplevel_substitution subst.sb_var func_decl.body
         in
         let function_decl =
           Flambda.update_function_decl's_params_and_body func_decl
