@@ -33,7 +33,6 @@ type descr = Flambda0.Function_declarations.t T.descr
 type set_of_closures = Flambda0.Function_declarations.t T.set_of_closures
 type float_array = Flambda0.Function_declarations.t T.float_array
 type _ t' = t
-type _ decls' = Flambda0.Function_declarations.t
 type _ descr' = descr
 type _ set_of_closures' = set_of_closures
 
