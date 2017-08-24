@@ -57,6 +57,7 @@ val print_closure_freshening : Format.formatter -> closure_freshening -> unit
 
 module type Constructors_and_accessors = sig
   type 'd t
+  type 'd decls
   type 'd descr
   type 'd set_of_closures
 
@@ -122,7 +123,7 @@ module type Constructors_and_accessors = sig
   (** Create a [set_of_closures] structure which can be used for building a type
       describing a set of closures. *)
   val create_set_of_closures
-     : function_decls:'d
+     : function_decls:'d decls
     -> size:int option Variable.Map.t lazy_t
     -> bound_vars:'d t Var_within_closure.Map.t
     -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
@@ -280,6 +281,7 @@ module rec T : sig
 
   include Constructors_and_accessors
     with type 'd t := 'd t
+    with type 'd decls := 'd
     with type 'd descr := 'd descr
     with type 'd set_of_closures := 'd set_of_closures
 end and Unionable : sig

@@ -30,12 +30,14 @@ type float_array =
   Flambda0.Function_declarations.t Flambda_type0.T.float_array
 (* CR-soon mshinwell: GPR#792 may enable us to get rid of these aliases. *)
 type _ t' = t
+type _ decls' = Flambda0.Function_declarations.t
 type _ descr' = descr
 type _ set_of_closures' = set_of_closures
 
 (** Means of making and examining types. *)
 include Flambda_type0.Constructors_and_accessors
   with type 'decls t := 'decls t'
+  with type 'decls decls = 'decls decls'
   with type 'decls descr := 'decls descr'
   with type 'decls set_of_closures := 'decls set_of_closures'
 
@@ -111,7 +113,7 @@ val all_not_useful : t list -> bool
 (** Whether the given type describes a float array. *)
 val is_float_array : t -> bool
 
-(** Whether the given type describes a boxed float. *)
+(** Whether the given type describes one or more boxed floats. *)
 val is_boxed_float : t -> bool
 
 (** Whether code that mutates a value with the given type is to be

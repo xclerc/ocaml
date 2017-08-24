@@ -84,6 +84,7 @@ let dummy_print_decls ppf _ =
 
 module type Constructors_and_accessors = sig
   type 'd t
+  type 'd decls = 'd
   type 'd descr
   type 'd set_of_closures
   val kind

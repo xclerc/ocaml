@@ -33,6 +33,7 @@ type descr = Flambda0.Function_declarations.t T.descr
 type set_of_closures = Flambda0.Function_declarations.t T.set_of_closures
 type float_array = Flambda0.Function_declarations.t T.float_array
 type _ t' = t
+type _ decls' = Flambda0.Function_declarations.t
 type _ descr' = descr
 type _ set_of_closures' = set_of_closures
 
@@ -69,11 +70,15 @@ let augment_with_symbol = T.augment_with_symbol
 let augment_with_symbol_field = T.augment_with_symbol_field
 let replace_description = T.replace_description
 let update_variable = T.update_variable
+type cleaning_spec = T.cleaning_spec
 let clean = T.clean
 let free_variables = T.free_variables
 let refine_using_value_kind = T.refine_using_value_kind
 let kind = T.kind
 let kind_exn = T.kind_exn
+let create_set_of_closures = T.create_set_of_closures
+let update_freshening_of_set_of_closures =
+  T.update_freshening_of_set_of_closures
 
 let print_descr =
   T.print F0.Function_declarations.print
@@ -85,6 +90,7 @@ let print_set_of_closures =
   T.print_set_of_closures F0.Function_declarations.print
 
 let var (t : t) = t.var
+let projection (t : t) = t.projection
 let symbol (t : t) = t.symbol
 let descr (t : t) = t.descr
 let descrs ts = List.map (fun (t : t) -> t.descr) ts
@@ -170,6 +176,28 @@ let useful t =
   | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
   | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
   | Unboxed_nativeint _ -> true
+
+let is_boxed_float t =
+  match descr t with
+  | Boxed_number (Float, t) ->
+    begin match descr t with
+    | Unboxed_float _ -> true
+    | _ -> false
+    end
+  | Float_array _ | Unknown _ | Bottom | Union _
+  | Immutable_string _ | Mutable_string _ | Float_array _
+  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ -> false
+
+let is_float_array t =
+  match descr t with
+  | Float_array _ -> true
+  | Unknown _ | Bottom | Union _
+  | Immutable_string _ | Mutable_string _ | Float_array _
+  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ -> false
 
 let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 
