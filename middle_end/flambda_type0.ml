@@ -31,12 +31,24 @@ module Boxed_number_kind = struct
     | Int64
     | Nativeint
 
-  let print ppf t =
-    match t with
-    | Float -> Format.fprintf ppf "float"
-    | Int32 -> Format.fprintf ppf "int32"
-    | Int64 -> Format.fprintf ppf "int64"
-    | Nativeint -> Format.fprintf ppf "nativeint"
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare t1 t2 = Pervasives.compare t1 t2
+
+    let equal t1 t2 = (compare t1 t2 = 0)
+
+    let hash t = Hashtbl.hash t
+
+    let print ppf t =
+      match t with
+      | Float -> Format.fprintf ppf "float"
+      | Int32 -> Format.fprintf ppf "int32"
+      | Int64 -> Format.fprintf ppf "int64"
+      | Nativeint -> Format.fprintf ppf "nativeint"
+
+    let output _ _ = Misc.fatal_error "Not implemented"
+  end)
 end
 
 type unresolved_value =
@@ -127,11 +139,20 @@ module type Constructors_and_accessors = sig
     -> freshening:closure_freshening
     -> 'd set_of_closures
   val augment_with_variable : 'd t -> Variable.t -> 'd t
+  val update_variable : 'd t -> Variable.t option -> 'd t
   val augment_with_symbol : 'd t -> Symbol.t -> 'd t
   val augment_with_symbol_field : 'd t -> Symbol.t -> int -> 'd t
   val replace_description : 'd t -> 'd descr -> 'd t
   val refine_using_value_kind : 'd t -> Lambda.value_kind -> 'd t
   val free_variables : 'd t -> Variable.Set.t
+  type cleaning_spec =
+    | Available
+    | Available_different_name of Variable.t
+    | Unavailable
+  val clean
+    : 'd t
+    -> (Variable.t -> cleaning_spec)
+    -> 'd t
 end
 
 (* A value of type [T.t] corresponds to an "approximation" of the result of
@@ -596,6 +617,7 @@ end = struct
     | _ -> t
 
   let augment_with_variable t var = { t with var = Some var }
+  let update_variable t var = { t with var; }
   let augment_with_symbol t symbol = { t with symbol = Some (symbol, None) }
   let augment_with_symbol_field t symbol field =
     match t.symbol with
@@ -710,6 +732,12 @@ end = struct
         | None -> acc
         | Some var -> Variable.Set.add var acc
       in
+      let acc =
+        match t.projection with
+        | None -> acc
+        | Some projection ->
+          Variable.Set.add (Projection.projecting_from projection) acc
+      in
       match t.descr with
       | Union unionable ->
         begin match unionable with
@@ -745,6 +773,56 @@ end = struct
       | Load_lazily _ -> acc
     in
     free_variables t Variable.Set.empty
+
+  let rec clean t classify =
+    let clean_var var_opt =
+      match var_opt with
+      | None -> None
+      | Some var ->
+        match classify var with
+        | Available -> var_opt
+        | Available_different_name new_var -> Some new_var
+        | Unavailable -> None
+    in
+    let t = update_variable t (clean_var t.var) in
+    match t.descr with
+    | Union unionable ->
+      let unionable =
+        Unionable.map_blocks unionable ~f:(fun blocks ->
+          Tag.Scannable.Map.map (fun ts ->
+            Array.map (fun t -> clean t classify) ts) blocks)
+      in
+      { t with descr = Union unionable; }
+    | Unknown _
+    | Unboxed_float _
+    | Unboxed_int32 _
+    | Unboxed_int64 _
+    | Unboxed_nativeint _ -> t
+    | Boxed_number (kind, contents) ->
+      { t with descr = Boxed_number (kind, clean contents classify); }
+    | Set_of_closures set_of_closures ->
+      let bound_vars =
+        Var_within_closure.Map.map (fun t -> clean t classify)
+          set_of_closures.bound_vars
+      in
+      { t with descr = Set_of_closures { set_of_closures with bound_vars; }; }
+    | Closure closure ->
+      let potential_closures =
+        Closure_id.Map.map (fun t -> clean t classify)
+          closure.potential_closures
+      in
+      { t with descr = Closure { potential_closures; }; }
+    | Immutable_string _
+    | Mutable_string _ -> t
+    | Float_array { contents; size; } ->
+      let contents : _ float_array_contents =
+        match contents with
+        | Contents ts -> Contents (Array.map (fun t -> clean t classify) ts)
+        | Unknown_or_mutable -> Unknown_or_mutable
+      in
+      { t with descr = Float_array { contents; size; }; }
+    | Load_lazily _
+    | Bottom -> t
 end and Unionable : sig
   module Immediate : sig
     type t = private
@@ -780,6 +858,8 @@ end and Unionable : sig
     -> Format.formatter
     -> 'd t
     -> unit
+
+  val map_blocks : 'd t -> f:('d blocks -> 'd blocks) -> 'd t
 
   (** Partial ordering:
         Ill_typed_code <= Ok _ <= Anything
@@ -912,6 +992,13 @@ end = struct
     | Immediates imms ->
       Format.fprintf ppf "@[(immediates (%a))@]"
         Immediate.Set.print imms
+
+  let map_blocks t ~f =
+    match t with
+    | Blocks blocks -> Blocks (f blocks)
+    | Blocks_and_immediates (blocks, imms) ->
+      Blocks_and_immediates (f blocks, imms)
+    | Immediates _ -> t
 
   let is_singleton t =
     invariant t;

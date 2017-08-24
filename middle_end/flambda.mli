@@ -178,12 +178,6 @@ and Set_of_closures : sig
 end and Function_declarations : sig
   include module type of Flambda0.Function_declarations
 
-  (** [find f decl] raises [Not_found] if [f] is not in [decl]. *)
-  val find
-     : Closure_id.t
-    -> t
-    -> Function_declaration.t
-
   (** [find_declaration_variable f decl] raises [Not_found] if [f] is not in
       [decl]. *)
   val find_declaration_variable
@@ -242,6 +236,15 @@ end and Function_declaration : sig
   include module type of Flambda0.Function_declaration
 
   val function_arity : t -> int
+
+  (** The number of variables in the function's closure.  Such variables are
+      taken to be the free variables of the function's body but ignoring
+      variables that are either function parameters or the name of one of
+      the other functions simultaneously-defined with [t]. *)
+  val num_variables_in_closure
+     : t
+    -> function_decls:Function_declarations.t
+    -> int
 
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool

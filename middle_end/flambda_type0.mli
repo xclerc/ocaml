@@ -32,6 +32,8 @@ module Boxed_number_kind : sig
     | Int32
     | Int64
     | Nativeint
+
+  include Identifiable.S with type t := t
 end
 
 type unresolved_value =
@@ -146,6 +148,9 @@ module type Constructors_and_accessors = sig
       replaces it within the type. *)
   val augment_with_variable : 'd t -> Variable.t -> 'd t
 
+  (** Replace the variable at the toplevel of a given type. *)
+  val update_variable : 'd t -> Variable.t option -> 'd t
+
   (** Like [augment_with_variable], but for symbol information. *)
   val augment_with_symbol : 'd t -> Symbol.t -> 'd t
 
@@ -160,6 +165,20 @@ module type Constructors_and_accessors = sig
 
   (** Free variables in a type. *)
   val free_variables : 'd t -> Variable.Set.t
+
+  type cleaning_spec =
+    | Available
+    | Available_different_name of Variable.t
+    | Unavailable
+
+  (** Adjust a type so that all of the variables it references are in scope
+      in some context.  The context is expressed by a function that says
+      whether the variable is available under its existing name, available under
+      another name, or unavailable. *)
+  val clean
+    : 'd t
+    -> (Variable.t -> cleaning_spec)
+    -> 'd t
 end
 
 module rec T : sig
@@ -290,6 +309,8 @@ end and Unionable : sig
     -> Format.formatter
     -> 'd t
     -> unit
+
+  val map_blocks : 'd t -> f:('d blocks -> 'd blocks) -> 'd t
 
   (** Partial ordering:
         Ill_typed_code <= Ok _ <= Anything

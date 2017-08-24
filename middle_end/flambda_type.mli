@@ -166,50 +166,18 @@ val follow_variable_equality
   -> is_present_in_env:(Variable.t -> bool)
   -> Variable.t option
 
-type cleaning_spec =
-  | Available
-  | Available_different_name of Variable.t
-  | Unavailable
-
-(** Adjust a type so that all of the variables it references are in scope
-    in some context.  The context is expressed by a function that says
-    whether the variable is available under its existing name, available under
-    another name, or unavailable. *)
-val clean
-   : t
-  -> (Variable.t -> cleaning_spec)
-  -> t
-
-module Reification_summary : sig
-  type t =
-    | Nothing_done
-    | Replaced_term
-end
-
-type reification_result = Flambda0.Named.t * Reification_summary.t * t
-
 (** Try to produce a canonical Flambda term, with no free variables, that has
     the given Flambda type. *)
-val simple_reify : t -> Flambda0.Named.t option
+val reify : t -> Flambda0.Named.t option
 
-(** When there are no side effects performed by the given term, return a
-    replacement for that term produced from the given Flambda type
-    (cf. [reify]), the replacement being expected to be a less complex term. *)
-val maybe_replace_term_with_reified_term
-   : t
-  -> Flambda0.Named.t
-  -> reification_result
-
-(** As for [maybe_replace_term_with_reified_term], but also enables us to
-    simplify based on equalities between variables.  The caller must provide
-    a function that tells us whether, if we simplify to a given variable,
-    the value of that variable will be accessible in the current
-    environment. *)
-val maybe_replace_term_with_reified_term_using_env
+(** As for [reify], but also enables us to simplify based on the [var] alias
+    inside Flambda types.  The caller must provide a function that tells us
+    whether, if we were to simplify to a given variable, the value of that
+    variable will be accessible in the current environment. *)
+val reify_using_env
    : t
   -> is_present_in_env:(Variable.t -> bool)
-  -> Flambda0.Named.t
-  -> reification_result
+  -> Flambda0.Named.t option
 
 (** As for [reify] but only produces terms when the type describes a
     unique integer. *)

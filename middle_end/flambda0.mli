@@ -513,6 +513,9 @@ end and Function_declarations : sig
       declarations. *)
   val create : funs:Function_declaration.t Variable.Map.t -> t
 
+  (** [find f t] raises [Not_found] if [f] is not in [t]. *)
+  val find : Closure_id.t -> t -> Function_declaration.t
+
   (** Create a set of function declarations based on another set of function
       declarations. *)
   val update : t -> funs:Function_declaration.t Variable.Map.t -> t

@@ -18,84 +18,74 @@
 
 module F0 = Flambda0
 module T0 = Flambda_type0
+module Named = F0.Named
+module Unionable = T0.Unionable
+
+module Float = Numbers.Float
+module Int32 = Numbers.Int32
+module Int64 = Numbers.Int64
+module Nativeint = Numbers.Nativeint
 
 type t = F0.Function_declarations.t T0.T.t
 
-let unknown = T0.unknown
-let int = T0.int
-let char = T0.char
-let boxed_float = T0.boxed_float
-let any_float = T0.any_float
-let any_unboxed_float = T0.any_unboxed_float
-let any_unboxed_int32 = T0.any_unboxed_int32
-let any_unboxed_int64 = T0.any_unboxed_int64
-let any_unboxed_nativeint = T0.any_unboxed_nativeint
-let unboxed_float = T0.unboxed_float
-let unboxed_int32 = T0.unboxed_int32
-let unboxed_int64 = T0.unboxed_int64
-let unboxed_nativeint = T0.unboxed_nativeint
-let boxed_float = T0.boxed_float
-let boxed_int32 = T0.boxed_int32
-let boxed_int64 = T0.boxed_int64
-let boxed_nativeint = T0.boxed_nativeint
-let mutable_float_array = T0.mutable_float_array
-let immutable_float_array = T0.immutable_float_array
-let string = T0.string
-let boxed_int = T0.boxed_int
-let constptr = T0.constptr
-let block = T0.block
-let extern = T0.extern
-let symbol = T0.symbol
-let bottom = T0.bottom
-let unresolved = T0.unresolved
-let closure = T0.closure
-let set_of_closures = T0.set_of_closures
-let make_const_int_named = T0.make_const_int_named
-let make_const_char_named = T0.make_const_char_named
-let make_const_ptr_named = T0.make_const_ptr_named
-let make_const_bool_named = T0.make_const_bool_named
-let make_const_float_named = T0.make_const_float_named
-let make_const_boxed_int_named = T0.make_const_boxed_int_named
-let augment_with_variable = T0.augment_with_variable
-let augment_with_symbol = T0.augment_with_symbol
-let augment_with_symbol_field = T0.augment_with_symbol_field
-let replace_description = T0.replace_description
-let augment_with_kind = T0.augment_with_kind
-let augment_kind_with_type = T0.augment_kind_with_type
+type descr = Flambda0.Function_declarations.t T0.T.descr
+type set_of_closures = Flambda0.Function_declarations.t T0.T.set_of_closures
+type float_array = Flambda0.Function_declarations.t T0.T.float_array
 
-let descr t = t.descr
-let descrs ts = List.map (fun t -> t.descr) ts
+let unknown = T0.T.unknown
+let int = T0.T.int
+let char = T0.T.char
+let boxed_float = T0.T.boxed_float
+let any_boxed_float = T0.T.any_boxed_float
+let any_unboxed_float = T0.T.any_unboxed_float
+let any_unboxed_int32 = T0.T.any_unboxed_int32
+let any_unboxed_int64 = T0.T.any_unboxed_int64
+let any_unboxed_nativeint = T0.T.any_unboxed_nativeint
+let unboxed_float = T0.T.unboxed_float
+let unboxed_int32 = T0.T.unboxed_int32
+let unboxed_int64 = T0.T.unboxed_int64
+let unboxed_nativeint = T0.T.unboxed_nativeint
+let boxed_float = T0.T.boxed_float
+let boxed_int32 = T0.T.boxed_int32
+let boxed_int64 = T0.T.boxed_int64
+let boxed_nativeint = T0.T.boxed_nativeint
+let mutable_float_array = T0.T.mutable_float_array
+let immutable_float_array = T0.T.immutable_float_array
+let immutable_string = T0.T.immutable_string
+let mutable_string = T0.T.mutable_string
+let constptr = T0.T.constptr
+let block = T0.T.block
+let export_id_loaded_lazily = T0.T.export_id_loaded_lazily
+let symbol_loaded_lazily = T0.T.symbol_loaded_lazily
+let bottom = T0.T.bottom
+let closure = T0.T.closure
+let set_of_closures = T0.T.set_of_closures
+let augment_with_variable = T0.T.augment_with_variable
+let augment_with_symbol = T0.T.augment_with_symbol
+let augment_with_symbol_field = T0.T.augment_with_symbol_field
+let replace_description = T0.T.replace_description
 
-let create_set_of_closures ~function_decls ~bound_vars ~invariant_params
-      ~freshening ~direct_call_surrogates =
-  let size =
-    lazy (
-      let functions = Variable.Map.keys function_decls.funs in
-      Variable.Map.map (fun (function_decl : F0.Function_declaration.t) ->
-          let params = Parameter.Set.vars function_decl.params in
-          let free_vars =
-            Variable.Set.diff
-              (Variable.Set.diff function_decl.free_variables params)
-              functions
-          in
-          let num_free_vars = Variable.Set.cardinal free_vars in
-          let max_size =
-            Inlining_cost.maximum_interesting_size_of_function_body
-              num_free_vars
-          in
-          Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
-        function_decls.funs)
-  in
-  create_set_of_closures ~function_decls ~size ~bound_vars ~invariant_params
-    ~freshening ~direct_call_surrogates
+let print_descr =
+  T0.T.print F0.Function_declarations.print
+
+let print_descr =
+  T0.T.print_descr F0.Function_declarations.print
+
+let print_set_of_closures =
+  T0.T.print_set_of_closures F0.Function_declarations.print
+
+let var (t : t) = t.var
+let symbol (t : t) = t.symbol
+let descr (t : t) = t.descr
+let descrs ts = List.map (fun (t : t) -> t.descr) ts
 
 (* CR mshinwell: Shouldn't this just use [Flambda_kind].lambda_value_kind? *)
 let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
-  match t.descr with
-  | Boxed_number (Float, { descr = Float _; _ }) -> Pfloatval
-  | Boxed_number (Int32, { descr = Int32 _; _ }) -> Pboxedintval Pint32
-  | Boxed_number (Int64, { descr = Int64 _; _ }) -> Pboxedintval Pint64
-  | Boxed_number (Nativeint, { descr = Nativeint _; _ }) ->
+  match descr t with
+  | Boxed_number (Float, { descr = Unboxed_float _; _ }) -> Pfloatval
+  | Boxed_number (Int32, { descr = Unboxed_int32 _; _ }) -> Pboxedintval Pint32
+  | Boxed_number (Int64, { descr = Unboxed_int64 _; _ }) -> Pboxedintval Pint64
+  | Boxed_number (Nativeint, { descr = Unboxed_nativeint _; _ }) ->
     Pboxedintval Pnativeint
   | Union union ->
     begin match Unionable.flatten union with
@@ -108,82 +98,89 @@ let unresolved_symbol sym =
   (* CR mshinwell: check with Pierre about this comment *)
   (* We don't know anything, but we must remember that it comes
      from another compilation unit in case it contains a closure. *)
-  unknown Value (Unresolved_value (Symbol sym))
+  unknown (Flambda_kind.value ()) (Unresolved_value (Symbol sym))
 
-let make_const_int_named n : F0.Named.t * t =
-  Const (Int n), value_int n
+let make_const_int_named n : Named.t * t =
+  Const (Int n), int n
 
-let make_const_char_named n : F0.Named.t * t =
-  Const (Char n), value_char n
+let make_const_char_named n : Named.t * t =
+  Const (Char n), char n
 
-let make_const_ptr_named n : F0.Named.t * t =
-  Const (Const_pointer n), value_constptr n
+let make_const_ptr_named n : Named.t * t =
+  Const (Const_pointer n), constptr n
 
-let make_const_bool_named b : F0.Named.t * t =
+let make_const_bool_named b : Named.t * t =
   make_const_ptr_named (if b then 1 else 0)
 
-let make_const_boxed_float_named f : F0.Named.t * t =
+let make_const_boxed_float_named f : Named.t * t =
   Allocated_const (Float f), boxed_float f
 
-let make_const_boxed_int32_named n : F0.Named.t * t =
-  Allocated_const (Int32 f), boxed_int32 f
+let make_const_boxed_int32_named n : Named.t * t =
+  Allocated_const (Int32 n), boxed_int32 n
 
-let make_const_boxed_int64_named n : F0.Named.t * t =
-  Allocated_const (Int64 f), boxed_int64 f
+let make_const_boxed_int64_named n : Named.t * t =
+  Allocated_const (Int64 n), boxed_int64 n
 
-let make_const_boxed_nativeint_named n : F0.Named.t * t =
-  Allocated_const (Nativeint f), boxed_nativeint f
+let make_const_boxed_nativeint_named n : Named.t * t =
+  Allocated_const (Nativeint n), boxed_nativeint n
 
-let make_const_unboxed_float_named f : F0.Named.t * t =
+let make_const_unboxed_float_named f : Named.t * t =
   Const (Unboxed_float f), unboxed_float f
 
-let make_const_unboxed_int32_named n : F0.Named.t * t =
-  Const (Unboxed_int32 n), unboxed_int32 f
+let make_const_unboxed_int32_named n : Named.t * t =
+  Const (Unboxed_int32 n), unboxed_int32 n
 
-let make_const_unboxed_int64_named n : F0.Named.t * t =
-  Const (Unboxed_int64 n), unboxed_int64 f
+let make_const_unboxed_int64_named n : Named.t * t =
+  Const (Unboxed_int64 n), unboxed_int64 n
 
-let make_const_unboxed_nativeint_named n : F0.Named.t * t =
-  Const (Unboxed_nativeint n), unboxed_nativeint f
+let make_const_unboxed_nativeint_named n : Named.t * t =
+  Const (Unboxed_nativeint n), unboxed_nativeint n
 
 let is_bottom t =
-  match t.descr with
+  match descr t with
   | Bottom -> true
-  | Unresolved _ | Unknown _ | String _ | Float_array _ | Union _
-  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ -> false
+  | Unknown _ | Immutable_string _ | Mutable_string _ | Float_array _
+  | Union _ | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ -> false
 
 let known t =
-  match t.descr with
-  | Unresolved _ | Unknown _ -> false
-  | String _ | Float_array _ | Bottom | Union _ | Set_of_closures _ | Closure _
-  | Load_lazily _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
-  | Nativeint _ -> true
+  match descr t with
+  | Unknown _ -> false
+  | Bottom | Immutable_string _ | Mutable_string _ | Float_array _
+  | Union _ | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ -> true
 
 let useful t =
-  match t.descr with
-  | Unresolved _ | Unknown _ | Bottom -> false
+  match descr t with
+  | Unknown _ | Bottom -> false
   | Union union -> Unionable.useful union
-  | String _ | Float_array _ | Set_of_closures _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Closure _ | Load_lazily _ -> true
+  | Immutable_string _ | Mutable_string _ | Float_array _
+  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ -> true
 
 let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 
 let invalid_to_mutate t =
-  match t.descr with
+  match descr t with
   | Union unionable -> Unionable.invalid_to_mutate unionable
-  | String { contents = Some _ } | Set_of_closures _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Closure _ -> true
-  | String { contents = None } | Float_array _ | Unresolved _ | Unknown _
-  | Bottom -> false
-  | Load_lazily _ -> assert false
+  | Mutable_string _
+  (* CR mshinwell: Split Float_array into Immutable and Mutable? *)
+  | Float_array { contents = Contents _; size = _; } -> false
+  | Unknown _ | Bottom | Immutable_string _
+  | Float_array { contents = Unknown_or_mutable; size = _; }
+  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ -> true
 
-let type_for_bound_var value_set_of_closures var =
-  try Var_within_closure.Map.find var value_set_of_closures.bound_vars
+let type_for_bound_var (set_of_closures : set_of_closures) var =
+  try Var_within_closure.Map.find var set_of_closures.bound_vars
   with Not_found ->
     Misc.fatal_errorf "The set-of-closures type %a@ does not \
         bind the variable %a@.%s@."
-      print_value_set_of_closures value_set_of_closures
+      print_set_of_closures set_of_closures
       Var_within_closure.print var
       (Printexc.raw_backtrace_to_string (Printexc.get_callstack max_int))
 
@@ -191,23 +188,22 @@ let type_for_bound_var value_set_of_closures var =
    freshening specified in the type to the closure ID, and return
    that new closure ID.  A fatal error is produced if the new closure ID
    does not correspond to a function declaration in the given type. *)
-let freshen_and_check_closure_id
-      (value_set_of_closures : value_set_of_closures)
+let freshen_and_check_closure_id (set_of_closures : set_of_closures)
       (closure_id : Closure_id.Set.t) =
   let closure_id =
     Freshening.Project_var.apply_closure_ids
-      value_set_of_closures.freshening closure_id
+      set_of_closures.freshening closure_id
   in
   Closure_id.Set.iter (fun closure_id ->
     try
-      ignore (Flambda_utils.find_declaration closure_id
-      value_set_of_closures.function_decls)
+      ignore (F0.Function_declarations.find closure_id
+        set_of_closures.function_decls)
     with Not_found ->
       Misc.fatal_error (Format.asprintf
         "Function %a not found in the set of closures@ %a@.%a@."
         Closure_id.print closure_id
-        print_value_set_of_closures value_set_of_closures
-        F0.Function_declarations.print value_set_of_closures.function_decls))
+        print_set_of_closures set_of_closures
+        F0.Function_declarations.print set_of_closures.function_decls))
     closure_id;
   closure_id
 
@@ -254,17 +250,18 @@ let physically_different_values (types : t list) =
       let tags2 = Tag.Scannable.Map.keys b2 in
       let overlapping_tags = Tag.Scannable.Set.inter tags1 tags2 in
       Tag.Scannable.Set.exists (fun tag ->
-          let fields1 = Tag.Scannable.Map.find tag tags1 in
-          let fields2 = Tag.Scannable.Map.find tag tags2 in
+          let fields1 = Tag.Scannable.Map.find tag b1 in
+          let fields2 = Tag.Scannable.Map.find tag b2 in
           Array.length fields1 <> Array.length fields2
             || Misc.Stdlib.Array.exists2 definitely_different fields1 fields2)
+        overlapping_tags
     in
     match arg1.descr, arg2.descr with
     | Unknown _, _ | _, Unknown _
     (* CR mshinwell: Should [Load_lazily] be an error here?  What about for the
        reification functions below?  [invalid_to_mutate] above has an
        assertion failure for this. *)
-    | Load_lazily _, _ | _, Load_lazily
+    | Load_lazily _, _ | _, Load_lazily _
     | Bottom, _ | _, Bottom -> false
     | Union (Immediates s1), Union (Immediates s2) ->
       immediates_different s1 s2
@@ -288,21 +285,23 @@ let physically_different_values (types : t list) =
       Nativeint.Set.is_empty (Nativeint.Set.inter ns1 ns2)
     | Unboxed_nativeint _, _ | _, Unboxed_nativeint _ -> true
     | Boxed_number (kind1, t1), Boxed_number (kind2, t2) ->
-      (not (Boxed_number_kind.equal kind1 kind2))
+      (not (T0.Boxed_number_kind.equal kind1 kind2))
         || definitely_different t1 t2
     | Boxed_number _, _ | _, Boxed_number _ -> true
     | Set_of_closures _, Set_of_closures _ -> false
     | Set_of_closures _, _ | _, Set_of_closures _ -> true
     | Closure _, Closure _ -> false
     | Closure _, _ | _, Closure _ -> true
-    | String s1, String s2 -> String.compare s1 s2 <> 0
-    | String _, _ | _, String -> true
+    | Immutable_string s1, Immutable_string s2 -> String.compare s1 s2 <> 0
+    | Immutable_string _, _ | _, Immutable_string _ -> true
+    | Mutable_string _, Mutable_string _ -> false
+    | Mutable_string _, _ | _, Mutable_string _ -> true
     | Float_array { contents = contents1; size = size1; },
       Float_array { contents = contents2; size = size2; } ->
       size1 <> size2
         || begin match contents1, contents2 with
            | Contents ts1, Contents ts2 ->
-             Array.exists definitely_different ts1 ts2
+             Misc.Stdlib.Array.exists2 definitely_different ts1 ts2
            | Contents _, Unknown_or_mutable
            | Unknown_or_mutable, Contents _
            | Unknown_or_mutable, Unknown_or_mutable -> false
@@ -318,7 +317,7 @@ type get_field_result =
   | Unreachable
 
 let get_field t ~field_index:i : get_field_result =
-  match t.descr with
+  match descr t with
   | Union union ->
     begin match Unionable.flatten union with
     | Ok (Block (_tag, fields)) ->
@@ -336,7 +335,7 @@ let get_field t ~field_index:i : get_field_result =
          We consider this as unreachable and mark the result accordingly. *)
       Unreachable
     | Ill_typed_code -> Unreachable
-    | Anything -> Ok (value_unknown Other)
+    | Anything -> Ok (unknown (Flambda_kind.value ()) Other)
     end
   (* CR-someday mshinwell: This should probably return Unreachable in more
      cases.  I added a couple more. *)
@@ -347,138 +346,62 @@ let get_field t ~field_index:i : get_field_result =
     (* CR-someday mshinwell: If Leo's array's patch lands, then we can
        change this, although it's probably not Pfield that is used to
        do the projection. *)
-    Ok (value_unknown Other)
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ | String _ | Boxed_number _ ->
+    Ok (unknown (Flambda_kind.value ()) Other)
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
+  | Immutable_string _ | Mutable_string _ | Boxed_number _ ->
     (* The user is doing something unsafe. *)
     Unreachable
   | Set_of_closures _ | Closure _
     (* These are used by [CamlinternalMod]. *)
   | Load_lazily _ ->
-    (* These should have been resolved. *)
-    (* CR mshinwell: Shouldn't this propagate the reason into
-       the [Unknown] (which would require extending [unresolved_value] to
-       have an [Export_id.t] case)?   (Also see comment above about
-       what should happen in this [Load_lazily] case.) *)
-    Ok (value_unknown Other)
-  | Unknown reason ->
-    Ok (value_unknown reason)
+    (* These should have been resolved.
+       Note that the contents of blocks must always be of kind [Value]. *)
+    Ok (unknown (Flambda_kind.value ()) Other)
+  | Unknown (_block_kind, reason) ->
+    Ok (unknown (Flambda_kind.value ()) reason)
 
 let length_of_array t =
-  match t.descr with
+  match descr t with
   | Union union -> Unionable.size_of_block union
   | Float_array { contents = Contents floats; _ } -> Some (Array.length floats)
   | _ -> None  (* Could be improved later if required. *)
 
 let follow_variable_equality t ~is_present_in_env =
-  match t.var with
+  match var t with
   | Some var when is_present_in_env var -> Some var
   | _ -> None
 
-type cleaning_spec =
-  | Available
-  | Available_different_name of Variable.t
-  | Unavailable
-
-let rec clean t classify =
-  let clean_var var_opt =
-    match var_opt with
-    | None -> None
-    | Some var ->
-      match classify var with
-      | Available -> var_opt
-      | Available_different_name new_var -> Some new_var
-      | Unavailable -> None
-  in
-  let t = { t with var = clean_var var; } in
-  match t.descr with
-  | Union unionable ->
-    let clean_blocks blocks =
-      Tag.Scannable.Map.map (fun t -> clean t classify) blocks
-    in
-    let unionable =
-      match unionable with
-      | Blocks blocks -> Blocks (clean_blocks blocks)
-      | Blocks_and_immediates (blocks, imms) ->
-        Blocks_and_immediates (clean_blocks blocks, imms)
-      | Immediates _ -> unionable
-    in
-    { t with descr = Union unionable; }
-  | Unknown _
-  | Unboxed_float _
-  | Unboxed_int32 _
-  | Unboxed_int64 _
-  | Unboxed_nativeint _ -> t
-  | Boxed_number (kind, contents) ->
-    { t with descr = Boxed_number (kind, clean contents classify); }
-  | Set_of_closures set_of_closures ->
-    let bound_vars =
-      Var_within_closure.Map.map (fun t -> clean t classify)
-        set_of_closures.bound_vars
-    in
-    { t with descr = Set_of_closures { set_of_closures with bound_vars; }; }
-  | Closure closure ->
-    let potential_closures =
-      Closure_id.Map.map (fun t -> clean t classify) closure.potential_closures
-    in
-    { t with descr = Closure { potential_closures; }; }
-  | Immutable_string _
-  | Mutable_string _
-  | Float_array { contents; size; } ->
-    let contents =
-      match contents with
-      | Contents ts -> Contents (Array.map (fun t -> clean t classify) ts)
-      | Unknown_or_mutable -> Unknown_or_mutable
-    in
-    Float_array { contents; size; }
-  | Bottom
-  | Load_lazily _ -> acc
-
-module Reification_summary = struct
-  type t =
-    | Nothing_done
-    | Replaced_term
-
-  let join t ~replaced_by_var_or_symbol =
-    match replaced_by_var_or_symbol, t with
-    | true, Nothing_done
-    | true, Replaced_term
-    | false, Replaced_term -> Replaced_term
-    | false, Nothing_done -> Nothing_done
-end
-
-type reification_result = F0.Named.t * reification_summary * t
-
-let simple_reify : F0.Named.t option =
-  let try_symbol () : F0.Named.t option =
-    match t.symbol with
-    | Some (sym, None) -> Some (Symbol sym)
-    | Some (sym, Some field) -> Some (Read_symbol_field (sym, field))
+let reify t : Named.t option =
+  let try_symbol () =
+    match symbol t with
+    | Some (sym, None) -> Some (Named.Symbol sym)
+    | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
     | None -> None
   in
-  match t.descr with
+  match descr t with
   | Union union ->
     begin match Unionable.flatten union with
-    | Ok (Block (tag, ts)) | Ill_typed_code | Anything -> try_symbol ()
+    | Ok (Block _) | Ill_typed_code | Anything -> try_symbol ()
     | Ok (Int n) -> Some (fst (make_const_int_named n))
     | Ok (Char n) -> Some (fst (make_const_char_named n))
     | Ok (Constptr n) -> Some (fst (make_const_ptr_named n))
     end
-  | Boxed_number (Float, { descr = Float fs; _ }) ->
+  | Boxed_number (Float, { descr = Unboxed_float fs; _ }) ->
     begin match Float.Set.get_singleton fs with
     | Some f -> Some (fst (make_const_boxed_float_named f))
     | None -> try_symbol ()
     end
-  | Boxed_number (Int32, { descr = Int32 ns; _ }) ->
+  | Boxed_number (Int32, { descr = Unboxed_int32 ns; _ }) ->
     begin match Int32.Set.get_singleton ns with
     | Some n -> Some (fst (make_const_boxed_int32_named n))
     | None -> try_symbol ()
     end
-  | Boxed_number (Int64, { descr = Int64 ns; _ }) ->
+  | Boxed_number (Int64, { descr = Unboxed_int64 ns; _ }) ->
     begin match Int64.Set.get_singleton ns with
     | Some n -> Some (fst (make_const_boxed_int64_named n))
     | None -> try_symbol ()
     end
-  | Boxed_number (Nativeint, { descr = Nativeint ns; _ }) ->
+  | Boxed_number (Nativeint, { descr = Unboxed_nativeint ns; _ }) ->
     begin match Nativeint.Set.get_singleton ns with
     | Some n -> Some (fst (make_const_boxed_nativeint_named n))
     | None -> try_symbol ()
@@ -503,59 +426,55 @@ let simple_reify : F0.Named.t option =
     | Some f -> Some (fst (make_const_unboxed_nativeint_named f))
     | None -> try_symbol ()
     end
-  | Symbol sym -> Some (Symbol sym, t)
-  | Boxed_number | Immutable_string _ | Mutable_string _ | Float_array _
-  | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Load_lazily _
-  | Unresolved _ -> try_symbol ()
+  | Boxed_number _ | Immutable_string _ | Mutable_string _ | Float_array _
+  | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Load_lazily _ ->
+    try_symbol ()
 
-let maybe_replace_term_with_reified_term t (named : F0.Named.t)
-      : reification_result =
-  if Effect_analysis.no_effects_named named then
-    match reify t with
-    | Some (named, t) ->
-      named, Replaced_term, t
-    | None ->
-      named, Nothing_done, t
-  else
-    named, Nothing_done, t
-
-let maybe_replace_term_with_reified_term_using_env t ~is_present_in_env named =
+let reify_using_env t ~is_present_in_env named =
   let replaced_by_var_or_symbol, named =
-    match t.var with
+    match var t with
     | Some var when is_present_in_env var ->
-      true, F0.Var var
+      true, Named.Var var
     | _ ->
-      match t.symbol with
-      | Some (sym, None) -> true, (F0.Symbol sym:F0.Named.t)
+      match symbol t with
+      | Some (sym, None) -> true, (Named.Symbol sym:Named.t)
       | Some (sym, Some field) ->
-        true, F0.Read_symbol_field (sym, field)
+        true, Named.Read_symbol_field (sym, field)
       | None -> false, named
   in
-  let const, summary, ty = simplify_named t named in
-  const, Reification_summary.join summary ~replaced_by_var_or_symbol, ty
+  match reify t with
+  | None ->
+    if replaced_by_var_or_symbol then Some named
+    else None
+  | Some named -> Some named
 
 let reify_as_int t : int option =
-  match t.descr with
+  match descr t with
   | Union unionable -> Unionable.as_int unionable
-  | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint _ | Unresolved _
-  | Unknown _ | String _ | Float_array _ | Bottom | Set_of_closures _
-  | Closure _ | Load_lazily _ | Boxed_number _ -> None
+  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ | Unknown _ | Immutable_string _ | Mutable_string _
+  | Float_array _ | Bottom | Set_of_closures _ | Closure _ | Load_lazily _
+  | Boxed_number _ -> None
 
 let reify_as_boxed_float t : float option =
-  match t.descr with
-  | Boxed_number f -> f
-  | Union _ | Unresolved _ | Unknown _ | String _ | Float_array _ | Bottom
-  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ -> None
+  match descr t with
+  | Boxed_number (Float, t) ->
+    begin match descr t with
+    | Unboxed_float fs -> Float.Set.get_singleton fs
+    | _ -> None
+    end
+  | Union _ | Unknown _ | Immutable_string _ | Mutable_string _
+  | Float_array _ | Bottom | Set_of_closures _ | Closure _ | Load_lazily _
+  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ -> None
 
-let reify_as_constant_float_array (t:value_float_array) : float list option =
-  match t.contents with
+let reify_as_constant_float_array (fa : T.T0.float_array) : float list option =
+  match fa.contents with
   | Unknown_or_mutable -> None
   | Contents contents ->
     Array.fold_right (fun elt acc ->
-        match acc, elt.descr with
-        | Some acc, Boxed_float (Some f) ->
-          Some (f :: acc)
+        match acc, descr elt with
+        | Some acc, Boxed_float (Some f) -> Some (f :: acc)
         | None, _
         | Some _,
           (Boxed_float None | Unresolved _ | Unknown _ | String _
@@ -565,7 +484,7 @@ let reify_as_constant_float_array (t:value_float_array) : float list option =
       contents (Some [])
 
 let reify_as_string t : string option =
-  match t.descr with
+  match descr t with
   | String { contents } -> contents
   | Union _ | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint
   | Unresolved _ | Unknown _ | Float_array _ | Bottom | Set_of_closures _
@@ -576,7 +495,7 @@ type reified_as_scannable_block =
   | Ok of Tag.Scannable.t * t array
 
 let reify_as_scannable_block t : reified_as_scannable_block =
-  match t.descr with
+  match descr t with
   | Union union ->
     begin match Unionable.flatten union with
     | Ok (Block (tag, fields)) -> Ok (tag, fields)
@@ -591,7 +510,7 @@ type reified_as_variant =
   | Ok of Unionable.t
 
 let reify_as_variant t : reified_as_variant =
-  match t.descr with
+  match descr t with
   | Union union ->
     if Unionable.ok_for_variant union then Ok union
     else Wrong
@@ -606,7 +525,7 @@ type reified_as_scannable_block_or_immediate =
 
 let reify_as_scannable_block_or_immediate t
       : reified_as_scannable_block_or_immediate =
-  match t.descr with
+  match descr t with
   | Union union ->
     begin match Unionable.flatten union with
     | Ill_typed_code | Anything -> Wrong
@@ -625,7 +544,7 @@ type reified_as_set_of_closures =
   | Ok of Variable.t option * value_set_of_closures
 
 let reify_as_set_of_closures t : reified_as_set_of_closures =
-  match t.descr with
+  match descr t with
   | Unresolved value -> Unresolved value
   | Unknown (Unresolved_value value) ->
     Unknown_because_of_unresolved_value value
@@ -688,7 +607,7 @@ type reified_as_closure_allowing_unresolved =
 
 let reify_as_closure_allowing_unresolved t
       : reified_as_closure_allowing_unresolved =
-  match t.descr with
+  match descr t with
   | Closure value_closure -> begin
     match Closure_id.Map.get_singleton value_closure.potential_closures with
     | None -> begin
@@ -736,7 +655,7 @@ type switch_branch_classification =
   | Must_be_taken
 
 let switch_branch_classification t branch : switch_branch_classification =
-  match t.descr with
+  match descr t with
   | Union union ->
     let must_be_taken =
       match Unionable.flatten union with

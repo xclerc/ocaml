@@ -789,10 +789,6 @@ end = struct
 end and Function_declarations : sig
   include module type of F0.Function_declarations
 
-  val find
-     : Closure_id.t
-    -> t
-    -> Flambda0.Function_declaration.t
   val find_declaration_variable
      : Closure_id.t
     -> t
@@ -815,9 +811,6 @@ end and Function_declarations : sig
   val contains_stub : t -> bool
 end = struct
   include F0.Function_declarations
-
-  let find cf ({ funs } : t) =
-    Variable.Map.find (Closure_id.unwrap cf) funs
 
   let find_declaration_variable cf ({ funs } : t) =
     let var = Closure_id.unwrap cf in
@@ -906,14 +899,39 @@ end = struct
           fun_decls.funs)
     in
     number_of_stub_functions > 0
+
+  let size t =
+    Variable.Map.map (fun (function_decl : Function_declaration.t) ->
+        let num_vars_in_closure =
+          Function_declaration.num_variables_in_closure function_decl
+            ~function_decls
+        in
+        let max_size =
+          Inlining_cost.maximum_interesting_size_of_function_body
+            num_vars_in_closure
+        in
+        Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
+      t.funs)
 end and Function_declaration : sig
   include module type of F0.Function_declaration
 
   val function_arity : t -> int
+  val num_variables_in_closure
+     : t
+    -> function_decls:Function_declarations.t
+    -> int
 end = struct
   include F0.Function_declaration
 
   let function_arity t = List.length t.params
+
+  let num_variables_in_closure t ~function_decls =
+    let functions = Variable.Map.keys function_decls.funs in
+    let params = Flambda.Typed_parameter.Set.vars t.params in
+    let vars_in_closure =
+      Variable.Set.diff (Variable.Set.diff t.free_variables params) functions
+    in
+    Variable.Set.cardinal vars_in_closure
 
   let equal t1 t2 =
     Misc.Stdlib.List.equal Parameter.equal t1.params t2.params

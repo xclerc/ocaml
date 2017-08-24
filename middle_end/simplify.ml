@@ -132,22 +132,23 @@ let simplify_free_variable_named env var ~f =
 let simplify_named_using_ty r named (ty, value_kind)
       : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
           * Value_kind.t * R.t =
-  let named, _summary, ty = T.simplify_named ty named in
-  [], Reachable named, value_kind, ret r ty
+  if not (Flambda.Named.no_effects named) then
+    [], Reachable named, value_kind, ret r ty
+  else
+    match T.reify ty with
+    | None -> [], Reachable named, value_kind, ret r ty
+    | Some named -> [], Reachable named, value_kind, ret r ty
 
 let simplify_named_using_ty_and_env env r original_named ty
       : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable * R.t =
-  let named, summary, ty =
-    T.maybe_replace_term_with_reified_term_using_env original_named
-      ~is_present_in_env:(E.mem env)
-  in
-  let r =
-    let r = ret r ty in
-    match summary with
-    | Replaced_term -> R.map_benefit r (B.remove_code_named original_named)
-    | Nothing_done -> r
-  in
-  [], Reachable named, r
+  if not (Flambda.Named.no_effects original_named) then
+    [], Reachable original_named, value_kind, ret r ty
+  else
+    match T.reify_using_env ty ~is_present_in_env:(E.mem env) with
+    | None -> [], Reachable original_named, value_kind, ret r ty
+    | Some named ->
+      let r = R.map_benefit (ret r ty) (B.remove_code_named original_named)
+      [], Reachable named, r
 
 let type_for_const (const : Flambda.const) =
   match const with
@@ -792,8 +793,9 @@ and simplify_set_of_closures original_env r
       function_decls ~backend:(E.backend env))
   in
   let value_set_of_closures =
-    T.create_value_set_of_closures ~function_decls
+    T.create_set_of_closures ~function_decls
       ~bound_vars:internal_value_set_of_closures.bound_vars
+      ~size:(lazy (Flambda.Function_declarations.size function_decls))
       ~invariant_params
       ~specialised_args:internal_value_set_of_closures.specialised_args
       ~freshening:internal_value_set_of_closures.freshening
@@ -2568,7 +2570,8 @@ let constant_defining_value_type
         function_decls ~backend:(E.backend env))
     in
     let value_set_of_closures =
-      T.create_value_set_of_closures ~function_decls
+      T.create_set_of_closures ~function_decls
+        ~size:(lazy (Flambda.Function_declarations.size function_decls))
         ~bound_vars:Var_within_closure.Map.empty
         ~invariant_params
         ~specialised_args:Variable.Map.empty

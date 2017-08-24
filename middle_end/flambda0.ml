@@ -1124,13 +1124,9 @@ end and Function_declarations : sig
     funs : Function_declaration.t Variable.Map.t;
   }
 
-  val create
-     : funs:Function_declaration.t Variable.Map.t
-    -> t
-  val update
-     : t
-    -> funs:Function_declaration.t Variable.Map.t
-    -> t
+  val create : funs:Function_declaration.t Variable.Map.t -> t
+  val find : Closure_id.t -> t -> Function_declaration.t
+  val update : t -> funs:Function_declaration.t Variable.Map.t -> t
   val import_for_pack
      : t
     -> (Set_of_closures_id.t -> Set_of_closures_id.t)
@@ -1150,6 +1146,9 @@ end = struct
       set_of_closures_origin;
       funs;
     }
+
+  let find cf ({ funs } : t) =
+    Variable.Map.find (Closure_id.unwrap cf) funs
 
   let update function_decls ~funs =
     let compilation_unit = Compilation_unit.get_current_exn () in
