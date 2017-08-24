@@ -414,9 +414,9 @@ let translate_definition_and_resolve_alias inconstants
                Duplicate Pfloatarray %a with unknown symbol: %a"
               Variable.print var
               Alias_analysis.print_constant_defining_value definition
-          | Float_array value_float_array ->
+          | Float_array float_array ->
             let contents =
-              Flambda_type.float_array_as_constant value_float_array
+              Flambda_type.reify_as_constant_float_array float_array
             in
             begin match contents with
             | None ->

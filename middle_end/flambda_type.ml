@@ -18,6 +18,7 @@
 
 module F0 = Flambda0
 module T0 = Flambda_type0
+module T = T0.T
 module Named = F0.Named
 module Unionable = T0.Unionable
 
@@ -26,53 +27,62 @@ module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
 
-type t = F0.Function_declarations.t T0.T.t
+type t = F0.Function_declarations.t T.t
 
-type descr = Flambda0.Function_declarations.t T0.T.descr
-type set_of_closures = Flambda0.Function_declarations.t T0.T.set_of_closures
-type float_array = Flambda0.Function_declarations.t T0.T.float_array
+type descr = Flambda0.Function_declarations.t T.descr
+type set_of_closures = Flambda0.Function_declarations.t T.set_of_closures
+type float_array = Flambda0.Function_declarations.t T.float_array
+type _ t' = t
+type _ descr' = descr
+type _ set_of_closures' = set_of_closures
 
-let unknown = T0.T.unknown
-let int = T0.T.int
-let char = T0.T.char
-let boxed_float = T0.T.boxed_float
-let any_boxed_float = T0.T.any_boxed_float
-let any_unboxed_float = T0.T.any_unboxed_float
-let any_unboxed_int32 = T0.T.any_unboxed_int32
-let any_unboxed_int64 = T0.T.any_unboxed_int64
-let any_unboxed_nativeint = T0.T.any_unboxed_nativeint
-let unboxed_float = T0.T.unboxed_float
-let unboxed_int32 = T0.T.unboxed_int32
-let unboxed_int64 = T0.T.unboxed_int64
-let unboxed_nativeint = T0.T.unboxed_nativeint
-let boxed_float = T0.T.boxed_float
-let boxed_int32 = T0.T.boxed_int32
-let boxed_int64 = T0.T.boxed_int64
-let boxed_nativeint = T0.T.boxed_nativeint
-let mutable_float_array = T0.T.mutable_float_array
-let immutable_float_array = T0.T.immutable_float_array
-let immutable_string = T0.T.immutable_string
-let mutable_string = T0.T.mutable_string
-let constptr = T0.T.constptr
-let block = T0.T.block
-let export_id_loaded_lazily = T0.T.export_id_loaded_lazily
-let symbol_loaded_lazily = T0.T.symbol_loaded_lazily
-let bottom = T0.T.bottom
-let closure = T0.T.closure
-let set_of_closures = T0.T.set_of_closures
-let augment_with_variable = T0.T.augment_with_variable
-let augment_with_symbol = T0.T.augment_with_symbol
-let augment_with_symbol_field = T0.T.augment_with_symbol_field
-let replace_description = T0.T.replace_description
+let unknown = T.unknown
+let int = T.int
+let char = T.char
+let boxed_float = T.boxed_float
+let any_boxed_float = T.any_boxed_float
+let any_unboxed_float = T.any_unboxed_float
+let any_unboxed_int32 = T.any_unboxed_int32
+let any_unboxed_int64 = T.any_unboxed_int64
+let any_unboxed_nativeint = T.any_unboxed_nativeint
+let unboxed_float = T.unboxed_float
+let unboxed_int32 = T.unboxed_int32
+let unboxed_int64 = T.unboxed_int64
+let unboxed_nativeint = T.unboxed_nativeint
+let boxed_float = T.boxed_float
+let boxed_int32 = T.boxed_int32
+let boxed_int64 = T.boxed_int64
+let boxed_nativeint = T.boxed_nativeint
+let mutable_float_array = T.mutable_float_array
+let immutable_float_array = T.immutable_float_array
+let immutable_string = T.immutable_string
+let mutable_string = T.mutable_string
+let constptr = T.constptr
+let block = T.block
+let export_id_loaded_lazily = T.export_id_loaded_lazily
+let symbol_loaded_lazily = T.symbol_loaded_lazily
+let bottom = T.bottom
+let closure = T.closure
+let set_of_closures = T.set_of_closures
+let augment_with_variable = T.augment_with_variable
+let augment_with_symbol = T.augment_with_symbol
+let augment_with_symbol_field = T.augment_with_symbol_field
+let replace_description = T.replace_description
+let update_variable = T.update_variable
+let clean = T.clean
+let free_variables = T.free_variables
+let refine_using_value_kind = T.refine_using_value_kind
+let kind = T.kind
+let kind_exn = T.kind_exn
 
 let print_descr =
-  T0.T.print F0.Function_declarations.print
+  T.print F0.Function_declarations.print
 
 let print_descr =
-  T0.T.print_descr F0.Function_declarations.print
+  T.print_descr F0.Function_declarations.print
 
 let print_set_of_closures =
-  T0.T.print_set_of_closures F0.Function_declarations.print
+  T.print_set_of_closures F0.Function_declarations.print
 
 let var (t : t) = t.var
 let symbol (t : t) = t.symbol
@@ -468,27 +478,28 @@ let reify_as_boxed_float t : float option =
   | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
   | Unboxed_nativeint _ -> None
 
-let reify_as_constant_float_array (fa : T.T0.float_array) : float list option =
+let reify_as_unboxed_float_array (fa : float_array) : float list option =
   match fa.contents with
   | Unknown_or_mutable -> None
   | Contents contents ->
     Array.fold_right (fun elt acc ->
         match acc, descr elt with
-        | Some acc, Boxed_float (Some f) -> Some (f :: acc)
+        | Some acc, Unboxed_float fs ->
+          begin match Float.Set.get_singleton fs with
+          | None -> None
+          | Some f -> Some (f :: acc)
+          end
         | None, _
-        | Some _,
-          (Boxed_float None | Unresolved _ | Unknown _ | String _
-            | Float_array _
-            | Bottom | Union _ | Set_of_closures _ | Closure _ | Load_lazily _)
-          -> None)
+        | Some _, _ -> None)
       contents (Some [])
 
 let reify_as_string t : string option =
   match descr t with
-  | String { contents } -> contents
-  | Union _ | Boxed_number _ | Float _ | Int32 _ | Int64 _ | Nativeint
-  | Unresolved _ | Unknown _ | Float_array _ | Bottom | Set_of_closures _
-  | Closure _ | Load_lazily _ -> None
+  | Immutable_string str -> Some str
+  | Union _ | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _
+  | Unboxed_int64 _ | Unboxed_nativeint _ | Unknown _ | Mutable_string _
+  | Float_array _ | Bottom | Set_of_closures _ | Closure _
+  | Load_lazily _ -> None
 
 type reified_as_scannable_block =
   | Wrong
@@ -501,22 +512,24 @@ let reify_as_scannable_block t : reified_as_scannable_block =
     | Ok (Block (tag, fields)) -> Ok (tag, fields)
     | Ok (Int _ | Char _ | Constptr _) | Ill_typed_code | Anything -> Wrong
     end
-  | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
-  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
-  | Unknown _ | Unresolved _ -> Wrong
+  | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
+  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
+  | Unknown _ -> Wrong
 
 type reified_as_variant =
   | Wrong
-  | Ok of Unionable.t
+  | Ok of F0.Function_declarations.t Unionable.t
 
 let reify_as_variant t : reified_as_variant =
   match descr t with
   | Union union ->
     if Unionable.ok_for_variant union then Ok union
     else Wrong
-  | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
-  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
-  | Unknown _ | Unresolved _ -> Wrong
+  | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
+  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
+  | Unknown _ -> Wrong
 
 type reified_as_scannable_block_or_immediate =
   | Wrong
@@ -532,97 +545,63 @@ let reify_as_scannable_block_or_immediate t
     | Ok (Block _) -> Block
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
-  | Bottom | Float_array _ | String _ | Boxed_number _ | Float _ | Int32 _
-  | Int64 _ | Nativeint _ | Set_of_closures _ | Closure _ 
-  | Load_lazily _ | Unknown _ | Unresolved _ -> Wrong
+  | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
+  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
+  | Unboxed_nativeint _ | Set_of_closures _ | Closure _ | Load_lazily _
+  | Unknown _ -> Wrong
 
 type reified_as_set_of_closures =
   | Wrong
-  | Unresolved of unresolved_value
+  | Unresolved of T0.unresolved_value
   | Unknown
-  | Unknown_because_of_unresolved_value of unresolved_value
-  | Ok of Variable.t option * value_set_of_closures
+  | Ok of Variable.t option * set_of_closures
 
 let reify_as_set_of_closures t : reified_as_set_of_closures =
   match descr t with
-  | Unresolved value -> Unresolved value
-  | Unknown (Unresolved_value value) ->
-    Unknown_because_of_unresolved_value value
+  | Unknown (_, Unresolved_value reason) -> Unresolved reason
   | Set_of_closures value_set_of_closures ->
     (* Note that [var] might be [None]; we might be reaching the set of
        closures via Flambda types only, with the variable originally bound
        to the set now out of scope. *)
-    Ok (t.var, value_set_of_closures)
-  | Closure _ | Union _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
-  | Nativeint _ | Unknown _ | Bottom
-  | Load_lazily _ | String _ | Float_array _  -> Wrong
+    Ok (var t, value_set_of_closures)
+  | Closure _ | Union _ | Boxed_number _ | Unboxed_float _
+  | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
+  | Unknown _ | Bottom | Load_lazily _ | Immutable_string _
+  | Mutable_string _ | Float_array _  -> Wrong
 
 type strict_reified_as_set_of_closures =
   | Wrong
-  | Ok of Variable.t option * value_set_of_closures
+  | Ok of Variable.t option * set_of_closures
 
 let strict_reify_as_set_of_closures t
       : strict_reified_as_set_of_closures =
   match reify_as_set_of_closures t with
   | Ok (var, value_set_of_closures) -> Ok (var, value_set_of_closures)
-  | Wrong | Unresolved _ | Unknown | Unknown_because_of_unresolved_value _ ->
-    Wrong
-
-type strict_reified_as_closure =
-  | Wrong
-  | Ok of value_set_of_closures Closure_id.Map.t
-          * Variable.t option * Symbol.t option
-
-let strict_reify_as_closure t : strict_reified_as_closure =
-  match reify_as_closure_allowing_unresolved t with
-  | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) ->
-    Ok (value_closures, set_of_closures_var, set_of_closures_symbol)
-  | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_value _ ->
-    Wrong
-
-type strict_reified_as_closure_singleton =
-  | Wrong
-  | Ok of Closure_id.t * Variable.t option
-      * Symbol.t option * value_set_of_closures
-
-let strict_reify_as_closure_singleton t
-  : strict_reified_as_closure_singleton =
-  match reify_as_closure_allowing_unresolved t with
-  | Ok (value_closures, set_of_closures_var, set_of_closures_symbol) -> begin
-    match Closure_id.Map.get_singleton value_closures with
-    | None -> Wrong
-    | Some (closure_id, value_set_of_closures) ->
-      Ok (closure_id, set_of_closures_var, set_of_closures_symbol,
-          value_set_of_closures)
-    end
-  | Wrong | Unknown | Unresolved _ | Unknown_because_of_unresolved_value _ ->
-    Wrong
+  | Wrong | Unresolved _ | Unknown -> Wrong
 
 type reified_as_closure_allowing_unresolved =
   | Wrong
-  | Unresolved of unresolved_value
+  | Unresolved of T0.unresolved_value
   | Unknown
-  | Ok of value_set_of_closures Closure_id.Map.t * Variable.t option
-      * Symbol.t option
+  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
 
 let reify_as_closure_allowing_unresolved t
       : reified_as_closure_allowing_unresolved =
   match descr t with
-  | Closure value_closure -> begin
-    match Closure_id.Map.get_singleton value_closure.potential_closures with
+  | Closure closure -> begin
+    match Closure_id.Map.get_singleton closure.potential_closures with
     | None -> begin
       try
         let closures =
-          Closure_id.Map.map (fun set_of_closures ->
+          Closure_id.Map.map (fun (set_of_closures : t) ->
             match set_of_closures.descr with
-            | Set_of_closures value_set_of_closures ->
-              value_set_of_closures
-            | Unresolved _
-            | Closure _ | Union _ | Boxed_number _ | Float _ | Int32 _
-            | Int64 _ | Nativeint _ | Unknown _
-            | Bottom | Load_lazily _ | String _ | Float_array _  ->
+            | Set_of_closures set_of_closures -> set_of_closures
+            | Closure _ | Union _ | Boxed_number _ | Unboxed_float _
+            | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
+            | Unknown _ | Bottom | Load_lazily _ | Immutable_string _
+            | Mutable_string _ | Float_array _  ->
               raise Exit)
-            value_closure.potential_closures
+            closure.potential_closures
         in
         Ok (closures, None, None)
       with Exit -> Wrong
@@ -636,25 +615,52 @@ let reify_as_closure_allowing_unresolved t
         in
         Ok (Closure_id.Map.singleton closure_id value_set_of_closures,
             set_of_closures.var, symbol)
-      | Unresolved _
-      | Closure _ | Boxed_number _ | Float _ | Int32 _ | Int64 _
-      | Nativeint _ | Unknown _ | Bottom | Load_lazily _
-      | String _ | Float_array _  | Union _ -> Wrong
+      | Closure _ | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _
+      | Unboxed_int64 _ | Unboxed_nativeint _ | Unknown _ | Bottom
+      | Load_lazily _ | Immutable_string _ | Mutable_string _ | Float_array _
+      | Union _ -> Wrong
     end
-  | Unknown (Unresolved_value value) -> Unresolved value
+  | Unknown (_, Unresolved_value value) -> Unresolved value
   | Set_of_closures _ | Union _ | Boxed_number _
-  | Float _ | Int32 _ | Int64 _ | Nativeint _ | Bottom | Load_lazily _
-  | String _ | Float_array _  -> Wrong
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
+  | Bottom | Load_lazily _ | Immutable_string _ | Mutable_string _
+  | Float_array _  -> Wrong
   (* CR-soon mshinwell: This should be unwound once the reason for a value
      being unknown can be correctly propagated through the export info. *)
-  | Unknown Other -> Unknown
+  | Unknown (_, Other) -> Unknown
+
+type strict_reified_as_closure_singleton =
+  | Wrong
+  | Ok of Closure_id.t * Variable.t option * Symbol.t option * set_of_closures
+
+let strict_reify_as_closure_singleton t
+  : strict_reified_as_closure_singleton =
+  match reify_as_closure_allowing_unresolved t with
+  | Ok (closures, set_of_closures_var, set_of_closures_symbol) -> begin
+    match Closure_id.Map.get_singleton closures with
+    | None -> Wrong
+    | Some (closure_id, value_set_of_closures) ->
+      Ok (closure_id, set_of_closures_var, set_of_closures_symbol,
+          value_set_of_closures)
+    end
+  | Wrong | Unknown | Unresolved _ -> Wrong
+
+type strict_reified_as_closure =
+  | Wrong
+  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
+
+let strict_reify_as_closure t : strict_reified_as_closure =
+  match reify_as_closure_allowing_unresolved t with
+  | Ok (closures, set_of_closures_var, set_of_closures_symbol) ->
+    Ok (closures, set_of_closures_var, set_of_closures_symbol)
+  | Wrong | Unknown | Unresolved _ -> Wrong
 
 type switch_branch_classification =
   | Cannot_be_taken
   | Can_be_taken
   | Must_be_taken
 
-let switch_branch_classification t branch : switch_branch_classification =
+let classify_switch_branch t branch : switch_branch_classification =
   match descr t with
   | Union union ->
     let must_be_taken =
@@ -667,9 +673,10 @@ let switch_branch_classification t branch : switch_branch_classification =
     if must_be_taken then Must_be_taken
     else if Unionable.maybe_is_immediate_value union branch then Can_be_taken
     else Cannot_be_taken
-  | Unresolved _ | Unknown _ | Load_lazily _  ->
+  | Unknown _ | Load_lazily _  ->
     (* In theory symbols cannot contain integers but this shouldn't
        matter as this will always be an imported type. *)
     Can_be_taken
-  | Boxed_number _ | Float_array _ | String _ | Closure _ | Set_of_closures _
-  | Float | Int32 | Int64 | Nativeint | Bottom -> Cannot_be_taken
+  | Boxed_number _ | Float_array _ | Immutable_string _ | Mutable_string _
+  | Closure _ | Set_of_closures _ | Unboxed_float _ | Unboxed_int32 _
+  | Unboxed_int64 _ | Unboxed_nativeint _ | Bottom -> Cannot_be_taken

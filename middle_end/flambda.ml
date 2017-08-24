@@ -911,7 +911,7 @@ end = struct
             num_vars_in_closure
         in
         Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
-      t.funs)
+      t.funs
 end and Function_declaration : sig
   include module type of F0.Function_declaration
 

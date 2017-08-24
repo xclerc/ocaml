@@ -186,8 +186,9 @@ val reify_as_int : t -> int option
 (** As for [reify_as_int], but for boxed floats. *)
 val reify_as_boxed_float : t -> float option
 
-(** As for [reify_as_int], but for constant float arrays. *)
-val reify_as_constant_float_array : float_array -> float list option
+(** As for [reify_as_int], but for arrays of unboxed floats (corresponding
+    to values with tag [Double_array_tag]. *)
+val reify_as_unboxed_float_array : float_array -> float list option
 
 (** As for [reify_as_int], but for strings. *)
 val reify_as_string : t -> string option

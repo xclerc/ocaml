@@ -147,7 +147,7 @@ let simplify_named_using_ty_and_env env r original_named ty
     match T.reify_using_env ty ~is_present_in_env:(E.mem env) with
     | None -> [], Reachable original_named, value_kind, ret r ty
     | Some named ->
-      let r = R.map_benefit (ret r ty) (B.remove_code_named original_named)
+      let r = R.map_benefit (ret r ty) (B.remove_code_named original_named) in
       [], Reachable named, r
 
 let type_for_const (const : Flambda.const) =
