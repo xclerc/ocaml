@@ -16,11 +16,10 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** A continuation together with, for each of its specialised arguments, the
-    variable corresponding to such argument in a particular application of
-    that continuation.
-*)
+(** A continuation together with, for each of its specialised parameters, the
+    type to which the argument is specialised. *)
 
-type t = Continuation.t * Flambda.specialised_args
+type t = Continuation.t * (Flambda_type.t Variable.Map.t)
+(* CR mshinwell: or:      (Flambda.Typed_parameter.t list) ? *)
 
 include Identifiable.S with type t := t

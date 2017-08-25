@@ -29,14 +29,18 @@ val descr : t -> descr
 (** Extraction of the description fields from a list of types. *)
 val descrs : t list -> descr list
 
+(** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
+val unresolved_symbol : Symbol.t -> t
+
 (** Attempt to use a type to refine a value kind. *)
 val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 
 (** Rename free variables in a type. *)
 val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
 
-(** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
-val unresolved_symbol : Symbol.t -> t
+(** Returns [true] iff the given type provides strictly more information
+    about the corresponding value than the supplied type [than]. *)
+val strictly_more_precise : t -> than:t -> bool
 
 (** If a value with the given type is known to be some kind of projection
     from another variable, return the projection.  (The variable is then

@@ -629,7 +629,13 @@ end and Typed_parameter : sig
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
 
-  (** Change the type of a parameter. *)
+  (** The type of a parameter. *)
+  val ty : t -> Flambda_type.T.t
+
+  (** Replace the type of a parameter. *)
+  val with_type : t -> Flambda_type.T.t -> t
+
+  (** Map the type of a parameter. *)
   val map_type : t -> f:(Flambda_type.T.t -> Flambda_type.T.t) -> t
 
   (** Free variables in the parameter's type.  (The variable corresponding

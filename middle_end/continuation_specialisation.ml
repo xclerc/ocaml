@@ -60,62 +60,49 @@ let handlers_for_simplification ~old_handlers ~newly_specialised_args
       ~entry_point_cont ~freshening ~invariant_params_flow =
   Continuation.Map.fold (fun cont (old_handler : Flambda.Continuation_handler.t)
           new_handlers ->
-      let wrong_spec_args =
-        Variable.Set.inter (Variable.Map.keys old_handler.specialised_args)
-          (Variable.Map.keys newly_specialised_args)
-      in
-      if not (Variable.Set.is_empty wrong_spec_args) then begin
-          Misc.fatal_errorf "These parameters of continuation %a have already \
-            been specialised: %a"
-          Continuation.print cont
-          Variable.Set.print wrong_spec_args
-      end;
       (* For a recursive group of continuations, [newly_specialised_args]
-          may contain parameters across all of them, so we need to restrict it
-          to just those for [cont]. *)
+         may contain parameters across all of them, so we need to restrict it
+         to just those for [cont]. *)
       let newly_specialised_args =
-        let params = Parameter.Set.of_list old_handler.params in
-        Variable.Map.filter (fun param _spec_to ->
-            Parameter.Set.mem (Parameter.wrap param) params)
+        let params = Typed_parameter.List.var_set old_handler.params in
+        Variable.Map.filter (fun param _ty -> Variable.Set.mem param params)
           newly_specialised_args
       in
       (* Compute the newly-specialised args.  These are either:
-          (a) those arising from the "entry point" (i.e. [Apply_cont] of
-              [entry_point_cont]); or
-          (b) those arising from invariant parameters flow from the entry
-              point's continuation handler. *)
+         (a) those arising from the "entry point" (i.e. [Apply_cont] of
+             [entry_point_cont]); or
+         (b) those arising from invariant parameters flow from the entry
+             point's continuation handler. *)
       let newly_specialised_args =
         if Continuation.equal cont entry_point_cont then
           newly_specialised_args
         else
-          Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
-                  newly_specialised_args ->
+          Variable.Map.fold (fun param ty newly_specialised_args ->
               match Variable.Map.find param invariant_params_flow with
               | exception Not_found -> newly_specialised_args
               | flows_to ->
                 let module CV =
                   Invariant_params.Continuations.Continuation_and_variable
                 in
-                CV.Set.fold (fun (cont', param')
-                        newly_specialised_args ->
+                CV.Set.fold (fun (cont', param') newly_specialised_args ->
                     if not (Continuation.equal cont cont') then
                       newly_specialised_args
                     else
-                      Variable.Map.add param' spec_to newly_specialised_args)
+                      Variable.Map.add param' ty newly_specialised_args)
                   flows_to
                   newly_specialised_args)
             newly_specialised_args
             Variable.Map.empty
       in
-      let specialised_args =
-        Variable.Map.disjoint_union old_handler.specialised_args
-          newly_specialised_args
+      let params =
+        List.map (fun param ->
+            let param_var = Typed_parameter.var param in
+            match Variable.Map.find param_var newly_specialised_args with
+            | exception Not_found -> param
+            | ty -> Typed_parameter.with_type param ty)
+          old_handler.params
       in
-      let new_handler =
-        { old_handler with
-          specialised_args;
-        }
-      in
+      let new_handler = { old_handler with params; } in
       let cont = Freshening.apply_static_exception freshening cont in
       Continuation.Map.add cont new_handler new_handlers)
     old_handlers
@@ -126,21 +113,17 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
   (* Add usage information for the parameters of the continuations.  The
      parameters are partitioned into two:
      1. the specialised arguments (either pre-existing or
-        newly-specialised) with corresponding "specialised-to" variables
-        (as opposed to specialised arguments just holding projection
-        information), whose approximations are given by those in the
-        environment of the variables being specialised to.  When
-        newly-specialised arguments are added this should produce an
-        increase in precision of the approximations over and above that
-        used when the handler was previously simplified;
-     2. other arguments, whose approximations will be the same as they were
-        when the handler was previously simplified.  (Such approximations
-        are the join of the approximations at all use points.)
+        newly-specialised).  When newly-specialised arguments are added this
+        will produce an increase in precision of the arguments' types over and
+        above that used when the handler was previously simplified;
+     2. other arguments, whose types will be the same as they were when the
+        handler was previously simplified.  (Such types are the join of the
+        types at all use points.)
      Apart from this information, the [r] used for simplification is
      empty. *)
   Continuation.Map.fold (fun cont
           (handler : Flambda.Continuation_handler.t) r ->
-      let join_approxs =
+      let join_tys =
         match Continuation.Map.find cont definitions_with_uses with
         | exception Not_found ->
           Misc.fatal_errorf "Continuation %a does not occur in the \
@@ -149,7 +132,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
             Continuation.Set.print
             (Continuation.Map.keys definitions_with_uses)
         | (uses, _approx, _env, _recursive) ->
-          Simplify_aux.Continuation_uses.meet_of_args_approxs
+          Simplify_aux.Continuation_uses.meet_of_arg_tys
             uses ~num_params:(List.length handler.params)
       in
       let freshened_cont =
@@ -160,8 +143,8 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
         | exception Not_found -> assert false  (* see above *)
         | (handler : Flambda.Continuation_handler.t) -> handler.specialised_args
       in
-      let args_approxs =
-        List.map2 (fun param join_approx ->
+      let arg_tys =
+        List.map2 (fun param join_ty ->
             let param = Parameter.var param in
             match Variable.Map.find param specialised_args with
             | exception Not_found -> join_approx
@@ -181,10 +164,10 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
                 | Some approx -> approx
                 end)
           handler.params
-          join_approxs
+          join_tys
       in
       R.use_continuation r env freshened_cont
-        (Not_inlinable_or_specialisable args_approxs))
+        (Not_inlinable_or_specialisable arg_tys))
     old_handlers
     (R.create ())
 
@@ -312,12 +295,10 @@ let handlers_and_invariant_params ~cont ~approx ~backend =
       in
       Some (handlers, invariant_params, invariant_params_flow)
 
-let can_specialise_param ~(handler : Flambda.Continuation_handler.t) ~param
-      ~arg_approx ~invariant_params =
-  (not handler.stub)
-    && Variable.Map.mem param invariant_params
-    && (not (Variable.Map.mem param handler.specialised_args))
-    && T.useful arg_approx
+let can_specialise_param ~param ~ty_this_time ~invariant_params =
+  Variable.Map.mem param invariant_params
+    && T.useful ty_this_time
+    && T.strictly_more_precise ty_this_time ~than:(Typed_parameter.ty param)
 
 let examine_use ~specialisations ~cont
       ~(handler : Flambda.Continuation_handler.t) ~invariant_params
@@ -337,15 +318,9 @@ let examine_use ~specialisations ~cont
     in
     let params_with_specialised_args =
       Variable.Map.filter_map params_with_args
-        ~f:(fun param (arg, arg_approx) ->
-          if can_specialise_param ~handler ~param ~arg_approx ~invariant_params
-          then
-            let spec_to : Flambda.specialised_to =
-              { var = Some arg;
-                projection = None;
-              }
-            in
-            Some spec_to
+        ~f:(fun param (arg, arg_ty) ->
+          if can_specialise_param ~param ~ty_this_time:arg_ty ~invariant_params
+          then Some arg_ty
           else None)
     in
     if Variable.Map.cardinal params_with_specialised_args < 1 then
@@ -359,25 +334,23 @@ let examine_use ~specialisations ~cont
       in
       (* We arbitrarily pick the first of the use environments as the
          environment in which we will try specialising the continuation.  This
-         is correct because the variables to which we are specialising
-         parameters must all occur (and thus have equal approximations) in the
-         environment at every one of the use points we are specialising.
-         The following [iter] checks this. *)
+         is correct because the free variables in types to which we are
+         specialising parameters must all occur in the environment at every
+         one of the use points we are specialising.  We check this here. *)
       if !Clflags.flambda_invariant_checks then begin
-        Variable.Map.iter (fun param
-                (spec_to : Flambda.specialised_to) ->
-            match spec_to.var with
-            | None -> assert false  (* see above *)
-            | Some spec_to ->
-              if not (E.mem use.env spec_to) then begin
-                Misc.fatal_errorf "Newly-specialised parameter %a \
-                    of %a (being specialised to %a) is not in this \
-                    use environment:@ \n%a"
-                  Variable.print param
-                  Continuation.print cont
-                  Variable.print spec_to
-                  E.print use.env
-              end)
+        Variable.Map.iter (fun param ty ->
+            Variable.Set.iter (fun var ->
+                if not (E.mem use.env var) then begin
+                  Misc.fatal_errorf "Attempt to specialise parameter %a of %a \
+                      to a type %a with free variable %a that is not in this \
+                      use environment:@ \n%a"
+                    Variable.print param
+                    Continuation.print cont
+                    Flambda_type.print spec_to
+                    Variable.print var
+                    E.print use.env
+                end)
+              (Flambda_type.free_variables ty))
           params_with_specialised_args
       end;
       let use_args = List.map (fun (arg, _approx) -> arg) args_and_approxs in
@@ -415,15 +388,18 @@ let find_candidate_specialisations r ~backend =
         in
         let application_points = U.application_points uses in
         let num_application_points = List.length application_points in
-        match (recursive : Asttypes.rec_flag), num_application_points with
-        | Nonrecursive, n when n <= 1 ->
+        match (recursive : Asttypes.rec_flag), num_application_points, stub with
+        | Nonrecursive, n, _ when n <= 1 ->
           (* Non-recursive continuations that only have a single (inlinable)
              use point will be inlined out by [Continuation_inlining].
              (There would be no point in specialising such a continuation
              here in any case, since it's already been simplified under the
              most precise approximations available for its parameters.) *)
           specialisations
-        | (Nonrecursive | Recursive), _ ->
+        | _, _, true ->
+          (* Stub continuations are never specialised. *)
+          specialisations
+        | (Nonrecursive | Recursive), _, _ ->
           List.fold_left (fun specialisations use ->
               examine_use ~specialisations ~cont ~handler ~invariant_params
               ~invariant_params_flow ~handlers ~recursive ~use)
@@ -441,10 +417,6 @@ let beneficial_specialisations r ~specialisations ~simplify_let_cont_handlers =
           (cont_application_points, env, invariant_params_flow, old_handlers,
             (recursive : Asttypes.rec_flag))
           ((new_conts, apply_cont_rewrites) as acc) ->
-      (* CR mshinwell: We should stop this trying to specialise
-         already-specialised arguments.  (It isn't clear whether there is
-         such a check for functions.)  This might be easy to do in
-         [try_specialising] given a suitable ordering on approximations. *)
       match
         try_specialising ~cont ~old_handlers
           ~newly_specialised_args ~invariant_params_flow ~env ~recursive
@@ -491,7 +463,8 @@ let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
       in
       Some expr
   in
-  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.Expr.t) : Flambda.Expr.t ->
+  Flambda_iterators.map_toplevel_expr
+    (fun (expr : Flambda.Expr.t) : Flambda.Expr.t ->
       match expr with
       | Let { var; defining_expr; body } ->
         let placement : Placement.t = After_let var in
