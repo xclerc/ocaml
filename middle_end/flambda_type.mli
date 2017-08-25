@@ -22,7 +22,6 @@
 
 (** Basic definitions, constructors and accessors. *)
 include module type of Flambda0.Flambda_type
-include module type of Flambda0.Flambda_type.T
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr

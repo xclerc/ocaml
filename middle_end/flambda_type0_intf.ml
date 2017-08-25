@@ -331,4 +331,6 @@ module type S = sig
         type at every point it is used. *)
     val flatten : t -> singleton or_bottom
   end
+
+  include module type of T
 end

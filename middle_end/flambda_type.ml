@@ -25,7 +25,6 @@ module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
 
 include F0.Flambda_type
-include F0.Flambda_type.T
 
 let var (t : t) = t.var
 let projection (t : t) = t.projection
