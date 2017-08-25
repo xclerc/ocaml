@@ -1322,7 +1322,7 @@ end = struct
       Typed_parameter.List.print f.params
       Expr.print f.body
 end and Typed_parameter : sig
-  type t = Parameter.t * Flambda_type.t
+  type t = Parameter.t * Flambda_type.T.t
   val var : t -> Variable.t
   val free_variables : t -> Variable.Set.t
   module List : sig
@@ -1334,14 +1334,14 @@ end and Typed_parameter : sig
   end
   include Identifiable.S with type t := t
 end = struct
-  type t = Parameter.t * Flambda_type.t
+  type t = Parameter.t * Flambda_type.T.t
 
   let var (param, _ty) = Parameter.var param
 
   let free_variables (_param, ty) =
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the type. *)
-    Flambda_type.free_variables ty
+    Flambda_type.T.free_variables ty
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -1353,7 +1353,7 @@ end = struct
     let print ppf (param, ty) =
       Format.fprintf ppf "@[(%a : %a)@]"
         Parameter.print param
-        Flambda_type.print ty
+        Flambda_type.T.print ty
 
     let output _ _ = Misc.fatal_error "Not implemented"
                             end)
@@ -1421,7 +1421,7 @@ module With_free_variables = struct
     | Expr (body, free_vars_of_body) ->
       Let {
         var;
-        kind = Flambda_type.kind_exn ty;
+        kind = Flambda_type.T.kind_exn ty;
         defining_expr;
         body;
         free_vars_of_defining_expr = Named.free_variables defining_expr;

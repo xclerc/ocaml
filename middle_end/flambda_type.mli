@@ -22,6 +22,7 @@
 
 (** Basic definitions, constructors and accessors. *)
 include module type of Flambda0.Flambda_type
+include module type of Flambda0.Flambda_type.T
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr
@@ -36,8 +37,9 @@ val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 val unresolved_symbol : Symbol.t -> t
 
 (** If a value with the given type is known to be some kind of projection
-    from another variable, return that variable and the projection. *)
-val projection : t -> (Variable.t * Projection.t) option
+    from another variable, return the projection.  (The variable is then
+    given by [Projection.projecting_from] on the returned projection.) *)
+val projection : t -> Projection.t option
 
 (** Take the given integer and produce an appropriate type for it
     together with an Flambda term (that can be [Let]-bound) representing it. *)
@@ -154,10 +156,10 @@ val follow_variable_equality
     the given Flambda type. *)
 val reify : t -> Flambda0.Named.t option
 
-(** As for [reify], but also enables us to simplify based on the [var] alias
-    inside Flambda types.  The caller must provide a function that tells us
-    whether, if we were to simplify to a given variable, the value of that
-    variable will be accessible in the current environment. *)
+(** As for [reify], but in the event where a type cannot be reified, may
+    return a [Var], [Symbol] or [Read_symbol_field] term (save that for
+    [Var] this will only happen if [is_present_in_env] says that the
+    particular variable is in scope). *)
 val reify_using_env
    : t
   -> is_present_in_env:(Variable.t -> bool)

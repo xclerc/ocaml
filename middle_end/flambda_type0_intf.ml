@@ -196,7 +196,7 @@ module type S = sig
         value itself, so long as they are in scope at the proposed point of
         use. *)
     val closure
-        : ?closure_var:Variable.t
+       : ?closure_var:Variable.t
       -> ?set_of_closures_var:Variable.t
       -> ?set_of_closures_symbol:Symbol.t
       -> set_of_closures Closure_id.Map.t
@@ -205,7 +205,7 @@ module type S = sig
     (** Create a [set_of_closures] structure which can be used for building a
         type describing a set of closures. *)
     val create_set_of_closures
-        : function_decls:function_declarations
+       : function_decls:function_declarations
       -> size:int option Variable.Map.t lazy_t
       -> bound_vars:t Var_within_closure.Map.t
       -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
@@ -216,13 +216,13 @@ module type S = sig
     (** Construct a set of closures type. [set_of_closures_var] is as for the
         parameter of the same name in [closure], above. *)
     val set_of_closures
-        : ?set_of_closures_var:Variable.t
+       : ?set_of_closures_var:Variable.t
       -> set_of_closures
       -> t
 
     (** Change the closure freshening inside a set of closures type. *)
     val update_freshening_of_set_of_closures
-        : set_of_closures
+       : set_of_closures
       -> freshening:closure_freshening
       -> set_of_closures
 
@@ -259,7 +259,7 @@ module type S = sig
         whether the variable is available under its existing name, available
         under another name, or unavailable. *)
     val clean
-      : t
+       : t
       -> (Variable.t -> cleaning_spec)
       -> t
   end and Unionable : sig
@@ -331,6 +331,4 @@ module type S = sig
         type at every point it is used. *)
     val flatten : t -> singleton or_bottom
   end
-
-  include module type of T
 end

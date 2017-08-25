@@ -617,7 +617,7 @@ end and Function_declaration : sig
 end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)
-  type t = Parameter.t * Flambda_type.t
+  type t = Parameter.t * Flambda_type.T.t
 
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
@@ -687,7 +687,7 @@ module With_free_variables : sig
       occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
      : Variable.t
-    -> Flambda_type.t
+    -> Flambda_type.T.t
     -> Named.t
     -> Expr.t t
     -> Expr.t

@@ -114,7 +114,7 @@ module Project_var : sig
       table such that later the access to the field x of g and selection of
       g in the closure can be substituted.
    *)
-  type t = Flambda_type0.closure_freshening
+  type t = Flambda0.Flambda_type.closure_freshening
 
   (* The freshening that does nothing. *)
   val empty : t

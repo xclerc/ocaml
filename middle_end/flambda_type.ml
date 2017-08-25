@@ -24,7 +24,8 @@ module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
 
-include Flambda_type0.Make (F0.Function_declarations)
+include F0.Flambda_type
+include F0.Flambda_type.T
 
 let var (t : t) = t.var
 let projection (t : t) = t.projection
@@ -122,7 +123,7 @@ let is_boxed_float t =
     | _ -> false
     end
   | Float_array _ | Unknown _ | Bottom | Union _
-  | Immutable_string _ | Mutable_string _ | Float_array _
+  | Immutable_string _ | Mutable_string _
   | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
   | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
   | Unboxed_nativeint _ -> false
@@ -131,7 +132,7 @@ let is_float_array t =
   match descr t with
   | Float_array _ -> true
   | Unknown _ | Bottom | Union _
-  | Immutable_string _ | Mutable_string _ | Float_array _
+  | Immutable_string _ | Mutable_string _
   | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
   | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
   | Unboxed_nativeint _ -> false
@@ -260,7 +261,7 @@ let physically_different_values (types : t list) =
       Nativeint.Set.is_empty (Nativeint.Set.inter ns1 ns2)
     | Unboxed_nativeint _, _ | _, Unboxed_nativeint _ -> true
     | Boxed_number (kind1, t1), Boxed_number (kind2, t2) ->
-      (not (T0.Boxed_number_kind.equal kind1 kind2))
+      (not (Boxed_number_kind.equal kind1 kind2))
         || definitely_different t1 t2
     | Boxed_number _, _ | _, Boxed_number _ -> true
     | Set_of_closures _, Set_of_closures _ -> false
@@ -405,22 +406,18 @@ let reify t : Named.t option =
   | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Load_lazily _ ->
     try_symbol ()
 
-let reify_using_env t ~is_present_in_env named =
-  let replaced_by_var_or_symbol, named =
+let reify_using_env t ~is_present_in_env =
+  let named =
     match var t with
-    | Some var when is_present_in_env var ->
-      true, Named.Var var
+    | Some var when is_present_in_env var -> Some (Named.Var var)
     | _ ->
       match symbol t with
-      | Some (sym, None) -> true, (Named.Symbol sym:Named.t)
-      | Some (sym, Some field) ->
-        true, Named.Read_symbol_field (sym, field)
-      | None -> false, named
+      | Some (sym, None) -> Some (Named.Symbol sym)
+      | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
+      | None -> None
   in
   match reify t with
-  | None ->
-    if replaced_by_var_or_symbol then Some named
-    else None
+  | None -> named
   | Some named -> Some named
 
 let reify_as_int t : int option =
@@ -428,8 +425,8 @@ let reify_as_int t : int option =
   | Union unionable -> Unionable.as_int unionable
   | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
   | Unboxed_nativeint _ | Unknown _ | Immutable_string _ | Mutable_string _
-  | Float_array _ | Bottom | Set_of_closures _ | Closure _ | Load_lazily _
-  | Boxed_number _ -> None
+  | Float_array _ | Bottom | Set_of_closures _ | Closure _ | Load_lazily _ ->
+    None
 
 let reify_as_boxed_float t : float option =
   match descr t with
@@ -484,7 +481,7 @@ let reify_as_scannable_block t : reified_as_scannable_block =
 
 type reified_as_variant =
   | Wrong
-  | Ok of F0.Function_declarations.t Unionable.t
+  | Ok of Unionable.t
 
 let reify_as_variant t : reified_as_variant =
   match descr t with
@@ -499,7 +496,7 @@ let reify_as_variant t : reified_as_variant =
 type reified_as_scannable_block_or_immediate =
   | Wrong
   | Immediate
-  | Block
+  | Scannable_block
 
 let reify_as_scannable_block_or_immediate t
       : reified_as_scannable_block_or_immediate =
@@ -507,7 +504,7 @@ let reify_as_scannable_block_or_immediate t
   | Union union ->
     begin match Unionable.flatten union with
     | Ill_typed_code | Anything -> Wrong
-    | Ok (Block _) -> Block
+    | Ok (Block _) -> Scannable_block
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
   | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
@@ -517,7 +514,7 @@ let reify_as_scannable_block_or_immediate t
 
 type reified_as_set_of_closures =
   | Wrong
-  | Unresolved of T0.unresolved_value
+  | Unresolved of unresolved_value
   | Unknown
   | Ok of Variable.t option * set_of_closures
 
@@ -546,7 +543,7 @@ let strict_reify_as_set_of_closures t
 
 type reified_as_closure_allowing_unresolved =
   | Wrong
-  | Unresolved of T0.unresolved_value
+  | Unresolved of unresolved_value
   | Unknown
   | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
 
