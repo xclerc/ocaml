@@ -105,6 +105,7 @@ val find_symbol_fatal : t -> Symbol.t -> Flambda_type.t
 val find_or_load_symbol : t -> Symbol.t -> Flambda_type.t
 
 (** Note that the given [bound_to] holds the given [projection]. *)
+(* CR mshinwell: Shouldn't need this any more? *)
 val add_projection
    : t
   -> projection:Projection.t

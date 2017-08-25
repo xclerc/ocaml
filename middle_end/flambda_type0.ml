@@ -502,8 +502,9 @@ end) = struct
                value, we know that both version provide additional
                information on the value. Hence what we really want is an
                approximation intersection, not an union (that this join
-               is). *)
-             (join ~really_import_approx)
+               is).
+               mshinwell: changed to meet *)
+             (meet ~really_import_approx)
             map1 map2
         in
         Closure { potential_closures }
@@ -554,8 +555,98 @@ end) = struct
               symbol;
             }
       end else begin
-        Misc.fatal_errorf "Values with incompatible kinds must not flow to \
-            the same place: %a and %a"
+        Misc.fatal_errorf "Cannot take the join of two types with incompatible
+            kinds: %a and %a"
+          print a1
+          print a2
+        end
+
+    and meet_descr kind ~really_import_approx d1 d2 =
+      match d1, d2 with
+      | Union union1, Union union2 ->
+        begin match Unionable.meet union1 union2 ~really_import_approx with
+        | Ok union -> Union union
+        (* XXX these cases need fixing *)
+        | Ill_typed_code -> Bottom
+        | Anything -> Unknown (Flambda_kind.value (), Other)
+        end
+      | Unboxed_float fs1, Unboxed_float fs2 ->
+        Unboxed_float (Float.Set.inter fs1 fs2)
+      | Unboxed_int32 is1, Unboxed_int32 is2 ->
+        Unboxed_int32 (Int32.Set.inter is1 is2)
+      | Unboxed_int64 is1, Unboxed_int64 is2 ->
+        Unboxed_int64 (Int64.Set.inter is1 is2)
+      | Unboxed_nativeint is1, Unboxed_nativeint is2 ->
+        Unboxed_nativeint (Nativeint.Set.inter is1 is2)
+      | Boxed_number (Float, t1), Boxed_number (Float, t2) ->
+        Boxed_number (Float, meet ~really_import_approx t1 t2)
+      | Boxed_number (Int32, t1), Boxed_number (Int32, t2) ->
+        Boxed_number (Int32, meet ~really_import_approx t1 t2)
+      | Boxed_number (Int64, t1), Boxed_number (Int64, t2) ->
+        Boxed_number (Int64, meet ~really_import_approx t1 t2)
+      | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2) ->
+        Boxed_number (Nativeint, meet ~really_import_approx t1 t2)
+      | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
+          when Export_id.equal e1 e2 -> d1
+      | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
+          when Symbol.equal s1 s2 -> d1
+      | Closure { potential_closures = map1 },
+        Closure { potential_closures = map2 } ->
+        let potential_closures =
+          Closure_id.Map.union_merge
+             (meet ~really_import_approx)  (* XXX *)
+            map1 map2
+        in
+        Closure { potential_closures }
+      | _ -> Bottom
+
+    and meet ~really_import_approx a1 a2 =
+      let kind1 = kind a1 ~really_import_approx in
+      let kind2 = kind a2 ~really_import_approx in
+      if Flambda_kind.compatible kind1 kind2 then begin
+        match a1, a2 with
+        | { descr = Unknown _ }, _ -> a2
+        | _, { descr = Unknown _ } -> a1
+        | { descr = Load_lazily _ }, _
+        | _, { descr = Load_lazily _ } ->
+          meet ~really_import_approx
+            (really_import_approx a1) (really_import_approx a2)
+        | _ ->
+            let var =
+              match a1.var, a2.var with
+              | None, _ | _, None -> None
+              | Some v1, Some v2 ->
+                if Variable.equal v1 v2 then Some v1
+                else None
+            in
+            let projection =
+              match a1.projection, a2.projection with
+              | None, _ | _, None -> None
+              | Some proj1, Some proj2 ->
+                if Projection.equal proj1 proj2 then Some proj1 else None
+            in
+            let symbol =
+              match a1.symbol, a2.symbol with
+              | None, _ | _, None -> None
+              | Some (v1, field1), Some (v2, field2) ->
+                if Symbol.equal v1 v2 then
+                  match field1, field2 with
+                  | None, None -> a1.symbol
+                  | Some f1, Some f2 when f1 = f2 -> a1.symbol
+                  | _ -> None
+                else None
+            in
+            let descr =
+              meet_descr kind1 ~really_import_approx a1.descr a2.descr
+            in
+            { descr;
+              var;
+              projection;
+              symbol;
+            }
+      end else begin
+        Misc.fatal_errorf "Cannot take the meet of two types with incompatible
+            kinds: %a and %a"
           print a1
           print a2
         end
@@ -1145,5 +1236,5 @@ end) = struct
       | Some _ -> true
   end
 
-  include T
+  include module type of struct include T end
 end

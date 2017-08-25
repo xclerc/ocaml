@@ -119,9 +119,15 @@ module type S = sig
       size : int;
     }
 
-    (** Form the type of a join point in the control flow graph where the values
-        on the incoming edges have the given types. *)
+    (** Least upper bound of two types. *)
     val join
+      : really_import_approx:(t -> t)
+      -> t
+      -> t
+      -> t
+
+    (** Greatest lower bound of two types. *)
+    val meet
       : really_import_approx:(t -> t)
       -> t
       -> t

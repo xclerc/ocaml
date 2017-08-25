@@ -613,9 +613,7 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t) =
 
    The rewriting occurs in an environment filled with:
    * The Flambda type of the free variables
-   * An explicitly-unknown Flambda type for function parameters,
-     except for those where it is known to be safe: those present in the
-     [specialised_args] set.
+   * Flambda types for function parameters.
    * An Flambda type for the closures in the set. It contains the code of
      the functions before rewriting.
 
@@ -674,7 +672,7 @@ and simplify_set_of_closures original_env r
       ~make_closure_symbol:Backend.closure_symbol
   in
   let env = E.increase_closure_depth original_env in
-  let free_vars, specialised_args, function_decls, parameter_types,
+  let free_vars, function_decls, parameter_types,
       internal_value_set_of_closures, set_of_closures_env =
     Simplify_aux.prepare_to_simplify_set_of_closures ~env
       ~set_of_closures ~function_decls ~only_for_function_decl:None
@@ -686,8 +684,7 @@ and simplify_set_of_closures original_env r
         : Flambda.Function_declaration.t Variable.Map.t * Variable.Set.t * R.t =
     let closure_env =
       Simplify_aux.prepare_to_simplify_closure ~function_decl
-        ~free_vars ~specialised_args ~parameter_types
-        ~set_of_closures_env
+        ~free_vars ~parameter_types ~set_of_closures_env
     in
     let continuation_param, closure_env =
       let continuation_param, freshening =
@@ -769,7 +766,7 @@ and simplify_set_of_closures original_env r
   let function_decls =
     Flambda.Function_declarations.update function_decls ~funs
   in
-  let function_decls, new_specialised_args =
+  let function_decls =
     (* CR mshinwell: I'm not sure about this "round" condition.  It seems
        though that doing [Unbox_returns] too early may be
        detrimental, as it prevents small functions being inlined *)
@@ -783,10 +780,7 @@ and simplify_set_of_closures original_env r
         Continuation.Tbl.to_map continuation_param_uses
       in
       Unbox_returns.run ~continuation_uses:continuation_param_uses
-        ~function_decls ~specialised_args ~backend:(E.backend env)
-  in
-  let specialised_args =
-    Variable.Map.disjoint_union specialised_args new_specialised_args
+        ~function_decls ~backend:(E.backend env)
   in
   let invariant_params =
     lazy (Invariant_params.Functions.invariant_params_in_recursion
@@ -797,7 +791,6 @@ and simplify_set_of_closures original_env r
       ~bound_vars:internal_value_set_of_closures.bound_vars
       ~size:(lazy (Flambda.Function_declarations.size function_decls))
       ~invariant_params
-      ~specialised_args:internal_value_set_of_closures.specialised_args
       ~freshening:internal_value_set_of_closures.freshening
       ~direct_call_surrogates:
         internal_value_set_of_closures.direct_call_surrogates
@@ -812,7 +805,6 @@ and simplify_set_of_closures original_env r
   let set_of_closures =
     Flambda.Set_of_closures.create ~function_decls
       ~free_vars:(Variable.Map.map fst free_vars)
-      ~specialised_args
       ~direct_call_surrogates
   in
   let r = ret r (T.set_of_closures value_set_of_closures) in
@@ -1128,7 +1120,6 @@ and simplify_over_application env r ~args ~args_types ~continuation
           inline = inline_requested;
           specialise = specialise_requested;
         };
-      specialised_args = Variable.Map.empty;
     }
   in
   let after_full_application = Continuation.create () in
@@ -1230,7 +1221,6 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
               params = [];
               stub = false;
               is_exn_handler = false;
-              specialised_args = Variable.Map.empty;
             };
           };
         }
@@ -1730,128 +1720,45 @@ and filter_defining_expr_of_let r var (defining_expr : Flambda.Named.t)
     r, var, Some defining_expr
 
 and simplify_let_cont_handler ~env ~r ~cont
-      ~(handler : Flambda.Continuation_handler.t) ~args_types =
-  let { Flambda. params = vars; stub; is_exn_handler; handler;
-    specialised_args; } = handler
-  in
-  (* CR mshinwell: rename "vars" to "params" *)
+      ~(handler : Flambda.Continuation_handler.t) ~arg_tys =
+  let { Flambda. params; stub; is_exn_handler; handler; } = handler in
   let freshened_vars, sb =
     Freshening.add_variables' (E.freshening env)
-      (Parameter.List.vars vars)
+      (Parameter.List.vars params)
   in
-  if List.length vars <> List.length args_types then begin
+  if List.length params <> List.length arg_tys then begin
     Misc.fatal_errorf "simplify_let_cont_handler (%a): params are %a but \
-        args_types has length %d"
+        arg_tys has length %d"
       Continuation.print cont
-      Parameter.List.print vars
-      (List.length args_types)
+      Parameter.List.print params
+      (List.length arg_tys)
   end;
-  let freshened_params_to_args_types =
-    let params_to_args_types =
-      List.combine (Parameter.List.vars vars) args_types
-    in
-    let freshened_params_to_args_types =
-      List.map (fun (param, ty) ->
-          Freshening.apply_variable sb param, ty)
-        params_to_args_tys
-    in
-    Variable.Map.of_list freshened_params_to_args_types
-  in
-  let specialised_args =
-    Freshening.freshen_specialised_args specialised_args ~freshening:sb
-      ~closure_freshening:None
-  in
-(*
-    let specialised_args =
-      Variable.Map.map_keys (Freshening.apply_variable sb) specialised_args
-    in
-    let specialised_args =
-      (* CR mshinwell: Duplicate of a part of
-          [Simplify_aux.prepare_to_simplify_set_of_closures]
-      *)
-      Variable.Map.mapi (fun param (spec_to : Flambda.specialised_to) ->
-          match spec_to.var with
-          | Some external_var ->
-            let var =
-              Freshening.apply_variable sb external_var
-            in
-            if Variable.equal param var then begin
-              Misc.fatal_errorf "Attempt to specialise parameter %a of %a \
-                  to itself"
-                Variable.print param
-                Continuation.print cont
-            end;
-            let var =
-              match
-                T.follow_variable_equality (E.find_exn env var)
-                  ~is_present_in_env:(fun var -> E.mem env var)
-              with
-              | None -> var
-              | Some var -> var
-            in
-            let projection = spec_to.projection in
-            ({ var = Some var; projection; } : Flambda.specialised_to)
-          | None ->
-            spec_to)
-        specialised_args
-    in
-    Freshening.freshen_specialised_args_projection_relation
-      specialised_args
-      ~freshening:sb
-      ~closure_freshening:None
-  in
-*)
-  let equations =
-    Freshening.freshen_equations equations ~freshening:sb
-      ~closure_freshening:None
-  in
-  let param_tys =
-    List.map (fun param ->
-        let not_specialised () =
-          match Variable.Map.find param freshened_params_to_args_tys with
-          | exception Not_found -> assert false
-          | arg_ty -> arg_ty
+  let params_and_arg_tys = List.combine (Parameter.List.vars params) arg_tys in
+  let params =
+    List.map (fun ((param, existing_ty), arg_ty) : Flambda.Typed_parameter.t ->
+        let param = Freshening.apply_variable sb param in
+        let ty =
+          let ty =
+            (* Use both the existing specialisation information and the
+               argument type to try to increase the precision of the type. *)
+            Flambda_type0.meet existing_ty arg_ty
+          in
+          Flambda_type.rename_variables ty
+            ~f:(fun var -> Freshening.apply_variable sb var)
         in
-        match Variable.Map.find param specialised_args with
-        | exception Not_found -> not_specialised ()
-        | spec_to ->
-          match spec_to.var with
-          | None -> not_specialised ()
-          (* CR mshinwell: Maybe this should do a *meet* (not a join) with
-             the args_tys, in the specialised args case *)
-          | Some var -> E.find_exn env var)
-      freshened_vars
+        param, ty)
+      params_and_args_tys
   in
-  let vars = freshened_vars in
-  let params_and_tys = List.combine vars param_tys in
   let env =
     List.fold_left (fun env (id, ty) -> E.add env id ty)
-      (E.set_freshening env sb) params_and_tys
-  in
-  let env =
-    Variable.Map.fold (fun param (spec_to : Flambda.specialised_to)
-            env ->
-        match spec_to.projection with
-        | None -> env
-        | Some projection ->
-          E.add_projection env ~projection ~bound_to:param)
-      specialised_args
-      env
+      (E.set_freshening env sb) params
   in
   let handler, r = simplify (E.inside_branch env) r handler in
-  let specialised_args =
-    Variable.Map.filter_map specialised_args
-      ~f:(fun _param (spec_to : Flambda.specialised_to) ->
-        match spec_to.var, spec_to.projection with
-        | None, None -> None
-        | _ -> Some spec_to)
-  in
   let handler : Flambda.Continuation_handler.t =
-    { params = Parameter.List.wrap vars;
+    { params;
       stub;
       is_exn_handler;
       handler;
-      specialised_args;
     }
   in
   r, handler
