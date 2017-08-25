@@ -20,7 +20,7 @@ let rename_id_state = Export_id.Tbl.create 100
 let rename_set_of_closures_id_state = Set_of_closures_id.Tbl.create 10
 let imported_function_declarations_table =
   (Set_of_closures_id.Tbl.create 10
-   : Flambda.function_declarations Set_of_closures_id.Tbl.t)
+   : Flambda.Function_declarations.t Set_of_closures_id.Tbl.t)
 
 (* Rename export identifiers' compilation units to denote that they now
    live within a pack. *)
@@ -137,9 +137,9 @@ let rec import_code_for_pack units pack expr =
     expr
 
 and import_function_declarations_for_pack_aux units pack
-      (function_decls : Flambda.function_declarations) =
+      (function_decls : Flambda.Function_declarations.t) =
   let funs =
-    Variable.Map.map (fun (function_decl : Flambda.function_declaration) ->
+    Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
         Flambda.create_function_declaration ~params:function_decl.params
           ~body:(import_code_for_pack units pack function_decl.body)
           ~continuation_param:function_decl.continuation_param
@@ -157,7 +157,7 @@ and import_function_declarations_for_pack_aux units pack
     (import_set_of_closures_origin_for_pack units pack)
 
 and import_function_declarations_for_pack units pack
-    (function_decls:Flambda.function_declarations) =
+    (function_decls:Flambda.Function_declarations.t) =
   let original_set_of_closures_id = function_decls.set_of_closures_id in
   try
     Set_of_closures_id.Tbl.find imported_function_declarations_table

@@ -19,5 +19,5 @@
 
 val unrecursify_function
    : fun_var:Variable.t
-  -> function_decl:Flambda.function_declaration
-  -> Flambda.function_declaration option
+  -> function_decl:Flambda.Function_declaration.t
+  -> Flambda.Function_declaration.t option

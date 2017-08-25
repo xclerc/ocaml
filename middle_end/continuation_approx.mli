@@ -19,8 +19,8 @@
 type t
 
 type continuation_handlers =
-  | Nonrecursive of Flambda.continuation_handler
-  | Recursive of Flambda.continuation_handlers
+  | Nonrecursive of Flambda.Continuation_handler.t
+  | Recursive of Flambda.Continuation_handler.ts
 
 val create
    : name:Continuation.t
@@ -34,5 +34,7 @@ val name : t -> Continuation.t
 
 val num_params : t -> int
 val handlers : t -> continuation_handlers option
+
+val is_alias : t -> Continuation.t option
 
 val print : Format.formatter -> t -> unit

@@ -19,11 +19,11 @@
 module A = Simple_value_approx
 
 let import_set_of_closures =
-  let import_function_declarations (clos : Flambda.function_declarations)
-        : Flambda.function_declarations =
+  let import_function_declarations (clos : Flambda.Function_declarations.t)
+        : Flambda.Function_declarations.t =
     (* CR-soon mshinwell for pchambart: Do we still need to do this
        rewriting?  I'm wondering if maybe we don't have to any more. *)
-    let sym_to_fun_var_map (clos : Flambda.function_declarations) =
+    let sym_to_fun_var_map (clos : Flambda.Function_declarations.t) =
       Variable.Map.fold (fun fun_var _ acc ->
            let closure_id = Closure_id.wrap fun_var in
            let sym = Compilenv.closure_symbol closure_id in
@@ -40,7 +40,7 @@ let import_set_of_closures =
       | named -> named
     in
     let funs =
-      Variable.Map.map (fun (function_decl : Flambda.function_declaration) ->
+      Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
           let body =
             Flambda_iterators.map_toplevel_named f_named function_decl.body
           in
@@ -137,7 +137,8 @@ let rec import_ex ex =
         ~what:(Format.asprintf "Value_closure %a" Closure_id.print closure_id)
     in
     begin match value_set_of_closures with
-    | None -> A.value_unresolved (Set_of_closures_id set_of_closures_id)
+    | None ->
+      A.value_unknown (Unresolved_value (Set_of_closures_id set_of_closures_id))
     | Some value_set_of_closures ->
       A.value_closure ?set_of_closures_symbol:aliased_symbol
         (Closure_id.Map.add closure_id value_set_of_closures
@@ -150,7 +151,7 @@ let rec import_ex ex =
     in
     match value_set_of_closures with
     | None ->
-      A.value_unresolved (Set_of_closures_id set_of_closures_id)
+      A.value_unknown (Unresolved_value (Set_of_closures_id set_of_closures_id))
     | Some value_set_of_closures ->
       let approx = A.value_set_of_closures value_set_of_closures in
       match aliased_symbol with
@@ -174,7 +175,7 @@ let import_symbol sym =
     match Symbol.Map.find sym symbol_id_map with
     | approx -> A.augment_with_symbol (import_ex approx) sym
     | exception Not_found ->
-      A.value_unresolved (Symbol sym)
+      A.value_unknown (Unresolved_value (Symbol sym))
 
 (* Note for code reviewers: Observe that [really_import] iterates until
    the approximation description is fully resolved (or a necessary .cmx

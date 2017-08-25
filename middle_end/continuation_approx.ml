@@ -17,8 +17,8 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type continuation_handlers =
-  | Nonrecursive of Flambda.continuation_handler
-  | Recursive of Flambda.continuation_handlers
+  | Nonrecursive of Flambda.Continuation_handler.t
+  | Recursive of Flambda.Continuation_handler.ts
 
 type t = {
   name : Continuation.t;
@@ -41,6 +41,18 @@ let create_unknown ~name ~num_params =
 let name t = t.name
 let num_params t = t.num_params
 let handlers t = t.handlers
+
+let is_alias t =
+  match t.handlers with
+  | None | Some (Recursive _) -> None
+  | Some (Nonrecursive handler) ->
+    match handler.handler with
+    | Apply_cont (cont, None, args) ->
+      if Parameter.List.equal_vars handler.params args then
+        Some cont
+      else
+        None
+    | _ -> None
 
 let print ppf t =
   let print_handlers ppf = function

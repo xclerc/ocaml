@@ -19,17 +19,17 @@
 module Constant_defining_value = Flambda.Constant_defining_value
 
 let update_constant_for_sharing sharing_symbol_tbl const
-      : Flambda.constant_defining_value =
+      : Flambda_static.Constant_defining_value.t =
   let substitute_symbol sym =
     match Symbol.Tbl.find sharing_symbol_tbl sym with
     | exception Not_found -> sym
     | symbol -> symbol
   in
-  match (const:Flambda.constant_defining_value) with
+  match (const:Flambda_static.Constant_defining_value.t) with
   | Allocated_const _ -> const
   | Block (tag, fields) ->
-    let subst_field (field:Flambda.constant_defining_value_block_field) :
-      Flambda.constant_defining_value_block_field =
+    let subst_field (field:Flambda_static.Constant_defining_value.t_block_field) :
+      Flambda_static.Constant_defining_value.t_block_field =
       match field with
       | Const _ -> field
       | Symbol sym ->
@@ -45,7 +45,7 @@ let update_constant_for_sharing sharing_symbol_tbl const
   | Project_closure (sym, closure_id) ->
     Project_closure (substitute_symbol sym, closure_id)
 
-let cannot_share (const : Flambda.constant_defining_value) =
+let cannot_share (const : Flambda_static.Constant_defining_value.t) =
   match const with
   (* Strings and float arrays are mutable; we never share them. *)
   | Allocated_const ((String _) | (Float_array _)) -> true
@@ -70,7 +70,7 @@ let share_definition constant_to_symbol_tbl sharing_symbol_tbl
     end
 
 (* CR-soon mshinwell: move to [Flambda_utils] *)
-let rec end_symbol (program : Flambda.program_body) =
+let rec end_symbol (program : Flambda_static.Program.t_body) =
   match program with
   | End symbol -> symbol
   | Let_symbol (_, _, program)
@@ -78,11 +78,11 @@ let rec end_symbol (program : Flambda.program_body) =
   | Initialize_symbol (_, _, _, program)
   | Effect (_, _, program) -> end_symbol program
 
-let share_constants (program : Flambda.program) =
+let share_constants (program : Flambda_static.Program.t) =
   let end_symbol = end_symbol program.program_body in
   let sharing_symbol_tbl = Symbol.Tbl.create 42 in
   let constant_to_symbol_tbl = Constant_defining_value.Tbl.create 42 in
-  let rec loop (program : Flambda.program_body) : Flambda.program_body =
+  let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
     match program with
     | Let_symbol (symbol, def, program) ->
       begin match

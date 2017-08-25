@@ -21,7 +21,7 @@ module H = Unbox_one_variable.How_to_unbox
 
 let find_unboxings ~continuation_uses ~handlers =
   Continuation.Map.filter_map handlers
-    ~f:(fun cont (handler : Flambda.continuation_handler) ->
+    ~f:(fun cont (handler : Flambda.Continuation_handler.t) ->
       if handler.stub then
         None
       else
@@ -34,10 +34,10 @@ let find_unboxings ~continuation_uses ~handlers =
 Format.eprintf "No definition for %a\n%!" Continuation.print cont;
 *)
             None
-          | args_approxs ->
+          | args_tys ->
             let params = Parameter.List.vars params in
             let params_to_approxs =
-              Variable.Map.of_list (List.combine params args_approxs)
+              Variable.Map.of_list (List.combine params args_tys)
             in
             let unboxings =
               Variable.Map.filter_map params_to_approxs
@@ -134,7 +134,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
           match Continuation.Map.find cont unboxings_by_cont with
           | exception Not_found -> do_not_unbox ()
           | unboxings ->
-            let handler : Flambda.continuation_handler =
+            let handler : Flambda.Continuation_handler.t =
               match Continuation.Map.find cont handlers with
               | exception Not_found -> assert false
               | handler -> handler
@@ -188,7 +188,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
                   Flambda.print_specialised_args handler.specialised_args
                   Flambda.print_specialised_args new_specialised_args
                   Variable.print_list handler.params
-                  Flambda.print handler.handler
+                  Flambda.Expr.print handler.handler
               in
 *)
               let specialised_args =
@@ -196,7 +196,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
                   new_specialised_args
               in
               let wrapper_body =
-                let initial_body : Flambda.t =
+                let initial_body : Flambda.Expr.t =
                   Apply_cont (new_cont, None,
                     Parameter.List.vars wrapper_params
                       @ how_to_unbox.new_arguments_for_call_in_wrapper)
@@ -220,11 +220,11 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
     Parameter.print_list wrapper_params
     Flambda.print_specialised_args wrapper_specialised_args
     Continuation.print cont
-    Flambda.print wrapper_body
+    Flambda.Expr.print wrapper_body
     Parameter.print_list params
     Flambda.print_specialised_args specialised_args
     Continuation.print new_cont
-    Flambda.print handler.handler;
+    Flambda.Expr.print handler.handler;
 *)
                 With_wrapper {
                   new_cont;
@@ -251,7 +251,7 @@ Format.eprintf "Unbox_continuation_params starting with continuations %a\n%!"
     Some with_wrappers
   end
 
-let for_non_recursive_continuation ~name ~handler ~args_approxs ~backend
+let for_non_recursive_continuation ~name ~handler ~args_tys ~backend
       : Flambda_utils.with_wrapper =
 (*
 Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
@@ -261,7 +261,7 @@ Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
     Continuation.Map.add name handler Continuation.Map.empty
   in
   let continuation_uses =
-    Continuation.Map.add name args_approxs Continuation.Map.empty
+    Continuation.Map.add name args_tys Continuation.Map.empty
   in
   let result = for_continuations ~continuation_uses ~handlers ~backend in
   match result with
@@ -273,13 +273,13 @@ Format.eprintf "Unbox_continuation_params starting: nonrecursive %a\n%!"
       with_wrapper
     | _ -> assert false
 
-let for_recursive_continuations ~handlers ~args_approxs ~backend =
+let for_recursive_continuations ~handlers ~args_tys ~backend =
 (*
 Format.eprintf "Unbox_continuation_params starting: recursive %a\n%!"
   Continuation.Set.print (Continuation.Map.keys handlers);
 *)
   let result =
-    for_continuations ~continuation_uses:args_approxs ~handlers ~backend
+    for_continuations ~continuation_uses:args_tys ~handlers ~backend
   in
   match result with
   | None ->

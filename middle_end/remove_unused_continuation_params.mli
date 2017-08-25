@@ -17,6 +17,6 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val run
-   : Flambda.program
+   : Flambda_static.Program.t
   -> backend:(module Backend_intf.S)
-  -> Flambda.program
+  -> Flambda_static.Program.t

@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module E = Inline_and_simplify_aux.Env
+module E = Simplify_aux.Env
 module B = Inlining_cost.Benefit
 
 module Definition = struct
@@ -59,7 +59,7 @@ module What_to_specialise = struct
   type t = {
     (* [definitions] is indexed by (fun_var, group) *)
     definitions : Definition.t list Variable.Pair.Map.t;
-    set_of_closures : Flambda.set_of_closures;
+    set_of_closures : Flambda.Set_of_closures.t;
     make_direct_call_surrogates_for : Variable.Set.t;
   }
 
@@ -102,15 +102,15 @@ module type S = sig
   val variable_suffix : string
 
   val what_to_specialise
-     : env:Inline_and_simplify_aux.Env.t
-    -> set_of_closures:Flambda.set_of_closures
+     : env:Simplify_aux.Env.t
+    -> set_of_closures:Flambda.Set_of_closures.t
     -> What_to_specialise.t
 end
 
 module Processed_what_to_specialise = struct
   type for_one_function = {
     fun_var : Variable.t;
-    function_decl : Flambda.function_declaration;
+    function_decl : Flambda.Function_declaration.t;
     make_direct_call_surrogates : bool;
     new_definitions_indexed_by_new_inner_vars : Definition.t Variable.Map.t;
     all_new_definitions : Definition.Set.t;
@@ -121,7 +121,7 @@ module Processed_what_to_specialise = struct
 
   type t = {
     variable_suffix : string;
-    set_of_closures : Flambda.set_of_closures;
+    set_of_closures : Flambda.Set_of_closures.t;
     existing_definitions_via_spec_args_indexed_by_fun_var
       : Definition.Set.t Variable.Map.t;
     (* The following two maps' definitions have already been rewritten
@@ -151,7 +151,7 @@ module Processed_what_to_specialise = struct
             not.  The projection was: %a.  Set of closures: %a"
           Variable.print inner_var
           Projection.print projection
-          Flambda.print_set_of_closures t.set_of_closures
+          Flambda.Set_of_closures.print t.set_of_closures
     in
     Projection.map_projecting_from projection ~f:find_outer_var
 
@@ -194,7 +194,7 @@ module Processed_what_to_specialise = struct
                 of %a in %a"
               Variable.print existing_inner_var
               Variable.print fun_var
-              Flambda.print_set_of_closures t.set_of_closures
+              Flambda.Set_of_closures.print t.set_of_closures
           | existing_outer_var -> existing_outer_var.var, t
           end
         | Projection_from_existing_specialised_arg projection ->
@@ -251,7 +251,7 @@ module Processed_what_to_specialise = struct
           match Variable.Map.find fun_var t.set_of_closures.function_decls.funs
         with
         | exception Not_found -> assert false
-        | (function_decl : Flambda.function_declaration) ->
+        | (function_decl : Flambda.Function_declaration.t) ->
           let params = Parameter.Set.vars function_decl.params in
           let existing_specialised_args =
             Variable.Map.filter (fun inner_var _spec_to ->
@@ -293,7 +293,7 @@ module Processed_what_to_specialise = struct
 
   let create ~env ~(what_to_specialise : W.t) ~variable_suffix =
     let existing_definitions_via_spec_args_indexed_by_fun_var =
-      Variable.Map.map (fun (function_decl : Flambda.function_declaration) ->
+      Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
           if function_decl.stub then
             Definition.Set.empty
           else
@@ -374,11 +374,11 @@ end
 
 module P = Processed_what_to_specialise
 
-let check_invariants ~pass_name ~(set_of_closures : Flambda.set_of_closures)
+let check_invariants ~pass_name ~(set_of_closures : Flambda.Set_of_closures.t)
       ~original_set_of_closures =
   if !Clflags.flambda_invariant_checks then begin
     Variable.Map.iter (fun fun_var
-              (function_decl : Flambda.function_declaration) ->
+              (function_decl : Flambda.Function_declaration.t) ->
         let params = Parameter.Set.vars function_decl.params in
         Variable.Map.iter (fun inner_var
                     (outer_var : Flambda.specialised_to) ->
@@ -406,8 +406,8 @@ let check_invariants ~pass_name ~(set_of_closures : Flambda.set_of_closures)
                         Variable.print inner_var
                         Flambda.print_specialised_to outer_var
                         Variable.print fun_var
-                        Flambda.print_set_of_closures original_set_of_closures
-                        Flambda.print_set_of_closures set_of_closures
+                        Flambda.Set_of_closures.print original_set_of_closures
+                        Flambda.Set_of_closures.print set_of_closures
                     end
               end)
           set_of_closures.specialised_args)
@@ -418,7 +418,7 @@ module Make (T : S) = struct
   let () = Pass_wrapper.register ~pass_name:T.pass_name
 
   let rename_function_and_parameters ~fun_var
-        ~(function_decl : Flambda.function_declaration) =
+        ~(function_decl : Flambda.Function_declaration.t) =
     let new_fun_var = Variable.rename fun_var ~append:T.variable_suffix in
     let params_renaming_list =
       List.map (fun param ->
@@ -479,7 +479,7 @@ module Make (T : S) = struct
        also be specialised. *)
     let wrapper_continuation_param = Continuation.create () in
     let wrapper_body, benefit =
-      let apply : Flambda.expr =
+      let apply : Flambda.Expr.t =
         Apply {
           kind = Function;
           func = new_fun_var;
@@ -516,7 +516,7 @@ module Make (T : S) = struct
           with
           | exception Not_found -> assert false
           | new_inner_var_of_wrapper ->
-            let named : Flambda.named =
+            let named : Flambda.Named.t =
               match definition with
               | Existing_inner_free_var existing_inner_var ->
                 Var existing_inner_var
@@ -524,7 +524,7 @@ module Make (T : S) = struct
                 Flambda_utils.projection_to_named projection
             in
             let wrapper_body =
-              Flambda.create_let new_inner_var_of_wrapper named wrapper_body
+              Flambda.Expr.create_let new_inner_var_of_wrapper named wrapper_body
             in
             (wrapper_body, benefit))
       for_one_function.new_definitions_indexed_by_new_inner_vars
@@ -551,7 +551,7 @@ module Make (T : S) = struct
         Variable.Map.empty
     in
     let new_function_decl =
-      Flambda.create_function_declaration
+      Flambda.Function_declaration.create
         ~continuation_param:wrapper_continuation_param
         ~return_arity:function_decl.return_arity
         ~params:wrapper_params
@@ -638,7 +638,7 @@ module Make (T : S) = struct
         function_decl.params @ new_params
       in
       let rewritten_function_decl =
-        Flambda.create_function_declaration
+        Flambda.Function_declaration.create
           ~continuation_param:function_decl.continuation_param
           ~return_arity:function_decl.return_arity
           ~params:all_params
@@ -693,7 +693,7 @@ module Make (T : S) = struct
       ([], benefit)
 
   let rewrite_set_of_closures_core ~env ~duplicate_function ~benefit
-        ~(set_of_closures : Flambda.set_of_closures) =
+        ~(set_of_closures : Flambda.Set_of_closures.t) =
     let what_to_specialise =
       P.create ~env ~variable_suffix:T.variable_suffix
         ~what_to_specialise:(T.what_to_specialise ~env ~set_of_closures)
@@ -744,13 +744,13 @@ module Make (T : S) = struct
       None
     else
       let function_decls =
-        Flambda.update_function_declarations set_of_closures.function_decls
+        Flambda.Function_declarations.update set_of_closures.function_decls
           ~funs
       in
       assert (Variable.Map.cardinal specialised_args
         >= Variable.Map.cardinal original_set_of_closures.specialised_args);
       let set_of_closures =
-        Flambda.create_set_of_closures
+        Flambda.Set_of_closures.create
           ~function_decls
           ~free_vars
           ~specialised_args
@@ -769,10 +769,10 @@ module Make (T : S) = struct
 
   let rewrite_set_of_closures ~env ~duplicate_function ~set_of_closures =
     Pass_wrapper.with_dump ~pass_name:T.pass_name ~input:set_of_closures
-      ~print_input:Flambda.print_set_of_closures
+      ~print_input:Flambda.Set_of_closures.print
       ~print_output:(fun ppf (_bindings, set_of_closures, _) ->
         (* CR mshinwell: print bindings *)
-        Flambda.print_set_of_closures ppf set_of_closures)
+        Flambda.Set_of_closures.print ppf set_of_closures)
       ~f:(fun () ->
         rewrite_set_of_closures_core ~env ~duplicate_function
           ~benefit:B.zero ~set_of_closures)

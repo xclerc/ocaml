@@ -32,7 +32,7 @@ let lifted_projections ~existing_inner_to_outer_vars ~benefit
         match
           Variable.Map.find inner_var existing_inner_to_outer_vars
         with
-        | (outer_var : Flambda.free_var) -> outer_var.var
+        | (outer_var : Flambda.Free_var.t) -> outer_var.var
         | exception Not_found ->
           Misc.fatal_errorf "(UFV) find_outer_var: expected %a \
               to be in [existing_inner_to_outer_vars], but it is \
@@ -41,7 +41,7 @@ let lifted_projections ~existing_inner_to_outer_vars ~benefit
             Projection.print projection
       in
       let benefit = B.add_projection projection benefit in
-      let named : Flambda.named =
+      let named : Flambda.Named.t =
         (* The lifted projection must be in terms of outer variables,
            not inner variables. *)
         let projection =
@@ -53,13 +53,13 @@ let lifted_projections ~existing_inner_to_outer_vars ~benefit
     definitions_indexed_by_new_inner_vars
     ([], benefit)
 
-let run ~env ~(set_of_closures : Flambda.set_of_closures) =
+let run ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
   if not !Clflags.unbox_free_vars_of_closures then
     None
   else
     let definitions_indexed_by_new_inner_vars, _, free_vars, done_something =
       let all_existing_definitions =
-        Variable.Map.fold (fun _inner_var (outer_var : Flambda.free_var)
+        Variable.Map.fold (fun _inner_var (outer_var : Flambda.Free_var.t)
               all_existing_definitions ->
             match outer_var.projection with
             | None -> all_existing_definitions
@@ -112,7 +112,7 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
                   Projection.Set.add projection
                     all_existing_definitions_including_added_ones
                 in
-                let new_outer_var : Flambda.free_var =
+                let new_outer_var : Flambda.Free_var.t =
                   { var = new_outer_var;
                     projection = Some projection;
                   }
@@ -149,7 +149,7 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
       else
 *)
         let set_of_closures =
-          Flambda.create_set_of_closures
+          Flambda.Set_of_closures.create
             ~function_decls:set_of_closures.function_decls
             ~free_vars
             ~specialised_args:set_of_closures.specialised_args
@@ -164,8 +164,8 @@ let run ~env ~(set_of_closures : Flambda.set_of_closures) =
 
 let run ~env ~set_of_closures =
   Pass_wrapper.with_dump ~pass_name ~input:set_of_closures
-    ~print_input:Flambda.print_set_of_closures
+    ~print_input:Flambda.Set_of_closures.print
     ~print_output:(fun ppf (_bindings, set_of_closures, _) ->
       (* CR mshinwell: print bindings *)
-      Flambda.print_set_of_closures ppf set_of_closures)
+      Flambda.Set_of_closures.print ppf set_of_closures)
     ~f:(fun () -> run ~env ~set_of_closures)

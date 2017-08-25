@@ -16,9 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
-module E = Inline_and_simplify_aux.Env
-module R = Inline_and_simplify_aux.Result
+module T = Flambda_types
+module E = Simplify_aux.Env
+module R = Simplify_aux.Result
 module U = Flambda_utils
 module W = Inlining_cost.Whether_sufficient_benefit
 module T = Inlining_cost.Threshold
@@ -26,7 +26,7 @@ module S = Inlining_stats_types
 module D = S.Decision
 
 type ('a, 'b) inlining_result =
-  | Changed of (Flambda.t * R.t) * 'a
+  | Changed of (Flambda.Expr.t * R.t) * 'a
   | Original of 'b
 
 type 'b good_idea =
@@ -34,8 +34,8 @@ type 'b good_idea =
   | Don't_try_it of 'b
 
 let inline env r ~lhs_of_application
-    ~(function_decls : Flambda.function_declarations)
-    ~closure_id_being_applied ~(function_decl : Flambda.function_declaration)
+    ~(function_decls : Flambda.Function_declarations.t)
+    ~closure_id_being_applied ~(function_decl : Flambda.Function_declaration.t)
     ~value_set_of_closures ~only_use_of_function ~original ~recursive
     ~(args : Variable.t list) ~continuation ~size_from_approximation ~dbg
     ~simplify ~(inline_requested : Lambda.inline_attribute)
@@ -106,7 +106,7 @@ let inline env r ~lhs_of_application
       in
       Don't_try_it (S.Not_inlined.Above_threshold threshold)
     else if not (toplevel && branch_depth = 0)
-         && A.all_not_useful (E.find_list_exn env args) then
+         && T.all_not_useful (E.find_list_exn env args) then
       (* When all of the arguments to the function being inlined are unknown,
          then we cannot materially simplify the function.  As such, we know
          what the benefit of inlining it would be: just removing the call.
@@ -144,9 +144,9 @@ let inline env r ~lhs_of_application
                 try
                   let t =
                     Var_within_closure.Map.find (Var_within_closure.wrap v)
-                      value_set_of_closures.A.bound_vars
+                      value_set_of_closures.T.bound_vars
                   in
-                  match t.A.var with
+                  match t.T.var with
                   | Some v ->
                     if (E.mem env v) then Inlining_cost.Benefit.remove_prim acc
                     else acc
@@ -192,7 +192,7 @@ let inline env r ~lhs_of_application
          site. *)
 (*
 Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
-  Variable.print lhs_of_application Flambda.print function_decl.body;
+  Variable.print lhs_of_application Flambda.Expr.print function_decl.body;
 *)
       Inlining_transforms.inline_by_copying_function_body ~env
         ~r:(R.reset_benefit r) ~function_decls ~lhs_of_application
@@ -301,7 +301,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
              exists if the body of the function is in fact inlined.
              If the function approximation contained an approximation that
              does not depend on the actual values of its arguments, it
-             could be returned instead of [A.value_unknown]. *)
+             could be returned instead of [T.value_unknown]. *)
           let decision =
             S.Not_inlined.With_subfunctions (wsb, wsb_with_subfunctions)
           in
@@ -314,10 +314,10 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
    precision of the argument approximations.  (Will act as a backstop to
    prevent unbounded recursion during specialisation.) *)
 let specialise env r ~lhs_of_application
-      ~(function_decls : Flambda.function_declarations)
-      ~(function_decl : Flambda.function_declaration)
+      ~(function_decls : Flambda.Function_declarations.t)
+      ~(function_decl : Flambda.Function_declaration.t)
       ~closure_id_being_applied
-      ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
+      ~(value_set_of_closures : Flambda_type.value_set_of_closures)
       ~args ~args_approxs ~continuation ~dbg ~simplify ~original ~recursive
       ~self_call ~inlining_threshold ~fun_cost
       ~inline_requested ~specialise_requested =
@@ -358,7 +358,7 @@ let specialise env r ~lhs_of_application
     lazy
       (List.for_all2
          (fun id approx ->
-            not ((A.useful approx)
+            not ((T.useful approx)
                  && Variable.Map.mem id (Lazy.force invariant_params)))
          (Parameter.List.vars function_decl.params) args_approxs)
   in
@@ -510,7 +510,7 @@ let specialise env r ~lhs_of_application
             let application_env = E.set_never_inline_inside_closures env in
 (*
 Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
-  E.print application_env Flambda.print expr;
+  E.print application_env Flambda.Expr.print expr;
 *)
             let res = simplify application_env r expr in
             let decision =
@@ -529,10 +529,10 @@ Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
         Original decision
     end
 
-let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
+let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
       ~lhs_of_application ~closure_id_being_applied
-      ~(function_decl : Flambda.function_declaration)
-      ~(value_set_of_closures : Simple_value_approx.value_set_of_closures)
+      ~(function_decl : Flambda.Function_declaration.t)
+      ~(value_set_of_closures : Flambda_type.value_set_of_closures)
       ~args ~args_approxs ~continuation ~dbg ~simplify
       ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested =
   if List.length args <> List.length args_approxs then begin
@@ -567,17 +567,17 @@ let for_call_site ~env ~r ~(function_decls : Flambda.function_declarations)
       specialise = specialise_requested;
     }
   in
-  let original_expr : Flambda.expr = Apply original_apply in
+  let original_expr : Flambda.Expr.t = Apply original_apply in
   let original r =
     let continuation, r =
       let args_approxs =
         Array.to_list (Array.init function_decl.return_arity
-          (fun _index -> A.value_unknown Other))
+          (fun _index -> T.value_unknown Other))
       in
       simplify_apply_cont_to_cont ?don't_record_use:None env r continuation
         ~args_approxs
     in
-    let original_expr : Flambda.expr =
+    let original_expr : Flambda.Expr.t =
       Apply { original_apply with
         continuation;
       }
@@ -597,12 +597,12 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
 *)
   let original_r =
     let r =
-      R.set_approx (R.seen_direct_application r) (A.value_unknown Other)
+      R.set_approx (R.seen_direct_application r) (T.value_unknown Other)
     in
 (*
     let args_approxs =
       Array.to_list (Array.init function_decl.return_arity (fun _index ->
-        A.value_bottom))
+        T.value_bottom))
     in
 (*
 Format.eprintf "for_call_site: use of continuation %a has %d args\n%!"
@@ -641,10 +641,10 @@ Continuation.print continuation (List.length args_approxs);
     let raw_inlining_threshold = R.inlining_threshold r in
     let max_inlining_threshold =
       if E.at_toplevel env then
-        Inline_and_simplify_aux.initial_inlining_toplevel_threshold
+        Simplify_aux.initial_inlining_toplevel_threshold
           ~round:(E.round env)
       else
-        Inline_and_simplify_aux.initial_inlining_threshold ~round:(E.round env)
+        Simplify_aux.initial_inlining_threshold ~round:(E.round env)
     in
     let unthrottled_inlining_threshold =
       match raw_inlining_threshold with
@@ -716,7 +716,7 @@ Continuation.print continuation (List.length args_approxs);
                 Misc.fatal_errorf "Approximation does not give a size for the \
                   function having fun_var %a.  value_set_of_closures: %a"
                   Variable.print fun_var
-                  A.print_value_set_of_closures value_set_of_closures
+                  T.print_value_set_of_closures value_set_of_closures
           in
           let r = R.roll_back_continuation_uses r cont_usage_snapshot in
           let inline_result =
@@ -754,5 +754,5 @@ Continuation.print continuation (List.length args_approxs);
    Inlining inside the declaration of a stub could result in more code than
    expected being inlined (e.g. the body of a function that was transformed
    by adding the stub). *)
-let should_inline_inside_declaration (decl : Flambda.function_declaration) =
+let should_inline_inside_declaration (decl : Flambda.Function_declaration.t) =
   not decl.stub

@@ -41,10 +41,10 @@ module Simplify_boxed_integer_operator (I : sig
   val swap : t -> t
   val compare : t -> t -> int
 end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
-  module A = Simple_value_approx
+  module T = Flambda_types
   module C = Inlining_cost
 
-  let simplify_unop (p : Lambda.primitive) (kind : I.t A.boxed_int)
+  let simplify_unop (p : Lambda.primitive) (kind : I.t T.boxed_int)
         expr (n : I.t) =
     let eval op = S.const_boxed_int_expr expr kind (op n) in
     let eval_conv kind op = S.const_boxed_int_expr expr kind (op n) in
@@ -52,14 +52,14 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     match p with
     | Pintofbint kind when kind = I.kind -> eval_unboxed I.to_int
     | Pcvtbint (kind, Pint32) when kind = I.kind ->
-      eval_conv A.Int32 I.to_int32
+      eval_conv T.Int32 I.to_int32
     | Pcvtbint (kind, Pint64) when kind = I.kind ->
-      eval_conv A.Int64 I.to_int64
+      eval_conv T.Int64 I.to_int64
     | Pnegbint kind when kind = I.kind -> eval I.neg
     | Pbbswap kind when kind = I.kind -> eval I.swap
-    | _ -> expr, A.value_unknown Other, C.Benefit.zero
+    | _ -> expr, T.value_unknown Other, C.Benefit.zero
 
-  let simplify_binop (p : Lambda.primitive) (kind : I.t A.boxed_int)
+  let simplify_binop (p : Lambda.primitive) (kind : I.t T.boxed_int)
         expr (n1 : I.t) (n2 : I.t) =
     let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
     let non_zero n = (I.compare I.zero n) <> 0 in
@@ -74,9 +74,9 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     | Pxorbint kind when kind = I.kind -> eval I.logxor
     | Pbintcomp (kind, c) when kind = I.kind ->
       S.const_comparison_expr expr c n1 n2
-    | _ -> expr, A.value_unknown Other, C.Benefit.zero
+    | _ -> expr, T.value_unknown Other, C.Benefit.zero
 
-  let simplify_binop_int (p : Lambda.primitive) (kind : I.t A.boxed_int)
+  let simplify_binop_int (p : Lambda.primitive) (kind : I.t T.boxed_int)
         expr (n1 : I.t) (n2 : int) ~size_int =
     let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
     let precond = 0 <= n2 && n2 < 8 * size_int in
@@ -84,7 +84,7 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     | Plslbint kind when kind = I.kind && precond -> eval I.shift_left
     | Plsrbint kind when kind = I.kind && precond -> eval I.shift_right_logical
     | Pasrbint kind when kind = I.kind && precond -> eval I.shift_right
-    | _ -> expr, A.value_unknown Other, C.Benefit.zero
+    | _ -> expr, T.value_unknown Other, C.Benefit.zero
 end
 
 module Simplify_boxed_nativeint = Simplify_boxed_integer_operator (struct

@@ -16,11 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let dependency (expr:Flambda.t) = Flambda.free_symbols expr
+let dependency (expr:Flambda.Expr.t) = Flambda.free_symbols expr
 
 (* CR-soon pchambart: copied from lift_constant.  Needs remerging *)
-let constant_dependencies (const:Flambda.constant_defining_value) =
-  let closure_dependencies (set_of_closures:Flambda.set_of_closures) =
+let constant_dependencies (const:Flambda_static.Constant_defining_value.t) =
+  let closure_dependencies (set_of_closures:Flambda.Set_of_closures.t) =
     Flambda.free_symbols_named (Set_of_closures set_of_closures)
   in
   match const with
@@ -28,7 +28,7 @@ let constant_dependencies (const:Flambda.constant_defining_value) =
   | Block (_, fields) ->
     let symbol_fields =
       Misc.Stdlib.List.filter_map (function
-          | (Symbol s : Flambda.constant_defining_value_block_field) ->
+          | (Symbol s : Flambda_static.Constant_defining_value.t_block_field) ->
             Some s
           | Flambda.Const _ -> None)
         fields
@@ -54,7 +54,7 @@ let let_rec_dep defs dep =
   in
   fixpoint dep
 
-let no_effects_field (expr : Flambda.t) ~return_continuation =
+let no_effects_field (expr : Flambda.Expr.t) ~return_continuation =
   match expr with
   | Let { var; defining_expr;
         body = Apply_cont (cont, None, [var']); _ }
@@ -64,8 +64,8 @@ let no_effects_field (expr : Flambda.t) ~return_continuation =
     true
   | _ -> Effect_analysis.no_effects expr
 
-let rec loop (program : Flambda.program_body)
-      : Flambda.program_body * Symbol.Set.t =
+let rec loop (program : Flambda_static.Program.t_body)
+      : Flambda_static.Program.t_body * Symbol.Set.t =
   match program with
   | Let_symbol (sym, def, program) ->
     let program, dep = loop program in
@@ -112,7 +112,7 @@ let rec loop (program : Flambda.program_body)
     end
   | End symbol -> program, Symbol.Set.singleton symbol
 
-let remove_unused_program_constructs (program : Flambda.program) =
+let remove_unused_program_constructs (program : Flambda_static.Program.t) =
   { program with
     program_body = fst (loop program.program_body);
   }

@@ -18,7 +18,7 @@
 
 (* CR mshinwell: This function is broken, it shouldn't count occurrences
    under lambdas (to match up with [Invariant_params], etc.) *)
-let in_function_declarations (function_decls : Flambda.function_declarations)
+let in_function_declarations (function_decls : Flambda.Function_declarations.t)
       ~backend =
   let module VCC = Strongly_connected_components.Make (Variable) in
   let directed_graph =

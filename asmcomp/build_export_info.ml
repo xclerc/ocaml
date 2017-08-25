@@ -247,7 +247,7 @@ let descr_of_allocated_constant (c : Allocated_const.t) : Export_info.descr =
       size = List.length fs;
     }
 
-let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.t)
+let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.Expr.t)
       : Result.t =
   match flam with
   | Let { var; defining_expr; body; _ } ->
@@ -455,7 +455,7 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
         results =
           Closure_id.wrap_map
             (Variable.Map.map (fun
-                    (function_decl : Flambda.function_declaration) ->
+                    (function_decl : Flambda.Function_declaration.t) ->
                 let approxs =
                   Array.init function_decl.return_arity (fun _ ->
                     Export_info.Value_unknown)
@@ -480,7 +480,7 @@ and describe_set_of_closures env (set : Flambda.set_of_closures)
       [closures_approx; bound_vars_approx; specialised_args_approx]
   in
   let results =
-    let result_approx _var (function_decl : Flambda.function_declaration) =
+    let result_approx _var (function_decl : Flambda.Function_declaration.t) =
       let r =
         approx_of_expr closure_env (Result.create ()) function_decl.body
       in

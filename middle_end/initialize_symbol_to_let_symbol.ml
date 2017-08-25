@@ -16,8 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let constant_field ((expr : Flambda.t), cont)
-  : Flambda.constant_defining_value_block_field option =
+let constant_field ((expr : Flambda.Expr.t), cont)
+  : Flambda_static.Constant_defining_value.t_block_field option =
   match expr with
   | Let { var; defining_expr = Const c;
         body = Apply_cont (cont', None, [var']); _ }
@@ -33,7 +33,7 @@ let constant_field ((expr : Flambda.t), cont)
   | _ ->
     None
 
-let rec loop (program : Flambda.program_body) : Flambda.program_body =
+let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
   match program with
   | Initialize_symbol (symbol, tag, fields, program) ->
     let constant_fields = List.map constant_field fields in
@@ -54,7 +54,7 @@ let rec loop (program : Flambda.program_body) : Flambda.program_body =
   | End symbol ->
     End symbol
 
-let run (program : Flambda.program) =
+let run (program : Flambda_static.Program.t) =
   { program with
     program_body = loop program.program_body;
   }

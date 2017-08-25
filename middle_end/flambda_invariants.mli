@@ -25,12 +25,12 @@ type flambda_kind =
 val check_exn
    : ?kind:flambda_kind
   -> ?cmxfile:bool
-  -> Flambda.program
+  -> Flambda_static.Program.t
   -> unit
 
 val check_toplevel_simplification_result
-   : Inline_and_simplify_aux.Result.t
-  -> Flambda.expr
+   : Simplify_aux.Result.t
+  -> Flambda.Expr.t
   -> continuation:Continuation.t
   -> descr:string
   -> unit

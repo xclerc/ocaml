@@ -54,8 +54,8 @@ let prim_size (prim : Lambda.primitive) args =
   | Parraysets Pgenarray -> 22
   | Parraysets _ -> 10
   | Pbittest -> 3
-  | Pbigarrayref (_, ndims, _, _) -> 4 + ndims * 6
-  | Pbigarrayset (_, ndims, _, _) -> 4 + ndims * 6
+  | Pbigarrayref (_, ndims, _, _, _) -> 4 + ndims * 6
+  | Pbigarrayset (_, ndims, _, _, _) -> 4 + ndims * 6
   | Psequand | Psequor ->
     Misc.fatal_error "Psequand and Psequor are not allowed in Prim \
         expressions; translate out instead (cf. closure_conversion.ml)"
@@ -72,7 +72,7 @@ let project_size = 1
 
 let lambda_smaller' lam ~than:threshold =
   let size = ref 0 in
-  let rec lambda_size (lam : Flambda.t) =
+  let rec lambda_size (lam : Flambda.Expr.t) =
     if !size > threshold then raise Exit;
     match lam with
     | Apply ({ func = _; args = _; call_kind = direct }) ->
@@ -95,12 +95,12 @@ let lambda_smaller' lam ~than:threshold =
         lambda_size handler
       | Recursive handlers ->
         Continuation.Map.iter (fun _cont
-                (handler : Flambda.continuation_handler) ->
+                (handler : Flambda.Continuation_handler.t) ->
             lambda_size handler.handler)
           handlers
       end
     | Proved_unreachable -> ()
-  and lambda_named_size (named : Flambda.named) =
+  and lambda_named_size (named : Flambda.Named.t) =
     if !size > threshold then raise Exit;
     match named with
     | Var _ | Symbol _ | Read_mutable _ -> ()
@@ -108,7 +108,7 @@ let lambda_smaller' lam ~than:threshold =
     | Const _ | Allocated_const _ -> incr size
     | Read_symbol_field _ -> incr size
     | Set_of_closures ({ function_decls = ffuns }) ->
-      Variable.Map.iter (fun _ (ffun : Flambda.function_declaration) ->
+      Variable.Map.iter (fun _ (ffun : Flambda.Function_declaration.t) ->
           lambda_size ffun.body)
         ffuns.funs
     | Project_closure _ | Project_var _ ->
@@ -237,19 +237,20 @@ module Benefit = struct
     let size = lambda_size size_of in
     { t with requested_inline = t.requested_inline + size; }
 
-  let remove_code_helper b (flam : Flambda.t) =
+  let remove_code_helper b (flam : Flambda.Expr.t) =
     match flam with
     | Switch _ | Apply_cont _ | Apply _ -> b := remove_call !b
     | Let _ | Let_mutable _ | Let_cont _ | Proved_unreachable -> ()
 
-  let remove_code_helper_named b (named : Flambda.named) =
+  let remove_code_helper_named b (named : Flambda.Named.t) =
     match named with
     | Assign _ -> b := remove_prim !b
     | Set_of_closures _
-    | Prim ((Pmakearray _ | Pmakeblock _ | Pduprecord _), _, _) ->
+    | Prim ((Pmakearray _ | Pmakeblock _ | Pduprecord _ | Pbox_float), _, _) ->
       b := remove_alloc !b
-      (* CR-soon pchambart: should we consider that boxed integer and float
-         operations are allocations ? *)
+      (* CR pchambart: should we consider that boxed integer and float
+         operations are allocations ?
+         mshinwell: CR-soon -> CR *)
     | Prim _ | Project_closure _ | Project_var _
     | Move_within_set_of_closures _
     | Read_symbol_field _ -> b := remove_prim !b

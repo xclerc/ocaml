@@ -89,6 +89,7 @@ module Stdlib : sig
     val map : ('a -> 'b) -> 'a t -> 'b t
     val fold : ('a -> 'b -> 'b) -> 'a t -> 'b -> 'b
     val value_default : ('a -> 'b) -> default:'b -> 'a t -> 'b
+    val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
   end
 
   module Array : sig

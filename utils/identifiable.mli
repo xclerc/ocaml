@@ -22,6 +22,7 @@ module type Thing = sig
   include Hashtbl.HashedType with type t := t
   include Map.OrderedType with type t := t
 
+  (* CR mshinwell: We don't use [output], get rid of it. *)
   val output : out_channel -> t -> unit
   val print : Format.formatter -> t -> unit
 end
@@ -39,6 +40,7 @@ module type Set = sig
   val to_string : t -> string
   val of_list : elt list -> t
   val map : (elt -> elt) -> t -> t
+  val union_list : t list -> t
   val get_singleton : t -> elt option
 end
 

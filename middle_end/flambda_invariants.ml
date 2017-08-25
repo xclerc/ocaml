@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
-module R = Inline_and_simplify_aux.Result
+module R = Simplify_aux.Result
 
 type flambda_kind =
   | Normal
@@ -67,13 +67,13 @@ exception Unbound_variable of Variable.t
 exception Unbound_mutable_variable of Mutable_variable.t
 exception Unbound_symbol of Symbol.t
 exception Vars_in_function_body_not_bound_by_closure_or_params of
-  Variable.Set.t * Flambda.set_of_closures * Variable.t
+  Variable.Set.t * Flambda.Set_of_closures.t * Variable.t
 exception Function_decls_have_overlapping_parameters of Variable.Set.t
 exception Specialised_arg_that_is_not_a_parameter of Variable.t
 exception Projection_must_be_a_free_var of Projection.t
 exception Projection_must_be_a_specialised_arg of Projection.t
 exception Free_variables_set_is_lying of
-  Variable.t * Variable.Set.t * Variable.Set.t * Flambda.function_declaration
+  Variable.t * Variable.Set.t * Variable.Set.t * Flambda.Function_declaration.t
 exception Set_of_closures_free_vars_map_has_wrong_range of Variable.Set.t
 exception Continuation_not_caught of Continuation.t * string
 exception Continuation_called_with_wrong_arity of Continuation.t * int * int
@@ -102,7 +102,7 @@ exception Flambda_invariants_failed
 
 (* CR-someday mshinwell: We should make "direct applications should not have
   overapplication" be an invariant throughout.  At the moment I think this is
-  only true after [Inline_and_simplify] has split overapplications. *)
+  only true after [Simplify] has split overapplications. *)
 
 (* CR-someday mshinwell: What about checks for shadowed variables and
   symbols? *)
@@ -177,7 +177,7 @@ module Push_pop_invariants = struct
     end;
     Continuation.Map.add k stack table
 
-  let rec loop (env:env) current_stack (expr : Flambda.t) =
+  let rec loop (env:env) current_stack (expr : Flambda.Expr.t) =
     match expr with
     | Let { body; _ } | Let_mutable { body; _ } -> loop env current_stack body
     | Let_cont { body; handlers; } ->
@@ -195,7 +195,7 @@ module Push_pop_invariants = struct
               env
           in
           Continuation.Map.iter (fun _cont
-                  (handler : Flambda.continuation_handler) ->
+                  (handler : Flambda.Continuation_handler.t) ->
               loop recursive_env handler_stack handler.handler)
             handlers;
           Continuation.Map.fold (fun cont _handler env ->
@@ -210,7 +210,7 @@ module Push_pop_invariants = struct
         | exception Not_found ->
           Misc.fatal_errorf "Unbound continuation %a in Apply_cont %a"
             Continuation.print cont
-            Flambda.print expr
+            Flambda.Expr.print expr
         | cont_stack -> cont_stack
       in
       let stack, cont_stack =
@@ -233,7 +233,7 @@ module Push_pop_invariants = struct
         | exception Not_found ->
           Misc.fatal_errorf "Unbound continuation %a in application %a"
             Continuation.print continuation
-            Flambda.print expr
+            Flambda.Expr.print expr
         | cont_stack -> cont_stack
       in
       unify_stack continuation stack cont_stack
@@ -244,7 +244,7 @@ module Push_pop_invariants = struct
           | exception Not_found ->
             Misc.fatal_errorf "Unbound continuation %a in switch %a"
               Continuation.print cont
-              Flambda.print expr
+              Flambda.Expr.print expr
           | cont_stack -> cont_stack
         in
         unify_stack cont cont_stack current_stack)
@@ -257,14 +257,14 @@ module Push_pop_invariants = struct
           | exception Not_found ->
             Misc.fatal_errorf "Unbound continuation %a in switch %a"
               Continuation.print cont
-              Flambda.print expr
+              Flambda.Expr.print expr
           | cont_stack -> cont_stack
         in
         unify_stack cont cont_stack current_stack
       end
     | Proved_unreachable -> ()
 
-  and well_formed_trap ~continuation_arity:_ k (expr : Flambda.t) =
+  and well_formed_trap ~continuation_arity:_ k (expr : Flambda.Expr.t) =
     let root = ref Root in
     let env = Continuation.Map.singleton k root in
     loop env root expr
@@ -277,7 +277,7 @@ end
 module Continuation_scoping = struct
   type kind = Normal | Exn_handler
 
-  let rec loop env (expr : Flambda.t) =
+  let rec loop env (expr : Flambda.Expr.t) =
     match expr with
     | Let { body; _ } | Let_mutable { body; _ } -> loop env body
     | Let_cont { body; handlers; } ->
@@ -291,7 +291,7 @@ module Continuation_scoping = struct
         | Recursive handlers ->
           let recursive_env =
             Continuation.Map.fold (fun cont
-                    (handler : Flambda.continuation_handler) env ->
+                    (handler : Flambda.Continuation_handler.t) env ->
                 let arity = List.length handler.params in
                 let kind =
                   if handler.is_exn_handler then Exn_handler else Normal
@@ -302,7 +302,7 @@ module Continuation_scoping = struct
           in
           Continuation.Map.iter (fun name
                   ({ params; stub; is_exn_handler; handler; specialised_args; }
-                    : Flambda.continuation_handler) ->
+                    : Flambda.Continuation_handler.t) ->
               ignore_continuation name;
               ignore_parameter_list params;
               loop recursive_env handler;
@@ -311,7 +311,7 @@ module Continuation_scoping = struct
               ignore specialised_args (* CR mshinwell: fixme *) )
             handlers;
           Continuation.Map.fold (fun cont
-                  (handler : Flambda.continuation_handler) env ->
+                  (handler : Flambda.Continuation_handler.t) env ->
               let arity = List.length handler.params in
               let kind =
                 if handler.is_exn_handler then Exn_handler else Normal
@@ -396,7 +396,7 @@ module Continuation_scoping = struct
       end
     | Proved_unreachable -> ()
 
-  and check_expr ~continuation_arity k (expr : Flambda.t) =
+  and check_expr ~continuation_arity k (expr : Flambda.Expr.t) =
     let env = Continuation.Map.singleton k (continuation_arity, Normal) in
     loop env expr
 
@@ -404,7 +404,7 @@ module Continuation_scoping = struct
     Flambda_iterators.iter_exprs_at_toplevels_in_program program ~f:check_expr
 end
 
-let variable_and_symbol_invariants (program : Flambda.program) =
+let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
   let all_declared_variables = ref Variable.Set.empty in
   let declare_variable var =
     if Variable.Set.mem var !all_declared_variables then
@@ -459,7 +459,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       raise (Unbound_mutable_variable mut_var)
     end
   in
-  let rec loop env (flam : Flambda.t) =
+  let rec loop env (flam : Flambda.Expr.t) =
     match flam with
     (* Expressions that can bind [Variable.t]s: *)
     | Let { var; defining_expr; body; _ } ->
@@ -484,7 +484,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       | Recursive handlers ->
         Continuation.Map.iter (fun name
                 ({ params; stub; is_exn_handler; handler; specialised_args; }
-                  : Flambda.continuation_handler) ->
+                  : Flambda.Continuation_handler.t) ->
             ignore_bool stub;
             if is_exn_handler then begin
               Misc.fatal_errorf "Continuation %a is declared [Recursive] but \
@@ -538,7 +538,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es
     | Proved_unreachable -> ()
-  and loop_named env (named : Flambda.named) =
+  and loop_named env (named : Flambda.Named.t) =
     match named with
     | Var var -> check_variable_is_bound env var
     | Symbol symbol -> check_symbol_is_bound env symbol
@@ -571,14 +571,14 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ({ Flambda.function_decls; free_vars; specialised_args;
           direct_call_surrogates = _; } as set_of_closures) =
       (* CR-soon mshinwell: check [direct_call_surrogates] *)
-      let { Flambda.set_of_closures_id; set_of_closures_origin; funs; } =
+      let { Flambda.Set_of_closures.t_id; set_of_closures_origin; funs; } =
         function_decls
       in
       ignore_set_of_closures_id set_of_closures_id;
       ignore_set_of_closures_origin set_of_closures_origin;
       let functions_in_closure = Variable.Map.keys funs in
       let variables_in_closure =
-        Variable.Map.fold (fun var (var_in_closure : Flambda.free_var)
+        Variable.Map.fold (fun var (var_in_closure : Flambda.Free_var.t)
                   variables_in_closure ->
             (* [var] may occur in the body, but will effectively be renamed
               to [var_in_closure], so the latter is what we check to make
@@ -600,7 +600,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
             ignore_debuginfo dbg;
             (* Check that [free_variables], which is only present as an
               optimization, is not lying. *)
-            let free_variables' = Flambda.free_variables body in
+            let free_variables' = Flambda.Expr.free_variables body in
             if not (Variable.Set.subset free_variables' free_variables) then
               raise (Free_variables_set_is_lying (fun_var,
                 free_variables, free_variables', function_decl));
@@ -675,7 +675,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       (* Check that every "specialised arg" is a parameter of one of the
         functions being declared, and that the variable to which the
         parameter is being specialised is bound. *)
-      Variable.Map.iter (fun _inner_var (free_var : Flambda.free_var) ->
+      Variable.Map.iter (fun _inner_var (free_var : Flambda.Free_var.t) ->
           check_variable_is_bound env free_var.var;
           match free_var.projection with
           | None -> ()
@@ -706,13 +706,13 @@ let variable_and_symbol_invariants (program : Flambda.program) =
         specialised_args
   in
   let loop_constant_defining_value env
-        (const : Flambda.constant_defining_value) =
+        (const : Flambda_static.Constant_defining_value.t) =
     match const with
     | Flambda.Allocated_const c ->
       ignore_allocated_const c
     | Flambda.Block (tag,fields) ->
       ignore_tag tag;
-      List.iter (fun (fields : Flambda.constant_defining_value_block_field) ->
+      List.iter (fun (fields : Flambda_static.Constant_defining_value.t_block_field) ->
           match fields with
           | Const c -> ignore_const c
           | Symbol s -> check_symbol_is_bound env s)
@@ -728,7 +728,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_closure_id closure_id;
       check_symbol_is_bound env symbol
   in
-  let rec loop_program_body env (program : Flambda.program_body) =
+  let rec loop_program_body env (program : Flambda_static.Program.t_body) =
     match program with
     | Let_rec_symbol (defs, program) ->
       let env =
@@ -787,7 +787,7 @@ let primitive_invariants flam ~no_access_to_global_module_identifiers =
       | _ -> ())
     flam
 
-let declared_var_within_closure (flam:Flambda.program) =
+let declared_var_within_closure (flam:Flambda_static.Program.t) =
   let bound = ref Var_within_closure.Set.empty in
   let bound_multiple_times = ref None in
   let add_and_check var =
@@ -805,7 +805,7 @@ let declared_var_within_closure (flam:Flambda.program) =
     flam;
   !bound, !bound_multiple_times
 
-let no_var_within_closure_is_bound_multiple_times (flam:Flambda.program) =
+let no_var_within_closure_is_bound_multiple_times (flam:Flambda_static.Program.t) =
   match declared_var_within_closure flam with
   | _, Some var -> raise (Var_within_closure_bound_multiple_times var)
   | _, None -> ()
@@ -863,9 +863,9 @@ let no_set_of_closures_id_is_bound_multiple_times program =
     raise (Set_of_closures_id_is_bound_multiple_times set_of_closures_id)
   | _, None -> ()
 
-let used_closure_ids (program:Flambda.program) =
+let used_closure_ids (program:Flambda_static.Program.t) =
   let used = ref Closure_id.Set.empty in
-  let f (flam : Flambda.named) =
+  let f (flam : Flambda.Named.t) =
     match flam with
     | Project_closure { closure_id; _} ->
       used := Closure_id.Set.union closure_id !used;
@@ -884,9 +884,9 @@ let used_closure_ids (program:Flambda.program) =
   Flambda_iterators.iter_named_of_program ~f program;
   !used
 
-let used_vars_within_closures (flam:Flambda.program) =
+let used_vars_within_closures (flam:Flambda_static.Program.t) =
   let used = ref Var_within_closure.Set.empty in
-  let f (flam : Flambda.named) =
+  let f (flam : Flambda.Named.t) =
     match flam with
     | Project_var { closure = _; var; } ->
       Closure_id.Map.iter (fun _ var ->
@@ -898,7 +898,7 @@ let used_vars_within_closures (flam:Flambda.program) =
   !used
 
 let every_used_function_from_current_compilation_unit_is_declared
-      (program:Flambda.program) =
+      (program:Flambda_static.Program.t) =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
   let declared, _ = declared_closure_ids program in
   let used = used_closure_ids program in
@@ -915,7 +915,7 @@ let every_used_function_from_current_compilation_unit_is_declared
   else raise (Unbound_closure_ids counter_examples)
 
 let every_used_var_within_closure_from_current_compilation_unit_is_declared
-      (flam:Flambda.program) =
+      (flam:Flambda_static.Program.t) =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
   let declared, _ = declared_var_within_closure flam in
   let used = used_vars_within_closures flam in
@@ -949,7 +949,7 @@ let _every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
         | _ -> ());
   Flambda_iterators.iter_on_set_of_closures_of_program program
     ~f:(fun ~constant:_ { Flambda.function_decls = { funs; _ }; _ } ->
-        Variable.Map.iter (fun fun_var { Flambda.free_variables; _ } ->
+        Variable.Map.iter (fun fun_var { Flambda.Expr.free_variables; _ } ->
             match Closure_id.Map.find (Closure_id.wrap fun_var) !moves with
             | exception Not_found -> ()
             | moved_to ->
@@ -962,7 +962,7 @@ let _every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
                         (fun_var, missing_dependencies)))
           funs)
 
-let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
+let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
   ignore kind;
   try
     variable_and_symbol_invariants flam;
@@ -1024,7 +1024,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
           or the function's parameter list.  Set of closures: %a"
         Variable.Set.print vars
         Variable.print fun_var
-        Flambda.print_set_of_closures set_of_closures
+        Flambda.Set_of_closures.print set_of_closures
     | Function_decls_have_overlapping_parameters vars ->
       Format.eprintf ">> Function declarations whose parameters overlap: \
           %a"
@@ -1045,7 +1045,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda.program) =
         Projection.print var
     | Free_variables_set_is_lying (var, claimed, calculated, function_decl) ->
       Format.eprintf ">> Function declaration whose [free_variables] set (%a) \
-          is not a superset of the result of [Flambda.free_variables] \
+          is not a superset of the result of [Flambda.Expr.free_variables] \
           applied to the body of the function (%a).  Declaration: %a"
         Variable.Set.print claimed
         Variable.Set.print calculated
@@ -1140,7 +1140,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
           Term:\n@ %a"
         descr
         Continuation.Set.print bad_without_definitions
-        Flambda.print expr
+        Flambda.Expr.print expr
     end;
     let continuation_definitions_with_uses =
       R.continuation_definitions_with_uses r
@@ -1167,7 +1167,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
         Continuation.Set.print
         (Continuation.Set.diff defined_continuations
           defined_continuations_in_r)
-        Flambda.print expr
+        Flambda.Expr.print expr
     end;
     (* CR mshinwell: The following could check the actual code in the
        continuation approximations matches the code in the term. *)
@@ -1191,7 +1191,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
           (%a):@ \n%a\n"
         Continuation.Set.print all_handlers_in_continuation_approxs
         Continuation.Set.print defined_continuations
-        Flambda.print expr
+        Flambda.Expr.print expr
     end;
     (* Checking the number of uses recorded in [r] is correct helps to catch
        bugs where, for example, some [Value_unknown] approximation for some
@@ -1206,18 +1206,18 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
           | count -> count
         in
         let num_in_r =
-          Inline_and_simplify_aux.Continuation_uses.num_uses uses
+          Simplify_aux.Continuation_uses.num_uses uses
         in
 (*
 let application_points =
-  Inline_and_simplify_aux.Continuation_uses.application_points uses
+  Simplify_aux.Continuation_uses.application_points uses
 in
 Format.eprintf "Uses of continuation %a:\n" Continuation.print cont;
 let count = ref 1 in
-List.iter (fun (use : Inline_and_simplify_aux.Continuation_uses.Use.t) ->
+List.iter (fun (use : Simplify_aux.Continuation_uses.Use.t) ->
   let env = use.env in
   Format.eprintf "Use %d: %a@ \n%!"
-    (!count) Inline_and_simplify_aux.Env.print env;
+    (!count) Simplify_aux.Env.print env;
   incr count)
 application_points;
 *)
@@ -1227,8 +1227,8 @@ application_points;
             Continuation.print cont
             num_in_term
             num_in_r
-            Inline_and_simplify_aux.Continuation_uses.print uses
-            Flambda.print expr
+            Simplify_aux.Continuation_uses.print uses
+            Flambda.Expr.print expr
         end)
       continuation_definitions_with_uses
   end

@@ -56,7 +56,7 @@ module type Continuations_or_functions = sig
     type t
 
     val params : t -> Variable.t list
-    val body : t -> Flambda.expr
+    val body : t -> Flambda.Expr.t
 
     val free_variables_of_body_excluding_callees_and_args
        : t
@@ -79,7 +79,7 @@ module type Continuations_or_functions = sig
     args : Variable.t list;
   }
 
-  val check_application : Flambda.expr -> application option
+  val check_application : Flambda.Expr.t -> application option
 end
 
 module For_functions = struct
@@ -95,17 +95,17 @@ module For_functions = struct
   end
 
   module Declaration = struct
-    type t = Flambda.function_declaration
+    type t = Flambda.Function_declaration.t
     let params (t : t) = Parameter.List.vars t.params
     let body (t : t) = t.body
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =
-      Flambda.free_variables ~ignore_uses_as_callee:()
+      Flambda.Expr.free_variables ~ignore_uses_as_callee:()
         ~ignore_uses_as_argument:() t.body
   end
 
   module Declarations = struct
-    type t = Flambda.function_declarations
+    type t = Flambda.Function_declarations.t
     let declarations (t : t) = t.funs
 
     (* CR-soon pchambart: to move to Flambda_utils and document
@@ -125,7 +125,7 @@ module For_functions = struct
       the association [g -> f]
     *)
     let function_variable_aliases
-        (function_decls : Flambda.function_declarations) ~backend =
+        (function_decls : Flambda.Function_declarations.t) ~backend =
       let fun_vars = Variable.Map.keys function_decls.funs in
       let symbols_to_fun_vars =
         let module Backend = (val backend : Backend_intf.S) in
@@ -137,7 +137,7 @@ module For_functions = struct
           Symbol.Map.empty
       in
       let fun_var_bindings = ref Variable.Map.empty in
-      Variable.Map.iter (fun _ (function_decl : Flambda.function_declaration) ->
+      Variable.Map.iter (fun _ (function_decl : Flambda.Function_declaration.t) ->
           Flambda_iterators.iter_all_toplevel_immutable_let_and_let_rec_bindings
             ~f:(fun var named ->
               (* CR-soon mshinwell: consider having the body passed to this
@@ -162,7 +162,7 @@ module For_functions = struct
     args : Variable.t list;
   }
 
-  let check_application (expr : Flambda.expr) : application option =
+  let check_application (expr : Flambda.Expr.t) : application option =
     match expr with
     | Apply { func; args; } -> Some { callee = func; args; }
     | _ -> None
@@ -203,17 +203,17 @@ module For_continuations = struct
   end
 
   module Declaration = struct
-    type t = Flambda.continuation_handler
+    type t = Flambda.Continuation_handler.t
     let params (t : t) = Parameter.List.vars t.params
     let body (t : t) = t.handler
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =
-      Flambda.free_variables
+      Flambda.Expr.free_variables
         ~ignore_uses_as_continuation_argument:() t.handler
   end
 
   module Declarations = struct
-    type t = Flambda.continuation_handlers
+    type t = Flambda.Continuation_handler.ts
     let declarations (t : t) = t
 
     let function_variable_aliases _t ~backend:_ = Variable.Map.empty
@@ -224,7 +224,7 @@ module For_continuations = struct
     args : Variable.t list;
   }
 
-  let check_application (expr : Flambda.expr) : application option =
+  let check_application (expr : Flambda.Expr.t) : application option =
     match expr with
     | Apply_cont (cont, _trap_action, args) -> Some { callee = cont; args; }
     | Apply { continuation; _ } -> Some { callee = continuation; args = []; }
@@ -366,7 +366,7 @@ module Analyse (CF : Continuations_or_functions) = struct
       | exception Not_found -> 0
       | func -> List.length (CF.Declaration.params func)
     in
-    let check_expr ~caller (expr : Flambda.t) =
+    let check_expr ~caller (expr : Flambda.Expr.t) =
       match CF.check_application expr with
       | Some { callee; args; } ->
         let callee_var = CF.Name.as_variable callee in
@@ -395,7 +395,7 @@ module Analyse (CF : Continuations_or_functions) = struct
     in
     CF.Name.Map.iter (fun caller (decl : CF.Declaration.t) ->
         Flambda_iterators.iter (check_expr ~caller)
-          (fun (_ : Flambda.named) -> ())
+          (fun (_ : Flambda.Named.t) -> ())
           (CF.Declaration.body decl);
         Variable.Set.iter
           (fun var -> escaping_function var; used_variable var)

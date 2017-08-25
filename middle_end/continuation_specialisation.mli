@@ -19,15 +19,15 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val for_toplevel_expression
-   : Flambda.expr
+   : Flambda.Expr.t
   -> vars_in_scope:Variable.Set.t
-  -> Inline_and_simplify_aux.Result.t
-  -> simplify_let_cont_handlers:(env:Inline_and_simplify_aux.Env.t
-    -> r:Inline_and_simplify_aux.Result.t
-    -> handlers:Flambda.continuation_handler Continuation.Map.t
-    -> args_approxs:Simple_value_approx.t list Continuation.Map.t option
+  -> Simplify_aux.Result.t
+  -> simplify_let_cont_handlers:(env:Simplify_aux.Env.t
+    -> r:Simplify_aux.Result.t
+    -> handlers:Flambda.Continuation_handler.t Continuation.Map.t
+    -> args_approxs:Flambda_type.t list Continuation.Map.t option
     -> recursive:Asttypes.rec_flag
     -> freshening:Freshening.t
-    -> Flambda.let_cont_handlers option * Inline_and_simplify_aux.Result.t)
+    -> Flambda.Let_cont_handlers.t option * Simplify_aux.Result.t)
   -> backend:(module Backend_intf.S)
-  -> Flambda.expr option
+  -> Flambda.Expr.t option

@@ -17,20 +17,16 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module U = Inline_and_simplify_aux.Continuation_uses
+module U = Simplify_aux.Continuation_uses
 
-(* CR mshinwell: Think carefully about function return approximations in
-   the context of potentially turning tail calls into non-tail calls via
-   this transformation. e.g.:
-
-   let foo <k> f x =
-     if x < 42 then k (1, 2)
-     else f <k> ()
-
-   Some notion of whether a value can be reconstructed just from its
-   approximation (plus projection information in the environment) is
-   probably required.  We should be careful that all wrapping code goes away
-   in these circumstances, so as not to break tail calls.
+(* CR mshinwell: To be implemented: new strategy:
+   - Use the approximation only to avoid unnecessary work
+   - Find variables passed to return continuations
+   - For all such variables:
+    - Ensure that it is linear (for the moment assume the definition is
+      in the same continuation as the return continuation's application)
+    - Check that the definition of the variable is really Pmakeblock, etc
+    - If so unbox.
 *)
 
 (* CR mshinwell: This should use direct call surrogates.  Unfortunately this
@@ -38,7 +34,8 @@ module U = Inline_and_simplify_aux.Continuation_uses
    and all normal parameters to the function being unboxed, together with
    existing specialised args. *)
 
-let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
+let unbox_function_decl ~fun_var
+      ~(function_decl : Flambda.Function_declaration.t)
       ~(how_to_unbox : Unbox_one_variable.How_to_unbox.t) ~return_cont_param
       ~specialised_args ~return_arity =
   let dbg = Debuginfo.none in
@@ -66,14 +63,16 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~freshening_already_assigned
   in
   let new_return_cont = Continuation.create () in
+  (* CR mshinwell: [wrapper_body] is misleading here; this is not for the
+     function stub. *)
   let wrapper_body =
-    let initial_body : Flambda.t =
+    let initial_body : Flambda.Expr.t =
       Apply_cont (new_return_cont, None,
         how_to_unbox.new_arguments_for_call_in_wrapper)
     in
     how_to_unbox.add_bindings_in_wrapper initial_body
   in
-  let new_function_body : Flambda.expr =
+  let new_function_body : Flambda.Expr.t =
     Let_cont {
       body = function_decl.body;
       handlers = Nonrecursive {
@@ -90,7 +89,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
   in
   let new_fun_var = Variable.rename fun_var in
   let function_decl =
-    Flambda.create_function_declaration ~continuation_param:new_return_cont
+    Flambda.Function_declaration.create ~continuation_param:new_return_cont
       ~return_arity
       ~params:function_decl.params
       ~body:new_function_body
@@ -108,10 +107,10 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
       ~specialised_args
       ~freshening_already_assigned:Parameter.Map.empty
   in
-  let function_stub_body : Flambda.expr =
+  let function_stub_body : Flambda.Expr.t =
     let receive_results = Continuation.create () in
     let results = List.map (fun (var, _proj) -> var) how_to_unbox.new_params in
-    let box_results_and_call_return_cont : Flambda.expr =
+    let box_results_and_call_return_cont : Flambda.Expr.t =
       let args_to_return_cont =
         List.map (fun (var, _) -> var)
           how_to_unbox.build_boxed_value_from_new_params
@@ -125,7 +124,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
         kind = Function;
         func = new_fun_var;
         continuation = receive_results;
-        args = Parameter.List.vars fun_wrapper_params;
+        args = fun_wrapper_params;
         call_kind = Direct {
           closure_id = Closure_id.wrap new_fun_var;
           return_arity = function_decl.return_arity;
@@ -141,14 +140,13 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
           handler = box_results_and_call_return_cont;
           stub = true;
           is_exn_handler = false;
-          specialised_args = Variable.Map.empty;
         };
       };
     };
   in
   let function_stub_decl =
-    Flambda.create_function_declaration ~continuation_param:wrapper_return_cont
-      ~return_arity:1
+    Flambda.Function_declaration.create ~continuation_param:wrapper_return_cont
+      ~return_arity:Return_arity.single_boxed_value
       ~params:fun_wrapper_params
       ~body:function_stub_body
       ~stub:true
@@ -164,7 +162,7 @@ let unbox_function_decl ~fun_var ~(function_decl : Flambda.function_declaration)
     fun_wrapper_specialised_args
 
 let for_function_decl ~continuation_uses ~fun_var
-        ~(function_decl : Flambda.function_declaration)
+        ~(function_decl : Flambda.Function_declaration.t)
         ~specialised_args ~recursively_used =
   if function_decl.stub || Variable.Set.mem fun_var recursively_used then
     None
@@ -193,7 +191,7 @@ let for_function_decl ~continuation_uses ~fun_var
           in
 (*
     Format.eprintf "Unbox_returns unboxing return with approx %a on:\n@ %a\n%!"
-      Simple_value_approx.print arg_approx
+      Flambda_type.print arg_approx
       Flambda.print_function_declaration (fun_var, function_decl);
 *)
           match how_to_unbox with
@@ -217,13 +215,13 @@ let for_function_decl ~continuation_uses ~fun_var
                 in
 (*
     Format.eprintf "Unbox_returns returns:\n@ %a\n%!"
-      Flambda.print_function_declarations
-        (Flambda.create_function_declarations ~funs:function_decls);
+      Flambda.Function_declarations.print
+        (Flambda.Function_declarations.create ~funs:function_decls);
 *)
                 Some (function_decls, new_specialised_args)
             end
 
-let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
+let run ~continuation_uses ~(function_decls : Flambda.Function_declarations.t)
       ~specialised_args ~backend =
   let recursively_used =
     Find_recursive_functions.in_function_declarations function_decls ~backend
@@ -247,4 +245,4 @@ let run ~continuation_uses ~(function_decls : Flambda.function_declarations)
       function_decls.funs
       (Variable.Map.empty, Variable.Map.empty)
   in
-  Flambda.create_function_declarations ~funs, new_specialised_args
+  Flambda.Function_declarations.create ~funs, new_specialised_args

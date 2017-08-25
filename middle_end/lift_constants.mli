@@ -29,7 +29,7 @@
     about inconstantness of variables and set of closures IDs.
 
     [Alias_analysis] is a "forwards" analysis that is analogous to the
-    propagation of [Simple_value_approx.t] values during [Inline_and_simplify].
+    propagation of [Flambda_type.t] values during [Simplify].
     It gives us information about relationships between values but not actually
     about their constantness.
 
@@ -43,23 +43,23 @@
     variables known to be constant and their defining expressions examined.
     Based on the results of [Alias_analysis], we simplify the destructive
     elements within the defining expressions (specifically, projection of
-    fields from blocks), to eventually yield [Flambda.constant_defining_value]s
+    fields from blocks), to eventually yield [Flambda_static.Constant_defining_value.t]s
     that are entirely constructive.  These will be bound to symbols in the
     resulting program.
 
     Another approach to this pass could be to only use the results of
     [Inconstant_idents] and then repeatedly lift constants and run
-    [Inline_and_simplify] until a fixpoint.  It was thought more robust to
+    [Simplify] until a fixpoint.  It was thought more robust to
     instead use [Alias_analysis], where the fixpointing involves a less
     complicated function.
 
-    We still run [Inline_and_simplify] once after this pass since the lifting
+    We still run [Simplify] once after this pass since the lifting
     of constants may enable more functions to become closed; the simplification
     pass provides an easy way of cleaning up (e.g. making sure [free_vars]
     maps in sets of closures are correct).
 *)
 
 val lift_constants
-   : Flambda.program
+   : Flambda_static.Program.t
   -> backend:(module Backend_intf.S)
-  -> Flambda.program
+  -> Flambda_static.Program.t

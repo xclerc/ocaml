@@ -34,9 +34,9 @@ type constant_project_var = {
 type constant_defining_value =
   | Allocated_const of allocated_const
   | Block of Tag.t * Variable.t list
-  | Set_of_closures of Flambda.set_of_closures
-  | Project_closure of Flambda.project_closure
-  | Move_within_set_of_closures of Flambda.move_within_set_of_closures
+  | Set_of_closures of Flambda.Set_of_closures.t
+  | Project_closure of Projection.Project_closure.t
+  | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
   | Project_var of constant_project_var
   | Field of Variable.t * int
   | Symbol_field of Symbol.t * int
@@ -59,7 +59,7 @@ type initialize_symbol_field = Variable.t option
 val run
    : constant_defining_value Variable.Tbl.t
   -> initialize_symbol_field list Symbol.Tbl.t
-  -> Flambda.constant_defining_value Symbol.Tbl.t
+  -> Flambda_static.Constant_defining_value.t Symbol.Tbl.t
   -> the_dead_constant:Symbol.t
   -> allocation_point Variable.Map.t
 

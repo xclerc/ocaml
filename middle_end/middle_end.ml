@@ -20,9 +20,9 @@ let _dump_function_sizes flam ~backend =
   let module Backend = (val backend : Backend_intf.S) in
   let than = max_int in
   Flambda_iterators.iter_on_set_of_closures_of_program flam
-    ~f:(fun ~constant:_ (set_of_closures : Flambda.set_of_closures) ->
+    ~f:(fun ~constant:_ (set_of_closures : Flambda.Set_of_closures.t) ->
       Variable.Map.iter (fun fun_var
-            (function_decl : Flambda.function_declaration) ->
+            (function_decl : Flambda.Function_declaration.t) ->
           let closure_id = Closure_id.wrap fun_var in
           let symbol = Backend.closure_symbol closure_id in
           match Inlining_cost.lambda_smaller' function_decl.body ~than with
@@ -44,7 +44,7 @@ let middle_end ppf ~prefixname ~backend
         with exn ->
           Misc.fatal_errorf "After Flambda pass %d, round %d:@.%s:@.%a"
             !pass_number !round_number (Printexc.to_string exn)
-            Flambda.print_program flam
+            Flambda_static.Program.print flam
       end
     in
     let print_prepared_lambda lam =
@@ -71,7 +71,7 @@ let middle_end ppf ~prefixname ~backend
       if !Clflags.dump_flambda_verbose then begin
         Format.fprintf ppf "@.PASS: %s@." name;
         Format.fprintf ppf "Before pass %d, round %d:@ %a@." !pass_number
-          !round_number Flambda.print_program flam;
+          !round_number Flambda_static.Program.print flam;
         Format.eprintf "\n@?"
       end;
       let flam = Profile.record ~accumulate:true name pass flam in
@@ -95,7 +95,7 @@ let middle_end ppf ~prefixname ~backend
       if !Clflags.dump_rawflambda
       then
         Format.fprintf ppf "After closure conversion:@ %a@."
-          Flambda.print_program flam;
+          Flambda_static.Program.print flam;
       check flam;
       let fast_mode flam =
         pass_number := 0;
@@ -107,8 +107,8 @@ let middle_end ppf ~prefixname ~backend
         +-+ ("Share_constants", Share_constants.share_constants)
         +-+ ("Lift_let_to_initialize_symbol",
              Lift_let_to_initialize_symbol.lift ~backend)
-        +-+ ("Inline_and_simplify",
-             Inline_and_simplify.run ~never_inline:false
+        +-+ ("Simplify",
+             Simplify.run ~never_inline:false
                ~allow_continuation_inlining:true
                ~allow_continuation_specialisation:false
                ~backend ~prefixname ~round)
@@ -143,8 +143,8 @@ let middle_end ppf ~prefixname ~backend
           +-+ ("Remove_unused_closure_vars 1",
                Remove_unused_closure_vars.remove_unused_closure_variables
                 ~remove_direct_call_surrogates:false)
-          +-+ ("Inline_and_simplify",
-               Inline_and_simplify.run ~never_inline:false
+          +-+ ("Simplify",
+               Simplify.run ~never_inline:false
                  ~allow_continuation_inlining:false
                  ~allow_continuation_specialisation:false
                  ~backend ~prefixname ~round)
@@ -153,15 +153,15 @@ let middle_end ppf ~prefixname ~backend
                 ~remove_direct_call_surrogates:false)
           +-+ ("Lift_let_cont 3", Lift_let_cont.run)
           +-+ ("Sink_lets 3", Sink_lets.run)
-          +-+ ("Inline_and_simplify continuation unboxing & specialisation",
-              Inline_and_simplify.run ~never_inline:true
+          +-+ ("Simplify continuation unboxing & specialisation",
+              Simplify.run ~never_inline:true
                 ~allow_continuation_inlining:false
                 ~allow_continuation_specialisation:true
                 ~backend ~prefixname ~round)
           +-+ ("Remove_unused_continuation_params",
                 Remove_unused_continuation_params.run ~backend)
-          +-+ ("Inline_and_simplify (func. inlining off, cont. inlining on)",
-                Inline_and_simplify.run ~never_inline:true
+          +-+ ("Simplify (func. inlining off, cont. inlining on)",
+                Simplify.run ~never_inline:true
                   ~allow_continuation_inlining:true
                   ~allow_continuation_specialisation:false
                   ~backend ~prefixname ~round)
@@ -212,7 +212,7 @@ let middle_end ppf ~prefixname ~backend
       if !Clflags.dump_flambda
       then
         Format.fprintf ppf "End of middle end:@ %a@."
-          Flambda.print_program flam;
+          Flambda_static.Program.print flam;
       check flam;
       (* CR-someday mshinwell: add -d... option for this *)
       (* dump_function_sizes flam ~backend; *)

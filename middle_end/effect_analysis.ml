@@ -22,7 +22,7 @@ let no_effects_prim (prim : Lambda.primitive) =
     true
   | _ -> false
 
-let rec no_effects (flam : Flambda.t) =
+let rec no_effects (flam : Flambda.Expr.t) =
   match flam with
   | Let { defining_expr; body; _ } ->
     no_effects_named defining_expr && no_effects body
@@ -33,7 +33,7 @@ let rec no_effects (flam : Flambda.t) =
   | Apply _ | Apply_cont _ -> false
   | Proved_unreachable -> true
 
-and no_effects_named (named : Flambda.named) =
+and no_effects_named (named : Flambda.Named.t) =
   match named with
   | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
   | Read_symbol_field _
@@ -47,7 +47,7 @@ let only_generative_effects_prim (prim : Lambda.primitive) =
   | Only_generative_effects, No_coeffects -> true
   | _ -> false
 
-let only_generative_effects_named (named : Flambda.named) =
+let only_generative_effects_named (named : Flambda.Named.t) =
   match named with
   | Set_of_closures _ -> true
   | Prim (prim, _, _) -> only_generative_effects_prim prim

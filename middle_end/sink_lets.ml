@@ -39,7 +39,7 @@ module State : sig
   val sunken_lets_for_handler
      : t
     -> Continuation.t
-    -> (Variable.t * Flambda.named W.t) list
+    -> (Variable.t * Flambda.Named.t W.t) list
 
   val add_candidates_to_sink
      : t
@@ -68,14 +68,14 @@ module State : sig
      : t
     -> Variable.t
     -> sink_into:Continuation.t
-    -> defining_expr:Flambda.named W.t
+    -> defining_expr:Flambda.Named.t W.t
     -> t
 
   val add_to_sink_from_state : t -> from:t -> t
 end = struct
   type t = {
     to_sink :
-      (Variable.t * Flambda.named W.t) list Continuation.Map.t;
+      (Variable.t * Flambda.Named.t W.t) list Continuation.Map.t;
     variables_to_sink : Variable.Set.t;
     candidates_to_sink :
       (Continuation.t * Asttypes.rec_flag) list Variable.Map.t;
@@ -176,7 +176,7 @@ end = struct
     }
 end
 
-let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
+let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
   match expr with
   | Let ({ var; defining_expr; body; } as let_expr) ->
     let body, state = sink_expr body ~state in
@@ -184,7 +184,7 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
       match defining_expr with
       | Set_of_closures set_of_closures ->
         let set_of_closures = sink_set_of_closures set_of_closures in
-        let defining_expr : Flambda.named = Set_of_closures set_of_closures in
+        let defining_expr : Flambda.Named.t = Set_of_closures set_of_closures in
         W.of_named defining_expr, state
       | _ -> W.of_defining_expr_of_let let_expr, state
     in
@@ -246,7 +246,7 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
   | Let_cont { body; handlers = Recursive handlers; } ->
     let body = sink body in
     let handlers, state =
-      Continuation.Map.fold (fun name (handler : Flambda.continuation_handler)
+      Continuation.Map.fold (fun name (handler : Flambda.Continuation_handler.t)
               (handlers, state) ->
           (* We don't sink anything into a recursive continuation. *)
           (* CR mshinwell: This is actually required for correctness at the
@@ -256,9 +256,9 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
           let new_handler = sink handler.handler in
           let fvs =
             Variable.Set.union
-              (Flambda.free_variables_of_specialised_args
+              (Flambda.Expr.free_variables_of_specialised_args
                  handler.specialised_args)
-              (Flambda.free_variables new_handler)
+              (Flambda.Expr.free_variables new_handler)
           in
           let state =
             State.add_candidates_to_sink state
@@ -277,7 +277,7 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
-        ~candidates_to_sink:(Flambda.free_variables body)
+        ~candidates_to_sink:(Flambda.Expr.free_variables body)
     in
     Let_cont { body; handlers = Recursive handlers; }, state
   | Let_cont { body; handlers =
@@ -299,7 +299,7 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
       State.add_candidates_to_sink state
         ~sink_into:[]
         ~candidates_to_sink:
-          (Flambda.free_variables_of_specialised_args specialised_args)
+          (Flambda.Expr.free_variables_of_specialised_args specialised_args)
     in
     Let_cont { body; handlers =
       Nonrecursive { name; handler = {
@@ -308,30 +308,30 @@ let rec sink_expr (expr : Flambda.expr) ~state : Flambda.expr * State.t =
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
-        ~candidates_to_sink:(Flambda.free_variables expr)
+        ~candidates_to_sink:(Flambda.Expr.free_variables expr)
     in
     expr, state
 
-and sink_set_of_closures (set_of_closures : Flambda.set_of_closures) =
+and sink_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let funs =
     Variable.Map.map (fun
-            (function_decl : Flambda.function_declaration) ->
-        Flambda.update_body_of_function_declaration function_decl
+            (function_decl : Flambda.Function_declaration.t) ->
+        Flambda.Function_declaration.update_body function_decl
           ~body:(sink function_decl.body))
       set_of_closures.function_decls.funs
   in
   let function_decls =
-    Flambda.update_function_declarations
+    Flambda.Function_declarations.update
       set_of_closures.function_decls ~funs
   in
-  Flambda.create_set_of_closures ~function_decls
+  Flambda.Set_of_closures.create ~function_decls
     ~free_vars:set_of_closures.free_vars
     ~specialised_args:set_of_closures.specialised_args
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
-and sink (expr : Flambda.t) =
+and sink (expr : Flambda.Expr.t) =
   let expr, state = sink_expr expr ~state:(State.create ()) in
-  let rec sink (expr : Flambda.t) : Flambda.t =
+  let rec sink (expr : Flambda.Expr.t) : Flambda.Expr.t =
     match expr with
     | Let ({ var; body; } as let_expr) ->
       let body = sink body in
@@ -359,7 +359,7 @@ and sink (expr : Flambda.t) =
     | Let_cont { body; handlers = Recursive handlers; } ->
       let body = sink body in
       let handlers =
-        Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
+        Continuation.Map.map (fun (handler : Flambda.Continuation_handler.t) ->
             { handler with
               handler = sink handler.handler;
             })

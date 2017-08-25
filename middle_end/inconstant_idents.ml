@@ -75,7 +75,7 @@ type result = {
 }
 
 module type Param = sig
-  val program : Flambda.program
+  val program : Flambda_static.Program.t
   val compilation_unit : Compilation_unit.t
 end
 
@@ -222,7 +222,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
      It can be empty when no constraint can be added like in the toplevel
      expression or in the body of a function.
   *)
-  let rec mark_loop ~toplevel (curr : dep list) (flam : Flambda.t) =
+  let rec mark_loop ~toplevel (curr : dep list) (flam : Flambda.Expr.t) =
     match flam with
     | Let { var; defining_expr = lam; body; _ } ->
       mark_named ~toplevel [Var var] lam;
@@ -240,7 +240,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_curr curr;
       mark_loop ~toplevel [] body;
       Continuation.Map.iter (fun _cont
-              (handler : Flambda.continuation_handler) ->
+              (handler : Flambda.Continuation_handler.t) ->
           List.iter (fun param -> mark_curr [Var (Parameter.var param)])
             handler.params;
           mark_loop ~toplevel:false [] handler.handler)
@@ -261,7 +261,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Proved_unreachable ->
       mark_curr curr
 
-  and mark_named ~toplevel curr (named : Flambda.named) =
+  and mark_named ~toplevel curr (named : Flambda.Named.t) =
     match named with
     | Var var -> mark_var var curr
     | Set_of_closures (set_of_closures) ->
@@ -408,14 +408,14 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     register_implication ~in_nc:(Closure function_decls.set_of_closures_id)
       ~implies_in_nc:curr;
     (* a closure is constant if its free variables are constants. *)
-    Variable.Map.iter (fun inner_id (var : Flambda.free_var) ->
+    Variable.Map.iter (fun inner_id (var : Flambda.Free_var.t) ->
         register_implication ~in_nc:(Var var.var)
           ~implies_in_nc:[
             Var inner_id;
             Closure function_decls.set_of_closures_id
           ])
       free_vars;
-    Variable.Map.iter (fun fun_id (ffunc : Flambda.function_declaration) ->
+    Variable.Map.iter (fun fun_id (ffunc : Flambda.Function_declaration.t) ->
         (* for each function f in a closure c 'c in NC => f' *)
         register_implication ~in_nc:(Closure function_decls.set_of_closures_id)
           ~implies_in_nc:[Var fun_id];
@@ -435,7 +435,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
         mark_loop ~toplevel:false [] ffunc.body)
       function_decls.funs
 
-  let mark_constant_defining_value (const:Flambda.constant_defining_value) =
+  let mark_constant_defining_value (const:Flambda_static.Constant_defining_value.t) =
     match const with
     | Allocated_const _
     | Block _
@@ -443,8 +443,8 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Set_of_closures set_of_closure ->
       mark_loop_set_of_closures ~toplevel:true [] set_of_closure
 
-  let mark_program (program : Flambda.program) =
-    let rec loop (program : Flambda.program_body) =
+  let mark_program (program : Flambda_static.Program.t) =
+    let rec loop (program : Flambda_static.Program.t_body) =
       match program with
       | End _ -> ()
       | Initialize_symbol (symbol,_tag,fields,program) ->
@@ -473,7 +473,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
 end
 
 let inconstants_on_program ~compilation_unit ~backend
-    (program : Flambda.program) =
+    (program : Flambda_static.Program.t) =
   let module P = struct
     let program = program
     let compilation_unit = compilation_unit

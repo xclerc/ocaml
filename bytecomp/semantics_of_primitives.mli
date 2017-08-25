@@ -63,7 +63,11 @@ type coeffects = No_coeffects | Has_coeffects
 val for_primitive: Lambda.primitive -> effects * coeffects
 
 type return_type =
-  | Float
+  | Boxed_float
+  | Unboxed_float
+  | Unboxed_int32
+  | Unboxed_int64
+  | Unboxed_nativeint
   | Other
 
 val return_type_of_primitive: Lambda.primitive -> return_type

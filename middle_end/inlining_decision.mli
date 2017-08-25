@@ -22,30 +22,30 @@
 (** Try to inline a full application of a known function, guided by various
     heuristics. *)
 val for_call_site
-   : env:Inline_and_simplify_aux.Env.t
-  -> r:Inline_and_simplify_aux.Result.t
-  -> function_decls:Flambda.function_declarations
+   : env:Simplify_aux.Env.t
+  -> r:Simplify_aux.Result.t
+  -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
   -> closure_id_being_applied:Closure_id.t
-  -> function_decl:Flambda.function_declaration
-  -> value_set_of_closures:Simple_value_approx.value_set_of_closures
+  -> function_decl:Flambda.Function_declaration.t
+  -> value_set_of_closures:Flambda_type.value_set_of_closures
   -> args:Variable.t list
-  -> args_approxs:Simple_value_approx.t list
+  -> args_approxs:Flambda_type.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
   -> simplify_apply_cont_to_cont:(
        ?don't_record_use:unit
-    -> Inline_and_simplify_aux.Env.t
-    -> Inline_and_simplify_aux.Result.t
+    -> Simplify_aux.Env.t
+    -> Simplify_aux.Result.t
     -> Continuation.t
-    -> args_approxs:Simple_value_approx.t list
-    -> Continuation.t * Inline_and_simplify_aux.Result.t)
+    -> args_approxs:Flambda_type.t list
+    -> Continuation.t * Simplify_aux.Result.t)
   -> inline_requested:Lambda.inline_attribute
   -> specialise_requested:Lambda.specialise_attribute
-  -> Flambda.t * Inline_and_simplify_aux.Result.t
+  -> Flambda.Expr.t * Simplify_aux.Result.t
 
 (** When a function declaration is encountered by [for_call_site], the body
     may be subject to inlining immediately, thus changing the declaration.
     This function must return [true] for that to be able to happen. *)
-val should_inline_inside_declaration : Flambda.function_declaration -> bool
+val should_inline_inside_declaration : Flambda.Function_declaration.t -> bool

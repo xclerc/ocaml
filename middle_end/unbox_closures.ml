@@ -17,19 +17,19 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module ASA = Augment_specialised_args
-module W = ASA.What_to_specialise
-module E = Inline_and_simplify_aux.Env
+module W = AST.What_to_specialise
+module E = Simplify_aux.Env
 
 module Transform = struct
   let pass_name = "unbox-closures"
   let variable_suffix = ""
 
-  let precondition ~env ~(set_of_closures : Flambda.set_of_closures) =
+  let precondition ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
     !Clflags.unbox_closures
       && not (E.at_toplevel env)
       && not (Variable.Map.is_empty set_of_closures.free_vars)
 
-  let what_to_specialise ~env ~(set_of_closures : Flambda.set_of_closures) =
+  let what_to_specialise ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
     let what_to_specialise = W.create ~set_of_closures in
     if not (precondition ~env ~set_of_closures) then
       what_to_specialise
@@ -44,7 +44,7 @@ module Transform = struct
       in
       Flambda_iterators.fold_function_decls_ignoring_stubs set_of_closures
         ~init:what_to_specialise
-        ~f:(fun ~fun_var ~(function_decl : Flambda.function_declaration)
+        ~f:(fun ~fun_var ~(function_decl : Flambda.Function_declaration.t)
               what_to_specialise ->
           let body_size = Inlining_cost.lambda_size function_decl.body in
           (* If the function is small enough, make a direct call surrogate
@@ -84,4 +84,4 @@ module Transform = struct
     end
 end
 
-include ASA.Make (Transform)
+include AST.Make (Transform)

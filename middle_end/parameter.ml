@@ -24,9 +24,9 @@ type parameter = {
   var : Variable.t;
 }
 
-let wrap var = { var }
+let wrap var = { var; }
 
-let var p = p.var
+let var t = t.var
 
 module M =
   Identifiable.Make (struct
@@ -74,6 +74,12 @@ module List = struct
   let vars params = List.map (fun { var } -> var) params
 
   let wrap vars = List.map (fun var -> wrap var) vars
+
+  let equal_vars t vars =
+    List.length t = List.length vars
+      && List.for_all2 (fun param variable ->
+          Variable.equal (var param) variable)
+        t vars
 
   let rename ?current_compilation_unit ?append ts =
     List.map (fun t -> rename ?current_compilation_unit ?append t) ts

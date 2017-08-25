@@ -141,8 +141,8 @@ let equal_descr (d1:descr) (d2:descr) : bool =
     false
 
 type t = {
-  sets_of_closures : Flambda.function_declarations Set_of_closures_id.Map.t;
-  closures : Flambda.function_declarations Closure_id.Map.t;
+  sets_of_closures : Flambda.Function_declarations.t Set_of_closures_id.Map.t;
+  closures : Flambda.Function_declarations.t Closure_id.Map.t;
   values : descr Export_id.Map.t Compilation_unit.Map.t;
   symbol_id : Export_id.t Symbol.Map.t;
   offset_fun : int Closure_id.Map.t;

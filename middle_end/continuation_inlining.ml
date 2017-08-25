@@ -16,11 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module R = Inline_and_simplify_aux.Result
+module R = Simplify_aux.Result
 
 let for_toplevel_expression expr r =
   (* This pass only performs linear inlining, even for stubs.  Non-linear
-     inlining for stubs is done by [Inline_and_simplify]. *)
+     inlining for stubs is done by [Simplify]. *)
   let used_linearly =
     R.non_recursive_continuations_used_linearly_in_inlinable_position r
   in
@@ -29,12 +29,12 @@ let for_toplevel_expression expr r =
   end else begin
 (*
     Format.eprintf "Continuations used linearly: %a\nTerm:@ \n%a%!"
-      Continuation.Set.print used_linearly Flambda.print expr;
+      Continuation.Set.print used_linearly Flambda.Expr.print expr;
 *)
     let r = ref r in
     (* CR mshinwell: Consider adding phys-equal checks and use of the tail
       recursive [Let] mapper. *)
-    let rec substitute env (expr : Flambda.expr) : Flambda.expr =
+    let rec substitute env (expr : Flambda.Expr.t) : Flambda.Expr.t =
       match expr with
       | Let ({ var; body; _ } as let_expr) ->
         let module W = Flambda.With_free_variables in
@@ -61,7 +61,7 @@ let for_toplevel_expression expr r =
               then it should be defined in [r] (note that zero uses does \
               not count as ``linearly used''): %a"
             Continuation.print name
-            Flambda.print expr
+            Flambda.Expr.print expr
         end;
         (* Beware: we may have failed to inline---see comment below.
            In that case the [Let_cont] must stay. *)
@@ -83,7 +83,7 @@ let for_toplevel_expression expr r =
       | Let_cont { body; handlers = Recursive handlers; } ->
         let body = substitute env body in
         let handlers =
-          Continuation.Map.map (fun (handler : Flambda.continuation_handler) ->
+          Continuation.Map.map (fun (handler : Flambda.Continuation_handler.t) ->
               { handler with
                 (* Do not inline continuations into recursive continuations.
                    This can cause high nesting depth of [catch rec] in the
@@ -94,7 +94,7 @@ let for_toplevel_expression expr r =
             handlers
         in
         Continuation.Map.iter (fun name
-                (handler : Flambda.continuation_handler) ->
+                (handler : Flambda.Continuation_handler.t) ->
             let approx =
               Continuation_approx.create ~name
                 ~handlers:(Recursive handlers)
@@ -106,7 +106,7 @@ let for_toplevel_expression expr r =
       | Apply_cont (cont, trap_action, args) ->
         begin match Continuation.Map.find cont env with
         | exception Not_found -> expr
-        | (handler : Flambda.continuation_handler) ->
+        | (handler : Flambda.Continuation_handler.t) ->
           begin match trap_action with
           | None -> ()
           | Some _ ->
@@ -117,7 +117,7 @@ let for_toplevel_expression expr r =
           end;
           r := R.forget_continuation_definition !r cont;
           List.fold_left2 (fun expr param arg ->
-              Flambda.create_let (Parameter.var param) (Var arg) expr)
+              Flambda.Expr.create_let (Parameter.var param) (Var arg) expr)
             handler.handler
             handler.params args
         end
@@ -125,7 +125,7 @@ let for_toplevel_expression expr r =
     in
     let expr = substitute Continuation.Map.empty expr in
 (*
-    Format.eprintf "After continuation inlining:@ \n%a" Flambda.print expr;
+    Format.eprintf "After continuation inlining:@ \n%a" Flambda.Expr.print expr;
 *)
     expr, !r
   end

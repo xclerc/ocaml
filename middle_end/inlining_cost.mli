@@ -37,7 +37,7 @@ end
    cost so as to fit under the given [inlining_threshold].  The [bonus] is
    added to the threshold before evaluation. *)
 val can_inline
-    : Flambda.t
+   : Flambda.Expr.t
   -> Threshold.t
   -> bonus:int
   -> bool
@@ -51,7 +51,7 @@ val can_inline
    returned, with the constructor argument being the measured estimated size
    of the expression. *)
 val can_try_inlining
-    : Flambda.t
+   : Flambda.Expr.t
   -> Threshold.t
   -> number_of_arguments:int
   -> size_from_approximation:int option
@@ -77,14 +77,14 @@ module Benefit : sig
   val remove_prims : t -> int -> t
   val remove_branch : t -> t
   val direct_call_of_indirect : t -> t
-  val requested_inline : t -> size_of:Flambda.t -> t
+  val requested_inline : t -> size_of:Flambda.Expr.t -> t
 
-  val remove_code : Flambda.t -> t -> t
-  val remove_code_named : Flambda.named -> t -> t
+  val remove_code : Flambda.Expr.t -> t -> t
+  val remove_code_named : Flambda.Named.t -> t -> t
   val remove_projection : Projection.t -> t -> t
 
-  val add_code : Flambda.t -> t -> t
-  val add_code_named : Flambda.named -> t -> t
+  val add_code : Flambda.Expr.t -> t -> t
+  val add_code_named : Flambda.Named.t -> t -> t
   val add_projection : Projection.t -> t -> t
 
   val print : Format.formatter -> t -> unit
@@ -97,20 +97,20 @@ module Whether_sufficient_benefit : sig
   type t
 
   val create
-     : original:Flambda.t
+     : original:Flambda.Expr.t
     -> toplevel:bool
     -> branch_depth:int
-    -> Flambda.t
+    -> Flambda.Expr.t
     -> benefit:Benefit.t
     -> lifting:bool
     -> round:int
     -> t
 
   val create_list
-     : originals:Flambda.t list
+     : originals:Flambda.Expr.t list
     -> toplevel:bool
     -> branch_depth:int
-    -> Flambda.t list
+    -> Flambda.Expr.t list
     -> benefit:Benefit.t
     -> lifting:bool
     -> round:int
@@ -146,6 +146,6 @@ val maximum_interesting_size_of_function_body : int -> int
 (** Measure the given expression to determine whether its size is at or
     below the given threshold.  [None] is returned if it is too big; otherwise
     [Some] is returned with the measured size. *)
-val lambda_smaller' : Flambda.expr -> than:int -> int option
+val lambda_smaller' : Flambda.Expr.t -> than:int -> int option
 
-val lambda_size : Flambda.expr -> int
+val lambda_size : Flambda.Expr.t -> int

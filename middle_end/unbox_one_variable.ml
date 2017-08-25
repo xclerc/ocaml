@@ -16,16 +16,16 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
+module T = Flambda_types
 
 module How_to_unbox = struct
   type t = {
     being_unboxed_to_wrapper_params_being_unboxed : Variable.t Variable.Map.t;
-    add_bindings_in_wrapper : Flambda.expr -> Flambda.expr;
+    add_bindings_in_wrapper : Flambda.Expr.t -> Flambda.Expr.t;
     new_arguments_for_call_in_wrapper : Variable.t list;
     new_params : (Variable.t * Projection.t) list;
     build_boxed_value_from_new_params :
-      (Variable.t * (Flambda.expr -> Flambda.expr)) list;
+      (Variable.t * (Flambda.Expr.t -> Flambda.Expr.t)) list;
   }
 
   let create () =
@@ -101,7 +101,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   let is_int = Variable.rename ~append:"_is_int" being_unboxed in
   let is_int_in_wrapper = Variable.rename is_int in
   let is_int_known_value =
-    if no_constant_ctors then Some ((Const (Int 0)) : Flambda.named)
+    if no_constant_ctors then Some ((Const (Int 0)) : Flambda.Named.t)
     else None
   in
   (* CR-soon mshinwell: On [discriminant] add information that tells us
@@ -121,7 +121,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
     in
     match Numbers.Int.Set.elements discriminant_possible_values with
     | [] -> assert false  (* see the bottom of [how_to_unbox], below *)
-    | [tag] -> Some ((Const (Int tag)) : Flambda.named)
+    | [tag] -> Some ((Const (Int tag)) : Flambda.Named.t)
     | _tags -> None
   in
   let needs_discriminant =
@@ -168,13 +168,13 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
     let join_cont = Continuation.create () in
     let tag = Variable.create "tag" in
     let is_int_switch =
-      Flambda.create_switch ~scrutinee:is_int_in_wrapper
+      Flambda.Expr.create_switch ~scrutinee:is_int_in_wrapper
         ~all_possible_values:(Numbers.Int.Set.of_list [0; 1])
         ~arms:[0, is_block_cont]
         ~default:(Some is_int_cont)
     in
     let add_fill_fields_conts expr =
-      Numbers.Int.Map.fold (fun size filler_cont expr : Flambda.expr ->
+      Numbers.Int.Map.fold (fun size filler_cont expr : Flambda.Expr.t ->
           let fields =
             Array.init max_size (fun index ->
               if index < size then
@@ -190,8 +190,8 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
                 | Some var -> var)
               (Array.to_list fields)
           in
-          let filler : Flambda.expr =
-            let filler : Flambda.expr =
+          let filler : Flambda.Expr.t =
+            let filler : Flambda.Expr.t =
               let is_int_in_wrapper =
                 if no_constant_ctors then [] else [is_int_in_wrapper]
               in
@@ -205,7 +205,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
                 match var_opt with
                 | None -> filler
                 | Some var ->
-                    Flambda.create_let var
+                    Flambda.Expr.create_let var
                       (Prim (Pfield index, [wrapper_param_being_unboxed], dbg))
                       filler)
               fields
@@ -251,13 +251,13 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           sizes_to_filler_conts
           []
       in
-      Flambda.create_switch ~scrutinee:tag
+      Flambda.Expr.create_switch ~scrutinee:tag
         ~all_possible_values
         ~arms
         ~default:None
     in
-    Flambda.create_let unit_value (Const (Int 0))
-      (Flambda.create_let is_int_in_wrapper
+    Flambda.Expr.create_let unit_value (Const (Int 0))
+      (Flambda.Expr.create_let is_int_in_wrapper
         (if no_constant_ctors then
            Const (Int 0)
          else
@@ -292,7 +292,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
               handler = {
                 params = [];
                 handler =
-                  Flambda.create_let tag
+                  Flambda.Expr.create_let tag
                     (match discriminant_known_value with
                      | Some known -> known
                      | None ->
@@ -328,7 +328,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   let boxing_is_int_cont = Continuation.create () in
   let boxing_is_block_cont = Continuation.create () in
   let boxing_is_int_switch =
-    Flambda.create_switch ~scrutinee:is_int
+    Flambda.Expr.create_switch ~scrutinee:is_int
       ~all_possible_values:(Numbers.Int.Set.of_list [0; 1])
       ~arms:[0, boxing_is_block_cont]
       ~default:(Some boxing_is_int_cont)
@@ -346,7 +346,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
         tags_to_sizes_and_boxing_conts
         []
     in
-    Flambda.create_switch ~scrutinee:discriminant
+    Flambda.Expr.create_switch ~scrutinee:discriminant
       ~all_possible_values
       ~arms
       ~default:None
@@ -354,7 +354,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   let build_boxed_value_from_new_params =
     let boxed = Variable.rename ~append:"_boxed" being_unboxed in
     let join_cont = Continuation.create () in
-    let build (expr : Flambda.expr) : Flambda.expr =
+    let build (expr : Flambda.Expr.t) : Flambda.Expr.t =
       let consts =
         Numbers.Int.Set.fold (fun ctor_index consts ->
             let cont = Continuation.create () in
@@ -363,7 +363,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           []
       in
       let constant_ctor_switch =
-        Flambda.create_switch ~scrutinee:discriminant
+        Flambda.Expr.create_switch ~scrutinee:discriminant
           ~all_possible_values:constant_ctors
           ~arms:consts
           ~default:None
@@ -371,7 +371,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
       let add_constant_ctor_conts expr =
         List.fold_left (fun expr (ctor_index, cont) ->
             let ctor_index_var = Variable.create "ctor_index" in
-            Flambda.create_let ctor_index_var (Const (Int ctor_index))
+            Flambda.Expr.create_let ctor_index_var (Const (Int ctor_index))
               (Let_cont {
                 body = expr;
                 handlers = Nonrecursive {
@@ -389,7 +389,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           consts
       in
       let add_boxing_conts expr =
-        Tag.Map.fold (fun tag (size, boxing_cont) expr : Flambda.expr ->
+        Tag.Map.fold (fun tag (size, boxing_cont) expr : Flambda.Expr.t ->
             let boxed = Variable.rename boxed in
             let fields =
               let fields, _index =
@@ -401,8 +401,8 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
               in
               List.rev fields
             in
-            let handler : Flambda.expr =
-              Flambda.create_let boxed
+            let handler : Flambda.Expr.t =
+              Flambda.Expr.create_let boxed
                 (Prim (Pmakeblock (Tag.to_int tag, Immutable, None),
                   fields, dbg))
                 (Flambda.Apply_cont (join_cont, None, [boxed]))
@@ -423,7 +423,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           tags_to_sizes_and_boxing_conts
           expr
       in
-      let body : Flambda.expr =
+      let body : Flambda.Expr.t =
         Let_cont {
           body = Let_cont {
             body = Let_cont {
@@ -476,11 +476,11 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
       let body =
         match is_int_known_value with
         | None -> body
-        | Some named -> Flambda.create_let is_int named body
+        | Some named -> Flambda.Expr.create_let is_int named body
       in
       match discriminant_known_value with
       | None -> body
-      | Some named -> Flambda.create_let discriminant named body
+      | Some named -> Flambda.Expr.create_let discriminant named body
     in
     [boxed, build]
   in
@@ -500,19 +500,19 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
   }
 
 let how_to_unbox ~being_unboxed ~being_unboxed_approx ~unbox_returns =
-  match A.check_approx_for_variant being_unboxed_approx with
+  match T.check_approx_for_variant being_unboxed_approx with
   | Wrong -> None
   | Ok approx ->
 (*
 Format.eprintf "how_to_unbox %a: %a\n%!"
   Variable.print being_unboxed
-  A.print being_unboxed_approx;
+  T.print being_unboxed_approx;
 *)
     let constant_ctors =
       match approx with
       | Blocks _ -> Numbers.Int.Set.empty
       | Blocks_and_immediates (_, imms) | Immediates imms ->
-        let module I = A.Unionable.Immediate in
+        let module I = T.Unionable.Immediate in
         I.Set.fold (fun (approx : I.t) ctor_indexes ->
             let ctor_index =
               match approx with

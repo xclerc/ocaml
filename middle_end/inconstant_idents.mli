@@ -24,7 +24,7 @@ type result
 val inconstants_on_program
    : compilation_unit:Compilation_unit.t
   -> backend:(module Backend_intf.S)
-  -> Flambda.program
+  -> Flambda_static.Program.t
   -> result
 
 (** [variable var res] returns [true] if [var] is marked as inconstant

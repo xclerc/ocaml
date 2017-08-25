@@ -90,12 +90,11 @@ val apply_trap : t -> Trap_id.t -> Trap_id.t
 *)
 val rewrite_recursive_calls_with_symbols
    : t
-  -> Flambda.function_declarations
+  -> Flambda.Function_declarations.t
   -> make_closure_symbol:(Closure_id.t -> Symbol.t)
-  -> Flambda.function_declarations
+  -> Flambda.Function_declarations.t
 
-(* CR-soon mshinwell for mshinwell: maybe inaccurate module name, it freshens
-   closure IDs as well.  Check use points though *)
+(* CR mshinwell: To be removed after Pierre's patch lands *)
 module Project_var : sig
   (** A table used for freshening of identifiers in [Project_closure] and
       [Move_within_set_of_closures] ("ids of closures"); and [Project_var]
@@ -115,7 +114,7 @@ module Project_var : sig
       table such that later the access to the field x of g and selection of
       g in the closure can be substituted.
    *)
-  type t
+  type t = Flambda_type0.closure_freshening
 
   (* The freshening that does nothing. *)
   val empty : t
@@ -126,7 +125,7 @@ module Project_var : sig
   (** Freshen a closure ID based on the given renaming.  The same ID is
       returned if the renaming does not affect it.
       If dealing with approximations, you probably want to use
-      [Simple_value_approx.freshen_and_check_closure_id] instead of this
+      [Flambda_type.freshen_and_check_closure_id] instead of this
       function.
   *)
   val apply_closure_id : t -> Closure_id.t -> Closure_id.t
@@ -144,11 +143,11 @@ end
 (* CR-soon mshinwell for mshinwell: add comment *)
 val apply_function_decls_and_free_vars
    : t
-  -> (Flambda.free_var * 'a) Variable.Map.t
-  -> Flambda.function_declarations
+  -> (Flambda.Free_var.t * 'a) Variable.Map.t
+  -> Flambda.Function_declarations.t
   -> only_freshen_parameters:bool
-  -> (Flambda.free_var * 'a) Variable.Map.t
-    * Flambda.function_declarations
+  -> (Flambda.Free_var.t * 'a) Variable.Map.t
+    * Flambda.Function_declarations.t
     * t
     * Project_var.t
 
@@ -170,27 +169,15 @@ val freshen_move_within_set_of_closures
     range. *)
 (* CR-someday mshinwell: consider fixing that *)
 val freshen_free_vars_projection_relation
-   : Flambda.free_var Variable.Map.t
+   : Flambda.Free_var.t Variable.Map.t
   -> freshening:t
   -> closure_freshening:Project_var.t option
-  -> Flambda.free_var Variable.Map.t
+  -> Flambda.Free_var.t Variable.Map.t
 
 val freshen_free_vars_projection_relation'
-   : (Flambda.free_var * 'a) Variable.Map.t
+   : (Flambda.Free_var.t * 'a) Variable.Map.t
   -> freshening:t
   -> closure_freshening:Project_var.t option
-  -> (Flambda.free_var * 'a) Variable.Map.t
-
-val freshen_specialised_args_projection_relation
-   : Flambda.specialised_to Variable.Map.t
-  -> freshening:t
-  -> closure_freshening:Project_var.t option
-  -> Flambda.specialised_to Variable.Map.t
-
-val freshen_specialised_args_projection_relation'
-   : (Flambda.specialised_to * 'a) Variable.Map.t
-  -> freshening:t
-  -> closure_freshening:Project_var.t option
-  -> (Flambda.specialised_to * 'a) Variable.Map.t
+  -> (Flambda.Free_var.t * 'a) Variable.Map.t
 
 val range_of_continuation_freshening : t -> Continuation.Set.t

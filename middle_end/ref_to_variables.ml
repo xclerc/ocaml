@@ -22,9 +22,9 @@ let rename_var var =
   (* Variable.rename var *)
   (*   ~current_compilation_unit:(Compilation_unit.get_current_exn ()) *)
 
-let variables_not_used_as_local_reference (tree:Flambda.t) =
+let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
   let set = ref Variable.Set.empty in
-  let rec loop_named (flam : Flambda.named) =
+  let rec loop_named (flam : Flambda.Named.t) =
     match flam with
     | Var var ->
       set := Variable.Set.add var !set
@@ -38,15 +38,15 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
     | Symbol _ |Const _ | Allocated_const _ | Read_mutable _
     | Read_symbol_field _ | Project_closure _
     | Move_within_set_of_closures _ | Project_var _ ->
-      set := Variable.Set.union !set (Flambda.free_variables_named flam)
+      set := Variable.Set.union !set (Flambda.Named.free_variables flam)
     | Set_of_closures set_of_closures ->
-      set := Variable.Set.union !set (Flambda.free_variables_named flam);
-      Variable.Map.iter (fun _ (function_decl : Flambda.function_declaration) ->
+      set := Variable.Set.union !set (Flambda.Named.free_variables flam);
+      Variable.Map.iter (fun _ (function_decl : Flambda.Function_declaration.t) ->
           loop function_decl.body)
         set_of_closures.function_decls.funs
     | Assign _ ->
-      set := Variable.Set.union !set (Flambda.free_variables_named flam)
-  and loop (flam : Flambda.t) =
+      set := Variable.Set.union !set (Flambda.Named.free_variables flam)
+  and loop (flam : Flambda.Expr.t) =
     match flam with
     | Let { defining_expr; body; _ } ->
       loop_named defining_expr;
@@ -61,19 +61,19 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
     | Let_cont { body; handlers = Recursive handlers; } ->
       loop body;
       Continuation.Map.iter (fun _cont
-            (handler : Flambda.continuation_handler) ->
+            (handler : Flambda.Continuation_handler.t) ->
           loop handler.handler)
         handlers
     | Apply _ | Apply_cont _ | Switch _ ->
-      set := Variable.Set.union !set (Flambda.free_variables flam)
+      set := Variable.Set.union !set (Flambda.Expr.free_variables flam)
     | Proved_unreachable -> ()
   in
   loop tree;
   !set
 
-let variables_containing_ref (flam:Flambda.t) =
+let variables_containing_ref (flam:Flambda.Expr.t) =
   let map = ref Variable.Map.empty in
-  let aux (flam : Flambda.t) =
+  let aux (flam : Flambda.Expr.t) =
     match flam with
     | Let { var;
             defining_expr = Prim(Pmakeblock(0, Asttypes.Mutable, _), l, _);
@@ -109,7 +109,7 @@ let eliminate_ref_of_expr flam =
       then None (* This case could apply when inlining code containing GADTS *)
       else Some (arr.(field), Array.length arr)
     in
-    let aux_named var (named : Flambda.named) =
+    let aux_named var (named : Flambda.Named.t) =
       match named with
       | Prim(Pfield field, [v], _)
         when convertible_variable v ->
@@ -145,7 +145,7 @@ let eliminate_ref_of_expr flam =
       | Move_within_set_of_closures _ | Project_var _ | Assign _ ->
         (), [], var, Flambda.Reachable named
     in
-    let aux (flam : Flambda.t) : Flambda.t =
+    let aux (flam : Flambda.Expr.t) : Flambda.Expr.t =
       match flam with
       | Let { var;
               defining_expr = Prim(Pmakeblock(0, Asttypes.Mutable, shape), l,_);
@@ -164,7 +164,7 @@ let eliminate_ref_of_expr flam =
                 (Let_mutable { var = field_var;
                                initial_value = init;
                                body;
-                               contents_kind = kind } : Flambda.t))
+                               contents_kind = kind } : Flambda.Expr.t))
             (0, body) l shape in
         expr
       | Let _ ->
@@ -181,6 +181,6 @@ let eliminate_ref_of_expr flam =
     in
     Flambda_iterators.map_expr aux flam
 
-let eliminate_ref (program:Flambda.program) =
+let eliminate_ref (program:Flambda_static.Program.t) =
   Flambda_iterators.map_exprs_at_toplevel_of_program program
     ~f:eliminate_ref_of_expr

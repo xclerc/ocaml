@@ -16,16 +16,16 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
-module E = Inline_and_simplify_aux.Env
-module R = Inline_and_simplify_aux.Result
+module T = Flambda_types
+module E = Simplify_aux.Env
+module R = Simplify_aux.Result
 
 let pass_name = "continuation-specialisation"
 let () = Pass_wrapper.register ~pass_name
 
 type specialising_result =
   | Didn't_specialise
-  | Specialised of Continuation.t * Flambda.let_cont_handlers
+  | Specialised of Continuation.t * Flambda.Let_cont_handlers.t
 
 let environment_for_simplification ~env ~old_handlers =
   let freshening =
@@ -43,7 +43,7 @@ let environment_for_simplification ~env ~old_handlers =
         E.set_never_inline (E.set_freshening env freshening)))
   in
   let env =
-    Continuation.Map.fold (fun cont (handler : Flambda.continuation_handler)
+    Continuation.Map.fold (fun cont (handler : Flambda.Continuation_handler.t)
               env ->
         let cont = Freshening.apply_static_exception (E.freshening env) cont in
         let approx =
@@ -58,7 +58,7 @@ let environment_for_simplification ~env ~old_handlers =
 
 let handlers_for_simplification ~old_handlers ~newly_specialised_args
       ~entry_point_cont ~freshening ~invariant_params_flow =
-  Continuation.Map.fold (fun cont (old_handler : Flambda.continuation_handler)
+  Continuation.Map.fold (fun cont (old_handler : Flambda.Continuation_handler.t)
           new_handlers ->
       let wrong_spec_args =
         Variable.Set.inter (Variable.Map.keys old_handler.specialised_args)
@@ -139,7 +139,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
      Apart from this information, the [r] used for simplification is
      empty. *)
   Continuation.Map.fold (fun cont
-          (handler : Flambda.continuation_handler) r ->
+          (handler : Flambda.Continuation_handler.t) r ->
       let join_approxs =
         match Continuation.Map.find cont definitions_with_uses with
         | exception Not_found ->
@@ -149,7 +149,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
             Continuation.Set.print
             (Continuation.Map.keys definitions_with_uses)
         | (uses, _approx, _env, _recursive) ->
-          Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs
+          Simplify_aux.Continuation_uses.meet_of_args_approxs
             uses ~num_params:(List.length handler.params)
       in
       let freshened_cont =
@@ -158,7 +158,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
       let specialised_args =
         match Continuation.Map.find freshened_cont new_handlers with
         | exception Not_found -> assert false  (* see above *)
-        | (handler : Flambda.continuation_handler) -> handler.specialised_args
+        | (handler : Flambda.Continuation_handler.t) -> handler.specialised_args
       in
       let args_approxs =
         List.map2 (fun param join_approx ->
@@ -198,7 +198,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
    parameters flow information.  This saves multiple rounds of simplification
    being required to propagate around mutually-recursive continuations.
 *)
-let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
+let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handler.ts)
       ~(newly_specialised_args : Flambda.specialised_args)
       ~invariant_params_flow ~env ~(recursive : Asttypes.rec_flag)
       ~simplify_let_cont_handlers ~definitions_with_uses
@@ -219,7 +219,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
   if !Clflags.flambda_invariant_checks then begin
     (* Unbound continuations will be caught by [simplify_let_cont_handlers]
        but it's nicer for debugging to check now. *)
-    let handlers : Flambda.let_cont_handlers =
+    let handlers : Flambda.Let_cont_handlers.t =
       match recursive with
       | Nonrecursive ->
         begin match Continuation.Map.bindings new_handlers with
@@ -255,15 +255,15 @@ let try_specialising ~cont ~(old_handlers : Flambda.continuation_handlers)
     let module W = Inlining_cost.Whether_sufficient_benefit in
     let wsb =
       let _originals =
-        List.map (fun (handler : Flambda.continuation_handler) ->
+        List.map (fun (handler : Flambda.Continuation_handler.t) ->
             handler.handler)
           (Continuation.Map.data old_handlers)
       in
       let new_handlers =
-        match (new_handlers : Flambda.let_cont_handlers) with
+        match (new_handlers : Flambda.Let_cont_handlers.t) with
         | Nonrecursive { handler; _ } -> [handler.handler]
         | Recursive handlers ->
-          List.map (fun (handler : Flambda.continuation_handler) ->
+          List.map (fun (handler : Flambda.Continuation_handler.t) ->
               handler.handler)
             (Continuation.Map.data handlers)
       in
@@ -312,20 +312,20 @@ let handlers_and_invariant_params ~cont ~approx ~backend =
       in
       Some (handlers, invariant_params, invariant_params_flow)
 
-let can_specialise_param ~(handler : Flambda.continuation_handler) ~param
+let can_specialise_param ~(handler : Flambda.Continuation_handler.t) ~param
       ~arg_approx ~invariant_params =
   (not handler.stub)
     && Variable.Map.mem param invariant_params
     && (not (Variable.Map.mem param handler.specialised_args))
-    && A.useful arg_approx
+    && T.useful arg_approx
 
 let examine_use ~specialisations ~cont
-      ~(handler : Flambda.continuation_handler) ~invariant_params
+      ~(handler : Flambda.Continuation_handler.t) ~invariant_params
       ~invariant_params_flow ~handlers ~recursive
-      ~(use : Inline_and_simplify_aux.Continuation_uses.Use.t) =
+      ~(use : Simplify_aux.Continuation_uses.Use.t) =
   let module CA = Continuation.With_args in
   let module CSA = Continuation_with_specialised_args in
-  let module U = Inline_and_simplify_aux.Continuation_uses in
+  let module U = Simplify_aux.Continuation_uses in
   match U.Use.Kind.is_specialisable use.kind with
   | None -> specialisations
   | Some args_and_approxs ->
@@ -387,7 +387,7 @@ let examine_use ~specialisations ~cont
 
 let find_candidate_specialisations r ~backend =
   let module N = Num_continuation_uses in
-  let module U = Inline_and_simplify_aux.Continuation_uses in
+  let module U = Simplify_aux.Continuation_uses in
   let definitions_with_uses = R.continuation_definitions_with_uses r in
   (* The result of this fold is a map that groups together uses of a
      continuation where some subset of its invariant parameters have the same
@@ -473,7 +473,7 @@ let beneficial_specialisations r ~specialisations ~simplify_let_cont_handlers =
     specialisations
     (Continuation.Map.empty, CA.Map.empty)
 
-let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
+let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
         ~apply_cont_rewrites =
   let module Placement = Place_continuations.Placement in
   let placed =
@@ -484,26 +484,26 @@ let insert_specialisations (expr : Flambda.expr) ~vars_in_scope ~new_conts
     | exception Not_found -> None
     | handlers_list ->
       let expr =
-        List.fold_left (fun body handlers : Flambda.expr ->
+        List.fold_left (fun body handlers : Flambda.Expr.t ->
             Let_cont { body; handlers; })
           around
           handlers_list
       in
       Some expr
   in
-  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.t) : Flambda.t ->
+  Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.Expr.t) : Flambda.Expr.t ->
       match expr with
       | Let { var; defining_expr; body } ->
         let placement : Placement.t = After_let var in
         begin match place ~placement ~around:body with
         | None -> expr
-        | Some body -> Flambda.create_let var defining_expr body
+        | Some body -> Flambda.Expr.create_let var defining_expr body
         end
       | Let_cont { body; handlers; } ->
         let done_something = ref false in
         let f handlers =
           Continuation.Map.mapi (fun name
-                  (handler : Flambda.continuation_handler) ->
+                  (handler : Flambda.Continuation_handler.t) ->
               let placement : Placement.t = Just_inside_continuation name in
               begin match place ~placement ~around:handler.handler with
               | None -> handler

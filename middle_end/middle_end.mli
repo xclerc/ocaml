@@ -26,4 +26,4 @@ val middle_end
   -> filename:string
   -> module_ident:Ident.t
   -> module_initializer:Lambda.lambda
-  -> Flambda.program
+  -> Flambda_static.Program.t

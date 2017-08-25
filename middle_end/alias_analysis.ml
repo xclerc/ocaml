@@ -34,9 +34,9 @@ type constant_project_var = {
 type constant_defining_value =
   | Allocated_const of allocated_const
   | Block of Tag.t * Variable.t list
-  | Set_of_closures of Flambda.set_of_closures
-  | Project_closure of Flambda.project_closure
-  | Move_within_set_of_closures of Flambda.move_within_set_of_closures
+  | Set_of_closures of Flambda.Set_of_closures.t
+  | Project_closure of Projection.Project_closure.t
+  | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
   | Project_var of constant_project_var
   | Field of Variable.t * int
   | Symbol_field of Symbol.t * int
@@ -49,7 +49,7 @@ type initialize_symbol_field = Variable.t option
 type definitions = {
   variable : constant_defining_value Variable.Tbl.t;
   initialize_symbol : initialize_symbol_field list Symbol.Tbl.t;
-  symbol : Flambda.constant_defining_value Symbol.Tbl.t;
+  symbol : Flambda_static.Constant_defining_value.t Symbol.Tbl.t;
 }
 
 let print_constant_project_var ppf (project_var : constant_project_var) =
@@ -69,7 +69,7 @@ let print_constant_defining_value ppf = function
     Format.fprintf ppf "[|%a: %a|]"
       Tag.print tag
       (Format.pp_print_list Variable.print) vars
-  | Set_of_closures set -> Flambda.print_set_of_closures ppf set
+  | Set_of_closures set -> Flambda.Set_of_closures.print ppf set
   | Project_closure project -> Flambda.print_project_closure ppf project
   | Move_within_set_of_closures move ->
     Flambda.print_move_within_set_of_closures ppf move

@@ -26,9 +26,9 @@ module type S = sig
       external (Value_extern), attempt to find a more informative
       approximation from a previously-written compilation artifact.  In the
       native code backend, for example, this might consult a .cmx file. *)
-  val really_import_approx : Simple_value_approx.t -> Simple_value_approx.t
+  val really_import_approx : Flambda_type.t -> Flambda_type.t
 
-  val import_symbol : Symbol.t -> Simple_value_approx.t
+  val import_symbol : Symbol.t -> Flambda_type.t
 
   val closure_symbol : Closure_id.t -> Symbol.t
 

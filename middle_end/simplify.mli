@@ -29,13 +29,13 @@ val run
   -> backend:(module Backend_intf.S)
   -> prefixname:string
   -> round:int
-  -> Flambda.program
-  -> Flambda.program
+  -> Flambda_static.Program.t
+  -> Flambda_static.Program.t
 
 val duplicate_function
-   : env:Inline_and_simplify_aux.Env.t
-  -> set_of_closures:Flambda.set_of_closures
+   : env:Simplify_aux.Env.t
+  -> set_of_closures:Flambda.Set_of_closures.t
   -> fun_var:Variable.t
   -> new_fun_var:Variable.t
-  -> Flambda.function_declaration
+  -> Flambda.Function_declaration.t
     * Flambda.specialised_to Variable.Map.t  (* new specialised arguments *)

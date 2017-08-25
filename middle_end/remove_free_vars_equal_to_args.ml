@@ -19,7 +19,7 @@
 let pass_name = "remove-free-vars-equal-to-args"
 let () = Pass_wrapper.register ~pass_name
 
-let rewrite_one_function_decl ~(function_decl : Flambda.function_declaration)
+let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
       ~back_free_vars ~specialised_args =
   let params_for_equal_free_vars =
     List.fold_left (fun subst param ->
@@ -49,15 +49,15 @@ let rewrite_one_function_decl ~(function_decl : Flambda.function_declaration)
     function_decl
   else
     let body =
-      Flambda_utils.toplevel_substitution
+      Flambda.Expr.toplevel_substitution
         params_for_equal_free_vars
         function_decl.body
     in
-    Flambda.update_body_of_function_declaration function_decl ~body
+    Flambda.Function_declaration.update_body function_decl ~body
 
-let rewrite_one_set_of_closures (set_of_closures : Flambda.set_of_closures) =
+let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let back_free_vars =
-    Variable.Map.fold (fun var (outside_var : Flambda.free_var) map ->
+    Variable.Map.fold (fun var (outside_var : Flambda.Free_var.t) map ->
         let set =
           match Variable.Map.find outside_var.var map with
           | exception Not_found -> Variable.Set.singleton var
@@ -83,11 +83,11 @@ let rewrite_one_set_of_closures (set_of_closures : Flambda.set_of_closures) =
     None
   else
     let function_decls =
-      Flambda.update_function_declarations
+      Flambda.Function_declarations.update
         set_of_closures.function_decls ~funs
     in
     let set_of_closures =
-      Flambda.create_set_of_closures
+      Flambda.Set_of_closures.create
         ~function_decls
         ~free_vars:set_of_closures.free_vars
         ~specialised_args:set_of_closures.specialised_args
@@ -97,6 +97,6 @@ let rewrite_one_set_of_closures (set_of_closures : Flambda.set_of_closures) =
 
 let run set_of_closures =
   Pass_wrapper.with_dump ~pass_name ~input:set_of_closures
-    ~print_input:Flambda.print_set_of_closures
-    ~print_output:Flambda.print_set_of_closures
+    ~print_input:Flambda.Set_of_closures.print
+    ~print_output:Flambda.Set_of_closures.print
     ~f:(fun () -> rewrite_one_set_of_closures set_of_closures)

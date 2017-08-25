@@ -16,8 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module A = Simple_value_approx
-module E = Inline_and_simplify_aux.Env
+module T = Flambda_types
+module E = Simplify_aux.Env
 
 (* CR-soon pchambart: should we restrict only to cases
   when the field is aliased to a variable outside
@@ -36,7 +36,7 @@ let known_valid_projections ~get_approx ~projections =
       let approx = get_approx from in
       match projection with
       | Project_var project_var ->
-        begin match A.check_approx_for_closure approx with
+        begin match T.check_approx_for_closure approx with
         | Ok (value_closures, _approx_var, _approx_sym) ->
           Closure_id.Map.for_all (fun closure_id var ->
             match Closure_id.Map.find closure_id value_closures with
@@ -45,7 +45,7 @@ let known_valid_projections ~get_approx ~projections =
                                  the approximation %a"
                 Closure_id.print closure_id
                 Projection.print_project_var project_var
-                A.print approx
+                T.print approx
             | value_set_of_closures ->
               Var_within_closure.Map.mem var
                 value_set_of_closures.bound_vars)
@@ -53,7 +53,7 @@ let known_valid_projections ~get_approx ~projections =
         | Wrong -> false
         end
       | Project_closure project_closure ->
-        begin match A.strict_check_approx_for_set_of_closures approx with
+        begin match T.strict_check_approx_for_set_of_closures approx with
         | Ok (_var, value_set_of_closures) ->
           let closures_of_the_set =
             Variable.Map.keys value_set_of_closures.function_decls.funs
@@ -65,7 +65,7 @@ let known_valid_projections ~get_approx ~projections =
         | Wrong -> false
         end
       | Move_within_set_of_closures move ->
-        begin match A.check_approx_for_closure approx with
+        begin match T.check_approx_for_closure approx with
         | Ok (value_closures, _approx_var, _approx_sym) ->
           (* We could check that [move_to] (the image of [move.move])
              is in [value_set_of_closures], but this is unnecessary,
@@ -76,7 +76,7 @@ let known_valid_projections ~get_approx ~projections =
         | Wrong -> false
         end
       | Field (field_index, _) ->
-        begin match A.check_approx_for_block approx with
+        begin match T.check_approx_for_block approx with
         | Wrong -> false
         | Ok (_tag, fields) ->
           field_index >= 0 && field_index < Array.length fields
@@ -92,7 +92,7 @@ let rec analyse_expr ~which_variables expr =
       used_which_variables := Variable.Set.add var !used_which_variables
     end
   in
-  let for_expr (expr : Flambda.expr) =
+  let for_expr (expr : Flambda.Expr.t) =
     match expr with
     | Let_mutable { initial_value = var } ->
       check_free_variable var
@@ -110,7 +110,7 @@ let rec analyse_expr ~which_variables expr =
       List.iter check_free_variable args
     | Let _ | Let_cont _ | Proved_unreachable -> ()
   in
-  let for_named (named : Flambda.named) =
+  let for_named (named : Flambda.Named.t) =
     match named with
     | Var var -> check_free_variable var
     | Assign { new_value; _ } ->
@@ -135,7 +135,7 @@ let rec analyse_expr ~which_variables expr =
     | Set_of_closures set_of_closures ->
       let aliasing_free_vars =
         Variable.Map.filter_map set_of_closures.free_vars
-          ~f:(fun _ (free_var : Flambda.free_var) ->
+          ~f:(fun _ (free_var : Flambda.Free_var.t) ->
             if not (Variable.Set.mem free_var.var which_variables) then
               None
             else
@@ -159,7 +159,7 @@ let rec analyse_expr ~which_variables expr =
           aliasing_free_vars aliasing_specialised_args
       in
       if not (Variable.Map.is_empty aliasing_vars) then begin
-        Variable.Map.iter (fun _ (fun_decl : Flambda.function_declaration) ->
+        Variable.Map.iter (fun _ (fun_decl : Flambda.Function_declaration.t) ->
           (* We ignore projections from within nested sets of closures. *)
           let _, used =
             analyse_expr fun_decl.body
@@ -207,13 +207,13 @@ let from_expr ~get_approx ~which_variables expr =
     projections
 
 let from_function's_free_vars ~env ~free_vars
-      ~(function_decl : Flambda.function_declaration) =
+      ~(function_decl : Flambda.Function_declaration.t) =
   let which_variables = Variable.Map.keys free_vars in
   let get_approx from =
     let outer_var =
       match Variable.Map.find from free_vars with
       | exception Not_found -> assert false
-      | (outer_var : Flambda.free_var) ->
+      | (outer_var : Flambda.Free_var.t) ->
         Freshening.apply_variable (E.freshening env) outer_var.var
     in
     E.find_exn env outer_var
@@ -221,7 +221,7 @@ let from_function's_free_vars ~env ~free_vars
   from_expr ~get_approx ~which_variables function_decl.body
 
 let from_function's_specialised_args ~env ~specialised_args
-      ~(function_decl : Flambda.function_declaration) =
+      ~(function_decl : Flambda.Function_declaration.t) =
   let which_variables = Variable.Map.keys specialised_args in
   let get_approx from =
     let outer_var =
@@ -238,11 +238,11 @@ let from_function's_specialised_args ~env ~specialised_args
   in
   from_expr ~get_approx ~which_variables function_decl.body
 
-let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
+let from_continuation ~uses ~(handler : Flambda.Continuation_handler.t) =
   let handler_params = Parameter.List.vars handler.params in
   let which_variables = Variable.Set.of_list handler_params in
   let param_approxs =
-    Inline_and_simplify_aux.Continuation_uses.meet_of_args_approxs uses
+    Simplify_aux.Continuation_uses.meet_of_args_approxs uses
       ~num_params:(List.length handler_params)
   in
   let params_to_approxs =
@@ -250,7 +250,7 @@ let from_continuation ~uses ~(handler : Flambda.continuation_handler) =
   in
 (*
 Format.eprintf "params_to_approxs:\n@;%a\n"
-  (Variable.Map.print Simple_value_approx.print)
+  (Variable.Map.print Flambda_type.print)
   params_to_approxs;
 *)
   let get_approx from =

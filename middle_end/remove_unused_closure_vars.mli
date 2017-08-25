@@ -22,5 +22,5 @@
     Also eliminate functions within sets of closures that are not required. *)
 val remove_unused_closure_variables
    : remove_direct_call_surrogates:bool
-  -> Flambda.program
-  -> Flambda.program
+  -> Flambda_static.Program.t
+  -> Flambda_static.Program.t

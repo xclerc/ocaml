@@ -17,24 +17,24 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module ASA = Augment_specialised_args
-module W = ASA.What_to_specialise
+module W = AST.What_to_specialise
 
 module Transform = struct
   let pass_name = "unbox-specialised-args"
   let variable_suffix = ""
 
-  let precondition ~env:_ ~(set_of_closures : Flambda.set_of_closures) =
+  let precondition ~env:_ ~(set_of_closures : Flambda.Set_of_closures.t) =
     !Clflags.unbox_specialised_args
       && not (Variable.Map.is_empty set_of_closures.specialised_args)
 
-  let what_to_specialise ~env ~(set_of_closures : Flambda.set_of_closures) =
+  let what_to_specialise ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
     let what_to_specialise = W.create ~set_of_closures in
     if not (precondition ~env ~set_of_closures) then
       what_to_specialise
     else
       let projections_by_function =
         Variable.Map.filter_map set_of_closures.function_decls.funs
-          ~f:(fun _fun_var (function_decl : Flambda.function_declaration) ->
+          ~f:(fun _fun_var (function_decl : Flambda.Function_declaration.t) ->
               if function_decl.stub then None
               else
                 Some (Extract_projections.from_function's_specialised_args ~env
@@ -46,7 +46,7 @@ module Transform = struct
       let invariant_params_flow =
         Invariant_params.Functions.invariant_param_sources
           set_of_closures.function_decls
-          ~backend:(Inline_and_simplify_aux.Env.backend env)
+          ~backend:(Simplify_aux.Env.backend env)
       in
       Variable.Map.fold (fun fun_var extractions what_to_specialise ->
           Projection.Set.fold (fun (projection : Projection.t)
@@ -101,4 +101,4 @@ module Transform = struct
         what_to_specialise
 end
 
-include ASA.Make (Transform)
+include AST.Make (Transform)

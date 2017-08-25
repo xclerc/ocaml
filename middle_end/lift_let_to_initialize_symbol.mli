@@ -36,5 +36,5 @@
 *)
 val lift
    : backend:(module Backend_intf.S)
-  -> Flambda.program
-  -> Flambda.program
+  -> Flambda_static.Program.t
+  -> Flambda_static.Program.t

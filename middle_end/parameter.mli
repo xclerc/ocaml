@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,8 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** [Parameter.t] carries a unique [Variable.t] used as function parameter.
-    It can also carry annotations about the usage of the variable. *)
+(** [Parameter.t] carries a unique [Variable.t] used as function parameter. *)
 
 type t
 type parameter = t
@@ -62,6 +61,8 @@ module List : sig
   val vars : t list -> Variable.t list
 
   val wrap : Variable.t list -> t list
+
+  val equal_vars : t list -> Variable.t list -> bool
 
   val rename
      : ?current_compilation_unit:Compilation_unit.t
