@@ -216,6 +216,7 @@ MIDDLE_END=\
   middle_end/ilambda.cmo \
   middle_end/cps_conversion.cmo \
   middle_end/flambda_kind.cmo \
+  middle_end/flambda_type0_intf.cmo \
   middle_end/flambda_type0.cmo \
   middle_end/flambda0.cmo \
   middle_end/flambda_type.cmo \

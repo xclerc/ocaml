@@ -617,7 +617,7 @@ end and Function_declaration : sig
 end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)
-  type t = Parameter.t * Flambda_type0.Make (Function_declarations).t
+  type t = Parameter.t * Flambda_type.t
 
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
@@ -643,6 +643,9 @@ end and Typed_parameter : sig
   (** N.B. Sets, maps and hash tables keyed on values of type [t] do not
       take into account the parameter's type in the comparison relation. *)
   include Identifiable.S with type t := t
+end and Flambda_type : sig
+  include Flambda_type0_intf.S
+    with type function_declarations := Function_declarations.t
 end
 
 (** A module for the manipulation of terms where the recomputation of free

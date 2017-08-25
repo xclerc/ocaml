@@ -21,7 +21,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** Basic definitions, constructors and accessors. *)
-include module type of Flambda_type0.Make (Flambda0.Function_declarations)
+include module type of Flambda0.Flambda_type
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr
@@ -208,7 +208,7 @@ val reify_as_scannable_block_or_immediate
 
 type reified_as_set_of_closures =
   | Wrong
-  | Unresolved of Flambda_type0.unresolved_value
+  | Unresolved of unresolved_value
   | Unknown
   | Ok of Variable.t option * set_of_closures
   (** In the [Ok] case, there may not be a variable associated with the set of
@@ -250,7 +250,7 @@ val strict_reify_as_closure_singleton
 
 type reified_as_closure_allowing_unresolved =
   | Wrong
-  | Unresolved of Flambda_type0.unresolved_value
+  | Unresolved of unresolved_value
   | Unknown
   | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
 
