@@ -1322,7 +1322,7 @@ end = struct
       Typed_parameter.List.print f.params
       Expr.print f.body
 end and Typed_parameter : sig
-  type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
+  type t = Parameter.t * Flambda_type0.Make (Function_declarations).T.t
   val var : t -> Variable.t
   val free_variables : t -> Variable.Set.t
   module List : sig
@@ -1334,7 +1334,7 @@ end and Typed_parameter : sig
   end
   include Identifiable.S with type t := t
 end = struct
-  type t = Parameter.t * (Function_declarations.t Flambda_type0.T.t)
+  type t = Parameter.t * Flambda_type0.Make (Function_declarations).T.t
 
   let var (param, _ty) = Parameter.var param
 

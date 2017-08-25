@@ -20,24 +20,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** The type of an Flambda term. *)
-type t = Flambda0.Function_declarations.t Flambda_type0.T.t
-
-type descr = Flambda0.Function_declarations.t Flambda_type0.T.descr
-type set_of_closures =
-  Flambda0.Function_declarations.t Flambda_type0.T.set_of_closures
-type float_array =
-  Flambda0.Function_declarations.t Flambda_type0.T.float_array
-(* CR-soon mshinwell: GPR#792 may enable us to get rid of these aliases. *)
-type _ t' = t
-type _ descr' = descr
-type _ set_of_closures' = set_of_closures
-
-(** Means of making and examining types. *)
-include Flambda_type0.Constructors_and_accessors
-  with type 'decls t := 'decls t'
-  with type 'decls descr := 'decls descr'
-  with type 'decls set_of_closures := 'decls set_of_closures'
+(** Basic definitions, constructors and accessors. *)
+include module type of Flambda_type0.Make (Flambda0.Function_declarations)
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr
@@ -203,7 +187,7 @@ val reify_as_scannable_block : t -> reified_as_scannable_block
 
 type reified_as_variant =
   | Wrong
-  | Ok of Flambda0.Function_declarations.t Flambda_type0.Unionable.t
+  | Ok of Unionable.t
 
 (** Try to prove that the given type is of the expected form for the
     Flambda type of a value of variant type. *)

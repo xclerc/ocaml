@@ -17,76 +17,14 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module F0 = Flambda0
-module T0 = Flambda_type0
-module T = T0.T
 module Named = F0.Named
-module Unionable = T0.Unionable
 
 module Float = Numbers.Float
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
 
-type t = F0.Function_declarations.t T.t
-
-type descr = Flambda0.Function_declarations.t T.descr
-type set_of_closures = Flambda0.Function_declarations.t T.set_of_closures
-type float_array = Flambda0.Function_declarations.t T.float_array
-type _ t' = t
-type _ descr' = descr
-type _ set_of_closures' = set_of_closures
-
-let unknown = T.unknown
-let int = T.int
-let char = T.char
-let boxed_float = T.boxed_float
-let any_boxed_float = T.any_boxed_float
-let any_unboxed_float = T.any_unboxed_float
-let any_unboxed_int32 = T.any_unboxed_int32
-let any_unboxed_int64 = T.any_unboxed_int64
-let any_unboxed_nativeint = T.any_unboxed_nativeint
-let unboxed_float = T.unboxed_float
-let unboxed_int32 = T.unboxed_int32
-let unboxed_int64 = T.unboxed_int64
-let unboxed_nativeint = T.unboxed_nativeint
-let boxed_float = T.boxed_float
-let boxed_int32 = T.boxed_int32
-let boxed_int64 = T.boxed_int64
-let boxed_nativeint = T.boxed_nativeint
-let mutable_float_array = T.mutable_float_array
-let immutable_float_array = T.immutable_float_array
-let immutable_string = T.immutable_string
-let mutable_string = T.mutable_string
-let constptr = T.constptr
-let block = T.block
-let export_id_loaded_lazily = T.export_id_loaded_lazily
-let symbol_loaded_lazily = T.symbol_loaded_lazily
-let bottom = T.bottom
-let closure = T.closure
-let set_of_closures = T.set_of_closures
-let augment_with_variable = T.augment_with_variable
-let augment_with_symbol = T.augment_with_symbol
-let augment_with_symbol_field = T.augment_with_symbol_field
-let replace_description = T.replace_description
-let update_variable = T.update_variable
-type cleaning_spec = T.cleaning_spec
-let clean = T.clean
-let free_variables = T.free_variables
-let refine_using_value_kind = T.refine_using_value_kind
-let kind = T.kind
-let kind_exn = T.kind_exn
-let create_set_of_closures = T.create_set_of_closures
-let update_freshening_of_set_of_closures =
-  T.update_freshening_of_set_of_closures
-
-let print_descr =
-  T.print F0.Function_declarations.print
-
-let print_descr =
-  T.print_descr F0.Function_declarations.print
-
-let print_set_of_closures =
-  T.print_set_of_closures F0.Function_declarations.print
+include Flambda_type0.Make (F0.Function_declarations)
 
 let var (t : t) = t.var
 let projection (t : t) = t.projection
