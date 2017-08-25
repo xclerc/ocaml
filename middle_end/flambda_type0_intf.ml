@@ -254,8 +254,8 @@ module type S = sig
       | Available_different_name of Variable.t
       | Unavailable
 
-    (** Adjust a type so that all of the variables it references are in scope
-        in some context.  The context is expressed by a function that says
+    (** Adjust a type so that all of the free variables it references are in
+        scope in some context. The context is expressed by a function that says
         whether the variable is available under its existing name, available
         under another name, or unavailable. *)
     val clean

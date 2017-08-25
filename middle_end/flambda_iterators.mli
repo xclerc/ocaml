@@ -211,7 +211,7 @@ val map_sets_of_closures_of_program
 
 val map_project_var_to_named_opt
    : Flambda.Expr.t
-  -> f:(Flambda.project_var -> Flambda.Named.t option)
+  -> f:(Projection.Project_var.t -> Flambda.Named.t option)
   -> Flambda.Expr.t
 
 val map_exprs_at_toplevel_of_program

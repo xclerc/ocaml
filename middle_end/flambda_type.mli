@@ -33,6 +33,9 @@ val descrs : t list -> descr list
 (** Attempt to use a type to refine a value kind. *)
 val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 
+(** Rename free variables in a type. *)
+val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
+
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
 val unresolved_symbol : Symbol.t -> t
 

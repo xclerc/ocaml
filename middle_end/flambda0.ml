@@ -1210,6 +1210,10 @@ end and Function_declaration : sig
     -> params:Typed_parameter.t list
     -> body:Expr.t
     -> t
+  val map_parameter_types
+     : t
+    -> f:(Flambda_type.T.t -> Flambda_type.T.t)
+    -> t
   val used_params : t -> Variable.Set.t
   val print : Variable.t -> Format.formatter -> t -> unit
 end = struct
@@ -1279,6 +1283,12 @@ end = struct
       is_a_functor = t.is_a_functor;
     }
 
+  let map_parameter_types t ~f =
+    let params =
+      List.map (fun param -> Typed_parameter.map_type param ~f) t.params
+    in
+    { t with params; }
+
   let used_params (function_decl : Function_declaration.t) =
     Variable.Set.filter (fun param ->
         Variable.Set.mem param function_decl.free_variables)
@@ -1324,6 +1334,7 @@ end = struct
 end and Typed_parameter : sig
   type t = Parameter.t * Flambda_type.T.t
   val var : t -> Variable.t
+  val map_type : t -> f:(Flambda_type.T.t -> Flambda_type.T.t) -> t
   val free_variables : t -> Variable.Set.t
   module List : sig
     type nonrec t = t list
@@ -1337,6 +1348,8 @@ end = struct
   type t = Parameter.t * Flambda_type.T.t
 
   let var (param, _ty) = Parameter.var param
+
+  let map_type (param, ty) ~f = param, f ty
 
   let free_variables (_param, ty) =
     (* The variable within [t] is always presumed to be a binding

@@ -25,7 +25,7 @@ module Constant_defining_value
 module Program_body : module type of Flambda_static0.Program_body
 
 module Program : sig
-  include module type of Program
+  include module type of Flambda_static0.Program
 
   val initialize_symbols
      : t

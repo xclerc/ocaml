@@ -48,6 +48,9 @@ let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
     end
   | _ -> kind
 
+let rename_variables t ~f =
+  clean t (fun var -> Available_different_name (f var))
+
 let unresolved_symbol sym =
   (* CR mshinwell: check with Pierre about this comment *)
   (* We don't know anything, but we must remember that it comes

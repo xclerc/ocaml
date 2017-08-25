@@ -18,21 +18,26 @@
 
 module F0 = Flambda0
 
+module Return_arity = F0.Return_arity
+module Call_kind = F0.Call_kind
+module Const = F0.Const
+type apply_kind = F0.apply_kind
+type apply = F0.apply
+type assign = F0.assign
 module Free_var = F0.Free_var
+module Typed_parameter = F0.Typed_parameter
 
 module Free_vars = struct
-  include Identifiable.Alias (F0.Free_var)
+  include F0.Free_vars
 
   let clean_projections t =
-    Variable.Map.map (fun (free_var : F0.Free_var.t) ->
+    Variable.Map.map (fun (free_var : Free_var.t) ->
         match free_var.projection with
         | None -> free_var
         | Some projection ->
           let from = Projection.projecting_from projection in
-          if Variable.Map.mem from free_vars then
-            free_var
-          else
-            ({ free_var with projection = None; } : F0.Free_var.t))
+          if Variable.Map.mem from t then free_var
+          else ({ free_var with projection = None; } : Free_var.t))
       t
 end
 
@@ -58,13 +63,13 @@ module rec Expr : sig
     -> t
   val description_of_toplevel_node : t -> string
   val bind
-     : bindings:(Variable.t * Flambda.Named.t) list
+     : bindings:(Variable.t * Named.t) list
     -> body:t
     -> t
   module Reachable : sig
     type nonrec t =
-      | Reachable of Flambda.Named.t
-      | Non_terminating of Flambda.Named.t
+      | Reachable of Named.t
+      | Non_terminating of Named.t
       | Unreachable
   end
   val fold_lets_option
@@ -73,35 +78,34 @@ module rec Expr : sig
     -> for_defining_expr:(
         'a
       -> Variable.t
-      -> Flambda.Named.t
+      -> Named.t
       -> 'a
-        * (Variable.t * Flambda.Function_declarations.t Flambda_type0.T.t
-            * Flambda.Named.t) list
+        * (Variable.t * Flambda_type.t * Named.t) list
         * Variable.t
-        * Flambda.Function_declarations.t Flambda_type0.T.t
+        * Flambda_type.t
         * Reachable.t)
-    -> for_last_body:('a -> Flambda.t -> Flambda.t * 'b)
+    -> for_last_body:('a -> t -> t * 'b)
     -> filter_defining_expr:(
         'b
       -> Variable.t
-      -> Flambda.Named.t
+      -> Named.t
       -> Variable.Set.t
-      -> 'b * Variable.t * (Flambda.Named.t option))
+      -> 'b * Variable.t * (Named.t option))
     -> t * 'b
   val map_lets
-     : Flambda.Expr.t
-    -> for_defining_expr:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
-    -> after_rebuild:(Flambda.Expr.t -> Flambda.Expr.t)
-    -> for_last_body:(Flambda.Expr.t -> Flambda.Expr.t)
-    -> Flambda.Expr.t
+     : Expr.t
+    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
+    -> after_rebuild:(Expr.t -> Expr.t)
+    -> for_last_body:(Expr.t -> Expr.t)
+    -> Expr.t
   val all_defined_continuations_toplevel : t -> Continuation.Set.t
   val count_continuation_uses_toplevel : t -> int Continuation.Map.t
   type with_wrapper =
-    | Unchanged of { handler : Flambda.Continuation_handler.t; }
+    | Unchanged of { handler : Continuation_handler.t; }
     | With_wrapper of {
         new_cont : Continuation.t;
-        new_handler : Flambda.Continuation_handler.t;
-        wrapper_handler : Flambda.Continuation_handler.t;
+        new_handler : Continuation_handler.t;
+        wrapper_handler : Continuation_handler.t;
       }
   val build_let_cont_with_wrappers
      : body:t
@@ -119,38 +123,49 @@ end = struct
       | None -> None
       | Some v -> Some (sb v)
     in
-    let aux (flam : F0.Expr.t) : F0.Expr.t =
-      match flam with
+    let substitute_type ty =
+      Flambda_type.rename_variables ty ~f:(fun var -> sb var)
+    in
+    let substitute_params_list params =
+      List.map (fun param ->
+          Typed_parameter.map_type param ~f:(fun ty ->
+            substitute_type ty))
+        params
+    in
+    let substitute_args_list args =
+      List.map (fun arg -> sb arg) args
+    in
+    let aux (expr : Expr.t) : Expr.t =
+      (* Note that this does not have to traverse subexpressions; the call to
+         [map_toplevel] below will deal with that. *)
+      match expr with
       | Let_mutable mutable_let ->
         let initial_value = sb mutable_let.initial_value in
         Let_mutable { mutable_let with initial_value }
       | Apply { kind; func; args; continuation; call_kind; dbg; inline;
           specialise; } ->
-        let kind : F0.apply_kind =
+        let kind : apply_kind =
           match kind with
           | Function -> Function
           | Method { kind; obj; } -> Method { kind; obj = sb obj; }
         in
         let func = sb func in
-        let args = List.map sb args in
+        let args = substitute_args_list args in
         Apply { kind; func; args; continuation; call_kind; dbg; inline;
           specialise; }
       | Switch (cond, sw) ->
         let cond = sb cond in
         Switch (cond, sw)
-      | Apply_cont (static_exn, trap_action, args) ->
-        let args = List.map sb args in
-        Apply_cont (static_exn, trap_action, args)
-      | Let _ | Proved_unreachable -> flam
+      | Apply_cont (cont, trap_action, args) ->
+        let args = substitute_args_list args in
+        Apply_cont (cont, trap_action, args)
+      | Let _ | Proved_unreachable -> expr
       | Let_cont { body; handlers; } ->
         let f handlers =
-          Continuation.Map.map (fun (handler : F0.Continuation_handler.t)
-                  : F0.Continuation_handler.t ->
+          Continuation.Map.map (fun (handler : Continuation_handler.t)
+                  : Continuation_handler.t ->
               { handler with
-                specialised_args =
-                  (Variable.Map.map (fun (spec_to : F0.specialised_to) ->
-                      { spec_to with var = sb_opt spec_to.var; })
-                    handler.specialised_args);
+                params = substitute_params_list handler.params;
               })
             handlers
         in
@@ -172,17 +187,17 @@ end = struct
         Assign { being_assigned; new_value; }
       | Read_symbol_field _ -> named
       | Set_of_closures set_of_closures ->
+        let function_decls =
+          Function_declarations.map_parameter_types function_decls
+            ~f:(fun ty -> substitute_type ty)
+        in
         let set_of_closures =
-          F0.Set_of_closures.create
-            ~function_decls:set_of_closures.function_decls
+          Set_of_closures.create
+            ~function_decls
             ~free_vars:
               (Variable.Map.map (fun (free_var : F0.Free_var.t) ->
                   { free_var with var = sb free_var.var; })
                 set_of_closures.free_vars)
-            ~specialised_args:
-              (Variable.Map.map (fun (spec_to : F0.specialised_to) ->
-                  { spec_to with var = sb_opt spec_to.var; })
-                set_of_closures.specialised_args)
             ~direct_call_surrogates:set_of_closures.direct_call_surrogates
         in
         Set_of_closures set_of_closures
@@ -206,159 +221,6 @@ end = struct
     in
     if Variable.Map.is_empty sb' then tree
     else Flambda_iterators.map_toplevel aux aux_named tree
-
-  (* CR-soon mshinwell: This function should be tidied up. *)
-  let substitute_read_symbol_field_for_variables
-      (substitution : (Symbol.t * int option) Variable.Map.t)
-      (expr : F0.Expr.t) =
-    let bind var fresh_var (expr : F0.Expr.t) : F0.Expr.t =
-      let symbol, path = Variable.Map.find var substitution in
-      let make_named (path : int option) : F0.Named.t =
-        match path with
-        | None -> Symbol symbol
-        | Some i -> Read_symbol_field (symbol, i)
-      in
-      F0.Expr.create_let fresh_var (make_named path) expr
-    in
-    let substitute_named bindings (named : F0.Named.t) : F0.Named.t =
-      let sb to_substitute =
-        try Variable.Map.find to_substitute bindings
-        with Not_found -> to_substitute
-      in
-      let sb_opt = function
-        | None -> None
-        | Some v -> Some (sb v)
-      in
-      match named with
-      | Var v when Variable.Map.mem v substitution -> Var (sb v)
-  (*
-        let fresh = Variable.rename v in
-        Expr (bind v fresh (Var fresh))
-  *)
-      | Var _ -> named
-      | Symbol _ | Const _ -> named
-      | Allocated_const _ | Read_mutable _ -> named
-      | Assign { being_assigned; new_value }
-          when Variable.Map.mem new_value substitution ->
-        Assign { being_assigned; new_value = sb new_value; }
-  (*
-        let fresh = Variable.rename new_value in
-        bind new_value fresh (Assign { being_assigned; new_value = fresh })
-  *)
-      | Assign _ -> named
-      | Read_symbol_field _ -> named
-      | Set_of_closures set_of_closures ->
-        let set_of_closures =
-          F0.Set_of_closures.create
-            ~function_decls:set_of_closures.function_decls
-            ~free_vars:
-              (Variable.Map.map (fun (free_var : F0.Free_var.t) ->
-                  { free_var with var = sb free_var.var; })
-                set_of_closures.free_vars)
-            ~specialised_args:
-              (Variable.Map.map (fun (spec_to : F0.specialised_to) ->
-                  { spec_to with var = sb_opt spec_to.var; })
-                set_of_closures.specialised_args)
-            ~direct_call_surrogates:set_of_closures.direct_call_surrogates
-        in
-        Set_of_closures set_of_closures
-      | Project_closure project_closure ->
-        Project_closure {
-          project_closure with
-          set_of_closures = sb project_closure.set_of_closures;
-        }
-      | Move_within_set_of_closures move_within_set_of_closures ->
-        Move_within_set_of_closures {
-          move_within_set_of_closures with
-          closure = sb move_within_set_of_closures.closure;
-        }
-      | Project_var project_var ->
-        Project_var {
-          project_var with
-          closure = sb project_var.closure;
-        }
-      | Prim (prim, args, dbg) ->
-        Prim (prim, List.map sb args, dbg)
-    in
-    let make_var_subst var =
-      if Variable.Map.mem var substitution then
-        let fresh = Variable.rename var in
-        fresh, (fun expr -> bind var fresh expr)
-      else
-        var, (fun x -> x)
-    in
-    let make_apply_kind_subst (func : F0.apply_kind) =
-      match func with
-      | Function -> F0.Function, (fun x -> x)
-      | Method { kind; obj; } ->
-        if Variable.Map.mem obj substitution then
-          let fresh = Variable.rename obj in
-          F0.Method { kind; obj = fresh; },
-            (fun expr -> bind obj fresh expr)
-        else
-          F0.Method { kind; obj; }, (fun x -> x)
-    in
-    let f (expr:F0.Expr.t) : F0.Expr.t =
-      match expr with
-      | Let ({ var = v; defining_expr = named; _ } as let_expr) ->
-        let to_substitute =
-          Variable.Set.filter
-            (fun v -> Variable.Map.mem v substitution)
-            (F0.Named.free_variables named)
-        in
-        if Variable.Set.is_empty to_substitute then
-          expr
-        else
-          let bindings =
-            Variable.Map.of_set (fun var -> Variable.rename var) to_substitute
-          in
-          let named =
-            substitute_named bindings named
-          in
-          let expr =
-            let module W = F0.With_free_variables in
-            W.create_let_reusing_body v named (W.of_body_of_let let_expr)
-          in
-          Variable.Map.fold (fun to_substitute fresh expr ->
-              bind to_substitute fresh expr)
-            bindings expr
-      | Let_mutable let_mutable when
-          Variable.Map.mem let_mutable.initial_value substitution ->
-        let fresh = Variable.rename let_mutable.initial_value in
-        bind let_mutable.initial_value fresh
-          (Let_mutable { let_mutable with initial_value = fresh })
-      | Let_mutable _ ->
-        expr
-      | Switch (cond, sw) when Variable.Map.mem cond substitution ->
-        let fresh = Variable.rename cond in
-        bind cond fresh (Switch (fresh, sw))
-      | Switch _ ->
-        expr
-      | Apply_cont (exn, trap_action, args) ->
-        let args, bind_args =
-          List.split (List.map make_var_subst args)
-        in
-        List.fold_right (fun f expr -> f expr) bind_args @@
-          F0.Apply_cont (exn, trap_action, args)
-      | Apply { kind; func; args; continuation; call_kind; dbg; inline;
-          specialise } ->
-        let kind, bind_kind = make_apply_kind_subst kind in
-        let func, bind_func = make_var_subst func in
-        let args, bind_args =
-          List.split (List.map make_var_subst args)
-        in
-        bind_kind @@
-          bind_func @@
-            List.fold_right (fun f expr -> f expr) bind_args @@
-            F0.Apply
-              { kind; func; args; continuation; call_kind; dbg; inline;
-                specialise;
-              }
-      | Let_cont _ | Proved_unreachable ->
-        (* No variables directly used in those expressions *)
-        expr
-    in
-    Flambda_iterators.map_toplevel_expr f expr
 
   let equal t1 t2 =
     (* CR mshinwell: next comment may no longer be relevant? *)
@@ -809,6 +671,10 @@ end and Function_declarations : sig
   val all_functions_parameters : t -> Variable.Set.t
   val all_free_symbols : t -> Symbol.Set.t
   val contains_stub : t -> bool
+  val map_parameter_types
+     : t
+    -> f:(Parameter.t -> Parameter.t)
+    -> t
 end = struct
   include F0.Function_declarations
 
@@ -912,6 +778,14 @@ end = struct
         in
         Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
       t.funs
+
+  let map_parameter_types t ~f =
+    let funs =
+      Variable.Map.map (fun (decl : Function_declaration.t) ->
+          Function_declaration.map_parameter_types decl ~f)
+        t.funs
+    in
+    update t ~funs
 end and Function_declaration : sig
   include module type of F0.Function_declaration
 

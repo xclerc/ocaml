@@ -21,9 +21,6 @@
     Flambda expressions augment Ilambda expressions by adding constructs for:
     - the construction and manipulation of closures; and
     - accessing constants that have been lifted to static data.
-
-    The Flambda "program" type, described below, wraps Flambda expressions to
-    describe the overall structure of a compilation unit.
 *)
 
 module Return_arity : sig
@@ -136,6 +133,10 @@ module Trap_action : sig
 end
 
 module Switch : sig
+  (* CR-someday mshinwell: (idea from @stedolan) Use [Switch] with zero
+     cases instead of [Proved_unreachable].  Then references to unreachable
+     continuations can be removed by using an algorithm for coalescing
+     [Switch]es. *)
   (** Equivalent to the similar type in [Ilambda]. *)
   type t = private {
     (* CR mshinwell: [numconsts] should move onto the default case. *)
@@ -609,6 +610,12 @@ end and Function_declaration : sig
     -> body:Expr.t
     -> t
 
+  (** Change only the types of the parameters of a function declaration. *)
+  val map_parameter_types
+     : t
+    -> f:(Flambda_type.T.t -> Flambda_type.T.t)
+    -> t
+
   (** Given a function declaration, find which of its parameters (if any)
       are used in the body. *)
   val used_params : t -> Variable.Set.t
@@ -621,6 +628,9 @@ end and Typed_parameter : sig
 
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
+
+  (** Change the type of a parameter. *)
+  val map_type : t -> f:(Flambda_type.T.t -> Flambda_type.T.t) -> t
 
   (** Free variables in the parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)

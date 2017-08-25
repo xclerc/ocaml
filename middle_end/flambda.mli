@@ -20,15 +20,11 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Return_arity : module type of Flambda0.Return_arity
-
-module Call_kind : sig
-  include module type of Flambda0.Call_kind
-
-  val arity_of_call_kind : t -> Return_arity.t
-end
-
+module Call_kind : module type of Flambda0.Call_kind
 module Const : module type of Flambda0.Const
-
+type apply_kind = Flambda0.apply_kind
+type apply = Flambda0.apply
+type assign = Flambda0.assign
 module Free_var = Flambda0.Free_var
 
 module Free_vars : sig
@@ -47,10 +43,10 @@ module rec Expr : sig
   val equal : t -> t -> bool
 
   (* Given an expression, freshen all variables within it, and form a function
-    whose body is the resulting expression.  The variables specified by
-    [params] will become the parameters of the function; the closure will be
-    identified by [id].  [params] must only reference variables that are
-    free variables of [body]. *)
+     whose body is the resulting expression.  The variables specified by
+     [params] will become the parameters of the function; the closure will be
+     identified by [id].  [params] must only reference variables that are
+     free variables of [body]. *)
   (* CR-soon mshinwell: consider improving name and names of arguments
     lwhite: the params restriction seems odd, perhaps give a reason
     in the comment. *)
@@ -66,14 +62,6 @@ module rec Expr : sig
 
   val toplevel_substitution
      : Variable.t Variable.Map.t
-    -> t
-    -> t
-
-  (* CR-someday pchambart: A more general version of this function might
-    take a [named] instead of a symbol and be called with
-    [Read_symbol_field (symbol, 0)]. *)
-  val substitute_read_symbol_field_for_variables
-     : (Symbol.t * int option) Variable.Map.t
     -> t
     -> t
 
