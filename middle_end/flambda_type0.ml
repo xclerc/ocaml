@@ -24,68 +24,67 @@ module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
 
-module Boxed_number_kind = struct
-  type t =
-    | Float
-    | Int32
-    | Int64
-    | Nativeint
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare t1 t2 = Pervasives.compare t1 t2
-
-    let equal t1 t2 = (compare t1 t2 = 0)
-
-    let hash t = Hashtbl.hash t
-
-    let print ppf t =
-      match t with
-      | Float -> Format.fprintf ppf "float"
-      | Int32 -> Format.fprintf ppf "int32"
-      | Int64 -> Format.fprintf ppf "int64"
-      | Nativeint -> Format.fprintf ppf "nativeint"
-
-    let output _ _ = Misc.fatal_error "Not implemented"
-  end)
-end
-
-type unresolved_value =
-  | Set_of_closures_id of Set_of_closures_id.t
-  | Symbol of Symbol.t
-
-type unknown_because_of =
-  | Unresolved_value of unresolved_value
-  | Other
-
-(** Types from other compilation units are loaded lazily.  There are two
-    kinds of cross-compilation unit reference to be resolved: via
-    [Export_id.t] values and via [Symbol.t] values. *)
-type load_lazily =
-  | Export_id of Export_id.t
-  | Symbol of Symbol.t
-
-(* CR mshinwell: Remove this once Pierre's patch lands *)
-type closure_freshening =
-  { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
-    closure_id : Closure_id.t Closure_id.Map.t;
-  }
-
-let print_closure_freshening ppf t =
-  Format.fprintf ppf "{ vars_within_closure %a, closure_id %a }"
-    (Var_within_closure.Map.print Var_within_closure.print)
-    t.vars_within_closure
-    (Closure_id.Map.print Closure_id.print)
-    t.closure_id
-
-let dummy_print_decls ppf _ =
-  Format.fprintf ppf "<function declarations>"
-
 module Make (Function_declarations : sig
   type t
   val print : Format.formatter -> t -> unit
 end) = struct
+  type function_declarations = Function_declarations.t
+
+  module Boxed_number_kind = struct
+    type t =
+      | Float
+      | Int32
+      | Int64
+      | Nativeint
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+
+      let compare t1 t2 = Pervasives.compare t1 t2
+
+      let equal t1 t2 = (compare t1 t2 = 0)
+
+      let hash t = Hashtbl.hash t
+
+      let print ppf t =
+        match t with
+        | Float -> Format.fprintf ppf "float"
+        | Int32 -> Format.fprintf ppf "int32"
+        | Int64 -> Format.fprintf ppf "int64"
+        | Nativeint -> Format.fprintf ppf "nativeint"
+
+      let output _ _ = Misc.fatal_error "Not implemented"
+    end)
+  end
+
+  type unresolved_value =
+    | Set_of_closures_id of Set_of_closures_id.t
+    | Symbol of Symbol.t
+
+  type unknown_because_of =
+    | Unresolved_value of unresolved_value
+    | Other
+
+  (** Types from other compilation units are loaded lazily.  There are two
+      kinds of cross-compilation unit reference to be resolved: via
+      [Export_id.t] values and via [Symbol.t] values. *)
+  type load_lazily =
+    | Export_id of Export_id.t
+    | Symbol of Symbol.t
+
+  (* CR mshinwell: Remove this once Pierre's patch lands *)
+  type closure_freshening =
+    { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
+      closure_id : Closure_id.t Closure_id.Map.t;
+    }
+
+  let print_closure_freshening ppf t =
+    Format.fprintf ppf "{ vars_within_closure %a, closure_id %a }"
+      (Var_within_closure.Map.print Var_within_closure.print)
+      t.vars_within_closure
+      (Closure_id.Map.print Closure_id.print)
+      t.closure_id
+
   (* A value of type [T.t] corresponds to an "approximation" of the result of
      a computation in the program being compiled.  That is to say, it
      represents what knowledge we have about such a result at compile time.
@@ -244,18 +243,15 @@ end) = struct
       -> t
       -> t
     val print
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> t
       -> unit
     val print_descr
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> descr
       -> unit
     val print_set_of_closures
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> set_of_closures
       -> unit
     val kind
@@ -367,8 +363,7 @@ end) = struct
           potential_closures;
         Format.fprintf ppf "]@])";
       | Set_of_closures set_of_closures ->
-        print_value_set_of_closures Function_declarations.print
-          ppf set_of_closures
+        print_value_set_of_closures ppf set_of_closures
       | Unboxed_float fs -> Format.fprintf ppf "float(%a)" Float.Set.print fs
       | Unboxed_int32 ns -> Format.fprintf ppf "int32(%a)" Int32.Set.print ns
       | Unboxed_int64 ns -> Format.fprintf ppf "int64(%a)" Int64.Set.print ns
@@ -427,12 +422,9 @@ end) = struct
 
     let kind_exn t =
       let really_import_approx t =
-        let dummy_print_decls ppf _ =
-          Format.fprintf ppf "<function declarations>"
-        in
         Misc.fatal_errorf "With_free_variables.create_let_reusing_body: \
             Flambda type is not fully resolved: %a"
-          (print dummy_print_decls) t
+          print t
       in
       kind t ~really_import_approx
 
@@ -564,8 +556,8 @@ end) = struct
       end else begin
         Misc.fatal_errorf "Values with incompatible kinds must not flow to \
             the same place: %a and %a"
-          (print dummy_print_decls) a1
-          (print dummy_print_decls) a2
+          print a1
+          print a2
         end
 
     let just_descr descr =
@@ -586,7 +578,7 @@ end) = struct
         | Unknown (
             (Value | Unboxed_int32 | Unboxed_int64 | Unboxed_nativeint), _) ->
           Misc.fatal_errorf "Wrong type for Pfloatval kind: %a"
-            (print dummy_print_decls) t
+            print t
         | Union _
         | Unboxed_float _
         | Unboxed_int32 _
@@ -687,7 +679,7 @@ end) = struct
 
     let create_set_of_closures ~function_decls ~size ~bound_vars
           ~invariant_params ~freshening
-          ~direct_call_surrogates : _ set_of_closures =
+          ~direct_call_surrogates : set_of_closures =
       { function_decls;
         bound_vars;
         invariant_params;
@@ -806,7 +798,7 @@ end) = struct
       | Immutable_string _
       | Mutable_string _ -> t
       | Float_array { contents; size; } ->
-        let contents : _ float_array_contents =
+        let contents : float_array_contents =
           match contents with
           | Contents ts -> Contents (Array.map (fun t -> clean t classify) ts)
           | Unknown_or_mutable -> Unknown_or_mutable
@@ -845,8 +837,7 @@ end) = struct
     val invariant : t -> unit
 
     val print
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> t
       -> unit
 
@@ -947,7 +938,7 @@ end) = struct
         Format.fprintf ppf "@[[|%a: %a|]@]"
           Tag.Scannable.print tag
           (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
-            (T.print))
+            T.print)
           (Array.to_list fields)
       in
       Format.fprintf ppf "@[%a@]"
@@ -1110,7 +1101,7 @@ end) = struct
       | Char of char
       | Constptr of int
 
-    let rec flatten t : _ singleton or_bottom =
+    let rec flatten t : singleton or_bottom =
       invariant t;
       match t with
       | Blocks by_tag ->

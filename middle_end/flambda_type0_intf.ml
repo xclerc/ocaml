@@ -128,20 +128,17 @@ module type S = sig
       -> t
 
     val print
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> t
       -> unit
 
     val print_descr
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> descr
       -> unit
 
     val print_set_of_closures
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> set_of_closures
       -> unit
 
@@ -288,8 +285,7 @@ module type S = sig
     val invariant : t -> unit
 
     val print
-      : (Format.formatter -> t -> unit)
-      -> Format.formatter
+       : Format.formatter
       -> t
       -> unit
 

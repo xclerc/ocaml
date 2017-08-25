@@ -687,7 +687,7 @@ module With_free_variables : sig
       occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
      : Variable.t
-    -> Flambda_type0.Make (Function_declarations).T.t
+    -> Flambda_type.t
     -> Named.t
     -> Expr.t t
     -> Expr.t
