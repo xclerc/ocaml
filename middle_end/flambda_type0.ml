@@ -464,6 +464,7 @@ end) = struct
     module Meet_or_join (AG : sig
       val name : string
 
+      val create_unit : Flambda_kind.t -> t
       val is_unit : t -> bool
 
       module Ops : sig
@@ -479,7 +480,7 @@ end) = struct
         val nativeint_set : Nativeint.Set.t simple_commutative_op
 
         val closure_id_map
-           : (t -> t -> t option)
+           : (t -> t -> t)
           -> t Closure_id.Map.t 
           -> t Closure_id.Map.t
           -> t Closure_id.Map.t
@@ -489,9 +490,10 @@ end) = struct
         match d1, d2 with
         | Union union1, Union union2 ->
           begin match AG.Ops.unionable union1 union2 ~really_import_approx with
+          (* XXX rename the following constructors *)
           | Ok union -> Union union
-          | Ill_typed_code -> Bottom
-          | Anything -> Unknown (Flambda_kind.value (), Other)
+          | Ill_typed_code -> Bottom (* XXX *)
+          | Anything -> Unknown (Flambda_kind.value (), Other) (* XXX *)
           end
         | Unboxed_float fs1, Unboxed_float fs2 ->
           Unboxed_float (AG.Ops.float_set fs1 fs2)
@@ -544,7 +546,7 @@ end) = struct
               map1 map2
           in
           Closure { potential_closures }
-        | _ -> Unknown (kind, Other)
+        | _ -> AG.create_unit kind
 
       and meet_or_join ~really_import_approx a1 a2 =
         let kind1 = kind a1 ~really_import_approx in
@@ -616,7 +618,7 @@ end) = struct
           let int32_set = Int32.Set.union
           let int64_set = Int64.Set.union
           let nativeint_set = Nativeint.Set.union
-          let closure_id_map = Closure_id.Map.union
+          let closure_id_map = Closure_id.Map.union_merge
         end
       end) (Meet)
     and Meet : Meet_or_join =
@@ -634,7 +636,7 @@ end) = struct
           let int32_set = Int32.Set.inter
           let int64_set = Int64.Set.inter
           let nativeint_set = Nativeint.Set.inter
-          let closure_id_map = Closure_id.Map.inter
+          let closure_id_map = Closure_id.Map.inter_merge
         end
       end) (Join)
 
