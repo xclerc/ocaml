@@ -42,6 +42,10 @@ val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
     about the corresponding value than the supplied type [than]. *)
 val strictly_more_precise : t -> than:t -> bool
 
+(** Returns [true] iff the given type provides the same or strictly more
+    information about the corresponding value than the supplied type [than]. *)
+val as_or_more_precise : t -> than:t -> bool
+
 (** If a value with the given type is known to be some kind of projection
     from another variable, return the projection.  (The variable is then
     given by [Projection.projecting_from] on the returned projection.) *)

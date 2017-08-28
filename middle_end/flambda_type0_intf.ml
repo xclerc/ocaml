@@ -338,5 +338,5 @@ module type S = sig
     val flatten : t -> singleton or_bottom
   end
 
-  include module type of T
+  include module type of struct include T end
 end

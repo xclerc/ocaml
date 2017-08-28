@@ -449,207 +449,183 @@ end) = struct
        rewriting [Project_var] and [Project_closure] constructions
        in [Simplify].
      *)
-    let rec join_descr kind ~really_import_approx d1 d2 =
-      match d1, d2 with
-      | Union union1, Union union2 ->
-        begin match Unionable.join union1 union2 ~really_import_approx with
-        | Ok union -> Union union
-        | Ill_typed_code -> Bottom
-        | Anything -> Unknown (Flambda_kind.value (), Other)
-        end
-      | Unboxed_float fs1, Unboxed_float fs2 ->
-        Unboxed_float (Float.Set.union fs1 fs2)
-      | Unboxed_int32 is1, Unboxed_int32 is2 ->
-        Unboxed_int32 (Int32.Set.union is1 is2)
-      | Unboxed_int64 is1, Unboxed_int64 is2 ->
-        Unboxed_int64 (Int64.Set.union is1 is2)
-      | Unboxed_nativeint is1, Unboxed_nativeint is2 ->
-        Unboxed_nativeint (Nativeint.Set.union is1 is2)
-      | Boxed_number (Float, t1), Boxed_number (Float, t2) ->
-        Boxed_number (Float, join ~really_import_approx t1 t2)
-      | Boxed_number (Int32, t1), Boxed_number (Int32, t2) ->
-        Boxed_number (Int32, join ~really_import_approx t1 t2)
-      | Boxed_number (Int64, t1), Boxed_number (Int64, t2) ->
-        Boxed_number (Int64, join ~really_import_approx t1 t2)
-      | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2) ->
-        Boxed_number (Nativeint, join ~really_import_approx t1 t2)
-      | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
-          when Export_id.equal e1 e2 -> d1
-      | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
-          when Symbol.equal s1 s2 -> d1
-      | Closure { potential_closures = map1 },
-        Closure { potential_closures = map2 } ->
-        let potential_closures =
-          Closure_id.Map.union_merge
-            (* CR pchambart:
-               merging the closure value might loose information in the
-               case of one branch having the approximation and the other
-               having 'Unknown'. We could imagine such as
- 
-               {[if ... then M1.f else M2.f]}
- 
-               where M1 is where the function is defined and M2 is
- 
-               {[let f = M3.f]}
- 
-               and M3 is
- 
-               {[let f = M1.f]}
- 
-               with the cmx for M3 missing
- 
-               Since we know that the approximation comes from the same
-               value, we know that both version provide additional
-               information on the value. Hence what we really want is an
-               approximation intersection, not an union (that this join
-               is).
-               mshinwell: changed to meet *)
-             (meet ~really_import_approx)
-            map1 map2
-        in
-        Closure { potential_closures }
-      | _ -> Unknown (kind, Other)
 
-    and join ~really_import_approx a1 a2 =
-      let kind1 = kind a1 ~really_import_approx in
-      let kind2 = kind a2 ~really_import_approx in
-      if Flambda_kind.compatible kind1 kind2 then begin
-        match a1, a2 with
-        | { descr = Bottom }, _ -> a2
-        | _, { descr = Bottom } -> a1
-        | { descr = Load_lazily _ }, _
-        | _, { descr = Load_lazily _ } ->
-          join ~really_import_approx
-            (really_import_approx a1) (really_import_approx a2)
-        | _ ->
-            let var =
-              match a1.var, a2.var with
-              | None, _ | _, None -> None
-              | Some v1, Some v2 ->
-                if Variable.equal v1 v2 then Some v1
-                else None
-            in
-            let projection =
-              match a1.projection, a2.projection with
-              | None, _ | _, None -> None
-              | Some proj1, Some proj2 ->
-                if Projection.equal proj1 proj2 then Some proj1 else None
-            in
-            let symbol =
-              match a1.symbol, a2.symbol with
-              | None, _ | _, None -> None
-              | Some (v1, field1), Some (v2, field2) ->
-                if Symbol.equal v1 v2 then
-                  match field1, field2 with
-                  | None, None -> a1.symbol
-                  | Some f1, Some f2 when f1 = f2 -> a1.symbol
-                  | _ -> None
-                else None
-            in
-            let descr =
-              join_descr kind1 ~really_import_approx a1.descr a2.descr
-            in
-            { descr;
-              var;
-              projection;
-              symbol;
-            }
-      end else begin
-        Misc.fatal_errorf "Cannot take the join of two types with incompatible
-            kinds: %a and %a"
-          print a1
-          print a2
-        end
+    type 'a commutative_op = 'a -> 'a -> 'a
 
-    and meet_descr kind ~really_import_approx d1 d2 =
-      match d1, d2 with
-      | Union union1, Union union2 ->
-        begin match Unionable.meet union1 union2 ~really_import_approx with
-        | Ok union -> Union union
-        (* XXX these cases need fixing *)
-        | Ill_typed_code -> Bottom
-        | Anything -> Unknown (Flambda_kind.value (), Other)
-        end
-      | Unboxed_float fs1, Unboxed_float fs2 ->
-        Unboxed_float (Float.Set.inter fs1 fs2)
-      | Unboxed_int32 is1, Unboxed_int32 is2 ->
-        Unboxed_int32 (Int32.Set.inter is1 is2)
-      | Unboxed_int64 is1, Unboxed_int64 is2 ->
-        Unboxed_int64 (Int64.Set.inter is1 is2)
-      | Unboxed_nativeint is1, Unboxed_nativeint is2 ->
-        Unboxed_nativeint (Nativeint.Set.inter is1 is2)
-      | Boxed_number (Float, t1), Boxed_number (Float, t2) ->
-        Boxed_number (Float, meet ~really_import_approx t1 t2)
-      | Boxed_number (Int32, t1), Boxed_number (Int32, t2) ->
-        Boxed_number (Int32, meet ~really_import_approx t1 t2)
-      | Boxed_number (Int64, t1), Boxed_number (Int64, t2) ->
-        Boxed_number (Int64, meet ~really_import_approx t1 t2)
-      | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2) ->
-        Boxed_number (Nativeint, meet ~really_import_approx t1 t2)
-      | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
-          when Export_id.equal e1 e2 -> d1
-      | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
-          when Symbol.equal s1 s2 -> d1
-      | Closure { potential_closures = map1 },
-        Closure { potential_closures = map2 } ->
-        let potential_closures =
-          Closure_id.Map.union_merge
-             (meet ~really_import_approx)  (* XXX *)
-            map1 map2
-        in
-        Closure { potential_closures }
-      | _ -> Bottom
+    module type Meet_or_join = sig
+      val meet_or_join
+         : really_import_approx:(t -> t)
+        -> t
+        -> t
+        -> t
+    end
 
-    and meet ~really_import_approx a1 a2 =
-      let kind1 = kind a1 ~really_import_approx in
-      let kind2 = kind a2 ~really_import_approx in
-      if Flambda_kind.compatible kind1 kind2 then begin
-        match a1, a2 with
-        | { descr = Unknown _ }, _ -> a2
-        | _, { descr = Unknown _ } -> a1
-        | { descr = Load_lazily _ }, _
-        | _, { descr = Load_lazily _ } ->
-          meet ~really_import_approx
-            (really_import_approx a1) (really_import_approx a2)
-        | _ ->
-            let var =
-              match a1.var, a2.var with
-              | None, _ | _, None -> None
-              | Some v1, Some v2 ->
-                if Variable.equal v1 v2 then Some v1
-                else None
-            in
-            let projection =
-              match a1.projection, a2.projection with
-              | None, _ | _, None -> None
-              | Some proj1, Some proj2 ->
-                if Projection.equal proj1 proj2 then Some proj1 else None
-            in
-            let symbol =
-              match a1.symbol, a2.symbol with
-              | None, _ | _, None -> None
-              | Some (v1, field1), Some (v2, field2) ->
-                if Symbol.equal v1 v2 then
-                  match field1, field2 with
-                  | None, None -> a1.symbol
-                  | Some f1, Some f2 when f1 = f2 -> a1.symbol
-                  | _ -> None
-                else None
-            in
-            let descr =
-              meet_descr kind1 ~really_import_approx a1.descr a2.descr
-            in
-            { descr;
-              var;
-              projection;
-              symbol;
-            }
-      end else begin
-        Misc.fatal_errorf "Cannot take the meet of two types with incompatible
-            kinds: %a and %a"
-          print a1
-          print a2
+    module Meet_or_join (AG : sig
+      val name : string
+
+      val is_unit : t -> bool
+
+      module Ops = sig
+        val unionable : Unionable.t commutative_op
+        val float_set : Float.Set.t commutative_op
+        val int32_set : Int32.Set.t commutative_op
+        val int64_set : Int64.Set.t commutative_op
+        val nativeint_set : Nativeint.Set.t commutative_op
+        val closure_id_map : Closure_id.Map.t commutative_op
+      end
+    end) (Inverse : Meet_or_join) : Meet_or_join = struct
+      let rec meet_or_join_descr kind ~really_import_approx d1 d2 =
+        match d1, d2 with
+        | Union union1, Union union2 ->
+          begin match AG.Ops.unionable union1 union2 ~really_import_approx with
+          | Ok union -> Union union
+          | Ill_typed_code -> Bottom
+          | Anything -> Unknown (Flambda_kind.value (), Other)
+          end
+        | Unboxed_float fs1, Unboxed_float fs2 ->
+          Unboxed_float (AG.Ops.float_set fs1 fs2)
+        | Unboxed_int32 is1, Unboxed_int32 is2 ->
+          Unboxed_int32 (AG.Ops.int32_set is1 is2)
+        | Unboxed_int64 is1, Unboxed_int64 is2 ->
+          Unboxed_int64 (AG.Ops.int64_set is1 is2)
+        | Unboxed_nativeint is1, Unboxed_nativeint is2 ->
+          Unboxed_nativeint (AG.Ops.nativeint_set is1 is2)
+        | Boxed_number (Float, t1), Boxed_number (Float, t2) ->
+          Boxed_number (Float, meet_or_join ~really_import_approx t1 t2)
+        | Boxed_number (Int32, t1), Boxed_number (Int32, t2) ->
+          Boxed_number (Int32, meet_or_join ~really_import_approx t1 t2)
+        | Boxed_number (Int64, t1), Boxed_number (Int64, t2) ->
+          Boxed_number (Int64, meet_or_join ~really_import_approx t1 t2)
+        | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2) ->
+          Boxed_number (Nativeint, meet_or_join ~really_import_approx t1 t2)
+        | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
+            when Export_id.equal e1 e2 -> d1
+        | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
+            when Symbol.equal s1 s2 -> d1
+        | Closure { potential_closures = map1 },
+          Closure { potential_closures = map2 } ->
+          let potential_closures =
+            Closure_id.Map.union_merge
+              (* CR pchambart:  (This was written for the "join" case)
+                merging the closure value might loose information in the
+                case of one branch having the approximation and the other
+                having 'Unknown'. We could imagine such as
+
+                {[if ... then M1.f else M2.f]}
+
+                where M1 is where the function is defined and M2 is
+
+                {[let f = M3.f]}
+
+                and M3 is
+
+                {[let f = M1.f]}
+
+                with the cmx for M3 missing
+
+                Since we know that the approximation comes from the same
+                value, we know that both version provide additional
+                information on the value. Hence what we really want is an
+                approximation intersection, not an union (that this join
+                is).
+                mshinwell: changed to meet *)
+              (Inverse.meet_or_join ~really_import_approx)
+              map1 map2
+          in
+          Closure { potential_closures }
+        | _ -> Unknown (kind, Other)
+
+      and meet_or_join ~really_import_approx a1 a2 =
+        let kind1 = kind a1 ~really_import_approx in
+        let kind2 = kind a2 ~really_import_approx in
+        if Flambda_kind.compatible kind1 kind2 then begin
+          if AG.is_identity a1 then a2
+          else if AG.is_identity a2 then a1
+          else
+            match a1, a2 with
+            | { descr = Load_lazily _ }, _
+            | _, { descr = Load_lazily _ } ->
+              meet_or_join ~really_import_approx
+                (really_import_approx a1) (really_import_approx a2)
+            | _ ->
+                let var =
+                  match a1.var, a2.var with
+                  | None, _ | _, None -> None
+                  | Some v1, Some v2 ->
+                    if Variable.equal v1 v2 then Some v1
+                    else None
+                in
+                let projection =
+                  match a1.projection, a2.projection with
+                  | None, _ | _, None -> None
+                  | Some proj1, Some proj2 ->
+                    if Projection.equal proj1 proj2 then Some proj1 else None
+                in
+                let symbol =
+                  match a1.symbol, a2.symbol with
+                  | None, _ | _, None -> None
+                  | Some (v1, field1), Some (v2, field2) ->
+                    if Symbol.equal v1 v2 then
+                      match field1, field2 with
+                      | None, None -> a1.symbol
+                      | Some f1, Some f2 when f1 = f2 -> a1.symbol
+                      | _ -> None
+                    else None
+                in
+                let descr =
+                  meet_or_join_descr kind1 ~really_import_approx
+                    a1.descr a2.descr
+                in
+                { descr;
+                  var;
+                  projection;
+                  symbol;
+                }
+        end else begin
+          Misc.fatal_errorf "Cannot take the %s of two types with incompatible \
+              kinds: %a and %a"
+            AG.name
+            print a1
+            print a2
         end
+    end
+
+    module rec Join : Meet_or_join =
+      Meet_or_join (struct
+        let name = "join"
+
+        let is_unit t =
+          match t.descr with
+          | Unknown _ -> true
+          | _ -> false
+
+        module Ops : sig
+          let unionable = Unionable.join
+          let float_set = Float.Set.union
+          let int32_set = Int32.Set.union
+          let int64_set = Int64.Set.union
+          let nativeint_set = Nativeint.Set.union
+          let closure_id_map = Closure_id.Map.union_merge
+        end
+      end) (Meet)
+    and Meet : Meet_or_join =
+      Meet_or_join (struct
+        let name = "meet"
+
+        let is_unit t =
+          match t.descr with
+          | Bottom _ -> true
+          | _ -> false
+
+        module Ops : sig
+          let unionable = Unionable.meet
+          let float_set = Float.Set.inter
+          let int32_set = Int32.Set.inter
+          let int64_set = Int64.Set.inter
+          let nativeint_set = Nativeint.Set.inter
+          let closure_id_map = Closure_id.Map.inter
+        end
+      end) (Join)
 
     let just_descr descr =
       { descr; var = None; projection = None; symbol = None; }
@@ -948,6 +924,12 @@ end) = struct
       -> t
       -> t or_bottom
 
+    val meet
+      : really_import_approx:(T.t -> T.t)
+      -> t
+      -> t
+      -> t or_bottom
+
     type singleton = private
       | Block of Tag.Scannable.t * (T.t array)
       | Int of int
@@ -1118,7 +1100,9 @@ end) = struct
       | Blocks by_tag | Blocks_and_immediates (by_tag, _) ->
         (* CR mshinwell: Should the failure of this check be an error?
            Perhaps the invariants pass should check "makeblock" to ensure it's
-           not used at or above No_scan_tag either *)
+           not used at or above No_scan_tag either.
+           In fact if we had our own type of primitives we could statically
+           enforce it (or maybe we could anyway) *)
         Tag.Scannable.Map.for_all (fun tag _contents ->
             (Tag.Scannable.to_int tag) < Obj.no_scan_tag)
           by_tag
@@ -1139,7 +1123,8 @@ end) = struct
         else check_immediates imms
       | Immediates imms -> check_immediates imms
 
-    let join ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
+    let meet_or_join ~immediate_set_operation ~tag_map_operation
+          ~operation ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
       invariant t1;
       invariant t2;
       let get_immediates t =
@@ -1149,7 +1134,7 @@ end) = struct
       in
       let immediates_t1 = get_immediates t1 in
       let immediates_t2 = get_immediates t2 in
-      let immediates = Immediate.Set.union immediates_t1 immediates_t2 in
+      let immediates = immediate_set_operation immediates_t1 immediates_t2 in
       let get_blocks t =
         match t with
         | Blocks by_tag | Blocks_and_immediates (by_tag, _) -> by_tag
@@ -1159,13 +1144,13 @@ end) = struct
       let blocks_t2 = get_blocks t2 in
       let anything = ref false in
       let blocks =
-        Tag.Scannable.Map.union (fun _tag fields1 fields2 ->
+        tag_map_operation (fun _tag fields1 fields2 ->
             if Array.length fields1 <> Array.length fields2 then begin
               anything := true;
               None
             end else begin
               Some (Array.map2 (fun field existing_field ->
-                  T.join field existing_field ~really_import_approx)
+                  operation field existing_field ~really_import_approx)
                 fields1 fields2)
             end)
           blocks_t1 blocks_t2
@@ -1174,6 +1159,20 @@ end) = struct
       else if Immediate.Set.is_empty immediates then Ok (Blocks blocks)
       else if Tag.Scannable.Map.is_empty blocks then Ok (Immediates immediates)
       else Ok (Blocks_and_immediates (blocks, immediates))
+
+    let join ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
+      meet_or_join ~immediate_set_operation:Immediate.Set.union
+        ~tag_map_operation:Tag.Scannable.Map.union
+        ~operation:T.join
+        ~really_import_approx
+        t1 t2
+
+    let meet ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
+      meet_or_join ~immediate_set_operation:Immediate.Set.inter
+        ~tag_map_operation:Tag.Scannable.Map.inter
+        ~operation:T.meet
+        ~really_import_approx
+        t1 t2
 
     let useful t =
       (* CR mshinwell: some of these are necessarily [true] when [invariant]
@@ -1236,5 +1235,5 @@ end) = struct
       | Some _ -> true
   end
 
-  include module type of struct include T end
+  include T
 end

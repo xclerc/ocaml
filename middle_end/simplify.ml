@@ -1736,13 +1736,35 @@ and simplify_let_cont_handler ~env ~r ~cont
   let params_and_arg_tys = List.combine (Parameter.List.vars params) arg_tys in
   let params =
     List.map (fun ((param, existing_ty), arg_ty) : Flambda.Typed_parameter.t ->
-        let param = Freshening.apply_variable sb param in
+        let unfreshened_param = param in
+        let param = Freshening.apply_parameter sb param in
         let ty =
           let ty =
             (* Use both the existing specialisation information and the
                argument type to try to increase the precision of the type. *)
-            Flambda_type0.meet existing_ty arg_ty
+            Flambda_type.meet existing_ty arg_ty
           in
+          if !Clflags.flambda_invariant_checks then begin
+            if not (Flambda_type.as_or_more_precise ty ~than:existing_ty)
+            then begin
+              Misc.fatal_errorf "Proposed type %a for continuation parameter \
+                  %a of %a is less precise than the existing type of the \
+                  parameter: %a"
+                Flambda_type.print ty
+                Parameter.print unfreshend_param
+                Continuation.print cont
+                Flambda_type.print existing_ty
+            end;
+            if not (Flambda_type.as_or_more_precise ty ~than:arg_ty)
+            then begin
+              Misc.fatal_errorf "Proposed type %a for continuation parameter \
+                  %a of %a is less precise than the type of the argument: %a"
+                Flambda_type.print ty
+                Parameter.print unfreshend_param
+                Continuation.print cont
+                Flambda_type.print arg_ty
+            end;
+          end;
           Flambda_type.rename_variables ty
             ~f:(fun var -> Freshening.apply_variable sb var)
         in
