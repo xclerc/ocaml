@@ -24,6 +24,8 @@ module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
 
+type 'a simple_commutative_op = 'a -> 'a -> 'a
+
 module Make (Function_declarations : sig
   type t
   val print : Format.formatter -> t -> unit
@@ -85,6 +87,7 @@ end) = struct
       (Closure_id.Map.print Closure_id.print)
       t.closure_id
 
+  (* CR mshinwell: update comment *)
   (* A value of type [T.t] corresponds to an "approximation" of the result of
      a computation in the program being compiled.  That is to say, it
      represents what knowledge we have about such a result at compile time.
@@ -450,8 +453,6 @@ end) = struct
        in [Simplify].
      *)
 
-    type 'a commutative_op = 'a -> 'a -> 'a
-
     module type Meet_or_join = sig
       val meet_or_join
          : really_import_approx:(t -> t)
@@ -465,13 +466,23 @@ end) = struct
 
       val is_unit : t -> bool
 
-      module Ops = sig
-        val unionable : Unionable.t commutative_op
-        val float_set : Float.Set.t commutative_op
-        val int32_set : Int32.Set.t commutative_op
-        val int64_set : Int64.Set.t commutative_op
-        val nativeint_set : Nativeint.Set.t commutative_op
-        val closure_id_map : Closure_id.Map.t commutative_op
+      module Ops : sig
+        val unionable
+           : really_import_approx:(t -> t)
+          -> Unionable.t
+          -> Unionable.t
+          -> Unionable.t Unionable.or_bottom
+
+        val float_set : Float.Set.t simple_commutative_op
+        val int32_set : Int32.Set.t simple_commutative_op
+        val int64_set : Int64.Set.t simple_commutative_op
+        val nativeint_set : Nativeint.Set.t simple_commutative_op
+
+        val closure_id_map
+           : (t -> t -> t option)
+          -> t Closure_id.Map.t 
+          -> t Closure_id.Map.t
+          -> t Closure_id.Map.t
       end
     end) (Inverse : Meet_or_join) : Meet_or_join = struct
       let rec meet_or_join_descr kind ~really_import_approx d1 d2 =
@@ -505,7 +516,7 @@ end) = struct
         | Closure { potential_closures = map1 },
           Closure { potential_closures = map2 } ->
           let potential_closures =
-            Closure_id.Map.union_merge
+            AG.Ops.closure_id_map
               (* CR pchambart:  (This was written for the "join" case)
                 merging the closure value might loose information in the
                 case of one branch having the approximation and the other
@@ -539,8 +550,8 @@ end) = struct
         let kind1 = kind a1 ~really_import_approx in
         let kind2 = kind a2 ~really_import_approx in
         if Flambda_kind.compatible kind1 kind2 then begin
-          if AG.is_identity a1 then a2
-          else if AG.is_identity a2 then a1
+          if AG.is_unit a1 then a2
+          else if AG.is_unit a2 then a1
           else
             match a1, a2 with
             | { descr = Load_lazily _ }, _
@@ -599,13 +610,13 @@ end) = struct
           | Unknown _ -> true
           | _ -> false
 
-        module Ops : sig
+        module Ops = struct
           let unionable = Unionable.join
           let float_set = Float.Set.union
           let int32_set = Int32.Set.union
           let int64_set = Int64.Set.union
           let nativeint_set = Nativeint.Set.union
-          let closure_id_map = Closure_id.Map.union_merge
+          let closure_id_map = Closure_id.Map.union
         end
       end) (Meet)
     and Meet : Meet_or_join =
@@ -614,10 +625,10 @@ end) = struct
 
         let is_unit t =
           match t.descr with
-          | Bottom _ -> true
+          | Bottom -> true
           | _ -> false
 
-        module Ops : sig
+        module Ops = struct
           let unionable = Unionable.meet
           let float_set = Float.Set.inter
           let int32_set = Int32.Set.inter
@@ -626,6 +637,9 @@ end) = struct
           let closure_id_map = Closure_id.Map.inter
         end
       end) (Join)
+
+    let join = Join.meet_or_join
+    let meet = Meet.meet_or_join
 
     let just_descr descr =
       { descr; var = None; projection = None; symbol = None; }
@@ -1123,60 +1137,81 @@ end) = struct
         else check_immediates imms
       | Immediates imms -> check_immediates imms
 
-    let meet_or_join ~immediate_set_operation ~tag_map_operation
-          ~operation ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
-      invariant t1;
-      invariant t2;
-      let get_immediates t =
-        match t with
-        | Blocks _ -> Immediate.Set.empty
-        | Blocks_and_immediates (_, imms) | Immediates imms -> imms
-      in
-      let immediates_t1 = get_immediates t1 in
-      let immediates_t2 = get_immediates t2 in
-      let immediates = immediate_set_operation immediates_t1 immediates_t2 in
-      let get_blocks t =
-        match t with
-        | Blocks by_tag | Blocks_and_immediates (by_tag, _) -> by_tag
-        | Immediates _ -> Tag.Scannable.Map.empty
-      in
-      let blocks_t1 = get_blocks t1 in
-      let blocks_t2 = get_blocks t2 in
-      let anything = ref false in
-      let blocks =
-        tag_map_operation (fun _tag fields1 fields2 ->
-            if Array.length fields1 <> Array.length fields2 then begin
-              anything := true;
-              None
-            end else begin
-              Some (Array.map2 (fun field existing_field ->
-                  operation field existing_field ~really_import_approx)
-                fields1 fields2)
-            end)
-          blocks_t1 blocks_t2
-      in
-      if !anything then Anything
-      else if Immediate.Set.is_empty immediates then Ok (Blocks blocks)
-      else if Tag.Scannable.Map.is_empty blocks then Ok (Immediates immediates)
-      else Ok (Blocks_and_immediates (blocks, immediates))
+    module Make_meet_or_join (Ops : sig
+      val t
+         : really_import_approx:(t -> t)
+        -> t
+        -> t
+        -> t
 
-    let join ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
-      meet_or_join ~immediate_set_operation:Immediate.Set.union
-        ~tag_map_operation:Tag.Scannable.Map.union
-        ~operation:T.join
-        ~really_import_approx
-        t1 t2
+      val immediate_set : Immediate.Set.t simple_commutative_op
 
-    let meet ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
-      meet_or_join ~immediate_set_operation:Immediate.Set.inter
-        ~tag_map_operation:Tag.Scannable.Map.inter
-        ~operation:T.meet
-        ~really_import_approx
-        t1 t2
+      val tag_map
+         : (Tag.t -> 'a -> 'a -> 'a)
+        -> 'a Tag.Scannable.Map.t
+        -> 'a Tag.Scannable.Map.t
+        -> 'a Tag.Scannable.Map.t
+    end) = struct
+      let meet_or_join ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
+        invariant t1;
+        invariant t2;
+        let get_immediates t =
+          match t with
+          | Blocks _ -> Immediate.Set.empty
+          | Blocks_and_immediates (_, imms) | Immediates imms -> imms
+        in
+        let immediates_t1 = get_immediates t1 in
+        let immediates_t2 = get_immediates t2 in
+        let immediates = Ops.immediate_set immediates_t1 immediates_t2 in
+        let get_blocks t =
+          match t with
+          | Blocks by_tag | Blocks_and_immediates (by_tag, _) -> by_tag
+          | Immediates _ -> Tag.Scannable.Map.empty
+        in
+        let blocks_t1 = get_blocks t1 in
+        let blocks_t2 = get_blocks t2 in
+        let anything = ref false in
+        let blocks =
+          Ops.tag_map (fun _tag fields1 fields2 ->
+              if Array.length fields1 <> Array.length fields2 then begin
+                anything := true;
+                None
+              end else begin
+                Some (Array.map2 (fun field existing_field ->
+                    Ops.t ~really_import_approx field existing_field)
+                  fields1 fields2)
+              end)
+            blocks_t1 blocks_t2
+        in
+        if !anything then
+          Anything
+        else if Immediate.Set.is_empty immediates then
+          Ok (Blocks blocks)
+        else if Tag.Scannable.Map.is_empty blocks then
+          Ok (Immediates immediates)
+        else
+          Ok (Blocks_and_immediates (blocks, immediates))
+    end
+
+    module Join = Make_meet_or_join (struct
+      let t = T.join
+      let immediate_set = Immediate.Set.union
+      let tag_map = Tag.Scannable.Map.union_merge
+    end)
+
+    let join = Join.meet_or_join
+
+    module Meet = Make_meet_or_join (struct
+      let t = T.join
+      let immediate_set = Immediate.Set.inter
+      let tag_map = Tag.Scannable.Map.inter
+    end)
+
+    let meet = Meet.meet_or_join
 
     let useful t =
       (* CR mshinwell: some of these are necessarily [true] when [invariant]
-        holds *)
+         holds *)
       invariant t;
       match t with
       | Blocks blocks -> not (Tag.Scannable.Map.is_empty blocks)

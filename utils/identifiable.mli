@@ -67,7 +67,7 @@ module type Map = sig
 
   val union_merge : ('a -> 'a -> 'a) -> 'a t -> 'a t -> 'a t
 
-  val inter : ('a -> 'a -> 'a option) -> 'a t -> 'a t
+  val inter : ('a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
 
   val rename : key t -> key -> key
   val map_keys : (key -> key) -> 'a t -> 'a t
