@@ -221,7 +221,6 @@ MIDDLE_END=\
   middle_end/flambda0.cmo \
   middle_end/flambda_type.cmo \
   middle_end/flambda_static0.cmo \
-  middle_end/flambda_iterators.cmo \
   middle_end/flambda.cmo \
   middle_end/flambda_static.cmo \
   middle_end/continuation_with_specialised_args.cmo \

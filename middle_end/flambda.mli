@@ -129,6 +129,118 @@ module rec Expr : sig
     -> recursive:Asttypes.rec_flag
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
+
+  (* CR-soon mshinwell: we need to document whether these iterators follow any
+    particular order. *)
+  module Iterators : sig
+    val iter
+       : (t -> unit)
+      -> (Named.t -> unit)
+      -> t
+      -> unit
+
+    (** Apply the given functions to the immediate subexpressions of the given
+        Flambda expression. *)
+    val iter_subexpressions
+       : (t -> unit)
+      -> (Named.t -> unit)
+      -> t
+      -> unit
+        
+    val iter_expr
+       : (t -> unit)
+      -> t
+      -> unit
+    
+    val iter_all_immutable_let_and_let_rec_bindings
+       : t
+      -> f:(Variable.t -> Named.t -> unit)
+      -> unit
+
+    val iter_on_sets_of_closures
+       : (Set_of_closures.t -> unit)
+      -> t
+      -> unit
+      
+    (** Iterators, mappers and folders in [Toplevel_only] modules never
+        recurse into the bodies of functions. *) 
+    module Toplevel_only : sig 
+      val iter
+        : (t -> unit)
+       -> (Named.t -> unit)
+       -> t
+       -> unit
+     
+      val iter_all_immutable_let_and_let_rec_bindings
+         : t
+        -> f:(Variable.t -> Named.t -> unit)
+        -> unit
+    end
+  end
+    
+  module Mappers : sig
+    include module type of Flambda0.Expr.Mappers
+
+    val map
+       : (t -> t)
+      -> (Named.t -> Named.t)
+      -> t
+      -> t
+    
+    val map_subexpressions
+       : (t -> t)
+      -> (Variable.t -> Named.t -> Named.t)
+      -> t
+      -> t
+
+    val map_expr
+       : (t -> t)
+      -> t
+      -> t
+
+    val map_symbols
+       : t
+      -> f:(Symbol.t -> Symbol.t)
+      -> t
+
+    val map_sets_of_closures
+       : t
+      -> f:(Set_of_closures.t -> Set_of_closures.t)
+      -> t
+  
+    val map_apply
+       : t
+      -> f:(apply -> apply)
+      -> t
+
+    val map_project_var_to_named_opt
+       : t
+      -> f:(Projection.Project_var.t -> Named.t option)
+      -> t
+
+    val map_all_immutable_let_and_let_rec_bindings
+       : t
+      -> f:(Variable.t -> Named.t -> Named.t)
+      -> t
+         
+    module Toplevel_only : sig 
+      val map
+         : (t -> t)
+        -> (Named.t -> Named.t)
+        -> t
+        -> t
+
+      val map_expr
+         : (t -> t)
+        -> t
+        -> t
+  
+      val map_sets_of_closures
+         : t
+        -> f:(Set_of_closures.t -> Set_of_closures.t)
+        -> t
+    end
+  end
 end and Named : sig
   include module type of Flambda0.Named
 
@@ -138,6 +250,46 @@ end and Named : sig
     -> t
 
   val of_projection : Projection.t -> t
+
+  module Iterators : sig
+    val iter
+       : (Expr.t -> unit)
+      -> (t -> unit)
+      -> t
+      -> unit
+    
+    val iter_expr
+      : (t -> unit)
+      -> Expr.t
+      -> unit
+
+    val iter_named
+       : (t -> unit)
+      -> t
+      -> unit
+
+    module Toplevel_only : sig
+      val iter
+         : (Expr.t -> unit)
+        -> (t -> unit)
+        -> t
+        -> unit
+    end
+  end
+    
+  module Mappers : sig
+    val map
+       : (t -> t)
+      -> Expr.t
+      -> Expr.t
+
+    module Toplevel_only : sig
+      val map
+         : (t -> t)
+        -> Expr.t
+        -> Expr.t
+    end
+  end
 end
 and Let : module type of Flambda0.Let
 and Let_mutable : module type of Flambda0.Let_mutable
@@ -153,6 +305,30 @@ and Set_of_closures : sig
      : Var_within_closure.t
     -> t
     -> Variable.t
+
+  module Mappers : sig
+    val map_symbols
+       : t
+      -> f:(Symbol.t -> Symbol.t)
+      -> t
+
+    val map_function_bodies
+       : ?ignore_stubs:unit
+      -> t
+      -> f:(Expr.t -> Expr.t)
+      -> t
+  end
+
+  module Folders : sig
+    val fold_function_decls_ignoring_stubs
+       : t
+      -> init:'a
+      -> f:(fun_var:Variable.t
+        -> function_decl:Function_declaration.t
+        -> 'a
+        -> 'a)
+      -> 'a
+  end
 end and Function_declarations : sig
   include module type of Flambda0.Function_declarations
 
