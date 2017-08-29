@@ -130,6 +130,8 @@ module Trap_action : sig
     | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
     (* CR mshinwell: Think about whether we really need the trap IDs now *)
     | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
+
+  val equal : t -> t -> bool
 end
 
 module Switch : sig
@@ -147,6 +149,8 @@ module Switch : sig
     failaction : Continuation.t option;
     (** Action to take if none of the [consts] matched. *)
   }
+
+  val equal : t -> t -> bool
 end
 
 module rec Expr : sig
@@ -629,7 +633,9 @@ end and Function_declaration : sig
 end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)
-  type t = Parameter.t * Flambda_type.t
+  type t
+
+  val create : Parameter.t -> Flambda_type.t -> t
 
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
@@ -639,6 +645,9 @@ end and Typed_parameter : sig
 
   (** Replace the type of a parameter. *)
   val with_type : t -> Flambda_type.t -> t
+
+  (** Map the underlying variable of a parameter. *)
+  val map_var : t -> f:(Variable.t -> Variable.t) -> t
 
   (** Map the type of a parameter. *)
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t

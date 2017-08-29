@@ -1367,9 +1367,11 @@ end = struct
       Expr.print f.body
 end and Typed_parameter : sig
   type t = Parameter.t * Flambda_type.t
+  val create : Parameter.t -> Flambda_type.t -> t
   val var : t -> Variable.t
   val ty : t -> Flambda_type.t
   val with_type : t -> Flambda_type.t -> t
+  val map_var : t -> f:(Variable.t -> Variable.t) -> t
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
   val free_variables : t -> Variable.Set.t
   module List : sig
@@ -1383,12 +1385,15 @@ end and Typed_parameter : sig
 end = struct
   type t = Parameter.t * Flambda_type.t
 
+  let create param ty = param, ty
+
   let var (param, _ty) = Parameter.var param
 
   let ty (_param, ty) = ty
 
   let with_type (param, _old_ty) new_ty = param, new_ty
 
+  let map_var (param, ty) ~f = Parameter.map_var f param, ty
   let map_type (param, ty) ~f = param, f ty
 
   let free_variables (_param, ty) =

@@ -18,13 +18,16 @@
 
 module F0 = Flambda0
 
-module Return_arity = F0.Return_arity
+type apply = F0.apply
+type apply_kind = F0.apply_kind
+type assign = F0.assign
+
 module Call_kind = F0.Call_kind
 module Const = F0.Const
-type apply_kind = F0.apply_kind
-type apply = F0.apply
-type assign = F0.assign
 module Free_var = F0.Free_var
+module Return_arity = F0.Return_arity
+module Switch = F0.Switch
+module Trap_action = F0.Trap_action
 module Typed_parameter = F0.Typed_parameter
 
 module Free_vars = struct
@@ -52,6 +55,7 @@ module rec Expr : sig
     -> continuation_param:Continuation.t
     -> stub:bool
     -> continuation:Continuation.t
+    -> return_arity:F0.Return_arity.t
     -> t
   val toplevel_substitution
      : Variable.t Variable.Map.t
@@ -107,7 +111,7 @@ module rec Expr : sig
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
 end = struct
-  include F0.Expr
+  include Expr
 
   (* CR-soon mshinwell: this should use the explicit ignore functions *)
   let toplevel_substitution sb tree =
@@ -165,10 +169,10 @@ end = struct
         in
         Let_cont {
           body;
-          handlers = F0.Let_cont_handlers.map handlers ~f;
+          handlers = Let_cont_handlers.map handlers ~f;
         }
     in
-    let aux_named (named : F0.Named.t) : F0.Named.t =
+    let aux_named (named : Named.t) : Named.t =
       match named with
       | Var var ->
         let var' = sb var in
@@ -190,7 +194,7 @@ end = struct
           Set_of_closures.create
             ~function_decls
             ~free_vars:
-              (Variable.Map.map (fun (free_var : F0.Free_var.t) ->
+              (Variable.Map.map (fun (free_var : Free_var.t) ->
                   { free_var with var = sb free_var.var; })
                 set_of_closures.free_vars)
             ~direct_call_surrogates:set_of_closures.direct_call_surrogates
@@ -217,7 +221,7 @@ end = struct
     if Variable.Map.is_empty sb' then tree
     else Flambda_iterators.map_toplevel aux aux_named tree
 
-  let equal t1 t2 =
+  let rec equal t1 t2 =
     (* CR mshinwell: next comment may no longer be relevant? *)
     t1 == t2 || (* it is ok for the string case: if they are physically the same,
                    it is the same original branch *)
@@ -229,8 +233,8 @@ end = struct
     | Apply _, _ | _, Apply _ -> false
     | Let { var = var1; defining_expr = defining_expr1; body = body1; _ },
         Let { var = var2; defining_expr = defining_expr2; body = body2; _ } ->
-      Variable.equal var1 var2 && same_named defining_expr1 defining_expr2
-        && same body1 body2
+      Variable.equal var1 var2 && Named.equal defining_expr1 defining_expr2
+        && equal body1 body2
     | Let _, _ | _, Let _ -> false
     | Let_mutable {var = mv1; initial_value = v1; contents_kind = ck1; body = b1},
       Let_mutable {var = mv2; initial_value = v2; contents_kind = ck2; body = b2}
@@ -238,28 +242,28 @@ end = struct
       Mutable_variable.equal mv1 mv2
         && Variable.equal v1 v2
         && ck1 = ck2
-        && same b1 b2
+        && equal b1 b2
     | Let_mutable _, _ | _, Let_mutable _ -> false
     | Switch (a1, s1), Switch (a2, s2) ->
-      Variable.equal a1 a2 && F0.Switch.equal s1 s2
+      Variable.equal a1 a2 && Switch.equal s1 s2
     | Switch _, _ | _, Switch _ -> false
     | Apply_cont (e1, trap1, a1), Apply_cont (e2, trap2, a2) ->
       Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
-        && trap_action_equal trap1 trap2
+        && Misc.Stdlib.Option.equal Trap_action.equal trap1 trap2
     | Apply_cont _, _ | _, Apply_cont _ -> false
     | Let_cont { body = body1; handlers = handlers1; },
         Let_cont { body = body2; handlers = handlers2; } ->
-      same body1 body2
-        && same_let_cont_handlers handlers1 handlers2
+      equal body1 body2
+        && Let_cont_handlers.equal handlers1 handlers2
     | Proved_unreachable, Proved_unreachable -> true
     | Proved_unreachable, _ | _, Proved_unreachable -> false
 
   let make_closure_declaration ~id ~body ~params ~continuation_param
-        ~stub ~continuation : F0.Expr.t =
-    let free_variables = F0.Expr.free_variables body in
-    let param_set = Parameter.Set.vars params in
+        ~stub ~continuation ~return_arity : Expr.t =
+    let free_variables = Expr.free_variables body in
+    let param_set = Typed_parameter.List.var_set params in
     if not (Variable.Set.subset param_set free_variables) then begin
-      Misc.fatal_error "Flambda_utils.make_closure_declaration"
+      Misc.fatal_error "Flambda.Expr.make_closure_declaration"
     end;
     let sb =
       Variable.Set.fold
@@ -267,22 +271,23 @@ end = struct
         free_variables Variable.Map.empty
     in
     (* CR-soon mshinwell: try to eliminate this [toplevel_substitution].  This
-      function is only called from [Simplify], so we should be able
-      to do something similar to what happens in [Inlining_transforms] now. *)
+       function is only called from [Simplify], so we should be able
+       to do something similar to what happens in [Inlining_transforms] now. *)
     let body = toplevel_substitution sb body in
-    let subst id = Variable.Map.find id sb in
-    let subst_param param = Parameter.map_var subst param in
+    let subst var = Variable.Map.find id sb in
+    let subst_param param = Typed_parameter.map_var param ~f:subst in
     let function_declaration =
-      F0.Function_declaration.create ~params:(List.map subst_param params)
-        ~continuation_param ~return_arity:1 ~body ~stub ~dbg:Debuginfo.none
-        ~inline:Default_inline ~specialise:Default_specialise ~is_a_functor:false
+      Function_declaration.create ~params:(List.map subst_param params)
+        ~continuation_param ~return_arity ~body ~stub ~dbg:Debuginfo.none
+        ~inline:Default_inline ~specialise:Default_specialise
+        ~is_a_functor:false
         ~closure_origin:(Closure_origin.create (Closure_id.wrap id))
     in
     assert (Variable.Set.equal (Variable.Set.map subst free_variables)
       function_declaration.free_variables);
     let free_vars =
       Variable.Map.fold (fun id id' fv' ->
-          let free_var : F0.Free_var.t =
+          let free_var : Free_var.t =
             { var = id;
               projection = None;
             }
@@ -300,14 +305,13 @@ end = struct
     in
     let set_of_closures =
       let function_decls =
-        F0.Function_declarations.create
+        Function_declarations.create
           ~funs:(Variable.Map.singleton id function_declaration)
       in
-      F0.Set_of_closures.create ~function_decls ~free_vars
-        ~specialised_args:Variable.Map.empty
+      Set_of_closures.create ~function_decls ~free_vars
         ~direct_call_surrogates:Variable.Map.empty
     in
-    let project_closure : F0.Named.t =
+    let project_closure : Named.t =
       Project_closure {
           set_of_closures = set_of_closures_var;
           closure_id = Closure_id.Set.singleton (Closure_id.wrap id);
@@ -317,8 +321,11 @@ end = struct
       Variable.create "project_closure"
         ~current_compilation_unit:compilation_unit
     in
-    F0.Expr.create_let set_of_closures_var (Set_of_closures set_of_closures)
-      (F0.Expr.create_let project_closure_var project_closure
+    Expr.create_let set_of_closures_var
+      (Flambda_kind.value ())
+      (Set_of_closures set_of_closures)
+      (Expr.create_let project_closure_var (Flambda_kind.value ())
+        project_closure
         (Apply_cont (continuation, None, [project_closure_var])))
 
   module Reachable = struct
@@ -328,7 +335,7 @@ end = struct
       | Unreachable
   end
 
-  let fold_lets_option (t : F0.Expr.t) ~init ~for_defining_expr
+  let fold_lets_option (t : Expr.t) ~init ~for_defining_expr
         ~for_last_body ~filter_defining_expr =
     let finish ~last_body ~acc ~rev_lets =
       let module W = With_free_variables in
@@ -380,7 +387,7 @@ end = struct
     in
     loop t ~acc:init ~rev_lets:[]
 
-  let description_of_toplevel_node (expr : F0.Expr.t) =
+  let description_of_toplevel_node (expr : Expr.t) =
     match expr with
     | Let { var; _ } -> Format.asprintf "let %a" Variable.print var
     | Let_mutable _ -> "let_mutable"
@@ -392,15 +399,15 @@ end = struct
 
   let bind ~bindings ~body =
     List.fold_left (fun expr (var, var_def) ->
-        F0.Expr.create_let var var_def expr)
+        Expr.create_let var var_def expr)
       body bindings
 
   let all_defined_continuations_toplevel expr =
     let defined_continuations = ref Continuation.Set.empty in
-    Flambda_iterators.iter_toplevel (fun (expr : F0.Expr.t) ->
+    Flambda_iterators.iter_toplevel (fun (expr : Expr.t) ->
         match expr with
         | Let_cont { handlers; _ } ->
-          let conts = F0.bound_continuations_of_let_handlers ~handlers in
+          let conts = bound_continuations_of_let_handlers ~handlers in
           defined_continuations :=
             Continuation.Set.union conts
               !defined_continuations
@@ -409,14 +416,14 @@ end = struct
       expr;
     !defined_continuations
 
-  let count_continuation_uses_toplevel (expr : F0.Expr.t) =
+  let count_continuation_uses_toplevel (expr : Expr.t) =
     let counts = Continuation.Tbl.create 42 in
     let use cont =
       match Continuation.Tbl.find counts cont with
       | exception Not_found -> Continuation.Tbl.add counts cont 1
       | count -> Continuation.Tbl.replace counts cont (count + 1)
     in
-    Flambda_iterators.iter_toplevel (fun (expr : F0.Expr.t) ->
+    Flambda_iterators.iter_toplevel (fun (expr : Expr.t) ->
         match expr with
         | Apply { continuation; _ } -> use continuation
         | Apply_cont (cont, None, _) -> use cont
@@ -489,6 +496,8 @@ end = struct
 end and Named : sig
   include module type of F0.Named
 
+  val equal : t -> t -> bool
+
   val toplevel_substitution
      : Variable.t Variable.Map.t
     -> t
@@ -496,15 +505,15 @@ end and Named : sig
 
   val of_projection : Projection.t -> t
 end = struct
-  include F0.Named
+  include Named
 
   (* CR-someday mshinwell: Fix [Flambda_iterators] so this can be implemented
      properly. *)
   let toplevel_substitution sb t =
     let var = Variable.create "subst" in
     let cont = Continuation.create () in
-    let expr : F0.Expr.t =
-      F0.Expr.create_let var t (Apply_cont (cont, None, []))
+    let expr : Expr.t =
+      Expr.create_let var t (Apply_cont (cont, None, []))
     in
     match Expr.toplevel_substitution sb expr with
     | Let let_expr -> let_expr.defining_expr
@@ -557,8 +566,10 @@ end = struct
       p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
 end and Let_cont_handlers : sig
   include module type of F0.Let_cont_handlers
+
+  val equal : t -> t -> bool
 end = struct
-  include F0.Let_cont_handlers
+  include Let_cont_handlers
 
   let equal t1 t2 =
     match t1, t2 with
@@ -571,40 +582,41 @@ end = struct
     | _, _ -> false
 end and Continuation_handler : sig
   include module type of F0.Continuation_handler
+
+  val equal : t -> t -> bool
 end = struct
-  include F0.Continuation_handler
+  include Continuation_handler
 
   let equal
         ({ params = params1; stub = stub1; handler = handler1; } : t)
         ({ params = params2; stub = stub2; handler = handler2; } : t) =
-    F0.Typed_parameter.List.compare params1 params2 = 0
+    Typed_parameter.List.compare params1 params2 = 0
       && stub1 = stub2
       && Expr.equal handler1 handler2
 end and Continuation_handlers : sig
   include module type of F0.Continuation_handlers
+
+  val equal : t -> t -> bool
 end = struct
-  include F0.Continuation_handlers
+  include Continuation_handlers
 
   let equal t1 t2 =
     Continuation.Map.equal Continuation_handler.equal t1 t2
 end and Set_of_closures : sig
   include module type of F0.Set_of_closures
 end = struct
-  include F0.Set_of_closures
+  include Set_of_closures
 
-  let find_free_variable cv ({ free_vars } : F0.Set_of_closures.t) =
-    let free_var : F0.Free_var.t =
+  let find_free_variable cv ({ free_vars } : Set_of_closures.t) =
+    let free_var : Free_var.t =
       Variable.Map.find (Var_within_closure.unwrap cv) free_vars
     in
     free_var.var
 
-  and same_set_of_closures (c1 : F0.Set_of_closures.t)
-        (c2 : F0.Set_of_closures.t) =
-    Variable.Map.equal sameclosure c1.function_decls.funs c2.function_decls.funs
-      && Variable.Map.equal F0.equal_free_var
-          c1.free_vars c2.free_vars
-      && Variable.Map.equal F0.equal_specialised_to c1.specialised_args
-          c2.specialised_args
+  and equal (t1 : Set_of_closures.t) (t2 : Set_of_closures.t) =
+    Variable.Map.equal Function_declaration.equal
+        t1.function_decls.funs t2.function_decls.funs
+      && Variable.Map.equal Free_var.equal t1.free_vars t2.free_vars
 end and Function_declarations : sig
   include module type of F0.Function_declarations
 
@@ -633,7 +645,7 @@ end and Function_declarations : sig
     -> f:(Flambda_type.t -> Flambda_type.t)
     -> t
 end = struct
-  include F0.Function_declarations
+  include Function_declarations
 
   let find_declaration_variable cf ({ funs } : t) =
     let var = Closure_id.unwrap cf in
@@ -642,7 +654,7 @@ end = struct
     else var
 
   let variables_bound_by_the_closure cf
-        (decls : F0.Function_declarations.t) =
+        (decls : Function_declarations.t) =
     let func = find_declaration cf decls in
     let params = Parameter.Set.vars func.params in
     let functions = Variable.Map.keys decls.funs in
@@ -718,7 +730,7 @@ end = struct
   let contains_stub (fun_decls : t) =
     let number_of_stub_functions =
       Variable.Map.cardinal
-        (Variable.Map.filter (fun _ { F0.stub } -> stub)
+        (Variable.Map.filter (fun _ { stub } -> stub)
           fun_decls.funs)
     in
     number_of_stub_functions > 0
@@ -751,8 +763,10 @@ end and Function_declaration : sig
      : t
     -> function_decls:Function_declarations.t
     -> int
+
+  val equal : t -> t -> bool
 end = struct
-  include F0.Function_declaration
+  include Function_declaration
 
   let function_arity t = List.length t.params
 

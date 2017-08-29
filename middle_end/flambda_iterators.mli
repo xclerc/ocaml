@@ -19,7 +19,9 @@
 (* CR-soon mshinwell: we need to document whether these iterators follow any
    particular order. *)
 
-(* CR mshinwell: We could now just move these into flambda.ml. *)
+(* CR mshinwell: We could now just move these into flambda.ml.  Maybe the
+   code should stay here and we should just re-export them in
+   [Iterators] submodules. *)
 
 (** Apply the given functions to the immediate subexpressions of the given
     Flambda expression.  For avoidance of doubt, if a subexpression is

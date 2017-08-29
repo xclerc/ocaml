@@ -58,6 +58,7 @@ module rec Expr : sig
     (* CR mshinwell: update comment. *)
     -> stub:bool
     -> continuation:Continuation.t
+    -> return_arity:Flambda0.Return_arity.t
     -> t
 
   val toplevel_substitution
