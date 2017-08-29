@@ -21,7 +21,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** Basic definitions, constructors and accessors. *)
-include module type of Flambda0.Flambda_type
+include module type of struct include Flambda0.Flambda_type end
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr

@@ -110,17 +110,6 @@ module rec Expr : sig
       -> 'b * Variable.t * (Named.t option))
     -> t * 'b
 
-  (* CR mshinwell: consider enhancing this in the same way as for
-     [fold_lets_option] in the [defining_expr] type.  This would be useful eg
-     for Ref_to_variables.  Maybe in fact there should be a new iterator that
-     uses this function for such situations? *)
-  val map_lets
-     : Expr.t
-    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
-    -> after_rebuild:(Expr.t -> Expr.t)
-    -> for_last_body:(Expr.t -> Expr.t)
-    -> Expr.t
-
   (** All continuations defined at toplevel within the given expression. *)
   val all_defined_continuations_toplevel : t -> Continuation.Set.t
 

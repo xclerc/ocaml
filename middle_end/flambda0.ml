@@ -304,6 +304,12 @@ module rec Expr : sig
     -> for_last_body:(t -> unit)
     -> for_each_let:(t -> unit)
     -> unit
+  val map_lets
+     : t
+    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
+    -> for_last_body:(t -> t)
+    -> after_rebuild:(t -> t)
+    -> t
   type maybe_named =
     | Is_expr of t
     | Is_named of Named.t
@@ -563,6 +569,44 @@ end = struct
         for_last_body t
     in
     loop t
+
+  let map_lets t ~for_defining_expr ~for_last_body ~after_rebuild =
+    let rec loop (t : t) ~rev_lets =
+      match t with
+      | Let { var; kind; defining_expr; body; _ } ->
+        let new_defining_expr =
+          for_defining_expr var defining_expr
+        in
+        let original =
+          if new_defining_expr == defining_expr then
+            Some t
+          else
+            None
+        in
+        let rev_lets = (var, kind, new_defining_expr, original) :: rev_lets in
+        loop body ~rev_lets
+      | t ->
+        let last_body = for_last_body t in
+        (* As soon as we see a change, we have to rebuild that [Let] and every
+          outer one. *)
+        let seen_change = ref (not (last_body == t)) in
+        List.fold_left (fun (t : t) (var, kind, defining_expr, original) : t ->
+            let let_expr =
+              match original with
+              | Some original when not !seen_change -> original
+              | Some _ | None ->
+                seen_change := true;
+                create_let var kind defining_expr t
+            in
+            let new_let = after_rebuild let_expr in
+            if not (new_let == let_expr) then begin
+              seen_change := true
+            end;
+            new_let)
+          last_body
+          rev_lets
+    in
+    loop t ~rev_lets:[]
 
   let iter_general ~toplevel f f_named maybe_named =
     let rec aux (t : t) =
@@ -1041,7 +1085,7 @@ end and Set_of_closures : sig
     direct_call_surrogates : Variable.t Variable.Map.t;
   }
 
-  val create_set_of_closures
+  val create
      : function_decls:Function_declarations.t
     -> free_vars:Free_vars.t
     -> direct_call_surrogates:Variable.t Variable.Map.t
@@ -1051,8 +1095,8 @@ end and Set_of_closures : sig
 end = struct
   include Set_of_closures
 
-  let create_set_of_closures ~(function_decls : Function_declarations.t)
-        ~free_vars ~direct_call_surrogates =
+  let create ~(function_decls : Function_declarations.t) ~free_vars
+        ~direct_call_surrogates =
     if !Clflags.flambda_invariant_checks then begin
       let all_fun_vars = Variable.Map.keys function_decls.funs in
       let expected_free_vars =
@@ -1085,7 +1129,7 @@ end = struct
       *)
       let free_vars_domain = Variable.Map.keys free_vars in
       if not (Variable.Set.subset expected_free_vars free_vars_domain) then begin
-        Misc.fatal_errorf "create_set_of_closures: [free_vars] mapping of \
+        Misc.fatal_errorf "Set_of_closures.create: [free_vars] mapping of \
             variables bound by the closure(s) is wrong.  (Must map at least \
             %a but only maps %a.)@ \nfunction_decls:@ %a"
           Variable.Set.print expected_free_vars
@@ -1210,10 +1254,6 @@ end and Function_declaration : sig
     -> params:Typed_parameter.t list
     -> body:Expr.t
     -> t
-  val map_parameter_types
-     : t
-    -> f:(Flambda_type.T.t -> Flambda_type.T.t)
-    -> t
   val used_params : t -> Variable.Set.t
   val print : Variable.t -> Format.formatter -> t -> unit
 end = struct
@@ -1283,12 +1323,6 @@ end = struct
       is_a_functor = t.is_a_functor;
     }
 
-  let map_parameter_types t ~f =
-    let params =
-      List.map (fun param -> Typed_parameter.map_type param ~f) t.params
-    in
-    { t with params; }
-
   let used_params (function_decl : Function_declaration.t) =
     Variable.Set.filter (fun param ->
         Variable.Set.mem param function_decl.free_variables)
@@ -1332,9 +1366,11 @@ end = struct
       Typed_parameter.List.print f.params
       Expr.print f.body
 end and Typed_parameter : sig
-  type t = Parameter.t * Flambda_type.T.t
+  type t = Parameter.t * Flambda_type.t
   val var : t -> Variable.t
-  val map_type : t -> f:(Flambda_type.T.t -> Flambda_type.T.t) -> t
+  val ty : t -> Flambda_type.t
+  val with_type : t -> Flambda_type.t -> t
+  val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
   val free_variables : t -> Variable.Set.t
   module List : sig
     type nonrec t = t list
@@ -1345,16 +1381,20 @@ end and Typed_parameter : sig
   end
   include Identifiable.S with type t := t
 end = struct
-  type t = Parameter.t * Flambda_type.T.t
+  type t = Parameter.t * Flambda_type.t
 
   let var (param, _ty) = Parameter.var param
+
+  let ty (_param, ty) = ty
+
+  let with_type (param, _old_ty) new_ty = param, new_ty
 
   let map_type (param, ty) ~f = param, f ty
 
   let free_variables (_param, ty) =
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the type. *)
-    Flambda_type.T.free_variables ty
+    Flambda_type.free_variables ty
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -1366,7 +1406,7 @@ end = struct
     let print ppf (param, ty) =
       Format.fprintf ppf "@[(%a : %a)@]"
         Parameter.print param
-        Flambda_type.T.print ty
+        Flambda_type.print ty
 
     let output _ _ = Misc.fatal_error "Not implemented"
                             end)
@@ -1434,7 +1474,7 @@ module With_free_variables = struct
     | Expr (body, free_vars_of_body) ->
       Let {
         var;
-        kind = Flambda_type.T.kind_exn ty;
+        kind = Flambda_type.kind_exn ty;
         defining_expr;
         body;
         free_vars_of_defining_expr = Named.free_variables defining_expr;

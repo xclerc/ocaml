@@ -20,11 +20,11 @@
 module Constant_defining_value_block_field : sig
   type t =
     | Symbol of Symbol.t
-    | Const of Flambda.Const.t
+    | Const of Flambda0.Const.t
 end
 
 module Constant_defining_value : sig
-  (** Like a subset of [Flambda.Named.t], except that instead of [Variable.t]s
+  (** Like a subset of [Flambda0.Named.t], except that instead of [Variable.t]s
       we have [Symbol.t]s, and everything is a constant (i.e. with a fixed value
       known at compile time).  Values of this type describe constants that will
       be directly assigned to symbols in the object file (see below). *)
@@ -35,7 +35,7 @@ module Constant_defining_value : sig
     | Block of Tag.Scannable.t * Constant_defining_value_block_field.t list
       (** A pre-allocated block full of constants (either simple constants
           or references to other constants, see below). *)
-    | Set_of_closures of Flambda.Set_of_closures.t
+    | Set_of_closures of Flambda0.Set_of_closures.t
       (** A closed (and thus constant) set of closures.  (That is to say,
           [free_vars] must be empty.) *)
     | Project_closure of Symbol.t * Closure_id.t
@@ -51,7 +51,7 @@ module Constant_defining_value : sig
     -> Constant_defining_value_block_field.t list
     -> t
 
-  val create_set_of_closures : Flambda.Set_of_closures.t -> t
+  val create_set_of_closures : Flambda0.Set_of_closures.t -> t
 
   val create_project_closure : Symbol.t -> Closure_id.t -> t
 end
@@ -83,13 +83,13 @@ module Program_body : sig
         approximation of the set of closures to be present in order to
         correctly simplify the [Project_closure] construction.  (See
         [Simplify.simplify_project_closure] for that part.) *)
-    | Initialize_symbol of Symbol.t * Tag.t
-        * (Flambda.Expr.t * Continuation.t) list * t
+    | Initialize_symbol of Symbol.t * Tag.Scannable.t
+        * (Flambda0.Expr.t * Continuation.t) list * t
     (** Define the given symbol as a constant block of the given size and
         tag; but with a possibly non-constant initializer.  The initializer
         will be executed at most once (from the entry point of the compilation
         unit). *)
-    | Effect of Flambda.Expr.t * Continuation.t * t
+    | Effect of Flambda0.Expr.t * Continuation.t * t
     (** Cause the given expression, which may have a side effect, to be
         executed.  The resulting value is discarded.  [Effect] constructions
         are never re-ordered. *)

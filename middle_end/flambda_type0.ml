@@ -165,6 +165,8 @@ end) = struct
      cannot prove it and must therefore keep it.
   *)
 
+  (* CR mshinwell: Remove this signature and somehow import from
+     Flambda_type0_intf. *)
   module rec T : sig
     type value_string = {
       (* CR-soon mshinwell: use variant *)
@@ -241,6 +243,11 @@ end) = struct
     }
 
     val join
+      : really_import_approx:(t -> t)
+      -> t
+      -> t
+      -> t
+    val meet
       : really_import_approx:(t -> t)
       -> t
       -> t
@@ -464,7 +471,7 @@ end) = struct
     module Meet_or_join (AG : sig
       val name : string
 
-      val create_unit : Flambda_kind.t -> t
+      val create_unit : Flambda_kind.t -> descr
       val is_unit : t -> bool
 
       module Ops : sig
@@ -486,14 +493,13 @@ end) = struct
           -> t Closure_id.Map.t
       end
     end) (Inverse : Meet_or_join) : Meet_or_join = struct
-      let rec meet_or_join_descr kind ~really_import_approx d1 d2 =
+      let rec meet_or_join_descr kind ~really_import_approx d1 d2 : descr =
         match d1, d2 with
         | Union union1, Union union2 ->
           begin match AG.Ops.unionable union1 union2 ~really_import_approx with
-          (* XXX rename the following constructors *)
+          | Unknown -> Unknown (Flambda_kind.value (), Other)
           | Ok union -> Union union
-          | Ill_typed_code -> Bottom (* XXX *)
-          | Anything -> Unknown (Flambda_kind.value (), Other) (* XXX *)
+          | Bottom -> Bottom
           end
         | Unboxed_float fs1, Unboxed_float fs2 ->
           Unboxed_float (AG.Ops.float_set fs1 fs2)
@@ -520,28 +526,28 @@ end) = struct
           let potential_closures =
             AG.Ops.closure_id_map
               (* CR pchambart:  (This was written for the "join" case)
-                merging the closure value might loose information in the
-                case of one branch having the approximation and the other
-                having 'Unknown'. We could imagine such as
-
-                {[if ... then M1.f else M2.f]}
-
-                where M1 is where the function is defined and M2 is
-
-                {[let f = M3.f]}
-
-                and M3 is
-
-                {[let f = M1.f]}
-
-                with the cmx for M3 missing
-
-                Since we know that the approximation comes from the same
-                value, we know that both version provide additional
-                information on the value. Hence what we really want is an
-                approximation intersection, not an union (that this join
-                is).
-                mshinwell: changed to meet *)
+                 merging the closure value might loose information in the
+                 case of one branch having the approximation and the other
+                 having 'Unknown'. We could imagine such as
+ 
+                 {[if ... then M1.f else M2.f]}
+ 
+                 where M1 is where the function is defined and M2 is
+ 
+                 {[let f = M3.f]}
+ 
+                 and M3 is
+ 
+                 {[let f = M1.f]}
+ 
+                 with the cmx for M3 missing
+ 
+                 Since we know that the approximation comes from the same
+                 value, we know that both version provide additional
+                 information on the value. Hence what we really want is an
+                 approximation intersection, not an union (that this join
+                 is).
+                 mshinwell: changed to meet *)
               (Inverse.meet_or_join ~really_import_approx)
               map1 map2
           in
@@ -607,6 +613,8 @@ end) = struct
       Meet_or_join (struct
         let name = "join"
 
+        let create_unit kind = Unknown (kind, Other)
+
         let is_unit t =
           match t.descr with
           | Unknown _ -> true
@@ -624,6 +632,8 @@ end) = struct
     and Meet : Meet_or_join =
       Meet_or_join (struct
         let name = "meet"
+
+        let create_unit _kind = Bottom
 
         let is_unit t =
           match t.descr with
@@ -715,11 +725,13 @@ end) = struct
       just_descr (Boxed_number (Nativeint, unboxed_nativeint i))
     let export_id_loaded_lazily ex = just_descr (Load_lazily (Export_id ex))
     let symbol_loaded_lazily sym =
-      { (just_descr (Load_lazily (Symbol sym))) with symbol = Some (sym, None); }
+      { (just_descr (Load_lazily (Symbol sym)))
+        with symbol = Some (sym, None);
+      }
     let immutable_string str = just_descr (Immutable_string str)
     let mutable_string ~size = just_descr (Mutable_string { size; })
     (* CR mshinwell: Split Float_array into immutable and mutable as for
-      strings? *)
+       strings? *)
     let mutable_float_array ~size =
       just_descr (Float_array { contents = Unknown_or_mutable; size; } )
     let immutable_float_array (contents : t array) =
@@ -926,22 +938,19 @@ end) = struct
 
     val map_blocks : t -> f:(blocks -> blocks) -> t
 
-    (** Partial ordering:
-          Ill_typed_code <= Ok _ <= Anything
-    *)
     type 'a or_bottom =
-      | Anything
+      | Unknown
       | Ok of 'a
-      | Ill_typed_code
+      | Bottom
 
     val join
-      : really_import_approx:(T.t -> T.t)
+       : really_import_approx:(T.t -> T.t)
       -> t
       -> t
       -> t or_bottom
 
     val meet
-      : really_import_approx:(T.t -> T.t)
+       : really_import_approx:(T.t -> T.t)
       -> t
       -> t
       -> t or_bottom
@@ -974,10 +983,10 @@ end) = struct
 
     val invalid_to_mutate : t -> bool
   end = struct
-    type 'a or_bottom =  (* CR mshinwell: rename type *)
-      | Anything
+    type 'a or_bottom =
+      | Unknown
       | Ok of 'a
-      | Ill_typed_code
+      | Bottom
 
     module Immediate = struct
       type t =
@@ -1003,7 +1012,7 @@ end) = struct
 
       let join t1 t2 : t or_bottom =
         if equal t1 t2 then Ok t1
-        else Anything
+        else Unknown
 
       let join_set ts =
         let t = Set.choose ts in
@@ -1011,8 +1020,8 @@ end) = struct
         Set.fold (fun t ts ->
             match ts with
             | Ok ts -> join t ts
-            | Ill_typed_code -> Ill_typed_code
-            | Anything -> Anything)
+            | Unknown -> Unknown
+            | Bottom -> Bottom)
           ts (Ok t)
 
       let represents = function
@@ -1140,16 +1149,18 @@ end) = struct
       | Immediates imms -> check_immediates imms
 
     module Make_meet_or_join (Ops : sig
+      val unit : t or_bottom
+
       val t
-         : really_import_approx:(t -> t)
-        -> t
-        -> t
-        -> t
+         : really_import_approx:(T.t -> T.t)
+        -> T.t
+        -> T.t
+        -> T.t
 
       val immediate_set : Immediate.Set.t simple_commutative_op
 
       val tag_map
-         : (Tag.t -> 'a -> 'a -> 'a)
+         : ('a -> 'a -> 'a)
         -> 'a Tag.Scannable.Map.t
         -> 'a Tag.Scannable.Map.t
         -> 'a Tag.Scannable.Map.t
@@ -1172,21 +1183,21 @@ end) = struct
         in
         let blocks_t1 = get_blocks t1 in
         let blocks_t2 = get_blocks t2 in
-        let anything = ref false in
+        let mismatch_found = ref false in
         let blocks =
-          Ops.tag_map (fun _tag fields1 fields2 ->
+          Ops.tag_map (fun fields1 fields2 ->
               if Array.length fields1 <> Array.length fields2 then begin
-                anything := true;
-                None
+                mismatch_found := true;
+                [| |]  (* an arbitrary value *)
               end else begin
-                Some (Array.map2 (fun field existing_field ->
+                Array.map2 (fun field existing_field ->
                     Ops.t ~really_import_approx field existing_field)
-                  fields1 fields2)
+                  fields1 fields2
               end)
             blocks_t1 blocks_t2
         in
-        if !anything then
-          Anything
+        if !mismatch_found then
+          Ops.unit
         else if Immediate.Set.is_empty immediates then
           Ok (Blocks blocks)
         else if Tag.Scannable.Map.is_empty blocks then
@@ -1196,6 +1207,7 @@ end) = struct
     end
 
     module Join = Make_meet_or_join (struct
+      let unit : _ or_bottom = Unknown
       let t = T.join
       let immediate_set = Immediate.Set.union
       let tag_map = Tag.Scannable.Map.union_merge
@@ -1204,9 +1216,10 @@ end) = struct
     let join = Join.meet_or_join
 
     module Meet = Make_meet_or_join (struct
+      let unit : _ or_bottom = Bottom
       let t = T.join
       let immediate_set = Immediate.Set.inter
-      let tag_map = Tag.Scannable.Map.inter
+      let tag_map = Tag.Scannable.Map.inter_merge
     end)
 
     let meet = Meet.meet_or_join
@@ -1234,19 +1247,19 @@ end) = struct
       | Blocks by_tag ->
         begin match Tag.Scannable.Map.bindings by_tag with
         | [tag, fields] -> Ok (Block (tag, fields))
-        | _ -> Anything
+        | _ -> Unknown
         end
       | Blocks_and_immediates (by_tag, imms) ->
         if Tag.Scannable.Map.is_empty by_tag then flatten (Immediates imms)
         else if Immediate.Set.is_empty imms then flatten (Blocks by_tag)
-        else Anything
+        else Unknown
       | Immediates imms ->
         match Immediate.join_set imms with
+        | Unknown -> Unknown
         | Ok (Int i) -> Ok (Int i)
         | Ok (Char c) -> Ok (Char c)
         | Ok (Constptr p) -> Ok (Constptr p)
-        | Ill_typed_code -> Ill_typed_code
-        | Anything -> Anything
+        | Bottom -> Bottom
 
     let size_of_block t =
       invariant t;

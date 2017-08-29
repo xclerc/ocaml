@@ -91,7 +91,7 @@ module type S = sig
       | Bottom
       | Load_lazily of load_lazily
 
-    and closure = {
+    and closure = private {
       potential_closures : t Closure_id.Map.t;
       (** Map of closures ids to set of closures *)
     } [@@unboxed]
@@ -110,11 +110,11 @@ module type S = sig
       direct_call_surrogates : Closure_id.t Closure_id.Map.t;
     }
 
-    and float_array_contents =
+    and float_array_contents = private
       | Contents of t array
       | Unknown_or_mutable
 
-    and float_array = {
+    and float_array = private {
       contents : float_array_contents;
       size : int;
     }
@@ -128,7 +128,7 @@ module type S = sig
 
     (** Greatest lower bound of two types. *)
     val meet
-      : really_import_approx:(t -> t)
+       : really_import_approx:(t -> t)
       -> t
       -> t
       -> t
@@ -150,7 +150,7 @@ module type S = sig
 
     (** Each type has a unique kind. *)
     val kind
-      : t
+       : t
       -> really_import_approx:(t -> t)
       -> Flambda_kind.t
 
@@ -201,6 +201,7 @@ module type S = sig
         augment the type with variables that may be used to access the closure
         value itself, so long as they are in scope at the proposed point of
         use. *)
+    (* CR mshinwell: bad name? *)
     val closure
        : ?closure_var:Variable.t
       -> ?set_of_closures_var:Variable.t
@@ -298,12 +299,12 @@ module type S = sig
     val map_blocks : t -> f:(blocks -> blocks) -> t
 
     (** Partial ordering:
-          Ill_typed_code <= Ok _ <= Anything
+          Bottom <= Ok _ <= Unknown
     *)
     type 'a or_bottom =
-      | Anything
+      | Unknown
       | Ok of 'a
-      | Ill_typed_code
+      | Bottom
 
     val join
       : really_import_approx:(T.t -> T.t)

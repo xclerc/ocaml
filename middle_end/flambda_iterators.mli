@@ -19,46 +19,48 @@
 (* CR-soon mshinwell: we need to document whether these iterators follow any
    particular order. *)
 
+(* CR mshinwell: We could now just move these into flambda.ml. *)
+
 (** Apply the given functions to the immediate subexpressions of the given
     Flambda expression.  For avoidance of doubt, if a subexpression is
-    [Expr], it is passed to the function taking [Flambda.Named.t], rather
-    than being followed and passed to the function taking [Flambda.Expr.t]. *)
+    [Expr], it is passed to the function taking [Flambda0.Named.t], rather
+    than being followed and passed to the function taking [Flambda0.Expr.t]. *)
 val apply_on_subexpressions
-   : (Flambda.Expr.t -> unit)
-  -> (Flambda.Named.t -> unit)
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> unit)
+  -> (Flambda0.Named.t -> unit)
+  -> Flambda0.Expr.t
   -> unit
 
 val map_subexpressions
-   : (Flambda.Expr.t -> Flambda.Expr.t)
-  -> (Variable.t -> Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> Flambda0.Expr.t)
+  -> (Variable.t -> Flambda0.Named.t -> Flambda0.Named.t)
+  -> Flambda0.Expr.t
+  -> Flambda0.Expr.t
 
 (* CR-soon lwhite: add comment to clarify that these recurse unlike the
    ones above *)
 val iter
-   : (Flambda.Expr.t -> unit)
-  -> (Flambda.Named.t -> unit)
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> unit)
+  -> (Flambda0.Named.t -> unit)
+  -> Flambda0.Expr.t
   -> unit
 
 val iter_expr
-   : (Flambda.Expr.t -> unit)
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> unit)
+  -> Flambda0.Expr.t
   -> unit
 
 val iter_on_named
-   : (Flambda.Expr.t -> unit)
-  -> (Flambda.Named.t -> unit)
-  -> Flambda.Named.t
+   : (Flambda0.Expr.t -> unit)
+  -> (Flambda0.Named.t -> unit)
+  -> Flambda0.Named.t
   -> unit
 
 (* CR-someday mshinwell: we might need to add the corresponding variable to
    the parameters of the user function for [iter_named] *)
 val iter_named
-   : (Flambda.Named.t -> unit)
-  -> Flambda.Expr.t
+   : (Flambda0.Named.t -> unit)
+  -> Flambda0.Expr.t
   -> unit
 
 (* CR-someday lwhite: These names are pretty indecipherable, perhaps
@@ -66,43 +68,43 @@ val iter_named
    function. *)
 
 val iter_named_on_named
-   : (Flambda.Named.t -> unit)
-  -> Flambda.Named.t
+   : (Flambda0.Named.t -> unit)
+  -> Flambda0.Named.t
   -> unit
 
 (** [iter_toplevel f t] applies [f] on every toplevel subexpression of [t].
     In particular, it never applies [f] to the body of a function (which
     will always be contained within an [Set_of_closures] expression). *)
 val iter_toplevel
-   : (Flambda.Expr.t -> unit)
-  -> (Flambda.Named.t -> unit)
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> unit)
+  -> (Flambda0.Named.t -> unit)
+  -> Flambda0.Expr.t
   -> unit
 
 val iter_named_toplevel
-   : (Flambda.Expr.t -> unit)
-  -> (Flambda.Named.t -> unit)
-  -> Flambda.Named.t
+   : (Flambda0.Expr.t -> unit)
+  -> (Flambda0.Named.t -> unit)
+  -> Flambda0.Named.t
   -> unit
 
 val iter_on_sets_of_closures
-   : (Flambda.Set_of_closures.t -> unit)
-  -> Flambda.Expr.t
+   : (Flambda0.Set_of_closures.t -> unit)
+  -> Flambda0.Expr.t
   -> unit
 
 val iter_on_set_of_closures_of_program
-   : Flambda_static.Program.t
-  -> f:(constant:bool -> Flambda.Set_of_closures.t -> unit)
+   : Flambda_static0.Program.t
+  -> f:(constant:bool -> Flambda0.Set_of_closures.t -> unit)
   -> unit
 
 val iter_all_immutable_let_and_let_rec_bindings
-   : Flambda.Expr.t
-  -> f:(Variable.t -> Flambda.Named.t -> unit)
+   : Flambda0.Expr.t
+  -> f:(Variable.t -> Flambda0.Named.t -> unit)
   -> unit
 
 val iter_all_toplevel_immutable_let_and_let_rec_bindings
-   : Flambda.Expr.t
-  -> f:(Variable.t -> Flambda.Named.t -> unit)
+   : Flambda0.Expr.t
+  -> f:(Variable.t -> Flambda0.Named.t -> unit)
   -> unit
 
 (** Iterate over all expressions occurring directly at the toplevel of the
@@ -113,8 +115,11 @@ val iter_all_toplevel_immutable_let_and_let_rec_bindings
     [Let] will not be iterated over.)  If you want to iterate over those
     things as well, use [iter_exprs_at_toplevels_in_program]. *)
 val iter_exprs_at_toplevel_of_program
-   : Flambda_static.Program.t
-  -> f:(continuation_arity:int -> Continuation.t -> Flambda.Expr.t -> unit)
+   : Flambda_static0.Program.t
+  -> f:(continuation_arity:Flambda0.Return_arity.t
+    -> Continuation.t
+    -> Flambda0.Expr.t
+    -> unit)
   -> unit
 
 (** Iterate over all toplevel expressions in the program:
@@ -122,118 +127,121 @@ val iter_exprs_at_toplevel_of_program
       subfunctions; and
     - [Effect] expressions. *)
 val iter_exprs_at_toplevels_in_program
-   : Flambda_static.Program.t
-  -> f:(continuation_arity:int -> Continuation.t -> Flambda.Expr.t -> unit)
+   : Flambda_static0.Program.t
+  -> f:(continuation_arity:Flambda0.Return_arity.t
+    -> Continuation.t
+    -> Flambda0.Expr.t
+    -> unit)
   -> unit
 
 val iter_named_of_program
-   : Flambda_static.Program.t
-  -> f:(Flambda.Named.t -> unit)
+   : Flambda_static0.Program.t
+  -> f:(Flambda0.Named.t -> unit)
   -> unit
 
 val iter_constant_defining_values_on_program
-  : Flambda_static.Program.t
-  -> f:(Flambda_static.Constant_defining_value.t -> unit)
+  : Flambda_static0.Program.t
+  -> f:(Flambda_static0.Constant_defining_value.t -> unit)
   -> unit
 
 val iter_apply_on_program
-   : Flambda_static.Program.t
-  -> f:(Flambda.apply -> unit)
+   : Flambda_static0.Program.t
+  -> f:(Flambda0.apply -> unit)
   -> unit
 
 val map
-   : (Flambda.Expr.t -> Flambda.Expr.t)
-  -> (Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> Flambda0.Expr.t)
+  -> (Flambda0.Named.t -> Flambda0.Named.t)
+  -> Flambda0.Expr.t
+  -> Flambda0.Expr.t
 
 val map_expr
-   : (Flambda.Expr.t -> Flambda.Expr.t)
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> Flambda0.Expr.t)
+  -> Flambda0.Expr.t
+  -> Flambda0.Expr.t
 
 val map_named
-   : (Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t
+   : (Flambda0.Named.t -> Flambda0.Named.t)
+  -> Flambda0.Expr.t
+  -> Flambda0.Expr.t
 
 val map_toplevel
-   : (Flambda.Expr.t -> Flambda.Expr.t)
-  -> (Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> Flambda0.Expr.t)
+  -> (Flambda0.Named.t -> Flambda0.Named.t)
+  -> Flambda0.Expr.t
+  -> Flambda0.Expr.t
 
 val map_toplevel_expr
-   : (Flambda.Expr.t -> Flambda.Expr.t)
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t
+   : (Flambda0.Expr.t -> Flambda0.Expr.t)
+  -> Flambda0.Expr.t
+  -> Flambda0.Expr.t
 
 val map_toplevel_named
-   : (Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t
+   : (Flambda0.Named.t -> Flambda0.Named.t)
+  -> Flambda0.Expr.t
+  -> Flambda0.Expr.t
 
 val map_symbols
-   : Flambda.Expr.t
+   : Flambda0.Expr.t
   -> f:(Symbol.t -> Symbol.t)
-  -> Flambda.Expr.t
+  -> Flambda0.Expr.t
 
 val map_symbols_on_set_of_closures
-  : Flambda.Set_of_closures.t
+  : Flambda0.Set_of_closures.t
   -> f:(Symbol.t -> Symbol.t)
-  -> Flambda.Set_of_closures.t
+  -> Flambda0.Set_of_closures.t
 
 val map_toplevel_sets_of_closures
-   : Flambda.Expr.t
-  -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
-  -> Flambda.Expr.t
+   : Flambda0.Expr.t
+  -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
+  -> Flambda0.Expr.t
 
 val map_apply
-   : Flambda.Expr.t
-  -> f:(Flambda.apply -> Flambda.apply)
-  -> Flambda.Expr.t
+   : Flambda0.Expr.t
+  -> f:(Flambda0.apply -> Flambda0.apply)
+  -> Flambda0.Expr.t
 
 val map_function_bodies
    : ?ignore_stubs:unit
-  -> Flambda.Set_of_closures.t
-  -> f:(Flambda.Expr.t -> Flambda.Expr.t)
-  -> Flambda.Set_of_closures.t
+  -> Flambda0.Set_of_closures.t
+  -> f:(Flambda0.Expr.t -> Flambda0.Expr.t)
+  -> Flambda0.Set_of_closures.t
 
 val map_sets_of_closures
-   : Flambda.Expr.t
-  -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
-  -> Flambda.Expr.t
+   : Flambda0.Expr.t
+  -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
+  -> Flambda0.Expr.t
 
 val map_sets_of_closures_of_program
-   : Flambda_static.Program.t
-  -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
-  -> Flambda_static.Program.t
+   : Flambda_static0.Program.t
+  -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
+  -> Flambda_static0.Program.t
 
 val map_project_var_to_named_opt
-   : Flambda.Expr.t
-  -> f:(Projection.Project_var.t -> Flambda.Named.t option)
-  -> Flambda.Expr.t
+   : Flambda0.Expr.t
+  -> f:(Projection.Project_var.t -> Flambda0.Named.t option)
+  -> Flambda0.Expr.t
 
 val map_exprs_at_toplevel_of_program
-   : Flambda_static.Program.t
-  -> f:(Flambda.Expr.t -> Flambda.Expr.t)
-  -> Flambda_static.Program.t
+   : Flambda_static0.Program.t
+  -> f:(Flambda0.Expr.t -> Flambda0.Expr.t)
+  -> Flambda_static0.Program.t
 
 val map_named_of_program
-   : Flambda_static.Program.t
-  -> f:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda_static.Program.t
+   : Flambda_static0.Program.t
+  -> f:(Variable.t -> Flambda0.Named.t -> Flambda0.Named.t)
+  -> Flambda_static0.Program.t
 
 val map_all_immutable_let_and_let_rec_bindings
-   : Flambda.Expr.t
-  -> f:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
-  -> Flambda.Expr.t
+   : Flambda0.Expr.t
+  -> f:(Variable.t -> Flambda0.Named.t -> Flambda0.Named.t)
+  -> Flambda0.Expr.t
 
 val fold_function_decls_ignoring_stubs
-   : Flambda.Set_of_closures.t
+   : Flambda0.Set_of_closures.t
   -> init:'a
   -> f:(fun_var:Variable.t
-    -> function_decl:Flambda.Function_declaration.t
+    -> function_decl:Flambda0.Function_declaration.t
     -> 'a
     -> 'a)
   -> 'a

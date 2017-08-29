@@ -312,8 +312,8 @@ let get_field t ~field_index:i : get_field_result =
          something exceptionally unsafe, or it is an unreachable branch.
          We consider this as unreachable and mark the result accordingly. *)
       Unreachable
-    | Ill_typed_code -> Unreachable
-    | Anything -> Ok (unknown (Flambda_kind.value ()) Other)
+    | Bottom -> Unreachable
+    | Unknown -> Ok (unknown (Flambda_kind.value ()) Other)
     end
   (* CR-someday mshinwell: This should probably return Unreachable in more
      cases.  I added a couple more. *)
@@ -359,7 +359,7 @@ let reify t : Named.t option =
   match descr t with
   | Union union ->
     begin match Unionable.flatten union with
-    | Ok (Block _) | Ill_typed_code | Anything -> try_symbol ()
+    | Ok (Block _) | Bottom | Unknown -> try_symbol ()
     | Ok (Int n) -> Some (fst (make_const_int_named n))
     | Ok (Char n) -> Some (fst (make_const_char_named n))
     | Ok (Constptr n) -> Some (fst (make_const_ptr_named n))
@@ -474,7 +474,7 @@ let reify_as_scannable_block t : reified_as_scannable_block =
   | Union union ->
     begin match Unionable.flatten union with
     | Ok (Block (tag, fields)) -> Ok (tag, fields)
-    | Ok (Int _ | Char _ | Constptr _) | Ill_typed_code | Anything -> Wrong
+    | Ok (Int _ | Char _ | Constptr _) | Bottom | Unknown -> Wrong
     end
   | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
   | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
@@ -505,7 +505,7 @@ let reify_as_scannable_block_or_immediate t
   match descr t with
   | Union union ->
     begin match Unionable.flatten union with
-    | Ill_typed_code | Anything -> Wrong
+    | Bottom | Unknown -> Wrong
     | Ok (Block _) -> Scannable_block
     | Ok (Int _ | Char _ | Constptr _) -> Immediate
     end
@@ -629,7 +629,7 @@ let classify_switch_branch t branch : switch_branch_classification =
   | Union union ->
     let must_be_taken =
       match Unionable.flatten union with
-      | Ill_typed_code | Anything -> false
+      | Bottom | Unknown -> false
       | Ok (Block _) -> false
       | Ok (Int i) | Ok (Constptr i) -> i = branch
       | Ok (Char c) -> Char.code c = branch
@@ -644,3 +644,9 @@ let classify_switch_branch t branch : switch_branch_classification =
   | Boxed_number _ | Float_array _ | Immutable_string _ | Mutable_string _
   | Closure _ | Set_of_closures _ | Unboxed_float _ | Unboxed_int32 _
   | Unboxed_int64 _ | Unboxed_nativeint _ | Bottom -> Cannot_be_taken
+
+let as_or_more_precise _t ~than:_ =
+  Misc.fatal_error "not yet implemented"
+
+let strictly_more_precise _t ~than:_ =
+  Misc.fatal_error "not yet implemented"

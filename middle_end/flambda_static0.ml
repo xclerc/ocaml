@@ -14,7 +14,13 @@
 (*                                                                        *)
 (**************************************************************************)
 
+[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+
+module F0 = Flambda0
+
 module Constant_defining_value_block_field = struct
+  module Const = F0.Const
+
   type t =
     | Symbol of Symbol.t
     | Const of Const.t
@@ -33,10 +39,10 @@ module Constant_defining_value_block_field = struct
 end
 
 module Constant_defining_value = struct
-  type t = private
+  type t =
     | Allocated_const of Allocated_const.t
     | Block of Tag.Scannable.t * Constant_defining_value_block_field.t list
-    | Set_of_closures of Flambda.Set_of_closures.t
+    | Set_of_closures of F0.Set_of_closures.t
     | Project_closure of Symbol.t * Closure_id.t
 
   include Identifiable.Make (struct
@@ -50,7 +56,7 @@ module Constant_defining_value = struct
         let c = Tag.Scannable.compare tag1 tag2 in
         if c <> 0 then c
         else
-          Misc.Stdlib.List.compare compare_constant_defining_value_block_field
+          Misc.Stdlib.List.compare Constant_defining_value_block_field.compare
             fields1 fields2
       | Set_of_closures set1, Set_of_closures set2 ->
         Set_of_closures_id.compare set1.function_decls.set_of_closures_id
@@ -79,19 +85,20 @@ module Constant_defining_value = struct
     let hash = Hashtbl.hash
 
     let print ppf (t : t) =
+      let fprintf = Format.fprintf in
       match t with
       | Allocated_const const ->
         fprintf ppf "(Allocated_const %a)" Allocated_const.print const
       | Block (tag, []) ->
-        fprintf ppf "(Empty block (tag %a))" Tag.print tag
+        fprintf ppf "(Empty block (tag %a))" Tag.Scannable.print tag
       | Block (tag, fields) ->
         fprintf ppf "(Block (tag %a, %a))"
           Tag.Scannable.print tag
-          (Format.pp_print_list ~sep:pp_print_space
+          (Format.pp_print_list ~pp_sep:Format.pp_print_space
             Constant_defining_value_block_field.print) fields
       | Set_of_closures set_of_closures ->
         fprintf ppf "@[<2>(Set_of_closures (@ %a))@]"
-          Set_of_closures.print set_of_closures
+          F0.Set_of_closures.print set_of_closures
       | Project_closure (set_of_closures, closure_id) ->
         fprintf ppf "(Project_closure (%a, %a))"
           Symbol.print set_of_closures
@@ -106,10 +113,10 @@ module Constant_defining_value = struct
   let create_block tag fields = Block (tag, fields)
 
   let create_set_of_closures set =
-    if not (Flambda.Set.of_closures.has_empty_environment set) then begin
+    if not (F0.Set_of_closures.has_empty_environment set) then begin
       Misc.fatal_errorf "Cannot have set of closures with a non-empty \
           environment as static data: %a"
-        Flambda.Set_of_closures.print set
+        F0.Set_of_closures.print set
     end;
     Set_of_closures set
 
@@ -121,13 +128,13 @@ module Constant_defining_value = struct
     | Block (_, fields) ->
       List.iter
         (function
-          | (Symbol s : constant_defining_value_block_field) ->
+          | (Symbol s : Constant_defining_value_block_field.t) ->
             symbols := Symbol.Set.add s !symbols
-          | (Const _ : constant_defining_value_block_field) -> ())
+          | (Const _ : Constant_defining_value_block_field.t) -> ())
         fields
     | Set_of_closures set_of_closures ->
       symbols := Symbol.Set.union !symbols
-        (free_symbols_named (Set_of_closures set_of_closures))
+        (F0.Named.free_symbols (Set_of_closures set_of_closures))
     | Project_closure (s, _) ->
       symbols := Symbol.Set.add s !symbols
 end
@@ -136,12 +143,13 @@ module Program_body = struct
   type t =
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
     | Let_rec_symbol of (Symbol.t * Constant_defining_value.t) list * t
-    | Initialize_symbol of Symbol.t * Tag.t
-        * (Flambda.Expr.t * Continuation.t) list * t
-    | Effect of Expr.t * Continuation.t * t
+    | Initialize_symbol of Symbol.t * Tag.Scannable.t
+        * (F0.Expr.t * Continuation.t) list * t
+    | Effect of F0.Expr.t * Continuation.t * t
     | End of Symbol.t
 
   let rec print ppf (program : t) =
+    let fprintf = Format.fprintf in
     match program with
     | Let_symbol (symbol, constant_defining_value, body) ->
       let rec let_body (ul : t) =
@@ -177,20 +185,19 @@ module Program_body = struct
         fprintf ppf "Field %d, return continuation %a:@;@[<h>@ @ %a@]"
           field
           Continuation.print cont
-          Flambda.Expr.print defn
+          F0.Expr.print defn
       in
-      let pp_sep ppf () = fprintf ppf "@ " in
       fprintf ppf
         "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
         Symbol.print symbol
-        Tag.print tag
-        (Format.pp_print_list ~pp_sep expr_and_cont)
+        Tag.Scannable.print tag
+        (Format.pp_print_list ~pp_sep:Format.pp_print_space expr_and_cont)
         (List.mapi (fun i (defn, cont) -> i, defn, cont) fields);
       print ppf program
     | Effect (expr, cont, program) ->
       fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
         Continuation.print cont
-        Flambda.Expr.print expr;
+        F0.Expr.print expr;
       print ppf program;
     | End root -> fprintf ppf "End %a" Symbol.print root
 end
@@ -198,28 +205,28 @@ end
 module Program = struct
   type t = {
     imported_symbols : Symbol.Set.t;
-    program_body : program_body;
+    program_body : Program_body.t;
   }
 
   let free_symbols (program : t) =
     let symbols = ref Symbol.Set.empty in
-    let rec loop (program : program_body) =
+    let rec loop (program : Program_body.t) =
       match program with
       | Let_symbol (_, const, program) ->
-        free_symbols_allocated_constant_helper symbols const;
+        Constant_defining_value.free_symbols_helper symbols const;
         loop program
       | Let_rec_symbol (defs, program) ->
         List.iter (fun (_, const) ->
-            free_symbols_allocated_constant_helper symbols const)
+            Constant_defining_value.free_symbols_helper symbols const)
           defs;
         loop program
       | Initialize_symbol (_, _, fields, program) ->
         List.iter (fun (field, _cont) ->
-            symbols := Symbol.Set.union !symbols (free_symbols field))
+            symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols field))
           fields;
         loop program
       | Effect (expr, _cont, program) ->
-        symbols := Symbol.Set.union !symbols (free_symbols expr);
+        symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr);
         loop program
       | End symbol -> symbols := Symbol.Set.add symbol !symbols
     in
@@ -229,7 +236,7 @@ module Program = struct
 
   let print ppf t =
     Symbol.Set.iter (fun symbol ->
-        fprintf ppf "@[import_symbol@ %a@]@." Symbol.print symbol)
-      program.imported_symbols;
-    Program_body.print ppf program.program_body
+        Format.fprintf ppf "@[import_symbol@ %a@]@." Symbol.print symbol)
+      t.imported_symbols;
+    Program_body.print ppf t.program_body
 end

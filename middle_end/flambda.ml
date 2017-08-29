@@ -92,12 +92,6 @@ module rec Expr : sig
       -> Variable.Set.t
       -> 'b * Variable.t * (Named.t option))
     -> t * 'b
-  val map_lets
-     : Expr.t
-    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
-    -> after_rebuild:(Expr.t -> Expr.t)
-    -> for_last_body:(Expr.t -> Expr.t)
-    -> Expr.t
   val all_defined_continuations_toplevel : t -> Continuation.Set.t
   val count_continuation_uses_toplevel : t -> int Continuation.Map.t
   type with_wrapper =
@@ -171,7 +165,7 @@ end = struct
         in
         Let_cont {
           body;
-          handlers = F0.map_let_cont_handlers ~handlers ~f;
+          handlers = F0.Let_cont_handlers.map handlers ~f;
         }
     in
     let aux_named (named : F0.Named.t) : F0.Named.t =
@@ -188,7 +182,8 @@ end = struct
       | Read_symbol_field _ -> named
       | Set_of_closures set_of_closures ->
         let function_decls =
-          Function_declarations.map_parameter_types function_decls
+          Function_declarations.map_parameter_types
+            set_of_closures.function_decls
             ~f:(fun ty -> substitute_type ty)
         in
         let set_of_closures =
@@ -332,44 +327,6 @@ end = struct
       | Non_terminating of Named.t
       | Unreachable
   end
-
-  let map_lets t ~for_defining_expr ~for_last_body ~after_rebuild =
-    let rec loop (t : t) ~rev_lets =
-      match t with
-      | Let { var; defining_expr; body; _ } ->
-        let new_defining_expr =
-          for_defining_expr var defining_expr
-        in
-        let original =
-          if new_defining_expr == defining_expr then
-            Some t
-          else
-            None
-        in
-        let rev_lets = (var, new_defining_expr, original) :: rev_lets in
-        loop body ~rev_lets
-      | t ->
-        let last_body = for_last_body t in
-        (* As soon as we see a change, we have to rebuild that [Let] and every
-          outer one. *)
-        let seen_change = ref (not (last_body == t)) in
-        List.fold_left (fun t (var, defining_expr, original) ->
-            let let_expr =
-              match original with
-              | Some original when not !seen_change -> original
-              | Some _ | None ->
-                seen_change := true;
-                create_let var defining_expr t
-            in
-            let new_let = after_rebuild let_expr in
-            if not (new_let == let_expr) then begin
-              seen_change := true
-            end;
-            new_let)
-          last_body
-          rev_lets
-    in
-    loop t ~rev_lets:[]
 
   let fold_lets_option (t : F0.Expr.t) ~init ~for_defining_expr
         ~for_last_body ~filter_defining_expr =
@@ -673,7 +630,7 @@ end and Function_declarations : sig
   val contains_stub : t -> bool
   val map_parameter_types
      : t
-    -> f:(Parameter.t -> Parameter.t)
+    -> f:(Flambda_type.t -> Flambda_type.t)
     -> t
 end = struct
   include F0.Function_declarations

@@ -241,15 +241,26 @@ module rec Expr : sig
     -> for_each_let:(t -> unit)
     -> unit
 
+  (* CR mshinwell: consider enhancing this in the same way as for
+     [fold_lets_option] in the [defining_expr] type.  This would be useful eg
+     for Ref_to_variables.  Maybe in fact there should be a new iterator that
+     uses this function for such situations? *)
+  val map_lets
+     : t
+    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
+    -> for_last_body:(t -> t)
+    -> after_rebuild:(t -> t)
+    -> t
+
   type maybe_named =
-    | Is_expr of Expr.t
+    | Is_expr of t
     | Is_named of Named.t
 
   (** This function is designed for the internal use of [Flambda_iterators].
       See that module for iterators to be used over Flambda terms. *)
   val iter_general
      : toplevel:bool
-    -> (Expr.t -> unit)
+    -> (t -> unit)
     -> (Named.t -> unit)
     -> maybe_named
     -> unit
@@ -466,7 +477,7 @@ end and Set_of_closures : sig
 
   (** Create a set of closures.  Checks are made to ensure that [free_vars]
       are reasonable. *)
-  val create_set_of_closures
+  val create
      : function_decls:Function_declarations.t
     -> free_vars:Free_vars.t
     -> direct_call_surrogates:Variable.t Variable.Map.t
@@ -610,12 +621,6 @@ end and Function_declaration : sig
     -> body:Expr.t
     -> t
 
-  (** Change only the types of the parameters of a function declaration. *)
-  val map_parameter_types
-     : t
-    -> f:(Flambda_type.T.t -> Flambda_type.T.t)
-    -> t
-
   (** Given a function declaration, find which of its parameters (if any)
       are used in the body. *)
   val used_params : t -> Variable.Set.t
@@ -624,19 +629,19 @@ end and Function_declaration : sig
 end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)
-  type t = Parameter.t * Flambda_type.T.t
+  type t = Parameter.t * Flambda_type.t
 
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
 
   (** The type of a parameter. *)
-  val ty : t -> Flambda_type.T.t
+  val ty : t -> Flambda_type.t
 
   (** Replace the type of a parameter. *)
-  val with_type : t -> Flambda_type.T.t -> t
+  val with_type : t -> Flambda_type.t -> t
 
   (** Map the type of a parameter. *)
-  val map_type : t -> f:(Flambda_type.T.t -> Flambda_type.T.t) -> t
+  val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 
   (** Free variables in the parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)
@@ -703,7 +708,7 @@ module With_free_variables : sig
       occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
      : Variable.t
-    -> Flambda_type.T.t
+    -> Flambda_type.t
     -> Named.t
     -> Expr.t t
     -> Expr.t
