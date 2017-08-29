@@ -41,7 +41,7 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
       | Var _ | Symbol _ | Const _ | Set_of_closures _ | Prim _ | Assign _
       | Allocated_const _ | Read_mutable _ | Read_symbol_field _ -> ()
     in
-    Flambda_iterators.iter_named_of_program ~f:aux_named program;
+    Flambda_static.Program.Iterators.iter_named ~f:aux_named program;
     used, used_fun
   in
   let aux_named _ (named : Flambda.Named.t) : Flambda.Named.t =
@@ -127,4 +127,4 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
       Set_of_closures set_of_closures
     | e -> e
   in
-  Flambda_iterators.map_named_of_program ~f:aux_named program
+  Flambda_static.Program.Mappers.map_named ~f:aux_named program

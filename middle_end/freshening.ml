@@ -253,7 +253,7 @@ let rewrite_recursive_calls_with_symbols t
       let funs =
         Variable.Map.map (fun (func_decl : Flambda.Function_declaration.t) ->
           let body =
-            Flambda_iterators.map_toplevel_named
+            Flambda.Named.Mappers.Toplevel_only.map
               (* CR-someday pchambart: This may be worth deep substituting
                  below the closures, but that means that we need to take care
                  of functions' free variables. *)

@@ -141,10 +141,10 @@ let assign_symbols_and_collect_constant_definitions
     end
   in
   let assign_symbol_program ~continuation_arity:_ _cont expr =
-    Flambda_iterators.iter_all_immutable_let_and_let_rec_bindings expr
+    Flambda.Expr.Iterators.iter_all_immutable_let_and_let_rec_bindings expr
       ~f:assign_symbol
   in
-  Flambda_iterators.iter_exprs_at_toplevel_of_program program
+  Flambda_static.Program.Iterators.Only_toplevel.iter_exprs program
     ~f:assign_symbol_program;
   let let_symbol_to_definition_tbl = Symbol.Tbl.create 42 in
   let initialize_symbol_to_definition_tbl = Symbol.Tbl.create 42 in
@@ -254,8 +254,8 @@ let translate_set_of_closures
       | Symbol s -> Symbol s
       | Const c -> Const c
   in
-  Flambda_iterators.map_function_bodies set_of_closures
-    ~f:(Flambda_iterators.map_all_immutable_let_and_let_rec_bindings ~f)
+  Flambda.Set_of_closures.Mappers.map_function_bodies set_of_closures
+    ~f:(Flambda.Expr.Mappers.map_all_immutable_let_and_let_rec_bindings ~f)
 
 let translate_constant_set_of_closures
     (inconstants : Inconstant_idents.result)
@@ -871,7 +871,7 @@ let replace_definitions_in_initialize_symbol_and_effects
         Symbol.Tbl.t)
     (effect_tbl : (Flambda.Expr.t * Continuation.t * Symbol.t option) Symbol.Tbl.t) =
   let rewrite_expr expr =
-    Flambda_iterators.map_all_immutable_let_and_let_rec_bindings expr
+    Flambda.Expr.Mappers.map_all_immutable_let_and_let_rec_bindings expr
       ~f:(fun var (named : Flambda.Named.t) : Flambda.Named.t ->
         if Inconstant_idents.variable var inconstants then
           named
@@ -1029,7 +1029,7 @@ let lift_constants (program : Flambda_static.Program.t) ~backend =
      rewrite any subsequent [Project_var] expressions that project that
      variable. *)
   let rewrite_expr expr =
-    Flambda_iterators.map_named (function
+    Flambda.Named.Mappers.map (function
         | (Set_of_closures set_of_closures) as named ->
           let new_set_of_closures =
             introduce_free_variables_in_set_of_closures
@@ -1052,7 +1052,7 @@ let lift_constants (program : Flambda_static.Program.t) ~backend =
         | Allocated_const _ | Block _ | Project_closure _ -> const
         | Set_of_closures set_of_closures ->
           let set_of_closures =
-            Flambda_iterators.map_function_bodies set_of_closures
+            Flambda.Set_of_closures.Mappers.map_function_bodies set_of_closures
               ~f:rewrite_expr
           in
           Flambda.Set_of_closures

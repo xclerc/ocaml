@@ -270,7 +270,7 @@ module Push_pop_invariants = struct
     loop env root expr
 
   let check program =
-    Flambda_iterators.iter_exprs_at_toplevels_in_program program
+    Flambda_static.Program.Iterators.iter_toplevel_exprs program
       ~f:well_formed_trap
 end
 
@@ -401,7 +401,7 @@ module Continuation_scoping = struct
     loop env expr
 
   let check program =
-    Flambda_iterators.iter_exprs_at_toplevels_in_program program ~f:check_expr
+    Flambda_static.Program.Iterators.iter_toplevel_exprs program ~f:check_expr
 end
 
 let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
@@ -767,7 +767,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
   loop_program_body env program.program_body
 
 let primitive_invariants flam ~no_access_to_global_module_identifiers =
-  Flambda_iterators.iter_named (function
+  Flambda.Named.Iterators.iter_expr (function
       | Prim (prim, _, _) ->
         begin match prim with
         | Psequand | Psequor ->
@@ -812,7 +812,7 @@ let no_var_within_closure_is_bound_multiple_times (flam:Flambda_static.Program.t
 
 let every_declared_closure_is_from_current_compilation_unit flam =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
-  Flambda_iterators.iter_on_sets_of_closures (fun
+  Flambda.Set_of_closures.iter (fun
         { Flambda. function_decls; _ } ->
       let compilation_unit =
         Set_of_closures_id.get_compilation_unit
@@ -881,7 +881,7 @@ let used_closure_ids (program:Flambda_static.Program.t) =
   in
   (* CR-someday pchambart: check closure_ids of constant_defining_values'
     project_closures *)
-  Flambda_iterators.iter_named_of_program ~f program;
+  Flambda_static.Program.Iterators.iter_named ~f program;
   !used
 
 let used_vars_within_closures (flam:Flambda_static.Program.t) =
@@ -894,7 +894,7 @@ let used_vars_within_closures (flam:Flambda_static.Program.t) =
         var
     | _ -> ()
   in
-  Flambda_iterators.iter_named_of_program ~f flam;
+  Flambda_static.Program.Iterators.iter_named ~f flam;
   !used
 
 let every_used_function_from_current_compilation_unit_is_declared
@@ -933,7 +933,7 @@ let every_used_var_within_closure_from_current_compilation_unit_is_declared
 let _every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
       program =
   let moves = ref Closure_id.Map.empty in
-  Flambda_iterators.iter_named_of_program program
+  Flambda_static.Program.Iterators.iter_named program
     ~f:(function
         | Move_within_set_of_closures { move; _ } ->
           Closure_id.Map.iter (fun start_from move_to ->
@@ -978,7 +978,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
       miscompilations *)
     (* every_move_within_set_of_closures_is_to_a_function_in_the_free_vars
         flam; *)
-    Flambda_iterators.iter_exprs_at_toplevels_in_program flam
+    Flambda_static.Program.Iterators.iter_toplevel_exprs flam
       ~f:(fun ~continuation_arity:_ _cont flam ->
         primitive_invariants flam
           ~no_access_to_global_module_identifiers:cmxfile;

@@ -178,7 +178,7 @@ let rec analyse_expr ~which_variables expr =
     | Read_symbol_field _ | Project_var _ | Project_closure _
     | Move_within_set_of_closures _ -> ()
   in
-  Flambda_iterators.iter_toplevel for_expr for_named expr;
+  Flambda.Expr.Iterators.Toplevel_only.iter for_expr for_named expr;
   let projections = !projections in
   let used_which_variables = !used_which_variables in
   projections, used_which_variables

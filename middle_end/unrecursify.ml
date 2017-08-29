@@ -24,7 +24,7 @@ let unrecursify_function ~fun_var:function_variable
   let loop_continuation = Continuation.create () in
   let did_something = ref false in
   let handler =
-    Flambda_iterators.map_toplevel_expr (fun expr ->
+    Flambda.Expr.Mappers.Toplevel_only.map_expr (fun expr ->
         match expr with
         | Apply {
             kind = Function;

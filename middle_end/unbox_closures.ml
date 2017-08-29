@@ -42,7 +42,7 @@ module Transform = struct
            set to become closed. *)
         B.remove_prims (B.remove_call B.zero) num_closure_vars
       in
-      Flambda_iterators.fold_function_decls_ignoring_stubs set_of_closures
+      Flambda.Set_of_closures.Folders.fold_function_decls_ignoring_stubs set_of_closures
         ~init:what_to_specialise
         ~f:(fun ~fun_var ~(function_decl : Flambda.Function_declaration.t)
               what_to_specialise ->

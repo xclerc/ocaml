@@ -371,4 +371,4 @@ and sink (expr : Flambda.Expr.t) =
   sink expr
 
 let run program =
-  Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:sink
+  Flambda_static.Program.Mappers.map_toplevel_exprs program ~f:sink

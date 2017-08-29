@@ -192,7 +192,7 @@ let middle_end ppf ~prefixname ~backend
       in
       let flam = back_end flam in
       (* Check that there aren't any unused "always inline" attributes. *)
-      Flambda_iterators.iter_apply_on_program flam ~f:(fun apply ->
+      Flambda_static.Program.Iterators.iter_apply flam ~f:(fun apply ->
           match apply.inline with
           | Default_inline | Never_inline -> ()
           | Always_inline ->

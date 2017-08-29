@@ -221,7 +221,7 @@ end = struct
         Prim (prim, List.map sb args, dbg)
     in
     if Variable.Map.is_empty sb' then tree
-    else Flambda_iterators.map_toplevel aux aux_named tree
+    else Flambda.Expr.Mappers.Toplevel_only.map aux aux_named tree
 
   let rec equal t1 t2 =
     (* CR mshinwell: next comment may no longer be relevant? *)
@@ -399,7 +399,7 @@ end = struct
 
   let all_defined_continuations_toplevel expr =
     let defined_continuations = ref Continuation.Set.empty in
-    Flambda_iterators.iter_toplevel (fun (expr : Expr.t) ->
+    Flambda.Expr.Iterators.Toplevel_only.iter (fun (expr : Expr.t) ->
         match expr with
         | Let_cont { handlers; _ } ->
           let conts = bound_continuations_of_let_handlers ~handlers in
@@ -418,7 +418,7 @@ end = struct
       | exception Not_found -> Continuation.Tbl.add counts cont 1
       | count -> Continuation.Tbl.replace counts cont (count + 1)
     in
-    Flambda_iterators.iter_toplevel (fun (expr : Expr.t) ->
+    Flambda.Expr.Iterators.Toplevel_only.iter (fun (expr : Expr.t) ->
         match expr with
         | Apply { continuation; _ } -> use continuation
         | Apply_cont (cont, None, _) -> use cont

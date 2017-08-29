@@ -463,7 +463,7 @@ let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
       in
       Some expr
   in
-  Flambda_iterators.map_toplevel_expr
+  Flambda.Expr.Mappers.Toplevel_only.map_expr
     (fun (expr : Flambda.Expr.t) : Flambda.Expr.t ->
       match expr with
       | Let { var; defining_expr; body } ->

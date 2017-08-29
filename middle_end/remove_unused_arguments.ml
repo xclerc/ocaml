@@ -240,8 +240,8 @@ let separate_unused_arguments_in_closures_expr tree ~backend =
       end
     | e -> e
   in
-  Flambda_iterators.map_named aux_named tree
+  Flambda.Named.Mappers.map aux_named tree
 
 let separate_unused_arguments_in_closures program ~backend =
-  Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:(fun expr ->
+  Flambda_static.Program.Mappers.map_toplevel_exprs program ~f:(fun expr ->
     separate_unused_arguments_in_closures_expr expr ~backend)

@@ -398,4 +398,4 @@ and lift (expr : Flambda.Expr.t) =
     expr
 
 let run program =
-  Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:lift
+  Flambda_static.Program.Mappers.map_toplevel_exprs program ~f:lift

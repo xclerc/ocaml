@@ -68,7 +68,7 @@ let run ~env ~(set_of_closures : Flambda.Set_of_closures.t) =
           set_of_closures.free_vars
           Projection.Set.empty
       in
-      Flambda_iterators.fold_function_decls_ignoring_stubs set_of_closures
+      Flambda.Set_of_closures.Folders.fold_function_decls_ignoring_stubs set_of_closures
         ~init:(Variable.Map.empty, all_existing_definitions,
           set_of_closures.free_vars, false)
         ~f:(fun ~fun_var:_ ~function_decl result ->

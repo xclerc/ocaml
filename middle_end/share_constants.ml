@@ -39,7 +39,7 @@ let update_constant_for_sharing sharing_symbol_tbl const
     Block (tag, fields)
   | Set_of_closures set_of_closures ->
     Set_of_closures (
-      Flambda_iterators.map_symbols_on_set_of_closures
+      Flambda.Set_of_closures.Mappers.map_symbols
         ~f:substitute_symbol set_of_closures
     )
   | Project_closure (sym, closure_id) ->
@@ -106,7 +106,7 @@ let share_constants (program : Flambda_static.Program.t) =
       let fields =
         List.map (fun (field, cont) ->
             let field =
-              Flambda_iterators.map_symbols ~f:(fun symbol ->
+              Flambda.Expr.Mappers.map_symbols ~f:(fun symbol ->
                   try Symbol.Tbl.find sharing_symbol_tbl symbol with
                   | Not_found -> symbol)
                 field
@@ -117,7 +117,7 @@ let share_constants (program : Flambda_static.Program.t) =
       Initialize_symbol (symbol, tag, fields, loop program)
     | Effect (expr, cont, program) ->
       let expr =
-        Flambda_iterators.map_symbols
+        Flambda.Expr.Mappers.map_symbols
           ~f:(fun symbol ->
               try Symbol.Tbl.find sharing_symbol_tbl symbol with
               | Not_found -> symbol)

@@ -81,7 +81,7 @@ let variables_containing_ref (flam:Flambda.Expr.t) =
       map := Variable.Map.add var (List.length l) !map
     | _ -> ()
   in
-  Flambda_iterators.iter aux (fun _ -> ()) flam;
+  Flambda.Expr.Iterators.iter aux (fun _ -> ()) flam;
   !map
 
 let eliminate_ref_of_expr flam =
@@ -179,8 +179,8 @@ let eliminate_ref_of_expr flam =
       | Let_mutable _ | Apply _ | Switch _
       | Apply_cont _ | Let_cont _ | Proved_unreachable -> flam
     in
-    Flambda_iterators.map_expr aux flam
+    Flambda.Expr.Mappers.map_expr aux flam
 
 let eliminate_ref (program:Flambda_static.Program.t) =
-  Flambda_iterators.map_exprs_at_toplevel_of_program program
+  Flambda_static.Program.Mappers.map_toplevel_exprs program
     ~f:eliminate_ref_of_expr

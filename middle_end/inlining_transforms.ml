@@ -72,7 +72,7 @@ let fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
     init
 
 let set_inline_attribute_on_all_apply body inline specialise =
-  Flambda_iterators.map_toplevel_expr (function
+  Flambda.Expr.Mappers.Toplevel_only.map_expr (function
       | Apply apply -> Apply { apply with inline; specialise }
       | expr -> expr)
     body
@@ -454,7 +454,7 @@ let inline_by_copying_function_declaration ~env ~r
         Flambda.Expr.toplevel_substitution original_vars fun_decl.body
       in
       let body =
-        Flambda_iterators.map_toplevel_expr (fun (expr : Flambda.Expr.t) ->
+        Flambda.Expr.Mappers.Toplevel_only.map_expr (fun (expr : Flambda.Expr.t) ->
             match expr with
             | Apply apply ->
               begin match apply.call_kind with

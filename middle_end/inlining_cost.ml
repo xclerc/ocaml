@@ -258,13 +258,13 @@ module Benefit = struct
 
   let remove_code lam b =
     let b = ref b in
-    Flambda_iterators.iter_toplevel (remove_code_helper b)
+    Flambda.Expr.Iterators.Toplevel_only.iter (remove_code_helper b)
       (remove_code_helper_named b) lam;
     !b
 
   let remove_code_named lam b =
     let b = ref b in
-    Flambda_iterators.iter_named_toplevel (remove_code_helper b)
+    Flambda.Named.Iterators.iter (remove_code_helper b)
       (remove_code_helper_named b) lam;
     !b
 

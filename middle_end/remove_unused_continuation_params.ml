@@ -129,8 +129,8 @@ let run program ~backend =
      continuation structures that are typical.  The continuation declarations
      should probably be added one by one as they are encountered inside
      [Invariant_params] itself. *)
-  Flambda_iterators.map_exprs_at_toplevel_of_program program ~f:(fun expr ->
-    Flambda_iterators.map_expr (fun (expr : Flambda.Expr.t) ->
+  Flambda_static.Program.Mappers.map_toplevel_exprs program ~f:(fun expr ->
+    Flambda.Expr.Mappers.map_expr (fun (expr : Flambda.Expr.t) ->
         match expr with
         | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
             is_exn_handler = true; _ }; }; } -> expr
