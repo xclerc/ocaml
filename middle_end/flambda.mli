@@ -36,6 +36,13 @@ module Free_vars : sig
   val clean_free_vars_projections : t -> t
 end
 
+module Reachable : sig
+  type nonrec t =
+    | Reachable of Flambda0.Named.t
+    | Non_terminating of Flambda0.Named.t
+    | Unreachable
+end
+
 module rec Expr : sig
   include module type of Flambda0.Expr
 
@@ -75,13 +82,6 @@ module rec Expr : sig
      : bindings:(Variable.t * Named.t) list
     -> body:t
     -> t
-
-  module Reachable : sig
-    type nonrec t =
-      | Reachable of Named.t
-      | Non_terminating of Named.t
-      | Unreachable
-  end
 
   (** Used to avoid exceeding the stack limit when handling expressions with
       multiple consecutive nested [Let]-expressions.  This saves rewriting large

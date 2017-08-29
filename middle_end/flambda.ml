@@ -29,6 +29,7 @@ module Return_arity = F0.Return_arity
 module Switch = F0.Switch
 module Trap_action = F0.Trap_action
 module Typed_parameter = F0.Typed_parameter
+module With_free_variables = F0.With_free_variables
 
 module Free_vars = struct
   include F0.Free_vars
@@ -42,6 +43,13 @@ module Free_vars = struct
           if Variable.Map.mem from t then free_var
           else ({ free_var with projection = None; } : Free_var.t))
       t
+end
+
+module Reachable = struct
+  type nonrec t =
+    | Reachable of F0.Named.t
+    | Non_terminating of F0.Named.t
+    | Unreachable
 end
 
 module rec Expr : sig
@@ -70,12 +78,6 @@ module rec Expr : sig
      : bindings:(Variable.t * Named.t) list
     -> body:t
     -> t
-  module Reachable : sig
-    type nonrec t =
-      | Reachable of Named.t
-      | Non_terminating of Named.t
-      | Unreachable
-  end
   val fold_lets_option
       : t
     -> init:'a
@@ -328,13 +330,6 @@ end = struct
         project_closure
         (Apply_cont (continuation, None, [project_closure_var])))
 
-  module Reachable = struct
-    type t =
-      | Reachable of Named.t
-      | Non_terminating of Named.t
-      | Unreachable
-  end
-
   let fold_lets_option (t : Expr.t) ~init ~for_defining_expr
         ~for_last_body ~filter_defining_expr =
     let finish ~last_body ~acc ~rev_lets =
@@ -360,19 +355,19 @@ end = struct
     in
     let rec loop (t : t) ~acc ~rev_lets =
       match t with
-      | Let { var; defining_expr; body; _ } ->
-        let acc, bindings, var, ty, (defining_expr : named_reachable) =
-          for_defining_expr acc var ty defining_expr
+      | Let { var; kind; defining_expr; body; _ } ->
+        let acc, bindings, var, kind, (defining_expr : Reachable.t) =
+          for_defining_expr acc var kind defining_expr
         in
         begin match defining_expr with
         | Reachable defining_expr ->
           let rev_lets =
-            (var, ty, defining_expr) :: (List.rev bindings) @ rev_lets
+            (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
           in
           loop body ~acc ~rev_lets
         | Non_terminating defining_expr ->
           let rev_lets =
-            (var, ty, defining_expr) :: (List.rev bindings) @ rev_lets
+            (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
           in
           let last_body, acc = for_last_body acc Proved_unreachable in
           finish ~last_body ~acc ~rev_lets
@@ -398,8 +393,8 @@ end = struct
     | Proved_unreachable -> "unreachable"
 
   let bind ~bindings ~body =
-    List.fold_left (fun expr (var, var_def) ->
-        Expr.create_let var var_def expr)
+    List.fold_left (fun expr (var, kind, var_def) ->
+        Expr.create_let var kind var_def expr)
       body bindings
 
   let all_defined_continuations_toplevel expr =
