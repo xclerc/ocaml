@@ -23,7 +23,27 @@
     Kinds form a partial order.  Each non-[Bottom] kind is incomparable with
     every other non-[Bottom] kind.  [Bottom] is strictly less than everything
     else.
+
+    "Basic" kinds are those which do not involve any notion of tagging and
+    are non-[Bottom].
 *)
+
+module Basic : sig
+  type t = private
+    | Value
+    | Naked_int
+    | Naked_float
+    | Naked_int32
+    | Naked_int64
+    | Naked_nativeint
+
+  val value : unit -> t
+  val naked_int : unit -> t
+  val naked_float : unit -> t option
+  val naked_int32 : unit -> t
+  val naked_int64 : unit -> t option
+  val naked_nativeint : unit -> t
+end
 
 type t = private
   | Value
@@ -34,6 +54,8 @@ type t = private
   | Naked_int64
   | Naked_nativeint
   | Bottom
+
+val of_basic : Basic.t -> t
 
 val value : unit -> t
 val tagged_int : unit -> t

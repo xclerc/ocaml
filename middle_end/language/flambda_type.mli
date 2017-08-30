@@ -197,9 +197,14 @@ type reified_as_scannable_block =
     that can be scanned by the GC. *)
 val reify_as_scannable_block : t -> reified_as_scannable_block
 
-type reified_as_variant =
+type blocks = t array Tag.Scannable.Map.t
+type immediates = Unionable.Immediate.Set.t
+
+type reified_as_variant = private
   | Wrong
-  | Ok of Unionable.t
+  | Blocks of blocks
+  | Blocks_and_immediates of blocks * immediates
+  | Immediates of immediates
 
 (** Try to prove that the given type is of the expected form for the
     Flambda type of a value of variant type. *)

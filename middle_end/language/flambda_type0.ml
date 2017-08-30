@@ -1227,6 +1227,7 @@ end) = struct
             | Constptr _ -> false)
           imms
 
+    (* CR mshinwell: Not needed now *)
     let ok_for_variant t =
       invariant t;
       (* CR mshinwell: Shouldn't this function say "false" for e.g.

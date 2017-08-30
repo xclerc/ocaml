@@ -20,15 +20,14 @@ module type S = sig
   type function_declarations
 
   module Naked_number : sig
-    (* CR-soon mshinwell: [Int] and [Nativeint] should both take
-       [Targetint.Set.t]. *)
     type t =
-      | Int of Numbers.Int.Set.t
+      | Int of Targetint.Set.t
       | Char of Misc.Stdlib.Char.Set.t
+      | Constptr of Targetint.Set.t
       | Float of Numbers.Float.Set.t
       | Int32 of Numbers.Int32.Set.t
       | Int64 of Numbers.Int64.Set.t
-      | Nativeint of Numbers.Nativeint.Set.t
+      | Nativeint of Targetint.Set.t
   end
 
   module Boxed_or_encoded_number_kind : sig
@@ -76,8 +75,9 @@ module type S = sig
   module rec T : sig
     (** The type of an Flambda term. *)
     type t = private {
-      descr : descr;
-      (** The main description of the type. *)
+      descr : descr list;
+      (** The main description of the type.  A list of length two or more
+          indicates a union type. *)
       var : Variable.t option;
       (** An optional equality to a variable. *)
       projection : Projection.t option;
@@ -101,17 +101,16 @@ module type S = sig
        this module), then the only circularity between this type and Flambda
        will be for Flambda.Expr.t on function bodies. *)
     and descr = private 
-      | Unknown of Flambda_kind.t * unknown_because_of
-      | Union of Unionable.t
+      | Unknown of Flambda_kind.Basic.t * unknown_because_of
       | Naked_number of Naked_number.t
       | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
+      | Block of t array Tag.Scannable.Map.t
       | Set_of_closures of set_of_closures
       | Closure of closure
-      | Immutable_string of string
-      | Mutable_string of { size : int; }
+      | String of string_ty
       | Float_array of float_array
       | Bottom
-      | Load_lazily of load_lazily
+      | Load_lazily of load_lazily  (* XXX move into [t]? *)
 
     and closure = private {
       potential_closures : t Closure_id.Map.t;
@@ -130,6 +129,15 @@ module type S = sig
       freshening : closure_freshening;
       (** Any freshening that has been applied to [function_decls]. *)
       direct_call_surrogates : Closure_id.t Closure_id.Map.t;
+    }
+
+    and string_contents = private
+      | Contents of string
+      | Unknown_or_mutable
+
+    and string_ty = private {
+      contents : string_contents;
+      size : int;
     }
 
     and float_array_contents = private
@@ -182,7 +190,7 @@ module type S = sig
 
     (** Construct one of the various top types ("any value of the given kind
         can flow to this point"). *)
-    val unknown : Flambda_kind.t -> unknown_because_of -> t
+    val unknown : Flambda_kind.Basic.t -> unknown_because_of -> t
 
     (** The unique bottom type ("no value can flow to this point"). *)
     val bottom : unit -> t
@@ -310,7 +318,6 @@ module type S = sig
     type t = private
       | Blocks of blocks
       | Blocks_and_immediates of blocks * Immediate.Set.t
-      | Immediates of Immediate.Set.t
 
     val invariant : t -> unit
 
