@@ -76,6 +76,12 @@ val abs : t -> t
 val size : int
 (** The size in bits of a target native integer. *)
 
+type num_bits =
+  | thirty_two
+  | sixty_four
+
+val num_bits : num_bits
+
 val max_int : t
 (** The greatest representable target integer,
     either 2{^31} - 1 on a 32-bit platform,

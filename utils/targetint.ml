@@ -18,6 +18,10 @@ type repr =
   | Int32 of int32
   | Int64 of int64
 
+type num_bits =
+  | Thirty_two
+  | Sixty_four
+
 module type S = sig
   type t
   val zero : t
@@ -32,6 +36,7 @@ module type S = sig
   val succ : t -> t
   val pred : t -> t
   val abs : t -> t
+  val num_bits : num_bits
   val max_int : t
   val min_int : t
   val logand : t -> t -> t
@@ -75,6 +80,7 @@ module Int32 = struct
             Int32.of_int n
     | _ ->
         assert false
+  let num_bits = Thirty_two
   let of_int32 x = x
   let to_int32 x = x
   let of_int64 = Int64.to_int32
@@ -84,6 +90,7 @@ end
 
 module Int64 = struct
   include Int64
+  let num_bits = Sixty_four
   let of_int_exn = Int64.of_int
   let of_int64 x = x
   let to_int64 x = x

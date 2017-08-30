@@ -19,14 +19,39 @@
 module type S = sig
   type function_declarations
 
-  module Boxed_number_kind : sig
-    type t = private
+  module Naked_number : sig
+    (* CR-soon mshinwell: [Int] and [Nativeint] should both take
+       [Targetint.Set.t]. *)
+    type t =
+      | Int of Numbers.Int.Set.t
+      | Char of Misc.Stdlib.Char.Set.t
+      | Float of Numbers.Float.Set.t
+      | Int32 of Numbers.Int32.Set.t
+      | Int64 of Numbers.Int64.Set.t
+      | Nativeint of Numbers.Nativeint.Set.t
+  end
+
+  module Boxed_or_encoded_number_kind : sig
+    (** "Encodings" do not allocate. *)
+    type encoded =
+      | Tagged_int
+
+    (** "Boxings" allocate. *)
+    type boxed =
       | Float
       | Int32
       | Int64
       | Nativeint
 
+    type t =
+      | Boxed of boxed
+      | Encoded of encoded
+
     include Identifiable.S with type t := t
+
+    (** Return the number of words allocated in total (both inside and
+        outside the OCaml heap) for the given boxing or encoding. *)
+    val num_words_allocated_excluding_header : t -> int
   end
 
   type unresolved_value =
@@ -72,17 +97,14 @@ module type S = sig
         [Unknown (k, _)] means "any value of kind [k] might flow to this point".
     *)
     (* CR mshinwell: After the work on classic mode closure approximations has
-        been merged (the latter introducing a type of function declarations in
-        this module), then the only circularity between this type and Flambda
-        will be for Flambda.Expr.t on function bodies. *)
+       been merged (the latter introducing a type of function declarations in
+       this module), then the only circularity between this type and Flambda
+       will be for Flambda.Expr.t on function bodies. *)
     and descr = private 
       | Unknown of Flambda_kind.t * unknown_because_of
       | Union of Unionable.t
-      | Unboxed_float of Numbers.Float.Set.t
-      | Unboxed_int32 of Numbers.Int32.Set.t
-      | Unboxed_int64 of Numbers.Int64.Set.t
-      | Unboxed_nativeint of Numbers.Nativeint.Set.t
-      | Boxed_number of Boxed_number_kind.t * t
+      | Naked_number of Naked_number.t
+      | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
       | Set_of_closures of set_of_closures
       | Closure of closure
       | Immutable_string of string
@@ -97,7 +119,7 @@ module type S = sig
     } [@@unboxed]
 
     (* CR-soon mshinwell: add support for the approximations of the results,
-        so we can do all of the tricky higher-order cases. *)
+       so we can do all of the tricky higher-order cases. *)
     and set_of_closures = private {
       function_decls : function_declarations;
       bound_vars : t Var_within_closure.Map.t;
@@ -271,6 +293,7 @@ module type S = sig
       -> t
   end and Unionable : sig
     module Immediate : sig
+      (** These immediate values are always tagged. *)
       type t = private
         (* CR mshinwell: We could consider splitting these again *)
         | Int of int

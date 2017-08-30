@@ -40,22 +40,6 @@ module Program = struct
   let imported_symbols (program : t) =
     program.imported_symbols
 
-  let needed_import_symbols (program : t) =
-    let dependencies = Flambda.free_symbols_program program in
-    let defined_symbol =
-      Symbol.Set.union
-        (Symbol.Set.of_list
-          (List.map fst (all_lifted_constants program)))
-        (Symbol.Set.of_list
-          (List.map (fun (s, _, _) -> s) (initialize_symbols program)))
-    in
-    Symbol.Set.diff dependencies defined_symbol
-
-  let introduce_needed_import_symbols program : t =
-    { program with
-      imported_symbols = needed_import_symbols program;
-    }
-
   let root_symbol (program : t) =
     let rec loop (program : Program_body.t) =
       match program with
@@ -68,51 +52,15 @@ module Program = struct
     in
     loop program.program_body
 
-  let make_closure_map program =
-    let map = ref Closure_id.Map.empty in
-    let add_set_of_closures ~constant:_ : Flambda.Set_of_closures.t -> unit =
-        fun { function_decls } ->
-      Variable.Map.iter (fun var _ ->
-          let closure_id = Closure_id.wrap var in
-          map := Closure_id.Map.add closure_id function_decls !map)
-        function_decls.funs
-    in
-    Flambda_iterators.iter_on_set_of_closures_of_program
-      program
-      ~f:add_set_of_closures;
-    !map
-
   module Iterators = struct
-    let iter_toplevel_exprs (program : t) ~f =
-      iter_exprs_at_toplevel_of_program program
-        ~f:(fun ~continuation_arity cont expr ->
-          let rec iter_expr ~continuation_arity cont expr =
-            iter_named (fun (named : Named.t) ->
-                match named with
-                | Set_of_closures set_of_closures ->
-                  Variable.Map.iter
-                    (fun _ (function_decl : F.Function_declaration.t) ->
-                      iter_expr ~continuation_arity:function_decl.return_arity
-                        function_decl.continuation_param
-                        function_decl.body)
-                    set_of_closures.function_decls.funs
-                | _ -> ())
-              expr;
-            f ~continuation_arity cont expr
-          in
-          iter_expr ~continuation_arity cont expr)
-
-    let iter_named_of_program program ~f =
-      iter_exprs_at_toplevel_of_program program
-        ~f:(fun ~continuation_arity:_ _ e -> iter_named f e)
-
     let iter_set_of_closures (program : t) ~f =
       let rec loop (program : Program_body.t) =
         match program with
         | Let_symbol (_, Set_of_closures set_of_closures, program) ->
           f ~constant:true set_of_closures;
           Variable.Map.iter (fun _ (function_decl : F.Function_declaration.t) ->
-              iter_on_sets_of_closures (f ~constant:false) function_decl.body)
+              F.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
+                function_decl.body)
             set_of_closures.function_decls.funs;
           loop program
         | Let_rec_symbol (defs, program) ->
@@ -121,7 +69,7 @@ module Program = struct
                 f ~constant:true set_of_closures;
                 Variable.Map.iter
                   (fun _ (function_decl : F.Function_declaration.t) ->
-                    F.Expr.iter_sets_of_closures (f ~constant:false)
+                    F.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
                       function_decl.body)
                   set_of_closures.function_decls.funs
               | _ -> ()) defs;
@@ -167,7 +115,7 @@ module Program = struct
             expr)
 
     module Toplevel_only = struct
-      let iter_exprs_at_toplevel_of_program (program : t) ~f =
+      let iter (program : t) ~f =
         let rec loop (program : Program_body.t) =
           match program with
           | Let_symbol (_, Set_of_closures set_of_closures, program) ->
@@ -201,10 +149,33 @@ module Program = struct
         in
         loop program.program_body
     end 
+
+    let iter_toplevel_exprs (program : t) ~f =
+      Iterators.Toplevel_only.iter program
+        ~f:(fun ~continuation_arity cont expr ->
+          let rec iter_expr ~continuation_arity cont expr =
+            iter_named (fun (named : Named.t) ->
+                match named with
+                | Set_of_closures set_of_closures ->
+                  Variable.Map.iter
+                    (fun _ (function_decl : F.Function_declaration.t) ->
+                      iter_expr ~continuation_arity:function_decl.return_arity
+                        function_decl.continuation_param
+                        function_decl.body)
+                    set_of_closures.function_decls.funs
+                | _ -> ())
+              expr;
+            f ~continuation_arity cont expr
+          in
+          iter_expr ~continuation_arity cont expr)
+
+    let iter_named_of_program t ~f =
+      iter_toplevel_exprs t
+        ~f:(fun ~continuation_arity:_ _ e -> iter_named f e)
   end
 
   module Mappers = struct
-    let map_sets_of_closures_of_program (program : t)
+    let map_sets_of_closures (program : t)
           ~(f : F.Set_of_closures.t -> F.Set_of_closures.t) =
       let rec loop (program : Program_body.t)
             : Program_body.t =
@@ -465,4 +436,32 @@ module Program = struct
 
   let all_lifted_constants_as_map program =
     Symbol.Map.of_list (all_lifted_constants program)
+
+  let needed_import_symbols (program : t) =
+    let dependencies = free_symbols program in
+    let defined_symbol =
+      Symbol.Set.union
+        (Symbol.Set.of_list
+          (List.map fst (all_lifted_constants program)))
+        (Symbol.Set.of_list
+          (List.map (fun (s, _, _) -> s) (initialize_symbols program)))
+    in
+    Symbol.Set.diff dependencies defined_symbol
+
+  let introduce_needed_import_symbols program : t =
+    { program with
+      imported_symbols = needed_import_symbols program;
+    }
+
+  let make_closure_map program =
+    let map = ref Closure_id.Map.empty in
+    let add_set_of_closures ~constant:_ : Flambda.Set_of_closures.t -> unit =
+        fun { function_decls } ->
+      Variable.Map.iter (fun var _ ->
+          let closure_id = Closure_id.wrap var in
+          map := Closure_id.Map.add closure_id function_decls !map)
+        function_decls.funs
+    in
+    Iterators.iter_set_of_closures program ~f:add_set_of_closures;
+    !map
 end

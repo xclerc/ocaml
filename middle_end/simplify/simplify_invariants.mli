@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -14,27 +14,11 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Approximations of continuations.  Used during simplification. *)
+[@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type t
-
-type continuation_handlers =
-  | Nonrecursive of Flambda.Continuation_handler.t
-  | Recursive of Flambda.Continuation_handlers.t
-
-val create
-   : name:Continuation.t
-  -> handlers:continuation_handlers
-  -> num_params:int
-  -> t
-
-val create_unknown : name:Continuation.t -> num_params:int -> t
-
-val name : t -> Continuation.t
-
-val num_params : t -> int
-val handlers : t -> continuation_handlers option
-
-val is_alias : t -> Continuation.t option
-
-val print : Format.formatter -> t -> unit
+val check_toplevel_simplification_result
+   : Simplify_result.t
+  -> Flambda.Expr.t
+  -> continuation:Continuation.t
+  -> descr:string
+  -> unit

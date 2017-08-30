@@ -19,7 +19,9 @@
 (* CR mshinwell: turn this off once namespacing issues sorted *)
 [@@@ocaml.warning "-44-45"]
 
+module Char = Misc.Stdlib.Char
 module Float = Numbers.Float
+module Int = Numbers.Int
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
@@ -32,12 +34,76 @@ module Make (Function_declarations : sig
 end) = struct
   type function_declarations = Function_declarations.t
 
-  module Boxed_number_kind = struct
+  module Naked_number = struct
     type t =
+      | Int of Int.Set.t
+      | Char of Char.Set.t
+      | Float of Float.Set.t
+      | Int32 of Int32.Set.t
+      | Int64 of Int64.Set.t
+      | Nativeint of Nativeint.Set.t
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+
+      let to_int t =
+        match t with
+        | Int _ -> 0
+        | Char _ -> 1
+        | Float _ -> 2
+        | Int32 _ -> 3
+        | Int64 _ -> 4
+        | Nativeint _ -> 5
+
+      let compare t1 t2 =
+        match t1, t2 with
+        | Int ns1, Int ns2 -> Int.Set.compare ns1 ns2
+        | Char ns1, Char ns2 -> Char.Set.compare ns1 ns2
+        | Float ns1, Float ns2 -> Float.Set.compare ns1 ns2
+        | Int32 ns1, Int32 ns2 -> Int32.Set.compare ns1 ns2
+        | Int64 ns1, Int64 ns2 -> Int64.Set.compare ns1 ns2
+        | Nativeint ns1, Nativeint ns2 -> Nativeint.Set.compare ns1 ns2
+        | (Int _ | Char _ | Float _ | Int32 _ | Int64 _ | Nativeint _), _ ->
+          Pervasives.compare (to_int t1) (to_int t2)
+
+      let equal t1 t2 = (compare t1 t2 = 0)
+
+      let hash t =
+        let hash =
+          match t with
+          | Int ns -> Int.Set.hash ns
+          | Char ns -> Char.Set.hash ns
+          | Float ns -> Float.Set.hash ns
+          | Int32 ns -> Int32.Set.hash ns
+          | Int64 ns -> Int64.Set.hash ns
+          | Nativeint ns -> Nativeint.Set.hash ns
+        in
+        Hashtbl.hash (to_int t, hash)
+
+      let print ppf t =
+        let fprintf = Format.fprintf in
+        match t with
+        | Int ns -> fprintf "int{%a}" Int.Set.print ns
+        | Char ns -> fprintf "char{%a}" Char.Set.print ns
+        | Float ns -> fprintf "float{%a}" Float.Set.print ns
+        | Int32 ns -> fprintf "int32{%a}" Int32.Set.print ns
+        | Int64 ns -> fprintf "int64{%a}" Int64.Set.print ns
+        | Nativeint ns -> fprintf "nativeint{%a}" Nativeint.Set.print ns
+  end
+
+  module Boxed_or_encoded_number_kind = struct
+    type encoded =
+      | Tagged_int
+
+    type boxed =
       | Float
       | Int32
       | Int64
       | Nativeint
+
+    type t =
+      | Boxed of boxed
+      | Encoded of encoded
 
     include Identifiable.Make (struct
       type nonrec t = t
@@ -50,13 +116,31 @@ end) = struct
 
       let print ppf t =
         match t with
-        | Float -> Format.fprintf ppf "float"
-        | Int32 -> Format.fprintf ppf "int32"
-        | Int64 -> Format.fprintf ppf "int64"
-        | Nativeint -> Format.fprintf ppf "nativeint"
+        | Boxed Float -> Format.fprintf ppf "boxed_float"
+        | Boxed Int32 -> Format.fprintf ppf "boxed_int32"
+        | Boxed Int64 -> Format.fprintf ppf "boxed_int64"
+        | Boxed Nativeint -> Format.fprintf ppf "boxed_nativeint"
+        | Encoded Tagged_int -> Format.fprint ppf "tagged_int"
 
       let output _ _ = Misc.fatal_error "Not implemented"
     end)
+
+    let num_words_allocated_excluding_header t =
+      let custom_block_size = 2 in
+      match t with
+      | Encoded Tagged_int -> 0
+      | Boxed Float ->
+        begin match Targetint.num_bits with
+        | Thirty_two -> 2
+        | Sixty_four -> 1
+        end
+      | Boxed Int32 -> custom_block_size + 1
+      | Boxed Int64 ->
+        begin match Targetint.num_bits with
+        | Thirty_two -> custom_block_size + 2
+        | Sixty_four -> custom_block_size + 1
+        end
+      | Boxed Nativeint -> custom_block_size + 1
   end
 
   type unresolved_value =
@@ -201,11 +285,8 @@ end) = struct
     and descr =
       | Unknown of Flambda_kind.t * unknown_because_of
       | Union of Unionable.t
-      | Unboxed_float of Numbers.Float.Set.t
-      | Unboxed_int32 of Numbers.Int32.Set.t
-      | Unboxed_int64 of Numbers.Int64.Set.t
-      | Unboxed_nativeint of Numbers.Nativeint.Set.t
-      | Boxed_number of Boxed_number_kind.t * t
+      | Naked_number of Naked_number.t
+      | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
       | Set_of_closures of set_of_closures
       | Closure of closure
       | Immutable_string of string
@@ -374,15 +455,11 @@ end) = struct
         Format.fprintf ppf "]@])";
       | Set_of_closures set_of_closures ->
         print_value_set_of_closures ppf set_of_closures
-      | Unboxed_float fs -> Format.fprintf ppf "float(%a)" Float.Set.print fs
-      | Unboxed_int32 ns -> Format.fprintf ppf "int32(%a)" Int32.Set.print ns
-      | Unboxed_int64 ns -> Format.fprintf ppf "int64(%a)" Int64.Set.print ns
-      | Unboxed_nativeint ns ->
-        Format.fprintf ppf "nativeint(%a)" Nativeint.Set.print ns
-      | Boxed_number (bn, t) ->
-        Format.fprintf ppf "box_%a(%a)"
+      | Naked_number nn -> Naked_number.print ppf nn
+      | Boxed_or_encoded_number (bn, t) ->
+        Format.fprintf ppf "%a(%a)"
           Boxed_number_kind.print bn
-          (print) t
+          print t
       | Immutable_string contents ->
         let size = String.length contents in
         let contents =
@@ -416,12 +493,16 @@ end) = struct
     let kind t ~really_import_approx : Flambda_kind.t =
       match t.descr with
       | Unknown (kind, _) -> kind
-      | Unboxed_float _ -> Flambda_kind.unboxed_float ()
-      | Unboxed_int32 _ -> Flambda_kind.unboxed_int32 ()
-      | Unboxed_int64 _ -> Flambda_kind.unboxed_int64 ()
-      | Unboxed_nativeint _ -> Flambda_kind.unboxed_nativeint ()
+      | Naked_number (Int _)
+      | Naked_number (Char _) -> Flambda_kind.naked_int ()
+      | Naked_number (Float _) -> Flambda_kind.naked_float ()
+      | Naked_number (Int32 _) -> Flambda_kind.naked_int32 ()
+      | Naked_number (Int64 _) -> Flambda_kind.naked_int64 ()
+      | Naked_number (Nativeint _) -> Flambda_kind.naked_nativeint ()
+      | Union (Immediates _)
+      | Boxed_or_encoded_number (Encoded _, _) -> Flambda_kind.tagged_int ()
       | Union _
-      | Boxed_number _
+      | Boxed_or_encoded_number _
       | Set_of_closures _
       | Closure _
       | Immutable_string _
@@ -481,6 +562,8 @@ end) = struct
           -> Unionable.t
           -> Unionable.t Unionable.or_bottom
 
+        val int_set : Int.Set.t simple_commutative_op
+        val char_set : Char.Set.t simple_commutative_op
         val float_set : Float.Set.t simple_commutative_op
         val int32_set : Int32.Set.t simple_commutative_op
         val int64_set : Int64.Set.t simple_commutative_op
@@ -501,22 +584,38 @@ end) = struct
           | Ok union -> Union union
           | Bottom -> Bottom
           end
-        | Unboxed_float fs1, Unboxed_float fs2 ->
+        | Naked_number (Int is1), Naked_number (Int is2) ->
+          Unboxed_float (AG.Ops.int_set is1 is2)
+        | Naked_number (Char is1), Naked_number (Char is2) ->
+          Unboxed_float (AG.Ops.char_set is1 is2)
+        | Naked_number (Float fs1), Naked_number (Float fs2) ->
           Unboxed_float (AG.Ops.float_set fs1 fs2)
-        | Unboxed_int32 is1, Unboxed_int32 is2 ->
+        | Naked_number (Int32 is1), Naked_number (Int32 is2) ->
           Unboxed_int32 (AG.Ops.int32_set is1 is2)
-        | Unboxed_int64 is1, Unboxed_int64 is2 ->
+        | Naked_number (Int64 is1), Naked_number (Int64 is2) ->
           Unboxed_int64 (AG.Ops.int64_set is1 is2)
-        | Unboxed_nativeint is1, Unboxed_nativeint is2 ->
+        | Naked_number (Nativeint is1), Naked_number (Nativeint is2) ->
           Unboxed_nativeint (AG.Ops.nativeint_set is1 is2)
-        | Boxed_number (Float, t1), Boxed_number (Float, t2) ->
-          Boxed_number (Float, meet_or_join ~really_import_approx t1 t2)
-        | Boxed_number (Int32, t1), Boxed_number (Int32, t2) ->
-          Boxed_number (Int32, meet_or_join ~really_import_approx t1 t2)
-        | Boxed_number (Int64, t1), Boxed_number (Int64, t2) ->
-          Boxed_number (Int64, meet_or_join ~really_import_approx t1 t2)
-        | Boxed_number (Nativeint, t1), Boxed_number (Nativeint, t2) ->
-          Boxed_number (Nativeint, meet_or_join ~really_import_approx t1 t2)
+        | Boxed_or_encoded_number (Encoded Tagged_int, t1),
+            Boxed_or_encoded_number (Encoded Tagged_int, t2) ->
+          Boxed_or_encoded_number (Encoded Tagged_int,
+            meet_or_join ~really_import_approx t1 t2)
+        | Boxed_or_encoded_number (Boxed Float, t1),
+            Boxed_or_encoded_number (Boxed Float, t2) ->
+          Boxed_or_encoded_number (Boxed Float,
+            meet_or_join ~really_import_approx t1 t2)
+        | Boxed_or_encoded_number (Boxed Int32, t1),
+            Boxed_or_encoded_number (Boxed Int32, t2) ->
+          Boxed_or_encoded_number (Boxed Int32,
+            meet_or_join ~really_import_approx t1 t2)
+        | Boxed_or_encoded_number (Boxed Int64, t1),
+            Boxed_or_encoded_number (Boxed Int64, t2) ->
+          Boxed_or_encoded_number (Boxed Int64,
+            meet_or_join ~really_import_approx t1 t2)
+        | Boxed_or_encoded_number (Boxed Nativeint, t1),
+            Boxed_or_encoded_number (Boxed Nativeint, t2) ->
+          Boxed_or_encoded_number (Boxed Nativeint,
+            meet_or_join ~really_import_approx t1 t2)
         | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
             when Export_id.equal e1 e2 -> d1
         | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
@@ -622,6 +721,8 @@ end) = struct
 
         module Ops = struct
           let unionable = Unionable.join
+          let int_set = Int.Set.union
+          let char_set = Char.Set.union
           let float_set = Float.Set.union
           let int32_set = Int32.Set.union
           let int64_set = Int64.Set.union
@@ -642,6 +743,8 @@ end) = struct
 
         module Ops = struct
           let unionable = Unionable.meet
+          let int_set = Int.Set.inter
+          let char_set = Char.Set.inter
           let float_set = Float.Set.inter
           let int32_set = Int32.Set.inter
           let int64_set = Int64.Set.inter
@@ -656,28 +759,28 @@ end) = struct
     let just_descr descr =
       { descr; var = None; projection = None; symbol = None; }
 
+    (* CR mshinwell: read carefully *)
     let refine_using_value_kind t (kind : Lambda.value_kind) =
       match kind with
       | Pgenval -> t
       | Pfloatval ->
         begin match t.descr with
-        | Boxed_number (Float, { descr = Unboxed_float _; _ }) ->
+        | Boxed_or_encoded_number (Boxed Float,
+            { descr = Naked_number (Float _); _ }) ->
           t
         | Unknown ((Unboxed_float | Bottom), reason) ->
           { t with
-            descr = Boxed_number (Float,
+            descr = Boxed_or_encoded_number (Boxed Float,
               just_descr (Unknown (Flambda_kind.unboxed_float (), reason)));
           }
         | Unknown (
-            (Value | Unboxed_int32 | Unboxed_int64 | Unboxed_nativeint), _) ->
+            (Value | Tagged_int | Naked_int | Naked_int32 | Naked_int64
+              | Unboxed_nativeint), _) ->
           Misc.fatal_errorf "Wrong type for Pfloatval kind: %a"
             print t
         | Union _
-        | Unboxed_float _
-        | Unboxed_int32 _
-        | Unboxed_int64 _
-        | Unboxed_nativeint _
-        | Boxed_number _
+        | Naked_number _
+        | Boxed_or_encoded_number _
         | Set_of_closures _
         | Closure _
         | Immutable_string _
@@ -690,6 +793,7 @@ end) = struct
           (* We don't know yet *)
           t
         end
+      (* CR mshinwell: Do we need more cases here?  We could add Pintval *)
       | _ -> t
 
     let augment_with_variable t var = { t with var = Some var }
@@ -717,12 +821,18 @@ end) = struct
         just_descr (Unboxed_int64 (Int64.Set.singleton n))
 
     let unboxed_nativeint n =
-      just_descr (Unboxed_nativeint (Nativeint.Set.singleton n))
-    let boxed_float f = just_descr (Boxed_number (Float, unboxed_float f))
-    let boxed_int32 i = just_descr (Boxed_number (Int32, unboxed_int32 i))
-    let boxed_int64 i = just_descr (Boxed_number (Int64, unboxed_int64 i))
+      just_descr (Naked_number (Nativeint (Nativeint.Set.singleton n)))
+
+    let boxed_float f =
+      just_descr (Boxed_or_encoded_number (Boxed Float, unboxed_float f))
+    let boxed_int32 i =
+      just_descr (Boxed_or_encoded_number (Boxed Int32, unboxed_int32 i))
+    let boxed_int64 i =
+      just_descr (Boxed_or_encoded_number (Boxed Int64, unboxed_int64 i))
     let boxed_nativeint i =
-      just_descr (Boxed_number (Nativeint, unboxed_nativeint i))
+      just_descr (Boxed_or_encoded_number (
+        Boxed Nativeint, unboxed_nativeint i))
+
     let export_id_loaded_lazily ex = just_descr (Load_lazily (Export_id ex))
     let symbol_loaded_lazily sym =
       { (just_descr (Load_lazily (Symbol sym)))

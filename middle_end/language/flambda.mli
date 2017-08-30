@@ -142,7 +142,7 @@ module rec Expr : sig
       -> unit
 
     val iter_sets_of_closures : (Set_of_closures.t -> unit) -> t -> unit
-      
+
     (** Iterators, mappers and folders in [Toplevel_only] modules never
         recurse into the bodies of functions. *) 
     module Toplevel_only : sig 
