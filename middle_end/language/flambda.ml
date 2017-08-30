@@ -330,58 +330,318 @@ end = struct
         project_closure
         (Apply_cont (continuation, None, [project_closure_var])))
 
-  let fold_lets_option (t : Expr.t) ~init ~for_defining_expr
-        ~for_last_body ~filter_defining_expr =
-    let finish ~last_body ~acc ~rev_lets =
-      let module W = With_free_variables in
-      let acc, t =
-        List.fold_left (fun (acc, t) (var, ty, defining_expr) ->
-            let free_vars_of_body = W.free_variables t in
-            let acc, var, defining_expr =
-              filter_defining_expr acc var defining_expr free_vars_of_body
-            in
-            match defining_expr with
-            | None ->
-              acc, t
-            | Some defining_expr ->
-              let let_expr =
-                W.create_let_reusing_body var ty defining_expr t
-              in
-              acc, W.of_expr let_expr)
-          (acc, W.of_expr last_body)
-          rev_lets
-      in
-      W.contents t, acc
-    in
-    let rec loop (t : t) ~acc ~rev_lets =
+  module Iterators = struct
+    let iter_subexpressions f f_named (t : t) =
       match t with
-      | Let { var; kind; defining_expr; body; _ } ->
-        let acc, bindings, var, kind, (defining_expr : Reachable.t) =
-          for_defining_expr acc var kind defining_expr
-        in
-        begin match defining_expr with
-        | Reachable defining_expr ->
-          let rev_lets =
-            (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
-          in
-          loop body ~acc ~rev_lets
-        | Non_terminating defining_expr ->
-          let rev_lets =
-            (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
-          in
-          let last_body, acc = for_last_body acc Proved_unreachable in
-          finish ~last_body ~acc ~rev_lets
-        | Unreachable ->
-          let rev_lets = (List.rev bindings) @ rev_lets in
-          let last_body, acc = for_last_body acc Proved_unreachable in
-          finish ~last_body ~acc ~rev_lets
-        end
-      | t ->
-        let last_body, acc = for_last_body acc t in
-        finish ~last_body ~acc ~rev_lets
-    in
-    loop t ~acc:init ~rev_lets:[]
+      | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> ()
+      | Let { defining_expr; body; _ } ->
+        f_named defining_expr;
+        f body
+      | Let_mutable { body; _ } -> f body
+      | Let_cont { body; handlers =
+          Nonrecursive { handler = { handler; _ }; _ } } ->
+        f body;
+        f handler
+      | Let_cont { body; handlers = Recursive handlers; } ->
+        f body;
+        Continuation.Map.iter
+          (fun _cont ({ handler; _ } : Continuation_handler.t) -> f handler)
+          handlers
+  end
 
+  module Mappers = struct
+    let map_general ~toplevel f f_named tree =
+      let rec aux (tree : Expr.t) =
+        match tree with
+        | Let _ ->
+          Expr.map_lets tree ~for_defining_expr:aux_named ~for_last_body:aux
+            ~after_rebuild:f
+        | _ ->
+          let exp : Expr.t =
+            match tree with
+            | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
+            | Let _ -> assert false
+            | Let_mutable mutable_let ->
+              let new_body = aux mutable_let.body in
+              if new_body == mutable_let.body then
+                tree
+              else
+                Let_mutable { mutable_let with body = new_body }
+            (* CR-soon mshinwell: There's too much code duplication here with
+               [map_subexpressions]. *)
+            | Let_cont { body; handlers; } ->
+              let new_body = aux body in
+              match handlers with
+              | Nonrecursive { name; handler =
+                  ({ handler = handler_expr; _ } as handler); } ->
+                let new_handler_expr = aux handler_expr in
+                if new_body == body && new_handler_expr == handler_expr then
+                  tree
+                else
+                  Let_cont {
+                    body = new_body;
+                    handlers = Nonrecursive {
+                      name;
+                      handler = { handler with handler = new_handler_expr; }
+                    };
+                  }
+              | Recursive handlers ->
+                let something_changed = ref false in
+                let candidate_handlers =
+                  Continuation.Map.map
+                    (fun (handler : Continuation_handler.t) ->
+                      let new_handler = aux handler.handler in
+                      if not (new_handler == handler.handler) then begin
+                        something_changed := true
+                      end;
+                      { handler with handler = new_handler; })
+                    handlers
+                in
+                if !something_changed || not (new_body == body) then
+                  Let_cont {
+                    body = new_body;
+                    handlers = Recursive candidate_handlers;
+                  }
+                else
+                  tree
+          in
+          f exp
+      and aux_named (id : Variable.t) (named : Named.t) =
+        let named : Named.t =
+          match named with
+          | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+          | Assign _ | Project_closure _ | Move_within_set_of_closures _
+          | Project_var _ | Prim _ | Read_symbol_field _ -> named
+          | Set_of_closures ({ function_decls; free_vars; 
+              direct_call_surrogates }) ->
+            if toplevel then named
+            else begin
+              let done_something = ref false in
+              let funs =
+                Variable.Map.map (fun (func_decl : Function_declaration.t) ->
+                    let new_body = aux func_decl.body in
+                    if new_body == func_decl.body then begin
+                      func_decl
+                    end else begin
+                      done_something := true;
+                      Function_declaration.update_body func_decl
+                        ~body:new_body
+                    end)
+                  function_decls.funs
+              in
+              if not !done_something then
+                named
+              else
+                let function_decls =
+                  Function_declarations.update function_decls ~funs
+                in
+                let set_of_closures =
+                  Set_of_closures.create ~function_decls ~free_vars
+                    ~direct_call_surrogates
+                in
+                Set_of_closures set_of_closures
+            end
+        in
+        f_named id named
+      in
+      aux tree
+
+    let map f f_named t =
+      map_general ~toplevel:false f (fun _ n -> f_named n) t
+
+    let map_expr f t = map f (fun named -> named) t
+    let map_named f_named t = map (fun t -> t) f_named t
+
+    let map_named_with_id f_named t =
+      map_general ~toplevel:false (fun t -> t) f_named t
+
+    let map_subexpressions f f_named (tree : t) : t =
+      match tree with
+      | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> tree
+      | Let { var; kind; defining_expr; body; _ } ->
+        let new_named = f_named var defining_expr in
+        let new_body = f body in
+        if new_named == defining_expr && new_body == body then
+          tree
+        else
+          Expr.create_let var kind new_named new_body
+      | Let_mutable mutable_let ->
+        let new_body = f mutable_let.body in
+        if new_body == mutable_let.body then
+          tree
+        else
+          Let_mutable { mutable_let with body = new_body }
+      | Let_cont { body; handlers; } ->
+        let new_body = f body in
+        match handlers with
+        | Nonrecursive { name; handler =
+            ({ handler = handler_expr; _ } as handler); } ->
+          let new_handler_expr = f handler_expr in
+          if new_body == body && new_handler_expr == handler_expr then
+            tree
+          else
+            Let_cont {
+              body = new_body;
+              handlers = Nonrecursive {
+                name;
+                handler = { handler with handler = new_handler_expr; }
+              };
+            }
+        | Recursive handlers ->
+          let something_changed = ref false in
+          let candidate_handlers =
+            Continuation.Map.map
+              (fun (handler : Continuation_handler.t) ->
+                let new_handler = f handler.handler in
+                if not (new_handler == handler.handler) then begin
+                  something_changed := true
+                end;
+                { handler with handler = new_handler; })
+              handlers
+          in
+          if !something_changed || not (new_body == body) then
+            Let_cont {
+              body = new_body;
+              handlers = Recursive candidate_handlers;
+            }
+          else
+            tree
+
+    let map_symbols tree ~f =
+      map_named (function
+          | (Symbol sym) as named ->
+            let new_sym = f sym in
+            if new_sym == sym then
+              named
+            else
+              Symbol new_sym
+          | ((Read_symbol_field (sym, field)) as named) ->
+            let new_sym = f sym in
+            if new_sym == sym then
+              named
+            else
+              Read_symbol_field (new_sym, field)
+          | (Var _ | Const _ | Allocated_const _ | Set_of_closures _
+             | Read_mutable _ | Project_closure _
+             | Move_within_set_of_closures _ | Project_var _ | Prim _
+             | Assign _) as named -> named)
+        tree
+    
+    let map_apply tree ~f =
+      map (function
+          | (Apply apply) as expr ->
+            let new_apply = f apply in
+            if new_apply == apply then
+              expr
+            else
+              Apply new_apply
+          | expr -> expr)
+        (fun named -> named)
+        tree
+    
+    let map_sets_of_closures tree ~f =
+      map_named (function
+          | (Set_of_closures set_of_closures) as named ->
+            let new_set_of_closures = f set_of_closures in
+            if new_set_of_closures == set_of_closures then named
+            else Set_of_closures new_set_of_closures
+          | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
+          | Move_within_set_of_closures _ | Project_var _ | Assign _
+          | Prim _ | Read_mutable _ | Read_symbol_field _) as named -> named)
+        tree
+    
+    let map_project_var_to_named_opt tree ~f =
+      map_named (function
+          | (Project_var project_var) as named ->
+            begin match f project_var with
+            | None -> named
+            | Some named -> named
+            end
+          | (Var _ | Symbol _ | Const _ | Allocated_const _ | Set_of_closures _
+          | Project_closure _ | Move_within_set_of_closures _ | Prim _
+          | Read_mutable _ | Read_symbol_field _ | Assign _) as named -> named)
+        tree
+
+    (* CR mshinwell: duplicate function *)
+    let map_all_immutable_let_and_let_rec_bindings (expr : t)
+          ~(f : Variable.t -> Named.t -> Named.t) : t =
+      map_named_with_id f expr
+    
+    module Toplevel_only = struct
+      let map f f_named t =
+        map_general ~toplevel:true f (fun _ n -> f_named n) t
+
+      let map_expr f_expr t = map f_expr (fun named -> named) t
+      let map_named f_named t = map (fun t -> t) f_named t
+
+      let map_sets_of_closures tree ~f =
+        map_named (function
+            | (Set_of_closures set_of_closures) as named ->
+              let new_set_of_closures = f set_of_closures in
+              if new_set_of_closures == set_of_closures then named
+              else Set_of_closures new_set_of_closures
+            | (Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+            | Read_symbol_field _ | Project_closure _
+            | Move_within_set_of_closures _ | Project_var _ | Prim _
+            | Assign _) as named -> named)
+          tree
+      end
+  end
+
+  module Folders = struct
+    let fold_lets_option (t : t) ~init ~for_defining_expr
+          ~for_last_body ~filter_defining_expr =
+      let finish ~last_body ~acc ~rev_lets =
+        let module W = With_free_variables in
+        let acc, t =
+          List.fold_left (fun (acc, t) (var, ty, defining_expr) ->
+              let free_vars_of_body = W.free_variables t in
+              let acc, var, defining_expr =
+                filter_defining_expr acc var defining_expr free_vars_of_body
+              in
+              match defining_expr with
+              | None ->
+                acc, t
+              | Some defining_expr ->
+                let let_expr =
+                  W.create_let_reusing_body var ty defining_expr t
+                in
+                acc, W.of_expr let_expr)
+            (acc, W.of_expr last_body)
+            rev_lets
+        in
+        W.contents t, acc
+      in
+      let rec loop (t : t) ~acc ~rev_lets =
+        match t with
+        | Let { var; kind; defining_expr; body; _ } ->
+          let acc, bindings, var, kind, (defining_expr : Reachable.t) =
+            for_defining_expr acc var kind defining_expr
+          in
+          begin match defining_expr with
+          | Reachable defining_expr ->
+            let rev_lets =
+              (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
+            in
+            loop body ~acc ~rev_lets
+          | Non_terminating defining_expr ->
+            let rev_lets =
+              (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
+            in
+            let last_body, acc = for_last_body acc Proved_unreachable in
+            finish ~last_body ~acc ~rev_lets
+          | Unreachable ->
+            let rev_lets = (List.rev bindings) @ rev_lets in
+            let last_body, acc = for_last_body acc Proved_unreachable in
+            finish ~last_body ~acc ~rev_lets
+          end
+        | t ->
+          let last_body, acc = for_last_body acc t in
+          finish ~last_body ~acc ~rev_lets
+      in
+      loop t ~acc:init ~rev_lets:[]
+  end
+  
   let description_of_toplevel_node (expr : Expr.t) =
     match expr with
     | Let { var; _ } -> Format.asprintf "let %a" Variable.print var
@@ -608,10 +868,67 @@ end = struct
     in
     free_var.var
 
-  and equal (t1 : Set_of_closures.t) (t2 : Set_of_closures.t) =
+  let equal (t1 : Set_of_closures.t) (t2 : Set_of_closures.t) =
     Variable.Map.equal Function_declaration.equal
         t1.function_decls.funs t2.function_decls.funs
       && Variable.Map.equal Free_var.equal t1.free_vars t2.free_vars
+
+  module Mappers = struct
+    let map_symbols ({ function_decls; free_vars; direct_call_surrogates; }
+          as set_of_closures) ~f =
+      let done_something = ref false in
+      let funs =
+        Variable.Map.map (fun (func_decl : Function_declaration.t) ->
+            let body = Expr.Mappers.map_symbols func_decl.body ~f in
+            if not (body == func_decl.body) then begin
+              done_something := true;
+            end;
+            Function_declaration.update_body func_decl ~body)
+          function_decls.funs
+      in
+      if not !done_something then
+        set_of_closures
+      else
+        let function_decls =
+          Function_declarations.update function_decls ~funs
+        in
+        create ~function_decls ~free_vars ~direct_call_surrogates
+    
+    let map_function_bodies ?ignore_stubs (set_of_closures : t) ~f =
+      let done_something = ref false in
+      let funs =
+        Variable.Map.map (fun (function_decl : Function_declaration.t) ->
+            let new_body =
+              match ignore_stubs, function_decl.stub with
+              | Some (), true -> function_decl.body
+              | _, _ -> f function_decl.body
+            in
+            if new_body == function_decl.body then
+              function_decl
+            else begin
+              done_something := true;
+              Function_declaration.update_body function_decl
+                ~body:new_body
+            end)
+          set_of_closures.function_decls.funs
+      in
+      if not !done_something then
+        set_of_closures
+      else
+        let function_decls =
+          Function_declarations.update set_of_closures.function_decls ~funs
+        in
+        create ~function_decls ~free_vars:set_of_closures.free_vars
+          ~direct_call_surrogates:set_of_closures.direct_call_surrogates
+  end
+
+  module Folders = struct
+    let fold_function_decls_ignoring_stubs (t : t) ~init ~f =
+      Variable.Map.fold (fun fun_var function_decl acc ->
+          f ~fun_var ~function_decl acc)
+        t.function_decls.funs
+        init
+  end
 end and Function_declarations : sig
   include module type of F0.Function_declarations
 
