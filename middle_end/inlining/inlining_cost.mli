@@ -149,3 +149,8 @@ val maximum_interesting_size_of_function_body : int -> int
 val lambda_smaller' : Flambda.Expr.t -> than:int -> int option
 
 val lambda_size : Flambda.Expr.t -> int
+
+(* CR mshinwell: check name -- and should it be here? *)
+val size
+   : function_decls : Flambda.Function_declarations.t
+  -> int option Variable.Map.t

@@ -240,7 +240,7 @@ module rec Expr : sig
 
   val iter_lets
      : t
-    -> for_defining_expr:(Variable.t -> Named.t -> unit)
+    -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> unit)
     -> for_last_body:(t -> unit)
     -> for_each_let:(t -> unit)
     -> unit
@@ -251,7 +251,7 @@ module rec Expr : sig
      uses this function for such situations? *)
   val map_lets
      : t
-    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
+    -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> Named.t)
     -> for_last_body:(t -> t)
     -> after_rebuild:(t -> t)
     -> t
@@ -618,6 +618,9 @@ end and Function_declaration : sig
   (** Change only the code of a function declaration. *)
   val update_body : t -> body:Expr.t -> t
 
+  (** Change only the parameters of a function declaration. *)
+  val update_params : t -> params:Typed_parameter.t list -> t
+
   (** Change only the code and parameters of a function declaration. *)
   val update_params_and_body
     : t
@@ -717,7 +720,7 @@ module With_free_variables : sig
       occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
      : Variable.t
-    -> Flambda_type.t
+    -> Flambda_kind.t
     -> Named.t
     -> Expr.t t
     -> Expr.t

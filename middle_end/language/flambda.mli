@@ -19,21 +19,31 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Return_arity : module type of Flambda0.Return_arity
-module Call_kind : module type of Flambda0.Call_kind
-module Const : module type of Flambda0.Const
 type apply_kind = Flambda0.apply_kind
 type apply = Flambda0.apply
 type assign = Flambda0.assign
-module Free_var = Flambda0.Free_var
+
+module Call_kind : module type of Flambda0.Call_kind
+module Const : module type of Flambda0.Const
+module Continuation_handler : module type of Flambda0.Continuation_handler
+module Continuation_handlers : module type of Flambda0.Continuation_handlers
+module Free_var : module type of Flambda0.Free_var
+module Let : module type of Flambda0.Let
+module Let_cont : module type of Flambda0.Let_cont
+module Let_cont_handlers : module type of Flambda0.Let_cont_handlers
+module Let_mutable : module type of Flambda0.Let_mutable
+module Return_arity : module type of Flambda0.Return_arity
+module Switch : module type of Flambda0.Switch
+module Trap_action : module type of Flambda0.Trap_action
+module Typed_parameter : module type of Flambda0.Typed_parameter
+module With_free_variables : module type of Flambda0.With_free_variables
 
 module Free_vars : sig
   include module type of Flambda0.Free_vars
 
-  (* Ensure that projection information is suitably erased from
-    free_vars and specialised_args if we have deleted the variable being
-    projected from. *)
-  val clean_free_vars_projections : t -> t
+  (* Ensure that projection information is suitably erased if we have deleted
+     the variable being projected from. *)
+  val clean_projections : t -> t
 end
 
 module Reachable : sig
@@ -60,7 +70,7 @@ module rec Expr : sig
   val make_closure_declaration
      : id:Variable.t
     -> body:t
-    -> params:Parameter.t list
+    -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
     (* CR mshinwell: update comment. *)
     -> stub:bool
@@ -79,37 +89,9 @@ module rec Expr : sig
       [Immutable] [Let] expressions the given [(var, expr)] pairs around the
       body. *)
   val bind
-     : bindings:(Variable.t * Named.t) list
+     : bindings:(Variable.t * Flambda_kind.t * Named.t) list
     -> body:t
     -> t
-
-  (** Used to avoid exceeding the stack limit when handling expressions with
-      multiple consecutive nested [Let]-expressions.  This saves rewriting large
-      simplification functions in CPS.  This function provides for the
-      rewriting or elimination of expressions during the fold. *)
-  val fold_lets_option
-      : t
-    -> init:'a
-    -> for_defining_expr:(
-        'a
-      -> Variable.t
-      -> Named.t
-      -> 'a
-        * (Variable.t * Flambda_type.t
-            * Named.t) list
-        * Variable.t
-        * Flambda_type.t
-        * Reachable.t)
-    -> for_last_body:('a -> t -> t * 'b)
-    (* CR-someday mshinwell: consider making [filter_defining_expr]
-       optional *)
-    -> filter_defining_expr:(
-        'b
-      -> Variable.t
-      -> Named.t
-      -> Variable.Set.t
-      -> 'b * Variable.t * (Named.t option))
-    -> t * 'b
 
   (** All continuations defined at toplevel within the given expression. *)
   val all_defined_continuations_toplevel : t -> Continuation.Set.t
@@ -133,10 +115,13 @@ module rec Expr : sig
   (* CR-soon mshinwell: we need to document whether these iterators follow any
     particular order. *)
   module Iterators : sig
-    val iter
-       : (t -> unit)
-      -> (Named.t -> unit)
-      -> t
+    val iter : (t -> unit) -> (Named.t -> unit) -> t -> unit
+
+    val iter_lets
+       : t
+      -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> unit)
+      -> for_last_body:(t -> unit)
+      -> for_each_let:(t -> unit)
       -> unit
 
     (** Apply the given functions to the immediate subexpressions of the given
@@ -147,20 +132,16 @@ module rec Expr : sig
       -> t
       -> unit
         
-    val iter_expr
-       : (t -> unit)
-      -> t
-      -> unit
+    val iter_expr : (t -> unit) -> t -> unit
+
+    val iter_named : (Named.t -> unit) -> t -> unit
     
     val iter_all_immutable_let_and_let_rec_bindings
        : t
       -> f:(Variable.t -> Named.t -> unit)
       -> unit
 
-    val iter_on_sets_of_closures
-       : (Set_of_closures.t -> unit)
-      -> t
-      -> unit
+    val iter_sets_of_closures : (Set_of_closures.t -> unit) -> t -> unit
       
     (** Iterators, mappers and folders in [Toplevel_only] modules never
         recurse into the bodies of functions. *) 
@@ -170,7 +151,7 @@ module rec Expr : sig
        -> (Named.t -> unit)
        -> t
        -> unit
-     
+
       val iter_all_immutable_let_and_let_rec_bindings
          : t
         -> f:(Variable.t -> Named.t -> unit)
@@ -179,39 +160,31 @@ module rec Expr : sig
   end
     
   module Mappers : sig
-    include module type of Flambda0.Expr.Mappers
+    val map : (t -> t) -> (Named.t -> Named.t) -> t -> t
 
-    val map
-       : (t -> t)
-      -> (Named.t -> Named.t)
+    val map_lets
+       : t
+      -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> Named.t)
+      -> for_last_body:(t -> t)
+      -> after_rebuild:(t -> t)
       -> t
-      -> t
-    
+
     val map_subexpressions
        : (t -> t)
       -> (Variable.t -> Named.t -> Named.t)
       -> t
       -> t
 
-    val map_expr
-       : (t -> t)
-      -> t
-      -> t
+    val map_expr : (t -> t) -> t -> t
 
-    val map_symbols
-       : t
-      -> f:(Symbol.t -> Symbol.t)
-      -> t
+    val map_symbols : t -> f:(Symbol.t -> Symbol.t) -> t
 
     val map_sets_of_closures
        : t
       -> f:(Set_of_closures.t -> Set_of_closures.t)
       -> t
   
-    val map_apply
-       : t
-      -> f:(apply -> apply)
-      -> t
+    val map_apply : t -> f:(apply -> apply) -> t
 
     val map_project_var_to_named_opt
        : t
@@ -224,22 +197,45 @@ module rec Expr : sig
       -> t
          
     module Toplevel_only : sig 
-      val map
-         : (t -> t)
-        -> (Named.t -> Named.t)
-        -> t
-        -> t
+      val map : (t -> t) -> (Named.t -> Named.t) -> t -> t
 
-      val map_expr
-         : (t -> t)
-        -> t
-        -> t
+      val map_expr : (t -> t) -> t -> t
   
       val map_sets_of_closures
          : t
         -> f:(Set_of_closures.t -> Set_of_closures.t)
         -> t
     end
+  end
+
+  module Folders : sig
+    (** Used to avoid exceeding the stack limit when handling expressions with
+        multiple consecutive nested [Let]-expressions. This saves rewriting
+        large simplification functions in CPS. This function provides for the
+        rewriting or elimination of expressions during the fold. *)
+    val fold_lets_option
+        : t
+      -> init:'a
+      -> for_defining_expr:(
+          'a
+        -> Variable.t
+        -> Flambda_kind.t
+        -> Named.t
+        -> 'a
+          * (Variable.t * Flambda_kind.t * Named.t) list
+          * Variable.t
+          * Flambda_kind.t
+          * Reachable.t)
+      -> for_last_body:('a -> t -> t * 'b)
+      (* CR-someday mshinwell: consider making [filter_defining_expr]
+        optional *)
+      -> filter_defining_expr:(
+          'b
+        -> Variable.t
+        -> Named.t
+        -> Variable.Set.t
+        -> 'b * Variable.t * (Named.t option))
+      -> t * 'b
   end
 end and Named : sig
   include module type of Flambda0.Named
@@ -252,51 +248,15 @@ end and Named : sig
   val of_projection : Projection.t -> t
 
   module Iterators : sig
-    val iter
-       : (Expr.t -> unit)
-      -> (t -> unit)
-      -> t
-      -> unit
+    val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
     
-    val iter_expr
-      : (t -> unit)
-      -> Expr.t
-      -> unit
-
-    val iter_named
-       : (t -> unit)
-      -> t
-      -> unit
+    val iter_named : (t -> unit) -> t -> unit
 
     module Toplevel_only : sig
-      val iter
-         : (Expr.t -> unit)
-        -> (t -> unit)
-        -> t
-        -> unit
-    end
-  end
-    
-  module Mappers : sig
-    val map
-       : (t -> t)
-      -> Expr.t
-      -> Expr.t
-
-    module Toplevel_only : sig
-      val map
-         : (t -> t)
-        -> Expr.t
-        -> Expr.t
+      val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
     end
   end
 end
-and Let : module type of Flambda0.Let
-and Let_mutable : module type of Flambda0.Let_mutable
-and Let_cont : module type of Flambda0.Let_cont
-and Let_cont_handlers : module type of Flambda0.Let_cont_handlers
-and Continuation_handler : module type of Flambda0.Continuation_handler
-and Continuation_handlers : module type of Flambda0.Continuation_handlers
 and Set_of_closures : sig
   include module type of Flambda0.Set_of_closures
 
@@ -403,5 +363,3 @@ end and Function_declaration : sig
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool
 end
-
-module Typed_parameter : module type of Flambda0.Typed_parameter

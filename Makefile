@@ -53,26 +53,30 @@ CAMLYACC ?= boot/ocamlyacc
 include stdlib/StdlibModules
 
 MIDDLE_END_DIRS=\
-  middle_end/base_types \
-  middle_end/language \
   middle_end/analysis \
+  middle_end/base_types \
+  middle_end/cmx \
   middle_end/code_motion \
   middle_end/from_lambda \
   middle_end/inlining \
+  middle_end/language \
   middle_end/removal \
   middle_end/simplify \
+  middle_end/to_clambda \
   middle_end/unboxing \
   middle_end
 
 MIDDLE_END_INCLUDES=\
-  -I middle_end/base_types \
-  -I middle_end/language \
   -I middle_end/analysis \
+  -I middle_end/base_types \
+  -I middle_end/cmx \
   -I middle_end/code_motion \
   -I middle_end/from_lambda \
   -I middle_end/inlining \
+  -I middle_end/language \
   -I middle_end/removal \
   -I middle_end/simplify \
+  -I middle_end/to_clambda \
   -I middle_end/unboxing \
   -I middle_end
 
@@ -139,7 +143,7 @@ TYPING=typing/ident.cmo typing/path.cmo \
   typing/typemod.cmo
 
 COMP=\
-  middle_end/debuginfo.cmo \
+  middle_end/base_types/debuginfo.cmo \
   middle_end/base_types/tag.cmo \
   middle_end/base_types/linkage_name.cmo \
   middle_end/base_types/compilation_unit.cmo \
@@ -1211,7 +1215,7 @@ endif
 # The middle end (whose .cma library is currently only used for linking
 # the "ocamlobjinfo" program, since we cannot depend on the whole native code
 # compiler for "make world" and the list of dependencies for
-# asmcomp/export_info.cmo is long).
+# middle_end/cmx/export_info.cmo is long).
 
 compilerlibs/ocamlmiddleend.cma: $(MIDDLE_END)
 	$(CAMLC) -a -o $@ $^
@@ -1227,7 +1231,7 @@ partialclean::
 .PHONY: ocamltools
 ocamltools: ocamlc ocamlyacc ocamllex asmcomp/cmx_format.cmi \
             asmcomp/printclambda.cmo compilerlibs/ocamlmiddleend.cma \
-            asmcomp/export_info.cmo
+            middle_end/cmx/export_info.cmo
 	$(MAKE) -C tools all
 
 .PHONY: ocamltoolsopt
@@ -1237,7 +1241,7 @@ ocamltoolsopt: ocamlopt
 .PHONY: ocamltoolsopt.opt
 ocamltoolsopt.opt: ocamlc.opt ocamlyacc ocamllex.opt asmcomp/cmx_format.cmi \
                    asmcomp/printclambda.cmx compilerlibs/ocamlmiddleend.cmxa \
-                   asmcomp/export_info.cmx
+                   middle_end/cmx/export_info.cmx
 	$(MAKE) -C tools opt.opt
 
 partialclean::

@@ -300,13 +300,13 @@ module rec Expr : sig
   val free_continuations : t -> Continuation.Set.t
   val iter_lets
      : t
-    -> for_defining_expr:(Variable.t -> Named.t -> unit)
+    -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> unit)
     -> for_last_body:(t -> unit)
     -> for_each_let:(t -> unit)
     -> unit
   val map_lets
      : t
-    -> for_defining_expr:(Variable.t -> Named.t -> Named.t)
+    -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> Named.t)
     -> for_last_body:(t -> t)
     -> after_rebuild:(t -> t)
     -> t
@@ -561,9 +561,9 @@ end = struct
   let iter_lets t ~for_defining_expr ~for_last_body ~for_each_let =
     let rec loop (t : t) =
       match t with
-      | Let { var; defining_expr; body; _ } ->
+      | Let { var; kind; defining_expr; body; _ } ->
         for_each_let t;
-        for_defining_expr var defining_expr;
+        for_defining_expr var kind defining_expr;
         loop body
       | t ->
         for_last_body t
@@ -574,9 +574,7 @@ end = struct
     let rec loop (t : t) ~rev_lets =
       match t with
       | Let { var; kind; defining_expr; body; _ } ->
-        let new_defining_expr =
-          for_defining_expr var defining_expr
-        in
+        let new_defining_expr = for_defining_expr var kind defining_expr in
         let original =
           if new_defining_expr == defining_expr then
             Some t
@@ -613,7 +611,7 @@ end = struct
       match t with
       | Let _ ->
         iter_lets t
-          ~for_defining_expr:(fun _var named -> aux_named named)
+          ~for_defining_expr:(fun _var _kind named -> aux_named named)
           ~for_last_body:aux
           ~for_each_let:f
       (* CR mshinwell: add tail recursive case for Let_cont *)
@@ -1249,6 +1247,7 @@ end and Function_declaration : sig
     -> closure_origin:Closure_origin.t
     -> t
   val update_body : t -> body:Expr.t -> t
+  val update_params : t -> params:Typed_parameter.t list -> t
   val update_params_and_body
     : t
     -> params:Typed_parameter.t list
@@ -1322,6 +1321,9 @@ end = struct
       specialise = t.specialise;
       is_a_functor = t.is_a_functor;
     }
+
+  let update_params t ~params =
+    update_params_and_body t ~params ~body:t.body
 
   let used_params (function_decl : Function_declaration.t) =
     Variable.Set.filter (fun param ->
@@ -1474,12 +1476,12 @@ module With_free_variables = struct
         free_vars_of_body = Expr.free_variables body;
       }
 
-  let create_let_reusing_body var ty defining_expr (t : Expr.t t) : Expr.t =
+  let create_let_reusing_body var kind defining_expr (t : Expr.t t) : Expr.t =
     match t with
     | Expr (body, free_vars_of_body) ->
       Let {
         var;
-        kind = Flambda_type.kind_exn ty;
+        kind;
         defining_expr;
         body;
         free_vars_of_defining_expr = Named.free_variables defining_expr;

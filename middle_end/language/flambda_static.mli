@@ -70,4 +70,79 @@ module Program : sig
   val all_function_decls_indexed_by_closure_id
      : t
     -> Flambda.Function_declarations.t Closure_id.Map.t
+
+  module Iterators : sig
+    val iter_on_set_of_closures
+       : t
+      -> f:(constant:bool -> Flambda.Set_of_closures.t -> unit)
+      -> unit
+      
+    (** Iterate over all toplevel expressions in the program:
+        - bodies of functions, whether bound to symbols or not, including any
+          subfunctions; and
+        - [Effect] expressions.
+        Note the difference in semantics between this and
+        [Toplevel_only.iter_exprs].
+    *)
+    val iter_toplevel_exprs
+       : t
+      -> f:(continuation_arity:Flambda.Return_arity.t
+        -> Continuation.t
+        -> Flambda.Expr.t
+        -> unit)
+      -> unit
+    
+    val iter_named
+       : t
+      -> f:(Flambda.Named.t -> unit)
+      -> unit
+
+    val iter_constant_defining_values
+       : t
+      -> f:(Constant_defining_value.t -> unit)
+      -> unit
+    
+    val iter_apply
+       : t
+      -> f:(Flambda.apply -> unit)
+      -> unit
+
+    module Toplevel_only : sig
+      (** Iterate over all expressions occurring directly at the toplevel of the
+          program. Note that the only function bodies iterated over are those
+          bound to a symbol. (That is to say, a function body in a set of
+          closures [constant_defining_value] will be iterated over---but any
+          subfunctions in the body will not be. Likewise any function body
+          defined by a normal [Let] will not be iterated over.) If you want to
+          iterate over those things as well, use [iter_toplevel_exprs]. *)
+
+      val iter_exprs
+         : t
+        -> f:(continuation_arity:Flambda.Return_arity.t
+          -> Continuation.t
+          -> Flambda.Expr.t
+          -> unit)
+        -> unit
+    end
+  end
+
+  module Mappers : sig    
+    val map_sets_of_closures
+       : t
+      -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
+      -> t
+
+    (* CR mshinwell: check naming.
+       Change terminology to explicitly distinguish between toplevel expressions
+       such as [Effect]s and closure bodies at toplevel? *)
+    val map_toplevel_exprs
+       : t
+      -> f:(Flambda.Expr.t -> Flambda.Expr.t)
+      -> t
+    
+    val map_named
+       : t
+      -> f:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
+      -> t
+  end
 end

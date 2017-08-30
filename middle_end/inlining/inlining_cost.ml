@@ -687,3 +687,16 @@ let maximum_interesting_size_of_function_body num_free_variables =
     Lazy.force maximum_interesting_size_of_function_body_multiplier
   in
   base + (num_free_variables * multiplier)
+
+let size ~(function_decls : Flambda.Function_declarations.t) =
+  Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
+      let num_vars_in_closure =
+        Function_declaration.num_variables_in_closure function_decl
+          ~function_decls:t
+      in
+      let max_size =
+        Inlining_cost.maximum_interesting_size_of_function_body
+          num_vars_in_closure
+      in
+      Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
+    t.funs
