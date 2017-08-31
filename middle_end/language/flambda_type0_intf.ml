@@ -29,6 +29,8 @@ module type S = sig
       | Int32 of Numbers.Int32.Set.t
       | Int64 of Numbers.Int64.Set.t
       | Nativeint of Numbers.Nativeint.Set.t
+
+    include Identifiable.S with type t := t
   end
 
   module Boxed_or_encoded_number_kind : sig
@@ -188,9 +190,11 @@ module type S = sig
     val bottom : unit -> t
 
     (** Construction of types involving equalities to runtime values. *)
-    val int : int -> t
-    val constptr : int -> t
-    val char : char -> t
+    val untagged_int : int -> t
+    val untagged_char : char -> t
+    val tagged_int : int -> t
+    val tagged_char : char -> t
+    val constptr : int -> t  (** "Const pointer"s are always tagged. *)
     val unboxed_float : float -> t
     val unboxed_int32 : Int32.t -> t
     val unboxed_int64 : Int64.t -> t
@@ -203,7 +207,7 @@ module type S = sig
     val immutable_float_array : t array -> t
     val mutable_string : size:int -> t
     val immutable_string : string -> t
-    val block : Tag.t -> t array -> t
+    val block : Tag.Scannable.t -> t array -> t
 
     (** Construction of types that link to other types which have not yet
         been loaded into memory (from a .cmx file). *)

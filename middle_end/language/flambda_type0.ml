@@ -807,18 +807,28 @@ end) = struct
     let replace_description t descr = { t with descr }
 
     let unknown kind reason = just_descr (Unknown (kind, reason))
-    let int i = just_descr (Union (Unionable.int i))
-    let char i = just_descr (Union (Unionable.char i))
+
+    let tagged_int i = just_descr (Union (Unionable.int i))
+    let tagged_char i = just_descr (Union (Unionable.char i))
+
     let constptr i = just_descr (Union (Unionable.constptr i))
-    let unboxed_float n = just_descr (Unboxed_float (Float.Set.singleton n))
-    let unboxed_int32 n = just_descr (Unboxed_int32 (Int32.Set.singleton n))
+
+    let unboxed_int n =
+      just_descr (Naked_number (Int (Int.Set.singleton n)))
+
+    let unboxed_char c =
+      just_descr (Naked_number (Char (Char.Set.singleton n)))
+
+    let unboxed_float n =
+      if Targetint.size < 64 then None
+      else just_descr (Naked_number (Float (Float.Set.singleton n)))
+
+    let unboxed_int32 n =
+      just_descr (Naked_number (Int32 (Int32.Set.singleton n)))
 
     let unboxed_int64 n =
-      if Targetint.size < 64 then
-        Misc.fatal_errorf "Cannot create unboxed int64 Flambda types on this \
-            target platform"
-      else
-        just_descr (Unboxed_int64 (Int64.Set.singleton n))
+      if Targetint.size < 64 then None
+      else Some (just_descr (Naked_number (Int64 (Int64.Set.singleton n))))
 
     let unboxed_nativeint n =
       just_descr (Naked_number (Nativeint (Nativeint.Set.singleton n)))
