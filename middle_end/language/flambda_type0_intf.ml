@@ -55,6 +55,13 @@ module type S = sig
     val num_words_allocated_excluding_header : t -> int
   end
 
+  type closure_freshening =
+    { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
+      closure_id : Closure_id.t Closure_id.Map.t;
+    }
+
+  val print_closure_freshening : Format.formatter -> closure_freshening -> unit
+
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Symbol of Symbol.t
@@ -67,11 +74,6 @@ module type S = sig
     | Export_id of Export_id.t
     | Symbol of Symbol.t
 
-  type closure_freshening =
-    { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
-      closure_id : Closure_id.t Closure_id.Map.t;
-    }
-
   type string_contents = private
     | Contents of string
     | Unknown_or_mutable
@@ -80,8 +82,6 @@ module type S = sig
     contents : string_contents;
     size : int;
   }
-
-  val print_closure_freshening : Format.formatter -> closure_freshening -> unit
 
   (** Values of type [t] are known as "Flambda types".
       They may be loaded lazily from .cmx files and formed into union types.
@@ -105,15 +105,15 @@ module type S = sig
         specified, to a field of a symbol. *)
   } 
 
-  and descr =
+  and descr = private
     | Ok of singleton_or_union
     | Load_lazily of load_lazily
 
-  and singleton_or_union =
+  and singleton_or_union = private
     | Singleton of singleton
     | Union of t * t
 
-  and singleton =
+  and singleton = private
     | Unknown of Flambda_kind.Basic.t * unknown_because_of
     | Naked_number of Naked_number.t
     | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
@@ -153,39 +153,17 @@ module type S = sig
   }
 
   (** Least upper bound of two types. *)
-  val join
-     : really_import_approx:(t -> t)
-    -> t
-    -> t
-    -> t
+  val join : load_type:(t -> t) -> t -> t -> t
 
   (** Greatest lower bound of two types. *)
-  val meet
-     : really_import_approx:(t -> t)
-    -> t
-    -> t
-    -> t
+  val meet : load_type:(t -> t) -> t -> t -> t
 
-  val print
-     : Format.formatter
-    -> t
-    -> unit
-
-  val print_descr
-     : Format.formatter
-    -> descr
-    -> unit
-
-  val print_set_of_closures
-     : Format.formatter
-    -> set_of_closures
-    -> unit
+  val print : Format.formatter -> t -> unit
+  val print_descr : Format.formatter -> descr -> unit
+  val print_set_of_closures : Format.formatter -> set_of_closures -> unit
 
   (** Each type has a unique kind. *)
-  val kind
-     : t
-    -> really_import_approx:(t -> t)
-    -> Flambda_kind.t
+  val kind : t -> load_type:(t -> t) -> Flambda_kind.t
 
   (** Like [kind], but causes a fatal error if the type has not been fully
       resolved. *)
@@ -197,6 +175,9 @@ module type S = sig
 
   (** The unique bottom type ("no value can flow to this point"). *)
   val bottom : unit -> t
+
+  (** Form a union type from the given two types, whose kinds must be equal. *)
+  val union : t -> t -> load_type:(t -> t) -> t
 
   (** Construction of types involving equalities to runtime values. *)
   val int : int -> t
@@ -342,7 +323,7 @@ end
       | Bottom
 
     val join
-      : really_import_approx:(T.t -> T.t)
+      : load_type:(T.t -> T.t)
       -> t
       -> t
       -> t or_bottom

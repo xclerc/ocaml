@@ -263,7 +263,6 @@ end) = struct
   type t = {
     descr : descr;
     var : Variable.t option;
-    projection : Projection.t option;
     symbol : (Symbol.t * int option) option;
   } 
 
@@ -389,34 +388,55 @@ end) = struct
       Variable.print_opt var
       print symbol
 
-  let kind t ~really_import_approx : Flambda_kind.t =
-    match t.descr with
-    | Unknown (kind, _) -> kind
+  let kind_of_singleton singleton : Flambda_kind.t =
+    match singleton with
+    | Unknown (kind, _) -> Flambda_kind.of_basic kind
     | Naked_number (Int _)
     | Naked_number (Char _) -> Flambda_kind.naked_int ()
     | Naked_number (Float _) -> Flambda_kind.naked_float ()
     | Naked_number (Int32 _) -> Flambda_kind.naked_int32 ()
     | Naked_number (Int64 _) -> Flambda_kind.naked_int64 ()
     | Naked_number (Nativeint _) -> Flambda_kind.naked_nativeint ()
-    | Union (Immediates _)
     | Boxed_or_encoded_number (Encoded _, _) -> Flambda_kind.tagged_int ()
-    | Union _
-    | Boxed_or_encoded_number _
+    | Boxed_or_encoded_number (Boxed _, _)
+    | Block _
     | Set_of_closures _
     | Closure _
-    | Immutable_string _
-    | Mutable_string _
+    | String _
     | Float_array _ -> Flambda_kind.value ()
     | Bottom -> Flambda_kind.bottom ()
-    | Load_lazily _ -> kind (really_import_approx t) ~really_import_approx
+
+  let rec kind_of_singleton_or_union singleton_or_union ~load_type =
+    match singleton_or_union with
+    | Singleton singleton -> kind_of_singleton singleton
+    | Union (t1, _) -> kind t1 ~load_type
+
+  and kind t ~load_type =
+    match t with
+    | Ok singleton_or_union ->
+      kind_of_singleton_or_union singleton_or_union ~load_type
+    | Load_lazily _ ->
+      kind (load_type t) ~load_type
 
   let kind_exn t =
-    let really_import_approx t =
-      Misc.fatal_errorf "With_free_variables.create_let_reusing_body: \
-          Flambda type is not fully resolved: %a"
+    let load_type t =
+      Misc.fatal_errorf "Flambda_type0.kind_exn: type is not fully resolved: %a"
         print t
     in
-    kind t ~really_import_approx
+    kind t ~load_type
+
+  let union t1 t2 ~load_type =
+    let kind1 = kind t1 ~load_type in
+    let kind2 = kind t2 ~load_type in
+    if not (Flambda_kind.equal kind1 kind2) then begin
+      Misc.fatal_errorf "Cannot form union of %a and %a: their kinds differ"
+        print t1
+        print t2
+    end;
+    { descr = Ok (Union (t1, t2));
+      var = None;
+      symbol = None;
+    }
 
   (* Closures and set of closures descriptions cannot be merged.
 
@@ -442,7 +462,7 @@ end) = struct
 
   module type Meet_or_join = sig
     val meet_or_join
-       : really_import_approx:(t -> t)
+       : load_type:(t -> t)
       -> t
       -> t
       -> t
@@ -456,7 +476,7 @@ end) = struct
 
     module Ops : sig
       val unionable
-         : really_import_approx:(t -> t)
+         : load_type:(t -> t)
         -> Unionable.t
         -> Unionable.t
         -> Unionable.t Unionable.or_bottom
@@ -475,10 +495,10 @@ end) = struct
         -> t Closure_id.Map.t
     end
   end) (Inverse : Meet_or_join) : Meet_or_join = struct
-    let rec meet_or_join_descr kind ~really_import_approx d1 d2 : descr =
+    let rec meet_or_join_descr kind ~load_type d1 d2 : descr =
       match d1, d2 with
       | Union union1, Union union2 ->
-        begin match AG.Ops.unionable union1 union2 ~really_import_approx with
+        begin match AG.Ops.unionable union1 union2 ~load_type with
         | Unknown -> Unknown (Flambda_kind.value (), Other)
         | Ok union -> Union union
         | Bottom -> Bottom
@@ -498,23 +518,23 @@ end) = struct
       | Boxed_or_encoded_number (Encoded Tagged_int, t1),
           Boxed_or_encoded_number (Encoded Tagged_int, t2) ->
         Boxed_or_encoded_number (Encoded Tagged_int,
-          meet_or_join ~really_import_approx t1 t2)
+          meet_or_join ~load_type t1 t2)
       | Boxed_or_encoded_number (Boxed Float, t1),
           Boxed_or_encoded_number (Boxed Float, t2) ->
         Boxed_or_encoded_number (Boxed Float,
-          meet_or_join ~really_import_approx t1 t2)
+          meet_or_join ~load_type t1 t2)
       | Boxed_or_encoded_number (Boxed Int32, t1),
           Boxed_or_encoded_number (Boxed Int32, t2) ->
         Boxed_or_encoded_number (Boxed Int32,
-          meet_or_join ~really_import_approx t1 t2)
+          meet_or_join ~load_type t1 t2)
       | Boxed_or_encoded_number (Boxed Int64, t1),
           Boxed_or_encoded_number (Boxed Int64, t2) ->
         Boxed_or_encoded_number (Boxed Int64,
-          meet_or_join ~really_import_approx t1 t2)
+          meet_or_join ~load_type t1 t2)
       | Boxed_or_encoded_number (Boxed Nativeint, t1),
           Boxed_or_encoded_number (Boxed Nativeint, t2) ->
         Boxed_or_encoded_number (Boxed Nativeint,
-          meet_or_join ~really_import_approx t1 t2)
+          meet_or_join ~load_type t1 t2)
       | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
           when Export_id.equal e1 e2 -> d1
       | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
@@ -546,15 +566,15 @@ end) = struct
                approximation intersection, not an union (that this join
                is).
                mshinwell: changed to meet *)
-            (Inverse.meet_or_join ~really_import_approx)
+            (Inverse.meet_or_join ~load_type)
             map1 map2
         in
         Closure { potential_closures }
       | _ -> AG.create_unit kind
 
-    and meet_or_join ~really_import_approx a1 a2 =
-      let kind1 = kind a1 ~really_import_approx in
-      let kind2 = kind a2 ~really_import_approx in
+    and meet_or_join ~load_type a1 a2 =
+      let kind1 = kind a1 ~load_type in
+      let kind2 = kind a2 ~load_type in
       if Flambda_kind.compatible kind1 kind2 then begin
         if AG.is_unit a1 then a2
         else if AG.is_unit a2 then a1
@@ -562,8 +582,8 @@ end) = struct
           match a1, a2 with
           | { descr = Load_lazily _ }, _
           | _, { descr = Load_lazily _ } ->
-            meet_or_join ~really_import_approx
-              (really_import_approx a1) (really_import_approx a2)
+            meet_or_join ~load_type
+              (load_type a1) (load_type a2)
           | _ ->
               let var =
                 match a1.var, a2.var with
@@ -590,7 +610,7 @@ end) = struct
                   else None
               in
               let descr =
-                meet_or_join_descr kind1 ~really_import_approx
+                meet_or_join_descr kind1 ~load_type
                   a1.descr a2.descr
               in
               { descr;
@@ -988,13 +1008,13 @@ end) = struct
       | Bottom
 
     val join
-       : really_import_approx:(T.t -> T.t)
+       : load_type:(T.t -> T.t)
       -> t
       -> t
       -> t or_bottom
 
     val meet
-       : really_import_approx:(T.t -> T.t)
+       : load_type:(T.t -> T.t)
       -> t
       -> t
       -> t or_bottom
@@ -1197,7 +1217,7 @@ end) = struct
       val unit : t or_bottom
 
       val t
-         : really_import_approx:(T.t -> T.t)
+         : load_type:(T.t -> T.t)
         -> T.t
         -> T.t
         -> T.t
@@ -1210,7 +1230,7 @@ end) = struct
         -> 'a Tag.Scannable.Map.t
         -> 'a Tag.Scannable.Map.t
     end) = struct
-      let meet_or_join ~really_import_approx (t1 : t) (t2 : t) : t or_bottom =
+      let meet_or_join ~load_type (t1 : t) (t2 : t) : t or_bottom =
         invariant t1;
         invariant t2;
         let get_immediates t =
@@ -1236,7 +1256,7 @@ end) = struct
                 [| |]  (* an arbitrary value *)
               end else begin
                 Array.map2 (fun field existing_field ->
-                    Ops.t ~really_import_approx field existing_field)
+                    Ops.t ~load_type field existing_field)
                   fields1 fields2
               end)
             blocks_t1 blocks_t2
