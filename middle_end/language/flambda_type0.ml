@@ -26,6 +26,8 @@ module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 module Nativeint = Numbers.Nativeint
 
+module K = Flambda_kind
+
 type 'a simple_commutative_op = 'a -> 'a -> 'a
 
 module Make (Function_declarations : sig
@@ -275,7 +277,7 @@ end) = struct
     | Union of t * t
 
   and singleton =
-    | Unknown of Flambda_kind.Basic.t * unknown_because_of
+    | Unknown of K.Basic.t * unknown_because_of
     | Naked_number of Naked_number.t
     | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
     | Block of t array Tag.Scannable.Map.t
@@ -313,7 +315,7 @@ end) = struct
     size : int;
   }
 
-  let print_value_set_of_closures ppf
+  let print_set_of_closures ppf
         { function_decls; invariant_params; freshening; _ } =
     Format.fprintf ppf
       "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
@@ -328,21 +330,35 @@ end) = struct
     | Symbol symbol ->
       Format.fprintf ppf "Symbol %a" Symbol.print symbol
 
-  let rec print_descr ppf = function
-    | Union union -> Unionable.print ppf union
+  let rec print_singleton ppf singleton =
+    match singleton with
     | Unknown (kind, reason) ->
       begin match reason with
       | Unresolved_value value ->
         Format.fprintf ppf "?(%a)(due to unresolved %a)"
-          Flambda_kind.print kind
+          K.Basic.print kind
           print_unresolved_value value
-      | Other -> Format.fprintf ppf "?(%a)" Flambda_kind.print kind
+      | Other -> Format.fprintf ppf "?(%a)" K.print kind
       end;
-    | Bottom -> Format.fprintf ppf "bottom"
-    | Load_lazily (Export_id id) ->
-      Format.fprintf ppf "_%a_" Export_id.print id
-    | Load_lazily (Symbol sym) ->
-      Format.fprintf ppf "%a" Symbol.print sym
+    | Naked_number nn -> Naked_number.print ppf nn
+    | Block by_tag ->
+      let print_binding ppf (tag, fields) =
+        Format.fprintf ppf "@[[|%a: %a|]@]"
+          Tag.Scannable.print tag
+          (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
+            print)
+          (Array.to_list fields)
+      in
+      Format.fprintf ppf "@[%a@]"
+        (Format.pp_print_list ~pp_sep:pp_print_space
+          print_binding)
+        (Tag.Scannable.Map.bindings by_tag)
+    | Boxed_or_encoded_number (bn, t) ->
+      Format.fprintf ppf "%a(%a)"
+        Boxed_number_kind.print bn
+        print t
+    | Set_of_closures set_of_closures ->
+      print_set_of_closures ppf set_of_closures
     | Closure { potential_closures } ->
       Format.fprintf ppf "(closure:@ @[<2>[@ ";
       Closure_id.Map.iter (fun closure_id set_of_closures ->
@@ -351,23 +367,16 @@ end) = struct
           (print) set_of_closures)
         potential_closures;
       Format.fprintf ppf "]@])";
-    | Set_of_closures set_of_closures ->
-      print_value_set_of_closures ppf set_of_closures
-    | Naked_number nn -> Naked_number.print ppf nn
-    | Boxed_or_encoded_number (bn, t) ->
-      Format.fprintf ppf "%a(%a)"
-        Boxed_number_kind.print bn
-        print t
-    | Immutable_string contents ->
-      let size = String.length contents in
-      let contents =
-        if size > 10
-        then String.sub contents 0 8 ^ "..."
-        else contents
-      in
-      Format.fprintf ppf "immut_string %i %S" size contents
-    | Mutable_string { size; } ->
-      Format.fprintf ppf "mut_string %i" size
+    | String { contents; size; } ->
+      begin match contents with
+      | None -> Format.fprintf ppf "string %i" size
+      | Some s ->
+        let s =
+          if size > 10 then String.sub s 0 8 ^ "..."
+          else s
+        in
+        Format.fprintf ppf "string %i %S" size s
+      end
     | Float_array float_array ->
       begin match float_array.contents with
       | Unknown_or_mutable ->
@@ -375,6 +384,21 @@ end) = struct
       | Contents _ ->
         Format.fprintf ppf "float_array_imm %i" float_array.size
       end
+    | Bottom -> Format.fprintf ppf "bottom"
+
+  and print_singleton_or_union ppf singleton_or_union =
+    match singleton_or_union with
+    | Singleton singleton -> print_singleton ppf singleton
+    | Union (t1, t2) ->
+      Format.fprintf ppf "(%a)U(%a)" print t1 print t2
+
+  and print_descr ppf descr =
+    match descr with
+    | Ok singleton_or_union -> print_singleton_or_union ppf singleton_or_union
+    | Load_lazily (Export_id id) ->
+      Format.fprintf ppf "lazy(%a)" Export_id.print id
+    | Load_lazily (Symbol sym) ->
+      Format.fprintf ppf "lazy(%a)" Symbol.print sym
 
   and print ppf { descr; var; symbol; } =
     let print ppf = function
@@ -388,23 +412,23 @@ end) = struct
       Variable.print_opt var
       print symbol
 
-  let kind_of_singleton singleton : Flambda_kind.t =
+  let kind_of_singleton singleton : K.t =
     match singleton with
-    | Unknown (kind, _) -> Flambda_kind.of_basic kind
+    | Unknown (kind, _) -> K.of_basic kind
     | Naked_number (Int _)
-    | Naked_number (Char _) -> Flambda_kind.naked_int ()
-    | Naked_number (Float _) -> Flambda_kind.naked_float ()
-    | Naked_number (Int32 _) -> Flambda_kind.naked_int32 ()
-    | Naked_number (Int64 _) -> Flambda_kind.naked_int64 ()
-    | Naked_number (Nativeint _) -> Flambda_kind.naked_nativeint ()
-    | Boxed_or_encoded_number (Encoded _, _) -> Flambda_kind.tagged_int ()
+    | Naked_number (Char _) -> K.naked_int ()
+    | Naked_number (Float _) -> K.naked_float ()
+    | Naked_number (Int32 _) -> K.naked_int32 ()
+    | Naked_number (Int64 _) -> K.naked_int64 ()
+    | Naked_number (Nativeint _) -> K.naked_nativeint ()
+    | Boxed_or_encoded_number (Encoded _, _) -> K.tagged_int ()
     | Boxed_or_encoded_number (Boxed _, _)
     | Block _
     | Set_of_closures _
     | Closure _
     | String _
-    | Float_array _ -> Flambda_kind.value ()
-    | Bottom -> Flambda_kind.bottom ()
+    | Float_array _ -> K.value ()
+    | Bottom -> K.bottom ()
 
   let rec kind_of_singleton_or_union singleton_or_union ~load_type =
     match singleton_or_union with
@@ -428,11 +452,15 @@ end) = struct
   let union t1 t2 ~load_type =
     let kind1 = kind t1 ~load_type in
     let kind2 = kind t2 ~load_type in
-    if not (Flambda_kind.equal kind1 kind2) then begin
+    if not (K.equal kind1 kind2) then begin
       Misc.fatal_errorf "Cannot form union of %a and %a: their kinds differ"
         print t1
         print t2
     end;
+    match t1.descr, t2.descr with
+    | Ok (Union (t1_0, t1_1)), Ok (Singleton t2) ->
+      ..
+      in
     { descr = Ok (Union (t1, t2));
       var = None;
       symbol = None;
@@ -471,7 +499,7 @@ end) = struct
   module Meet_or_join (AG : sig
     val name : string
 
-    val create_unit : Flambda_kind.t -> descr
+    val create_unit : K.t -> descr
     val is_unit : t -> bool
 
     module Ops : sig
@@ -499,7 +527,7 @@ end) = struct
       match d1, d2 with
       | Union union1, Union union2 ->
         begin match AG.Ops.unionable union1 union2 ~load_type with
-        | Unknown -> Unknown (Flambda_kind.value (), Other)
+        | Unknown -> Unknown (K.value (), Other)
         | Ok union -> Union union
         | Bottom -> Bottom
         end
@@ -535,10 +563,19 @@ end) = struct
           Boxed_or_encoded_number (Boxed Nativeint, t2) ->
         Boxed_or_encoded_number (Boxed Nativeint,
           meet_or_join ~load_type t1 t2)
-      | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
-          when Export_id.equal e1 e2 -> d1
-      | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
-          when Symbol.equal s1 s2 -> d1
+      | Blocks blocks_t1, Blocks blocks_t2 ->
+        let exception Mismatch in
+        try
+          Blocks (AG.Ops.tag_map (fun fields1 fields2 ->
+              if Array.length fields1 <> Array.length fields2 then begin
+                raise Mismatch
+              end else begin
+                Array.map2 (fun field existing_field ->
+                    meet_or_join ~load_type field existing_field)
+                  fields1 fields2
+              end)
+            blocks_t1 blocks_t2)
+        with Mismatch -> Bottom
       | Closure { potential_closures = map1 },
         Closure { potential_closures = map2 } ->
         let potential_closures =
@@ -572,10 +609,22 @@ end) = struct
         Closure { potential_closures }
       | _ -> AG.create_unit kind
 
+    and meet_or_join_singleton_or_union ~load_type sou1 sou2 =
+      match sou1, sou2 with
+      | ...
+
+    and meet_or_join_descr ~load_type descr1 descr2 =
+      match descr1, descr2 with
+      | ...
+      | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
+          when Export_id.equal e1 e2 -> d1
+      | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
+          when Symbol.equal s1 s2 -> d1
+
     and meet_or_join ~load_type a1 a2 =
       let kind1 = kind a1 ~load_type in
       let kind2 = kind a2 ~load_type in
-      if Flambda_kind.compatible kind1 kind2 then begin
+      if K.compatible kind1 kind2 then begin
         if AG.is_unit a1 then a2
         else if AG.is_unit a2 then a1
         else
@@ -690,7 +739,7 @@ end) = struct
       | Unknown ((Unboxed_float | Bottom), reason) ->
         { t with
           descr = Boxed_or_encoded_number (Boxed Float,
-            just_descr (Unknown (Flambda_kind.unboxed_float (), reason)));
+            just_descr (Unknown (K.unboxed_float (), reason)));
         }
       | Unknown (
           (Value | Tagged_int | Naked_int | Naked_int32 | Naked_int64
@@ -782,20 +831,20 @@ end) = struct
   let bottom () = just_descr Bottom
 
   let any_unboxed_float () =
-    just_descr (Unknown (Flambda_kind.unboxed_float (), Other))
+    just_descr (Unknown (K.unboxed_float (), Other))
   let any_unboxed_int32 () =
-    just_descr (Unknown (Flambda_kind.unboxed_int32 (), Other))
+    just_descr (Unknown (K.unboxed_int32 (), Other))
   let any_unboxed_int64 () =
-    just_descr (Unknown (Flambda_kind.unboxed_int64 (), Other))
+    just_descr (Unknown (K.unboxed_int64 (), Other))
   let any_unboxed_nativeint () =
-    just_descr (Unknown (Flambda_kind.unboxed_nativeint (), Other))
+    just_descr (Unknown (K.unboxed_nativeint (), Other))
 
   let any_boxed_float () =
     just_descr (Boxed_number (Float, any_unboxed_float ()))
 
   let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
         closures =
-    let approx_set_of_closures value_set_of_closures =
+    let type_set_of_closures value_set_of_closures =
       { descr = Set_of_closures value_set_of_closures;
         var = set_of_closures_var;
         projection = None;
@@ -803,7 +852,7 @@ end) = struct
       }
     in
     let potential_closures =
-      Closure_id.Map.map approx_set_of_closures closures
+      Closure_id.Map.map type_set_of_closures closures
     in
     { descr = Closure { potential_closures };
       var = closure_var;
@@ -839,7 +888,7 @@ end) = struct
     (* We avoid having multiple possible approximations for e.g. [Int64]
        values. *)
     match Tag.Scannable.of_tag tag with
-    | None -> unknown (Flambda_kind.value ()) Other
+    | None -> unknown (K.value ()) Other
     | Some tag -> just_descr (Union (Unionable.block tag b))
 
   let free_variables t =
