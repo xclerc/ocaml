@@ -1368,7 +1368,7 @@ end = struct
       Typed_parameter.List.print f.params
       Expr.print f.body
 end and Typed_parameter : sig
-  type t = Parameter.t * Flambda_type.t
+  type t
   val create : Parameter.t -> Flambda_type.t -> t
   val var : t -> Variable.t
   val ty : t -> Flambda_type.t
@@ -1385,7 +1385,11 @@ end and Typed_parameter : sig
   end
   include Identifiable.S with type t := t
 end = struct
-  type t = Parameter.t * Flambda_type.t
+  type t = {
+    param : Parameter.t;
+    projection : Projection.t option;
+    ty : Flambda_type.t;
+  }
 
   let create param ty = param, ty
 
@@ -1416,7 +1420,7 @@ end = struct
         Flambda_type.print ty
 
     let output _ _ = Misc.fatal_error "Not implemented"
-                            end)
+  end)
 
   module List = struct
     type nonrec t = t list

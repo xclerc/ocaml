@@ -623,7 +623,7 @@ end and Function_declaration : sig
 
   (** Change only the code and parameters of a function declaration. *)
   val update_params_and_body
-    : t
+     : t
     -> params:Typed_parameter.t list
     -> body:Expr.t
     -> t

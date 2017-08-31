@@ -72,6 +72,15 @@ module type S = sig
       closure_id : Closure_id.t Closure_id.Map.t;
     }
 
+  type string_contents = private
+    | Contents of string
+    | Unknown_or_mutable
+
+  type string_ty = private {
+    contents : string_contents;
+    size : int;
+  }
+
   val print_closure_freshening : Format.formatter -> closure_freshening -> unit
 
   (** Values of type [t] are known as "Flambda types".
@@ -91,9 +100,6 @@ module type S = sig
     (** The main description of the type. *)
     var : Variable.t option;
     (** An optional equality to a variable. *)
-    projection : Projection.t option;
-    (** An optional statement that the type describes a particular
-        projection from some value (see projection.mli). *)
     symbol : (Symbol.t * int option) option;
     (** An optional equality to a symbol, or if the integer field number is
         specified, to a field of a symbol. *)
@@ -105,7 +111,7 @@ module type S = sig
 
   and singleton_or_union =
     | Singleton of singleton
-    | Union of singleton * t
+    | Union of t * t
 
   and singleton =
     | Unknown of Flambda_kind.Basic.t * unknown_because_of
@@ -137,15 +143,6 @@ module type S = sig
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
-  and string_contents = private
-    | Contents of string
-    | Unknown_or_mutable
-
-  and string_ty = private {
-    contents : string_contents;
-    size : int;
-  }
-
   and float_array_contents = private
     | Contents of t array
     | Unknown_or_mutable
@@ -157,7 +154,7 @@ module type S = sig
 
   (** Least upper bound of two types. *)
   val join
-    : really_import_approx:(t -> t)
+     : really_import_approx:(t -> t)
     -> t
     -> t
     -> t
