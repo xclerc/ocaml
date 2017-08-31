@@ -219,6 +219,7 @@ type reified_as_scannable_block_or_immediate =
     either a GC-scannable block or an immediate. *)
 (* CR mshinwell: currently "immediate" is just int, char or constptr (need to
    document this).  Should it include the unboxed integers? *)
+(* CR mshinwell: This doesn't actually produce a term, so doesn't reify *)
 val reify_as_scannable_block_or_immediate
    : t
   -> reified_as_scannable_block_or_immediate
