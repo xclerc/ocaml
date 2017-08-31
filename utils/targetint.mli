@@ -192,3 +192,5 @@ type repr =
 
 val repr : t -> repr
 (** The concrete representation of a native integer. *)
+
+include Identifiable.S with type t := t

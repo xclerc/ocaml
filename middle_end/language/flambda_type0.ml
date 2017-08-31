@@ -278,22 +278,24 @@ end) = struct
         [Unknown (k, _)] means "any value of kind [k] might flow to this point".
     *)
     (* CR mshinwell: After the closure reworking patch has been merged and
-      the work on classic mode closure approximations has been merged (the
-      latter introducing a type of function declarations in this module), then
-      the only circularity between this type and Flambda will be for
-      Flambda.Expr.t on function bodies. *)
+       the work on classic mode closure approximations has been merged (the
+       latter introducing a type of function declarations in this module), then
+       the only circularity between [descr] and Flambda will be for
+       Flambda.Expr.t on function bodies. *)
+    and descr0 =
+      | Ok of descr
+      | Load_lazily of load_lazily
+
     and descr =
-      | Unknown of Flambda_kind.t * unknown_because_of
-      | Union of Unionable.t
+      | Unknown of Flambda_kind.Basic.t * unknown_because_of
       | Naked_number of Naked_number.t
       | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
+      | Block of t array Tag.Scannable.Map.t
       | Set_of_closures of set_of_closures
       | Closure of closure
-      | Immutable_string of string
-      | Mutable_string of { size : int; }
+      | String of string_ty
       | Float_array of float_array
       | Bottom
-      | Load_lazily of load_lazily
 
     and closure = {
       potential_closures : t Closure_id.Map.t;
@@ -1021,6 +1023,29 @@ end) = struct
         { t with descr = Float_array { contents; size; }; }
       | Load_lazily _
       | Bottom -> t
+
+    type 'a result =
+      | Ok of 'a
+      | Not_fully_loaded
+
+    let map_descr t ~f : t result =
+      match t.descr with
+      | Ok descr -> Ok { t with descr = Ok (f descr); }
+      | Load_lazily _ -> Not_fully_loaded
+
+    let tag_int t =
+      map_descr t ~f:(fun descr ->
+        match descr with
+        | Unknown (Naked_int, _) | Naked_number (Int _) ->
+          Boxed_or_encoded_number (Encoded Tagged_int, t)
+        | Naked_number _
+        | Boxed_or_encoded_number _
+        | Block _
+        | Set_of_closures _
+        | Closure _
+        | String _
+        | Float_array _
+        | Bottom -> Bottom)
   end and Unionable : sig
     module Immediate : sig
       type t = private
@@ -1237,6 +1262,7 @@ end) = struct
             | Constptr _ -> false)
           imms
 
+    (* CR mshinwell: Not needed now *)
     let ok_for_variant t =
       invariant t;
       (* CR mshinwell: Shouldn't this function say "false" for e.g.

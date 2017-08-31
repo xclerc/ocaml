@@ -20,11 +20,10 @@ module type S = sig
   type function_declarations
 
   module Naked_number : sig
-    (* CR-soon mshinwell: [Int] and [Nativeint] should both take
-       [Targetint.Set.t]. *)
     type t =
-      | Int of Numbers.Int.Set.t
+      | Int of Targetint.Set.t
       | Char of Misc.Stdlib.Char.Set.t
+      | Constptr of Targetint.Set.t
       | Float of Numbers.Float.Set.t
       | Int32 of Numbers.Int32.Set.t
       | Int64 of Numbers.Int64.Set.t
@@ -75,227 +74,240 @@ module type S = sig
 
   val print_closure_freshening : Format.formatter -> closure_freshening -> unit
 
-  module rec T : sig
-    (** The type of an Flambda term. *)
-    type t = private {
-      descr : descr;
-      (** The main description of the type. *)
-      var : Variable.t option;
-      (** An optional equality to a variable. *)
-      projection : Projection.t option;
-      (** An optional statement that the type describes a particular
-          projection from some value (see projection.mli). *)
-      symbol : (Symbol.t * int option) option;
-      (** An optional equality to a symbol, or if the integer field number is
-          specified, to a field of a symbol. *)
-    } 
+  (** Values of type [t] are known as "Flambda types".
+      They may be loaded lazily from .cmx files and formed into union types.
 
-    (** Types are equipped with a subtyping relation given by a partial order.
+      Values of type [singleton] form a partial order.
 
-        [Bottom] is, well, bottom.
-        Each [Unknown (k, _)] gives a top element.
+      [Bottom] is the unique least element.
+      The [Unknown (k, _)] values form the greatest elements.
 
-        [Bottom] means "no value can flow to this point".
-        [Unknown (k, _)] means "any value of kind [k] might flow to this point".
-    *)
-    (* CR mshinwell: After the work on classic mode closure approximations has
-       been merged (the latter introducing a type of function declarations in
-       this module), then the only circularity between this type and Flambda
-       will be for Flambda.Expr.t on function bodies. *)
-    and descr = private 
-      | Unknown of Flambda_kind.t * unknown_because_of
-      | Union of Unionable.t
-      | Naked_number of Naked_number.t
-      | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
-      | Set_of_closures of set_of_closures
-      | Closure of closure
-      | Immutable_string of string
-      | Mutable_string of { size : int; }
-      | Float_array of float_array
-      | Bottom
-      | Load_lazily of load_lazily
+      The intuitive meanings of these distinguished elements are:
+      - [Bottom]: "no value can flow to this point".
+      - [Unknown (k, _)]: "any value of kind [k] might flow to this point".
+  *)
+  type t = private {
+    descr : descr;
+    (** The main description of the type. *)
+    var : Variable.t option;
+    (** An optional equality to a variable. *)
+    projection : Projection.t option;
+    (** An optional statement that the type describes a particular
+        projection from some value (see projection.mli). *)
+    symbol : (Symbol.t * int option) option;
+    (** An optional equality to a symbol, or if the integer field number is
+        specified, to a field of a symbol. *)
+  } 
 
-    and closure = private {
-      potential_closures : t Closure_id.Map.t;
-      (** Map of closures ids to set of closures *)
-    } [@@unboxed]
+  and descr =
+    | Ok of singleton_or_union
+    | Load_lazily of load_lazily
 
-    (* CR-soon mshinwell: add support for the approximations of the results,
-       so we can do all of the tricky higher-order cases. *)
-    and set_of_closures = private {
-      function_decls : function_declarations;
-      bound_vars : t Var_within_closure.Map.t;
-      invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-      size : int option Variable.Map.t lazy_t;
-      (** For functions that are very likely to be inlined, the size of the
-          function's body. *)
-      freshening : closure_freshening;
-      (** Any freshening that has been applied to [function_decls]. *)
-      direct_call_surrogates : Closure_id.t Closure_id.Map.t;
-    }
+  and singleton_or_union =
+    | Singleton of singleton
+    | Union of singleton * t
 
-    and float_array_contents = private
-      | Contents of t array
-      | Unknown_or_mutable
+  and singleton =
+    | Unknown of Flambda_kind.Basic.t * unknown_because_of
+    | Naked_number of Naked_number.t
+    | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
+    | Block of t array Tag.Scannable.Map.t
+    | Set_of_closures of set_of_closures
+    | Closure of closure
+    | String of string_ty
+    | Float_array of float_array
+    | Bottom
 
-    and float_array = private {
-      contents : float_array_contents;
-      size : int;
-    }
+  and closure = private {
+    potential_closures : t Closure_id.Map.t;
+    (** Map of closures ids to set of closures *)
+  } [@@unboxed]
 
-    (** Least upper bound of two types. *)
-    val join
-      : really_import_approx:(t -> t)
-      -> t
-      -> t
-      -> t
+  (* CR-soon mshinwell: add support for the approximations of the results,
+     so we can do all of the tricky higher-order cases. *)
+  and set_of_closures = private {
+    function_decls : function_declarations;
+    bound_vars : t Var_within_closure.Map.t;
+    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
+    size : int option Variable.Map.t lazy_t;
+    (** For functions that are very likely to be inlined, the size of the
+        function's body. *)
+    freshening : closure_freshening;
+    (** Any freshening that has been applied to [function_decls]. *)
+    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
+  }
 
-    (** Greatest lower bound of two types. *)
-    val meet
-       : really_import_approx:(t -> t)
-      -> t
-      -> t
-      -> t
+  and string_contents = private
+    | Contents of string
+    | Unknown_or_mutable
 
-    val print
-       : Format.formatter
-      -> t
-      -> unit
+  and string_ty = private {
+    contents : string_contents;
+    size : int;
+  }
 
-    val print_descr
-       : Format.formatter
-      -> descr
-      -> unit
+  and float_array_contents = private
+    | Contents of t array
+    | Unknown_or_mutable
 
-    val print_set_of_closures
-       : Format.formatter
-      -> set_of_closures
-      -> unit
+  and float_array = private {
+    contents : float_array_contents;
+    size : int;
+  }
 
-    (** Each type has a unique kind. *)
-    val kind
-       : t
-      -> really_import_approx:(t -> t)
-      -> Flambda_kind.t
+  (** Least upper bound of two types. *)
+  val join
+    : really_import_approx:(t -> t)
+    -> t
+    -> t
+    -> t
 
-    (** Like [kind], but causes a fatal error if the type has not been fully
-        resolved. *)
-    val kind_exn : t -> Flambda_kind.t
+  (** Greatest lower bound of two types. *)
+  val meet
+     : really_import_approx:(t -> t)
+    -> t
+    -> t
+    -> t
 
-    (** Construct one of the various top types ("any value of the given kind
-        can flow to this point"). *)
-    val unknown : Flambda_kind.t -> unknown_because_of -> t
+  val print
+     : Format.formatter
+    -> t
+    -> unit
 
-    (** The unique bottom type ("no value can flow to this point"). *)
-    val bottom : unit -> t
+  val print_descr
+     : Format.formatter
+    -> descr
+    -> unit
 
-    (** Construction of types involving equalities to runtime values. *)
-    val untagged_int : int -> t
-    val untagged_char : char -> t
-    val tagged_int : int -> t
-    val tagged_char : char -> t
-    val constptr : int -> t  (** "Const pointer"s are always tagged. *)
-    val unboxed_float : float -> t
-    val unboxed_int32 : Int32.t -> t
-    val unboxed_int64 : Int64.t -> t
-    val unboxed_nativeint : Nativeint.t -> t
-    val boxed_float : float -> t
-    val boxed_int32 : Int32.t -> t
-    val boxed_int64 : Int64.t -> t
-    val boxed_nativeint : Nativeint.t -> t
-    val mutable_float_array : size:int -> t
-    val immutable_float_array : t array -> t
-    val mutable_string : size:int -> t
-    val immutable_string : string -> t
-    val block : Tag.Scannable.t -> t array -> t
+  val print_set_of_closures
+     : Format.formatter
+    -> set_of_closures
+    -> unit
 
-    (** Construction of types that link to other types which have not yet
-        been loaded into memory (from a .cmx file). *)
-    val export_id_loaded_lazily : Export_id.t -> t
-    val symbol_loaded_lazily : Symbol.t -> t
+  (** Each type has a unique kind. *)
+  val kind
+     : t
+    -> really_import_approx:(t -> t)
+    -> Flambda_kind.t
 
-    (** Construction of types without equalities to runtime values. *)
-    val any_boxed_float : unit -> t
-    val any_unboxed_float : unit -> t
-    val any_unboxed_int32 : unit -> t
-    val any_unboxed_int64 : unit -> t
-    val any_unboxed_nativeint : unit -> t
+  (** Like [kind], but causes a fatal error if the type has not been fully
+      resolved. *)
+  val kind_exn : t -> Flambda_kind.t
 
-    (** Construct a closure type given the type of the corresponding set of
-        closures and the closure ID of the closure to be projected from such
-        set. [closure_var] and/or [set_of_closures_var] may be specified to
-        augment the type with variables that may be used to access the closure
-        value itself, so long as they are in scope at the proposed point of
-        use. *)
-    (* CR mshinwell: bad name? *)
-    val closure
-       : ?closure_var:Variable.t
-      -> ?set_of_closures_var:Variable.t
-      -> ?set_of_closures_symbol:Symbol.t
-      -> set_of_closures Closure_id.Map.t
-      -> t
+  (** Construct one of the various top types ("any value of the given kind
+      can flow to this point"). *)
+  val unknown : Flambda_kind.Basic.t -> unknown_because_of -> t
 
-    (** Create a [set_of_closures] structure which can be used for building a
-        type describing a set of closures. *)
-    val create_set_of_closures
-       : function_decls:function_declarations
-      -> size:int option Variable.Map.t lazy_t
-      -> bound_vars:t Var_within_closure.Map.t
-      -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
-      -> freshening:closure_freshening
-      -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
-      -> set_of_closures
+  (** The unique bottom type ("no value can flow to this point"). *)
+  val bottom : unit -> t
 
-    (** Construct a set of closures type. [set_of_closures_var] is as for the
-        parameter of the same name in [closure], above. *)
-    val set_of_closures
-       : ?set_of_closures_var:Variable.t
-      -> set_of_closures
-      -> t
+  (** Construction of types involving equalities to runtime values. *)
+  val int : int -> t
+  val constptr : int -> t
+  val char : char -> t
+  val unboxed_float : float -> t
+  val unboxed_int32 : Int32.t -> t
+  val unboxed_int64 : Int64.t -> t
+  val unboxed_nativeint : Nativeint.t -> t
+  val boxed_float : float -> t
+  val boxed_int32 : Int32.t -> t
+  val boxed_int64 : Int64.t -> t
+  val boxed_nativeint : Nativeint.t -> t
+  val mutable_float_array : size:int -> t
+  val immutable_float_array : t array -> t
+  val mutable_string : size:int -> t
+  val immutable_string : string -> t
+  val block : Tag.t -> t array -> t
 
-    (** Change the closure freshening inside a set of closures type. *)
-    val update_freshening_of_set_of_closures
-       : set_of_closures
-      -> freshening:closure_freshening
-      -> set_of_closures
+  (** Construction of types that link to other types which have not yet
+      been loaded into memory (from a .cmx file). *)
+  val export_id_loaded_lazily : Export_id.t -> t
+  val symbol_loaded_lazily : Symbol.t -> t
 
-    (** Augment an type with a given variable (see comment above). If the type
-        was already augmented with a variable, the one passed to this function
-        replaces it within the type. *)
-    val augment_with_variable : t -> Variable.t -> t
+  (** Construction of types without equalities to runtime values. *)
+  val any_boxed_float : unit -> t
+  val any_unboxed_float : unit -> t
+  val any_unboxed_int32 : unit -> t
+  val any_unboxed_int64 : unit -> t
+  val any_unboxed_nativeint : unit -> t
 
-    (** Replace the variable at the toplevel of a given type. *)
-    val update_variable : t -> Variable.t option -> t
+  (** Construct a closure type given the type of the corresponding set of
+      closures and the closure ID of the closure to be projected from such
+      set. [closure_var] and/or [set_of_closures_var] may be specified to
+      augment the type with variables that may be used to access the closure
+      value itself, so long as they are in scope at the proposed point of
+      use. *)
+  (* CR mshinwell: bad name? *)
+  val closure
+     : ?closure_var:Variable.t
+    -> ?set_of_closures_var:Variable.t
+    -> ?set_of_closures_symbol:Symbol.t
+    -> set_of_closures Closure_id.Map.t
+    -> t
 
-    (** Like [augment_with_variable], but for symbol information. *)
-    val augment_with_symbol : t -> Symbol.t -> t
+  (** Create a [set_of_closures] structure which can be used for building a
+      type describing a set of closures. *)
+  val create_set_of_closures
+     : function_decls:function_declarations
+    -> size:int option Variable.Map.t lazy_t
+    -> bound_vars:t Var_within_closure.Map.t
+    -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
+    -> freshening:closure_freshening
+    -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
+    -> set_of_closures
 
-    (** Like [augment_with_symbol], but for symbol field information. *)
-    val augment_with_symbol_field : t -> Symbol.t -> int -> t
+  (** Construct a set of closures type. [set_of_closures_var] is as for the
+      parameter of the same name in [closure], above. *)
+  val set_of_closures
+     : ?set_of_closures_var:Variable.t
+    -> set_of_closures
+    -> t
 
-    (** Replace the description within an type. *)
-    val replace_description : t -> descr -> t
+  (** Change the closure freshening inside a set of closures type. *)
+  val update_freshening_of_set_of_closures
+     : set_of_closures
+    -> freshening:closure_freshening
+    -> set_of_closures
 
-    (** Attempt to use a value kind to refine a type. *)
-    val refine_using_value_kind : t -> Lambda.value_kind -> t
+  (** Augment an type with a given variable (see comment above). If the type
+      was already augmented with a variable, the one passed to this function
+      replaces it within the type. *)
+  val augment_with_variable : t -> Variable.t -> t
 
-    (** Free variables in a type. *)
-    val free_variables : t -> Variable.Set.t
+  (** Replace the variable at the toplevel of a given type. *)
+  val update_variable : t -> Variable.t option -> t
 
-    type cleaning_spec =
-      | Available
-      | Available_different_name of Variable.t
-      | Unavailable
+  (** Like [augment_with_variable], but for symbol information. *)
+  val augment_with_symbol : t -> Symbol.t -> t
 
-    (** Adjust a type so that all of the free variables it references are in
-        scope in some context. The context is expressed by a function that says
-        whether the variable is available under its existing name, available
-        under another name, or unavailable. *)
-    val clean
-       : t
-      -> (Variable.t -> cleaning_spec)
-      -> t
-  end and Unionable : sig
+  (** Like [augment_with_symbol], but for symbol field information. *)
+  val augment_with_symbol_field : t -> Symbol.t -> int -> t
+
+  (** Replace the description within an type. *)
+  val replace_description : t -> descr -> t
+
+  (** Attempt to use a value kind to refine a type. *)
+  val refine_using_value_kind : t -> Lambda.value_kind -> t
+
+  (** Free variables in a type. *)
+  val free_variables : t -> Variable.Set.t
+
+  type cleaning_spec =
+    | Available
+    | Available_different_name of Variable.t
+    | Unavailable
+
+  (** Adjust a type so that all of the free variables it references are in
+      scope in some context. The context is expressed by a function that says
+      whether the variable is available under its existing name, available
+      under another name, or unavailable. *)
+  val clean
+     : t
+    -> (Variable.t -> cleaning_spec)
+    -> t
+end
+
+(*
     module Immediate : sig
       (** These immediate values are always tagged. *)
       type t = private
@@ -314,7 +326,6 @@ module type S = sig
     type t = private
       | Blocks of blocks
       | Blocks_and_immediates of blocks * Immediate.Set.t
-      | Immediates of Immediate.Set.t
 
     val invariant : t -> unit
 
@@ -368,3 +379,4 @@ module type S = sig
 
   include module type of struct include T end
 end
+*)

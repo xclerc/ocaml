@@ -24,6 +24,10 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** The type system is parameterised over the expression language. *)
+(* CR mshinwell: After the work on classic mode closure approximations has
+    been merged (the latter introducing a type of function declarations in
+    this module), then the only circularity between this type and Flambda
+    will be for Flambda.Expr.t on function bodies. *)
 module Make (F : sig
   type t
   val print : Format.formatter -> t -> unit

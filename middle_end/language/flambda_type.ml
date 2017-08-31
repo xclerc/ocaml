@@ -481,19 +481,39 @@ let reify_as_scannable_block t : reified_as_scannable_block =
   | Unboxed_nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
   | Unknown _ -> Wrong
 
+type blocks = t array Tag.Scannable.Map.t
+type immediates = Unionable.Immediate.Set.t
+
 type reified_as_variant =
   | Wrong
-  | Ok of Unionable.t
+  | Blocks of blocks
+  | Blocks_and_immediates of blocks * immediates
+  | Immediates of immediates
 
+(* XXX do we want to return "unknown" cases too, giving the variable? *)
 let reify_as_variant t : reified_as_variant =
   match descr t with
   | Union union ->
-    if Unionable.ok_for_variant union then Ok union
-    else Wrong
-  | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
-  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
-  | Unknown _ -> Wrong
+    begin match union with
+    | Blocks blocks -> Blocks blocks
+    | Blocks_and_immediates (blocks, imms) ->
+      Blocks_and_immediates (blocks, imms)
+    end
+  | Boxed_or_encoded_number (Encoded Tagged_int, numbers) ->
+    begin match descr numbers with
+    | Naked_number (Int, imms) ->
+      Immediates (Union.Immediate.Set.of_int_set imms)
+    | Naked_number (Char, imms) ->
+      Immediates (Union.Immediate.Set.of_char_set imms)
+    | Naked_number (Constptr, imms) ->
+      Immediates (Union.Immediate.Set.of_constptr_set imms)
+    | Union _ | Boxed_or_encoded_number _ | Bottom | Float_array _
+    | Immutable_string _ | Mutable_string _ | Set_of_closures _ | Closure _
+    | Load_lazily _ | Unknown _ -> Wrong
+    end
+  | Boxed_or_encoded_number _ | Bottom | Float_array _ | Immutable_string _
+  | Mutable_string _ | Naked_number _ | Set_of_closures _ | Closure _
+  | Load_lazily _ | Unknown _ -> Wrong
 
 type reified_as_scannable_block_or_immediate =
   | Wrong
