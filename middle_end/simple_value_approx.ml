@@ -491,10 +491,10 @@ let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 let is_definitely_immutable t =
   match t.descr with
   | Value_string { contents = Some _ }
-  | Value_block _ | Value_int _ | Value_char _ | Value_constptr _
+  | Value_int _ | Value_char _ | Value_constptr _
   | Value_set_of_closures _ | Value_float _ | Value_boxed_int _
   | Value_closure _ -> true
-  | Value_string { contents = None } | Value_float_array _
+  | Value_block _ | Value_string { contents = None } | Value_float_array _
   | Value_unresolved _ | Value_unknown _ | Value_bottom -> false
   | Value_extern _ | Value_symbol _ -> assert false
 
