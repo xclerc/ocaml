@@ -38,12 +38,13 @@ end) = struct
 
   module Naked_number = struct
     type t =
-      | Int of Int.Set.t
-      | Char of Char.Set.t
-      | Float of Float.Set.t
-      | Int32 of Int32.Set.t
-      | Int64 of Int64.Set.t
-      | Nativeint of Nativeint.Set.t
+      | Int of Targetint.t
+      | Const_pointer of Targetint.t
+      | Char of Char.t
+      | Float of Float.t
+      | Int32 of Int32.t
+      | Int64 of Int64.t
+      | Nativeint of Targetint.t
 
     include Identifiable.Make (struct
       type nonrec t = t
@@ -59,38 +60,28 @@ end) = struct
 
       let compare t1 t2 =
         match t1, t2 with
-        | Int ns1, Int ns2 -> Int.Set.compare ns1 ns2
-        | Char ns1, Char ns2 -> Char.Set.compare ns1 ns2
-        | Float ns1, Float ns2 -> Float.Set.compare ns1 ns2
-        | Int32 ns1, Int32 ns2 -> Int32.Set.compare ns1 ns2
-        | Int64 ns1, Int64 ns2 -> Int64.Set.compare ns1 ns2
-        | Nativeint ns1, Nativeint ns2 -> Nativeint.Set.compare ns1 ns2
+        | Int n1, Int n2 -> Targetint.compare n1 n2
+        | Char n1, Char n2 -> n1 = n2
+        | Float n1, Float n2 -> n1 = n2
+        | Int32 n1, Int32 n2 -> Int32.compare n1 n2
+        | Int64 n1, Int64 n2 -> Int64.compare n1 n2
+        | Nativeint n1, Nativeint n2 -> Targetint.compare n1 n2
         | (Int _ | Char _ | Float _ | Int32 _ | Int64 _ | Nativeint _), _ ->
           Pervasives.compare (to_int t1) (to_int t2)
 
       let equal t1 t2 = (compare t1 t2 = 0)
 
-      let hash t =
-        let hash =
-          match t with
-          | Int ns -> Int.Set.hash ns
-          | Char ns -> Char.Set.hash ns
-          | Float ns -> Float.Set.hash ns
-          | Int32 ns -> Int32.Set.hash ns
-          | Int64 ns -> Int64.Set.hash ns
-          | Nativeint ns -> Nativeint.Set.hash ns
-        in
-        Hashtbl.hash (to_int t, hash)
+      let hash t = Hashtbl.hash t
 
       let print ppf t =
         let fprintf = Format.fprintf in
         match t with
-        | Int ns -> fprintf "int{%a}" Int.Set.print ns
-        | Char ns -> fprintf "char{%a}" Char.Set.print ns
-        | Float ns -> fprintf "float{%a}" Float.Set.print ns
-        | Int32 ns -> fprintf "int32{%a}" Int32.Set.print ns
-        | Int64 ns -> fprintf "int64{%a}" Int64.Set.print ns
-        | Nativeint ns -> fprintf "nativeint{%a}" Nativeint.Set.print ns
+        | Int n -> fprintf "int{%d}" n
+        | Char c -> fprintf "char{%c}" c
+        | Float n -> fprintf "float{%f}" n
+        | Int32 n -> fprintf "int32{%ld}" n
+        | Int64 n -> fprintf "int64{%Ld}" n
+        | Nativeint n -> fprintf "nativeint{%nd}" n
   end
 
   module Boxed_or_encoded_number_kind = struct
@@ -278,19 +269,17 @@ end) = struct
 
   and singleton =
     | Unknown of K.Basic.t * unknown_because_of
+    | Known of known_singleton
+    | Bottom
+
+  and known_singleton =
     | Naked_number of Naked_number.t
     | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
-    | Block of t array Tag.Scannable.Map.t
+    | Block of Tag.Scannable.t * (t array)
     | Set_of_closures of set_of_closures
     | Closure of closure
     | String of string_ty
     | Float_array of float_array
-    | Bottom
-
-  and closure = {
-    potential_closures : t Closure_id.Map.t;
-    (** Map of closures ids to set of closures *)
-  } [@@unboxed]
 
   (* CR-soon mshinwell: add support for the approximations of the results, so we
      can do all of the tricky higher-order cases. *)
@@ -304,6 +293,11 @@ end) = struct
     freshening : closure_freshening;
     (** Any freshening that has been applied to [function_decls]. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
+  }
+
+  and closure = {
+    closure_id : Closure_id.t;
+    set_of_closures : t;
   }
 
   and float_array_contents =
@@ -449,23 +443,6 @@ end) = struct
     in
     kind t ~load_type
 
-  let union t1 t2 ~load_type =
-    let kind1 = kind t1 ~load_type in
-    let kind2 = kind t2 ~load_type in
-    if not (K.equal kind1 kind2) then begin
-      Misc.fatal_errorf "Cannot form union of %a and %a: their kinds differ"
-        print t1
-        print t2
-    end;
-    match t1.descr, t2.descr with
-    | Ok (Union (t1_0, t1_1)), Ok (Singleton t2) ->
-      ..
-      in
-    { descr = Ok (Union (t1, t2));
-      var = None;
-      symbol = None;
-    }
-
   (* Closures and set of closures descriptions cannot be merged.
 
      let f x =
@@ -523,14 +500,8 @@ end) = struct
         -> t Closure_id.Map.t
     end
   end) (Inverse : Meet_or_join) : Meet_or_join = struct
-    let rec meet_or_join_descr kind ~load_type d1 d2 : descr =
+    let rec meet_or_join_singleton kind ~load_type d1 d2 : descr =
       match d1, d2 with
-      | Union union1, Union union2 ->
-        begin match AG.Ops.unionable union1 union2 ~load_type with
-        | Unknown -> Unknown (K.value (), Other)
-        | Ok union -> Union union
-        | Bottom -> Bottom
-        end
       | Naked_number (Int is1), Naked_number (Int is2) ->
         Unboxed_float (AG.Ops.int_set is1 is2)
       | Naked_number (Char is1), Naked_number (Char is2) ->
@@ -611,11 +582,15 @@ end) = struct
 
     and meet_or_join_singleton_or_union ~load_type sou1 sou2 =
       match sou1, sou2 with
-      | ...
+      | Singleton singleton1, Singleton singleton2 ->
+        Singleton (meet_or_join_singleton kind ~load_type d1 d2)
+      | Union union1, Union union2 ->
+
 
     and meet_or_join_descr ~load_type descr1 descr2 =
       match descr1, descr2 with
-      | ...
+      | Ok ..., Ok ... ->
+
       | Load_lazily (Export_id e1), Load_lazily (Export_id e2)
           when Export_id.equal e1 e2 -> d1
       | Load_lazily (Symbol s1), Load_lazily (Symbol s2)
@@ -1403,3 +1378,107 @@ end) = struct
 end
 
 *)
+
+type 'a fold_result =
+  | Unknown of Flambda_kind.Basic.t
+  | Ok of 'a
+  | Bottom
+
+let fold_for_meet_or_join t what ~import_type ~f =
+  let rec fold t acc : _ fold_result =
+    match t.descr with
+    | Singleton singleton ->
+      begin match singleton with
+      | Unknown (kind, _reason) ->
+        begin match what with
+        | Join -> Unknown kind
+        | Meet -> acc
+        end
+      | Bottom ->
+        begin match what with
+        | Join -> acc
+        | Meet -> Bottom
+        end
+      | Known known -> f acc known
+      end
+    | Union (t1, t2) ->
+      let acc = fold t1 acc in
+      match what, acc with
+      | Join, Unknown -> Unknown
+      | Meet, Bottom -> Bottom
+      | _, Ok _ -> fold t2 acc
+  in
+  let t = import_type t in
+  let kind = kind_exn t in
+  let unit_type : _ fold_result =
+    match what with
+    | Join -> Bottom
+    | Meet -> Unknown kind
+  in
+  fold t unit_type
+
+let join_boxed_immediates t ~import_type =
+  fold_for_meet_or_join t Join ~import_type
+    ~f:(fun acc (known : known) : Targetint.Set.t fold_result ->
+      match known with
+      | Boxed_or_encoded_number (Encoded Tagged_int, t) ->
+        fold_for_meet_or_join t Join ~import_type
+          ~f:(fun acc (known : known) : Targetint.Set.t fold_result ->
+            match known with
+            | Naked_number (Int i) | Naked_number (Const_pointer i) ->
+              Targetint.Set.add i acc
+            | Naked_number (Char c) ->
+              Targetint.Set.add (Targetint.of_int (Char.code c)) acc
+            | Naked_number (Float _ | Int32 _ | Int64 _ | Nativeint _)
+            | Boxed_or_encoded_number _
+            | Block _
+            | Closure _
+            | Set_of_closures _
+            | String _
+            | Float_array _ -> Bottom)
+      | Boxed_or_encoded_number (Boxed _, _)
+      | Block _
+      | Closure _
+      | Naked_number _
+      | Set_of_closures _
+      | String _
+      | Float_array _ -> Bottom)
+
+module Unboxable = struct
+  type t =
+    | Blocks_and_immediates of {
+        blocks : t array Tag.Scannable.Map.t;
+        immediates : t list;
+      }
+    | Boxed_floats of t list
+    | Boxed_int32s of t list
+    | Boxed_int64s of t list
+    | Boxed_nativeints of t list
+
+
+end
+
+let join_unboxable t ~import_type =
+  fold_for_meet_or_join t Join ~import_type
+    ~f:(fun acc (known : known) : t array Tag.Scannable.Map.t fold_result ->
+      match known with
+      | Block (tag, fields) ->
+        begin match Tag.Scannable.Map.find tag acc with
+        | exception Not_found ->
+        | existing_fields ->
+          if Array.length fields <> Array.length existing_fields then
+            Bottom
+          else
+            let fields =
+              Array.map2 (fun t existing_t ->
+                  just_descr (Union (t, existing_t)))
+                fields existing_fields
+            in
+            Ok (Tag.Scannable.Map.add tag fields acc)
+        end
+      | Closure _
+      | Naked_number _
+      | Boxed_or_encoded_number _
+      | Set_of_closures _
+      | String _
+      | Float_array _ -> Bottom)

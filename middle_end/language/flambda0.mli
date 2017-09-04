@@ -142,9 +142,9 @@ module Switch : sig
   (** Equivalent to the similar type in [Ilambda]. *)
   type t = private {
     (* CR mshinwell: [numconsts] should move onto the default case. *)
-    numconsts : Numbers.Int.Set.t;
+    numconsts : Targetint.Set.t;
     (** All possible values that the scrutinee might have. *)
-    consts : (int * Continuation.t) list;
+    consts : (Targetint.t * Continuation.t) list;
     (** Branches for specific values of the scrutinee. *)
     failaction : Continuation.t option;
     (** Action to take if none of the [consts] matched. *)

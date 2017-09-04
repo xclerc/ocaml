@@ -644,26 +644,14 @@ type switch_branch_classification =
   | Can_be_taken
   | Must_be_taken
 
-let classify_switch_branch t branch : switch_branch_classification =
-  match descr t with
-  | Union union ->
-    let must_be_taken =
-      match Unionable.flatten union with
-      | Bottom | Unknown -> false
-      | Ok (Block _) -> false
-      | Ok (Int i) | Ok (Constptr i) -> i = branch
-      | Ok (Char c) -> Char.code c = branch
-    in
-    if must_be_taken then Must_be_taken
-    else if Unionable.maybe_is_immediate_value union branch then Can_be_taken
+let classify_switch_branch t branch ~import_type
+      : switch_branch_classification =
+  match join_boxed_immediates t ~import_type with
+  | Unknown Value -> Can_be_taken
+  | Unknown _ | Bottom -> Cannot_be_taken
+  | Ok all_possible_values ->
+    if Targetint.Set.mem branch all_possible_values then Must_be_taken
     else Cannot_be_taken
-  | Unknown _ | Load_lazily _  ->
-    (* In theory symbols cannot contain integers but this shouldn't
-       matter as this will always be an imported type. *)
-    Can_be_taken
-  | Boxed_number _ | Float_array _ | Immutable_string _ | Mutable_string _
-  | Closure _ | Set_of_closures _ | Unboxed_float _ | Unboxed_int32 _
-  | Unboxed_int64 _ | Unboxed_nativeint _ | Bottom -> Cannot_be_taken
 
 let as_or_more_precise _t ~than:_ =
   Misc.fatal_error "not yet implemented"
