@@ -1417,68 +1417,200 @@ let fold_for_meet_or_join t what ~import_type ~f =
   in
   fold t unit_type
 
-let join_boxed_immediates t ~import_type =
-  fold_for_meet_or_join t Join ~import_type
-    ~f:(fun acc (known : known) : Targetint.Set.t fold_result ->
-      match known with
-      | Boxed_or_encoded_number (Encoded Tagged_int, t) ->
-        fold_for_meet_or_join t Join ~import_type
-          ~f:(fun acc (known : known) : Targetint.Set.t fold_result ->
-            match known with
-            | Naked_number (Int i) | Naked_number (Const_pointer i) ->
-              Targetint.Set.add i acc
-            | Naked_number (Char c) ->
-              Targetint.Set.add (Targetint.of_int (Char.code c)) acc
-            | Naked_number (Float _ | Int32 _ | Int64 _ | Nativeint _)
-            | Boxed_or_encoded_number _
-            | Block _
-            | Closure _
-            | Set_of_closures _
-            | String _
-            | Float_array _ -> Bottom)
-      | Boxed_or_encoded_number (Boxed _, _)
-      | Block _
-      | Closure _
-      | Naked_number _
-      | Set_of_closures _
-      | String _
-      | Float_array _ -> Bottom)
-
-module Unboxable = struct
-  type t =
-    | Blocks_and_immediates of {
-        blocks : t array Tag.Scannable.Map.t;
-        immediates : t list;
-      }
-    | Boxed_floats of t list
-    | Boxed_int32s of t list
-    | Boxed_int64s of t list
-    | Boxed_nativeints of t list
-
-
-end
+type unboxable =
+  | Blocks_and_immediates of {
+      blocks : t array Tag.Scannable.Map.t;
+      immediates : Targetint.Set.t list;
+    }
+  | Boxed_floats of Float.Set.t
+  | Boxed_int32s of Int32.Set.t
+  | Boxed_int64s of Int64.Set.t
+  | Boxed_nativeints of Targetint.Set.t
 
 let join_unboxable t ~import_type =
   fold_for_meet_or_join t Join ~import_type
-    ~f:(fun acc (known : known) : t array Tag.Scannable.Map.t fold_result ->
+    ~f:(fun acc (known : known) : unboxable fold_result ->
       match known with
+      | Boxed_or_encoded_number (Encoded Tagged_int, t) ->
+        begin match acc with
+        | Blocks_and_immediates of { blocks; immediates; } ->
+          let join_of_immediates =
+            fold_for_meet_or_join t Join ~import_type
+              ~f:(fun acc (known : known) : Immediate.Set.t fold_result ->
+                match known with
+                | Naked_number (Int i) ->
+                  Ok (Immediate.Set.add (Immediate.of_int i) acc)
+                | Naked_number (Const_pointer i) ->
+                  Ok (Immediate.Set.add (Immediate.of_const_pointer i) acc)
+                | Naked_number (Char c) ->
+                  Ok (Immediate.Set.add (Immediate.of_char c) acc)
+                | Naked_number (Float _ | Int32 _ | Int64 _ | Nativeint _)
+                | Boxed_or_encoded_number _
+                | Block _
+                | Closure _
+                | Set_of_closures _
+                | String _
+                | Float_array _ -> Bottom)
+          in
+          begin match join_of_immediates with
+          | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
+          | Ok immediates' ->
+            Ok (Blocks_and_immediates {
+              blocks;
+              immediates = Immediate.Set.union immediates immediates';
+            })
+          | Bottom -> Bottom
+          end
+        | Boxed_floats _ | Boxed_int32s _ | Boxed_int64s _
+        | Boxed_nativeints _ -> Bottom
+        end
+      | Boxed_or_encoded_number (Boxed Float, t) ->
+        begin match acc with
+        | Boxed_floats floats ->
+          let join_of_floats =
+            fold_for_meet_or_join t Join ~import_type
+              ~f:(fun acc (known : known) : Float.Set.t fold_result ->
+                match known with
+                | Naked_number (Float f) -> Ok (Float.Set.add f acc)
+                | Naked_number (Int _ | Const_pointer _ | Char _ | Int32 _
+                    | Int64 _ | Nativeint _)
+                | Boxed_or_encoded_number _
+                | Block _
+                | Closure _
+                | Set_of_closures _
+                | String _
+                | Float_array _ -> Bottom)
+          in
+          begin match join_of_floats with
+          | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
+          | Ok floats' ->
+            Ok (Boxed_floats (Float.Set.union floats floats'))
+          | Bottom -> Bottom
+          end
+        | Blocks_and_immediates _ | Boxed_int32s _ | Boxed_int64s _
+        | Boxed_nativeints _ -> Bottom
+        end
+      | Boxed_or_encoded_number (Boxed Int32, t) ->
+        begin match acc with
+        | Boxed_int32s int32s ->
+          let join_of_int32s =
+            fold_for_meet_or_join t Join ~import_type
+              ~f:(fun acc (known : known) : Int32.Set.t fold_result ->
+                match known with
+                | Naked_number (Int32 f) -> Ok (Int32.Set.add f acc)
+                | Naked_number (Int _ | Const_pointer _ | Char _ | Float _
+                    | Int64 _ | Nativeint _)
+                | Boxed_or_encoded_number _
+                | Block _
+                | Closure _
+                | Set_of_closures _
+                | String _
+                | Float_array _ -> Bottom)
+          in
+          begin match join_of_int32s with
+          | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
+          | Ok int32s' ->
+            Ok (Boxed_int32s (Int32.Set.union int32s int32s'))
+          | Bottom -> Bottom
+          end
+        | Blocks_and_immediates _ | Boxed_floats _ | Boxed_int64s _
+        | Boxed_nativeints _ -> Bottom
+        end
+      | Boxed_or_encoded_number (Boxed Int64, t) ->
+        begin match acc with
+        | Boxed_int64s int64s ->
+          let join_of_int64s =
+            fold_for_meet_or_join t Join ~import_type
+              ~f:(fun acc (known : known) : Int64.Set.t fold_result ->
+                match known with
+                | Naked_number (Int64 f) -> Ok (Int64.Set.add f acc)
+                | Naked_number (Int _ | Const_pointer _ | Char _ | Float _
+                    | Int32 _ | Nativeint _)
+                | Boxed_or_encoded_number _
+                | Block _
+                | Closure _
+                | Set_of_closures _
+                | String _
+                | Float_array _ -> Bottom)
+          in
+          begin match join_of_int64s with
+          | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
+          | Ok int64s' ->
+            Ok (Boxed_int64s (Int64.Set.union int64s int64s'))
+          | Bottom -> Bottom
+          end
+        | Blocks_and_immediates _ | Boxed_floats _ | Boxed_int32s _
+        | Boxed_nativeints _ -> Bottom
+        end
+      | Boxed_or_encoded_number (Boxed Nativeint, t) ->
+        begin match acc with
+        | Boxed_nativeints nativeints ->
+          let join_of_nativeints =
+            fold_for_meet_or_join t Join ~import_type
+              ~f:(fun acc (known : known) : Nativeint.Set.t fold_result ->
+                match known with
+                | Naked_number (Nativeint f) -> Ok (Nativeint.Set.add f acc)
+                | Naked_number (Int _ | Const_pointer _ | Char _ | Float _
+                    | Int32 _ | Int64 _)
+                | Boxed_or_encoded_number _
+                | Block _
+                | Closure _
+                | Set_of_closures _
+                | String _
+                | Float_array _ -> Bottom)
+          in
+          begin match join_of_nativeints with
+          | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
+          | Ok nativeints' ->
+            Ok (Boxed_nativeints (Nativeint.Set.union nativeints nativeints'))
+          | Bottom -> Bottom
+          end
+        | Blocks_and_immediates _ | Boxed_floats _ | Boxed_int32s _
+        | Boxed_int64s _ -> Bottom
+        end
       | Block (tag, fields) ->
-        begin match Tag.Scannable.Map.find tag acc with
-        | exception Not_found ->
-        | existing_fields ->
-          if Array.length fields <> Array.length existing_fields then
-            Bottom
-          else
-            let fields =
-              Array.map2 (fun t existing_t ->
-                  just_descr (Union (t, existing_t)))
-                fields existing_fields
-            in
-            Ok (Tag.Scannable.Map.add tag fields acc)
+        begin match acc with
+        | Blocks_and_immediates of { blocks; immediates; } ->
+          begin match Tag.Scannable.Map.find tag blocks with
+          | exception Not_found ->
+            Ok (Blocks_and_immediates {
+              blocks = Tag.Scannable.Map.add tag fields blocks;
+              immediates;
+            })
+          | existing_fields ->
+            if Array.length fields <> Array.length existing_fields then
+              Bottom
+            else
+              let fields =
+                Array.map2 (fun t existing_t ->
+                    just_descr (Union (t, existing_t)))
+                  fields existing_fields
+              in
+              Ok (Blocks_and_immediates {
+                blocks = Tag.Scannable.Map.add tag fields blocks;
+                immediates;
+              })
+          end
+        | Boxed_floats _ | Boxed_int32s _ | Boxed_int64s _
+        | Boxed_nativeints _ -> Bottom
         end
       | Closure _
       | Naked_number _
-      | Boxed_or_encoded_number _
       | Set_of_closures _
       | String _
       | Float_array _ -> Bottom)
+
+let join_boxed_immediates t ~import_type : Immediate.Set.t fold_result =
+  match join_unboxable t ~import_type with
+  | Ok (Blocks_and_immediates { blocks; immediates; }) ->
+    if Targetint.Set.is_empty blocks then Ok immediates
+    else Bottom
+  | Ok (Boxed_floats _ | Boxed_int32s _ | Boxed_int64s _
+      | Boxed_nativeints _) ->
+    Bottom
+  | (Unknown _ | Bottom) as result -> result
+
+let unique_boxed_immediate_in_join t ~import_type =
+  match join_boxed_immediates t ~import_type with
+  | Ok all_possible_values -> Immediate.Set.get_singleton all_possible_values
+  | Unknown _ | Bottom -> None
