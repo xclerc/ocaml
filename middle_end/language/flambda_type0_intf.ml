@@ -71,7 +71,7 @@ module type S = sig
     | Other
 
   type load_lazily =
-    | Export_id of Export_id.t
+    | Export_id of Export_id.t * Flambda_kind.t
     | Symbol of Symbol.t
 
   type string_contents = private
@@ -95,34 +95,41 @@ module type S = sig
       - [Bottom]: "no value can flow to this point".
       - [Unknown (k, _)]: "any value of kind [k] might flow to this point".
   *)
-  type t = private {
-    descr : descr;
-    (** The main description of the type. *)
+  type 'a with_aliases = private {
+    thing : 'a;
     var : Variable.t option;
     (** An optional equality to a variable. *)
     symbol : (Symbol.t * int option) option;
     (** An optional equality to a symbol, or if the integer field number is
         specified, to a field of a symbol. *)
-  } 
+  }
 
-  and descr = private
+  type t = private {
+    descr : descr;
+    var : Variable.t option;
+    symbol : (Symbol.t * int option) option;
+    mutable summary : summary option;
+    (** [summary] is only present for performance reasons. *)
+  }
+
+  and descr =
     | Ok of singleton_or_union
     | Load_lazily of load_lazily
 
-  and singleton_or_union = private
+  and singleton_or_union =
+    | Unknown of K.t * unknown_because_of
     | Singleton of singleton
     | Union of t * t
+    | Bottom
 
-  and singleton = private
-    | Unknown of Flambda_kind.Basic.t * unknown_because_of
+  and singleton =
     | Naked_number of Naked_number.t
     | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
-    | Block of t array Tag.Scannable.Map.t
+    | Block of Tag.Scannable.t * (t array)
     | Set_of_closures of set_of_closures
     | Closure of closure
     | String of string_ty
     | Float_array of float_array
-    | Bottom
 
   and closure = private {
     potential_closures : t Closure_id.Map.t;
@@ -152,26 +159,34 @@ module type S = sig
     size : int;
   }
 
-  (** Least upper bound of two types. *)
-  val join : load_type:(t -> t) -> t -> t -> t
-
-  (** Greatest lower bound of two types. *)
-  val meet : load_type:(t -> t) -> t -> t -> t
+  and summary =
+    | Unknown of K.t * unknown_because_of
+    | Naked_number of Naked_number.t
+    | Blocks_and_immediates of {
+        blocks : t array Tag.Scannable.Map.t;
+        immediates : Targetint.Set.t list;
+      }
+    | Boxed_float of float option with_aliases
+    | Boxed_int32 of Int32.t option with_aliases
+    | Boxed_int64s of Int64.t option with_aliases
+    | Boxed_nativeint of Targetint.t option with_aliases
+    | Block of t array Tag.Scannable.Map.t
+    | Set_of_closures of set_of_closures
+    | Closure of closure
+    | String of string_ty
+    | Float_array of float_array
+    | Bottom
 
   val print : Format.formatter -> t -> unit
   val print_descr : Format.formatter -> descr -> unit
   val print_set_of_closures : Format.formatter -> set_of_closures -> unit
 
   (** Each type has a unique kind. *)
-  val kind : t -> load_type:(t -> t) -> Flambda_kind.t
-
-  (** Like [kind], but causes a fatal error if the type has not been fully
-      resolved. *)
-  val kind_exn : t -> Flambda_kind.t
+  val kind : t -> Flambda_kind.t
 
   (** Construct one of the various top types ("any value of the given kind
       can flow to this point"). *)
-  val unknown : Flambda_kind.Basic.t -> unknown_because_of -> t
+  val unknown : Flambda_kind.t -> unknown_because_of -> t
 
   (** The unique bottom type ("no value can flow to this point"). *)
   val bottom : unit -> t
@@ -270,6 +285,9 @@ module type S = sig
   (** Free variables in a type. *)
   val free_variables : t -> Variable.Set.t
 
+  (** Least upper bound of two types. *)
+  val join : t -> t -> t
+
   type cleaning_spec =
     | Available
     | Available_different_name of Variable.t
@@ -283,78 +301,8 @@ module type S = sig
      : t
     -> (Variable.t -> cleaning_spec)
     -> t
+
+  (** Force any [Load_lazily] at the top level of a type and pare it down to
+      a form which is easy to query. *)
+  val summarize : t -> load_type:(t -> t) -> t
 end
-
-(*
-    module Immediate : sig
-      (** These immediate values are always tagged. *)
-      type t = private
-        (* CR mshinwell: We could consider splitting these again *)
-        | Int of int
-        | Char of char
-        | Constptr of int
-
-      include Identifiable.S with type t := t
-
-      val represents : t -> int
-    end
-
-    type blocks = T.t array Tag.Scannable.Map.t
-
-    type t = private
-      | Blocks of blocks
-      | Blocks_and_immediates of blocks * Immediate.Set.t
-
-    val invariant : t -> unit
-
-    val print
-       : Format.formatter
-      -> t
-      -> unit
-
-    val map_blocks : t -> f:(blocks -> blocks) -> t
-
-    (** Partial ordering:
-          Bottom <= Ok _ <= Unknown
-    *)
-    type 'a or_bottom =
-      | Unknown
-      | Ok of 'a
-      | Bottom
-
-    val join
-      : load_type:(T.t -> T.t)
-      -> t
-      -> t
-      -> t or_bottom
-
-    type singleton = private
-      | Block of Tag.Scannable.t * (T.t array)
-      | Int of int
-      | Char of char
-      | Constptr of int
-
-    (* CR mshinwell: review names of the following & add comments *)
-
-    val useful : t -> bool
-
-    val maybe_is_immediate_value : t -> int -> bool
-
-    val ok_for_variant : t -> bool
-
-    val is_singleton : t -> bool
-
-    val size_of_block : t -> int option
-
-    val invalid_to_mutate : t -> bool
-
-    val as_int : t -> int option
-
-    (** Find the properties that are guaranteed to hold of a value with union
-        type at every point it is used. *)
-    val flatten : t -> singleton or_bottom
-  end
-
-  include module type of struct include T end
-end
-*)

@@ -658,3 +658,20 @@ let as_or_more_precise _t ~than:_ =
 
 let strictly_more_precise _t ~than:_ =
   Misc.fatal_error "not yet implemented"
+
+
+
+let join_boxed_immediates t ~import_type : Immediate.Set.t fold_result =
+  match join_unboxable t ~import_type with
+  | Ok (Blocks_and_immediates { blocks; immediates; }) ->
+    if Targetint.Set.is_empty blocks then Ok immediates
+    else Bottom
+  | Ok (Boxed_floats _ | Boxed_int32s _ | Boxed_int64s _
+      | Boxed_nativeints _) ->
+    Bottom
+  | (Unknown _ | Bottom) as result -> result
+
+let unique_boxed_immediate_in_join t ~import_type =
+  match join_boxed_immediates t ~import_type with
+  | Ok all_possible_values -> Immediate.Set.get_singleton all_possible_values
+  | Unknown _ | Bottom -> None

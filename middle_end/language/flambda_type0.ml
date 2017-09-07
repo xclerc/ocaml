@@ -264,15 +264,12 @@ end) = struct
     | Load_lazily of load_lazily
 
   and singleton_or_union =
+    | Unknown of K.t * unknown_because_of
     | Singleton of singleton
     | Union of t * t
-
-  and singleton =
-    | Unknown of K.Basic.t * unknown_because_of
-    | Known of known_singleton
     | Bottom
 
-  and known_singleton =
+  and singleton =
     | Naked_number of Naked_number.t
     | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
     | Block of Tag.Scannable.t * (t array)
@@ -501,6 +498,12 @@ end) = struct
     end
   end) (Inverse : Meet_or_join) : Meet_or_join = struct
     let rec meet_or_join_singleton kind ~load_type d1 d2 : descr =
+      match d1, d2 with
+      | Naked_number n1, Naked_number n2 ->
+        if Naked_number.equal n1 n2 then 
+
+
+
       match d1, d2 with
       | Naked_number (Int is1), Naked_number (Int is2) ->
         Unboxed_float (AG.Ops.int_set is1 is2)
@@ -988,396 +991,95 @@ end) = struct
       | Float_array _
       | Bottom -> Bottom)
 
-(*
-  end and Unionable : sig
-    module Immediate : sig
-      type t = private
-        (* CR mshinwell: We could consider splitting these again *)
-        | Int of int
-        | Char of char
-        | Constptr of int
-
-      include Identifiable.S with type t := t
-
-      val represents : t -> int
-    end
-
-    type blocks = T.t array Tag.Scannable.Map.t
-
-    (* Values of type [t] represent unions of approximations, that is to say,
-       disjunctions of properties known to hold of a value at one or more of
-       its use points.
-
-       Other representations are possible, but this one has two nice properties:
-       1. It doesn't involve any comparison on values of type [t.t].
-       2. It lines up with the classification of approximations required when
-           unboxing (cf. [Unbox_one_variable]). *)
-    type t = private
-      | Blocks of blocks
-      | Blocks_and_immediates of blocks * Immediate.Set.t
-      | Immediates of Immediate.Set.t
-
-    val invariant : t -> unit
-
-    val print
-       : Format.formatter
-      -> t
-      -> unit
-
-    val map_blocks : t -> f:(blocks -> blocks) -> t
-
-    type 'a or_bottom =
-      | Unknown
-      | Ok of 'a
-      | Bottom
-
-    val join
-       : load_type:(T.t -> T.t)
-      -> t
-      -> t
-      -> t or_bottom
-
-    val meet
-       : load_type:(T.t -> T.t)
-      -> t
-      -> t
-      -> t or_bottom
-
-    type singleton = private
-      | Block of Tag.Scannable.t * (T.t array)
-      | Int of int
-      | Char of char
-      | Constptr of int
-
-    (** Find the properties that are guaranteed to hold of a value with union type
-        at every point it is used. *)
-    val flatten : t -> singleton or_bottom
-
-    val is_singleton : t -> bool
-
-    val int : int -> t
-    val char : char -> t
-    val constptr : int -> t
-    val block : Tag.Scannable.t -> T.t array -> t
-
-    val useful : t -> bool
-
-    val maybe_is_immediate_value : t -> int -> bool
-
-    val ok_for_variant : t -> bool
-
-    val as_int : t -> int option
-    val size_of_block : t -> int option
-
-    val invalid_to_mutate : t -> bool
-  end = struct
-    type 'a or_bottom =
-      | Unknown
-      | Ok of 'a
-      | Bottom
-
-    module Immediate = struct
-      type t =
-        | Int of int
-        | Char of char
-        | Constptr of int
-
-      include Identifiable.Make (struct
-        type nonrec t = t
-
-        let compare = Pervasives.compare
-        let equal t1 t2 = (compare t1 t2 = 0)
-        let hash = Hashtbl.hash
-
-        let print ppf t =
-          match t with
-          | Int i -> Format.pp_print_int ppf i
-          | Char c -> Format.fprintf ppf "%c" c
-          | Constptr i -> Format.fprintf ppf "%ia" i
-
-        let output _ _ = Misc.fatal_error "Not implemented"
-      end)
-
-      let join t1 t2 : t or_bottom =
-        if equal t1 t2 then Ok t1
-        else Unknown
-
-      let join_set ts =
-        let t = Set.choose ts in
-        let ts = Set.remove t ts in
-        Set.fold (fun t ts ->
-            match ts with
-            | Ok ts -> join t ts
-            | Unknown -> Unknown
-            | Bottom -> Bottom)
-          ts (Ok t)
-
-      let represents = function
-        | Int n | Constptr n -> n
-        | Char c -> Char.code c
-    end
-
-    type blocks = T.t array Tag.Scannable.Map.t
-
-    let print_blocks ppf (by_tag : blocks) =
-      let print_binding ppf (tag, fields) =
-        Format.fprintf ppf "@[[|%a: %a|]@]"
-          Tag.Scannable.print tag
-          (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
-            T.print)
-          (Array.to_list fields)
-      in
-      Format.fprintf ppf "@[%a@]"
-        (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf " U ")
-          print_binding)
-        (Tag.Scannable.Map.bindings by_tag)
-
-    type t =
-      | Blocks of blocks
-      | Blocks_and_immediates of blocks * Immediate.Set.t
-      | Immediates of Immediate.Set.t
-
-    let invariant t =
-      if !Clflags.flambda_invariant_checks then begin
-        match t with
-        | Blocks blocks -> assert (Tag.Scannable.Map.cardinal blocks >= 1)
-        | Blocks_and_immediates (blocks, immediates) ->
-          assert (Tag.Scannable.Map.cardinal blocks >= 1);
-          assert (Immediate.Set.cardinal immediates >= 1)
-        | Immediates immediates ->
-          assert (Immediate.Set.cardinal immediates >= 1)
+let rec kind t =
+  match t.descr with
+  | Load_lazily (Export_id (_, kind)) -> kind
+  | Load_lazily (Symbol _) -> K.value ()
+  | Ok su ->
+    match su with
+    | Unknown (kind, _) -> kind
+    | Singleton s ->
+      begin match s with
+      | Naked_number (Int _)
+      | Naked_number (Char _) -> K.naked_int ()
+      | Naked_number (Float _) -> K.naked_float ()
+      | Naked_number (Int32 _) -> K.naked_int32 ()
+      | Naked_number (Int64 _) -> K.naked_int64 ()
+      | Naked_number (Nativeint _) -> K.naked_nativeint ()
+      | Boxed_or_encoded_number (Encoded _, _) -> K.tagged_int ()
+      | Boxed_or_encoded_number (Boxed _, _)
+      | Block _
+      | Set_of_closures _
+      | Closure _
+      | String _
+      | Float_array _ -> K.value ()
       end
+    | Union (t1, t2) ->
+      let kind1 = kind t1 in
+      let kind2 = kind t2 in
+      assert (Flambda_kind.equal kind1 kind2);
+      kind1
+    | Bottom -> Flambda_kind.bottom ()
 
-    let print ppf t =
-      match t with
-      | Blocks by_tag ->
-        Format.fprintf ppf "@[(blocks (%a))@]"
-          print_blocks by_tag
-      | Blocks_and_immediates (by_tag, imms) ->
-        Format.fprintf ppf "@[(blocks (%a)) U (immediates (%a))@]"
-          print_blocks by_tag
-          Immediate.Set.print imms
-      | Immediates imms ->
-        Format.fprintf ppf "@[(immediates (%a))@]"
-          Immediate.Set.print imms
-
-    let map_blocks t ~f =
-      match t with
-      | Blocks blocks -> Blocks (f blocks)
-      | Blocks_and_immediates (blocks, imms) ->
-        Blocks_and_immediates (f blocks, imms)
-      | Immediates _ -> t
-
-    let is_singleton t =
-      invariant t;
-      match t with
-      | Blocks blocks -> Tag.Scannable.Map.cardinal blocks = 1
-      | Blocks_and_immediates (blocks, imms) ->
-        (Tag.Scannable.Map.cardinal blocks = 1 && Immediate.Set.is_empty imms)
-          || (Tag.Scannable.Map.is_empty blocks && Immediate.Set.cardinal imms = 1)
-      | Immediates imms -> Immediate.Set.cardinal imms = 1
-
-    let int i =
-      Immediates (Immediate.Set.singleton (Int i))
-
-    let char c =
-      Immediates (Immediate.Set.singleton (Char c))
-
-    let constptr p =
-      Immediates (Immediate.Set.singleton (Constptr p))
-
-    let block tag fields =
-      Blocks (Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty)
-
-    (* CR mshinwell: Bad name? *)
-    let maybe_is_immediate_value t i =
-      invariant t;
-      match t with
-      | Blocks _ -> false
-      | Blocks_and_immediates (_, imms) | Immediates imms ->
-        Immediate.Set.exists (fun (imm : Immediate.t) ->
-            match imm with
-            | Int i' when i = i' -> true
-            | Int _ -> false
-            | Char c when i = Char.code c -> true
-            | Char _ -> false
-            | Constptr p when i = p -> true
-            | Constptr _ -> false)
-          imms
-
-    (* CR mshinwell: Not needed now *)
-    let ok_for_variant t =
-      invariant t;
-      (* CR mshinwell: Shouldn't this function say "false" for e.g.
-         (Int 0) u (Constptr 0) ? *)
-      match t with
-      | Blocks by_tag | Blocks_and_immediates (by_tag, _) ->
-        (* CR mshinwell: Should the failure of this check be an error?
-           Perhaps the invariants pass should check "makeblock" to ensure it's
-           not used at or above No_scan_tag either.
-           In fact if we had our own type of primitives we could statically
-           enforce it (or maybe we could anyway) *)
-        Tag.Scannable.Map.for_all (fun tag _contents ->
-            (Tag.Scannable.to_int tag) < Obj.no_scan_tag)
-          by_tag
-      | Immediates _imms -> true
-
-    let as_int t =
-      invariant t;
-      let check_immediates imms =
-        (* CR mshinwell: Should this include Char and Constptr? *)
-        match Immediate.Set.elements imms with
-        | [Int i] -> Some i
+let join t1 t2 ~load_type =
+  if not (Flambda_kind.equal (kind t1) (kind t2)) then begin
+    Misc.fatal_errorf "Cannot take the join of two types with incompatible \
+        kinds: %a and %a"
+      print t1
+      print t2
+  end;
+  let var =
+    match a1.var, a2.var with
+    | None, _ | _, None -> None
+    | Some v1, Some v2 ->
+      if Variable.equal v1 v2 then Some v1
+      else None
+  in
+  let projection =
+    match a1.projection, a2.projection with
+    | None, _ | _, None -> None
+    | Some proj1, Some proj2 ->
+      if Projection.equal proj1 proj2 then Some proj1 else None
+  in
+  let symbol =
+    match a1.symbol, a2.symbol with
+    | None, _ | _, None -> None
+    | Some (v1, field1), Some (v2, field2) ->
+      if Symbol.equal v1 v2 then
+        match field1, field2 with
+        | None, None -> a1.symbol
+        | Some f1, Some f2 when f1 = f2 -> a1.symbol
         | _ -> None
+      else None
+  in
+  let descr =
+    match t1.descr, t2.descr with
+    | Load_lazily _, _
+    | _, Load_lazily _ -> Union (t1, t2)
+    | Ok su1, Ok su2 ->
+      let su =
+        match su1, su2 with
+        | Bottom _, _ -> su2
+        | _, Bottom _ -> su1
+        | Unknown _, _ -> su1
+        | _, Unknown _ -> su2
+        | Singleton _, Union _
+        | Union _, Singleton _
+        | Union _, Union _ -> Union (t1, t2)
+        | Singleton _, Singleton _ ->
+          (* CR mshinwell: Could add:
+            if singletons_definitely_equal s1 s2 then Singleton s1
+            else Union (t1, t2)
+          *)
+          Union (t1, t2)
       in
-      match t with
-      | Blocks _ -> None
-      | Blocks_and_immediates (by_tag, imms) ->
-        if not (Tag.Scannable.Map.is_empty by_tag) then None
-        else check_immediates imms
-      | Immediates imms -> check_immediates imms
-
-    module Make_meet_or_join (Ops : sig
-      val unit : t or_bottom
-
-      val t
-         : load_type:(T.t -> T.t)
-        -> T.t
-        -> T.t
-        -> T.t
-
-      val immediate_set : Immediate.Set.t simple_commutative_op
-
-      val tag_map
-         : ('a -> 'a -> 'a)
-        -> 'a Tag.Scannable.Map.t
-        -> 'a Tag.Scannable.Map.t
-        -> 'a Tag.Scannable.Map.t
-    end) = struct
-      let meet_or_join ~load_type (t1 : t) (t2 : t) : t or_bottom =
-        invariant t1;
-        invariant t2;
-        let get_immediates t =
-          match t with
-          | Blocks _ -> Immediate.Set.empty
-          | Blocks_and_immediates (_, imms) | Immediates imms -> imms
-        in
-        let immediates_t1 = get_immediates t1 in
-        let immediates_t2 = get_immediates t2 in
-        let immediates = Ops.immediate_set immediates_t1 immediates_t2 in
-        let get_blocks t =
-          match t with
-          | Blocks by_tag | Blocks_and_immediates (by_tag, _) -> by_tag
-          | Immediates _ -> Tag.Scannable.Map.empty
-        in
-        let blocks_t1 = get_blocks t1 in
-        let blocks_t2 = get_blocks t2 in
-        let mismatch_found = ref false in
-        let blocks =
-          Ops.tag_map (fun fields1 fields2 ->
-              if Array.length fields1 <> Array.length fields2 then begin
-                mismatch_found := true;
-                [| |]  (* an arbitrary value *)
-              end else begin
-                Array.map2 (fun field existing_field ->
-                    Ops.t ~load_type field existing_field)
-                  fields1 fields2
-              end)
-            blocks_t1 blocks_t2
-        in
-        if !mismatch_found then
-          Ops.unit
-        else if Immediate.Set.is_empty immediates then
-          Ok (Blocks blocks)
-        else if Tag.Scannable.Map.is_empty blocks then
-          Ok (Immediates immediates)
-        else
-          Ok (Blocks_and_immediates (blocks, immediates))
-    end
-
-    module Join = Make_meet_or_join (struct
-      let unit : _ or_bottom = Unknown
-      let t = T.join
-      let immediate_set = Immediate.Set.union
-      let tag_map = Tag.Scannable.Map.union_merge
-    end)
-
-    let join = Join.meet_or_join
-
-    module Meet = Make_meet_or_join (struct
-      let unit : _ or_bottom = Bottom
-      let t = T.join
-      let immediate_set = Immediate.Set.inter
-      let tag_map = Tag.Scannable.Map.inter_merge
-    end)
-
-    let meet = Meet.meet_or_join
-
-    let useful t =
-      (* CR mshinwell: some of these are necessarily [true] when [invariant]
-         holds *)
-      invariant t;
-      match t with
-      | Blocks blocks -> not (Tag.Scannable.Map.is_empty blocks)
-      | Blocks_and_immediates (blocks, immediates) ->
-        (not (Tag.Scannable.Map.is_empty blocks))
-          || (not (Immediate.Set.is_empty immediates))
-      | Immediates immediates -> not (Immediate.Set.is_empty immediates)
-
-    type singleton =
-      | Block of Tag.Scannable.t * T.t array
-      | Int of int
-      | Char of char
-      | Constptr of int
-
-    let rec flatten t : singleton or_bottom =
-      invariant t;
-      match t with
-      | Blocks by_tag ->
-        begin match Tag.Scannable.Map.bindings by_tag with
-        | [tag, fields] -> Ok (Block (tag, fields))
-        | _ -> Unknown
-        end
-      | Blocks_and_immediates (by_tag, imms) ->
-        if Tag.Scannable.Map.is_empty by_tag then flatten (Immediates imms)
-        else if Immediate.Set.is_empty imms then flatten (Blocks by_tag)
-        else Unknown
-      | Immediates imms ->
-        match Immediate.join_set imms with
-        | Unknown -> Unknown
-        | Ok (Int i) -> Ok (Int i)
-        | Ok (Char c) -> Ok (Char c)
-        | Ok (Constptr p) -> Ok (Constptr p)
-        | Bottom -> Bottom
-
-    let size_of_block t =
-      invariant t;
-      match t with
-      | Blocks by_tag ->
-        let sizes =
-          List.map (fun (_tag, fields) -> Array.length fields)
-            (Tag.Scannable.Map.bindings by_tag)
-        in
-        let sizes = Numbers.Int.Set.of_list sizes in
-        begin match Numbers.Int.Set.elements sizes with
-        | [] -> Some 0
-        | [size] -> Some size
-        | _ -> None
-        end
-      | Blocks_and_immediates _ | Immediates _ -> None
-
-    let invalid_to_mutate t =
-      invariant t;
-      match size_of_block t with
-      | None -> true
-      | Some 0 -> false  (* empty arrays are treated as mutable *)
-      | Some _ -> true
-  end
-
-  include T
-end
-
-*)
+      Ok su
+  in
+  { descr;
+    var;
+    projection;
+    symbol;
+  }
 
 type 'a fold_result =
   | Unknown of Flambda_kind.Basic.t
@@ -1417,17 +1119,7 @@ let fold_for_meet_or_join t what ~import_type ~f =
   in
   fold t unit_type
 
-type unboxable =
-  | Blocks_and_immediates of {
-      blocks : t array Tag.Scannable.Map.t;
-      immediates : Targetint.Set.t list;
-    }
-  | Boxed_floats of Float.Set.t
-  | Boxed_int32s of Int32.Set.t
-  | Boxed_int64s of Int64.Set.t
-  | Boxed_nativeints of Targetint.Set.t
-
-let join_unboxable t ~import_type =
+let summarize_main t ~import_type =
   fold_for_meet_or_join t Join ~import_type
     ~f:(fun acc (known : known) : unboxable fold_result ->
       match known with
@@ -1600,17 +1292,7 @@ let join_unboxable t ~import_type =
       | String _
       | Float_array _ -> Bottom)
 
-let join_boxed_immediates t ~import_type : Immediate.Set.t fold_result =
-  match join_unboxable t ~import_type with
-  | Ok (Blocks_and_immediates { blocks; immediates; }) ->
-    if Targetint.Set.is_empty blocks then Ok immediates
-    else Bottom
-  | Ok (Boxed_floats _ | Boxed_int32s _ | Boxed_int64s _
-      | Boxed_nativeints _) ->
-    Bottom
-  | (Unknown _ | Bottom) as result -> result
-
-let unique_boxed_immediate_in_join t ~import_type =
-  match join_boxed_immediates t ~import_type with
-  | Ok all_possible_values -> Immediate.Set.get_singleton all_possible_values
-  | Unknown _ | Bottom -> None
+let summarize t ~import_type =
+  match t.summary with
+  | None -> summarize_main t ~import_type
+  | Some summary -> summary
