@@ -21,13 +21,13 @@ module type S = sig
 
   module Naked_number : sig
     type t =
-      | Int of Targetint.Set.t
-      | Char of Misc.Stdlib.Char.Set.t
-      | Constptr of Targetint.Set.t
-      | Float of Numbers.Float.Set.t
-      | Int32 of Numbers.Int32.Set.t
-      | Int64 of Numbers.Int64.Set.t
-      | Nativeint of Numbers.Nativeint.Set.t
+      | Int of Targetint.t
+      | Char of Misc.Stdlib.Char.t
+      | Constptr of Targetint.t
+      | Float of Numbers.Float.t
+      | Int32 of Numbers.Int32.t
+      | Int64 of Numbers.Int64.t
+      | Nativeint of Numbers.Nativeint.t
 
     include Identifiable.S with type t := t
   end
@@ -86,7 +86,7 @@ module type S = sig
   (** Values of type [t] are known as "Flambda types".
       They may be loaded lazily from .cmx files and formed into union types.
 
-      Values of type [singleton] form a partial order.
+      For each kind, values of type [singleton_or_union] form a partial order.
 
       [Bottom] is the unique least element.
       The [Unknown (k, _)] values form the greatest elements.
@@ -127,14 +127,9 @@ module type S = sig
     | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
     | Block of Tag.Scannable.t * (t array)
     | Set_of_closures of set_of_closures
-    | Closure of closure
+    | Closure of { set_of_closures : t; closure_id : Closure_id.t }
     | String of string_ty
     | Float_array of float_array
-
-  and closure = private {
-    potential_closures : t Closure_id.Map.t;
-    (** Map of closures ids to set of closures *)
-  } [@@unboxed]
 
   (* CR-soon mshinwell: add support for the approximations of the results,
      so we can do all of the tricky higher-order cases. *)
@@ -172,7 +167,7 @@ module type S = sig
     | Boxed_nativeint of Targetint.t option with_aliases
     | Block of t array Tag.Scannable.Map.t
     | Set_of_closures of set_of_closures
-    | Closure of closure
+    | Closure of t Closure_id.Map.t
     | String of string_ty
     | Float_array of float_array
     | Bottom
@@ -188,11 +183,8 @@ module type S = sig
       can flow to this point"). *)
   val unknown : Flambda_kind.t -> unknown_because_of -> t
 
-  (** The unique bottom type ("no value can flow to this point"). *)
+  (** The bottom type ("no value can flow to this point"). *)
   val bottom : unit -> t
-
-  (** Form a union type from the given two types, whose kinds must be equal. *)
-  val union : t -> t -> load_type:(t -> t) -> t
 
   (** Construction of types involving equalities to runtime values. *)
   val int : int -> t
