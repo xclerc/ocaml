@@ -19,8 +19,17 @@
 module type S = sig
   type function_declarations
 
+  module Immediate : sig
+    type t = private
+      | Int of Targetint.t
+      | Const_pointer of Targetint.t
+      | Char of Char.t
+
+    include Identifiable.S with type t := t
+  end
+
   module Naked_number : sig
-    type t =
+    type t = private
       | Int of Targetint.t
       | Char of Misc.Stdlib.Char.t
       | Constptr of Targetint.t
@@ -34,17 +43,17 @@ module type S = sig
 
   module Boxed_or_encoded_number_kind : sig
     (** "Encodings" do not allocate. *)
-    type encoded =
+    type encoded = private
       | Tagged_int
 
     (** "Boxings" allocate. *)
-    type boxed =
+    type boxed = private
       | Float
       | Int32
       | Int64
       | Nativeint
 
-    type t =
+    type t = private
       | Boxed of boxed
       | Encoded of encoded
 

@@ -36,6 +36,42 @@ module Make (Function_declarations : sig
 end) = struct
   type function_declarations = Function_declarations.t
 
+  module Immediate = struct
+    type t =
+      | Int of Targetint.t
+      | Const_pointer of Targetint.t
+      | Char of Char.t
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+
+      let to_int t =
+        match t with
+        | Int _ -> 0
+        | Const_pointer _ -> 1
+        | Char _ -> 2
+
+      let compare t1 t2 =
+        match t1, t2 with
+        | Int n1, Int n2 -> Targetint.compare n1 n2
+        | Const_pointer n1, Const_pointer n2 -> Targetint.compare n1 n2
+        | Char n1, Char n2 -> n1 = n2
+        | (Int _ | Const_pointer _ | Char _), _ ->
+          Pervasives.compare (to_int t1) (to_int t2)
+
+      let equal t1 t2 = (compare t1 t2 = 0)
+
+      let hash t = Hashtbl.hash t
+
+      let print ppf t =
+        let fprintf = Format.fprintf in
+        match t with
+        | Int n -> fprintf "int{%d}" n
+        | Const_pointer n -> fprintf "const_pointer{%d}" n
+        | Char c -> fprintf "char{%c}" c
+    end)
+  end
+
   module Naked_number = struct
     type t =
       | Int of Targetint.t
@@ -52,21 +88,24 @@ end) = struct
       let to_int t =
         match t with
         | Int _ -> 0
-        | Char _ -> 1
-        | Float _ -> 2
-        | Int32 _ -> 3
-        | Int64 _ -> 4
-        | Nativeint _ -> 5
+        | Const_pointer _ -> 1
+        | Char _ -> 2
+        | Float _ -> 3
+        | Int32 _ -> 4
+        | Int64 _ -> 5
+        | Nativeint _ -> 6
 
       let compare t1 t2 =
         match t1, t2 with
         | Int n1, Int n2 -> Targetint.compare n1 n2
+        | Const_pointer n1, Const_pointer n2 -> Targetint.compare n1 n2
         | Char n1, Char n2 -> n1 = n2
         | Float n1, Float n2 -> n1 = n2
         | Int32 n1, Int32 n2 -> Int32.compare n1 n2
         | Int64 n1, Int64 n2 -> Int64.compare n1 n2
         | Nativeint n1, Nativeint n2 -> Targetint.compare n1 n2
-        | (Int _ | Char _ | Float _ | Int32 _ | Int64 _ | Nativeint _), _ ->
+        | (Int _ | Const_pointer _ | Char _ | Float _ | Int32 _ | Int64 _
+            | Nativeint _), _ ->
           Pervasives.compare (to_int t1) (to_int t2)
 
       let equal t1 t2 = (compare t1 t2 = 0)
@@ -77,6 +116,7 @@ end) = struct
         let fprintf = Format.fprintf in
         match t with
         | Int n -> fprintf "int{%d}" n
+        | Const_pointer n -> fprintf "const_pointer{%d}" n
         | Char c -> fprintf "char{%c}" c
         | Float n -> fprintf "float{%f}" n
         | Int32 n -> fprintf "int32{%ld}" n
@@ -810,8 +850,8 @@ end) = struct
           | Union _, Union _ -> Union (t1, t2)
           | Singleton _, Singleton _ ->
             (* CR mshinwell: Could add:
-              if singletons_definitely_equal s1 s2 then Singleton s1
-              else Union (t1, t2)
+               if singletons_definitely_equal s1 s2 then Singleton s1
+               else Union (t1, t2)
             *)
             Union (t1, t2)
         in
@@ -828,48 +868,33 @@ end) = struct
     | Ok of 'a
     | Bottom
 
-  let fold t what ~import_type ~f =
+  let fold t ~import_type ~f =
     let rec fold t acc : _ fold_result =
       match t.descr with
       | Singleton singleton ->
         begin match singleton with
-        | Unknown (kind, _reason) ->
-          begin match what with
-          | Join -> Unknown kind
-          | Meet -> acc
-          end
-        | Bottom ->
-          begin match what with
-          | Join -> acc
-          | Meet -> Bottom
-          end
+        | Unknown (kind, _reason) -> Unknown kind
+        | Bottom -> acc
         | Known known -> f acc known
         end
       | Union (t1, t2) ->
         let acc = fold t1 acc in
-        match what, acc with
-        | Join, Unknown -> Unknown
-        | Meet, Bottom -> Bottom
-        | _, Ok _ -> fold t2 acc
+        match acc with
+        | Unknown -> Unknown
+        | Ok _ -> fold t2 acc
     in
     let t = import_type t in
-    let kind = kind_exn t in
-    let unit_type : _ fold_result =
-      match what with
-      | Join -> Bottom
-      | Meet -> Unknown kind
-    in
-    fold t unit_type
+    fold t Bottom
 
   let summarize_main t ~import_type =
-    fold t Join ~import_type
+    fold t ~import_type
       ~f:(fun acc (known : known) : unboxable fold_result ->
         match known with
         | Boxed_or_encoded_number (Encoded Tagged_int, t) ->
           begin match acc with
           | Blocks_and_immediates of { blocks; immediates; } ->
-            let join_of_immediates =
-              fold t Join ~import_type
+            let new_immediates =
+              fold t ~import_type
                 ~f:(fun acc (known : known) : Immediate.Set.t fold_result ->
                   match known with
                   | Naked_number (Int i) ->
@@ -886,7 +911,7 @@ end) = struct
                   | String _
                   | Float_array _ -> Bottom)
             in
-            begin match join_of_immediates with
+            begin match new_immediates with
             | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
             | Ok immediates' ->
               Ok (Blocks_and_immediates {
@@ -902,7 +927,7 @@ end) = struct
           begin match acc with
           | Boxed_floats floats ->
             let join_of_floats =
-              fold t Join ~import_type
+              fold t ~import_type
                 ~f:(fun acc (known : known) : Float.Set.t fold_result ->
                   match known with
                   | Naked_number (Float f) -> Ok (Float.Set.add f acc)
@@ -928,7 +953,7 @@ end) = struct
           begin match acc with
           | Boxed_int32s int32s ->
             let join_of_int32s =
-              fold t Join ~import_type
+              fold t ~import_type
                 ~f:(fun acc (known : known) : Int32.Set.t fold_result ->
                   match known with
                   | Naked_number (Int32 f) -> Ok (Int32.Set.add f acc)
@@ -954,7 +979,7 @@ end) = struct
           begin match acc with
           | Boxed_int64s int64s ->
             let join_of_int64s =
-              fold t Join ~import_type
+              fold t ~import_type
                 ~f:(fun acc (known : known) : Int64.Set.t fold_result ->
                   match known with
                   | Naked_number (Int64 f) -> Ok (Int64.Set.add f acc)
@@ -980,7 +1005,7 @@ end) = struct
           begin match acc with
           | Boxed_nativeints nativeints ->
             let join_of_nativeints =
-              fold t Join ~import_type
+              fold t ~import_type
                 ~f:(fun acc (known : known) : Nativeint.Set.t fold_result ->
                   match known with
                   | Naked_number (Nativeint f) -> Ok (Nativeint.Set.add f acc)
