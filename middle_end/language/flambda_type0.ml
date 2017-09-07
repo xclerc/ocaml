@@ -888,31 +888,32 @@ end) = struct
 
   let summarize_main t ~import_type =
     fold t ~import_type
-      ~f:(fun acc (known : known) : unboxable fold_result ->
-        match known with
+      ~f:(fun acc (singleton : singleton) : unboxable fold_result ->
+        match singleton with
         | Boxed_or_encoded_number (Encoded Tagged_int, t) ->
           begin match acc with
           | Blocks_and_immediates of { blocks; immediates; } ->
             let new_immediates =
               fold t ~import_type
-                ~f:(fun acc (known : known) : Immediate.Set.t fold_result ->
+                ~f:(fun acc (singleton : singleton)
+                        : Immediate.Set.t fold_result ->
                   match known with
                   | Naked_number (Int i) ->
-                    Ok (Immediate.Set.add (Immediate.of_int i) acc)
+                    Ok (Immediate.Set.add (Int i) acc)
                   | Naked_number (Const_pointer i) ->
-                    Ok (Immediate.Set.add (Immediate.of_const_pointer i) acc)
+                    Ok (Immediate.Set.add (Const_pointer i) acc)
                   | Naked_number (Char c) ->
-                    Ok (Immediate.Set.add (Immediate.of_char c) acc)
+                    Ok (Immediate.Set.add (Char c) acc)
                   | Naked_number (Float _ | Int32 _ | Int64 _ | Nativeint _)
                   | Boxed_or_encoded_number _
                   | Block _
                   | Closure _
                   | Set_of_closures _
                   | String _
-                  | Float_array _ -> Bottom)
+                  | Float_array _ -> Unknown )
             in
             begin match new_immediates with
-            | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
+            | Unknown _ -> Unknown (Flambda_kind.value ())
             | Ok immediates' ->
               Ok (Blocks_and_immediates {
                 blocks;
