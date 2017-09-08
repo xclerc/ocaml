@@ -390,11 +390,13 @@ end) = struct
     | Ok of 'a resolved_ty
     | Load_lazily of load_lazily
 
-  and 'a resolved_ty = {
-    descr : 'a or_unknown_or_bottom;
+  and 'a with_var_and_symbol = {
+    descr : 'a;
     var : Variable.t option;
     symbol : (Symbol.t * int option) option;
   }
+
+  and 'a resolved_ty = 'a or_unknown_or_bottom with_var_and_symbol
 
   and 'a or_unknown_or_bottom =
     | Unknown
@@ -406,7 +408,8 @@ end) = struct
 
   and of_kind_value =
     | Singleton of of_kind_value_singleton
-    | Union of ty_value * ty_value
+    | Union of of_kind_value with_var_and_symbol
+        * of_kind_value with_var_and_symbol
 
   and of_kind_value_singleton =
     | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * ty_value
@@ -1258,16 +1261,69 @@ let rec join_ty (type a) join_contents (ty1 : a ty) (ty2 : a ty)
 
 and join_value ty1 (t1 : of_kind_value) ty2 t2 ~import_type
       : of_kind_value unknown_or_bottom =
+        * of_kind_value_singleton with_var_and_symbol
   match t1, t2 with
   | Singleton s1, Singleton s2 ->
-    join_value_singleton s1 s2 ~import_type
-  | Singleton _, Union _
-  | Union _, Singleton _
-  | Union _, Union _ -> Ok (Union (ty1, ty2))
+    begin match join_value_singleton s1 s2 ~import_type with
+    | Singleton result -> result
+    | Form_union ->
+      let w1 : of_kind_value_singleton with_var_and_symbol =
+        { descr = s1;
+          var = ty1.var;
+          symbol = ty1.symbol;
+        }
+      in
+      let w2 : of_kind_value_singleton with_var_and_symbol =
+        { descr = s2;
+          var = ty2.var;
+          symbol = ty2.symbol;
+        }
+      in
+      Ok (Union (w1, w2))
+    end
+  | Singleton s, Union ... 
+  | Union ..., Singleton s ->
+
+  | Union _, Union _ ->
+    ...
 
 and join_value_singleton (t1 : of_kind_value_singleton) t2
-      ~import_type : of_kind_value unknown_or_bottom =
-
+      ~import_type : of_kind_value unknown_or_bottom or_union =
+  match t1, t2 with
+  | Boxed_or_encoded_number (kind1, ty1),
+      Boxed_or_encoded_number (kind2, ty2) ->
+    if not (Boxed_or_encoded_number_kind.equal kind1 kind2) then Unknown
+    else
+      let ty = join_ty join_ty_value ty1 ty2 ~import_type in
+      Singleton (Ok (Boxed_or_encoded_number (kind1, ty)))
+  | Block (tag1, fields1), Block (tag2, fields2) ->
+    if not (Tag.Scannable.equal tag1 tag2) then Form_union
+    else if Array.length fields1 <> Array.length fields2 then Unknown
+    else
+      let fields =
+        Array.map2 (fun ty1 ty2 -> join_ty join_ty_value ty1 ty2 ~import_type)
+          fields1 fields2
+      in
+      Singleton (Ok (Block (tag1, fields)))
+  | Set_of_closures _, Set_of_closures _ -> Form_union
+  | Closure _, Closure _ -> Form_union
+  | String { contents = Contents str1; _ },
+      String { contents = Contents str2; _ } ->
+    if String.equal str1 str2 then Singleton (Ok t1)
+    else Unknown
+  | Float_array { contents = Contents ts1; _ },
+      Float_array { contents = Contents ts2; _ } ->
+    if Array.length ts1 <> Array.length ts2 then Unknown
+    else
+      let ts =
+        Array.map2 (fun ty1 ty2 -> join_ty join_ty_value ty1 ty2 ~import_type)
+          ts1 ts2
+      in
+      Singleton (Ok (Float_array {
+        contents = Contents ts;
+        size = Array.length ts;
+      }))
+  | _, _ -> Unknown
 
 and join_nakedint32 _ty1 (t1 : of_kind_naked_int32) _ty2 t2 ~import_type:_
       : of_kind_nakedint32 unknown_or_bottom =
