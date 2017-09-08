@@ -897,7 +897,7 @@ end) = struct
         kind1
       | Bottom -> Flambda_kind.bottom ()
 
-  let join t1 t2 ~load_type =
+  let join t1 t2 ~import_type =
     if not (Flambda_kind.equal (kind t1) (kind t2)) then begin
       Misc.fatal_errorf "Cannot take the join of two types with incompatible \
           kinds: %a and %a"
@@ -1209,3 +1209,81 @@ end) = struct
     | None -> summarize_main t ~import_type
     | Some summary -> summary
 end
+
+let kind (t : t) =
+  match t with
+  | Value _ -> Flambda_kind.value ()
+  | Naked_int32 _ -> Flambda_kind.naked_int32 ()
+
+let rec join_ty (type a) join_contents (ty1 : a ty) (ty2 : a ty)
+      ~import_type : a ty =
+  let resolve ty =
+    match ty with
+    | Ok ty -> ty
+    | Load_lazily load_lazily -> import_type load_lazily
+  in
+  let ty1 : a resolved_ty = resolve ty1 in
+  let ty2 : a resolved_ty = resolve ty2 in
+  let var =
+    match ty1.var, ty2.var with
+    | None, _ | _, None -> None
+    | Some v1, Some v2 ->
+      if Variable.equal v1 v2 then Some v1
+      else None
+  in
+  let symbol =
+    match ty1.symbol, ty2.symbol with
+    | None, _ | _, None -> None
+    | Some (v1, field1), Some (v2, field2) ->
+      if Symbol.equal v1 v2 then
+        match field1, field2 with
+        | None, None -> a1.symbol
+        | Some f1, Some f2 when f1 = f2 -> a1.symbol
+        | _ -> None
+      else None
+  in
+  let descr =
+    match ty1.descr, ty2.descr with
+    | Unknown, _ -> ty1
+    | _, Unknown -> ty2
+    | Bottom, _ -> ty2
+    | _, Bottom -> ty1
+    | Ok contents1, Ok contents2 -> join_contents ty1 contents1 ty2 contents2
+  in
+  Ok {
+    descr;
+    var;
+    symbol;
+  }
+
+and join_value ty1 (t1 : of_kind_value) ty2 t2 ~import_type
+      : of_kind_value unknown_or_bottom =
+  match t1, t2 with
+  | Singleton s1, Singleton s2 ->
+    join_value_singleton s1 s2 ~import_type
+  | Singleton _, Union _
+  | Union _, Singleton _
+  | Union _, Union _ -> Ok (Union (ty1, ty2))
+
+and join_value_singleton (t1 : of_kind_value_singleton) t2
+      ~import_type : of_kind_value unknown_or_bottom =
+
+
+and join_nakedint32 _ty1 (t1 : of_kind_naked_int32) _ty2 t2 ~import_type:_
+      : of_kind_nakedint32 unknown_or_bottom =
+  match t1, t2 with
+  | Naked_int32 i1, Naked_int32 i2 ->
+    if Int32.equal i1 i2 then Ok (Naked_int32 i1)
+    else Unknown
+
+let join (t1 : t) (t2 : t) ~import_type : t =
+  match t1, t2 with
+  | Value ty1, Value ty2 ->
+    Value (join_ty join_ty_value ty1 ty2 ~import_type)
+  | Naked_int32 ty1, Naked_int32 ty2 ->
+    Naked_int32 (join_ty join_ty_nakedint32 ty1 ty2 ~import_type)
+  | _, _ ->
+    Misc.fatal_errorf "Cannot take the join of two types with incompatible \
+        kinds: %a and %a"
+      print t1
+      print t2
