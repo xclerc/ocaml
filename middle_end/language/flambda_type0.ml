@@ -293,14 +293,66 @@ end) = struct
     size : int;
   }
 
+  type 'a thing_or_unknown =
+    | Unknown
+    | Ok of 'a
+
   type 'a with_aliases = private {
-    thing : 'a;
+    thing : 'a thing_or_unknown;
     var : Variable.t option;
     (** An optional equality to a variable. *)
     symbol : (Symbol.t * int option) option;
     (** An optional equality to a symbol, or if the integer field number is
         specified, to a field of a symbol. *)
   }
+
+  let update_with_aliases with_aliases ~equal_thing ~new_thing ~new_var
+        ~new_symbol =
+    let thing =
+      match with_aliases.thing with
+      | Unknown -> Unknown
+      | Ok thing ->
+        if equal_thing thing new_thing then Ok thing
+        else Unknown
+    in
+    match thing with
+    | Unknown ->
+      let var =
+        match with_aliases.var, new_var with
+        | None, None
+        | None, Some _
+        | Some _, None -> None
+        | Some var1, Some var2 -> Variable.equal var1 var2
+      in
+      let symbol =
+        match with_aliases.symbol, new_symbol with
+        | None, None
+        | None, Some _
+        | Some _, None -> None
+        | Some symbol1, Some symbol2 -> Symbol.equal symbol1 symbol2
+      in
+      { thing = Unknown;
+        var;
+        symbol;
+      }
+    | Ok thing ->
+      let var =
+        match with_aliases.var with
+        | None -> new_var
+        | Some _ ->
+          (* CR mshinwell: Choose the outermost one? ([with_aliases.var] or
+             [new_var]) *)
+          with_aliases.var
+      in
+      let symbol =
+        match with_aliases.symbol with
+        | None -> new_symbol
+        | Some _ -> with_aliases.symbol
+      in
+      { thing;
+        var;
+        symbol;
+      }
 
   type t = private {
     descr : descr;
@@ -875,7 +927,7 @@ end) = struct
         begin match singleton with
         | Unknown (kind, _reason) -> Unknown kind
         | Bottom -> acc
-        | Known known -> f acc known
+        | Known known -> f acc ~var:t.var ~symbol:t.symbol known
         end
       | Union (t1, t2) ->
         let acc = fold t1 acc in
@@ -886,6 +938,59 @@ end) = struct
     let t = import_type t in
     fold t Bottom
 
+  let fold_to_immediate_set t ~import_type =
+    fold t ~import_type
+      ~f:(fun acc ~var:_ ~symbol:_ (singleton : singleton)
+              : Immediate.Set.t fold_result ->
+        let acc =
+          match acc with
+          | None -> Immediate.Set.empty
+          | Some acc -> acc
+        in
+        match known with
+        | Naked_number (Int i) ->
+          Ok (Immediate.Set.add (Int i) acc)
+        | Naked_number (Const_pointer i) ->
+          Ok (Immediate.Set.add (Const_pointer i) acc)
+        | Naked_number (Char c) ->
+          Ok (Immediate.Set.add (Char c) acc)
+        | Naked_number (Float _ | Int32 _ | Int64 _ | Nativeint _)
+        | Boxed_or_encoded_number _
+        | Block _
+        | Closure _
+        | Set_of_closures _
+        | String _
+        | Float_array _ -> Unknown)
+
+  let fold_to_float_option_with_aliases t ~import_type =
+    fold t ~import_type
+      ~f:(fun acc ~var ~symbol (known : known)
+              : Float.t option with_aliases fold_result ->
+        match known with
+        | Naked_number (Float f) ->
+          begin match acc with
+          | None ->
+            Ok {
+              thing = f;
+              var;
+              symbol;
+            }
+          | Some acc ->
+            update_with_aliases with_aliases ~with_aliases:acc
+              ~equal_thing:Float.equal
+              ~new_thing:f
+              ~new_var:var
+              ~new_symbol:symbol
+          end
+        | Naked_number (Int _ | Const_pointer _ | Char _ | Int32 _
+            | Int64 _ | Nativeint _)
+        | Boxed_or_encoded_number _
+        | Block _
+        | Closure _
+        | Set_of_closures _
+        | String _
+        | Float_array _ -> Unknown)
+
   let summarize_main t ~import_type =
     fold t ~import_type
       ~f:(fun acc (singleton : singleton) : unboxable fold_result ->
@@ -894,23 +999,7 @@ end) = struct
           begin match acc with
           | Blocks_and_immediates of { blocks; immediates; } ->
             let new_immediates =
-              fold t ~import_type
-                ~f:(fun acc (singleton : singleton)
-                        : Immediate.Set.t fold_result ->
-                  match known with
-                  | Naked_number (Int i) ->
-                    Ok (Immediate.Set.add (Int i) acc)
-                  | Naked_number (Const_pointer i) ->
-                    Ok (Immediate.Set.add (Const_pointer i) acc)
-                  | Naked_number (Char c) ->
-                    Ok (Immediate.Set.add (Char c) acc)
-                  | Naked_number (Float _ | Int32 _ | Int64 _ | Nativeint _)
-                  | Boxed_or_encoded_number _
-                  | Block _
-                  | Closure _
-                  | Set_of_closures _
-                  | String _
-                  | Float_array _ -> Unknown )
+              fold_to_immediate_set t ~import_type
             in
             begin match new_immediates with
             | Unknown _ -> Unknown (Flambda_kind.value ())
@@ -928,18 +1017,7 @@ end) = struct
           begin match acc with
           | Boxed_floats floats ->
             let join_of_floats =
-              fold t ~import_type
-                ~f:(fun acc (known : known) : Float.Set.t fold_result ->
-                  match known with
-                  | Naked_number (Float f) -> Ok (Float.Set.add f acc)
-                  | Naked_number (Int _ | Const_pointer _ | Char _ | Int32 _
-                      | Int64 _ | Nativeint _)
-                  | Boxed_or_encoded_number _
-                  | Block _
-                  | Closure _
-                  | Set_of_closures _
-                  | String _
-                  | Float_array _ -> Bottom)
+              fold_to_float_option_with_aliases t ~import_type
             in
             begin match join_of_floats with
             | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
