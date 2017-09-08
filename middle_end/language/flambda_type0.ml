@@ -381,6 +381,48 @@ end) = struct
     | String of string_ty
     | Float_array of float_array
 
+
+  type t =
+    | Value of ty_value
+    | Naked_int32 of ty_naked_int32
+
+  and 'a ty =
+    | Ok of 'a resolved_ty
+    | Load_lazily of load_lazily
+
+  and 'a resolved_ty = {
+    descr : 'a or_unknown_or_bottom;
+    var : Variable.t option;
+    symbol : (Symbol.t * int option) option;
+  }
+
+  and 'a or_unknown_or_bottom =
+    | Unknown
+    | Ok of 'a
+    | Bottom
+
+  and ty_value = of_kind_value ty
+  and ty_naked_int32 = of_kind_naked_int32 ty
+
+  and of_kind_value =
+    | Singleton of of_kind_value_singleton
+    | Union of ty_value * ty_value
+
+  and of_kind_value_singleton =
+    | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * ty_value
+    | Block of Tag.Scannable.t * (ty_value array)
+    | Set_of_closures of set_of_closures
+    | Closure of {
+        set_of_closures : ty_value;
+        closure_id : Closure_id.t
+      }
+    | String of string_ty
+    | Float_array of float_array
+
+  and of_kind_naked_int32 =
+    | Naked_int32 of Int32.t
+
+
   (* CR-soon mshinwell: add support for the approximations of the results,
      so we can do all of the tricky higher-order cases. *)
   and set_of_closures = private {
@@ -916,18 +958,36 @@ end) = struct
     }
 
   type 'a fold_result =
-    | Unknown of Flambda_kind.Basic.t
+    | Unknown of {
+        kind : Flambda_kind.t;
+        var : Variable.t option;
+        symbol : Variable.t option;
+      }
     | Ok of 'a
     | Bottom
 
-  let fold t ~import_type ~f =
+  let fold (type a) t ~import_type
+        ~(f : a option
+          -> var:Variable.t option
+          -> symbol:Symbol.t option
+          -> singleton
+          -> a) =
     let rec fold t acc : _ fold_result =
       match t.descr with
       | Singleton singleton ->
         begin match singleton with
         | Unknown (kind, _reason) -> Unknown kind
         | Bottom -> acc
-        | Known known -> f acc ~var:t.var ~symbol:t.symbol known
+        | Singleton singleton ->
+          let acc =
+            match acc with
+            | Unknown _ -> None
+            | Bottom -> Some None
+            | Ok acc -> Some (Some acc)
+          in
+          match acc with
+          | None -> acc
+          | Some acc -> f acc ~var:t.var ~symbol:t.symbol singleton
         end
       | Union (t1, t2) ->
         let acc = fold t1 acc in
@@ -936,11 +996,11 @@ end) = struct
         | Ok _ -> fold t2 acc
     in
     let t = import_type t in
-    fold t Bottom
+    fold t None
 
   let fold_to_immediate_set t ~import_type =
     fold t ~import_type
-      ~f:(fun acc ~var:_ ~symbol:_ (singleton : singleton)
+      ~f:(fun acc ~var ~symbol (singleton : singleton)
               : Immediate.Set.t fold_result ->
         let acc =
           match acc with
@@ -960,28 +1020,29 @@ end) = struct
         | Closure _
         | Set_of_closures _
         | String _
-        | Float_array _ -> Unknown)
+        | Float_array _ ->
+          Unknown {
+            kind = Flambda_kind.value ();
+            var;
+            sym;
+          }
 
-  let fold_to_float_option_with_aliases t ~import_type =
+  let fold_to_float_with_aliases t ~init ~import_type =
     fold t ~import_type
       ~f:(fun acc ~var ~symbol (known : known)
-              : Float.t option with_aliases fold_result ->
+              : float with_aliases fold_result ->
         match known with
         | Naked_number (Float f) ->
-          begin match acc with
-          | None ->
-            Ok {
-              thing = f;
-              var;
-              symbol;
-            }
-          | Some acc ->
-            update_with_aliases with_aliases ~with_aliases:acc
-              ~equal_thing:Float.equal
-              ~new_thing:f
-              ~new_var:var
-              ~new_symbol:symbol
-          end
+          let acc =
+            match acc with
+            | None -> init
+            | Some acc -> acc
+          in
+          update_with_aliases with_aliases ~with_aliases:acc
+            ~equal_thing:Float.equal
+            ~new_thing:f
+            ~new_var:var
+            ~new_symbol:symbol
         | Naked_number (Int _ | Const_pointer _ | Char _ | Int32 _
             | Int64 _ | Nativeint _)
         | Boxed_or_encoded_number _
@@ -989,7 +1050,12 @@ end) = struct
         | Closure _
         | Set_of_closures _
         | String _
-        | Float_array _ -> Unknown)
+        | Float_array _ ->
+          Unknown {
+            kind = Flambda_kind.value ();
+            var;
+            sym;
+          }
 
   let summarize_main t ~import_type =
     fold t ~import_type
@@ -1015,14 +1081,14 @@ end) = struct
           end
         | Boxed_or_encoded_number (Boxed Float, t) ->
           begin match acc with
-          | Boxed_floats floats ->
+          | Boxed_floats with_aliases ->
             let join_of_floats =
-              fold_to_float_option_with_aliases t ~import_type
+              fold_to_float_option_with_aliases t ~init:with_aliases
+                ~import_type
             in
             begin match join_of_floats with
             | Unknown _ -> Unknown (Flambda_kind.Basic.value ())
-            | Ok floats' ->
-              Ok (Boxed_floats (Float.Set.union floats floats'))
+            | Ok with_aliases -> Ok (Boxed_floats with_aliases)
             | Bottom -> Bottom
             end
           | Blocks_and_immediates _ | Boxed_int32s _ | Boxed_int64s _
