@@ -28,26 +28,8 @@
     are non-[Bottom].
 *)
 
-module Basic : sig
-  type t = private
-    | Value
-    | Naked_int
-    | Naked_float
-    | Naked_int32
-    | Naked_int64
-    | Naked_nativeint
-
-  val value : unit -> t
-  val naked_int : unit -> t
-  val naked_float : unit -> t option
-  val naked_int32 : unit -> t
-  val naked_int64 : unit -> t option
-  val naked_nativeint : unit -> t
-end
-
 type t = private
   | Value
-  | Tagged_int
   | Naked_int
   | Naked_float
   | Naked_int32
@@ -71,12 +53,5 @@ val bottom : unit -> t
 val compatible : t -> t -> bool
 
 val lambda_value_kind : t -> Lambda.value_kind option
-
-type gc_semantics =
-  | Must_register
-  | Can_register
-  | Cannot_register
-
-val gc_semantics : t -> gc_semantics
 
 include Identifiable.S with type t := t

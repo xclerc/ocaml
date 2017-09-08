@@ -293,98 +293,13 @@ end) = struct
     size : int;
   }
 
-  type 'a thing_or_unknown =
-    | Unknown
-    | Ok of 'a
-
-  type 'a with_aliases = private {
-    thing : 'a thing_or_unknown;
-    var : Variable.t option;
-    (** An optional equality to a variable. *)
-    symbol : (Symbol.t * int option) option;
-    (** An optional equality to a symbol, or if the integer field number is
-        specified, to a field of a symbol. *)
-  }
-
-  let update_with_aliases with_aliases ~equal_thing ~new_thing ~new_var
-        ~new_symbol =
-    let thing =
-      match with_aliases.thing with
-      | Unknown -> Unknown
-      | Ok thing ->
-        if equal_thing thing new_thing then Ok thing
-        else Unknown
-    in
-    match thing with
-    | Unknown ->
-      let var =
-        match with_aliases.var, new_var with
-        | None, None
-        | None, Some _
-        | Some _, None -> None
-        | Some var1, Some var2 -> Variable.equal var1 var2
-      in
-      let symbol =
-        match with_aliases.symbol, new_symbol with
-        | None, None
-        | None, Some _
-        | Some _, None -> None
-        | Some symbol1, Some symbol2 -> Symbol.equal symbol1 symbol2
-      in
-      { thing = Unknown;
-        var;
-        symbol;
-      }
-    | Ok thing ->
-      let var =
-        match with_aliases.var with
-        | None -> new_var
-        | Some _ ->
-          (* CR mshinwell: Choose the outermost one? ([with_aliases.var] or
-             [new_var]) *)
-          with_aliases.var
-      in
-      let symbol =
-        match with_aliases.symbol with
-        | None -> new_symbol
-        | Some _ -> with_aliases.symbol
-      in
-      { thing;
-        var;
-        symbol;
-      }
-
-  type t = private {
-    descr : descr;
-    var : Variable.t option;
-    symbol : (Symbol.t * int option) option;
-    mutable summary : summary option;
-    (** [summary] is only present for performance reasons. *)
-  }
-
-  and descr =
-    | Ok of singleton_or_union
-    | Load_lazily of load_lazily
-
-  and singleton_or_union =
-    | Unknown of K.t * unknown_because_of
-    | Singleton of singleton
-    | Union of t * t
-    | Bottom
-
-  and singleton =
-    | Naked_number of Naked_number.t
-    | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
-    | Block of Tag.Scannable.t * (t array)
-    | Set_of_closures of set_of_closures
-    | Closure of { set_of_closures : t; closure_id : Closure_id.t }
-    | String of string_ty
-    | Float_array of float_array
-
-
   type t =
     | Value of ty_value
+    | Naked_int of ty_naked_int
+    | Naked_float of ty_naked_float
     | Naked_int32 of ty_naked_int32
+    | Naked_int64 of ty_naked_int64
+    | Naked_nativeint of ty_naked_nativeint
 
   and 'a ty =
     | Ok of 'a resolved_ty
@@ -422,10 +337,6 @@ end) = struct
     | String of string_ty
     | Float_array of float_array
 
-  and of_kind_naked_int32 =
-    | Naked_int32 of Int32.t
-
-
   (* CR-soon mshinwell: add support for the approximations of the results,
      so we can do all of the tricky higher-order cases. *)
   and set_of_closures = private {
@@ -449,23 +360,20 @@ end) = struct
     size : int;
   }
 
-  and summary =
-    | Unknown of K.t * unknown_because_of
-    | Naked_number of Naked_number.t
-    | Blocks_and_immediates of {
-        blocks : t array Tag.Scannable.Map.t;
-        immediates : Targetint.Set.t list;
-      }
-    | Boxed_float of float option with_aliases
-    | Boxed_int32 of Int32.t option with_aliases
-    | Boxed_int64s of Int64.t option with_aliases
-    | Boxed_nativeint of Targetint.t option with_aliases
-    | Block of t array Tag.Scannable.Map.t
-    | Set_of_closures of set_of_closures
-    | Closure of t Closure_id.Map.t
-    | String of string_ty
-    | Float_array of float_array
-    | Bottom
+  and of_kind_naked_int =
+    | Naked_int of int
+
+  and of_kind_naked_float =
+    | Naked_float of float
+
+  and of_kind_naked_int32 =
+    | Naked_int32 of Int32.t
+
+  and of_kind_naked_int64 =
+    | Naked_int64 of Int64.t
+
+  and of_kind_naked_nativeint =
+    | Naked_nativeint of Nativeint.t
 
   let print_set_of_closures ppf
         { function_decls; invariant_params; freshening; _ } =
@@ -870,96 +778,6 @@ end) = struct
       | Float_array _
       | Bottom -> Bottom)
 
-  let rec kind t =
-    match t.descr with
-    | Load_lazily (Export_id (_, kind)) -> kind
-    | Load_lazily (Symbol _) -> K.value ()
-    | Ok su ->
-      match su with
-      | Unknown (kind, _) -> kind
-      | Singleton s ->
-        begin match s with
-        | Naked_number (Int _)
-        | Naked_number (Char _) -> K.naked_int ()
-        | Naked_number (Float _) -> K.naked_float ()
-        | Naked_number (Int32 _) -> K.naked_int32 ()
-        | Naked_number (Int64 _) -> K.naked_int64 ()
-        | Naked_number (Nativeint _) -> K.naked_nativeint ()
-        | Boxed_or_encoded_number (Encoded _, _) -> K.tagged_int ()
-        | Boxed_or_encoded_number (Boxed _, _)
-        | Block _
-        | Set_of_closures _
-        | Closure _
-        | String _
-        | Float_array _ -> K.value ()
-        end
-      | Union (t1, t2) ->
-        let kind1 = kind t1 in
-        let kind2 = kind t2 in
-        assert (Flambda_kind.equal kind1 kind2);
-        kind1
-      | Bottom -> Flambda_kind.bottom ()
-
-  let join t1 t2 ~import_type =
-    if not (Flambda_kind.equal (kind t1) (kind t2)) then begin
-      Misc.fatal_errorf "Cannot take the join of two types with incompatible \
-          kinds: %a and %a"
-        print t1
-        print t2
-    end;
-    let var =
-      match a1.var, a2.var with
-      | None, _ | _, None -> None
-      | Some v1, Some v2 ->
-        if Variable.equal v1 v2 then Some v1
-        else None
-    in
-    let projection =
-      match a1.projection, a2.projection with
-      | None, _ | _, None -> None
-      | Some proj1, Some proj2 ->
-        if Projection.equal proj1 proj2 then Some proj1 else None
-    in
-    let symbol =
-      match a1.symbol, a2.symbol with
-      | None, _ | _, None -> None
-      | Some (v1, field1), Some (v2, field2) ->
-        if Symbol.equal v1 v2 then
-          match field1, field2 with
-          | None, None -> a1.symbol
-          | Some f1, Some f2 when f1 = f2 -> a1.symbol
-          | _ -> None
-        else None
-    in
-    let descr =
-      match t1.descr, t2.descr with
-      | Load_lazily _, _
-      | _, Load_lazily _ -> Union (t1, t2)
-      | Ok su1, Ok su2 ->
-        let su =
-          match su1, su2 with
-          | Bottom _, _ -> su2
-          | _, Bottom _ -> su1
-          | Unknown _, _ -> su1
-          | _, Unknown _ -> su2
-          | Singleton _, Union _
-          | Union _, Singleton _
-          | Union _, Union _ -> Union (t1, t2)
-          | Singleton _, Singleton _ ->
-            (* CR mshinwell: Could add:
-               if singletons_definitely_equal s1 s2 then Singleton s1
-               else Union (t1, t2)
-            *)
-            Union (t1, t2)
-        in
-        Ok su
-    in
-    { descr;
-      var;
-      projection;
-      symbol;
-    }
-
   type 'a fold_result =
     | Unknown of {
         kind : Flambda_kind.t;
@@ -1261,31 +1079,30 @@ let rec join_ty (type a) join_contents (ty1 : a ty) (ty2 : a ty)
 
 and join_value ty1 (t1 : of_kind_value) ty2 t2 ~import_type
       : of_kind_value unknown_or_bottom =
-        * of_kind_value_singleton with_var_and_symbol
+  let form_union () : of_kind_value unknown_or_bottom =
+    let w1 : of_kind_value with_var_and_symbol =
+      { descr = t1;
+        var = ty1.var;
+        symbol = ty1.symbol;
+      }
+    in
+    let w2 : of_kind_value with_var_and_symbol =
+      { descr = t2;
+        var = ty2.var;
+        symbol = ty2.symbol;
+      }
+    in
+    Ok (Union (w1, w2))
+  in
   match t1, t2 with
   | Singleton s1, Singleton s2 ->
     begin match join_value_singleton s1 s2 ~import_type with
     | Singleton result -> result
-    | Form_union ->
-      let w1 : of_kind_value_singleton with_var_and_symbol =
-        { descr = s1;
-          var = ty1.var;
-          symbol = ty1.symbol;
-        }
-      in
-      let w2 : of_kind_value_singleton with_var_and_symbol =
-        { descr = s2;
-          var = ty2.var;
-          symbol = ty2.symbol;
-        }
-      in
-      Ok (Union (w1, w2))
+    | Form_union -> form_union ()
     end
-  | Singleton s, Union ... 
-  | Union ..., Singleton s ->
-
-  | Union _, Union _ ->
-    ...
+  | Singleton _, Union _ ->
+  | Union _, Singleton _ ->
+  | Union _, Union _ -> form_union ()
 
 and join_value_singleton (t1 : of_kind_value_singleton) t2
       ~import_type : of_kind_value unknown_or_bottom or_union =
