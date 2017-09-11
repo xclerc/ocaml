@@ -27,7 +27,7 @@
 
 type t = private
   | Value
-  | Naked_int
+  | Naked_immediate
   | Naked_float
   | Naked_int32
   | Naked_int64

@@ -33,58 +33,6 @@ module Make (Function_declarations : sig
 end) = struct
   type function_declarations = Function_declarations.t
 
-  module Naked_number = struct
-    type t =
-      | Int of Targetint.t
-      | Const_pointer of Targetint.t
-      | Char of Char.t
-      | Float of Float.t
-      | Int32 of Int32.t
-      | Int64 of Int64.t
-      | Nativeint of Targetint.t
-
-    include Identifiable.Make (struct
-      type nonrec t = t
-
-      let to_int t =
-        match t with
-        | Int _ -> 0
-        | Const_pointer _ -> 1
-        | Char _ -> 2
-        | Float _ -> 3
-        | Int32 _ -> 4
-        | Int64 _ -> 5
-        | Nativeint _ -> 6
-
-      let compare t1 t2 =
-        match t1, t2 with
-        | Int n1, Int n2 -> Targetint.compare n1 n2
-        | Const_pointer n1, Const_pointer n2 -> Targetint.compare n1 n2
-        | Char n1, Char n2 -> n1 = n2
-        | Float n1, Float n2 -> n1 = n2
-        | Int32 n1, Int32 n2 -> Int32.compare n1 n2
-        | Int64 n1, Int64 n2 -> Int64.compare n1 n2
-        | Nativeint n1, Nativeint n2 -> Targetint.compare n1 n2
-        | (Int _ | Const_pointer _ | Char _ | Float _ | Int32 _ | Int64 _
-            | Nativeint _), _ ->
-          Pervasives.compare (to_int t1) (to_int t2)
-
-      let equal t1 t2 = (compare t1 t2 = 0)
-
-      let hash t = Hashtbl.hash t
-
-      let print ppf t =
-        let fprintf = Format.fprintf in
-        match t with
-        | Int n -> fprintf "int{%a}" Targetint.print n
-        | Const_pointer n -> fprintf "const_pointer{%d}" n
-        | Char c -> fprintf "char{%c}" c
-        | Float n -> fprintf "float{%f}" n
-        | Int32 n -> fprintf "int32{%ld}" n
-        | Int64 n -> fprintf "int64{%Ld}" n
-        | Nativeint n -> fprintf "nativeint{%a}" Targetint.print n
-  end
-
   module Boxed_or_encoded_number_kind = struct
     type encoded =
       | Tagged_int
@@ -256,7 +204,7 @@ end) = struct
 
   type t =
     | Value of ty_value
-    | Naked_int of ty_naked_int
+    | Naked_immediate of ty_naked_immediate
     | Naked_float of ty_naked_float
     | Naked_int32 of ty_naked_int32
     | Naked_int64 of ty_naked_int64
@@ -321,8 +269,10 @@ end) = struct
     size : int;
   }
 
-  and of_kind_naked_int =
-    | Naked_int of int
+  and of_kind_naked_immediate =
+    | Naked_int of Targetint.t
+    | Naked_char of Char.t
+    | Naked_constptr of Targetint.t
 
   and of_kind_naked_float =
     | Naked_float of float
@@ -375,9 +325,11 @@ end) = struct
         Flambda_kind.print (Flambda_kind.value ())
         Symbol.print sym
 
-  let print_of_kind_naked_int ppf (o : of_kind_naked_int) =
+  let print_of_kind_naked_immediate ppf (o : of_kind_naked_immediate) =
     match o with
     | Naked_int i -> Format.fprintf ppf "%a" Targetint.print i
+    | Naked_char c -> Format.fprintf ppf "%c" c
+    | Naked_constptr i -> Format.fprintf ppf "%aa" Targetint.print i
 
   let print_of_kind_naked_float ppf (o : of_kind_naked_float) =
     match o with
@@ -462,8 +414,8 @@ end) = struct
   and print_ty_value ppf (ty : ty_value) =
     print_ty_generic print_of_kind_value ppf ty
 
-  and print_ty_naked_int ppf (ty : ty_naked_int) =
-    print_ty_generic print_of_kind_naked_int ppf ty
+  and print_ty_naked_immediate ppf (ty : ty_naked_immediate) =
+    print_ty_generic print_of_kind_naked_immediate ppf ty
 
   and print_ty_naked_float ppf (ty : ty_naked_float) =
     print_ty_generic print_of_kind_naked_float ppf ty
@@ -618,8 +570,8 @@ end) = struct
         var = None;
         symbol = None;
       }
-    | Naked_int ->
-      Naked_int {
+    | Naked_immediate ->
+      Naked_immediate {
         descr = Ok (Unknown reason);
         var = None;
         symbol = None;
@@ -649,43 +601,158 @@ end) = struct
         symbol = None;
       }
 
+  let bottom (kind : Flambda_kind.t) : t =
+    match kind with
+    | Value ->
+      Value {
+        descr = Ok Bottom;
+        var = None;
+        symbol = None;
+      }
+    | Naked_immediate ->
+      Naked_immediate {
+        descr = Ok Bottom;
+        var = None;
+        symbol = None;
+      }
+    | Naked_float ->
+      Naked_float {
+        descr = Ok Bottom;
+        var = None;
+        symbol = None;
+      }
+    | Naked_int32 ->
+      Naked_int32 {
+        descr = Ok Bottom;
+        var = None;
+        symbol = None;
+      }
+    | Naked_int64 ->
+      Naked_int64 {
+        descr = Ok Bottom;
+        var = None;
+        symbol = None;
+      }
+    | Naked_nativeint ->
+      Naked_nativeint {
+        descr = Ok Bottom;
+        var = None;
+        symbol = None;
+      }
 
-just_descr (Unknown (kind, reason))
+  let naked_immediate (i : of_kind_naked_immediate) : t =
+    Naked_immediate {
+      descr = Ok (Ok i);
+      var = None;
+      symbol = None;
+    }
 
-  let tagged_int i = just_descr (Union (Unionable.int i))
-  let tagged_char i = just_descr (Union (Unionable.char i))
+  let tagged_naked_immediate (i : of_kind_naked_immediate) : t =
+    let i = naked_immediate (i : of_kind_naked_immediate) in
+    Value {
+      descr = Ok (Ok (
+        Singleton (Boxed_or_encoded_number (Encoded Tagged_immediate, i))));
+      var = None;
+      symbol = None;
+    }
 
-  let constptr i = just_descr (Union (Unionable.constptr i))
+  let tagged_int i = tagged_naked_immediate (Int i)
+  let tagged_char c = tagged_naked_immediate (Char c)
+  let tagged_constptr c = tagged_naked_immediate (Constptr c)
 
-  let unboxed_int n =
-    just_descr (Naked_number (Int (Int.Set.singleton n)))
+  let untagged_int n = naked_immediate (Int i)
+  let untagged_char c = naked_immediate (Char c)
+  let untagged_constptr c = naked_immediate (Constptr c)
 
-  let unboxed_char c =
-    just_descr (Naked_number (Char (Char.Set.singleton n)))
-
-  let unboxed_float n =
+  let unboxed_float f =
     if Targetint.size < 64 then None
-    else just_descr (Naked_number (Float (Float.Set.singleton n)))
+    else
+      let f : t =
+        Naked_float {
+          descr = Ok (Ok (Naked_float f));
+          var = None;
+          symbol = None;
+        }
+      in
+      Some f
 
   let unboxed_int32 n =
-    just_descr (Naked_number (Int32 (Int32.Set.singleton n)))
+    let n : t =
+      Naked_int32 {
+        descr = Ok (Ok (Naked_int32 n));
+        var = None;
+        symbol = None;
+      }
+    in
+    Some n
 
   let unboxed_int64 n =
     if Targetint.size < 64 then None
-    else Some (just_descr (Naked_number (Int64 (Int64.Set.singleton n))))
+    else
+      let n : t =
+        Naked_int64 {
+          descr = Ok (Ok (Naked_int64 n));
+          var = None;
+          symbol = None;
+        }
+      in
+      Some n
 
   let unboxed_nativeint n =
-    just_descr (Naked_number (Nativeint (Nativeint.Set.singleton n)))
+    if Targetint.size < 64 then None
+    else
+      let n : t =
+        Naked_nativeint {
+          descr = Ok (Ok (Naked_nativeint n));
+          var = None;
+          symbol = None;
+        }
+      in
+      Some n
 
   let boxed_float f =
-    just_descr (Boxed_or_encoded_number (Boxed Float, unboxed_float f))
-  let boxed_int32 i =
-    just_descr (Boxed_or_encoded_number (Boxed Int32, unboxed_int32 i))
-  let boxed_int64 i =
-    just_descr (Boxed_or_encoded_number (Boxed Int64, unboxed_int64 i))
-  let boxed_nativeint i =
-    just_descr (Boxed_or_encoded_number (
-      Boxed Nativeint, unboxed_nativeint i))
+    match unboxed_float f with
+    | None -> None
+    | Some f ->
+      Value {
+        descr = Ok (
+          Ok (Singleton (Boxed_or_encoded_number (Boxed Float, f))));
+        var = None;
+        symbol = None;
+      }
+
+  let boxed_int32 n =
+    match unboxed_int32 n with
+    | None -> None
+    | Some n ->
+      Value {
+        descr = Ok (
+          Ok (Singleton (Boxed_or_encoded_number (Boxed Int32, n))));
+        var = None;
+        symbol = None;
+      }
+
+  let boxed_int64 n =
+    match unboxed_int64 n with
+    | None -> None
+    | Some n ->
+      Value {
+        descr = Ok (
+          Ok (Singleton (Boxed_or_encoded_number (Boxed Int64, n))));
+        var = None;
+        symbol = None;
+      }
+
+  let boxed_nativeint n =
+    match unboxed_nativeint n with
+    | None -> None
+    | Some n ->
+      Value {
+        descr = Ok (
+          Ok (Singleton (Boxed_or_encoded_number (Boxed Nativeint, n))));
+        var = None;
+        symbol = None;
+      }
 
   let export_id_loaded_lazily ex = just_descr (Load_lazily (Export_id ex))
   let symbol_loaded_lazily sym =
@@ -704,19 +771,30 @@ just_descr (Unknown (kind, reason))
       Array.map (fun t -> refine_using_value_kind t Pfloatval) contents
     in
     just_descr (Float_array { contents = Contents contents; size; } )
-  let bottom () = just_descr Bottom
 
-  let any_unboxed_float () =
-    just_descr (Unknown (K.unboxed_float (), Other))
-  let any_unboxed_int32 () =
-    just_descr (Unknown (K.unboxed_int32 (), Other))
-  let any_unboxed_int64 () =
-    just_descr (Unknown (K.unboxed_int64 (), Other))
-  let any_unboxed_nativeint () =
-    just_descr (Unknown (K.unboxed_nativeint (), Other))
+  let any_tagged_int () : t =
+    let i = unknown (Flambda_kind.value ()) in
+    Value {
+      descr = Ok (Ok (
+        Singleton (Boxed_or_encoded_number (Encoded Tagged_immediate, i))));
+      var = None;
+      symbol = None;
+    }
 
-  let any_boxed_float () =
-    just_descr (Boxed_number (Float, any_unboxed_float ()))
+  let any_boxed_float () : t =
+    let f = unknown (Flambda_kind.unboxed_float ()) in
+    Value {
+      descr = Ok (Ok (
+        Singleton (Boxed_or_encoded_number (Boxed Float, f))));
+      var = None;
+      symbol = None;
+    }
+
+  let any_unboxed_immediate () = unknown (Flambda_kind.unboxed_immediate ())
+  let any_unboxed_float () = unknown (Flambda_kind.unboxed_float ())
+  let any_unboxed_int32 () = unknown (Flambda_kind.unboxed_int32 ())
+  let any_unboxed_int64 () = unknown (Flambda_kind.unboxed_int64 ())
+  let any_unboxed_nativeint () = unknown (Flambda_kind.unboxed_nativeint ())
 
   let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
         closures =

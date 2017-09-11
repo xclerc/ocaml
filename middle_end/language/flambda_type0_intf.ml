@@ -19,23 +19,10 @@
 module type S = sig
   type function_declarations
 
-  module Naked_number : sig
-    type t = private
-      | Int of Targetint.t
-      | Char of Misc.Stdlib.Char.t
-      | Constptr of Targetint.t
-      | Float of Numbers.Float.t
-      | Int32 of Numbers.Int32.t
-      | Int64 of Numbers.Int64.t
-      | Nativeint of Numbers.Nativeint.t
-
-    include Identifiable.S with type t := t
-  end
-
   module Boxed_or_encoded_number_kind : sig
     (** "Encodings" do not allocate. *)
     type encoded = private
-      | Tagged_int
+      | Tagged_immediate
 
     (** "Boxings" allocate. *)
     type boxed = private
@@ -96,14 +83,14 @@ module type S = sig
       may be formed into union types. *)
   type t = private
     | Value of ty_value
-    | Naked_int of ty_naked_int
+    | Naked_immediate of ty_naked_immediate
     | Naked_float of ty_naked_float
     | Naked_int32 of ty_naked_int32
     | Naked_int64 of ty_naked_int64
     | Naked_nativeint of ty_naked_nativeint
 
   and ty_value = of_kind_value ty
-  and ty_naked_int = of_kind_naked_int ty
+  and ty_naked_immediate = of_kind_naked_immediate ty
   and ty_naked_float = of_kind_naked_float ty
   and ty_naked_int32 = of_kind_naked_int32 ty
   and ty_naked_int64 = of_kind_naked_int64 ty
@@ -167,8 +154,10 @@ module type S = sig
     size : int;
   }
 
-  and of_kind_naked_int =
+  and of_kind_naked_immediate =
     | Naked_int of Targetint.t
+    | Naked_char of Char.t
+    | Naked_constptr of Targetint.t
 
   and of_kind_naked_float =
     | Naked_float of float
@@ -194,13 +183,15 @@ module type S = sig
   val unknown : Flambda_kind.t -> unknown_because_of -> t
 
   (** The bottom type ("no value can flow to this point"). *)
-  val bottom : unit -> t
+  val bottom : Flambda_kind.t -> t
 
   (** Construction of types involving equalities to runtime values. *)
   val tagged_int : Targetint.t -> t
   val tagged_constptr : Targetint.t -> t
   val tagged_char : char -> t
-
+  val untagged_int : Targetint.t -> t
+  val untagged_constptr : Targetint.t -> t
+  val untagged_char : char -> t
   val unboxed_float : float -> t
   val unboxed_int32 : Int32.t -> t
   val unboxed_int64 : Int64.t -> t
@@ -217,10 +208,11 @@ module type S = sig
 
   (** Construction of types that link to other types which have not yet
       been loaded into memory (from a .cmx file). *)
-  val export_id_loaded_lazily : Export_id.t -> t
-  val symbol_loaded_lazily : Symbol.t -> t
+  val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
+  val symbol_loaded_lazily : Flambda_kind.t -> Symbol.t -> t
 
   (** Construction of types without equalities to runtime values. *)
+  val any_tagged_int : unit -> t
   val any_boxed_float : unit -> t
   val any_unboxed_float : unit -> t
   val any_unboxed_int32 : unit -> t
