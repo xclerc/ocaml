@@ -178,11 +178,12 @@ module type S = sig
   (** Each type has a unique kind. *)
   val kind : t -> Flambda_kind.t
 
-  (** Construct one of the various top types ("any value of the given kind
-      can flow to this point"). *)
+  (** Construct a top type for the given kind ("any value of the given kind
+      can flow to this point").  (The [unknown_because_of] reason is ignored
+      when considering the partial ordering on types.) *)
   val unknown : Flambda_kind.t -> unknown_because_of -> t
 
-  (** The bottom type ("no value can flow to this point"). *)
+  (** The bottom type for the given kind ("no value can flow to this point"). *)
   val bottom : Flambda_kind.t -> t
 
   (** Construction of types involving equalities to runtime values. *)
@@ -212,8 +213,12 @@ module type S = sig
   val symbol_loaded_lazily : Flambda_kind.t -> Symbol.t -> t
 
   (** Construction of types without equalities to runtime values. *)
-  val any_tagged_int : unit -> t
+  val any_tagged_immediate : unit -> t
   val any_boxed_float : unit -> t
+  val any_boxed_int32 : unit -> t
+  val any_boxed_int64 : unit -> t
+  val any_boxed_nativeint : unit -> t
+  val any_untagged_immediate : unit -> t
   val any_unboxed_float : unit -> t
   val any_unboxed_int32 : unit -> t
   val any_unboxed_int64 : unit -> t

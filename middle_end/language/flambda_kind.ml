@@ -18,8 +18,7 @@
 
 type t =
   | Value
-  | Tagged_int
-  | Naked_int
+  | Naked_immediate
   | Naked_float
   | Naked_int32
   | Naked_int64
@@ -27,8 +26,7 @@ type t =
   | Bottom
 
 let value () = Value
-let tagged_int () = Tagged_int
-let naked_int () = Naked_inta
+let naked_immediate () = Naked_immediate
 
 let naked_float () =
   if Targetint.size < 64 then None
@@ -47,19 +45,17 @@ let compatible t1 t2 =
   match t1, t2 with
   | Bottom, _ | _, Bottom
   | Value, Value
-  | Tagged_int, Tagged_int
   | Naked_float, Naked_float
   | Naked_int32, Naked_int32
   | Naked_int64, Naked_int64
   | Naked_nativeint, Naked_nativeint -> true
-  | (Value | Tagged_int | Naked_float | Naked_int32 | Naked_int64
-      | Naked_nativeint), _ -> false
+  | (Value | Naked_float | Naked_int32 | Naked_int64 | Naked_nativeint), _ ->
+    false
 
 let lambda_value_kind t =
   let module L = Lambda in
   match t with
   | Value -> Some L.Pgenval
-  | Tagged_int -> Some L.Pintval
   | Naked_float -> Some L.Pfloatval
   | Naked_int32 -> Some (L.Pboxedintval Pint32)
   | Naked_int64 -> Some (L.Pboxedintval Pint64)
@@ -77,7 +73,6 @@ include Identifiable.Make (struct
   let print ppf t =
     match t with
     | Value -> Format.pp_print_string ppf "value"
-    | Tagged_int -> Format.pp_print_string ppf "tagged_int"
     | Naked_float -> Format.pp_print_string ppf "naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
     | Naked_int64 -> Format.pp_print_string ppf "naked_int64"

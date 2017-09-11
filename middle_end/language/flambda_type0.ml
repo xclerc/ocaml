@@ -25,8 +25,6 @@ module Nativeint = Numbers.Nativeint
 
 module K = Flambda_kind
 
-type 'a simple_commutative_op = 'a -> 'a -> 'a
-
 module Make (Function_declarations : sig
   type t
   val print : Format.formatter -> t -> unit
@@ -318,11 +316,11 @@ end) = struct
     | Ok contents -> print_contents ppf contents
     | Load_lazily (Export_id (id, kind)) ->
       Format.fprintf ppf "lazy[%a](eid %a)"
-        Flambda_kind.print kind
+        K.print kind
         Export_id.print id
     | Load_lazily (Symbol sym) ->
       Format.fprintf ppf "lazy[%a](sym %a)"
-        Flambda_kind.print (Flambda_kind.value ())
+        K.print (K.value ())
         Symbol.print sym
 
   let print_of_kind_naked_immediate ppf (o : of_kind_naked_immediate) =
@@ -562,7 +560,7 @@ end) = struct
     | Naked_int64 ty -> Naked_int64 { ty with descr; }
     | Naked_nativeint ty -> Naked_nativeint { ty with descr; }
 
-  let unknown (kind : Flambda_kind.t) reason : t =
+  let unknown (kind : K.t) reason : t =
     match kind with
     | Value ->
       Value {
@@ -601,7 +599,7 @@ end) = struct
         symbol = None;
       }
 
-  let bottom (kind : Flambda_kind.t) : t =
+  let bottom (kind : K.t) : t =
     match kind with
     | Value ->
       Value {
@@ -759,6 +757,85 @@ end) = struct
     { (just_descr (Load_lazily (Symbol sym)))
       with symbol = Some (sym, None);
     }
+
+  let export_id_loaded_lazily (kind : K.t) export_id : t =
+    match kind with
+    | Value ->
+      Value {
+        descr = Load_lazily (Export_id export_id);
+        var = None;
+        symbol = None;
+      }
+    | Naked_immediate ->
+      Naked_immediate {
+        descr = Load_lazily (Export_id export_id);
+        var = None;
+        symbol = None;
+      }
+    | Naked_float ->
+      Naked_float {
+        descr = Load_lazily (Export_id export_id);
+        var = None;
+        symbol = None;
+      }
+    | Naked_int32 ->
+      Naked_int32 {
+        descr = Load_lazily (Export_id export_id);
+        var = None;
+        symbol = None;
+      }
+    | Naked_int64 ->
+      Naked_int64 {
+        descr = Load_lazily (Export_id export_id);
+        var = None;
+        symbol = None;
+      }
+    | Naked_nativeint ->
+      Naked_nativeint {
+        descr = Load_lazily (Export_id export_id);
+        var = None;
+        symbol = None;
+      }
+
+  let symbol_loaded_lazily (kind : K.t) sym : t =
+    match kind with
+    | Value ->
+      Value {
+        descr = Load_lazily (Symbol sym);
+        var = None;
+        symbol = None;
+      }
+    | Naked_immediate ->
+      Naked_immediate {
+        descr = Load_lazily (Symbol sym);
+        var = None;
+        symbol = None;
+      }
+    | Naked_float ->
+      Naked_float {
+        descr = Load_lazily (Symbol sym);
+        var = None;
+        symbol = None;
+      }
+    | Naked_int32 ->
+      Naked_int32 {
+        descr = Load_lazily (Symbol sym);
+        var = None;
+        symbol = None;
+      }
+    | Naked_int64 ->
+      Naked_int64 {
+        descr = Load_lazily (Symbol sym);
+        var = None;
+        symbol = None;
+      }
+    | Naked_nativeint ->
+      Naked_nativeint {
+        descr = Load_lazily (Symbol sym);
+        var = None;
+        symbol = None;
+      }
+
   let immutable_string str = just_descr (Immutable_string str)
   let mutable_string ~size = just_descr (Mutable_string { size; })
   (* CR mshinwell: Split Float_array into immutable and mutable as for
@@ -772,8 +849,8 @@ end) = struct
     in
     just_descr (Float_array { contents = Contents contents; size; } )
 
-  let any_tagged_int () : t =
-    let i = unknown (Flambda_kind.value ()) in
+  let any_tagged_immediate () : t =
+    let i = unknown (K.value ()) in
     Value {
       descr = Ok (Ok (
         Singleton (Boxed_or_encoded_number (Encoded Tagged_immediate, i))));
@@ -782,7 +859,7 @@ end) = struct
     }
 
   let any_boxed_float () : t =
-    let f = unknown (Flambda_kind.unboxed_float ()) in
+    let f = unknown (K.unboxed_float ()) in
     Value {
       descr = Ok (Ok (
         Singleton (Boxed_or_encoded_number (Boxed Float, f))));
@@ -790,11 +867,38 @@ end) = struct
       symbol = None;
     }
 
-  let any_unboxed_immediate () = unknown (Flambda_kind.unboxed_immediate ())
-  let any_unboxed_float () = unknown (Flambda_kind.unboxed_float ())
-  let any_unboxed_int32 () = unknown (Flambda_kind.unboxed_int32 ())
-  let any_unboxed_int64 () = unknown (Flambda_kind.unboxed_int64 ())
-  let any_unboxed_nativeint () = unknown (Flambda_kind.unboxed_nativeint ())
+  let any_boxed_int32 () : t =
+    let f = unknown (K.unboxed_int32 ()) in
+    Value {
+      descr = Ok (Ok (
+        Singleton (Boxed_or_encoded_number (Boxed Int32, f))));
+      var = None;
+      symbol = None;
+    }
+
+  let any_boxed_int64 () : t =
+    let f = unknown (K.unboxed_int64 ()) in
+    Value {
+      descr = Ok (Ok (
+        Singleton (Boxed_or_encoded_number (Boxed Int64, f))));
+      var = None;
+      symbol = None;
+    }
+
+  let any_boxed_nativeint () : t =
+    let f = unknown (K.unboxed_nativeint ()) in
+    Value {
+      descr = Ok (Ok (
+        Singleton (Boxed_or_encoded_number (Boxed Nativeint, f))));
+      var = None;
+      symbol = None;
+    }
+
+  let any_untagged_immediate () = unknown (K.unboxed_immediate ())
+  let any_unboxed_float () = unknown (K.unboxed_float ())
+  let any_unboxed_int32 () = unknown (K.unboxed_int32 ())
+  let any_unboxed_int64 () = unknown (K.unboxed_int64 ())
+  let any_unboxed_nativeint () = unknown (K.unboxed_nativeint ())
 
   let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
         closures =
@@ -837,13 +941,6 @@ end) = struct
       projection = None;
       symbol = None;
     }
-
-  let block tag b =
-    (* We avoid having multiple possible approximations for e.g. [Int64]
-       values. *)
-    match Tag.Scannable.of_tag tag with
-    | None -> unknown (K.value ()) Other
-    | Some tag -> just_descr (Union (Unionable.block tag b))
 
   let free_variables t =
     let rec free_variables t acc =
@@ -944,23 +1041,14 @@ end) = struct
     | Load_lazily _
     | Bottom -> t
 
-  type 'a result =
-    | Ok of 'a
-    | Not_fully_loaded
-
-  let map_descr t ~f : t result =
-    match t.descr with
-    | Ok descr -> Ok { t with descr = Ok (f descr); }
-    | Load_lazily _ -> Not_fully_loaded
-
   let kind (t : t) =
     match t with
-    | Value _ -> Flambda_kind.value ()
-    | Naked_int _ -> Flambda_kind.naked_int ()
-    | Naked_float _ -> Flambda_kind.naked_float ()
-    | Naked_int32 _ -> Flambda_kind.naked_int32 ()
-    | Naked_int64 _ -> Flambda_kind.naked_int64 ()
-    | Naked_nativeint _ -> Flambda_kind.naked_nativeint ()
+    | Value _ -> K.value ()
+    | Naked_immediate _ -> K.naked_immediate ()
+    | Naked_float _ -> K.naked_float ()
+    | Naked_int32 _ -> K.naked_int32 ()
+    | Naked_int64 _ -> K.naked_int64 ()
+    | Naked_nativeint _ -> K.naked_nativeint ()
 
   let rec join_ty (type a) ~import_type join_contents (ty1 : a ty) (ty2 : a ty)
         : a ty =
@@ -1068,6 +1156,19 @@ end) = struct
         }))
     | _, _ -> Unknown
 
+  and join_naked_immediate _ty1 (t1 : of_kind_naked_immediate) _ty2 t2
+        ~import_type:_ : of_kind_naked_immediate unknown_or_bottom =
+    match t1, t2 with
+    | Naked_int i1, Naked_int i2 ->
+      if Targetint.equal i1 i2 then Ok (Naked_int i1)
+      else Unknown
+    | Naked_char i1, Naked_char i2 ->
+      if Char.equal i1 i2 then Ok (Naked_char i1)
+      else Unknown
+    | Naked_constptr i1, Naked_constptr i2 ->
+      if Targetint.equal i1 i2 then Ok (Naked_constptr i1)
+      else Unknown
+
   and join_naked_int32 _ty1 (t1 : of_kind_naked_int32) _ty2 t2 ~import_type:_
         : of_kind_naked_int32 unknown_or_bottom =
     match t1, t2 with
@@ -1093,8 +1194,8 @@ end) = struct
     match t1, t2 with
     | Value ty1, Value ty2 ->
       Value (join_ty join_value ty1 ty2 ~import_type)
-    | Naked_int ty1, Naked_int ty2 ->
-      Naked_int (join_ty join_naked_int ty1 ty2 ~import_type)
+    | Naked_immediate ty1, Naked_immediate ty2 ->
+      Naked_immediate (join_ty join_naked_immediate ty1 ty2 ~import_type)
     | Naked_float ty1, Naked_float ty2 ->
       Naked_float (join_ty join_naked_float ty1 ty2 ~import_type)
     | Naked_int32 ty1, Naked_int32 ty2 ->
@@ -1104,7 +1205,7 @@ end) = struct
     | Naked_nativeint ty1, Naked_nativeint ty2 ->
       Naked_nativeint (join_ty join_naked_nativeint ty1 ty2 ~import_type)
     | _, _ ->
-      Misc.fatal_errorf "Cannot take the join of two types with incompatible \
+      Misc.fatal_errorf "Cannot take the join of two types with different \
           kinds: %a and %a"
         print t1
         print t2

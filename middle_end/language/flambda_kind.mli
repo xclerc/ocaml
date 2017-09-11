@@ -37,8 +37,7 @@ type t = private
 val of_basic : Basic.t -> t
 
 val value : unit -> t
-val tagged_int : unit -> t
-val naked_int : unit -> t
+val naked_immediate : unit -> t
 val naked_float : unit -> t option
 val naked_int32 : unit -> t
 val naked_int64 : unit -> t option
