@@ -242,7 +242,7 @@ end) = struct
         closure_id : Closure_id.t
       }
     | String of string_ty
-    | Float_array of float_array
+    | Float_array of float_array_ty
 
   (* CR-soon mshinwell: add support for the approximations of the results,
      so we can do all of the tricky higher-order cases. *)
@@ -262,7 +262,7 @@ end) = struct
     | Contents of t array
     | Unknown_or_mutable
 
-  and float_array = private {
+  and float_array_ty = private {
     contents : float_array_contents;
     size : int;
   }
@@ -785,7 +785,7 @@ end) = struct
     }
 
   let immutable_float_array fields : t =
-    let float_array : float_array =
+    let float_array : float_array_ty =
       { contents = Contents fields;
         size = Array.length fields;
       }
@@ -797,7 +797,7 @@ end) = struct
     }
 
   let mutable_float_array ~size : t =
-    let float_array : float_array =
+    let float_array : float_array_ty =
       { contents = Unknown_or_mutable;
         size;
       }
@@ -995,7 +995,7 @@ end) = struct
     | Naked_int64 { var; _ }
     | Naked_nativeint { var; _ } ->
       match var with
-      | None -> add
+      | None -> acc
       | Some var -> Variable.Set.add var acc
 
   and free_variables_ty_value ~import_type ({ descr; var; _ } : ty_value) acc =
@@ -1005,12 +1005,12 @@ end) = struct
       | Some var -> Variable.Set.add var acc
     in
     match descr with
-    | Load_lazily _
-    | Ok (Unknown _)
-    | Ok Bottom -> from_var
+    | Ok ((Unknown _) | Bottom) -> from_var
     | Ok of_kind_value ->
       free_variables_of_kind_value ~import_type of_kind_value acc
-      
+    | Load_lazily load_lazily ->
+      free_variables ~import_type (import_type load_lazily) acc
+
   and free_variables_of_kind_value ~import_type (o : of_kind_value) acc =
     match o with
     | Singleton singleton ->
@@ -1050,7 +1050,7 @@ end) = struct
   let free_variables ~import_type t =
     free_variables ~import_type t Variable.Set.empty
 
-  let rec clean t classify =
+  let rec clean ~import_type t classify =
     let clean_var var_opt =
       match var_opt with
       | None -> None

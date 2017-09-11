@@ -129,7 +129,7 @@ module type S = sig
         closure_id : Closure_id.t
       }
     | String of string_ty
-    | Float_array of float_array
+    | Float_array of float_array_ty
 
   (* CR-soon mshinwell: add support for the approximations of the results,
      so we can do all of the tricky higher-order cases. *)
@@ -149,7 +149,7 @@ module type S = sig
     | Contents of t array
     | Unknown_or_mutable
 
-  and float_array = private {
+  and float_array_ty = private {
     contents : float_array_contents;
     size : int;
   }
