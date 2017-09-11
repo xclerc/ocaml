@@ -20,8 +20,16 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Basic definitions, constructors and accessors. *)
+(** Basic definitions, constructors and accessors.
+    Operations inside [Operations_needing_import_type] should just be
+    referenced directly via this module (e.g. [Flambda_type.join]).
+    The importing of types from .cmx files happens automatically under the
+    hood. *)
 include module type of struct include Flambda0.Flambda_type end
+  with module Operations_needing_import_type := ...
+
+include Flambda0.Flambda_type.Operations_needing_import_type
+  with type 'a with_import_type = 'a
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr
@@ -198,13 +206,21 @@ type reified_as_scannable_block =
 val reify_as_scannable_block : t -> reified_as_scannable_block
 
 type blocks = t array Tag.Scannable.Map.t
-type immediates = Unionable.Immediate.Set.t
+
+module Immediate : sig
+  type t = private
+    | Int of Targetint.t
+    | Const_pointer of Targetint.t
+    | Char of Char.t
+
+  include Identifiable.S with type t := t
+end
 
 type reified_as_variant = private
   | Wrong
   | Blocks of blocks
-  | Blocks_and_immediates of blocks * immediates
-  | Immediates of immediates
+  | Blocks_and_immediates of blocks * Immediate.Set.t
+  | Immediates of Immediate.Set.t
 
 (** Try to prove that the given type is of the expected form for the
     Flambda type of a value of variant type. *)

@@ -482,7 +482,42 @@ let reify_as_scannable_block t : reified_as_scannable_block =
   | Unknown _ -> Wrong
 
 type blocks = t array Tag.Scannable.Map.t
-type immediates = Unionable.Immediate.Set.t
+
+module Immediate = struct
+  type t =
+    | Int of Targetint.t
+    | Const_pointer of Targetint.t
+    | Char of Char.t
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let to_int t =
+      match t with
+      | Int _ -> 0
+      | Const_pointer _ -> 1
+      | Char _ -> 2
+
+    let compare t1 t2 =
+      match t1, t2 with
+      | Int n1, Int n2 -> Targetint.compare n1 n2
+      | Const_pointer n1, Const_pointer n2 -> Targetint.compare n1 n2
+      | Char n1, Char n2 -> n1 = n2
+      | (Int _ | Const_pointer _ | Char _), _ ->
+        Pervasives.compare (to_int t1) (to_int t2)
+
+    let equal t1 t2 = (compare t1 t2 = 0)
+
+    let hash t = Hashtbl.hash t
+
+    let print ppf t =
+      let fprintf = Format.fprintf in
+      match t with
+      | Int n -> fprintf "int{%d}" n
+      | Const_pointer n -> fprintf "const_pointer{%d}" n
+      | Char c -> fprintf "char{%c}" c
+  end)
+end
 
 type reified_as_variant =
   | Wrong

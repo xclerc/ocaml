@@ -23,9 +23,6 @@
     Kinds form a partial order.  Each non-[Bottom] kind is incomparable with
     every other non-[Bottom] kind.  [Bottom] is strictly less than everything
     else.
-
-    "Basic" kinds are those which do not involve any notion of tagging and
-    are non-[Bottom].
 *)
 
 type t = private

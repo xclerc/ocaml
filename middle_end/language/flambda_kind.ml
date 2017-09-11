@@ -86,19 +86,3 @@ include Identifiable.Make (struct
 
   let output _ _ = Misc.fatal_error "Flambda_kind.output not implemented"
 end)
-
-type gc_semantics =
-  | Must_register
-  | Can_register
-  | Cannot_register
-
-let gc_semantics t : gc_semantics =
-  match t with
-  | Value -> Must_register
-  | Tagged_int -> Can_register
-  | Naked_int
-  | Naked_float
-  | Naked_int32
-  | Naked_int64
-  | Naked_nativeint
-  | Bottom -> Cannot_register

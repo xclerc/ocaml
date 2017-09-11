@@ -19,15 +19,6 @@
 module type S = sig
   type function_declarations
 
-  module Immediate : sig
-    type t = private
-      | Int of Targetint.t
-      | Const_pointer of Targetint.t
-      | Char of Char.t
-
-    include Identifiable.S with type t := t
-  end
-
   module Naked_number : sig
     type t = private
       | Int of Targetint.t
@@ -80,7 +71,7 @@ module type S = sig
     | Other
 
   type load_lazily =
-    | Export_id of Export_id.t * Flambda_kind.t
+    | Export_id of Export_id.t
     | Symbol of Symbol.t
 
   type string_contents = private
@@ -92,51 +83,64 @@ module type S = sig
     size : int;
   }
 
-  (** Values of type [t] are known as "Flambda types".
-      They may be loaded lazily from .cmx files and formed into union types.
-
-      For each kind, values of type [singleton_or_union] form a partial order.
-
-      [Bottom] is the unique least element.
-      The [Unknown (k, _)] values form the greatest elements.
-
-      The intuitive meanings of these distinguished elements are:
-      - [Bottom]: "no value can flow to this point".
-      - [Unknown (k, _)]: "any value of kind [k] might flow to this point".
-  *)
-  type 'a with_aliases = private {
-    thing : 'a;
-    var : Variable.t option;
-    (** An optional equality to a variable. *)
-    symbol : (Symbol.t * int option) option;
-    (** An optional equality to a symbol, or if the integer field number is
-        specified, to a field of a symbol. *)
-  }
-
-  type t = private {
-    descr : descr;
+  type 'a with_var_and_symbol = private {
+    descr : 'a;
     var : Variable.t option;
     symbol : (Symbol.t * int option) option;
-    mutable summary : summary option;
-    (** [summary] is only present for performance reasons. *)
   }
 
-  and descr =
-    | Ok of singleton_or_union
+  (** Values of type [t] are known as "Flambda types".  Each Flambda type
+      has a unique kind.
+
+      Flambda types may be loaded lazily from .cmx files.  In some cases they
+      may be formed into union types. *)
+  type t = private
+    | Value of ty_value
+    | Naked_int of ty_naked_int
+    | Naked_float of ty_naked_float
+    | Naked_int32 of ty_naked_int32
+    | Naked_int64 of ty_naked_int64
+    | Naked_nativeint of ty_naked_nativeint
+
+  and ty_value = of_kind_value ty
+  and ty_naked_int = of_kind_naked_int ty
+  and ty_naked_float = of_kind_naked_float ty
+  and ty_naked_int32 = of_kind_naked_int32 ty
+  and ty_naked_int64 = of_kind_naked_int64 ty
+  and ty_naked_nativeint = of_kind_naked_nativeint ty
+
+  and 'a ty = 'a maybe_unresolved with_var_and_symbol
+
+  and 'a maybe_unresolved = private
+    | Ok of 'a or_unknown_or_bottom
     | Load_lazily of load_lazily
 
-  and singleton_or_union =
-    | Unknown of K.t * unknown_because_of
-    | Singleton of singleton
-    | Union of t * t
+  (** For each kind (cf. [Flambda_kind]) there is a partial order on types.
+      [Bottom] is the unique least element and [Unknown] is the unique top
+      element. *)
+  and 'a or_unknown_or_bottom = private
+    | Unknown of unresolved_value
+    (** "Any value can flow to this point". *)
+    | Ok of 'a
     | Bottom
+    (** "No value can flow to this point". *)
 
-  and singleton =
-    | Naked_number of Naked_number.t
-    | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * t
-    | Block of Tag.Scannable.t * (t array)
+  and of_kind_value = private
+    | Singleton of of_kind_value_singleton
+    | Union of of_kind_value with_var_and_symbol
+        * of_kind_value with_var_and_symbol
+    (** Note that [Union]s are statically prohibited from containing
+        [Unknown]s or [Bottom]s at the top level.  This simplifies code
+        that traverses union types. *)
+
+  and of_kind_value_singleton = private
+    | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * ty_value
+    | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
-    | Closure of { set_of_closures : t; closure_id : Closure_id.t }
+    | Closure of {
+        set_of_closures : ty_value;
+        closure_id : Closure_id.t
+      }
     | String of string_ty
     | Float_array of float_array
 
@@ -163,23 +167,20 @@ module type S = sig
     size : int;
   }
 
-  and summary =
-    | Unknown of K.t * unknown_because_of
-    | Naked_number of Naked_number.t
-    | Blocks_and_immediates of {
-        blocks : t array Tag.Scannable.Map.t;
-        immediates : Targetint.Set.t list;
-      }
-    | Boxed_float of float option with_aliases
-    | Boxed_int32 of Int32.t option with_aliases
-    | Boxed_int64s of Int64.t option with_aliases
-    | Boxed_nativeint of Targetint.t option with_aliases
-    | Block of t array Tag.Scannable.Map.t
-    | Set_of_closures of set_of_closures
-    | Closure of t Closure_id.Map.t
-    | String of string_ty
-    | Float_array of float_array
-    | Bottom
+  and of_kind_naked_int =
+    | Naked_int of Targetint.t
+
+  and of_kind_naked_float =
+    | Naked_float of float
+
+  and of_kind_naked_int32 =
+    | Naked_int32 of Int32.t
+
+  and of_kind_naked_int64 =
+    | Naked_int64 of Int64.t
+
+  and of_kind_naked_nativeint =
+    | Naked_nativeint of Targetint.t
 
   val print : Format.formatter -> t -> unit
   val print_descr : Format.formatter -> descr -> unit
@@ -196,9 +197,10 @@ module type S = sig
   val bottom : unit -> t
 
   (** Construction of types involving equalities to runtime values. *)
-  val int : int -> t
-  val constptr : int -> t
-  val char : char -> t
+  val tagged_int : Targetint.t -> t
+  val tagged_constptr : Targetint.t -> t
+  val tagged_char : char -> t
+
   val unboxed_float : float -> t
   val unboxed_int32 : Int32.t -> t
   val unboxed_int64 : Int64.t -> t
@@ -263,47 +265,51 @@ module type S = sig
     -> freshening:closure_freshening
     -> set_of_closures
 
-  (** Augment an type with a given variable (see comment above). If the type
-      was already augmented with a variable, the one passed to this function
-      replaces it within the type. *)
-  val augment_with_variable : t -> Variable.t -> t
+  (** Operations which need a function to resolve [Load_lazily] constructors
+      at the toplevel of types.  These operations are re-exported in
+      [Flambda_type] once the definition of [import_type] can be provided. *)
+  module type Operations_needing_import_type = sig
+    type 'a with_import_type
 
-  (** Replace the variable at the toplevel of a given type. *)
-  val update_variable : t -> Variable.t option -> t
+    (** Augment the toplevel of the given type with the given variable.  If the
+        type was already augmented with a variable, the one passed to this
+        function replaces it. *)
+    val augment_with_variable : t -> Variable.t -> t
 
-  (** Like [augment_with_variable], but for symbol information. *)
-  val augment_with_symbol : t -> Symbol.t -> t
+    (** Like [augment_with_variable], but for symbol information.  The
+        field index is set to [None]. *)
+    val augment_with_symbol : t -> Symbol.t -> t
 
-  (** Like [augment_with_symbol], but for symbol field information. *)
-  val augment_with_symbol_field : t -> Symbol.t -> int -> t
+    (** Like [augment_with_symbol], but with a user-supplied field index. *)
+    val augment_with_symbol_field : t -> Symbol.t -> field:int -> t
 
-  (** Replace the description within an type. *)
-  val replace_description : t -> descr -> t
+    (** Replace the variable at the toplevel of a given type. *)
+    val replace_variable : t -> Variable.t option -> t
 
-  (** Attempt to use a value kind to refine a type. *)
-  val refine_using_value_kind : t -> Lambda.value_kind -> t
+    (** Replace the description at the toplevel of a given type. *)
+    val replace_description : t -> descr -> t
 
-  (** Free variables in a type. *)
-  val free_variables : t -> Variable.Set.t
+    (** Attempt to use a value kind to refine a type. *)
+    val refine_using_value_kind : t -> Lambda.value_kind -> t
 
-  (** Least upper bound of two types. *)
-  val join : t -> t -> t
+    (** Free variables in a type. *)
+    val free_variables : (t -> Variable.Set.t) with_import_type
 
-  type cleaning_spec =
-    | Available
-    | Available_different_name of Variable.t
-    | Unavailable
+    (** Least upper bound of two types. *)
+    val join : (t -> t -> t) with_import_type
 
-  (** Adjust a type so that all of the free variables it references are in
-      scope in some context. The context is expressed by a function that says
-      whether the variable is available under its existing name, available
-      under another name, or unavailable. *)
-  val clean
-     : t
-    -> (Variable.t -> cleaning_spec)
-    -> t
+    type cleaning_spec =
+      | Available
+      | Available_different_name of Variable.t
+      | Unavailable
 
-  (** Force any [Load_lazily] at the top level of a type and pare it down to
-      a form which is easy to query. *)
-  val summarize : t -> load_type:(t -> t) -> t
+    (** Adjust a type so that all of the free variables it references are in
+        scope in some context. The context is expressed by a function that says
+        whether the variable is available under its existing name, available
+        under another name, or unavailable. *)
+    val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_import_type
+  end
+
+  include Operations_needing_import_type
+    with type 'a with_import_type = import_type:(t -> t) -> 'a
 end
