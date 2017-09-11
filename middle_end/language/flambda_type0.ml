@@ -466,9 +466,16 @@ end) = struct
      is).
      mshinwell: changed to meet *)
 
-  let just_descr descr =
-    { descr; var = None; projection = None; symbol = None; }
+  let kind (t : t) =
+    match t with
+    | Value _ -> K.value ()
+    | Naked_immediate _ -> K.naked_immediate ()
+    | Naked_float _ -> K.naked_float ()
+    | Naked_int32 _ -> K.naked_int32 ()
+    | Naked_int64 _ -> K.naked_int64 ()
+    | Naked_nativeint _ -> K.naked_nativeint ()
 
+(*
   (* CR mshinwell: read carefully *)
   let refine_using_value_kind t (kind : Lambda.value_kind) =
     match kind with
@@ -505,6 +512,7 @@ end) = struct
       end
     (* CR mshinwell: Do we need more cases here?  We could add Pintval *)
     | _ -> t
+*)
 
   let augment_with_variable (t : t) var : t =
     let var = Some var in
@@ -752,10 +760,59 @@ end) = struct
         symbol = None;
       }
 
-  let export_id_loaded_lazily ex = just_descr (Load_lazily (Export_id ex))
-  let symbol_loaded_lazily sym =
-    { (just_descr (Load_lazily (Symbol sym)))
-      with symbol = Some (sym, None);
+  let immutable_string str : t =
+    let string_ty : string_ty =
+      { contents = Contents str;
+        size = String.length str;
+      }
+    in
+    Value {
+      descr = Ok (Ok (Singleton (String string_ty)));
+      var = None;
+      symbol = None;
+    }
+
+  let mutable_string ~size : t =
+    let string_ty : string_ty =
+      { contents = Unknown_or_mutable;
+        size;
+      }
+    in
+    Value {
+      descr = Ok (Ok (Singleton (String string_ty)));
+      var = None;
+      symbol = None;
+    }
+
+  let immutable_float_array fields : t =
+    let float_array : float_array =
+      { contents = Contents fields;
+        size = Array.length fields;
+      }
+    in
+    Value {
+      descr = Ok (Ok (Singleton (Float_array float_array)));
+      var = None;
+      symbol = None;
+    }
+
+  let mutable_float_array ~size : t =
+    let float_array : float_array =
+      { contents = Unknown_or_mutable;
+        size;
+      }
+    in
+    Value {
+      descr = Ok (Ok (Singleton (Float_array float_array)));
+      var = None;
+      symbol = None;
+    }
+
+  let block tag fields : t =
+    Value {
+      descr = Ok (Ok (Singleton (Block (tag, fields))));
+      var = None;
+      symbol = None;
     }
 
   let export_id_loaded_lazily (kind : K.t) export_id : t =
@@ -835,19 +892,6 @@ end) = struct
         var = None;
         symbol = None;
       }
-
-  let immutable_string str = just_descr (Immutable_string str)
-  let mutable_string ~size = just_descr (Mutable_string { size; })
-  (* CR mshinwell: Split Float_array into immutable and mutable as for
-     strings? *)
-  let mutable_float_array ~size =
-    just_descr (Float_array { contents = Unknown_or_mutable; size; } )
-  let immutable_float_array (contents : t array) =
-    let size = Array.length contents in
-    let contents =
-      Array.map (fun t -> refine_using_value_kind t Pfloatval) contents
-    in
-    just_descr (Float_array { contents = Contents contents; size; } )
 
   let any_tagged_immediate () : t =
     let i = unknown (K.value ()) in
@@ -942,54 +986,69 @@ end) = struct
       symbol = None;
     }
 
-  let free_variables t =
-    let rec free_variables t acc =
-      let acc =
-        match t.var with
-        | None -> acc
-        | Some var -> Variable.Set.add var acc
-      in
-      let acc =
-        match t.projection with
-        | None -> acc
-        | Some projection ->
-          Variable.Set.add (Projection.projecting_from projection) acc
-      in
-      match t.descr with
-      | Union unionable ->
-        begin match unionable with
-        | Blocks blocks
-        | Blocks_and_immediates (blocks, _) ->
-          Tag.Scannable.Map.fold (fun _tag t_array acc ->
-              Array.fold_left (fun acc t -> free_variables t acc)
-                acc t_array)
-            blocks acc
-        | Immediates _ -> acc
-        end
-      | Unknown _
-      | Unboxed_float _
-      | Unboxed_int32 _
-      | Unboxed_int64 _
-      | Unboxed_nativeint _ -> acc
-      | Boxed_number (_, t) -> free_variables t acc
+  let rec free_variables ~import_type t acc =
+    match t with
+    | Value ty_value -> free_variables_ty_value ~import_type ty_value acc
+    | Naked_immediate { var; _ }
+    | Naked_float { var; _ }
+    | Naked_int32 { var; _ }
+    | Naked_int64 { var; _ }
+    | Naked_nativeint { var; _ } ->
+      match var with
+      | None -> add
+      | Some var -> Variable.Set.add var acc
+
+  and free_variables_ty_value ~import_type ({ descr; var; _ } : ty_value) acc =
+    let acc =
+      match var with
+      | None -> acc
+      | Some var -> Variable.Set.add var acc
+    in
+    match descr with
+    | Load_lazily _
+    | Ok (Unknown _)
+    | Ok Bottom -> from_var
+    | Ok of_kind_value ->
+      free_variables_of_kind_value ~import_type of_kind_value acc
+      
+  and free_variables_of_kind_value ~import_type (o : of_kind_value) acc =
+    match o with
+    | Singleton singleton ->
+      begin match singleton with
+      | Boxed_or_encoded_number (_kind, t) ->
+        Variable.Set.union from_var (free_variables ~import_type t)
       | Set_of_closures set_of_closures ->
-        Var_within_closure.Map.fold (fun _var t acc -> free_variables t acc)
+        Var_within_closure.Map.fold (fun _var t acc ->
+            free_variables ~import_type t acc)
           set_of_closures.bound_vars acc
-      | Closure { potential_closures; } ->
-        Closure_id.Map.fold (fun _closure_id t acc -> free_variables t acc)
-          potential_closures acc
+      | Closure { set_of_closures; closure_id = _; } ->
+        free_variables ~import_type set_of_closures acc
       | Immutable_string _
       | Mutable_string _ -> acc
       | Float_array { contents; size = _; } ->
         begin match contents with
         | Contents ts ->
-          Array.fold_left (fun acc t -> free_variables t acc) acc ts
+          Array.fold_left (fun acc t -> free_variables ~import_type t acc)
+            acc ts
         | Unknown_or_mutable -> acc
         end
-      | Bottom
-      | Load_lazily _ -> acc
-    in
-    free_variables t Variable.Set.empty
+      end
+    | Union (w1, w2) ->
+      let acc =
+        match w1.var with
+        | None -> acc
+        | Some var -> Variable.Set.add var acc
+      in
+      let acc =
+        match w2.var with
+        | None -> acc
+        | Some var -> Variable.Set.add var acc
+      in
+      free_variables_of_kind_value ~import_type w2.descr
+        (free_variables_of_kind_value ~import_type w1.descr acc)
+
+  let free_variables ~import_type t =
+    free_variables ~import_type t Variable.Set.empty
 
   let rec clean t classify =
     let clean_var var_opt =
@@ -1040,15 +1099,6 @@ end) = struct
       { t with descr = Float_array { contents; size; }; }
     | Load_lazily _
     | Bottom -> t
-
-  let kind (t : t) =
-    match t with
-    | Value _ -> K.value ()
-    | Naked_immediate _ -> K.naked_immediate ()
-    | Naked_float _ -> K.naked_float ()
-    | Naked_int32 _ -> K.naked_int32 ()
-    | Naked_int64 _ -> K.naked_int64 ()
-    | Naked_nativeint _ -> K.naked_nativeint ()
 
   let rec join_ty (type a) ~import_type join_contents (ty1 : a ty) (ty2 : a ty)
         : a ty =
@@ -1120,6 +1170,7 @@ end) = struct
 
   and join_value_singleton (t1 : of_kind_value_singleton) t2
         ~import_type : of_kind_value unknown_or_bottom or_union =
+    (* For cases where forming unions is fruitless, we just return [Unknown]. *)
     match t1, t2 with
     | Boxed_or_encoded_number (kind1, ty1),
         Boxed_or_encoded_number (kind2, ty2) ->

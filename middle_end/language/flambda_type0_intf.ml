@@ -205,7 +205,7 @@ module type S = sig
   val immutable_float_array : t array -> t
   val mutable_string : size:int -> t
   val immutable_string : string -> t
-  val block : Tag.t -> t array -> t
+  val block : Tag.Scannable.t -> t array -> t
 
   (** Construction of types that link to other types which have not yet
       been loaded into memory (from a .cmx file). *)
@@ -286,8 +286,10 @@ module type S = sig
     (** Replace the description at the toplevel of a given type. *)
     val replace_description : t -> descr -> t
 
+(*
     (** Attempt to use a value kind to refine a type. *)
     val refine_using_value_kind : t -> Lambda.value_kind -> t
+*)
 
     (** Free variables in a type. *)
     val free_variables : (t -> Variable.Set.t) with_import_type
