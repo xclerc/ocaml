@@ -176,8 +176,18 @@ type primitive =
   (* Construction and destruction of groups of multiple function results *)
   | Pmake_unboxed_tuple
   | Punboxed_tuple_field of int
+  (* Boxing and unboxing of numbers *)
   | Punbox_float
   | Pbox_float
+  | Punbox_int32
+  | Pbox_int32
+  | Punbox_int64
+  | Pbox_int64
+  | Punbox_nativeint
+  | Pbox_nativeint
+  (* Tagging and untagging of immediates (ints, chars, constptrs) *)
+  | Puntag_immediate
+  | Ptag_immediate
 
 and comparison =
     Ceq | Cneq | Clt | Cgt | Cle | Cge

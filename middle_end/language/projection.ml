@@ -107,7 +107,6 @@ type t =
   | Project_var of Project_var.t
   | Project_closure of Project_closure.t
   | Move_within_set_of_closures of Move_within_set_of_closures.t
-  | Field of int * Variable.t
   | Prim of Lambda.primitive * Variable.t list
   | Switch of Variable.t
 
@@ -122,10 +121,6 @@ include Identifiable.Make (struct
       Project_closure.compare project_closure1 project_closure2
     | Move_within_set_of_closures move1, Move_within_set_of_closures move2 ->
       Move_within_set_of_closures.compare move1 move2
-    | Field (index1, var1), Field (index2, var2) ->
-      let c = compare index1 index2 in
-      if c <> 0 then c
-      else Variable.compare var1 var2
     | Prim (prim1, args1), Prim (prim2, args2) ->
       let c = Pervasives.compare prim1 prim2 in
       if c <> 0 then c
@@ -154,8 +149,6 @@ include Identifiable.Make (struct
     | Project_var (project_var) -> Project_var.print ppf project_var
     | Move_within_set_of_closures (move_within_set_of_closures) ->
       Move_within_set_of_closures.print ppf move_within_set_of_closures
-    | Field (field_index, var) ->
-      Format.fprintf ppf "Field (%a, %d)" Variable.print var field_index
     | Prim (prim, args) ->
       Format.fprintf ppf "Prim (%a, %a)"
         Printlambda.primitive prim
@@ -168,15 +161,21 @@ let projecting_from t =
   | Project_var { closure; _ } -> closure
   | Project_closure { set_of_closures; _ } -> set_of_closures
   | Move_within_set_of_closures { closure; _ } -> closure
-  | Field (_, var) -> var
-  | Prim (Pisint, [var]) -> var
-  | Prim (Pisint, _) -> Misc.fatal_error "Pisint with wrong number of arguments"
-  | Prim (Pgettag, [var]) -> var
-  | Prim (Pgettag, _) ->
-    Misc.fatal_error "Pgettag with wrong number of arguments"
-  | Prim (p, _) ->
-    Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
+  | Prim (prim, [var]) ->
+    begin match prim with
+    | Pfield | Pisint | Pgettag | Punbox_float | Pbox_float
+    | Punbox_int32 | Pbox_int32 | Punbox_int64 | Punbox_int64
+    | Punbox_nativeint | Pbox_nativeint | Puntag_immediate
+    | Ptag_immediate -> var
+    | _ ->
+      Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
+        Printlambda.primitive p
+    end
+  | Prim (prim, vars) ->
+    Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
+        arguments for pure primitive CSE: %a (%a)"
       Printlambda.primitive p
+      Variable.print_list vars
   | Switch var -> var
 
 let map_projecting_from t ~f : t =
@@ -202,13 +201,19 @@ let map_projecting_from t ~f : t =
       }
     in
     Move_within_set_of_closures move
-  | Field (field_index, var) -> Field (field_index, f var)
-  | Prim (Pisint, [var]) -> Prim (Pisint, [f var])
-  | Prim (Pisint, _) -> Misc.fatal_error "Pisint with wrong number of arguments"
-  | Prim (Pgettag, [var]) -> Prim (Pgettag, [f var])
-  | Prim (Pgettag, _) ->
-    Misc.fatal_error "Pgettag with wrong number of arguments"
-  | Prim (p, _) ->
-    Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
+  | Prim (prim, [var]) ->
+    begin match prim with
+    | Pfield | Pisint | Pgettag | Punbox_float | Pbox_float
+    | Punbox_int32 | Pbox_int32 | Punbox_int64 | Punbox_int64
+    | Punbox_nativeint | Pbox_nativeint | Puntag_immediate
+    | Ptag_immediate -> Prim (prim [f var])
+    | _ ->
+      Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
+        Printlambda.primitive p
+    end
+  | Prim (prim, vars) ->
+    Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
+        arguments for pure primitive CSE: %a (%a)"
       Printlambda.primitive p
+      Variable.print_list vars
   | Switch var -> Switch (f var)

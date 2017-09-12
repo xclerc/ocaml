@@ -590,11 +590,6 @@ module Unboxable = struct
       ~immediate_valued:(Yes { unique_known_value = unique_immediate_value; })
       ~tag ~sizes_by_tag
 
-  let create_immediates ~unique_immediate_value : t =
-    { immediate_valued = Yes { unique_known_value = unique_immediate_value; };
-      encoded_or_boxed = No;
-    }
-
   let create_blocks ~sizes_by_tag =
     create_blocks_internal ~immediate_valued:No ~sizes_by_tag
 
@@ -608,7 +603,7 @@ module Unboxable = struct
           arity = [naked_float_kind];
           projection = (fun ~being_unboxed ~field : Projection.t ->
             check_field_within_range ~field ~max_size:1;
-            Float_field (being_unboxed, 0));
+            Prim (Punbox_float, [being_unboxed]));
           projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
             check_field_within_range ~field ~max_size:1;
             Prim (Punbox_float, [being_unboxed], dbg));
@@ -622,7 +617,7 @@ module Unboxable = struct
         arity = [Flambda_kind.naked_int32 ()];
         projection = (fun ~being_unboxed ~field : Projection.t ->
           check_field_within_range ~field ~max_size:1;
-          Int32_field (being_unboxed, 0));
+          Prim (Punbox_int32, [being_unboxed]));
         projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
           check_field_within_range ~field ~max_size:1;
           Prim (Punbox_int32 field, [being_unboxed], dbg));
@@ -639,7 +634,7 @@ module Unboxable = struct
           arity = [naked_int64_kind];
           projection = (fun ~being_unboxed ~field : Projection.t ->
             check_field_within_range ~field ~max_size:1;
-            Int64_field (being_unboxed, 0));
+            Prim (Punbox_int64, [being_unboxed]));
           projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
             check_field_within_range ~field ~max_size:1;
             Prim (Punbox_int64 field, [being_unboxed], dbg));
@@ -653,10 +648,24 @@ module Unboxable = struct
         arity = [Flambda_kind.naked_nativeint ()];
         projection = (fun ~being_unboxed ~field : Projection.t ->
           check_field_within_range ~field ~max_size:1;
-          Nativeint_field (being_unboxed, 0));
+          Prim (Punbox_nativeint, [being_unboxed]));
         projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
           check_field_within_range ~field ~max_size:1;
           Prim (Punbox_nativeint, [being_unboxed], dbg));
+      };
+    }
+
+  let create_tagged_immediate () : t =
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_and_fill Ptag_int;
+        arity = [Flambda_kind.naked_immediate ()];
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Puntag_immediate, [being_unboxed]));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Puntag_immediate, [being_unboxed], dbg));
       };
     }
 end

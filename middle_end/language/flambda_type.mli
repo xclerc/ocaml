@@ -208,65 +208,60 @@ module Immediate : sig
   include Identifiable.S with type t := t
 end
 
-module Unboxable : sig
-  (** Witness that values of a particular Flambda type may be unboxed. *)
-  type t
+module Unboxable_or_untaggable : sig
+  (** Witness that values of a particular Flambda type may be unboxed or
+      untagged.  We call the contents of such values the "constitutuents"
+      of the value.  (For example, each boxed float value has a naked
+      float constitutent; each tagged immediate has a naked immediate
+      constituent; a pair has two constituents of kind [Value].)  Constituents
+      of values are ordered (following field numbers for blocks) starting at
+      zero.
 
-  type immediate_valued = private
-    | Yes of { all_possible_values : Immediate.Set.t option; }
-    | No
+      The functions in this module provide a basic abstraction over unboxing
+      and untagging which can be built on to perform unboxing transformations
+      (cf. [Unbox_one_variable]).
+  *)
 
-  val immediate_valued : t -> immediate_valued
+  type how_to_create = private
+    | Allocate_and_fill of Lambda.primitive
+    (** The boxed or encoded value is to be completely constructed using the
+        given primitive.  The constituents of the value are specified as the
+        usual [Variable.t]s in the [Prim] term (cf. [Flambda0.Named.t]). *)
+    | Allocate_empty of {
+        sizes_by_tag : int Tag.Map.t;
+      }
+    (** The value is to be allocated, according to the desired tag, using
+        [Pmakeblock]---but the caller is responsible for filling it. *)
 
-  module Encoded_or_boxed : sig
-    type t
+  (** For each constituent of the value, in order, which value kind is required
+      to represent that component.  When unboxing variants the arity
+      corresponds to the maximum number of fields across all possible
+      tags. *)
+  val arity : t -> Flambda_kind.t list
 
-    type how_to_create = private
-      | Allocate_and_fill of Lambda.primitive
-      (** The block is to be allocated using the given primitive with the
-          contents of the block (as [Variable.t]s) specified in the [Prim]
-          term (cf. [Flambda0.Named.t]). *)
-      | Allocate_empty of {
-          sizes_by_tag : int Tag.Map.t;
-        }
-      (** The block is to be allocated, according to the desired tag, using
-          [Pmakeblock] and then filled by the caller. *)
+  (** Values of variant type with mixed constant and non-constant
+      constructors take on immediate values in addition to boxed values.
+      Such immediate values are returned by this function.  (Note that this
+      is unrelated to immediate values that might be taken on by a variable
+      that always holds tagged immediates and is being untagged.  That case
+      is one of those for which this function returns [None].) *)
+  val forms_union_with_immediates : t -> Immediate.Set.t option
 
-    (** Describe how to assemble the block from the individual components
-        (for example, a tuple from its value-kinded fields, or a float from
-        a naked float). *)
-    val how_to_create
-       : t -> field_contents:(
+  (** The [Projection.t] value that describes the given projection out of
+      the block. *)
+  val projection
+     : t
+    -> being_unboxed:Variable.t
+    -> field:int
+    -> Projection.t
 
-    (** For each field in the block, in order, which value kind is required
-        to represent that component.  When unboxing variants the arity
-        corresponds to the maximum number of fields across all possible
-        tags. *)
-    val arity : t -> Flambda_kind.t list
-
-    (** The [Projection.t] value that describes the given projection out of
-        the block. *)
-    val projection
-       : t
-      -> being_unboxed:Variable.t
-      -> field:int
-      -> Projection.t
-
-    (** The code required to perform the given projection out of the block. *)
-    val projection_code
-       : t
-      -> being_unboxed:Variable.t
-      -> field:int
-      -> Debuginfo.t
-      -> Flambda0.Named.t
-  end
-
-  type encoded_or_boxed = private
-    | Yes of Encoded_or_boxed.t
-    | No
-
-  (** Whether values of the type may be heap blocks. *)
-  val encoded_or_boxed : t -> encoded_or_boxed
+  (** The code required to perform the given projection out of the block. *)
+  val projection_code
+     : t
+    -> being_unboxed:Variable.t
+    -> field:int
+    -> Debuginfo.t
+    -> Flambda0.Named.t
 end
 
 (** Try to prove that the given type is of the expected form for the

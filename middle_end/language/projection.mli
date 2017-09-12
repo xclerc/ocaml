@@ -68,7 +68,6 @@ type t =
   | Project_var of Project_var.t
   | Project_closure of Project_closure.t
   | Move_within_set_of_closures of Move_within_set_of_closures.t
-  | Field of int * Variable.t
   | Prim of Lambda.primitive * Variable.t list
   | Switch of Variable.t
 

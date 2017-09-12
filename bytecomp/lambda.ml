@@ -176,8 +176,8 @@ type primitive =
   | Pbox_int64
   | Punbox_nativeint
   | Pbox_nativeint
-  | Puntag_int
-  | Ptag_int
+  | Puntag_immediate
+  | Ptag_immediate
 
 and comparison =
     Ceq | Cneq | Clt | Cgt | Cle | Cge

@@ -1300,7 +1300,7 @@ and simplify_primitive env r prim args dbg =
       | Pgetglobal _, _, _ ->
         Misc.fatal_error "Pgetglobal is forbidden in Simplify"
       | Pfield field_index, [arg], [arg_ty] ->
-        let projection : Projection.t = Field (field_index, arg) in
+        let projection : Projection.t = Prim (Pfield field_index, [arg]) in
         begin match E.find_projection env ~projection with
         | Some var ->
           simplify_free_variable_named env var ~f:(fun _env var var_ty ->
