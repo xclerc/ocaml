@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,19 +16,21 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Create simple value approximations from the export information in
-    .cmx files. *)
+(** Construct Flambda types from export information in .cmx files. *)
 
 (** Given an approximation description, load .cmx files (possibly more
     than one) until the description is fully resolved.  If a necessary .cmx
     file cannot be found, "unresolved" will be returned. *)
-val really_import : Simple_value_approx.descr -> Simple_value_approx.descr
+(*
+val really_import : Flambda_type0.descr -> Flambda_type0.descr
+*)
+(* CR mshinwell: update comments etc *)
 
 (** Maps the description of the given approximation through [really_import]. *)
-val really_import_approx : Simple_value_approx.t -> Simple_value_approx.t
+val import_type : Flambda_type0.t -> Flambda_type0.t
 
 (** Read and convert the approximation of a given symbol from the
     relevant .cmx file.  Unlike the "really_" functions, this does not
     continue to load .cmx files until the approximation is fully
     resolved. *)
-val import_symbol : Symbol.t -> Simple_value_approx.t
+val import_symbol : Symbol.t -> Flambda_type0.t

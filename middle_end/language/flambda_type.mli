@@ -21,13 +21,10 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** Basic definitions, constructors and accessors.
-    Operations inside [Operations_needing_import_type] should just be
-    referenced directly via this module (e.g. [Flambda_type.join]).
     The importing of types from .cmx files happens automatically under the
     hood. *)
 include module type of struct include Flambda0.Flambda_type end
-  with module Ops := Flambda0.Flambda_type.Ops
-
+  with module Ops := Flambda0.Flambda_type.Ops  (* hides [Ops] *)
 include Flambda0.Flambda_type.Operations_needing_import_type
 
 (** Extraction of the description field from a type. *)
