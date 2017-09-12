@@ -77,8 +77,8 @@ val size : int
 (** The size in bits of a target native integer. *)
 
 type num_bits =
-  | thirty_two
-  | sixty_four
+  | Thirty_two
+  | Sixty_four
 
 val num_bits : num_bits
 
@@ -176,15 +176,6 @@ val of_string : string -> t
 
 val to_string : t -> string
 (** Return the string representation of its argument, in decimal. *)
-
-val compare: t -> t -> int
-(** The comparison function for target integers, with the same specification as
-    {!Pervasives.compare}.  Along with the type [t], this function [compare]
-    allows the module [Targetint] to be passed as argument to the functors
-    {!Set.Make} and {!Map.Make}. *)
-
-val equal: t -> t -> bool
-(** The equal function for target ints. *)
 
 type repr =
   | Int32 of int32

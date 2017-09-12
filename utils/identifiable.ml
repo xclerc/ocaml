@@ -20,7 +20,6 @@ module type Thing = sig
   include Hashtbl.HashedType with type t := t
   include Map.OrderedType with type t := t
 
-  val output : out_channel -> t -> unit
   val print : Format.formatter -> t -> unit
 end
 
@@ -30,7 +29,6 @@ module type Set = sig
     with type elt = T.t
      and type t = Set.Make (T).t
 
-  val output : out_channel -> t -> unit
   val print : Format.formatter -> t -> unit
   val to_string : t -> string
   val of_list : elt list -> t
@@ -96,7 +94,6 @@ module Pair (A : Thing) (B : Thing) : Thing with type t = A.t * B.t = struct
     if c <> 0 then c
     else B.compare b1 b2
 
-  let output oc (a, b) = Printf.fprintf oc " (%a, %a)" A.output a B.output b
   let hash (a, b) = Hashtbl.hash (A.hash a, B.hash b)
   let equal (a1, b1) (a2, b2) = A.equal a1 a2 && B.equal b1 b2
   let print ppf (a, b) = Format.fprintf ppf " (%a, @ %a)" A.print a B.print b
@@ -211,11 +208,6 @@ end
 
 module Make_set (T : Thing) = struct
   include Set.Make (T)
-
-  let output oc s =
-    Printf.fprintf oc " ( ";
-    iter (fun v -> Printf.fprintf oc "%a " T.output v) s;
-    Printf.fprintf oc ")"
 
   let print ppf s =
     let elts ppf s = iter (fun e -> Format.fprintf ppf "@ %a" T.print e) s in

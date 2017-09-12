@@ -189,8 +189,6 @@ end) = struct
      cannot prove it and must therefore keep it.
   *)
 
-  (* CR mshinwell: Remove this signature and somehow import from
-     Flambda_type0_intf. *)
   type string_contents = private
     | Contents of string
     | Unknown_or_mutable
@@ -558,15 +556,6 @@ end) = struct
     | Naked_int32 ty -> Naked_int32 { ty with var; }
     | Naked_int64 ty -> Naked_int64 { ty with var; }
     | Naked_nativeint ty -> Naked_nativeint { ty with var; }
-
-  let replace_description (t : t) descr : t =
-    match t with
-    | Value ty -> Value { ty with descr; }
-    | Naked_int ty -> Naked_int { ty with descr; }
-    | Naked_float ty -> Naked_float { ty with descr; }
-    | Naked_int32 ty -> Naked_int32 { ty with descr; }
-    | Naked_int64 ty -> Naked_int64 { ty with descr; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with descr; }
 
   let unknown (kind : K.t) reason : t =
     match kind with
@@ -1049,7 +1038,7 @@ end) = struct
 
   let free_variables ~import_type t =
     free_variables ~import_type t Variable.Set.empty
-
+(*
   let rec clean ~import_type t classify =
     let clean_var var_opt =
       match var_opt with
@@ -1099,7 +1088,7 @@ end) = struct
       { t with descr = Float_array { contents; size; }; }
     | Load_lazily _
     | Bottom -> t
-
+*)
   let rec join_ty (type a) ~import_type join_contents (ty1 : a ty) (ty2 : a ty)
         : a ty =
     let resolve ty =

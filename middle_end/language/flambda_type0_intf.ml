@@ -262,29 +262,26 @@ module type S = sig
     -> freshening:closure_freshening
     -> set_of_closures
 
+  (** Augment the toplevel of the given type with the given variable.  If the
+      type was already augmented with a variable, the one passed to this
+      function replaces it. *)
+  val augment_with_variable : t -> Variable.t -> t
+
+  (** Like [augment_with_variable], but for symbol information.  The
+      field index is set to [None]. *)
+  val augment_with_symbol : t -> Symbol.t -> t
+
+  (** Like [augment_with_symbol], but with a user-supplied field index. *)
+  val augment_with_symbol_field : t -> Symbol.t -> field:int -> t
+
+  (** Replace the variable at the toplevel of a given type. *)
+  val replace_variable : t -> Variable.t option -> t
+
   (** Operations which need a function to resolve [Load_lazily] constructors
       at the toplevel of types.  These operations are re-exported in
       [Flambda_type] once the definition of [import_type] can be provided. *)
   module type Operations_needing_import_type = sig
     type 'a with_import_type
-
-    (** Augment the toplevel of the given type with the given variable.  If the
-        type was already augmented with a variable, the one passed to this
-        function replaces it. *)
-    val augment_with_variable : t -> Variable.t -> t
-
-    (** Like [augment_with_variable], but for symbol information.  The
-        field index is set to [None]. *)
-    val augment_with_symbol : t -> Symbol.t -> t
-
-    (** Like [augment_with_symbol], but with a user-supplied field index. *)
-    val augment_with_symbol_field : t -> Symbol.t -> field:int -> t
-
-    (** Replace the variable at the toplevel of a given type. *)
-    val replace_variable : t -> Variable.t option -> t
-
-    (** Replace the description at the toplevel of a given type. *)
-    val replace_description : t -> descr -> t
 
 (*
     (** Attempt to use a value kind to refine a type. *)
@@ -301,14 +298,15 @@ module type S = sig
       | Available
       | Available_different_name of Variable.t
       | Unavailable
-
+(*
     (** Adjust a type so that all of the free variables it references are in
         scope in some context. The context is expressed by a function that says
         whether the variable is available under its existing name, available
         under another name, or unavailable. *)
     val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_import_type
+*)
   end
 
-  include Operations_needing_import_type
+  module Ops : Operations_needing_import_type
     with type 'a with_import_type = import_type:(t -> t) -> 'a
 end
