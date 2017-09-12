@@ -172,8 +172,6 @@ module type S = sig
     | Naked_nativeint of Targetint.t
 
   val print : Format.formatter -> t -> unit
-  val print_descr : Format.formatter -> descr -> unit
-  val print_set_of_closures : Format.formatter -> set_of_closures -> unit
 
   (** Each type has a unique kind. *)
   val kind : t -> Flambda_kind.t

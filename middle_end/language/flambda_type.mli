@@ -28,8 +28,7 @@
 include module type of struct include Flambda0.Flambda_type end
   with module Ops := Flambda0.Flambda_type.Ops
 
-include Flambda0.Flambda_type.Ops
-  with type 'a with_import_type = 'a
+include Flambda0.Flambda_type.Operations_needing_import_type
 
 (** Extraction of the description field from a type. *)
 val descr : t -> descr

@@ -126,7 +126,9 @@ module Make_map (T : Thing) = struct
               Format.asprintf "Map.disjoint_union %a => %a <> %a"
                 T.print id print v1 print v2
           in
-          Misc.fatal_error err
+          (* CR mshinwell: should be [Misc.fatal_error], but dependency
+             cycle *)
+          failwith err
         else Some v1)
       m1 m2
 

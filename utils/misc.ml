@@ -74,6 +74,18 @@ let rec split_last = function
       (hd :: lst, last)
 
 module Stdlib = struct
+  module Char = struct
+    include Char
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+      let compare = Pervasives.compare
+      let equal (t1 : char) t2 = (t1 = t2)
+      let hash = Hashtbl.hash
+      let print ppf t = Format.fprintf ppf "%c" t
+    end)
+  end
+
   module List = struct
     type 'a t = 'a list
 

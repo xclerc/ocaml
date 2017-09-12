@@ -48,6 +48,12 @@ val protect_refs : ref_and_value list -> (unit -> 'a) -> 'a
     even if [f] raises an exception. *)
 
 module Stdlib : sig
+  module Char : sig
+    include module type of Char
+
+    include Identifiable.S with type t := t
+  end
+
   module List : sig
     type 'a t = 'a list
 

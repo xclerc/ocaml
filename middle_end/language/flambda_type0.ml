@@ -60,7 +60,7 @@ end) = struct
         | Boxed Int32 -> Format.fprintf ppf "boxed_int32"
         | Boxed Int64 -> Format.fprintf ppf "boxed_int64"
         | Boxed Nativeint -> Format.fprintf ppf "boxed_nativeint"
-        | Encoded Tagged_int -> Format.fprint ppf "tagged_int"
+        | Encoded Tagged_int -> Format.fprintf ppf "tagged_int"
     end)
 
     let num_words_allocated_excluding_header t =
