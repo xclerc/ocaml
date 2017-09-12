@@ -34,8 +34,6 @@ type t = private
   | Naked_nativeint
   | Bottom
 
-val of_basic : Basic.t -> t
-
 val value : unit -> t
 val naked_immediate : unit -> t
 val naked_float : unit -> t option

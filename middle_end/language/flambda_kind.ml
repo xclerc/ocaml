@@ -45,17 +45,20 @@ let compatible t1 t2 =
   match t1, t2 with
   | Bottom, _ | _, Bottom
   | Value, Value
+  | Naked_immediate, Naked_immediate
   | Naked_float, Naked_float
   | Naked_int32, Naked_int32
   | Naked_int64, Naked_int64
   | Naked_nativeint, Naked_nativeint -> true
-  | (Value | Naked_float | Naked_int32 | Naked_int64 | Naked_nativeint), _ ->
+  | (Value | Naked_immediate | Naked_float | Naked_int32 | Naked_int64
+      | Naked_nativeint), _ ->
     false
 
 let lambda_value_kind t =
   let module L = Lambda in
   match t with
   | Value -> Some L.Pgenval
+  | Naked_immediate -> Some L.Pintval  (* CR mshinwell: is this right? *)
   | Naked_float -> Some L.Pfloatval
   | Naked_int32 -> Some (L.Pboxedintval Pint32)
   | Naked_int64 -> Some (L.Pboxedintval Pint64)
@@ -73,6 +76,7 @@ include Identifiable.Make (struct
   let print ppf t =
     match t with
     | Value -> Format.pp_print_string ppf "value"
+    | Naked_immediate -> Format.pp_print_string ppf "naked_immediate"
     | Naked_float -> Format.pp_print_string ppf "naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
     | Naked_int64 -> Format.pp_print_string ppf "naked_int64"
