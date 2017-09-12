@@ -50,7 +50,6 @@ include Identifiable.Make (struct
 
   let print ppf t = Format.pp_print_string ppf (string_for_printing t)
 
-  let output oc x = output_string oc (Ident.name x.id)
   let hash x = x.hash
 end)
 

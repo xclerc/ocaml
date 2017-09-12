@@ -27,7 +27,6 @@ sig
   val hash : t -> int
   val name : t -> string option
   val to_string : t -> string
-  val output : out_channel -> t -> unit
   val print : Format.formatter -> t -> unit
 end
 

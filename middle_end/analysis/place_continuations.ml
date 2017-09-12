@@ -62,8 +62,6 @@ module Placement = struct
           Continuation.Set.print conts
       | Just_inside_continuation cont ->
         Format.fprintf ppf "just inside handler of %a" Continuation.print cont
-
-    let output _ _ = Misc.fatal_error "Not implemented"
   end)
 end
 

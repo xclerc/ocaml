@@ -78,6 +78,4 @@ include Identifiable.Make (struct
     | Naked_int64 -> Format.pp_print_string ppf "naked_int64"
     | Naked_nativeint -> Format.pp_print_string ppf "naked_nativeint"
     | Bottom -> Format.pp_print_string ppf "bottom"
-
-  let output _ _ = Misc.fatal_error "Flambda_kind.output not implemented"
 end)

@@ -33,5 +33,3 @@ val rename
   -> t
 
 val in_compilation_unit : t -> Compilation_unit.t -> bool
-
-val output_full : out_channel -> t -> unit

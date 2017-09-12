@@ -28,5 +28,3 @@ val in_compilation_unit : t -> Compilation_unit.t -> bool
 val get_compilation_unit : t -> Compilation_unit.t
 
 val unique_name : t -> string
-
-val output_full : out_channel -> t -> unit

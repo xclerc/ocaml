@@ -39,11 +39,6 @@ include Identifiable.Make (struct
       t1.name_stamp = t2.name_stamp
         && Compilation_unit.equal t1.compilation_unit t2.compilation_unit
 
-  let output chan t =
-    output_string chan t.name;
-    output_string chan "_";
-    output_string chan (string_of_int t.name_stamp)
-
   let hash t = t.name_stamp lxor (Compilation_unit.hash t.compilation_unit)
 
   let print ppf t =
@@ -124,8 +119,3 @@ module Pair = Identifiable.Make (Identifiable.Pair (T) (T))
 
 let compare_lists l1 l2 =
   Misc.Stdlib.List.compare compare l1 l2
-
-let output_full chan t =
-  Compilation_unit.output chan t.compilation_unit;
-  output_string chan ".";
-  output chan t

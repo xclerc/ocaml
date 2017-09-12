@@ -30,8 +30,6 @@ include Identifiable.Make (struct
     then Compilation_unit.compare v1.compilation_unit v2.compilation_unit
     else c
 
-  let output c v = Ident.output c v.ident
-
   let hash v = Ident.hash v.ident
 
   let equal v1 v2 =
@@ -84,8 +82,3 @@ let freshen t =
 
 let in_compilation_unit t cu =
   Compilation_unit.equal t.compilation_unit cu
-
-let output_full c t =
-  Compilation_unit.output c t.compilation_unit;
-  Printf.fprintf c ".";
-  Ident.output c t.ident

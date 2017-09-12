@@ -65,8 +65,6 @@ include Identifiable.Make (struct
         Compilation_unit.print t.compilation_unit
         t.id
     end
-
-  let output _ _ = Misc.fatal_error "Not implemented"
 end)
 
 let create () : t =
@@ -93,8 +91,6 @@ module With_args = struct
     let hash t =
       Hashtbl.hash (hash (fst t),
         List.map Variable.hash (snd t))
-
-    let output _chan _t = Misc.fatal_error "not implemented"
 
     let print ppf (cont, vars) =
       Format.fprintf ppf "@[(%a, %a)@]"

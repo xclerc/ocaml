@@ -39,8 +39,6 @@ include Identifiable.Make (struct
     Hashtbl.hash (Continuation.hash (fst t),
       Hashtbl.hash (Variable.Map.bindings (snd t)))
 
-  let output _chan _t = Misc.fatal_error "not implemented"
-
   let print ppf (cont, spec_args) =
     Format.fprintf ppf "@[(%a, %a)@]"
       Continuation.print cont

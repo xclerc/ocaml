@@ -43,9 +43,6 @@ module M =
 
     let print ppf { var } =
       Variable.print ppf var
-
-    let output o { var } =
-      Variable.output o var
   end)
 
 module T = M.T

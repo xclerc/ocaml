@@ -43,8 +43,6 @@ module Project_closure = struct
       Format.fprintf ppf "@[<2>(project_closure@ %a@ from@ %a)@]"
         Closure_id.Set.print t.closure_id
         Variable.print t.set_of_closures
-
-    let output _ _ = failwith "Project_closure.output: not yet implemented"
   end)
 end
 
@@ -74,9 +72,6 @@ module Move_within_set_of_closures = struct
         "@[<2>(move_within_set_of_closures@ %a@ (closure = %a))@]"
         (Closure_id.Map.print Closure_id.print) t.move
         Variable.print t.closure
-
-    let output _ _ =
-      failwith "Move_within_set_of_closures.output: not yet implemented"
   end)
 end
 
@@ -105,8 +100,6 @@ module Project_var = struct
       Format.fprintf ppf "@[<2>(project_var@ %a@ from %a)@]"
         (Closure_id.Map.print Var_within_closure.print) t.var
         Variable.print t.closure
-
-    let output _ _ = failwith "Project_var.output: not yet implemented"
   end)
 end
 
@@ -168,8 +161,6 @@ include Identifiable.Make (struct
         Printlambda.primitive prim
         Variable.print_list args
     | Switch arg -> Format.fprintf ppf "Switch %a" Variable.print arg
-
-  let output _ _ = failwith "Projection.output: not yet implemented"
 end)
 
 let projecting_from t =

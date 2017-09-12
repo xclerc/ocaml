@@ -103,9 +103,6 @@ module Constant_defining_value = struct
         fprintf ppf "(Project_closure (%a, %a))"
           Symbol.print set_of_closures
           Closure_id.print closure_id
-
-    let output o v =
-      output_string o (Format.asprintf "%a" print v)
   end)
 
   let create_allocated_const ac = Allocated_const ac

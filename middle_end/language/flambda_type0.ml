@@ -61,8 +61,6 @@ end) = struct
         | Boxed Int64 -> Format.fprintf ppf "boxed_int64"
         | Boxed Nativeint -> Format.fprintf ppf "boxed_nativeint"
         | Encoded Tagged_int -> Format.fprint ppf "tagged_int"
-
-      let output _ _ = Misc.fatal_error "Not implemented"
     end)
 
     let num_words_allocated_excluding_header t =

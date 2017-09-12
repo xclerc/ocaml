@@ -50,8 +50,6 @@ module Definition = struct
       | Projection_from_existing_specialised_arg projection ->
         Format.fprintf ppf "Projection_from_existing_specialised_arg %a"
           Projection.print projection
-
-    let output _ _ = failwith "Definition.output not yet implemented"
   end)
 end
 

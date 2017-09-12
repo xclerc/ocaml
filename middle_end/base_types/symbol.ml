@@ -38,8 +38,6 @@ include Identifiable.Make (struct
     if x == y then true
     else compare x y = 0
 
-  let output chan t = Linkage_name.output chan t.label
-
   let hash t = t.hash
 
   let print ppf t =

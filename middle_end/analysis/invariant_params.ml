@@ -197,8 +197,6 @@ module For_continuations = struct
         Format.fprintf ppf "(%a, %a)"
           Continuation.print cont
           Variable.print var
-
-      let output _ _ = Misc.fatal_error "Not implemented"
     end)
   end
 

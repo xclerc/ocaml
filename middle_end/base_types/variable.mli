@@ -59,6 +59,3 @@ type pair = t * t
 module Pair : Identifiable.S with type t := pair
 
 val compare_lists : t list -> t list -> int
-
-val output_full : out_channel -> t -> unit
-(** Unlike [output], [output_full] includes the compilation unit. *)

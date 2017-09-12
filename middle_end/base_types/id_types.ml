@@ -23,7 +23,6 @@ module type BaseId = sig
   val hash : t -> int
   val name : t -> string option
   val to_string : t -> string
-  val output : out_channel -> t -> unit
   val print : Format.formatter -> t -> unit
 end
 
@@ -55,7 +54,6 @@ module Id(E:sig end) : Id = struct
     if name == empty_string
     then string_of_int t
     else Printf.sprintf "%s_%i" name t
-  let output fd t = output_string fd (to_string t)
   let print ppf v = Format.pp_print_string ppf (to_string v)
 end
 
@@ -70,10 +68,6 @@ module UnitId(Innerid:Id)(Compilation_unit:Identifiable.Thing) :
     if c <> 0
     then c
     else Compilation_unit.compare x.unit y.unit
-  let output oc x =
-    Printf.fprintf oc "%a.%a"
-      Compilation_unit.output x.unit
-      Innerid.output x.id
   let print ppf x =
     Format.fprintf ppf "%a.%a"
       Compilation_unit.print x.unit

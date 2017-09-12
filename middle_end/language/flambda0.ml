@@ -35,8 +35,6 @@ module Return_arity = struct
         (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
           Flambda_kind.print)
         t
-
-    let output _ _ = Misc.fatal_error "Not implemented"
   end)
 
   let single_boxed_value = [Flambda_kind.value ()]
@@ -84,8 +82,6 @@ module Const = struct
       | Unboxed_int32 n -> Format.fprintf ppf "%ld" n
       | Unboxed_int64 n -> Format.fprintf ppf "%Ld" n
       | Unboxed_nativeint n -> Format.fprintf ppf "%nd" n
-
-    let output _ _ = Misc.fatal_error "Not implemented"
   end)
 end
 
@@ -141,8 +137,6 @@ module Free_var = struct
         fprintf ppf "%a(= %a)"
           Variable.print t.var
           Projection.print projection
-
-    let output _ _ = Misc.fatal_errorf "Not implemented"
   end)
 end
 
@@ -198,8 +192,6 @@ module Trap_action = struct
         fprintf ppf "pop %a %a then "
           Trap_id.print id
           Continuation.print exn_handler
-
-    let output _ _ = Misc.fatal_error "Not implemented"
   end)
 
   module Option = struct
@@ -253,8 +245,6 @@ module Switch = struct
         let module Int = Int in
         fprintf ppf "@[<hv 1>| _ ->@ goto %a@]" Continuation.print l
       end
-
-    let output _ _ = Misc.fatal_error "Not implemented"
   end)
 end
 
@@ -1418,8 +1408,6 @@ end = struct
       Format.fprintf ppf "@[(%a : %a)@]"
         Parameter.print param
         Flambda_type.print ty
-
-    let output _ _ = Misc.fatal_error "Not implemented"
   end)
 
   module List = struct

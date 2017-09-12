@@ -38,8 +38,12 @@ module Constant_or_symbol = struct
       | Constant c -> Hashtbl.hash (0, Flambda.Const.hash c)
       | Symbol s -> Hashtbl.hash (1, Symbol.hash s)
 
-    let print _ _ = Misc.fatal_error "Not implemented"
-    let output _ _ = Misc.fatal_error "Not implemented"
+    let print ppf t =
+      match t with
+      | Constant c ->
+        Format.fprintf ppf "(Constant %a)" Flambda.Const.print c
+      | Symbol s ->
+        Format.fprintf ppf "(Symbol %a)" Symbol.print s
   end)
 
   let to_named t : Flambda.Named.t =
