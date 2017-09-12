@@ -519,6 +519,155 @@ module Immediate = struct
   end)
 end
 
+module Unboxable = struct
+  type immediate_valued =
+    | Yes of { unique_known_value : Immediate.t option; }
+    | No
+
+  module encoded_or_boxed = struct
+    type how_to_create =
+      | Call_external of { function_name : string; }
+      | Allocate of {
+          sizes_by_tag : int Tag.Map.t;
+          max_size : int;
+        }
+
+    type t = {
+      how_to_create : how_to_create;
+      arity : Flambda_kind.t list;
+      projection : (field:int -> Projection.t);
+      projection_code : (field:int -> Flambda0.Named.t);
+    }
+
+    let how_to_create t = t.how_to_create
+    let arity t = t.arity
+    let projection t ~field = t.projection ~field
+    let projection_code t ~field = t.projection_code ~field
+  end
+
+  type encoded_or_boxed =
+    | Yes of encoded_or_boxed.t
+    | No
+
+  type t = {
+    immediate_valued : immediate_valued;
+    encoded_or_boxed : encoded_or_boxed;
+  }
+
+  let immediate_valued t = t.immediate_valued
+  let encoded_or_boxed t = t.encoded_or_boxed
+
+  let check_field_within_range ~field ~max_size =
+    if field < 0 || field >= max_size then begin
+      Misc.fatal_errorf "Field index %d out of range when forming \
+          [Unboxable.t]"
+        field
+    end
+
+  let create_blocks_internal ~immediate_valued ~sizes_by_tag : t =
+    if Tag.Map.cardinal sizes_by_tag < 1 then begin
+      Misc.fatal_error "create_blocks_internal: empty [sizes_by_tag]"
+    end;
+    let max_size = Tag.Set.max_elt (Tag.Map.keys sizes_by_tag) in
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_empty { sizes_by_tag; };
+        arity = Array.to_list (Array.create max_size (Flambda_kind.value ()));
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          (* This bounds check isn't completely watertight (any particular
+             constructor may have fewer arguments than [max_size]), but it's
+             better than nothing. *)
+          check_field_within_range ~field ~max_size;
+          Field (being_unboxed, field));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size;
+          Prim (Pfield field, [being_unboxed], dbg));
+      };
+    }
+
+  let create_blocks_and_immediates ~unique_immediate_value ~sizes_by_tag =
+    create_blocks_internal
+      ~immediate_valued:(Yes { unique_known_value = unique_immediate_value; })
+      ~tag ~sizes_by_tag
+
+  let create_immediates ~unique_immediate_value : t =
+    { immediate_valued = Yes { unique_known_value = unique_immediate_value; };
+      encoded_or_boxed = No;
+    }
+
+  let create_blocks ~sizes_by_tag =
+    create_blocks_internal ~immediate_valued:No ~sizes_by_tag
+
+  let create_boxed_float () : t =
+    match Flambda_kind.naked_float () with
+    | None -> None
+    | Some naked_float_kind ->
+      { immediate_valued = No;
+        encoded_or_boxed = {
+          how_to_create = Allocate_and_fill Pbox_float;
+          arity = [naked_float_kind];
+          projection = (fun ~being_unboxed ~field : Projection.t ->
+            check_field_within_range ~field ~max_size:1;
+            Float_field (being_unboxed, 0));
+          projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+            check_field_within_range ~field ~max_size:1;
+            Prim (Punbox_float, [being_unboxed], dbg));
+        };
+      }
+
+  let create_boxed_int32 () : t =
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_and_fill Pbox_int32;
+        arity = [Flambda_kind.naked_int32 ()];
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          check_field_within_range ~field ~max_size:1;
+          Int32_field (being_unboxed, 0));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Punbox_int32 field, [being_unboxed], dbg));
+      };
+    }
+
+  let create_boxed_int64 () : t =
+    match Flambda_kind.naked_int64 () with
+    | None -> None
+    | Some naked_int64_kind ->
+      { immediate_valued = No;
+        encoded_or_boxed = {
+          how_to_create = Allocate_and_fill Pbox_int64;
+          arity = [naked_int64_kind];
+          projection = (fun ~being_unboxed ~field : Projection.t ->
+            check_field_within_range ~field ~max_size:1;
+            Int64_field (being_unboxed, 0));
+          projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+            check_field_within_range ~field ~max_size:1;
+            Prim (Punbox_int64 field, [being_unboxed], dbg));
+        };
+      }
+
+  let create_boxed_nativeint () : t =
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_and_fill Pbox_nativeint;
+        arity = [Flambda_kind.naked_nativeint ()];
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          check_field_within_range ~field ~max_size:1;
+          Nativeint_field (being_unboxed, 0));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Punbox_nativeint, [being_unboxed], dbg));
+      };
+    }
+end
+
+let prove_unboxable (t : t) =
+  ...
+
+
+
+
+
 type reified_as_variant =
   | Wrong
   | Blocks of blocks

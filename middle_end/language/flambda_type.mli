@@ -27,12 +27,6 @@ include module type of struct include Flambda0.Flambda_type end
   with module Ops := Flambda0.Flambda_type.Ops  (* hides [Ops] *)
 include Flambda0.Flambda_type.Operations_needing_import_type
 
-(** Extraction of the description field from a type. *)
-val descr : t -> descr
-
-(** Extraction of the description fields from a list of types. *)
-val descrs : t list -> descr list
-
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
 val unresolved_symbol : Symbol.t -> t
 
@@ -188,7 +182,7 @@ val reify_as_boxed_float : t -> float option
 
 (** As for [reify_as_int], but for arrays of unboxed floats (corresponding
     to values with tag [Double_array_tag]. *)
-val reify_as_unboxed_float_array : float_array -> float list option
+val reify_as_unboxed_float_array : t -> float list option
 
 (** As for [reify_as_int], but for strings. *)
 val reify_as_string : t -> string option
@@ -201,6 +195,8 @@ type reified_as_scannable_block =
     that can be scanned by the GC. *)
 val reify_as_scannable_block : t -> reified_as_scannable_block
 
+type 'a or_wrong = Ok of 'a | Wrong
+
 type blocks = t array Tag.Scannable.Map.t
 
 module Immediate : sig
@@ -212,15 +208,72 @@ module Immediate : sig
   include Identifiable.S with type t := t
 end
 
-type reified_as_variant = private
-  | Wrong
-  | Blocks of blocks
-  | Blocks_and_immediates of blocks * Immediate.Set.t
-  | Immediates of Immediate.Set.t
+module Unboxable : sig
+  (** Witness that values of a particular Flambda type may be unboxed. *)
+  type t
+
+  type immediate_valued = private
+    | Yes of { all_possible_values : Immediate.Set.t option; }
+    | No
+
+  val immediate_valued : t -> immediate_valued
+
+  module Encoded_or_boxed : sig
+    type t
+
+    type how_to_create = private
+      | Allocate_and_fill of Lambda.primitive
+      (** The block is to be allocated using the given primitive with the
+          contents of the block (as [Variable.t]s) specified in the [Prim]
+          term (cf. [Flambda0.Named.t]). *)
+      | Allocate_empty of {
+          sizes_by_tag : int Tag.Map.t;
+        }
+      (** The block is to be allocated, according to the desired tag, using
+          [Pmakeblock] and then filled by the caller. *)
+
+    (** Describe how to assemble the block from the individual components
+        (for example, a tuple from its value-kinded fields, or a float from
+        a naked float). *)
+    val how_to_create
+       : t -> field_contents:(
+
+    (** For each field in the block, in order, which value kind is required
+        to represent that component.  When unboxing variants the arity
+        corresponds to the maximum number of fields across all possible
+        tags. *)
+    val arity : t -> Flambda_kind.t list
+
+    (** The [Projection.t] value that describes the given projection out of
+        the block. *)
+    val projection
+       : t
+      -> being_unboxed:Variable.t
+      -> field:int
+      -> Projection.t
+
+    (** The code required to perform the given projection out of the block. *)
+    val projection_code
+       : t
+      -> being_unboxed:Variable.t
+      -> field:int
+      -> Debuginfo.t
+      -> Flambda0.Named.t
+  end
+
+  type encoded_or_boxed = private
+    | Yes of Encoded_or_boxed.t
+    | No
+
+  (** Whether values of the type may be heap blocks. *)
+  val encoded_or_boxed : t -> encoded_or_boxed
+end
 
 (** Try to prove that the given type is of the expected form for the
-    Flambda type of a value of variant type. *)
-val reify_as_variant : t -> reified_as_variant
+    Flambda type of a value that can be unboxed: either a scannable block
+    (possibly in conjunction with immediates, in the case of variant types)
+    or a boxed number. *)
+val prove_unboxable : t -> Unboxable.t or_wrong
 
 type reified_as_scannable_block_or_immediate =
   | Wrong

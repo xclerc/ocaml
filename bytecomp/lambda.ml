@@ -170,6 +170,14 @@ type primitive =
   | Punboxed_tuple_field of int
   | Punbox_float
   | Pbox_float
+  | Punbox_int32
+  | Pbox_int32
+  | Punbox_int64
+  | Pbox_int64
+  | Punbox_nativeint
+  | Pbox_nativeint
+  | Puntag_int
+  | Ptag_int
 
 and comparison =
     Ceq | Cneq | Clt | Cgt | Cle | Cge
