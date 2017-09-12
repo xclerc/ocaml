@@ -57,9 +57,9 @@ module type S = sig
   val to_int64 : t -> int64
   val of_string : string -> t
   val to_string : t -> string
-  val compare: t -> t -> int
-  val equal: t -> t -> bool
   val repr: t -> repr
+
+  include Identifiable.S with type t := t
 end
 
 let size = Sys.word_size
@@ -86,6 +86,14 @@ module Int32 = struct
   let of_int64 = Int64.to_int32
   let to_int64 = Int64.of_int32
   let repr x = Int32 x
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+    let compare = Int32.compare
+    let equal = Int32.equal
+    let hash = Hashtbl.hash
+    let print ppf t = Format.fprintf ppf "%ld" t
+  end)
 end
 
 module Int64 = struct
@@ -95,6 +103,14 @@ module Int64 = struct
   let of_int64 x = x
   let to_int64 x = x
   let repr x = Int64 x
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+    let compare = Int64.compare
+    let equal = Int64.equal
+    let hash = Hashtbl.hash
+    let print ppf t = Format.fprintf ppf "%Ld" t
+  end)
 end
 
 include (val

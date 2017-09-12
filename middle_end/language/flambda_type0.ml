@@ -1151,8 +1151,8 @@ end) = struct
       | Singleton result -> result
       | Form_union -> form_union ()
       end
-    | Singleton _, Union _ ->
-    | Union _, Singleton _ ->
+    | Singleton _, Union _
+    | Union _, Singleton _
     | Union _, Union _ -> form_union ()
 
   and join_value_singleton (t1 : of_kind_value_singleton) t2

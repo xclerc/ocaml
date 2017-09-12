@@ -26,9 +26,9 @@
     The importing of types from .cmx files happens automatically under the
     hood. *)
 include module type of struct include Flambda0.Flambda_type end
-  with module Operations_needing_import_type := ...
+  with module Ops := Flambda0.Flambda_type.Ops
 
-include Flambda0.Flambda_type.Operations_needing_import_type
+include Flambda0.Flambda_type.Ops
   with type 'a with_import_type = 'a
 
 (** Extraction of the description field from a type. *)

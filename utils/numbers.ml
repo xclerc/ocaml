@@ -18,7 +18,6 @@ module Int_base = Identifiable.Make (struct
   type t = int
 
   let compare x y = x - y
-  let output oc x = Printf.fprintf oc "%i" x
   let hash i = i
   let equal (i : int) j = i = j
   let print = Format.pp_print_int
@@ -78,7 +77,6 @@ module Float = struct
     type t = float
 
     let compare x y = Pervasives.compare x y
-    let output oc x = Printf.fprintf oc "%f" x
     let hash f = Hashtbl.hash f
     let equal (i : float) j = i = j
     let print = Format.pp_print_float
@@ -92,7 +90,6 @@ module Int32 = struct
     type t = Int32.t
 
     let compare x y = Int32.compare x y
-    let output oc x = Printf.fprintf oc "%ld" x
     let hash f = Hashtbl.hash f
     let equal (i : Int32.t) j = i = j
     let print ppf t = Format.fprintf ppf "%ld" t
@@ -106,7 +103,6 @@ module Int64 = struct
     type t = Int64.t
 
     let compare x y = Int64.compare x y
-    let output oc x = Printf.fprintf oc "%Ld" x
     let hash f = Hashtbl.hash f
     let equal (i : Int64.t) j = i = j
     let print ppf t = Format.fprintf ppf "%Ld" t
@@ -120,7 +116,6 @@ module Nativeint = struct
     type t = Nativeint.t
 
     let compare x y = Nativeint.compare x y
-    let output oc x = Printf.fprintf oc "%nd" x
     let hash f = Hashtbl.hash f
     let equal (i : Nativeint.t) j = i = j
     let print ppf t = Format.fprintf ppf "%nd" t
