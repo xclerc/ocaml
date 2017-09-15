@@ -208,6 +208,15 @@ module Immediate : sig
   include Identifiable.S with type t := t
 end
 
+type unboxable_or_untaggable =
+  | Blocks of blocks
+  | Blocks_and_tagged_immediates of blocks * Immediate.Set.t
+  | Tagged_immediates of Immediate.Set.t
+  | Boxed_floats of Float.Set.t
+  | Boxed_int32s of Int32.Set.t
+  | Boxed_int64s of Int64.Set.t
+  | Boxed_nativeints of Nativeint.Set.t
+
 module Unboxable_or_untaggable : sig
   (** Witness that values of a particular Flambda type may be unboxed or
       untagged.  We call the contents of such values the "constitutuents"
