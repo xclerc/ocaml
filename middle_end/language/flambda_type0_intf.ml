@@ -86,6 +86,8 @@ module type S = sig
 
   and 'a ty = 'a maybe_unresolved with_var_and_symbol
 
+  (** "Resolved" types where the head constructor is known not to need loading
+      from a .cmx file. *)
   and resolved_t = private
     | Value of resolved_ty_value
     | Naked_immediate of resolved_ty_naked_immediate
@@ -105,9 +107,11 @@ module type S = sig
 
   and 'a maybe_unresolved = private
     | Ok of 'a or_unknown_or_bottom
+    (** The head constructor is available in memory. *)
     | Load_lazily of load_lazily
+    (** The head constructor requires loading from a .cmx file. *)
 
-  (** For each kind (cf. [Flambda_kind]) there is a partial order on types.
+  (** For each kind (cf. [Flambda_kind]) there is a lattice of types.
       [Bottom] is the unique least element and [Unknown] is the unique top
       element. *)
   and 'a or_unknown_or_bottom = private
@@ -287,10 +291,35 @@ module type S = sig
     val refine_using_value_kind : t -> Lambda.value_kind -> t
 *)
 
+  (** A module type concealing operations for importing types from .cmx files.
+      These operations are derived from the functions supplied to the
+      [Make_backend] functor, below.  A first class module of this type has
+      to be passed to various operations that destruct types. *)
   module type Backend = sig
-    val import_type : load_lazily -> resolved_t
+    val import_value_type : load_lazily -> value_ty
+    val import_naked_immediate_type : load_lazily -> naked_immediate_ty
+    val import_naked_int32_type : load_lazily -> naked_int32_ty
+    val import_naked_int64_type : load_lazily -> naked_int64_ty
+    val import_naked_nativeint_type : load_lazily -> naked_nativeint_ty
   end
 
+  (** A functor used to construct the various type-importing operations from
+      straightforward backend-provided ones. *)
+  module Make_backend (S : sig
+    (** Return the type stored on disk under the given export identifier, or
+        [None] if no such type can be loaded.  This function should not attempt
+        to resolve export IDs or symbols recursively in the event that the
+        type on disk is another [Load_lazily].  (This will be performed
+        automatically by the implementation of this functor.) *)
+    val import_export_id : Export_id.t -> t option
+
+    (** As for [import_export_id], except that the desired type is specified by
+        symbol, rather than by export identifier. *)
+    val import_symbol : Symbol.t -> t option
+  end) : Backend
+
+  (** Annotation for functions that may require the importing of types from
+      .cmx files. *)
   type 'a with_backend = backend:(module Backend) -> 'a
 
   (** Free variables in a type. *)
