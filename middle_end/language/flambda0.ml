@@ -1432,6 +1432,10 @@ and Export_info : sig
   include Export_info0_intf.S
     with type function_declarations := Function_declarations.t
 end = Export_info0.Make (Function_declarations)
+and Import_approx : sig
+  include Import_approx_intf.S
+    with module E := Export_info
+end = Import_approx.Make (Export_info)
 
 module With_free_variables = struct
   type 'a t =
