@@ -204,33 +204,52 @@ end) = struct
     | Naked_int64 of ty_naked_int64
     | Naked_nativeint of ty_naked_nativeint
 
-  and 'a ty =
-    | Ok of 'a resolved_ty
-    | Load_lazily of load_lazily
+  and ty_value = of_kind_value ty
+  and ty_naked_immediate = of_kind_naked_immediate ty
+  and ty_naked_float = of_kind_naked_float ty
+  and ty_naked_int32 = of_kind_naked_int32 ty
+  and ty_naked_int64 = of_kind_naked_int64 ty
+  and ty_naked_nativeint = of_kind_naked_nativeint ty
 
-  and 'a with_var_and_symbol = {
-    descr : 'a;
-    var : Variable.t option;
-    symbol : (Symbol.t * int option) option;
-  }
+  and 'a ty = 'a maybe_unresolved with_var_and_symbol
+
+  and resolved_t = private
+    | Value of resolved_ty_value
+    | Naked_immediate of resolved_ty_naked_immediate
+    | Naked_float of resolved_ty_naked_float
+    | Naked_int32 of resolved_ty_naked_int32
+    | Naked_int64 of resolved_ty_naked_int64
+    | Naked_nativeint of resolved_ty_naked_nativeint
+
+  and ty_resolved_value = of_kind_value resolved_ty
+  and ty_resolved_naked_immediate = of_kind_naked_immediate resolved_ty
+  and ty_resolved_naked_float = of_kind_naked_float resolved_ty
+  and ty_resolved_naked_int32 = of_kind_naked_int32 resolved_ty
+  and ty_resolved_naked_int64 = of_kind_naked_int64 resolved_ty
+  and ty_resolved_naked_nativeint = of_kind_naked_nativeint resolved_ty
 
   and 'a resolved_ty = 'a or_unknown_or_bottom with_var_and_symbol
 
-  and 'a or_unknown_or_bottom =
-    | Unknown
+  and 'a maybe_unresolved = private
+    | Ok of 'a or_unknown_or_bottom
+    | Load_lazily of load_lazily
+
+  and 'a or_unknown_or_bottom = private
+    | Unknown of unresolved_value
     | Ok of 'a
     | Bottom
 
-  and ty_value = of_kind_value ty
-  and ty_naked_int32 = of_kind_naked_int32 ty
-
-  and of_kind_value =
+  and of_kind_value = private
     | Singleton of of_kind_value_singleton
     | Union of of_kind_value with_var_and_symbol
         * of_kind_value with_var_and_symbol
 
-  and of_kind_value_singleton =
-    | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * ty_value
+  and of_kind_value_singleton = private
+    | Tagged_int of ty_naked_immediate
+    | Boxed_float of ty_naked_float
+    | Boxed_int32 of ty_naked_int32
+    | Boxed_int64 of ty_naked_int64
+    | Boxed_nativeint of ty_naked_nativeint
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
     | Closure of {
@@ -264,9 +283,7 @@ end) = struct
   }
 
   and of_kind_naked_immediate =
-    | Naked_int of Targetint.t
-    | Naked_char of Char.t
-    | Naked_constptr of Targetint.t
+    | Naked_immediate of Immediate.t
 
   and of_kind_naked_float =
     | Naked_float of float
@@ -278,7 +295,7 @@ end) = struct
     | Naked_int64 of Int64.t
 
   and of_kind_naked_nativeint =
-    | Naked_nativeint of Nativeint.t
+    | Naked_nativeint of Targetint.t
 
   let print_set_of_closures ppf
         { function_decls; invariant_params; freshening; _ } =

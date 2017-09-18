@@ -245,7 +245,7 @@ end and Named : sig
     -> t
     -> t
 
-  val of_projection : Projection.t -> t
+  val of_projection : Projection.t -> Debuginfo.t -> t
 
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit

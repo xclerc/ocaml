@@ -655,9 +655,11 @@ end and Typed_parameter : sig
   (** Map the type of a parameter. *)
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 
+(*
   (** Free variables in the parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)
   val free_variables : t -> Variable.Set.t
+*)
 
   module List : sig
     type nonrec t = t list
@@ -678,6 +680,9 @@ end and Typed_parameter : sig
   include Identifiable.S with type t := t
 end and Flambda_type : sig
   include Flambda_type0_intf.S
+    with type function_declarations := Function_declarations.t
+end and Export_info : sig
+  include Export_info0_intf.S
     with type function_declarations := Function_declarations.t
 end
 

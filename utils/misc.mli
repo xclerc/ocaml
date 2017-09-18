@@ -54,6 +54,24 @@ module Stdlib : sig
     include Identifiable.S with type t := t
   end
 
+  module Float : sig
+    type t = float
+
+    include Identifiable.S with type t := t
+  end
+
+  module Int32 : sig
+    include module type of Int32
+
+    include Identifiable.S with type t := t
+  end
+
+  module Int64 : sig
+    include module type of Int64
+
+    include Identifiable.S with type t := t
+  end
+
   module List : sig
     type 'a t = 'a list
 

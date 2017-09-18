@@ -86,6 +86,42 @@ module Stdlib = struct
     end)
   end
 
+  module Float = struct
+    type t = float
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+      let compare = Pervasives.compare
+      let equal (t1 : float) t2 = (t1 = t2)
+      let hash = Hashtbl.hash
+      let print ppf t = Format.fprintf ppf "%f" t
+    end)
+  end
+
+  module Int32 = struct
+    include Int32
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+      let compare = Pervasives.compare
+      let equal (t1 : Int32.t) t2 = (t1 = t2)
+      let hash = Hashtbl.hash
+      let print ppf t = Format.fprintf ppf "%ld" t
+    end)
+  end
+
+  module Int64 = struct
+    include Int64
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+      let compare = Pervasives.compare
+      let equal (t1 : Int64.t) t2 = (t1 = t2)
+      let hash = Hashtbl.hash
+      let print ppf t = Format.fprintf ppf "%Ld" t
+    end)
+  end
+
   module List = struct
     type 'a t = 'a list
 

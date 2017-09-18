@@ -1395,7 +1395,7 @@ end = struct
   let free_variables (_param, ty) =
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the type. *)
-    Flambda_type.free_variables ty
+    Flambda_type.Ops.free_variables ty
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -1428,6 +1428,10 @@ end and Flambda_type : sig
   include Flambda_type0_intf.S
     with type function_declarations := Function_declarations.t
 end = Flambda_type0.Make (Function_declarations)
+and Export_info : sig
+  include Export_info0_intf.S
+    with type function_declarations := Function_declarations.t
+end = Export_info0.Make (Function_declarations)
 
 module With_free_variables = struct
   type 'a t =

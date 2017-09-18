@@ -856,7 +856,7 @@ end and Named : sig
      : Variable.t Variable.Map.t
     -> t
     -> t
-  val of_projection : Projection.t -> t
+  val of_projection : Projection.t -> Debuginfo.t -> t
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
     val iter_named : (t -> unit) -> t -> unit
@@ -879,15 +879,15 @@ end = struct
     | Let let_expr -> let_expr.defining_expr
     | _ -> assert false
 
-  let of_projection (projection : Projection.t) : t =
+  let of_projection (projection : Projection.t) dbg : t =
     match projection with
     | Project_var project_var -> Project_var project_var
     | Project_closure project_closure -> Project_closure project_closure
     | Move_within_set_of_closures move -> Move_within_set_of_closures move
-    | Field (field_index, var) ->
-      (* CR mshinwell: this should not say Debuginfo.none *)
-      Prim (Pfield field_index, [var], Debuginfo.none)
-    | Prim _ | Switch _ -> Misc.fatal_error "Unsupported"
+    | Prim (prim, vars) -> Prim (prim, vars, dbg)
+    | Switch _ ->
+      (* CR mshinwell: This is dubious -- check usage *)
+      Misc.fatal_error "Unsupported"
 
   let equal t1 t2 =
     match t1, t2 with

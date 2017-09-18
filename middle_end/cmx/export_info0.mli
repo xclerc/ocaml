@@ -16,4 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-include Flambda0.Export_info
+(** Exported types (that is to say, information written into a .cmx file)
+    for a compilation unit.  The types are parameterised over the
+    expression language in the same way as for [Flambda_type0]. *)
+
+module Make (F : sig
+  type t
+  val print : Format.formatter -> t -> unit
+end) : Export_info0_intf.S with type function_declarations = F.t

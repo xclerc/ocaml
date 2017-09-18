@@ -26,6 +26,7 @@
 include module type of struct include Flambda0.Flambda_type end
   with module Ops := Flambda0.Flambda_type.Ops  (* hides [Ops] *)
 include Flambda0.Flambda_type.Operations_needing_import_type
+  with type 'a with_import_type = 'a
 
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
 val unresolved_symbol : Symbol.t -> t
@@ -187,22 +188,14 @@ val reify_as_unboxed_float_array : t -> float list option
 (** As for [reify_as_int], but for strings. *)
 val reify_as_string : t -> string option
 
-type reified_as_scannable_block =
+type proved_scannable_block =
   | Wrong
   | Ok of Tag.Scannable.t * t array
 
 (** Try to prove that a value with the given type may be used as a block
-    that can be scanned by the GC. *)
-val reify_as_scannable_block : t -> reified_as_scannable_block
-
-module Immediate : sig
-  type t = private
-    | Int of Targetint.t
-    | Const_pointer of Targetint.t
-    | Char of Char.t
-
-  include Identifiable.S with type t := t
-end
+    that can be scanned by the GC.  (Note that there are cases of scannable
+    blocks, e.g. closures, that this function will return [Wrong] for.) *)
+val prove_scannable_block : t -> proved_scannable_block
 
 module Blocks : sig
   type t = private ty_value array Tag.Scannable.Map.t
@@ -214,24 +207,24 @@ module Or_not_all_values_known : sig
     | Not_all_values_known
 end
 
+(* CR mshinwell: This type may not be exactly what we need yet---in
+   particular we might want a variable in the [Not_all_values_known] case,
+   and we may not need the (e.g.) Float.Set.t.  We can decide for sure once
+   we adjust the unboxing code to use this type. *)
 module Proved_unboxable_or_untaggable : sig
   type t = private
     | Wrong
-    | Blocks of Blocks.t
     | Blocks_and_tagged_immediates of
         Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
-    | Tagged_immediates of Immediate.Set.t Or_not_all_values_known.t
-    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Nativeint.Set.t Or_not_all_values_known.t
+    | Boxed_floats of Misc.Stdlib.Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Misc.Stdlib.Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Misc.Stdlib.Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
 end
 
 (** Try to prove that the given type is of the expected form for the
-    Flambda type of a value that can be unboxed: either a scannable block
-    (possibly in conjunction with immediates, in the case of variant types)
-    or a boxed number. *)
-val prove_unboxable : t -> unboxable_or_untaggable
+    Flambda type of a value that can be unboxed. *)
+val prove_unboxable : t -> Proved_unboxable_or_untaggable.t
 
 type reified_as_scannable_block_or_immediate =
   | Wrong

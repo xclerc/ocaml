@@ -75,7 +75,11 @@ let for_primitive (prim : Lambda.primitive) =
   | Pmulfloat _
   | Pdivfloat _
   | Pfloatcomp _
-  | Punbox_float | Pbox_float -> No_effects, No_coeffects
+  | Puntag_immediate | Ptag_immediate
+  | Punbox_float | Punbox_int32 | Punbox_int64 | Punbox_nativeint ->
+    No_effects, No_coeffects
+  | Pbox_float | Pbox_int32 | Pbox_int64 | Pbox_nativeint ->
+    Only_generative_effects, No_coeffects
   | Pstringlength | Pbyteslength
   | Parraylength _ ->
       No_effects, Has_coeffects  (* That old chestnut: [Obj.truncate]. *)

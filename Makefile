@@ -187,13 +187,15 @@ ifeq ($(ARCH),amd64)
 ARCH_SPECIFIC_ASMCOMP=$(INTEL_ASM)
 endif
 
-MIDDLE_END_CMX_EARLY=\
+MIDDLE_END_CMX_VERY_EARLY=\
   middle_end/cmx/export_info.cmo \
+  middle_end/cmx/import_approx.cmo
+
+MIDDLE_END_CMX_EARLY=\
   middle_end/cmx/export_info_for_pack.cmo
 
 MIDDLE_END_CMX_LATE=\
-  middle_end/cmx/build_export_info.cmo \
-  middle_end/cmx/import_approx.cmo
+  middle_end/cmx/build_export_info.cmo
 
 MIDDLE_END_TO_CLAMBDA=\
   middle_end/to_clambda/closure_offsets.cmo \
@@ -293,6 +295,8 @@ MIDDLE_END_LANGUAGE=\
   middle_end/language/flambda_type0.cmo \
   middle_end/language/flambda_type0_intf.cmo \
   middle_end/language/flambda_utils.cmo \
+  middle_end/language/export_info.cmo \
+  middle_end/language/import_approx.cmo \
   middle_end/language/freshening.cmo \
   middle_end/language/projection.cmo
 

@@ -100,29 +100,103 @@ let make_const_unboxed_nativeint_named n : Named.t * t =
   Const (Unboxed_nativeint n), unboxed_nativeint n
 
 let is_bottom t =
-  match descr t with
-  | Bottom -> true
-  | Unknown _ | Immutable_string _ | Mutable_string _ | Float_array _
-  | Union _ | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ -> false
+  match t with
+  | Value ty ->
+    begin match maybe_import_value_type ~import_type ty with
+    | Bottom -> true
+    | Unknown _ | Ok _ -> false
+    end
+  | Naked_immediate ty ->
+    begin match maybe_import_naked_immediate_type ~import_type ty with
+    | Bottom -> true
+    | Unknown _ | Ok _ -> false
+    end
+  | Naked_float ty ->
+    begin match maybe_import_naked_float_type ~import_type ty with
+    | Bottom -> true
+    | Unknown _ | Ok _ -> false
+    end
+  | Naked_int32 ty ->
+    begin match maybe_import_naked_int32_type ~import_type ty with
+    | Bottom -> true
+    | Unknown _ | Ok _ -> false
+    end
+  | Naked_int64 ty ->
+    begin match maybe_import_naked_int64_type ~import_type ty with
+    | Bottom -> true
+    | Unknown _ | Ok _ -> false
+    end
+  | Naked_nativeint ty ->
+    begin match maybe_import_naked_nativeint_type ~import_type ty with
+    | Bottom -> true
+    | Unknown _ | Ok _ -> false
+    end
 
 let known t =
-  match descr t with
-  | Unknown _ -> false
-  | Bottom | Immutable_string _ | Mutable_string _ | Float_array _
-  | Union _ | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ -> true
+  match t with
+  | Value ty ->
+    begin match maybe_import_value_type ~import_type ty with
+    | Bottom | Ok _ -> true
+    | Unknown _ -> false
+    end
+  | Naked_immediate ty ->
+    begin match maybe_import_naked_immediate_type ~import_type ty with
+    | Bottom | Ok _ -> true
+    | Unknown _ -> false
+    end
+  | Naked_float ty ->
+    begin match maybe_import_naked_float_type ~import_type ty with
+    | Bottom | Ok _ -> true
+    | Unknown _ -> false
+    end
+  | Naked_int32 ty ->
+    begin match maybe_import_naked_int32_type ~import_type ty with
+    | Bottom | Ok _ -> true
+    | Unknown _ -> false
+    end
+  | Naked_int64 ty ->
+    begin match maybe_import_naked_int64_type ~import_type ty with
+    | Bottom | Ok _ -> true
+    | Unknown _ -> false
+    end
+  | Naked_nativeint ty ->
+    begin match maybe_import_naked_nativeint_type ~import_type ty with
+    | Bottom | Ok _ -> true
+    | Unknown _ -> false
+    end
 
 let useful t =
-  match descr t with
-  | Unknown _ | Bottom -> false
-  | Union union -> Unionable.useful union
-  | Immutable_string _ | Mutable_string _ | Float_array _
-  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ -> true
+  match t with
+  | Value ty ->
+    begin match maybe_import_value_type ~import_type ty with
+    | Ok _ -> true
+    | Bottom | Unknown _ -> false
+    end
+  | Naked_immediate ty ->
+    begin match maybe_import_naked_immediate_type ~import_type ty with
+    | Ok _ -> true
+    | Bottom | Unknown _ -> false
+    end
+  | Naked_float ty ->
+    begin match maybe_import_naked_float_type ~import_type ty with
+    | Ok _ -> true
+    | Bottom | Unknown _ -> false
+    end
+  | Naked_int32 ty ->
+    begin match maybe_import_naked_int32_type ~import_type ty with
+    | Ok _ -> true
+    | Bottom | Unknown _ -> false
+    end
+  | Naked_int64 ty ->
+    begin match maybe_import_naked_int64_type ~import_type ty with
+    | Ok _ -> true
+    | Bottom | Unknown _ -> false
+    end
+  | Naked_nativeint ty ->
+    begin match maybe_import_naked_nativeint_type ~import_type ty with
+    | Ok _ -> true
+    | Bottom | Unknown _ -> false
+    end
 
 let is_boxed_float t =
   match descr t with
@@ -472,22 +546,6 @@ let reify_as_string t : string option =
   | Float_array _ | Bottom | Set_of_closures _ | Closure _
   | Load_lazily _ -> None
 
-type reified_as_scannable_block =
-  | Wrong
-  | Ok of Tag.Scannable.t * t array
-
-let reify_as_scannable_block t : reified_as_scannable_block =
-  match descr t with
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Block (tag, fields)) -> Ok (tag, fields)
-    | Ok (Int _ | Char _ | Constptr _) | Bottom | Unknown -> Wrong
-    end
-  | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
-  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
-  | Unknown _ -> Wrong
-
 type 'a or_wrong =
   | Ok of 'a
   | Wrong
@@ -563,31 +621,29 @@ module Blocks = struct
   type t = ty_value array Tag.Scannable.Map.t
 
   let join t1 t2 : t or_wrong =
-    let t =
-      Tag.Scannable.Map.union (fun tag ty_value1 ty_value2 ->
-          (* CR mshinwell: We could maybe tighten the type of the array
-             elements more so that it's clear no existing element (i.e. in
-             [ty_value1] or [ty_value2] has type [Bottom]. *)
-          let t1 : t = Value ty_value1 in
-          let t2 : t = Value ty_value2 in
-          Some (join t1 t2 ~import_type:Import_type.import))
+    let exception Same_tag_different_arities in
+    try
+      Tag.Scannable.Map.union (fun tag fields1 fields2 ->
+          if Array.length fields1 <> Array.length fields2 then
+            raise Same_tag_different_arities
+          else
+            let fields =
+              Array.map2 (fun ty_value1 ty_value2 ->
+                  let t1 : t = Value ty_value1 in
+                  let t2 : t = Value ty_value2 in
+                  join t1 t2 ~import_type:Import_type.import)
+                fields1 fields2
+            in
+            Some fields)
         t1 t2
-    in
-    let has_bottom =
-      Tag.Scannable.Map.exists (fun _tag ty_value ->
-          ty_value_is_bottom ty_value)
-        t
-    in
-    if has_bottom then Wrong else Ok t
+    with Same_tag_different_arities -> Wrong
 end
 
 module Proved_unboxable_or_untaggable = struct
   type t =
     | Wrong
-    | Blocks of Blocks.t
     | Blocks_and_tagged_immediates of
         Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
-    | Tagged_immediates of Immediate.Set.t Or_not_all_values_known.t
     | Boxed_floats of Float.Set.t Or_not_all_values_known.t
     | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
@@ -597,14 +653,6 @@ module Proved_unboxable_or_untaggable = struct
     let join_immediates = Or_not_all_values_known.join Immediate.join_set in
     match t1, t2 with
     | Wrong, _ | _, Wrong -> Wrong
-    | Blocks b1, Blocks b2 ->
-      begin match Blocks.join b1 b2 with
-      | Wrong -> Wrong
-      | Ok b -> Blocks b
-      end
-    | Blocks blocks, Tagged_immediates imms
-    | Tagged_immediates imms, Blocks blocks ->
-      Blocks_and_tagged_immedates (blocks, imms)
     | Blocks_and_tagged_immediates (b1, imms1),
         Blocks_and_tagged_immediates (b2, imms2) ->
       let blocks_join = Blocks.join b1 b2 in
@@ -613,22 +661,6 @@ module Proved_unboxable_or_untaggable = struct
       | Ok blocks, Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
       | Wrong, _ | _, Wrong -> Wrong
       end
-    | Blocks_and_tagged_immediates (blocks, imms1), Tagged_immediates imms2
-    | Tagged_immediates imms1, Blocks_and_tagged_immediates (blocks, imms2) ->
-      begin match join_immediates imms1 imms2 with
-      | Wrong -> Wrong
-      | Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
-      end
-    | Blocks_and_tagged_immediates (blocks1, imms), Blocks blocks2
-    | Blocks blocks1, Blocks_and_tagged_immediates (blocks2, imms) ->
-      begin match Blocks.join blocks1 blocks2 with
-      | Wrong -> Wrong
-      | Ok blocks -> Blocks_and_tagged_immediates (blocks, imms)
-      end
-    | Tagged_immediates imms1, Tagged_immediates imms2 ->
-      Or_not_all_values_known.join (fun is1 is2 : Immediate.Set.t or_wrong ->
-          Immediate.Set.union is1 is2)
-        is1 is2
     | Boxed_floats fs1, Boxed_floats fs2 ->
       Or_not_all_values_known.join (fun fs1 fs2 : Float.Set.t or_wrong ->
           Float.Set.union fs1 fs2)
@@ -659,8 +691,12 @@ let prove_unboxable_or_untaggable (t : t) : proved_unboxable_or_untaggable =
         | Tagged_int ty ->
           begin match prove_naked_immediate_from_ty_naked_immediate ty with
           | Wrong -> Wrong
-          | Unknown -> Tagged_immediates Not_all_values_known
-          | Known i -> Tagged_immediates (Exactly (Immediate.Set.singleton i))
+          | Unknown ->
+            Blocks_and_tagged_immediates (
+              Tag.Scannable.Map.empty, Not_all_values_known)
+          | Known i ->
+            Blocks_and_tagged_immediates (
+              Tag.Scannable.Map.empty, Exactly (Immediate.Set.singleton i))
           end
         | Boxed_float ty ->
           begin match prove_naked_float_from_ty_naked_float ty with
@@ -687,7 +723,10 @@ let prove_unboxable_or_untaggable (t : t) : proved_unboxable_or_untaggable =
           | Known i -> Boxed_nakedints (Exactly (Int64.Set.singleton f))
           end
         | Block (tag, fields) ->
-
+          let blocks =
+            Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
+          in
+          Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
         | Set_of_closures _
         | Closure _
         | String _
@@ -709,74 +748,99 @@ let prove_unboxable_or_untaggable (t : t) : proved_unboxable_or_untaggable =
   | Naked_int64 _
   | Naked_nativeint _ -> Wrong
 
-type reified_as_variant =
+type proved_scannable_block =
+  | Ok of Tag.Scannable.t * ty_value array
+  | Can't_prove
+
+let prove_scannable_block t : proved_scannable_block =
+  match prove_unboxable_or_untaggable t with
+  | Blocks_and_tagged_immediates (blocks, imms) ->
+    if not (Immediate.Set.is_empty imms) then Wrong
+    else
+      begin match Tag.Scannable.Map.get_singleton blocks with
+      | Some (tag, fields) -> Ok (tag, fields)
+      | None -> Wrong
+      end
   | Wrong
-  | Blocks of blocks
-  | Blocks_and_immediates of blocks * immediates
-  | Immediates of immediates
-
-(* XXX do we want to return "unknown" cases too, giving the variable? *)
-let reify_as_variant t : reified_as_variant =
-  match descr t with
-  | Union union ->
-    begin match union with
-    | Blocks blocks -> Blocks blocks
-    | Blocks_and_immediates (blocks, imms) ->
-      Blocks_and_immediates (blocks, imms)
-    end
-  | Boxed_or_encoded_number (Encoded Tagged_int, numbers) ->
-    begin match descr numbers with
-    | Naked_number (Int, imms) ->
-      Immediates (Union.Immediate.Set.of_int_set imms)
-    | Naked_number (Char, imms) ->
-      Immediates (Union.Immediate.Set.of_char_set imms)
-    | Naked_number (Constptr, imms) ->
-      Immediates (Union.Immediate.Set.of_constptr_set imms)
-    | Union _ | Boxed_or_encoded_number _ | Bottom | Float_array _
-    | Immutable_string _ | Mutable_string _ | Set_of_closures _ | Closure _
-    | Load_lazily _ | Unknown _ -> Wrong
-    end
-  | Boxed_or_encoded_number _ | Bottom | Float_array _ | Immutable_string _
-  | Mutable_string _ | Naked_number _ | Set_of_closures _ | Closure _
-  | Load_lazily _ | Unknown _ -> Wrong
-
-type reified_as_scannable_block_or_immediate =
-  | Wrong
-  | Immediate
-  | Scannable_block
-
-let reify_as_scannable_block_or_immediate t
-      : reified_as_scannable_block_or_immediate =
-  match descr t with
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Bottom | Unknown -> Wrong
-    | Ok (Block _) -> Scannable_block
-    | Ok (Int _ | Char _ | Constptr _) -> Immediate
-    end
-  | Bottom | Float_array _ | Immutable_string _ | Mutable_string _
-  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ | Set_of_closures _ | Closure _ | Load_lazily _
-  | Unknown _ -> Wrong
+  | Tagged_immediates _
+  | Boxed_floats _
+  | Boxed_int32s _
+  | Boxed_int64s _
+  | Boxed_nativeints _ -> Wrong
 
 type reified_as_set_of_closures =
-  | Wrong
-  | Unresolved of unresolved_value
   | Unknown
   | Ok of Variable.t option * set_of_closures
+  | Wrong
 
 let reify_as_set_of_closures t : reified_as_set_of_closures =
-  match descr t with
-  | Unknown (_, Unresolved_value reason) -> Unresolved reason
-  | Set_of_closures value_set_of_closures ->
-    (* Note that [var] might be [None]; we might be reaching the set of
-       closures via Flambda types only, with the variable originally bound
-       to the set now out of scope. *)
-    Ok (var t, value_set_of_closures)
-  | Closure _ | Union _ | Boxed_number _ | Unboxed_float _
-  | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
-  | Unknown _ | Bottom | Load_lazily _ | Immutable_string _
-  | Mutable_string _ | Float_array _  -> Wrong
+  match t with
+  | Value ty ->
+    begin match maybe_import_value_type ty with
+    | Unknown _ | Bottom -> Wrong
+    | Ok of_kind_value ->
+      let for_singleton (s : of_kind_value_singleton)
+            : proved_unboxable_or_untaggable =
+        match s with
+        | Tagged_int ty ->
+          begin match prove_naked_immediate_from_ty_naked_immediate ty with
+          | Wrong -> Wrong
+          | Unknown ->
+            Blocks_and_tagged_immediates (
+              Tag.Scannable.Map.empty, Not_all_values_known)
+          | Known i ->
+            Blocks_and_tagged_immediates (
+              Tag.Scannable.Map.empty, Exactly (Immediate.Set.singleton i))
+          end
+        | Boxed_float ty ->
+          begin match prove_naked_float_from_ty_naked_float ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_floats Not_all_values_known
+          | Known f -> Boxed_floats (Exactly (Float.Set.singleton f))
+          end
+        | Boxed_int32 ty ->
+          begin match prove_naked_int32_from_ty_naked_int32 ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_int32s Not_all_values_known
+          | Known i -> Boxed_int32s (Exactly (Int32.Set.singleton f))
+          end
+        | Boxed_int64 ty ->
+          begin match prove_naked_int64_from_ty_naked_int64 ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_int64s Not_all_values_known
+          | Known i -> Boxed_int64s (Exactly (Int64.Set.singleton f))
+          end
+        | Boxed_nativeint ty ->
+          begin match prove_naked_nakedint_from_ty_naked_nativeint ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_nakedints Not_all_values_known
+          | Known i -> Boxed_nakedints (Exactly (Int64.Set.singleton f))
+          end
+        | Block (tag, fields) ->
+          let blocks =
+            Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
+          in
+          Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
+        | Set_of_closures _
+        | Closure _
+        | String _
+        | Float_array _ -> Wrong
+      in
+      let rec for_of_kind_value (o : of_kind_value) =
+        match o with
+        | Singleton s -> for_singleton s
+        | Union (w1, w2) ->
+          let proved1 = for_of_kind_value w1.descr in
+          let proved2 = for_of_kind_value w2.descr in
+          Proved_unboxable_or_untaggable.join proved1 proved2
+      in
+      for_of_kind_value of_kind_value
+    end
+  | Naked_immediate _
+  | Naked_float _
+  | Naked_int32 _
+  | Naked_int64 _
+  | Naked_nativeint _ -> Wrong
 
 type strict_reified_as_set_of_closures =
   | Wrong

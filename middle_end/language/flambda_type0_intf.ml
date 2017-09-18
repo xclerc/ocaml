@@ -19,29 +19,6 @@
 module type S = sig
   type function_declarations
 
-  module Boxed_or_encoded_number_kind : sig
-    (** "Encodings" do not allocate. *)
-    type encoded = private
-      | Tagged_immediate
-
-    (** "Boxings" allocate. *)
-    type boxed = private
-      | Float
-      | Int32
-      | Int64
-      | Nativeint
-
-    type t = private
-      | Boxed of boxed
-      | Encoded of encoded
-
-    include Identifiable.S with type t := t
-
-    (** Return the number of words allocated in total (both inside and
-        outside the OCaml heap) for the given boxing or encoding. *)
-    val num_words_allocated_excluding_header : t -> int
-  end
-
   type closure_freshening =
     { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
       closure_id : Closure_id.t Closure_id.Map.t;
@@ -76,6 +53,17 @@ module type S = sig
     symbol : (Symbol.t * int option) option;
   }
 
+  module Immediate : sig
+    type t = private {
+      value : Targetint.t;
+      min_value : Targetint.t;
+      max_value : Targetint.t;
+      needs_gc_root : bool;
+    }
+
+    include Identifiable.S with type t := t
+  end
+
   (** Values of type [t] are known as "Flambda types".  Each Flambda type
       has a unique kind.
 
@@ -106,12 +94,12 @@ module type S = sig
     | Naked_int64 of resolved_ty_naked_int64
     | Naked_nativeint of resolved_ty_naked_nativeint
 
-  and ty_resolved_value = of_kind_value resolved_ty
-  and ty_resolved_naked_immediate = of_kind_naked_immediate resolved_ty
-  and ty_resolved_naked_float = of_kind_naked_float resolved_ty
-  and ty_resolved_naked_int32 = of_kind_naked_int32 resolved_ty
-  and ty_resolved_naked_int64 = of_kind_naked_int64 resolved_ty
-  and ty_resolved_naked_nativeint = of_kind_naked_nativeint resolved_ty
+  and resolved_ty_value = of_kind_value resolved_ty
+  and resolved_ty_naked_immediate = of_kind_naked_immediate resolved_ty
+  and resolved_ty_naked_float = of_kind_naked_float resolved_ty
+  and resolved_ty_naked_int32 = of_kind_naked_int32 resolved_ty
+  and resolved_ty_naked_int64 = of_kind_naked_int64 resolved_ty
+  and resolved_ty_naked_nativeint = of_kind_naked_nativeint resolved_ty
 
   and 'a resolved_ty = 'a or_unknown_or_bottom with_var_and_symbol
 
@@ -176,9 +164,7 @@ module type S = sig
   }
 
   and of_kind_naked_immediate =
-    | Naked_int of Targetint.t
-    | Naked_char of Char.t
-    | Naked_constptr of Targetint.t
+    | Naked_immediate of Immediate.t
 
   and of_kind_naked_float =
     | Naked_float of float
