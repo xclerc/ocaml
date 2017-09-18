@@ -282,36 +282,32 @@ module type S = sig
   (** Replace the variable at the toplevel of a given type. *)
   val replace_variable : t -> Variable.t option -> t
 
-  (** Operations which need a function to resolve [Load_lazily] constructors
-      at the toplevel of types.  These operations are re-exported in
-      [Flambda_type] once the definition of [import_type] can be provided. *)
-  module type Operations_needing_import_type = sig
-    type 'a with_import_type
-
 (*
     (** Attempt to use a value kind to refine a type. *)
     val refine_using_value_kind : t -> Lambda.value_kind -> t
 *)
 
-    (** Free variables in a type. *)
-    val free_variables : (t -> Variable.Set.t) with_import_type
-
-    (** Least upper bound of two types. *)
-    val join : (t -> t -> t) with_import_type
-
-    type cleaning_spec =
-      | Available
-      | Available_different_name of Variable.t
-      | Unavailable
-(*
-    (** Adjust a type so that all of the free variables it references are in
-        scope in some context. The context is expressed by a function that says
-        whether the variable is available under its existing name, available
-        under another name, or unavailable. *)
-    val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_import_type
-*)
+  module type Backend = sig
+    val import_type : load_lazily -> resolved_t
   end
 
-  module Ops : Operations_needing_import_type
-    with type 'a with_import_type = import_type:(t -> t) -> 'a
+  type 'a with_backend = backend:(module Backend) -> 'a
+
+  (** Free variables in a type. *)
+  val free_variables : (t -> Variable.Set.t) with_backend
+
+  (** Least upper bound of two types. *)
+  val join : (t -> t -> t) with_backend
+
+  type cleaning_spec =
+    | Available
+    | Available_different_name of Variable.t
+    | Unavailable
+(*
+  (** Adjust a type so that all of the free variables it references are in
+      scope in some context. The context is expressed by a function that says
+      whether the variable is available under its existing name, available
+      under another name, or unavailable. *)
+  val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_backend
+*)
 end
