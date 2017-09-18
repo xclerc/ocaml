@@ -26,11 +26,18 @@ module Nativeint = Numbers.Nativeint
 
 include F0.Flambda_type
 
+let import_type = Import_type.import
+
 let var (t : t) = t.var
 let projection (t : t) = t.projection
 let symbol (t : t) = t.symbol
 let descr (t : t) = t.descr
 let descrs ts = List.map (fun (t : t) -> t.descr) ts
+
+let ty_value_is_bottom (ty : ty_value) =
+  match maybe_import_value_type ~import_type ty with
+  | Ok Bottom -> true
+  | Ok Unknown | Ok (Ok _) | Treat_as_unknown -> false
 
 (* CR mshinwell: Shouldn't this just use [Flambda_kind].lambda_value_kind? *)
 let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
@@ -481,114 +488,6 @@ let reify_as_scannable_block t : reified_as_scannable_block =
   | Unboxed_nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
   | Unknown _ -> Wrong
 
-let maybe_import_value_type (ty : ty_value) =
-  match ty with
-  | Ok ty -> ty
-  | Load_lazily load_lazily ->
-    match Import_type.import load_lazily with
-    | Failed -> unknown (Flambda_kind.value ())
-    | Ok resolved_t ->
-      match t with
-      | Value ty -> ty
-      | Naked_immediate _
-      | Naked_float _
-      | Naked_int32 _
-      | Naked_int64 _
-      | Naked_nativeint _ ->
-        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
-            [Value]"
-          print_load_lazily load_lazily
-
-let maybe_import_naked_immediate_type (ty : ty_naked_immediate) =
-  match ty with
-  | Ok ty -> ty
-  | Load_lazily load_lazily ->
-    match Import_type.import load_lazily with
-    | Failed -> unknown (Flambda_kind.naked_immediate ())
-    | Ok resolved_t ->
-      match t with
-      | Naked_immediate ty -> ty
-      | Value _
-      | Naked_float _
-      | Naked_int32 _
-      | Naked_int64 _
-      | Naked_nativeint _ ->
-        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
-            [Naked_immediate]"
-          print_load_lazily load_lazily
-
-let maybe_import_naked_float_type (ty : ty_naked_float) =
-  match ty with
-  | Ok ty -> ty
-  | Load_lazily load_lazily ->
-    match Import_type.import load_lazily with
-    | Failed -> unknown (Flambda_kind.naked_float ())
-    | Ok resolved_t ->
-      match t with
-      | Naked_float ty -> ty
-      | Value _
-      | Naked_immediate _
-      | Naked_int32 _
-      | Naked_int64 _
-      | Naked_nativeint _ ->
-        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
-            [Naked_float]"
-          print_load_lazily load_lazily
-
-let maybe_import_naked_int32_type (ty : ty_naked_int32) =
-  match ty with
-  | Ok ty -> ty
-  | Load_lazily load_lazily ->
-    match Import_type.import load_lazily with
-    | Failed -> unknown (Flambda_kind.naked_int32 ())
-    | Ok resolved_t ->
-      match t with
-      | Naked_int32 ty -> ty
-      | Value _
-      | Naked_immediate _
-      | Naked_float _
-      | Naked_int64 _
-      | Naked_nativeint _ ->
-        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
-            [Naked_int32]"
-          print_load_lazily load_lazily
-
-let maybe_import_naked_int64_type (ty : ty_naked_int64) =
-  match ty with
-  | Ok ty -> ty
-  | Load_lazily load_lazily ->
-    match Import_type.import load_lazily with
-    | Failed -> unknown (Flambda_kind.naked_int64 ())
-    | Ok resolved_t ->
-      match t with
-      | Naked_int64 ty -> ty
-      | Value _
-      | Naked_immediate _
-      | Naked_float _
-      | Naked_int32 _
-      | Naked_nativeint _ ->
-        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
-            [Naked_int64]"
-          print_load_lazily load_lazily
-
-let maybe_import_naked_nativeint_type (ty : ty_naked_nativeint) =
-  match ty with
-  | Ok ty -> ty
-  | Load_lazily load_lazily ->
-    match Import_type.import load_lazily with
-    | Failed -> unknown (Flambda_kind.naked_nativeint ())
-    | Ok resolved_t ->
-      match t with
-      | Naked_nativeint ty -> ty
-      | Value _
-      | Naked_immediate _
-      | Naked_float _
-      | Naked_int32 _
-      | Naked_int64 _ ->
-        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
-            [Naked_nativeint]"
-          print_load_lazily load_lazily
-
 type 'a or_wrong =
   | Ok of 'a
   | Wrong
@@ -611,76 +510,75 @@ module Or_not_all_values_known = struct
 end
 
 module Immediate = struct
-  type t =
-    | Int of Targetint.t
-    | Const_pointer of Targetint.t
-    | Char of Char.t
+  type t = {
+    value : Targetint.t;
+    min_value : Targetint.t;
+    max_value : Targetint.t;
+    needs_gc_root : bool;
+  }
 
   include Identifiable.Make (struct
     type nonrec t = t
 
-    let to_int t =
-      match t with
-      | Int _ -> 0
-      | Const_pointer _ -> 1
-      | Char _ -> 2
-
     let compare t1 t2 =
-      match t1, t2 with
-      | Int n1, Int n2 -> Targetint.compare n1 n2
-      | Const_pointer n1, Const_pointer n2 -> Targetint.compare n1 n2
-      | Char n1, Char n2 -> n1 = n2
-      | (Int _ | Const_pointer _ | Char _), _ ->
-        Pervasives.compare (to_int t1) (to_int t2)
+      let c = Targetint.compare t1.value t2.value in
+      if c <> 0 then c
+      else
+        let c = Targetint.compare t1.min_value t2.min_value in
+        if c <> 0 then c
+        else
+          let c = Targetint.compare t1.max_value t2.max_value in
+          if c <> 0 then c
+          else
+            Pervasives.compare t1.needs_gc_root t2.needs_gc_root
 
     let equal t1 t2 = (compare t1 t2 = 0)
 
     let hash t = Hashtbl.hash t
 
     let print ppf t =
-      let fprintf = Format.fprintf in
-      match t with
-      | Int n -> fprintf "int{%d}" n
-      | Const_pointer n -> fprintf "const_pointer{%d}" n
-      | Char c -> fprintf "char{%c}" c
+      Format.fprintf "(immediate %a min %a max %a root? %b)"
+        Targetint.print t.value
+        (Misc.Stdlib.Option.print Targetint.print) t.min_value
+        (Misc.Stdlib.Option.print Targetint.print) t.max_value
+        Format.pp_print_bool t.needs_gc_root
   end)
 
   let join t1 t2 : t or_wrong =
-    match t1, t2 with
-    | Int i1, Int i2 ->
-      if Targetint.equal i1 i2 then Ok t1 else Wrong
-    | Int i1, Const_pointer i2 ->
-      (* We allow this (returning the [Const_pointer] value, [t2]) since the
-         front end is not precise about uses of [Int] and [Const_pointer]. *)
-      if Targetint.equal i1 i2 then Ok t2 else Wrong
-    | Int _, Char _ -> Wrong
-    | Const_pointer i1, Int i2 ->
-      (* Same comment as above, except [t1] is returned, since it's the
-         [Const_pointer] value. *)
-      if Targetint.equal i1 i2 then Ok t1 else Wrong
-    | Const_pointer i1, Const_pointer i2 ->
-      if Targetint.equal i1 i2 then Ok t1 else Wrong
-    | Const_pointer _, Char _ -> Wrong
-    | Char _, Int _ -> Wrong
-    | Char _, Const_pointer _ -> Wrong
-    | Char c1, Char c2 ->
-      if c1 = c2 then Ok t1 else Wrong
-
-  let join_set t_set1 t_set2 =
-
+    if not (Targetint.equal t1.value t2.value) then
+      Wrong
+    else
+      let min_value = Targetint.min t1.min_value t2.min_value in
+      let max_value = Targetint.max t1.max_value t2.max_value in
+      let needs_gc_root = t1.needs_gc_root || t2.needs_gc_root in
+      Ok {
+        value = t1.value;
+        min_value;
+        max_value;
+        needs_gc_root;
+      }
 end
 
 module Blocks = struct
   type t = ty_value array Tag.Scannable.Map.t
 
-  let join t1 t2 : t or_wrong
-    let wrong = ref false in
+  let join t1 t2 : t or_wrong =
     let t =
       Tag.Scannable.Map.union (fun tag ty_value1 ty_value2 ->
-          ...)
+          (* CR mshinwell: We could maybe tighten the type of the array
+             elements more so that it's clear no existing element (i.e. in
+             [ty_value1] or [ty_value2] has type [Bottom]. *)
+          let t1 : t = Value ty_value1 in
+          let t2 : t = Value ty_value2 in
+          Some (join t1 t2 ~import_type:Import_type.import))
         t1 t2
     in
-    if !wrong then Wrong else Ok t
+    let has_bottom =
+      Tag.Scannable.Map.exists (fun _tag ty_value ->
+          ty_value_is_bottom ty_value)
+        t
+    in
+    if has_bottom then Wrong else Ok t
 end
 
 module Proved_unboxable_or_untaggable = struct

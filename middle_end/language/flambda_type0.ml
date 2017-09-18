@@ -1036,6 +1036,115 @@ end) = struct
 
   let free_variables ~import_type t =
     free_variables ~import_type t Variable.Set.empty
+
+  let maybe_import_value_type ~import_type (ty : ty_value) =
+    match ty with
+    | Ok ty -> ty
+    | Load_lazily load_lazily ->
+      match import_type load_lazily with
+      | Treat_as_unknown -> unknown (Flambda_kind.value ())
+      | Ok resolved_t ->
+        match t with
+        | Value ty -> ty
+        | Naked_immediate _
+        | Naked_float _
+        | Naked_int32 _
+        | Naked_int64 _
+        | Naked_nativeint _ ->
+          Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+              [Value]"
+            print_load_lazily load_lazily
+
+  let maybe_import_naked_immediate_type ~import_type (ty : ty_naked_immediate) =
+    match ty with
+    | Ok ty -> ty
+    | Load_lazily load_lazily ->
+      match import_type load_lazily with
+      | Treat_as_unknown -> unknown (Flambda_kind.naked_immediate ())
+      | Ok resolved_t ->
+        match t with
+        | Naked_immediate ty -> ty
+        | Value _
+        | Naked_float _
+        | Naked_int32 _
+        | Naked_int64 _
+        | Naked_nativeint _ ->
+          Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+              [Naked_immediate]"
+            print_load_lazily load_lazily
+
+  let maybe_import_naked_float_type ~import_type (ty : ty_naked_float) =
+    match ty with
+    | Ok ty -> ty
+    | Load_lazily load_lazily ->
+      match import_type load_lazily with
+      | Treat_as_unknown -> unknown (Flambda_kind.naked_float ())
+      | Ok resolved_t ->
+        match t with
+        | Naked_float ty -> ty
+        | Value _
+        | Naked_immediate _
+        | Naked_int32 _
+        | Naked_int64 _
+        | Naked_nativeint _ ->
+          Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+              [Naked_float]"
+            print_load_lazily load_lazily
+
+  let maybe_import_naked_int32_type ~import_type (ty : ty_naked_int32) =
+    match ty with
+    | Ok ty -> ty
+    | Load_lazily load_lazily ->
+      match import_type load_lazily with
+      | Treat_as_unknown -> unknown (Flambda_kind.naked_int32 ())
+      | Ok resolved_t ->
+        match t with
+        | Naked_int32 ty -> ty
+        | Value _
+        | Naked_immediate _
+        | Naked_float _
+        | Naked_int64 _
+        | Naked_nativeint _ ->
+          Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+              [Naked_int32]"
+            print_load_lazily load_lazily
+
+  let maybe_import_naked_int64_type ~import_type (ty : ty_naked_int64) =
+    match ty with
+    | Ok ty -> ty
+    | Load_lazily load_lazily ->
+      match import_type load_lazily with
+      | Treat_as_unknown -> unknown (Flambda_kind.naked_int64 ())
+      | Ok resolved_t ->
+        match t with
+        | Naked_int64 ty -> ty
+        | Value _
+        | Naked_immediate _
+        | Naked_float _
+        | Naked_int32 _
+        | Naked_nativeint _ ->
+          Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+              [Naked_int64]"
+            print_load_lazily load_lazily
+
+  let maybe_import_naked_nativeint_type ~import_type (ty : ty_naked_nativeint) =
+    match ty with
+    | Ok ty -> ty
+    | Load_lazily load_lazily ->
+      match import_type load_lazily with
+      | Treat_as_unknown -> unknown (Flambda_kind.naked_nativeint ())
+      | Ok resolved_t ->
+        match t with
+        | Naked_nativeint ty -> ty
+        | Value _
+        | Naked_immediate _
+        | Naked_float _
+        | Naked_int32 _
+        | Naked_int64 _ ->
+          Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+              [Naked_nativeint]"
+            print_load_lazily load_lazily
+
 (*
   let rec clean ~import_type t classify =
     let clean_var var_opt =
@@ -1231,17 +1340,23 @@ end) = struct
   let join (t1 : t) (t2 : t) ~import_type : t =
     match t1, t2 with
     | Value ty1, Value ty2 ->
-      Value (join_ty join_value ty1 ty2 ~import_type)
+      Value (join_ty join_value ty1 ty2
+        ~import_type:(maybe_import_value_type ~import_type))
     | Naked_immediate ty1, Naked_immediate ty2 ->
-      Naked_immediate (join_ty join_naked_immediate ty1 ty2 ~import_type)
+      Naked_immediate (join_ty join_naked_immediate ty1 ty2
+        ~import_type:(maybe_import_naked_immediate_type ~import_type))
     | Naked_float ty1, Naked_float ty2 ->
-      Naked_float (join_ty join_naked_float ty1 ty2 ~import_type)
+      Naked_float (join_ty join_naked_float ty1 ty2
+        ~import_type:(maybe_import_naked_float_type ~import_type))
     | Naked_int32 ty1, Naked_int32 ty2 ->
-      Naked_int32 (join_ty join_naked_int32 ty1 ty2 ~import_type)
+      Naked_int32 (join_ty join_naked_int32 ty1 ty2
+        ~import_type:(maybe_import_naked_int32_type ~import_type))
     | Naked_int64 ty1, Naked_int64 ty2 ->
-      Naked_int64 (join_ty join_naked_int64 ty1 ty2 ~import_type)
+      Naked_int64 (join_ty join_naked_int64 ty1 ty2
+        ~import_type:(maybe_import_naked_int64_type ~import_type))
     | Naked_nativeint ty1, Naked_nativeint ty2 ->
-      Naked_nativeint (join_ty join_naked_nativeint ty1 ty2 ~import_type)
+      Naked_nativeint (join_ty join_naked_nativeint ty1 ty2
+        ~import_type:(maybe_import_naked_nativeint_type ~import_type))
     | _, _ ->
       Misc.fatal_errorf "Cannot take the join of two types with different \
           kinds: %a and %a"
