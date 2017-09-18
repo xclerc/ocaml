@@ -297,6 +297,51 @@ end) = struct
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
 
+  let augment_with_variable (t : t) var : t =
+    let var = Some var in
+    match t with
+    | Value ty -> Value { ty with var; }
+    | Naked_int ty -> Naked_int { ty with var; }
+    | Naked_float ty -> Naked_float { ty with var; }
+    | Naked_int32 ty -> Naked_int32 { ty with var; }
+    | Naked_int64 ty -> Naked_int64 { ty with var; }
+    | Naked_nativeint ty -> Naked_nativeint { ty with var; }
+
+  let augment_with_symbol (t : t) symbol : t =
+    let symbol = Some symbol in
+    match t with
+    | Value ty -> Value { ty with symbol; }
+    | Naked_int ty -> Naked_int { ty with symbol; }
+    | Naked_float ty -> Naked_float { ty with symbol; }
+    | Naked_int32 ty -> Naked_int32 { ty with symbol; }
+    | Naked_int64 ty -> Naked_int64 { ty with symbol; }
+    | Naked_nativeint ty -> Naked_nativeint { ty with symbol; }
+
+  let augment_with_symbol_internal (t : t) symbol field : t =
+    let symbol = Some (symbol, field) in
+    match t with
+    | Value ty -> Value { ty with symbol; }
+    | Naked_int ty -> Naked_int { ty with symbol; }
+    | Naked_float ty -> Naked_float { ty with symbol; }
+    | Naked_int32 ty -> Naked_int32 { ty with symbol; }
+    | Naked_int64 ty -> Naked_int64 { ty with symbol; }
+    | Naked_nativeint ty -> Naked_nativeint { ty with symbol; }
+
+  let augment_with_symbol t symbol =
+    augment_with_symbol_internal t symbol None
+
+  let augment_with_symbol_field t symbol field =
+    augment_with_symbol_internal t symbol (Some field)
+
+  let replace_variable (t : t) var : t =
+    match t with
+    | Value ty -> Value { ty with var; }
+    | Naked_int ty -> Naked_int { ty with var; }
+    | Naked_float ty -> Naked_float { ty with var; }
+    | Naked_int32 ty -> Naked_int32 { ty with var; }
+    | Naked_int64 ty -> Naked_int64 { ty with var; }
+    | Naked_nativeint ty -> Naked_nativeint { ty with var; }
+
   module type Backend = sig
     val import_value_type : load_lazily -> value_ty
     val import_naked_immediate_type : load_lazily -> naked_immediate_ty
@@ -314,6 +359,7 @@ end) = struct
   module Make_backend (S : sig
     val import_export_id : Export_id.t -> t option
     val import_symbol : Symbol.t -> t option
+    val symbol_is_predefined_exception : Symbol.t -> bool
   end) : Backend = struct
     type import_result =
       | Ok of resolved_t
@@ -346,6 +392,8 @@ end) = struct
           | None -> Treat_as_unknown
           | Some t ->
             match create_resolved_t t with
+            (* CR mshinwell: We used to [augment_with_symbol] here but maybe
+               we don't need it any more? *)
             | Ok resolved_t -> Ok resolved_t
             | Load_lazily_again ll ->
               let symbols_seen = Symbol.Set.add id symbols_seen in
@@ -747,51 +795,6 @@ end) = struct
     (* CR mshinwell: Do we need more cases here?  We could add Pintval *)
     | _ -> t
 *)
-
-  let augment_with_variable (t : t) var : t =
-    let var = Some var in
-    match t with
-    | Value ty -> Value { ty with var; }
-    | Naked_int ty -> Naked_int { ty with var; }
-    | Naked_float ty -> Naked_float { ty with var; }
-    | Naked_int32 ty -> Naked_int32 { ty with var; }
-    | Naked_int64 ty -> Naked_int64 { ty with var; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with var; }
-
-  let augment_with_symbol (t : t) symbol : t =
-    let symbol = Some symbol in
-    match t with
-    | Value ty -> Value { ty with symbol; }
-    | Naked_int ty -> Naked_int { ty with symbol; }
-    | Naked_float ty -> Naked_float { ty with symbol; }
-    | Naked_int32 ty -> Naked_int32 { ty with symbol; }
-    | Naked_int64 ty -> Naked_int64 { ty with symbol; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with symbol; }
-
-  let augment_with_symbol_internal (t : t) symbol field : t =
-    let symbol = Some (symbol, field) in
-    match t with
-    | Value ty -> Value { ty with symbol; }
-    | Naked_int ty -> Naked_int { ty with symbol; }
-    | Naked_float ty -> Naked_float { ty with symbol; }
-    | Naked_int32 ty -> Naked_int32 { ty with symbol; }
-    | Naked_int64 ty -> Naked_int64 { ty with symbol; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with symbol; }
-
-  let augment_with_symbol t symbol =
-    augment_with_symbol_internal t symbol None
-
-  let augment_with_symbol_field t symbol field =
-    augment_with_symbol_internal t symbol (Some field)
-
-  let replace_variable (t : t) var : t =
-    match t with
-    | Value ty -> Value { ty with var; }
-    | Naked_int ty -> Naked_int { ty with var; }
-    | Naked_float ty -> Naked_float { ty with var; }
-    | Naked_int32 ty -> Naked_int32 { ty with var; }
-    | Naked_int64 ty -> Naked_int64 { ty with var; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with var; }
 
   let unknown (kind : K.t) reason : t =
     match kind with

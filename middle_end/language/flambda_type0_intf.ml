@@ -316,6 +316,9 @@ module type S = sig
     (** As for [import_export_id], except that the desired type is specified by
         symbol, rather than by export identifier. *)
     val import_symbol : Symbol.t -> t option
+
+    (** Determine whether a symbol corresponds to a predefined exception. *)
+    val symbol_is_predefined_exception : Symbol.t -> bool
   end) : Backend
 
   (** Annotation for functions that may require the importing of types from
