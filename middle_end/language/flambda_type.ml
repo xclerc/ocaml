@@ -589,17 +589,25 @@ let maybe_import_naked_nativeint_type (ty : ty_naked_nativeint) =
             [Naked_nativeint]"
           print_load_lazily load_lazily
 
+type 'a or_wrong =
+  | Ok of 'a
+  | Wrong
+
 module Or_not_all_values_known = struct
   type 'a t =
     | Exactly of 'a
     | Not_all_values_known
 
-  let join join_contents t1 t2 =
+  let join join_contents t1 t2 : _ t or_wrong =
     match t1, t2 with
-    | Exactly e1, Exactly e2 -> Exactly (join_contents e1 e2)
+    | Exactly e1, Exactly e2 ->
+      begin match join_contents e1 e2 with
+      | Ok e -> Ok (Exactly e)
+      | Wrong -> Wrong
+      end
     | Exactly _, Not_all_values_known
     | Not_all_values_known, Exactly _
-    | Not_all_values_known, Not_all_values_known -> Not_all_values_known
+    | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
 end
 
 module Immediate = struct
@@ -636,16 +644,36 @@ module Immediate = struct
       | Const_pointer n -> fprintf "const_pointer{%d}" n
       | Char c -> fprintf "char{%c}" c
   end)
+
+  let join t1 t2 : t or_wrong =
+    match t1, t2 with
+    | Int i1, Int i2 ->
+      if Targetint.equal i1 i2 then Ok t1 else Wrong
+    | Int i1, Const_pointer i2 ->
+      (* We allow this (returning the [Const_pointer] value, [t2]) since the
+         front end is not precise about uses of [Int] and [Const_pointer]. *)
+      if Targetint.equal i1 i2 then Ok t2 else Wrong
+    | Int _, Char _ -> Wrong
+    | Const_pointer i1, Int i2 ->
+      (* Same comment as above, except [t1] is returned, since it's the
+         [Const_pointer] value. *)
+      if Targetint.equal i1 i2 then Ok t1 else Wrong
+    | Const_pointer i1, Const_pointer i2 ->
+      if Targetint.equal i1 i2 then Ok t1 else Wrong
+    | Const_pointer _, Char _ -> Wrong
+    | Char _, Int _ -> Wrong
+    | Char _, Const_pointer _ -> Wrong
+    | Char c1, Char c2 ->
+      if c1 = c2 then Ok t1 else Wrong
+
+  let join_set t_set1 t_set2 =
+
 end
 
 module Blocks = struct
   type t = ty_value array Tag.Scannable.Map.t
 
-  type join_result =
-    | Wrong
-    | Ok of t
-
-  let join t1 t2 : join_result =
+  let join t1 t2 : t or_wrong
     let wrong = ref false in
     let t =
       Tag.Scannable.Map.union (fun tag ty_value1 ty_value2 ->
@@ -668,6 +696,7 @@ module Proved_unboxable_or_untaggable = struct
     | Boxed_nativeints of Nativeint.Set.t Or_not_all_values_known.t
 
   let join t1 t2 =
+    let join_immediates = Or_not_all_values_known.join Immediate.join_set in
     match t1, t2 with
     | Wrong, _ | _, Wrong -> Wrong
     | Blocks b1, Blocks b2 ->
@@ -675,9 +704,49 @@ module Proved_unboxable_or_untaggable = struct
       | Wrong -> Wrong
       | Ok b -> Blocks b
       end
+    | Blocks blocks, Tagged_immediates imms
+    | Tagged_immediates imms, Blocks blocks ->
+      Blocks_and_tagged_immedates (blocks, imms)
     | Blocks_and_tagged_immediates (b1, imms1),
         Blocks_and_tagged_immediates (b2, imms2) ->
-      
+      let blocks_join = Blocks.join b1 b2 in
+      let imms_join = join_immediates imms1 imms2 in
+      begin match blocks_join, imms_join with
+      | Ok blocks, Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
+      | Wrong, _ | _, Wrong -> Wrong
+      end
+    | Blocks_and_tagged_immediates (blocks, imms1), Tagged_immediates imms2
+    | Tagged_immediates imms1, Blocks_and_tagged_immediates (blocks, imms2) ->
+      begin match join_immediates imms1 imms2 with
+      | Wrong -> Wrong
+      | Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
+      end
+    | Blocks_and_tagged_immediates (blocks1, imms), Blocks blocks2
+    | Blocks blocks1, Blocks_and_tagged_immediates (blocks2, imms) ->
+      begin match Blocks.join blocks1 blocks2 with
+      | Wrong -> Wrong
+      | Ok blocks -> Blocks_and_tagged_immediates (blocks, imms)
+      end
+    | Tagged_immediates imms1, Tagged_immediates imms2 ->
+      Or_not_all_values_known.join (fun is1 is2 : Immediate.Set.t or_wrong ->
+          Immediate.Set.union is1 is2)
+        is1 is2
+    | Boxed_floats fs1, Boxed_floats fs2 ->
+      Or_not_all_values_known.join (fun fs1 fs2 : Float.Set.t or_wrong ->
+          Float.Set.union fs1 fs2)
+        fs1 fs2
+    | Boxed_int32s is1, Boxed_int32s is2 ->
+      Or_not_all_values_known.join (fun is1 is2 : Int32.Set.t or_wrong ->
+          Int32.Set.union is1 is2)
+        is1 is2
+    | Boxed_int64s is1, Boxed_int64s is2 ->
+      Or_not_all_values_known.join (fun is1 is2 : Int64.Set.t or_wrong ->
+          Int64.Set.union is1 is2)
+        is1 is2
+    | Boxed_nativeints is1, Boxed_nativeints is2 ->
+      Or_not_all_values_known.join (fun is1 is2 : Nativeint.Set.t or_wrong ->
+          Nativeint.Set.union is1 is2)
+        is1 is2
 end
 
 let prove_unboxable_or_untaggable (t : t) : proved_unboxable_or_untaggable =
