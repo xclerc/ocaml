@@ -519,161 +519,143 @@ module Immediate = struct
   end)
 end
 
-module Unboxable = struct
-  type immediate_valued =
-    | Yes of { unique_known_value : Immediate.t option; }
-    | No
+type proved_unboxable_or_untaggable =
+  | Wrong
+  | Blocks of blocks
+  | Blocks_and_tagged_immediates of blocks * Immediate.Set.t
+  | Tagged_immediates of Immediate.Set.t
+  | Boxed_floats of Float.Set.t
+  | Boxed_int32s of Int32.Set.t
+  | Boxed_int64s of Int64.Set.t
+  | Boxed_nativeints of Nativeint.Set.t
 
-  module encoded_or_boxed = struct
-    type how_to_create =
-      | Call_external of { function_name : string; }
-      | Allocate of {
-          sizes_by_tag : int Tag.Map.t;
-          max_size : int;
-        }
+let maybe_import_value_type (ty : ty_value) =
+  match ty with
+  | Ok ty -> ty
+  | Load_lazily load_lazily ->
+    match Import_type.import load_lazily with
+    | Failed -> unknown (Flambda_kind.value ())
+    | Ok resolved_t ->
+      match t with
+      | Value ty -> ty
+      | Naked_immediate _
+      | Naked_float _
+      | Naked_int32 _
+      | Naked_int64 _
+      | Naked_nativeint _ ->
+        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+            [Value]"
+          print_load_lazily load_lazily
 
-    type t = {
-      how_to_create : how_to_create;
-      arity : Flambda_kind.t list;
-      projection : (field:int -> Projection.t);
-      projection_code : (field:int -> Flambda0.Named.t);
-    }
+let maybe_import_naked_immediate_type (ty : ty_naked_immediate) =
+  match ty with
+  | Ok ty -> ty
+  | Load_lazily load_lazily ->
+    match Import_type.import load_lazily with
+    | Failed -> unknown (Flambda_kind.naked_immediate ())
+    | Ok resolved_t ->
+      match t with
+      | Naked_immediate ty -> ty
+      | Value _
+      | Naked_float _
+      | Naked_int32 _
+      | Naked_int64 _
+      | Naked_nativeint _ ->
+        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+            [Naked_immediate]"
+          print_load_lazily load_lazily
 
-    let how_to_create t = t.how_to_create
-    let arity t = t.arity
-    let projection t ~field = t.projection ~field
-    let projection_code t ~field = t.projection_code ~field
-  end
+let maybe_import_naked_float_type (ty : ty_naked_float) =
+  match ty with
+  | Ok ty -> ty
+  | Load_lazily load_lazily ->
+    match Import_type.import load_lazily with
+    | Failed -> unknown (Flambda_kind.naked_float ())
+    | Ok resolved_t ->
+      match t with
+      | Naked_float ty -> ty
+      | Value _
+      | Naked_immediate _
+      | Naked_int32 _
+      | Naked_int64 _
+      | Naked_nativeint _ ->
+        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+            [Naked_float]"
+          print_load_lazily load_lazily
 
-  type encoded_or_boxed =
-    | Yes of encoded_or_boxed.t
-    | No
+let maybe_import_naked_int32_type (ty : ty_naked_int32) =
+  match ty with
+  | Ok ty -> ty
+  | Load_lazily load_lazily ->
+    match Import_type.import load_lazily with
+    | Failed -> unknown (Flambda_kind.naked_int32 ())
+    | Ok resolved_t ->
+      match t with
+      | Naked_int32 ty -> ty
+      | Value _
+      | Naked_immediate _
+      | Naked_float _
+      | Naked_int64 _
+      | Naked_nativeint _ ->
+        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+            [Naked_int32]"
+          print_load_lazily load_lazily
 
-  type t = {
-    immediate_valued : immediate_valued;
-    encoded_or_boxed : encoded_or_boxed;
-  }
+let maybe_import_naked_int64_type (ty : ty_naked_int64) =
+  match ty with
+  | Ok ty -> ty
+  | Load_lazily load_lazily ->
+    match Import_type.import load_lazily with
+    | Failed -> unknown (Flambda_kind.naked_int64 ())
+    | Ok resolved_t ->
+      match t with
+      | Naked_int64 ty -> ty
+      | Value _
+      | Naked_immediate _
+      | Naked_float _
+      | Naked_int32 _
+      | Naked_nativeint _ ->
+        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+            [Naked_int64]"
+          print_load_lazily load_lazily
 
-  let immediate_valued t = t.immediate_valued
-  let encoded_or_boxed t = t.encoded_or_boxed
+let maybe_import_naked_nativeint_type (ty : ty_naked_nativeint) =
+  match ty with
+  | Ok ty -> ty
+  | Load_lazily load_lazily ->
+    match Import_type.import load_lazily with
+    | Failed -> unknown (Flambda_kind.naked_nativeint ())
+    | Ok resolved_t ->
+      match t with
+      | Naked_nativeint ty -> ty
+      | Value _
+      | Naked_immediate _
+      | Naked_float _
+      | Naked_int32 _
+      | Naked_int64 _ ->
+        Misc.fatal_errorf "Kind mismatch when importing %a; expected kind \
+            [Naked_nativeint]"
+          print_load_lazily load_lazily
 
-  let check_field_within_range ~field ~max_size =
-    if field < 0 || field >= max_size then begin
-      Misc.fatal_errorf "Field index %d out of range when forming \
-          [Unboxable.t]"
-        field
-    end
+let prove_unboxable_or_untaggable (t : t) : proved_unboxable_or_untaggable =
+  match t with
+  | Value ty ->
+    let ty = maybe_import_value_type ty in
 
-  let create_blocks_internal ~immediate_valued ~sizes_by_tag : t =
-    if Tag.Map.cardinal sizes_by_tag < 1 then begin
-      Misc.fatal_error "create_blocks_internal: empty [sizes_by_tag]"
-    end;
-    let max_size = Tag.Set.max_elt (Tag.Map.keys sizes_by_tag) in
-    { immediate_valued = No;
-      encoded_or_boxed = {
-        how_to_create = Allocate_empty { sizes_by_tag; };
-        arity = Array.to_list (Array.create max_size (Flambda_kind.value ()));
-        projection = (fun ~being_unboxed ~field : Projection.t ->
-          (* This bounds check isn't completely watertight (any particular
-             constructor may have fewer arguments than [max_size]), but it's
-             better than nothing. *)
-          check_field_within_range ~field ~max_size;
-          Field (being_unboxed, field));
-        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
-          check_field_within_range ~field ~max_size;
-          Prim (Pfield field, [being_unboxed], dbg));
-      };
-    }
+  | Naked_immediate ty ->
+    let ty = import_naked_immediate_type ty in
 
-  let create_blocks_and_immediates ~unique_immediate_value ~sizes_by_tag =
-    create_blocks_internal
-      ~immediate_valued:(Yes { unique_known_value = unique_immediate_value; })
-      ~tag ~sizes_by_tag
+  | Naked_float ty ->
+    let ty = import_naked_float_type ty in
 
-  let create_blocks ~sizes_by_tag =
-    create_blocks_internal ~immediate_valued:No ~sizes_by_tag
+  | Naked_int32 ty ->
+    let ty = import_naked_int32_type ty in
 
-  let create_boxed_float () : t =
-    match Flambda_kind.naked_float () with
-    | None -> None
-    | Some naked_float_kind ->
-      { immediate_valued = No;
-        encoded_or_boxed = {
-          how_to_create = Allocate_and_fill Pbox_float;
-          arity = [naked_float_kind];
-          projection = (fun ~being_unboxed ~field : Projection.t ->
-            check_field_within_range ~field ~max_size:1;
-            Prim (Punbox_float, [being_unboxed]));
-          projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
-            check_field_within_range ~field ~max_size:1;
-            Prim (Punbox_float, [being_unboxed], dbg));
-        };
-      }
+  | Naked_int64 ty ->
+    let ty = import_naked_int64_type ty in
 
-  let create_boxed_int32 () : t =
-    { immediate_valued = No;
-      encoded_or_boxed = {
-        how_to_create = Allocate_and_fill Pbox_int32;
-        arity = [Flambda_kind.naked_int32 ()];
-        projection = (fun ~being_unboxed ~field : Projection.t ->
-          check_field_within_range ~field ~max_size:1;
-          Prim (Punbox_int32, [being_unboxed]));
-        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
-          check_field_within_range ~field ~max_size:1;
-          Prim (Punbox_int32 field, [being_unboxed], dbg));
-      };
-    }
-
-  let create_boxed_int64 () : t =
-    match Flambda_kind.naked_int64 () with
-    | None -> None
-    | Some naked_int64_kind ->
-      { immediate_valued = No;
-        encoded_or_boxed = {
-          how_to_create = Allocate_and_fill Pbox_int64;
-          arity = [naked_int64_kind];
-          projection = (fun ~being_unboxed ~field : Projection.t ->
-            check_field_within_range ~field ~max_size:1;
-            Prim (Punbox_int64, [being_unboxed]));
-          projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
-            check_field_within_range ~field ~max_size:1;
-            Prim (Punbox_int64 field, [being_unboxed], dbg));
-        };
-      }
-
-  let create_boxed_nativeint () : t =
-    { immediate_valued = No;
-      encoded_or_boxed = {
-        how_to_create = Allocate_and_fill Pbox_nativeint;
-        arity = [Flambda_kind.naked_nativeint ()];
-        projection = (fun ~being_unboxed ~field : Projection.t ->
-          check_field_within_range ~field ~max_size:1;
-          Prim (Punbox_nativeint, [being_unboxed]));
-        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
-          check_field_within_range ~field ~max_size:1;
-          Prim (Punbox_nativeint, [being_unboxed], dbg));
-      };
-    }
-
-  let create_tagged_immediate () : t =
-    { immediate_valued = No;
-      encoded_or_boxed = {
-        how_to_create = Allocate_and_fill Ptag_int;
-        arity = [Flambda_kind.naked_immediate ()];
-        projection = (fun ~being_unboxed ~field : Projection.t ->
-          check_field_within_range ~field ~max_size:1;
-          Prim (Puntag_immediate, [being_unboxed]));
-        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
-          check_field_within_range ~field ~max_size:1;
-          Prim (Puntag_immediate, [being_unboxed], dbg));
-      };
-    }
-end
-
-let prove_unboxable (t : t) =
-  ...
-
-
+  | Naked_nativeint ty ->
+    let ty = import_naked_nativeint_type ty in
 
 
 

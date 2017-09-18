@@ -195,8 +195,6 @@ type reified_as_scannable_block =
     that can be scanned by the GC. *)
 val reify_as_scannable_block : t -> reified_as_scannable_block
 
-type 'a or_wrong = Ok of 'a | Wrong
-
 type blocks = t array Tag.Scannable.Map.t
 
 module Immediate : sig
@@ -208,7 +206,8 @@ module Immediate : sig
   include Identifiable.S with type t := t
 end
 
-type unboxable_or_untaggable =
+type proved_unboxable_or_untaggable =
+  | Wrong
   | Blocks of blocks
   | Blocks_and_tagged_immediates of blocks * Immediate.Set.t
   | Tagged_immediates of Immediate.Set.t
@@ -217,67 +216,11 @@ type unboxable_or_untaggable =
   | Boxed_int64s of Int64.Set.t
   | Boxed_nativeints of Nativeint.Set.t
 
-module Unboxable_or_untaggable : sig
-  (** Witness that values of a particular Flambda type may be unboxed or
-      untagged.  We call the contents of such values the "constitutuents"
-      of the value.  (For example, each boxed float value has a naked
-      float constitutent; each tagged immediate has a naked immediate
-      constituent; a pair has two constituents of kind [Value].)  Constituents
-      of values are ordered (following field numbers for blocks) starting at
-      zero.
-
-      The functions in this module provide a basic abstraction over unboxing
-      and untagging which can be built on to perform unboxing transformations
-      (cf. [Unbox_one_variable]).
-  *)
-
-  type how_to_create = private
-    | Allocate_and_fill of Lambda.primitive
-    (** The boxed or encoded value is to be completely constructed using the
-        given primitive.  The constituents of the value are specified as the
-        usual [Variable.t]s in the [Prim] term (cf. [Flambda0.Named.t]). *)
-    | Allocate_empty of {
-        sizes_by_tag : int Tag.Map.t;
-      }
-    (** The value is to be allocated, according to the desired tag, using
-        [Pmakeblock]---but the caller is responsible for filling it. *)
-
-  (** For each constituent of the value, in order, which value kind is required
-      to represent that component.  When unboxing variants the arity
-      corresponds to the maximum number of fields across all possible
-      tags. *)
-  val arity : t -> Flambda_kind.t list
-
-  (** Values of variant type with mixed constant and non-constant
-      constructors take on immediate values in addition to boxed values.
-      Such immediate values are returned by this function.  (Note that this
-      is unrelated to immediate values that might be taken on by a variable
-      that always holds tagged immediates and is being untagged.  That case
-      is one of those for which this function returns [None].) *)
-  val forms_union_with_immediates : t -> Immediate.Set.t option
-
-  (** The [Projection.t] value that describes the given projection out of
-      the block. *)
-  val projection
-     : t
-    -> being_unboxed:Variable.t
-    -> field:int
-    -> Projection.t
-
-  (** The code required to perform the given projection out of the block. *)
-  val projection_code
-     : t
-    -> being_unboxed:Variable.t
-    -> field:int
-    -> Debuginfo.t
-    -> Flambda0.Named.t
-end
-
 (** Try to prove that the given type is of the expected form for the
     Flambda type of a value that can be unboxed: either a scannable block
     (possibly in conjunction with immediates, in the case of variant types)
     or a boxed number. *)
-val prove_unboxable : t -> Unboxable.t or_wrong
+val prove_unboxable : t -> unboxable_or_untaggable
 
 type reified_as_scannable_block_or_immediate =
   | Wrong

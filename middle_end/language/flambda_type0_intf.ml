@@ -98,6 +98,23 @@ module type S = sig
 
   and 'a ty = 'a maybe_unresolved with_var_and_symbol
 
+  and resolved_t = private
+    | Value of resolved_ty_value
+    | Naked_immediate of resolved_ty_naked_immediate
+    | Naked_float of resolved_ty_naked_float
+    | Naked_int32 of resolved_ty_naked_int32
+    | Naked_int64 of resolved_ty_naked_int64
+    | Naked_nativeint of resolved_ty_naked_nativeint
+
+  and ty_resolved_value = of_kind_value resolved_ty
+  and ty_resolved_naked_immediate = of_kind_naked_immediate resolved_ty
+  and ty_resolved_naked_float = of_kind_naked_float resolved_ty
+  and ty_resolved_naked_int32 = of_kind_naked_int32 resolved_ty
+  and ty_resolved_naked_int64 = of_kind_naked_int64 resolved_ty
+  and ty_resolved_naked_nativeint = of_kind_naked_nativeint resolved_ty
+
+  and 'a resolved_ty = 'a or_unknown_or_bottom with_var_and_symbol
+
   and 'a maybe_unresolved = private
     | Ok of 'a or_unknown_or_bottom
     | Load_lazily of load_lazily

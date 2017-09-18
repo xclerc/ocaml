@@ -535,3 +535,212 @@ Format.eprintf "how_to_unbox %a: %a\n%!"
     else
       Some (how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
         ~unbox_returns)
+
+(* Some new ideas
+module Unboxable = struct
+  type immediate_valued =
+    | Yes of { unique_known_value : Immediate.t option; }
+    | No
+
+  module encoded_or_boxed = struct
+    type how_to_create =
+      | Call_external of { function_name : string; }
+      | Allocate of {
+          sizes_by_tag : int Tag.Map.t;
+          max_size : int;
+        }
+
+    type t = {
+      how_to_create : how_to_create;
+      arity : Flambda_kind.t list;
+      projection : (field:int -> Projection.t);
+      projection_code : (field:int -> Flambda0.Named.t);
+    }
+
+    let how_to_create t = t.how_to_create
+    let arity t = t.arity
+    let projection t ~field = t.projection ~field
+    let projection_code t ~field = t.projection_code ~field
+  end
+
+  type encoded_or_boxed =
+    | Yes of encoded_or_boxed.t
+    | No
+
+  type t = {
+    immediate_valued : immediate_valued;
+    encoded_or_boxed : encoded_or_boxed;
+  }
+
+  let immediate_valued t = t.immediate_valued
+  let encoded_or_boxed t = t.encoded_or_boxed
+
+  let check_field_within_range ~field ~max_size =
+    if field < 0 || field >= max_size then begin
+      Misc.fatal_errorf "Field index %d out of range when forming \
+          [Unboxable.t]"
+        field
+    end
+
+  let create_blocks_internal ~immediate_valued ~sizes_by_tag : t =
+    if Tag.Map.cardinal sizes_by_tag < 1 then begin
+      Misc.fatal_error "create_blocks_internal: empty [sizes_by_tag]"
+    end;
+    let max_size = Tag.Set.max_elt (Tag.Map.keys sizes_by_tag) in
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_empty { sizes_by_tag; };
+        arity = Array.to_list (Array.create max_size (Flambda_kind.value ()));
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          (* This bounds check isn't completely watertight (any particular
+             constructor may have fewer arguments than [max_size]), but it's
+             better than nothing. *)
+          check_field_within_range ~field ~max_size;
+          Field (being_unboxed, field));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size;
+          Prim (Pfield field, [being_unboxed], dbg));
+      };
+    }
+
+  let create_blocks_and_immediates ~unique_immediate_value ~sizes_by_tag =
+    create_blocks_internal
+      ~immediate_valued:(Yes { unique_known_value = unique_immediate_value; })
+      ~tag ~sizes_by_tag
+
+  let create_blocks ~sizes_by_tag =
+    create_blocks_internal ~immediate_valued:No ~sizes_by_tag
+
+  let create_boxed_float () : t =
+    match Flambda_kind.naked_float () with
+    | None -> None
+    | Some naked_float_kind ->
+      { immediate_valued = No;
+        encoded_or_boxed = {
+          how_to_create = Allocate_and_fill Pbox_float;
+          arity = [naked_float_kind];
+          projection = (fun ~being_unboxed ~field : Projection.t ->
+            check_field_within_range ~field ~max_size:1;
+            Prim (Punbox_float, [being_unboxed]));
+          projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+            check_field_within_range ~field ~max_size:1;
+            Prim (Punbox_float, [being_unboxed], dbg));
+        };
+      }
+
+  let create_boxed_int32 () : t =
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_and_fill Pbox_int32;
+        arity = [Flambda_kind.naked_int32 ()];
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Punbox_int32, [being_unboxed]));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Punbox_int32 field, [being_unboxed], dbg));
+      };
+    }
+
+  let create_boxed_int64 () : t =
+    match Flambda_kind.naked_int64 () with
+    | None -> None
+    | Some naked_int64_kind ->
+      { immediate_valued = No;
+        encoded_or_boxed = {
+          how_to_create = Allocate_and_fill Pbox_int64;
+          arity = [naked_int64_kind];
+          projection = (fun ~being_unboxed ~field : Projection.t ->
+            check_field_within_range ~field ~max_size:1;
+            Prim (Punbox_int64, [being_unboxed]));
+          projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+            check_field_within_range ~field ~max_size:1;
+            Prim (Punbox_int64 field, [being_unboxed], dbg));
+        };
+      }
+
+  let create_boxed_nativeint () : t =
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_and_fill Pbox_nativeint;
+        arity = [Flambda_kind.naked_nativeint ()];
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Punbox_nativeint, [being_unboxed]));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Punbox_nativeint, [being_unboxed], dbg));
+      };
+    }
+
+  let create_tagged_immediate () : t =
+    { immediate_valued = No;
+      encoded_or_boxed = {
+        how_to_create = Allocate_and_fill Ptag_int;
+        arity = [Flambda_kind.naked_immediate ()];
+        projection = (fun ~being_unboxed ~field : Projection.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Puntag_immediate, [being_unboxed]));
+        projection_code = (fun ~being_unboxed ~field dbg : Flambda0.Named.t ->
+          check_field_within_range ~field ~max_size:1;
+          Prim (Puntag_immediate, [being_unboxed], dbg));
+      };
+    }
+end
+
+module Unboxable_or_untaggable : sig
+  (** Witness that values of a particular Flambda type may be unboxed or
+      untagged.  We call the contents of such values the "constitutuents"
+      of the value.  (For example, each boxed float value has a naked
+      float constitutent; each tagged immediate has a naked immediate
+      constituent; a pair has two constituents of kind [Value].)  Constituents
+      of values are ordered (following field numbers for blocks) starting at
+      zero.
+
+      The functions in this module provide a basic abstraction over unboxing
+      and untagging which can be built on to perform unboxing transformations
+      (cf. [Unbox_one_variable]).
+  *)
+
+  type how_to_create = private
+    | Allocate_and_fill of Lambda.primitive
+    (** The boxed or encoded value is to be completely constructed using the
+        given primitive.  The constituents of the value are specified as the
+        usual [Variable.t]s in the [Prim] term (cf. [Flambda0.Named.t]). *)
+    | Allocate_empty of {
+        sizes_by_tag : int Tag.Map.t;
+      }
+    (** The value is to be allocated, according to the desired tag, using
+        [Pmakeblock]---but the caller is responsible for filling it. *)
+
+  (** For each constituent of the value, in order, which value kind is required
+      to represent that component.  When unboxing variants the arity
+      corresponds to the maximum number of fields across all possible
+      tags. *)
+  val arity : t -> Flambda_kind.t list
+
+  (** Values of variant type with mixed constant and non-constant
+      constructors take on immediate values in addition to boxed values.
+      Such immediate values are returned by this function.  (Note that this
+      is unrelated to immediate values that might be taken on by a variable
+      that always holds tagged immediates and is being untagged.  That case
+      is one of those for which this function returns [None].) *)
+  val forms_union_with_immediates : t -> Immediate.Set.t option
+
+  (** The [Projection.t] value that describes the given projection out of
+      the block. *)
+  val projection
+     : t
+    -> being_unboxed:Variable.t
+    -> field:int
+    -> Projection.t
+
+  (** The code required to perform the given projection out of the block. *)
+  val projection_code
+     : t
+    -> being_unboxed:Variable.t
+    -> field:int
+    -> Debuginfo.t
+    -> Flambda0.Named.t
+end
+*)
