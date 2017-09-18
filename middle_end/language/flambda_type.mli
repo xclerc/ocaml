@@ -195,8 +195,6 @@ type reified_as_scannable_block =
     that can be scanned by the GC. *)
 val reify_as_scannable_block : t -> reified_as_scannable_block
 
-type blocks = t array Tag.Scannable.Map.t
-
 module Immediate : sig
   type t = private
     | Int of Targetint.t
@@ -206,15 +204,28 @@ module Immediate : sig
   include Identifiable.S with type t := t
 end
 
-type proved_unboxable_or_untaggable =
-  | Wrong
-  | Blocks of blocks
-  | Blocks_and_tagged_immediates of blocks * Immediate.Set.t
-  | Tagged_immediates of Immediate.Set.t
-  | Boxed_floats of Float.Set.t
-  | Boxed_int32s of Int32.Set.t
-  | Boxed_int64s of Int64.Set.t
-  | Boxed_nativeints of Nativeint.Set.t
+module Blocks : sig
+  type t = private ty_value array Tag.Scannable.Map.t
+end
+
+module Or_not_all_values_known : sig
+  type 'a t = private
+    | Exactly of 'a
+    | Not_all_values_known
+end
+
+module Proved_unboxable_or_untaggable : sig
+  type t = private
+    | Wrong
+    | Blocks of Blocks.t
+    | Blocks_and_tagged_immediates of
+        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
+    | Tagged_immediates of Immediate.Set.t Or_not_all_values_known.t
+    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Nativeint.Set.t Or_not_all_values_known.t
+end
 
 (** Try to prove that the given type is of the expected form for the
     Flambda type of a value that can be unboxed: either a scannable block

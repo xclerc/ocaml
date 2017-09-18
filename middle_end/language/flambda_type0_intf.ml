@@ -138,7 +138,11 @@ module type S = sig
         that traverses union types. *)
 
   and of_kind_value_singleton = private
-    | Boxed_or_encoded_number of Boxed_or_encoded_number_kind.t * ty_value
+    | Tagged_int of ty_naked_immediate
+    | Boxed_float of ty_naked_float
+    | Boxed_int32 of ty_naked_int32
+    | Boxed_int64 of ty_naked_int64
+    | Boxed_nativeint of ty_naked_nativeint
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
     | Closure of {

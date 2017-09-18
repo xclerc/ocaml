@@ -481,54 +481,6 @@ let reify_as_scannable_block t : reified_as_scannable_block =
   | Unboxed_nativeint _ | Set_of_closures _ | Closure _  | Load_lazily _
   | Unknown _ -> Wrong
 
-type blocks = t array Tag.Scannable.Map.t
-
-module Immediate = struct
-  type t =
-    | Int of Targetint.t
-    | Const_pointer of Targetint.t
-    | Char of Char.t
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let to_int t =
-      match t with
-      | Int _ -> 0
-      | Const_pointer _ -> 1
-      | Char _ -> 2
-
-    let compare t1 t2 =
-      match t1, t2 with
-      | Int n1, Int n2 -> Targetint.compare n1 n2
-      | Const_pointer n1, Const_pointer n2 -> Targetint.compare n1 n2
-      | Char n1, Char n2 -> n1 = n2
-      | (Int _ | Const_pointer _ | Char _), _ ->
-        Pervasives.compare (to_int t1) (to_int t2)
-
-    let equal t1 t2 = (compare t1 t2 = 0)
-
-    let hash t = Hashtbl.hash t
-
-    let print ppf t =
-      let fprintf = Format.fprintf in
-      match t with
-      | Int n -> fprintf "int{%d}" n
-      | Const_pointer n -> fprintf "const_pointer{%d}" n
-      | Char c -> fprintf "char{%c}" c
-  end)
-end
-
-type proved_unboxable_or_untaggable =
-  | Wrong
-  | Blocks of blocks
-  | Blocks_and_tagged_immediates of blocks * Immediate.Set.t
-  | Tagged_immediates of Immediate.Set.t
-  | Boxed_floats of Float.Set.t
-  | Boxed_int32s of Int32.Set.t
-  | Boxed_int64s of Int64.Set.t
-  | Boxed_nativeints of Nativeint.Set.t
-
 let maybe_import_value_type (ty : ty_value) =
   match ty with
   | Ok ty -> ty
@@ -637,27 +589,158 @@ let maybe_import_naked_nativeint_type (ty : ty_naked_nativeint) =
             [Naked_nativeint]"
           print_load_lazily load_lazily
 
+module Or_not_all_values_known = struct
+  type 'a t =
+    | Exactly of 'a
+    | Not_all_values_known
+
+  let join join_contents t1 t2 =
+    match t1, t2 with
+    | Exactly e1, Exactly e2 -> Exactly (join_contents e1 e2)
+    | Exactly _, Not_all_values_known
+    | Not_all_values_known, Exactly _
+    | Not_all_values_known, Not_all_values_known -> Not_all_values_known
+end
+
+module Immediate = struct
+  type t =
+    | Int of Targetint.t
+    | Const_pointer of Targetint.t
+    | Char of Char.t
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let to_int t =
+      match t with
+      | Int _ -> 0
+      | Const_pointer _ -> 1
+      | Char _ -> 2
+
+    let compare t1 t2 =
+      match t1, t2 with
+      | Int n1, Int n2 -> Targetint.compare n1 n2
+      | Const_pointer n1, Const_pointer n2 -> Targetint.compare n1 n2
+      | Char n1, Char n2 -> n1 = n2
+      | (Int _ | Const_pointer _ | Char _), _ ->
+        Pervasives.compare (to_int t1) (to_int t2)
+
+    let equal t1 t2 = (compare t1 t2 = 0)
+
+    let hash t = Hashtbl.hash t
+
+    let print ppf t =
+      let fprintf = Format.fprintf in
+      match t with
+      | Int n -> fprintf "int{%d}" n
+      | Const_pointer n -> fprintf "const_pointer{%d}" n
+      | Char c -> fprintf "char{%c}" c
+  end)
+end
+
+module Blocks = struct
+  type t = ty_value array Tag.Scannable.Map.t
+
+  type join_result =
+    | Wrong
+    | Ok of t
+
+  let join t1 t2 : join_result =
+    let wrong = ref false in
+    let t =
+      Tag.Scannable.Map.union (fun tag ty_value1 ty_value2 ->
+          ...)
+        t1 t2
+    in
+    if !wrong then Wrong else Ok t
+end
+
+module Proved_unboxable_or_untaggable = struct
+  type t =
+    | Wrong
+    | Blocks of Blocks.t
+    | Blocks_and_tagged_immediates of
+        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
+    | Tagged_immediates of Immediate.Set.t Or_not_all_values_known.t
+    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Nativeint.Set.t Or_not_all_values_known.t
+
+  let join t1 t2 =
+    match t1, t2 with
+    | Wrong, _ | _, Wrong -> Wrong
+    | Blocks b1, Blocks b2 ->
+      begin match Blocks.join b1 b2 with
+      | Wrong -> Wrong
+      | Ok b -> Blocks b
+      end
+    | Blocks_and_tagged_immediates (b1, imms1),
+        Blocks_and_tagged_immediates (b2, imms2) ->
+      
+end
+
 let prove_unboxable_or_untaggable (t : t) : proved_unboxable_or_untaggable =
   match t with
   | Value ty ->
-    let ty = maybe_import_value_type ty in
+    begin match maybe_import_value_type ty with
+    | Unknown _ | Bottom -> Wrong
+    | Ok of_kind_value ->
+      let for_singleton (s : of_kind_value_singleton)
+            : proved_unboxable_or_untaggable =
+        match s with
+        | Tagged_int ty ->
+          begin match prove_naked_immediate_from_ty_naked_immediate ty with
+          | Wrong -> Wrong
+          | Unknown -> Tagged_immediates Not_all_values_known
+          | Known i -> Tagged_immediates (Exactly (Immediate.Set.singleton i))
+          end
+        | Boxed_float ty ->
+          begin match prove_naked_float_from_ty_naked_float ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_floats Not_all_values_known
+          | Known f -> Boxed_floats (Exactly (Float.Set.singleton f))
+          end
+        | Boxed_int32 ty ->
+          begin match prove_naked_int32_from_ty_naked_int32 ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_int32s Not_all_values_known
+          | Known i -> Boxed_int32s (Exactly (Int32.Set.singleton f))
+          end
+        | Boxed_int64 ty ->
+          begin match prove_naked_int64_from_ty_naked_int64 ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_int64s Not_all_values_known
+          | Known i -> Boxed_int64s (Exactly (Int64.Set.singleton f))
+          end
+        | Boxed_nativeint ty ->
+          begin match prove_naked_nakedint_from_ty_naked_nativeint ty with
+          | Wrong -> Wrong
+          | Unknown -> Boxed_nakedints Not_all_values_known
+          | Known i -> Boxed_nakedints (Exactly (Int64.Set.singleton f))
+          end
+        | Block (tag, fields) ->
 
-  | Naked_immediate ty ->
-    let ty = import_naked_immediate_type ty in
-
-  | Naked_float ty ->
-    let ty = import_naked_float_type ty in
-
-  | Naked_int32 ty ->
-    let ty = import_naked_int32_type ty in
-
-  | Naked_int64 ty ->
-    let ty = import_naked_int64_type ty in
-
-  | Naked_nativeint ty ->
-    let ty = import_naked_nativeint_type ty in
-
-
+        | Set_of_closures _
+        | Closure _
+        | String _
+        | Float_array _ -> Wrong
+      in
+      let rec for_of_kind_value (o : of_kind_value) =
+        match o with
+        | Singleton s -> for_singleton s
+        | Union (w1, w2) ->
+          let proved1 = for_of_kind_value w1.descr in
+          let proved2 = for_of_kind_value w2.descr in
+          Proved_unboxable_or_untaggable.join proved1 proved2
+      in
+      for_of_kind_value of_kind_value
+    end
+  | Naked_immediate _
+  | Naked_float _
+  | Naked_int32 _
+  | Naked_int64 _
+  | Naked_nativeint _ -> Wrong
 
 type reified_as_variant =
   | Wrong
