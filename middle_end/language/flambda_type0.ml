@@ -33,6 +33,7 @@ end) = struct
 
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
+    | Export_id of Export_id.t
     | Symbol of Symbol.t
 
   type unknown_because_of =
@@ -45,6 +46,11 @@ end) = struct
   type load_lazily =
     | Export_id of Export_id.t
     | Symbol of Symbol.t
+
+  let print_load_lazily ppf (ll : load_lazily) =
+    match ll with
+    | Export_id id -> Format.fprintf ppf "(eid %a)" Export_id.print id
+    | Symbol sym -> Format.fprintf ppf "(sym %a)" Symbol.print sym
 
   (* CR mshinwell: Remove this once Pierre's patch lands *)
   type closure_freshening =
@@ -164,14 +170,14 @@ end) = struct
     | Naked_int64 of ty_naked_int64
     | Naked_nativeint of ty_naked_nativeint
 
-  and ty_value = of_kind_value ty
-  and ty_naked_immediate = of_kind_naked_immediate ty
-  and ty_naked_float = of_kind_naked_float ty
-  and ty_naked_int32 = of_kind_naked_int32 ty
-  and ty_naked_int64 = of_kind_naked_int64 ty
-  and ty_naked_nativeint = of_kind_naked_nativeint ty
+  and ty_value = (of_kind_value, Flambda_kind.scanning) ty
+  and ty_naked_immediate = (of_kind_naked_immediate, unit) ty
+  and ty_naked_float = (of_kind_naked_float, unit) ty
+  and ty_naked_int32 = (of_kind_naked_int32, unit) ty
+  and ty_naked_int64 = (of_kind_naked_int64, unit) ty
+  and ty_naked_nativeint = (of_kind_naked_nativeint, unit) ty
 
-  and 'a ty = 'a maybe_unresolved with_var_and_symbol
+  and ('a, 'u) ty = ('a, 'u) maybe_unresolved with_var_and_symbol
 
   and resolved_t =
     | Value of resolved_ty_value
@@ -181,21 +187,21 @@ end) = struct
     | Naked_int64 of resolved_ty_naked_int64
     | Naked_nativeint of resolved_ty_naked_nativeint
 
-  and resolved_ty_value = of_kind_value resolved_ty
-  and resolved_ty_naked_immediate = of_kind_naked_immediate resolved_ty
-  and resolved_ty_naked_float = of_kind_naked_float resolved_ty
-  and resolved_ty_naked_int32 = of_kind_naked_int32 resolved_ty
-  and resolved_ty_naked_int64 = of_kind_naked_int64 resolved_ty
-  and resolved_ty_naked_nativeint = of_kind_naked_nativeint resolved_ty
+  and resolved_ty_value = (of_kind_value, Flambda_kind.scanning) resolved_ty
+  and resolved_ty_naked_immediate = (of_kind_naked_immediate, unit) resolved_ty
+  and resolved_ty_naked_float = (of_kind_naked_float, unit) resolved_ty
+  and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
+  and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
+  and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
 
-  and 'a resolved_ty = 'a or_unknown_or_bottom with_var_and_symbol
+  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom with_var_and_symbol
 
-  and 'a maybe_unresolved =
-    | Ok of 'a or_unknown_or_bottom
+  and ('a, 'u) maybe_unresolved =
+    | Ok of ('a, 'u) or_unknown_or_bottom
     | Load_lazily of load_lazily
 
-  and 'a or_unknown_or_bottom =
-    | Unknown of unknown_because_of
+  and ('a, 'u) or_unknown_or_bottom =
+    | Unknown of unknown_because_of * 'u
     | Ok of 'a
     | Bottom
 
@@ -302,47 +308,88 @@ end) = struct
     | Naked_int64 ty -> Naked_int64 { ty with var; }
     | Naked_nativeint ty -> Naked_nativeint { ty with var; }
 
-  let unknown_as_ty_value reason : ty_value =
-    { descr = Ok (Unknown reason);
+  let unknown_as_ty_value reason scanning : ty_value =
+    { descr = Ok (Unknown (reason, scanning));
+      var = None;
+      symbol = None;
+    }
+
+  let unknown_as_resolved_ty_value reason scanning : resolved_ty_value =
+    { descr = Unknown (reason, scanning);
+      var = None;
+      symbol = None;
+    }
+
+  let unknown_as_resolved_ty_naked_immediate reason scanning
+        : resolved_ty_naked_immediate =
+    { descr = Unknown (reason, scanning);
+      var = None;
+      symbol = None;
+    }
+
+  let unknown_as_resolved_ty_naked_float reason scanning
+        : resolved_ty_naked_float =
+    { descr = Unknown (reason, scanning);
+      var = None;
+      symbol = None;
+    }
+
+  let unknown_as_resolved_ty_naked_int32 reason scanning
+        : resolved_ty_naked_int32 =
+    { descr = Unknown (reason, scanning);
+      var = None;
+      symbol = None;
+    }
+
+  let unknown_as_resolved_ty_naked_int64 reason scanning
+        : resolved_ty_naked_int64 =
+    { descr = Unknown (reason, scanning);
+      var = None;
+      symbol = None;
+    }
+
+  let unknown_as_resolved_ty_naked_nativeint reason scanning
+        : resolved_ty_naked_nativeint =
+    { descr = Unknown (reason, scanning);
       var = None;
       symbol = None;
     }
 
   let unknown (kind : K.t) reason : t =
     match kind with
-    | Value _ ->
+    | Value scanning ->
       Value {
-        descr = Ok (Unknown reason);
+        descr = Ok (Unknown (reason, scanning));
         var = None;
         symbol = None;
       }
     | Naked_immediate ->
       Naked_immediate {
-        descr = Ok (Unknown reason);
+        descr = Ok (Unknown (reason, ()));
         var = None;
         symbol = None;
       }
     | Naked_float ->
       Naked_float {
-        descr = Ok (Unknown reason);
+        descr = Ok (Unknown (reason, ()));
         var = None;
         symbol = None;
       }
     | Naked_int32 ->
       Naked_int32 {
-        descr = Ok (Unknown reason);
+        descr = Ok (Unknown (reason, ()));
         var = None;
         symbol = None;
       }
     | Naked_int64 ->
       Naked_int64 {
-        descr = Ok (Unknown reason);
+        descr = Ok (Unknown (reason, ()));
         var = None;
         symbol = None;
       }
     | Naked_nativeint ->
       Naked_nativeint {
-        descr = Ok (Unknown reason);
+        descr = Ok (Unknown (reason, ()));
         var = None;
         symbol = None;
       }
@@ -631,7 +678,7 @@ end) = struct
 
   let any_boxed_float f =
     let f : ty_naked_float =
-      { descr = Ok (Unknown Other);
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -644,7 +691,7 @@ end) = struct
 
   let any_boxed_int32 n =
     let n : ty_naked_int32 =
-      { descr = Ok (Unknown Other);
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -657,7 +704,7 @@ end) = struct
 
   let any_boxed_int64 n =
     let n : ty_naked_int64 =
-      { descr = Ok (Unknown Other);
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -670,7 +717,7 @@ end) = struct
 
   let any_boxed_nativeint n =
     let n : ty_naked_nativeint =
-      { descr = Ok (Unknown Other);
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -687,24 +734,49 @@ end) = struct
   let any_naked_int64 () = unknown (K.naked_int64 ())
   let any_naked_nativeint () = unknown (K.naked_nativeint ())
 
-  let resolved_type_for_predefined_exception ~name ~symbol : resolved_t =
+  let resolved_ty_value_for_predefined_exception ~name ~symbol
+        : resolved_ty_value =
     let fields =
       [| immutable_string_as_ty_value name;
-         unknown_as_ty_value Other;
+         unknown_as_ty_value Other Must_scan;
       |]
     in
-    Value {
-      descr = Ok (Singleton (Block (Tag.Scannable.object_tag, fields)));
+    { descr = Ok (Singleton (Block (Tag.Scannable.object_tag, fields)));
       var = None;
       symbol = Some (symbol, None);
     }
 
   module type Importer = sig
-    val import_value_type : load_lazily -> ty_value
-    val import_naked_immediate_type : load_lazily -> ty_naked_immediate
-    val import_naked_int32_type : load_lazily -> ty_naked_int32
-    val import_naked_int64_type : load_lazily -> ty_naked_int64
-    val import_naked_nativeint_type : load_lazily -> ty_naked_nativeint
+    val import_value_type_as_resolved_ty_value
+       : ty_value
+      -> resolved_ty_value
+
+    val import_naked_immediate_type_as_resolved_ty_naked_immediate
+       : ty_naked_immediate
+      -> resolved_ty_naked_immediate
+
+    val import_naked_float_type_as_resolved_ty_naked_float
+       : ty_naked_float
+      -> resolved_ty_naked_float
+
+    val import_naked_int32_type_as_resolved_ty_naked_int32
+       : ty_naked_int32
+      -> resolved_ty_naked_int32
+
+    val import_naked_int64_type_as_resolved_ty_naked_int64
+       : ty_naked_int64
+      -> resolved_ty_naked_int64
+
+    val import_naked_nativeint_type_as_resolved_ty_naked_nativeint
+       : ty_naked_nativeint
+      -> resolved_ty_naked_nativeint
+
+    val import_value_type : ty_value -> resolved_t
+    val import_naked_immediate_type : ty_naked_immediate -> resolved_t
+    val import_naked_float_type : ty_naked_float -> resolved_t
+    val import_naked_int32_type : ty_naked_int32 -> resolved_t
+    val import_naked_int64_type : ty_naked_int64 -> resolved_t
+    val import_naked_nativeint_type : ty_naked_nativeint -> resolved_t
   end
 
   module type Importer_intf = sig
@@ -715,8 +787,8 @@ end) = struct
 
   type 'a with_importer = importer:(module Importer) -> 'a
 
-  type create_resolved_t_result =
-    | Ok of resolved_t
+  type 'a create_resolved_t_result =
+    | Ok of 'a
     | Load_lazily_again of load_lazily
 
   module Make_importer (S : sig
@@ -724,13 +796,15 @@ end) = struct
     val import_symbol : Symbol.t -> t option
     val symbol_is_predefined_exception : Symbol.t -> string option
   end) : Importer = struct
-    type import_result =
-      | Ok of resolved_t
-      | Treat_as_unknown
+    type 'a import_result =
+      | Ok of 'a
+      | Treat_as_unknown_must_scan of unknown_because_of
 
-    let import_type ll ~(create_resolved_t : t -> create_resolved_t_result) =
+    let import_type (type a) ll
+          ~(create_resolved_t : t -> a create_resolved_t_result)
+          ~(resolve_predefined_exception : Symbol.t -> a option) =
       let rec import_type (ll : load_lazily) ~export_ids_seen ~symbols_seen
-            : import_result =
+            : a import_result =
         match ll with
         | Export_id id ->
           if Export_id.Set.mem id export_ids_seen then begin
@@ -738,7 +812,7 @@ end) = struct
               Export_id.print id
           end;
           begin match S.import_export_id id with
-          | None -> Treat_as_unknown
+          | None -> Treat_as_unknown_must_scan (Unresolved_value (Export_id id))
           | Some t ->
             match create_resolved_t t with
             | Ok resolved_t -> Ok resolved_t
@@ -747,16 +821,15 @@ end) = struct
               import_type ll ~export_ids_seen ~symbols_seen
           end
         | Symbol sym ->
-          match S.symbol_is_predefined_exception sym with
-          | Some name ->
-            Ok (resolved_type_for_predefined_exception ~name ~symbol:sym)
+          match resolve_predefined_exception sym with
+          | Some resolved_t -> Ok resolved_t
           | None ->
             if Symbol.Set.mem sym symbols_seen then begin
               Misc.fatal_errorf "Circularity whilst resolving symbol %a"
                 Symbol.print sym
             end;
             begin match S.import_symbol sym with
-            | None -> Treat_as_unknown
+            | None -> Treat_as_unknown_must_scan (Unresolved_value (Symbol sym))
             | Some t ->
               match create_resolved_t t with
               (* CR mshinwell: We used to [augment_with_symbol] here but maybe
@@ -770,7 +843,8 @@ end) = struct
       import_type ll ~export_ids_seen:Export_id.Set.empty
         ~symbols_seen:Symbol.Set.empty
 
-    let import_value_type (ty : ty_value) : resolved_t =
+    let import_value_type_as_resolved_ty_value (ty : ty_value)
+          : resolved_ty_value =
       match ty.descr with
       | Ok descr ->
         { descr;
@@ -778,7 +852,13 @@ end) = struct
           symbol = ty.symbol;
         }
       | Load_lazily load_lazily ->
-        let create_resolved_t t : create_resolved_t_result =
+        let resolve_predefined_exception sym =
+          match S.symbol_is_predefined_exception sym with
+          | None -> None
+          | Some name ->
+            Some (resolved_ty_value_for_predefined_exception ~name ~symbol:sym)
+        in
+        let create_resolved_t t : resolved_ty_value create_resolved_t_result =
           match t with
           | Value ty ->
             begin match ty.descr with
@@ -788,7 +868,7 @@ end) = struct
                 var = ty.var;
                 symbol = ty.symbol;
               }
-            | Load_lazily -> Load_lazily_again
+            | Load_lazily ll -> Load_lazily_again ll
             end
           | Naked_immediate _
           | Naked_float _
@@ -799,9 +879,20 @@ end) = struct
                 [Value]"
               print_load_lazily load_lazily
         in
-        import_type load_lazily ~create_resolved_t
+        let result =
+          import_type load_lazily ~create_resolved_t
+            ~resolve_predefined_exception
+        in
+        match result with
+        | Ok result -> result
+        | Treat_as_unknown_must_scan reason ->
+          unknown_as_resolved_ty_value reason Must_scan
 
-    let import_naked_immediate_type (ty : ty_naked_immediate) =
+    let import_value_type ty : resolved_t =
+      Value (import_value_type_as_resolved_ty_value ty)
+
+    let import_naked_immediate_type_as_resolved_ty_naked_immediate
+          (ty : ty_naked_immediate) : resolved_ty_naked_immediate =
       match ty.descr with
       | Ok descr ->
         { descr;
@@ -809,7 +900,9 @@ end) = struct
           symbol = ty.symbol;
         }
       | Load_lazily load_lazily ->
-        let create_resolved_t t : create_resolved_t_result =
+        let resolve_predefined_exception _sym = None in
+        let create_resolved_t t
+              : resolved_ty_naked_immediate create_resolved_t_result =
           match t with
           | Naked_immediate ty ->
             begin match ty.descr with
@@ -819,7 +912,7 @@ end) = struct
                 var = ty.var;
                 symbol = ty.symbol;
               }
-            | Load_lazily -> Load_lazily_again
+            | Load_lazily ll -> Load_lazily_again ll
             end
           | Value _
           | Naked_float _
@@ -830,9 +923,21 @@ end) = struct
                 [Naked_immediate]"
               print_load_lazily load_lazily
         in
-        import_type load_lazily ~create_resolved_t
+        let result =
+          import_type load_lazily ~create_resolved_t
+            ~resolve_predefined_exception
+        in
+        match result with
+        | Ok result -> result
+        | Treat_as_unknown_must_scan reason ->
+          unknown_as_resolved_ty_naked_immediate reason ()
 
-    let import_naked_float_type (ty : ty_naked_float) =
+    let import_naked_immediate_type ty : resolved_t =
+      Naked_immediate (
+        import_naked_immediate_type_as_resolved_ty_naked_immediate ty)
+
+    let import_naked_float_type_as_resolved_ty_naked_float
+          (ty : ty_naked_float) : resolved_ty_naked_float =
       match ty.descr with
       | Ok descr ->
         { descr;
@@ -840,7 +945,9 @@ end) = struct
           symbol = ty.symbol;
         }
       | Load_lazily load_lazily ->
-        let create_resolved_t t : create_resolved_t_result =
+        let resolve_predefined_exception _sym = None in
+        let create_resolved_t t
+              : resolved_ty_naked_float create_resolved_t_result =
           match t with
           | Naked_float ty ->
             begin match ty.descr with
@@ -850,7 +957,7 @@ end) = struct
                 var = ty.var;
                 symbol = ty.symbol;
               }
-            | Load_lazily -> Load_lazily_again
+            | Load_lazily ll -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -861,9 +968,20 @@ end) = struct
                 [Naked_float]"
               print_load_lazily load_lazily
         in
-        import_type load_lazily ~create_resolved_t
+        let result =
+          import_type load_lazily ~create_resolved_t
+            ~resolve_predefined_exception
+        in
+        match result with
+        | Ok result -> result
+        | Treat_as_unknown_must_scan reason ->
+          unknown_as_resolved_ty_naked_float reason ()
 
-    let import_naked_int32_type (ty : ty_naked_int32) =
+    let import_naked_float_type ty : resolved_t =
+      Naked_float (import_naked_float_type_as_resolved_ty_naked_float ty)
+
+    let import_naked_int32_type_as_resolved_ty_naked_int32
+          (ty : ty_naked_int32) : resolved_ty_naked_int32 =
       match ty.descr with
       | Ok descr ->
         { descr;
@@ -871,7 +989,9 @@ end) = struct
           symbol = ty.symbol;
         }
       | Load_lazily load_lazily ->
-        let create_resolved_t t : create_resolved_t_result =
+        let resolve_predefined_exception _sym = None in
+        let create_resolved_t t
+              : resolved_ty_naked_int32 create_resolved_t_result =
           match t with
           | Naked_int32 ty ->
             begin match ty.descr with
@@ -881,7 +1001,7 @@ end) = struct
                 var = ty.var;
                 symbol = ty.symbol;
               }
-            | Load_lazily -> Load_lazily_again
+            | Load_lazily ll -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -892,9 +1012,20 @@ end) = struct
                 [Naked_int32]"
               print_load_lazily load_lazily
         in
-        import_type load_lazily ~create_resolved_t
+        let result =
+          import_type load_lazily ~create_resolved_t
+            ~resolve_predefined_exception
+        in
+        match result with
+        | Ok result -> result
+        | Treat_as_unknown_must_scan reason ->
+          unknown_as_resolved_ty_naked_int32 reason ()
 
-    let import_naked_int64_type (ty : ty_naked_int64) =
+    let import_naked_int32_type ty : resolved_t =
+      Naked_int32 (import_naked_int32_type_as_resolved_ty_naked_int32 ty)
+
+    let import_naked_int64_type_as_resolved_ty_naked_int64
+          (ty : ty_naked_int64) : resolved_ty_naked_int64 =
       match ty.descr with
       | Ok descr ->
         { descr;
@@ -902,7 +1033,9 @@ end) = struct
           symbol = ty.symbol;
         }
       | Load_lazily load_lazily ->
-        let create_resolved_t t : create_resolved_t_result =
+        let resolve_predefined_exception _sym = None in
+        let create_resolved_t t
+              : resolved_ty_naked_int64 create_resolved_t_result =
           match t with
           | Naked_int64 ty ->
             begin match ty.descr with
@@ -912,7 +1045,7 @@ end) = struct
                 var = ty.var;
                 symbol = ty.symbol;
               }
-            | Load_lazily -> Load_lazily_again
+            | Load_lazily ll -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -923,9 +1056,20 @@ end) = struct
                 [Naked_int64]"
               print_load_lazily load_lazily
         in
-        import_type load_lazily ~create_resolved_t
+        let result =
+          import_type load_lazily ~create_resolved_t
+            ~resolve_predefined_exception
+        in
+        match result with
+        | Ok result -> result
+        | Treat_as_unknown_must_scan reason ->
+          unknown_as_resolved_ty_naked_int64 reason ()
 
-    let import_naked_nativeint_type (ty : ty_naked_nativeint) =
+    let import_naked_int64_type ty : resolved_t =
+      Naked_int64 (import_naked_int64_type_as_resolved_ty_naked_int64 ty)
+
+    let import_naked_nativeint_type_as_resolved_ty_naked_nativeint
+          (ty : ty_naked_nativeint) : resolved_ty_naked_nativeint =
       match ty.descr with
       | Ok descr ->
         { descr;
@@ -933,7 +1077,9 @@ end) = struct
           symbol = ty.symbol;
         }
       | Load_lazily load_lazily ->
-        let create_resolved_t t : create_resolved_t_result =
+        let resolve_predefined_exception _sym = None in
+        let create_resolved_t t
+              : resolved_ty_naked_nativeint create_resolved_t_result =
           match t with
           | Naked_nativeint ty ->
             begin match ty.descr with
@@ -943,7 +1089,7 @@ end) = struct
                 var = ty.var;
                 symbol = ty.symbol;
               }
-            | Load_lazily -> Load_lazily_again
+            | Load_lazily ll -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -954,7 +1100,18 @@ end) = struct
                 [Naked_nativeint]"
               print_load_lazily load_lazily
         in
-        import_type load_lazily ~create_resolved_t
+        let result =
+          import_type load_lazily ~create_resolved_t
+            ~resolve_predefined_exception
+        in
+        match result with
+        | Ok result -> result
+        | Treat_as_unknown_must_scan reason ->
+          unknown_as_resolved_ty_naked_nativeint reason ()
+
+    let import_naked_nativeint_type ty : resolved_t =
+      Naked_nativeint (
+        import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty)
   end
 
   let print_set_of_closures ppf
@@ -1152,7 +1309,7 @@ end) = struct
         | Ok descr -> descr
         | Load_lazily load_lazily ->
           let module I = (val importer : Importer) in
-          (I.import_value_type load_lazily).descr
+          (I.import_value_type_as_resolved_ty_value load_lazily).descr
       in
       match descr with
       | Unknown _ -> K.value ~must_scan:true

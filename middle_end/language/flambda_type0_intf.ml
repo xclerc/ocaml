@@ -28,6 +28,7 @@ module type S = sig
 
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
+    | Export_id of Export_id.t
     | Symbol of Symbol.t
 
   type unknown_because_of =

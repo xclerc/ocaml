@@ -21,11 +21,11 @@
     and/or differences in GC (non-) registration of roots.
 *)
 
-type scanning = private
+type scanning =
   | Must_scan
   | Can_scan
 
-type t =
+type t = private
   | Value of scanning
   | Naked_immediate
   | Naked_float
