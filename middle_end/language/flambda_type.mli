@@ -20,13 +20,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Basic definitions, constructors and accessors.
-    The importing of types from .cmx files happens automatically under the
-    hood. *)
+(** Basic definitions, constructors and accessors. *)
 include module type of struct include Flambda0.Flambda_type end
-  with module Ops := Flambda0.Flambda_type.Ops  (* hides [Ops] *)
-include Flambda0.Flambda_type.Operations_needing_import_type
-  with type 'a with_import_type = 'a
 
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
 val unresolved_symbol : Symbol.t -> t
@@ -216,9 +211,9 @@ module Proved_unboxable_or_untaggable : sig
     | Wrong
     | Blocks_and_tagged_immediates of
         Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
-    | Boxed_floats of Misc.Stdlib.Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Misc.Stdlib.Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Misc.Stdlib.Int64.Set.t Or_not_all_values_known.t
+    | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
 end
 

@@ -27,7 +27,6 @@ val create_exn : int -> t
 val to_int : t -> int
 
 val zero : t
-val object_tag : t
 
 module Scannable : sig
   (** Tags that are strictly less than [No_scan_tag], corresponding to
@@ -41,6 +40,8 @@ module Scannable : sig
   val of_tag : tag -> t option
 
   val to_int : t -> int
+
+  val object_tag : t
 
   include Identifiable.S with type t := t
 end

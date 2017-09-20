@@ -187,11 +187,8 @@ ifeq ($(ARCH),amd64)
 ARCH_SPECIFIC_ASMCOMP=$(INTEL_ASM)
 endif
 
-MIDDLE_END_CMX_VERY_EARLY=\
-  middle_end/cmx/export_info.cmo \
-  middle_end/cmx/import_approx.cmo
-
 MIDDLE_END_CMX_EARLY=\
+  middle_end/cmx/export_info.cmo \
   middle_end/cmx/export_info_for_pack.cmo
 
 MIDDLE_END_CMX_LATE=\

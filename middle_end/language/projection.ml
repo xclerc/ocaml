@@ -22,6 +22,8 @@ module Project_closure = struct
     closure_id : Closure_id.Set.t;
   }
 
+  let free_variables t = Variable.Set.singleton t.set_of_closures
+
   include Identifiable.Make (struct
     type nonrec t = t
 
@@ -52,6 +54,8 @@ module Move_within_set_of_closures = struct
     move : Closure_id.t Closure_id.Map.t;
   }
 
+  let free_variables t = Variable.Set.singleton t.closure
+
   include Identifiable.Make (struct
     type nonrec t = t
 
@@ -80,6 +84,8 @@ module Project_var = struct
     closure : Variable.t;
     var : Var_within_closure.t Closure_id.Map.t;
   }
+
+  let free_variables t = Variable.Set.singleton t.closure
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -217,3 +223,12 @@ let map_projecting_from t ~f : t =
       Printlambda.primitive p
       Variable.print_list vars
   | Switch var -> Switch (f var)
+
+let free_variables t =
+  match t with
+  | Project_var proj -> Project_var.free_variables proj
+  | Project_closure proj -> Project_closure.free_variables proj
+  | Move_within_set_of_closures move ->
+    Move_within_set_of_closures.free_variables move
+  | Prim (_prim, vars) -> Variable.Set.of_list vars
+  | Switch var -> Variable.Set.singleton var

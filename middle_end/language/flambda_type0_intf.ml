@@ -295,17 +295,9 @@ module type S = sig
       These operations are derived from the functions supplied to the
       [Make_backend] functor, below.  A first class module of this type has
       to be passed to various operations that destruct types. *)
-  module type Backend = sig
-    val import_value_type : load_lazily -> value_ty
-    val import_naked_immediate_type : load_lazily -> naked_immediate_ty
-    val import_naked_int32_type : load_lazily -> naked_int32_ty
-    val import_naked_int64_type : load_lazily -> naked_int64_ty
-    val import_naked_nativeint_type : load_lazily -> naked_nativeint_ty
-  end
+  module type Importer
 
-  (** A functor used to construct the various type-importing operations from
-      straightforward backend-provided ones. *)
-  module Make_backend (S : sig
+  module type Importer_intf = sig
     (** Return the type stored on disk under the given export identifier, or
         [None] if no such type can be loaded.  This function should not attempt
         to resolve export IDs or symbols recursively in the event that the
@@ -317,19 +309,25 @@ module type S = sig
         symbol, rather than by export identifier. *)
     val import_symbol : Symbol.t -> t option
 
-    (** Determine whether a symbol corresponds to a predefined exception. *)
-    val symbol_is_predefined_exception : Symbol.t -> bool
-  end) : Backend
+    (** Determine whether a symbol corresponds to a predefined exception.
+        If it does, the function must return the corresponding [Ident.name]
+        for the exception. *)
+    val symbol_is_predefined_exception : Symbol.t -> string option
+  end
+
+  (** A functor used to construct the various type-importing operations from
+      straightforward backend-provided ones. *)
+  module Make_importer (S : Importer_intf) : Importer
 
   (** Annotation for functions that may require the importing of types from
       .cmx files. *)
-  type 'a with_backend = backend:(module Backend) -> 'a
+  type 'a with_importer = importer:(module Importer) -> 'a
 
   (** Free variables in a type. *)
-  val free_variables : (t -> Variable.Set.t) with_backend
+  val free_variables : (t -> Variable.Set.t) with_importer
 
   (** Least upper bound of two types. *)
-  val join : (t -> t -> t) with_backend
+  val join : (t -> t -> t) with_importer
 
   type cleaning_spec =
     | Available
@@ -340,6 +338,6 @@ module type S = sig
       scope in some context. The context is expressed by a function that says
       whether the variable is available under its existing name, available
       under another name, or unavailable. *)
-  val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_backend
+  val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_importer
 *)
 end

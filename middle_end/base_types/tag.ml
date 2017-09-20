@@ -30,7 +30,6 @@ let create_exn tag =
 let to_int t = t
 
 let zero = 0
-let object_tag = Obj.object_tag
 
 module Scannable = struct
   type nonrec t = t
@@ -52,4 +51,6 @@ module Scannable = struct
   let of_tag tag =
     if tag < 0 || tag >= Obj.no_scan_tag then None
     else Some tag
+
+  let object_tag = Obj.object_tag
 end

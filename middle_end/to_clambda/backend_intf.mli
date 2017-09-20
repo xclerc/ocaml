@@ -22,18 +22,18 @@ module type S = sig
   (** Compute the symbol for the given identifier. *)
   val symbol_for_global' : (Ident.t -> Symbol.t)
 
-  (** If the given approximation is that of a symbol (Value_symbol) or an
-      external (Value_extern), attempt to find a more informative
-      approximation from a previously-written compilation artifact.  In the
-      native code backend, for example, this might consult a .cmx file. *)
-  val really_import_approx : Flambda_type.t -> Flambda_type.t
+  (** Importing of types from .cmx files. *)
+  include Flambda_type.Importer_intf
 
-  val import_symbol : Symbol.t -> Flambda_type.t
+  (** All predefined exception symbols. *)
+  val all_predefined_exception_symbols : unit -> Symbol.Set.t
 
+  (** The symbol for the given closure. *)
   val closure_symbol : Closure_id.t -> Symbol.t
 
   (** The natural size of an integer on the target architecture
       (cf. [Arch.size_int] in the native code backend). *)
+  (* CR mshinwell: use [Targetint] methods *)
   val size_int : int
 
   (** [true] iff the target architecture is big endian. *)

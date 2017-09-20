@@ -1361,8 +1361,10 @@ end and Typed_parameter : sig
   type t
   val create : Parameter.t -> Flambda_type.t -> t
   val var : t -> Variable.t
+  val projection : t -> Projection.t option
   val ty : t -> Flambda_type.t
   val with_type : t -> Flambda_type.t -> t
+  val with_projection : t -> Projection.t option -> t
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
   val free_variables : t -> Variable.Set.t
@@ -1373,7 +1375,8 @@ end and Typed_parameter : sig
     val free_variables : t -> Variable.Set.t
     val print : Format.formatter -> t -> unit
   end
-  include Identifiable.S with type t := t
+(*  include Identifiable.S with type t := t *)
+  val print : Format.formatter -> t -> unit
 end = struct
   type t = {
     param : Parameter.t;
@@ -1381,40 +1384,71 @@ end = struct
     ty : Flambda_type.t;
   }
 
-  let create param ty = param, ty
+  let create param ty =
+    { param;
+      projection = None;
+      ty;
+    }
 
-  let var (param, _ty) = Parameter.var param
+  let var t = t.param
+  let projection t = t.projection
+  let ty t = t.ty
 
-  let ty (_param, ty) = ty
+  let with_type t ty = { t with ty; }
+  let with_projection t projection = { t with projection; } 
 
-  let with_type (param, _old_ty) new_ty = param, new_ty
+  let map_var t ~f = { t with param = Parameter.map_var f param; }
 
-  let map_var (param, ty) ~f = Parameter.map_var f param, ty
-  let map_type (param, ty) ~f = param, f ty
+  let map_type t ~f = { t with ty = f ty; }
 
-  let free_variables (_param, ty) =
+  let free_variables ~importer t =
     (* The variable within [t] is always presumed to be a binding
-       occurrence, so the only free variables are those within the type. *)
-    Flambda_type.Ops.free_variables ty
+       occurrence, so the only free variables are those within the
+       projection (if such exists) and the type. *)
+    let from_proj =
+      match t.projection with
+      | None -> Variable.Set.empty
+      | Some projection -> Projection.free_variables projection
+    in
+    Variable.Set.union (Flambda_type.free_variables ~importer t.ty) from_proj
 
+(*
   include Identifiable.Make (struct
     type nonrec t = t
 
-    let compare (param1, _ty1) (param2, _ty2) = Parameter.compare param1 param2
-    let equal t1 t2 = (compare t1 t2 = 0)
-    let hash (param, _ty) = Parameter.hash param
+    let compare { param = param1; projection = projection1; ty = ty1; }
+          { param = param2; projection = projection2; ty = ty2; } =
+      let c = Parameter.compare param1 param2 in
+      if c <> 0 then c
+      else
+        let c = Projection.compare projection1 projection2 in
+        if c <> 0 then c
+        else
+          Flambda_type.compare ...
 
-    let print ppf (param, ty) =
-      Format.fprintf ppf "@[(%a : %a)@]"
-        Parameter.print param
-        Flambda_type.print ty
+    let equal t1 t2 = (compare t1 t2 = 0)
+
+    let hash t =
+
   end)
+*)
+
+  let print ppf { param; projection; ty; } =
+    let print_projection ppf proj =
+      match proj with
+      | None -> ()
+      | Some proj -> Format.fprintf ppf " = %a" Projection.print proj
+    in
+    Format.fprintf ppf "@[(%a : %a%a)@]"
+      Parameter.print param
+      Flambda_type.print ty
+      print_projection projection
 
   module List = struct
     type nonrec t = t list
 
-    let free_variables t =
-      Variable.Set.union_list (List.map free_variables t)
+    let free_variables ~importer t =
+      Variable.Set.union_list (List.map (free_variables ~importer) t)
 
     let vars t =
       List.map (fun (param, _ty) -> Parameter.var param) t
@@ -1428,14 +1462,6 @@ end and Flambda_type : sig
   include Flambda_type0_intf.S
     with type function_declarations := Function_declarations.t
 end = Flambda_type0.Make (Function_declarations)
-and Export_info : sig
-  include Export_info0_intf.S
-    with type function_declarations := Function_declarations.t
-end = Export_info0.Make (Function_declarations)
-and Import_approx : sig
-  include Import_approx_intf.S
-    with module E := Export_info
-end = Import_approx.Make (Export_info)
 
 module With_free_variables = struct
   type 'a t =

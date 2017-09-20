@@ -2705,42 +2705,24 @@ let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
     Effect (expr, cont, program), r
   | End root -> End root, r
 
-let simplify_program env r (program : Flambda_static.Program.t) =
+let simplify_program env r ~backend (program : Flambda_static.Program.t) =
+  let predef_exn_symbols = Backend.all_predefined_exception_symbols () in
+  let symbols = Symbol.Set.union program.imported_symbols predef_exn_symbols in
   let env, r =
     Symbol.Set.fold (fun symbol (env, r) ->
         let env, ty =
           match E.find_symbol_exn env symbol with
           | exception Not_found ->
-            let module Backend = (val (E.backend env) : Backend_intf.S) in
-            (* CR-someday mshinwell for mshinwell: Is there a reason we cannot
-               use [simplify_named_using_type_and_env] here? *)
-            let ty = Backend.import_symbol symbol in
+            let ty = T.symbol_loaded_lazily (Flambda_kind.value ()) symbol in
             E.add_symbol env symbol ty, ty
           | ty -> env, ty
         in
         env, ret r ty)
-      program.imported_symbols
       (env, r)
   in
   let program_body, r = simplify_program_body env r program.program_body in
   let program = { program with program_body; } in
   program, r
-
-let add_predef_exns_to_environment ~env ~backend =
-  let module Backend = (val backend : Backend_intf.S) in
-  List.fold_left (fun env predef_exn ->
-      assert (Ident.is_predef_exn predef_exn);
-      let symbol = Backend.symbol_for_global' predef_exn in
-      let name = Ident.name predef_exn in
-      let ty =
-        T.block Tag.object_tag
-          [| T.string (String.length name) (Some name);
-             T.unknown Value Other;
-          |]
-      in
-      E.add_symbol env symbol (T.augment_with_symbol ty symbol))
-    env
-    Predef.all_predef_exns
 
 let run ~never_inline ~allow_continuation_inlining
       ~allow_continuation_specialisation ~backend ~prefixname ~round program =
@@ -2748,21 +2730,17 @@ let run ~never_inline ~allow_continuation_inlining
   let report = !Clflags.inlining_report in
   if never_inline then Clflags.inlining_report := false;
   let initial_env =
-    add_predef_exns_to_environment
-      ~env:(E.create ~never_inline ~allow_continuation_inlining
-        ~allow_continuation_specialisation ~backend ~round)
-      ~backend
+    E.create ~never_inline ~allow_continuation_inlining
+      ~allow_continuation_specialisation ~backend ~round
   in
   let result, r = simplify_program initial_env r program in
-  let result = Flambda_static.introduce_needed_import_symbols result in
-  if not (R.no_continuations_in_scope r)
-  then begin
+  if not (R.no_continuations_in_scope r) then begin
     Misc.fatal_errorf "Continuations %a had uses but not definitions recorded \
         in [r] by the end of simplification.  Program:@ \n%a"
       Continuation.Set.print (R.used_continuations r)
       Flambda_static.Program.print result
   end;
-  assert (R.no_continuations_in_scope r);
+  let result = Flambda_static.introduce_needed_import_symbols result in
   if !Clflags.inlining_report then begin
     let output_prefix = Printf.sprintf "%s.%d" prefixname round in
     Inlining_stats.save_then_forget_decisions ~output_prefix

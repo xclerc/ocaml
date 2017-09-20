@@ -14,7 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(* CR mshinwell: enhance to proper CSE of pure primitives *)
+(* CR mshinwell: the name Projection is misleading now *)
 
 (** Representation of projections from closures and blocks. *)
 
@@ -26,10 +26,10 @@ module Project_closure : sig
     set_of_closures : Variable.t; (** must yield a set of closures *)
     closure_id : Closure_id.Set.t;
     (** Every closure_id from the set must come from a different set.
-        A projection with multiple potential closure represents a
-        conditionnal projection depending on the given set of closures.
-        The set of closure is implicit as there can also be only one
-        set defining a given closure_id *)
+        A projection with multiple potential closures represents a
+        conditional projection depending on the given set of closures.
+        The set of closures is implicit as there can also be only one
+        set defining a given closure_id. *)
   }
 
   include Identifiable.S with type t := t
@@ -78,3 +78,6 @@ val projecting_from : t -> Variable.t
 
 (** Change the variable that the given projection projects from. *)
 val map_projecting_from : t -> f:(Variable.t -> Variable.t) -> t
+
+(** Free variables of the given projection. *)
+val free_variables : t -> Variable.Set.t

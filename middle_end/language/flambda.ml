@@ -963,12 +963,15 @@ end and Continuation_handler : sig
 end = struct
   include Continuation_handler
 
-  let equal
+  let equal _ _ = false
+(* CR mshinwell: Can we remove this?  We don't have equality on types at
+   the moment.  Maybe we need to write that.
         ({ params = params1; stub = stub1; handler = handler1; } : t)
         ({ params = params2; stub = stub2; handler = handler2; } : t) =
     Misc.Stdlib.List.compare Typed_parameter.compare params1 params2 = 0
       && (stub1 : bool) = stub2
       && Expr.equal handler1 handler2
+*)
 end and Continuation_handlers : sig
   include module type of F0.Continuation_handlers
 
@@ -1210,10 +1213,13 @@ end = struct
     in
     Variable.Set.cardinal vars_in_closure
 
-  let equal t1 t2 =
+  let equal _t1 _t2 =
+    false  (* CR mshinwell: see above *)
+(*
     (* CR mshinwell: Is this right? *)
     Misc.Stdlib.List.equal Typed_parameter.equal t1.params t2.params
       && Expr.equal t1.body t2.body
+*)
 
   let map_parameter_types t ~f =
     let params =

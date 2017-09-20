@@ -638,6 +638,7 @@ end and Typed_parameter : sig
       type. *)
   type t
 
+  (** Create a typed parameter with no projection information. *)
   val create : Parameter.t -> Flambda_type.t -> t
 
   (** The underlying variable (cf. [Parameter.var]). *)
@@ -646,8 +647,14 @@ end and Typed_parameter : sig
   (** The type of a parameter. *)
   val ty : t -> Flambda_type.t
 
+  (** The projection information. *)
+  val projection : t -> Projection.t option
+
   (** Replace the type of a parameter. *)
   val with_type : t -> Flambda_type.t -> t
+
+  (** Replace the projection information in a parameter. *)
+  val with_projection : t -> Projection.t option -> t
 
   (** Map the underlying variable of a parameter. *)
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
@@ -655,16 +662,14 @@ end and Typed_parameter : sig
   (** Map the type of a parameter. *)
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 
-(*
   (** Free variables in the parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)
-  val free_variables : t -> Variable.Set.t
-*)
+  val free_variables : (t -> Variable.Set.t) Flambda_type.with_importer
 
   module List : sig
     type nonrec t = t list
 
-    val free_variables : t -> Variable.Set.t
+    val free_variables : (t -> Variable.Set.t) Flambda_type.with_importer
 
     (** As for [Parameter.List.vars]. *)
     val vars : t -> Variable.t list
@@ -675,14 +680,13 @@ end and Typed_parameter : sig
     val print : Format.formatter -> t -> unit
   end
 
+(* try to remove this
   (** N.B. Sets, maps and hash tables keyed on values of type [t] do not
       take into account the parameter's type in the comparison relation. *)
   include Identifiable.S with type t := t
+*)
 end and Flambda_type : sig
   include Flambda_type0_intf.S
-    with type function_declarations := Function_declarations.t
-end and Export_info : sig
-  include Export_info0_intf.S
     with type function_declarations := Function_declarations.t
 end
 
