@@ -195,8 +195,8 @@ module rec Expr : sig
       not actually be a [Switch].) *)
   val create_switch
      : scrutinee:Variable.t
-    -> all_possible_values:Numbers.Int.Set.t
-    -> arms:(int * Continuation.t) list
+    -> all_possible_values:Targetint.Set.t
+    -> arms:(Targetint.t * Continuation.t) list
     -> default:Continuation.t option
     -> Expr.t
 
@@ -205,8 +205,8 @@ module rec Expr : sig
       are therein. *)
   val create_switch'
      : scrutinee:Variable.t
-    -> all_possible_values:Numbers.Int.Set.t
-    -> arms:(int * Continuation.t) list
+    -> all_possible_values:Targetint.Set.t
+    -> arms:(Targetint.t * Continuation.t) list
     -> default:Continuation.t option
     -> Expr.t * (int Continuation.Map.t)
 
@@ -664,12 +664,12 @@ end and Typed_parameter : sig
 
   (** Free variables in the parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)
-  val free_variables : (t -> Variable.Set.t) Flambda_type.with_importer
+  val free_variables : t -> Variable.Set.t
 
   module List : sig
     type nonrec t = t list
 
-    val free_variables : (t -> Variable.Set.t) Flambda_type.with_importer
+    val free_variables : t -> Variable.Set.t
 
     (** As for [Parameter.List.vars]. *)
     val vars : t -> Variable.t list
@@ -685,6 +685,7 @@ end and Typed_parameter : sig
       take into account the parameter's type in the comparison relation. *)
   include Identifiable.S with type t := t
 *)
+  val print : Format.formatter -> t -> unit
 end and Flambda_type : sig
   include Flambda_type0_intf.S
     with type function_declarations := Function_declarations.t

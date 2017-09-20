@@ -14,6 +14,9 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(* CR mshinwell: There must be a check that types saved into .cmx files
+   do not contain free variables. *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Env : sig

@@ -1231,9 +1231,9 @@ end) = struct
       symbol = None;
     }
 
-  let rec free_variables ~import_type t acc =
+  let rec free_variables t acc =
     match t with
-    | Value ty_value -> free_variables_ty_value ~import_type ty_value acc
+    | Value ty_value -> free_variables_ty_value ty_value acc
     | Naked_immediate { var; _ }
     | Naked_float { var; _ }
     | Naked_int32 { var; _ }
@@ -1243,37 +1243,38 @@ end) = struct
       | None -> acc
       | Some var -> Variable.Set.add var acc
 
-  and free_variables_ty_value ~import_type ({ descr; var; _ } : ty_value) acc =
+  and free_variables_ty_value ({ descr; var; _ } : ty_value) acc =
     let acc =
       match var with
       | None -> acc
       | Some var -> Variable.Set.add var acc
     in
     match descr with
-    | Ok ((Unknown _) | Bottom) -> from_var
+    | Ok ((Unknown _) | Bottom) -> acc
     | Ok of_kind_value ->
-      free_variables_of_kind_value ~import_type of_kind_value acc
-    | Load_lazily load_lazily ->
-      free_variables ~import_type (import_type load_lazily) acc
+      free_variables_of_kind_value of_kind_value acc
+    | Load_lazily _load_lazily ->
+      (* Types saved in .cmx files cannot contain free variables. *)
+      acc
 
-  and free_variables_of_kind_value ~import_type (o : of_kind_value) acc =
+  and free_variables_of_kind_value (o : of_kind_value) acc =
     match o with
     | Singleton singleton ->
       begin match singleton with
       | Boxed_or_encoded_number (_kind, t) ->
-        Variable.Set.union from_var (free_variables ~import_type t)
+        Variable.Set.union from_var (free_variables t)
       | Set_of_closures set_of_closures ->
         Var_within_closure.Map.fold (fun _var t acc ->
-            free_variables ~import_type t acc)
+            free_variables t acc)
           set_of_closures.bound_vars acc
       | Closure { set_of_closures; closure_id = _; } ->
-        free_variables ~import_type set_of_closures acc
+        free_variables set_of_closures acc
       | Immutable_string _
       | Mutable_string _ -> acc
       | Float_array { contents; size = _; } ->
         begin match contents with
         | Contents ts ->
-          Array.fold_left (fun acc t -> free_variables ~import_type t acc)
+          Array.fold_left (fun acc t -> free_variables t acc)
             acc ts
         | Unknown_or_mutable -> acc
         end
@@ -1289,11 +1290,11 @@ end) = struct
         | None -> acc
         | Some var -> Variable.Set.add var acc
       in
-      free_variables_of_kind_value ~import_type w2.descr
-        (free_variables_of_kind_value ~import_type w1.descr acc)
+      free_variables_of_kind_value w2.descr
+        (free_variables_of_kind_value w1.descr acc)
 
-  let free_variables ~import_type t =
-    free_variables ~import_type t Variable.Set.empty
+  let free_variables t =
+    free_variables t Variable.Set.empty
 
 
 (*

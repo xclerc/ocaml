@@ -203,8 +203,8 @@ end
 
 module Switch = struct
   type t = {
-    numconsts : Numbers.Int.Set.t;
-    consts : (int * Continuation.t) list;
+    numconsts : Targetint.Set.t;
+    consts : (Targetint.t * Continuation.t) list;
     failaction : Continuation.t option;
   }
 
@@ -212,12 +212,12 @@ module Switch = struct
     type nonrec t = t
 
     let compare t1 t2 =
-      let c = Numbers.Int.Set.compare t1.numconsts t2.numconsts in
+      let c = Targetint.Set.compare t1.numconsts t2.numconsts in
       if c <> 0 then c
       else
         let c =
-          let compare_one ((i1 : int), k1) (i2, k2) =
-            let c = Pervasives.compare i1 i2 in
+          let compare_one (i1, k1) (i2, k2) =
+            let c = Targetint.compare i1 i2 in
             if c <> 0 then c
             else Continuation.compare k1 k2
           in
@@ -236,7 +236,9 @@ module Switch = struct
       let spc = ref false in
       List.iter (fun (n, l) ->
           if !spc then fprintf ppf "@ " else spc := true;
-          fprintf ppf "@[<hv 1>| %i ->@ goto %a@]" n Continuation.print l)
+          fprintf ppf "@[<hv 1>| %a ->@ goto %a@]"
+            Targetint.print n
+            Continuation.print l)
         t.consts;
       begin match t.failaction with
       | None  -> ()
@@ -261,14 +263,14 @@ module rec Expr : sig
   val create_let : Variable.t -> Flambda_kind.t -> Named.t -> t -> t
   val create_switch
      : scrutinee:Variable.t
-    -> all_possible_values:Numbers.Int.Set.t
-    -> arms:(int * Continuation.t) list
+    -> all_possible_values:Targetint.Set.t
+    -> arms:(Targetint.t * Continuation.t) list
     -> default:Continuation.t option
     -> Expr.t
   val create_switch'
      : scrutinee:Variable.t
-    -> all_possible_values:Numbers.Int.Set.t
-    -> arms:(int * Continuation.t) list
+    -> all_possible_values:Targetint.Set.t
+    -> arms:(Targetint.t * Continuation.t) list
     -> default:Continuation.t option
     -> Expr.t * (int Continuation.Map.t)
   val free_variables
@@ -423,12 +425,12 @@ end = struct
       List.sort (fun (value1, _) (value2, _) -> Pervasives.compare value1 value2)
         arms
     in
-    let num_possible_values = Int.Set.cardinal all_possible_values in
+    let num_possible_values = Targetint.Set.cardinal all_possible_values in
     let num_arms = List.length arms in
     let arm_values = List.map (fun (value, _cont) -> value) arms in
     let num_arm_values = List.length arm_values in
-    let arm_values_set = Int.Set.of_list arm_values in
-    let num_arm_values_set = Int.Set.cardinal arm_values_set in
+    let arm_values_set = Targetint.Set.of_list arm_values in
+    let num_arm_values_set = Targetint.Set.cardinal arm_values_set in
     if num_arm_values <> num_arm_values_set then begin
       Misc.fatal_errorf "More than one arm of this switch matches on \
           the same value: %a"
@@ -438,7 +440,7 @@ end = struct
       Misc.fatal_errorf "This switch has too many arms: %a"
         print result
     end;
-    if not (Int.Set.subset arm_values_set all_possible_values) then begin
+    if not (Targetint.Set.subset arm_values_set all_possible_values) then begin
       Misc.fatal_errorf "This switch matches on values that were not specified \
           in the set of all possible values: %a"
         print result
@@ -1390,18 +1392,18 @@ end = struct
       ty;
     }
 
-  let var t = t.param
+  let var t = Parameter.var t.param
   let projection t = t.projection
   let ty t = t.ty
 
   let with_type t ty = { t with ty; }
   let with_projection t projection = { t with projection; } 
 
-  let map_var t ~f = { t with param = Parameter.map_var f param; }
+  let map_var t ~f = { t with param = Parameter.map_var f t.param; }
 
-  let map_type t ~f = { t with ty = f ty; }
+  let map_type t ~f = { t with ty = f t.ty; }
 
-  let free_variables ~importer t =
+  let free_variables t =
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the
        projection (if such exists) and the type. *)
@@ -1410,7 +1412,7 @@ end = struct
       | None -> Variable.Set.empty
       | Some projection -> Projection.free_variables projection
     in
-    Variable.Set.union (Flambda_type.free_variables ~importer t.ty) from_proj
+    Variable.Set.union (Flambda_type.free_variables t.ty) from_proj
 
 (*
   include Identifiable.Make (struct
@@ -1447,11 +1449,10 @@ end = struct
   module List = struct
     type nonrec t = t list
 
-    let free_variables ~importer t =
-      Variable.Set.union_list (List.map (free_variables ~importer) t)
+    let free_variables t =
+      Variable.Set.union_list (List.map free_variables t)
 
-    let vars t =
-      List.map (fun (param, _ty) -> Parameter.var param) t
+    let vars t = List.map var t
 
     let var_set t = Variable.Set.of_list (vars t)
 

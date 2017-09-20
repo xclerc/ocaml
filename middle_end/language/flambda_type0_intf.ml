@@ -291,6 +291,9 @@ module type S = sig
     val refine_using_value_kind : t -> Lambda.value_kind -> t
 *)
 
+  (** Free variables in a type. *)
+  val free_variables : t -> Variable.Set.t
+
   (** A module type concealing operations for importing types from .cmx files.
       These operations are derived from the functions supplied to the
       [Make_backend] functor, below.  A first class module of this type has
@@ -322,9 +325,6 @@ module type S = sig
   (** Annotation for functions that may require the importing of types from
       .cmx files. *)
   type 'a with_importer = importer:(module Importer) -> 'a
-
-  (** Free variables in a type. *)
-  val free_variables : (t -> Variable.Set.t) with_importer
 
   (** Least upper bound of two types. *)
   val join : (t -> t -> t) with_importer
