@@ -96,6 +96,12 @@ module Stdlib : sig
     val fold : ('a -> 'b -> 'b) -> 'a t -> 'b -> 'b
     val value_default : ('a -> 'b) -> default:'b -> 'a t -> 'b
     val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
+
+    val print
+       : (Format.formatter -> 'a -> unit)
+      -> Format.formatter
+      -> 'a t
+      -> unit
   end
 
   module Array : sig

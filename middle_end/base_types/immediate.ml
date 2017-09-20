@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2017 OCamlPro SAS                                          *)
-(*   Copyright 2017 Jane Street Group LLC                                 *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,31 +16,34 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Kinds of Flambda types.  These correspond in the backend to distinctions
-    between different classes of registers in which variables are held
-    and/or differences in GC (non-) registration of roots.
-*)
+type 'a or_wrong =
+  | Ok of 'a
+  | Wrong
 
-type t = private
-  | Value_must_scan
-  | Value_can_scan
-  | Naked_immediate
-  | Naked_float
-  | Naked_int32
-  | Naked_int64
-  | Naked_nativeint
+type t = {
+  value : Targetint.t;
+  print_as_char : bool;
+}
 
-val value : must_scan:bool -> t
-val naked_immediate : unit -> t
-val naked_float : unit -> t option
-val naked_int32 : unit -> t
-val naked_int64 : unit -> t option
-val naked_nativeint : unit -> t
+let print ppf t =
+  let print_as_char =
+    t.print_as_char
+      && Targetint.compare t Targetint.zero >= 0
+      && Targetint.compare t (Targetint.of_int 0xff) <= 0
+  in
+  if print_as_char then
+    Format.fprintf ppf "(immediate '%c')"
+      (Char.chr (Targetint.to_int t.value))
+  else
+    Format.fprintf ppf "(immediate %a)"
+      Targetint.print t.value
 
-(** Two value kinds are "compatible" iff they are both the same kind, or one
-    of them is [Bottom]. *)
-val compatible : t -> t -> bool
-
-val lambda_value_kind : t -> Lambda.value_kind option
-
-include Identifiable.S with type t := t
+let join t1 t2 : t or_wrong =
+  if not (Targetint.equal t1.value t2.value) then
+    Wrong
+  else
+    let print_as_char = t1.print_as_char && t2.print_as_char in
+    Ok {
+      value = t1.value;
+      print_as_char;
+    }

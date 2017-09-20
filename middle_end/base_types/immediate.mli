@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2017 OCamlPro SAS                                          *)
-(*   Copyright 2017 Jane Street Group LLC                                 *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -14,33 +14,17 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+(** Immediate constants that can be held in registers. *)
 
-(** Kinds of Flambda types.  These correspond in the backend to distinctions
-    between different classes of registers in which variables are held
-    and/or differences in GC (non-) registration of roots.
-*)
+type 'a or_wrong =
+  | Ok of 'a
+  | Wrong
 
-type t = private
-  | Value_must_scan
-  | Value_can_scan
-  | Naked_immediate
-  | Naked_float
-  | Naked_int32
-  | Naked_int64
-  | Naked_nativeint
-
-val value : must_scan:bool -> t
-val naked_immediate : unit -> t
-val naked_float : unit -> t option
-val naked_int32 : unit -> t
-val naked_int64 : unit -> t option
-val naked_nativeint : unit -> t
-
-(** Two value kinds are "compatible" iff they are both the same kind, or one
-    of them is [Bottom]. *)
-val compatible : t -> t -> bool
-
-val lambda_value_kind : t -> Lambda.value_kind option
+type t = private {
+  value : Targetint.t;
+  print_as_char : bool;
+}
 
 include Identifiable.S with type t := t
+
+val join : t -> t -> t or_wrong

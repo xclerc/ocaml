@@ -184,6 +184,7 @@ and comparison =
 
 and value_kind =
     Pgenval | Pfloatval | Pboxedintval of boxed_integer | Pintval
+  | Pnaked_intval
 
 and block_shape =
   value_kind list option

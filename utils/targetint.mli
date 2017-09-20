@@ -184,4 +184,10 @@ type repr =
 val repr : t -> repr
 (** The concrete representation of a native integer. *)
 
+val min : t -> t -> t
+(** Returns the smaller integer. *)
+
+val max : t -> t -> t
+(** Returns the larger integer. *)
+
 include Identifiable.S with type t := t

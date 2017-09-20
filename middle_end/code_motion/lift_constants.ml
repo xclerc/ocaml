@@ -14,6 +14,9 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(* XXX we need to make sure that e.g.
+   Ptag_immediate (Const (Untagged_immediate 42)) is treated as a constant *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (*

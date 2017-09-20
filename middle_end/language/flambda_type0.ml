@@ -31,56 +31,6 @@ module Make (Function_declarations : sig
 end) = struct
   type function_declarations = Function_declarations.t
 
-  module Boxed_or_encoded_number_kind = struct
-    type encoded =
-      | Tagged_int
-
-    type boxed =
-      | Float
-      | Int32
-      | Int64
-      | Nativeint
-
-    type t =
-      | Boxed of boxed
-      | Encoded of encoded
-
-    include Identifiable.Make (struct
-      type nonrec t = t
-
-      let compare t1 t2 = Pervasives.compare t1 t2
-
-      let equal t1 t2 = (compare t1 t2 = 0)
-
-      let hash t = Hashtbl.hash t
-
-      let print ppf t =
-        match t with
-        | Boxed Float -> Format.fprintf ppf "boxed_float"
-        | Boxed Int32 -> Format.fprintf ppf "boxed_int32"
-        | Boxed Int64 -> Format.fprintf ppf "boxed_int64"
-        | Boxed Nativeint -> Format.fprintf ppf "boxed_nativeint"
-        | Encoded Tagged_int -> Format.fprintf ppf "tagged_int"
-    end)
-
-    let num_words_allocated_excluding_header t =
-      let custom_block_size = 2 in
-      match t with
-      | Encoded Tagged_int -> 0
-      | Boxed Float ->
-        begin match Targetint.num_bits with
-        | Thirty_two -> 2
-        | Sixty_four -> 1
-        end
-      | Boxed Int32 -> custom_block_size + 1
-      | Boxed Int64 ->
-        begin match Targetint.num_bits with
-        | Thirty_two -> custom_block_size + 2
-        | Sixty_four -> custom_block_size + 1
-        end
-      | Boxed Nativeint -> custom_block_size + 1
-  end
-
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Symbol of Symbol.t
@@ -187,14 +137,24 @@ end) = struct
      cannot prove it and must therefore keep it.
   *)
 
-  type string_contents = private
+  type string_contents =
     | Contents of string
     | Unknown_or_mutable
 
-  type string_ty = private {
+  type string_ty = {
     contents : string_contents;
     size : int;
   }
+
+  type 'a with_var_and_symbol = {
+    descr : 'a;
+    var : Variable.t option;
+    symbol : (Symbol.t * int option) option;
+  }
+
+  type 'a or_wrong =
+    | Ok of 'a
+    | Wrong
 
   type t =
     | Value of ty_value
@@ -213,7 +173,7 @@ end) = struct
 
   and 'a ty = 'a maybe_unresolved with_var_and_symbol
 
-  and resolved_t = private
+  and resolved_t =
     | Value of resolved_ty_value
     | Naked_immediate of resolved_ty_naked_immediate
     | Naked_float of resolved_ty_naked_float
@@ -221,31 +181,31 @@ end) = struct
     | Naked_int64 of resolved_ty_naked_int64
     | Naked_nativeint of resolved_ty_naked_nativeint
 
-  and ty_resolved_value = of_kind_value resolved_ty
-  and ty_resolved_naked_immediate = of_kind_naked_immediate resolved_ty
-  and ty_resolved_naked_float = of_kind_naked_float resolved_ty
-  and ty_resolved_naked_int32 = of_kind_naked_int32 resolved_ty
-  and ty_resolved_naked_int64 = of_kind_naked_int64 resolved_ty
-  and ty_resolved_naked_nativeint = of_kind_naked_nativeint resolved_ty
+  and resolved_ty_value = of_kind_value resolved_ty
+  and resolved_ty_naked_immediate = of_kind_naked_immediate resolved_ty
+  and resolved_ty_naked_float = of_kind_naked_float resolved_ty
+  and resolved_ty_naked_int32 = of_kind_naked_int32 resolved_ty
+  and resolved_ty_naked_int64 = of_kind_naked_int64 resolved_ty
+  and resolved_ty_naked_nativeint = of_kind_naked_nativeint resolved_ty
 
   and 'a resolved_ty = 'a or_unknown_or_bottom with_var_and_symbol
 
-  and 'a maybe_unresolved = private
+  and 'a maybe_unresolved =
     | Ok of 'a or_unknown_or_bottom
     | Load_lazily of load_lazily
 
-  and 'a or_unknown_or_bottom = private
+  and 'a or_unknown_or_bottom =
     | Unknown of unresolved_value
     | Ok of 'a
     | Bottom
 
-  and of_kind_value = private
+  and of_kind_value =
     | Singleton of of_kind_value_singleton
     | Union of of_kind_value with_var_and_symbol
         * of_kind_value with_var_and_symbol
 
-  and of_kind_value_singleton = private
-    | Tagged_int of ty_naked_immediate
+  and of_kind_value_singleton =
+    | Tagged_immediate of ty_naked_immediate
     | Boxed_float of ty_naked_float
     | Boxed_int32 of ty_naked_int32
     | Boxed_int64 of ty_naked_int64
@@ -261,7 +221,7 @@ end) = struct
 
   (* CR-soon mshinwell: add support for the approximations of the results,
      so we can do all of the tricky higher-order cases. *)
-  and set_of_closures = private {
+  and set_of_closures = {
     function_decls : function_declarations;
     bound_vars : t Var_within_closure.Map.t;
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
@@ -273,11 +233,11 @@ end) = struct
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
-  and float_array_contents = private
+  and float_array_contents =
     | Contents of t array
     | Unknown_or_mutable
 
-  and float_array_ty = private {
+  and float_array_ty = {
     contents : float_array_contents;
     size : int;
   }
@@ -301,7 +261,7 @@ end) = struct
     let var = Some var in
     match t with
     | Value ty -> Value { ty with var; }
-    | Naked_int ty -> Naked_int { ty with var; }
+    | Naked_immediate ty -> Naked_immediate { ty with var; }
     | Naked_float ty -> Naked_float { ty with var; }
     | Naked_int32 ty -> Naked_int32 { ty with var; }
     | Naked_int64 ty -> Naked_int64 { ty with var; }
@@ -311,7 +271,7 @@ end) = struct
     let symbol = Some symbol in
     match t with
     | Value ty -> Value { ty with symbol; }
-    | Naked_int ty -> Naked_int { ty with symbol; }
+    | Naked_immediate ty -> Naked_immediate { ty with symbol; }
     | Naked_float ty -> Naked_float { ty with symbol; }
     | Naked_int32 ty -> Naked_int32 { ty with symbol; }
     | Naked_int64 ty -> Naked_int64 { ty with symbol; }
@@ -321,7 +281,7 @@ end) = struct
     let symbol = Some (symbol, field) in
     match t with
     | Value ty -> Value { ty with symbol; }
-    | Naked_int ty -> Naked_int { ty with symbol; }
+    | Naked_immediate ty -> Naked_immediate { ty with symbol; }
     | Naked_float ty -> Naked_float { ty with symbol; }
     | Naked_int32 ty -> Naked_int32 { ty with symbol; }
     | Naked_int64 ty -> Naked_int64 { ty with symbol; }
@@ -336,7 +296,7 @@ end) = struct
   let replace_variable (t : t) var : t =
     match t with
     | Value ty -> Value { ty with var; }
-    | Naked_int ty -> Naked_int { ty with var; }
+    | Naked_immediate ty -> Naked_immediate { ty with var; }
     | Naked_float ty -> Naked_float { ty with var; }
     | Naked_int32 ty -> Naked_int32 { ty with var; }
     | Naked_int64 ty -> Naked_int64 { ty with var; }
@@ -430,8 +390,7 @@ end) = struct
   let tagged_naked_immediate (i : of_kind_naked_immediate) : t =
     let i = naked_immediate (i : of_kind_naked_immediate) in
     Value {
-      descr = Ok (Ok (
-        Singleton (Boxed_or_encoded_number (Encoded Tagged_immediate, i))));
+      descr = Ok (Ok (Singleton (Tagged_immediate i)));
       var = None;
       symbol = None;
     }
@@ -796,9 +755,13 @@ end) = struct
       import_type ll ~export_ids_seen:Export_id.Set.empty
         ~symbols_seen:Symbol.Map.empty
 
-    let import_value_type (ty : ty_value) =
+    let import_value_type (ty : ty_value) : resolved_t =
       match ty.descr with
-      | Ok ty -> ty
+      | Ok descr ->
+        { descr;
+          var = ty.var;
+          symbol = ty.symbol;
+        }
       | Load_lazily load_lazily ->
         let create_resolved_t t : create_resolved_t_result =
           match t with
@@ -825,7 +788,11 @@ end) = struct
 
     let import_naked_immediate_type (ty : ty_naked_immediate) =
       match ty.descr with
-      | Ok ty -> ty
+      | Ok descr ->
+        { descr;
+          var = ty.var;
+          symbol = ty.symbol;
+        }
       | Load_lazily load_lazily ->
         let create_resolved_t t : create_resolved_t_result =
           match t with
@@ -852,7 +819,11 @@ end) = struct
 
     let import_naked_float_type (ty : ty_naked_float) =
       match ty.descr with
-      | Ok ty -> ty
+      | Ok descr ->
+        { descr;
+          var = ty.var;
+          symbol = ty.symbol;
+        }
       | Load_lazily load_lazily ->
         let create_resolved_t t : create_resolved_t_result =
           match t with
@@ -879,7 +850,11 @@ end) = struct
 
     let import_naked_int32_type (ty : ty_naked_int32) =
       match ty.descr with
-      | Ok ty -> ty
+      | Ok descr ->
+        { descr;
+          var = ty.var;
+          symbol = ty.symbol;
+        }
       | Load_lazily load_lazily ->
         let create_resolved_t t : create_resolved_t_result =
           match t with
@@ -906,7 +881,11 @@ end) = struct
 
     let import_naked_int64_type (ty : ty_naked_int64) =
       match ty.descr with
-      | Ok ty -> ty
+      | Ok descr ->
+        { descr;
+          var = ty.var;
+          symbol = ty.symbol;
+        }
       | Load_lazily load_lazily ->
         let create_resolved_t t : create_resolved_t_result =
           match t with
@@ -933,7 +912,11 @@ end) = struct
 
     let import_naked_nativeint_type (ty : ty_naked_nativeint) =
       match ty.descr with
-      | Ok ty -> ty
+      | Ok descr ->
+        { descr;
+          var = ty.var;
+          symbol = ty.symbol;
+        }
       | Load_lazily load_lazily ->
         let create_resolved_t t : create_resolved_t_result =
           match t with
@@ -1106,8 +1089,8 @@ end) = struct
     match t with
     | Value ty ->
       Format.fprintf ppf "(Value (%a))" print_ty_value ty
-    | Naked_int ty ->
-      Format.fprintf ppf "(Naked_int (%a))" print_ty_naked_int ty
+    | Naked_immediate ty ->
+      Format.fprintf ppf "(Naked_immediate (%a))" print_ty_naked_immediate ty
     | Naked_float ty ->
       Format.fprintf ppf "(Naked_float (%a))" print_ty_naked_float ty
     | Naked_int32 ty ->
@@ -1141,14 +1124,32 @@ end) = struct
      is).
      mshinwell: changed to meet *)
 
-  let kind (t : t) =
+  let kind ~importer (t : t) =
     match t with
-    | Value _ -> K.value ()
     | Naked_immediate _ -> K.naked_immediate ()
     | Naked_float _ -> K.naked_float ()
     | Naked_int32 _ -> K.naked_int32 ()
     | Naked_int64 _ -> K.naked_int64 ()
     | Naked_nativeint _ -> K.naked_nativeint ()
+    | Value ty ->
+      let descr =
+        match ty with
+        | Ok descr -> descr
+        | Load_lazily load_lazily ->
+          let module I = (val importer : Importer) in
+          (I.import_value_type load_lazily).descr
+      in
+      match descr with
+      | Unknown _ -> K.value ~must_scan:true
+      | Bottom -> K.value ~must_scan:false
+      | Ok of_kind_value ->
+        let rec must_scan (o : of_kind_value) =
+          match o with
+          | Singleton (Tagged_immediate _) -> false
+          | Singleton _ -> true
+          | Union (w1, w2) -> must_scan w1.descr || must_scan w2.descr
+        in
+        K.value ~must_scan:(must_scan of_kind_value)
 
 (*
   (* CR mshinwell: read carefully *)
@@ -1350,9 +1351,13 @@ end) = struct
 *)
   let rec join_ty (type a) ~import_type join_contents (ty1 : a ty) (ty2 : a ty)
         : a ty =
-    let resolve ty =
+    let resolve ty : a resolved_ty =
       match ty with
-      | Ok ty -> ty
+      | Ok descr ->
+        { descr;
+          var;
+          symbol;
+        }
       | Load_lazily load_lazily -> import_type load_lazily
     in
     let ty1 : a resolved_ty = resolve ty1 in

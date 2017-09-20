@@ -53,17 +53,6 @@ module type S = sig
     symbol : (Symbol.t * int option) option;
   }
 
-  module Immediate : sig
-    type t = private {
-      value : Targetint.t;
-      min_value : Targetint.t;
-      max_value : Targetint.t;
-      needs_gc_root : bool;
-    }
-
-    include Identifiable.S with type t := t
-  end
-
   (** Values of type [t] are known as "Flambda types".  Each Flambda type
       has a unique kind.
 
@@ -130,7 +119,7 @@ module type S = sig
         that traverses union types. *)
 
   and of_kind_value_singleton = private
-    | Tagged_int of ty_naked_immediate
+    | Tagged_immediate of ty_naked_immediate
     | Boxed_float of ty_naked_float
     | Boxed_int32 of ty_naked_int32
     | Boxed_int64 of ty_naked_int64
@@ -183,9 +172,6 @@ module type S = sig
     | Naked_nativeint of Targetint.t
 
   val print : Format.formatter -> t -> unit
-
-  (** Each type has a unique kind. *)
-  val kind : t -> Flambda_kind.t
 
   (** Construct a top type for the given kind ("any value of the given kind
       can flow to this point").  (The [unknown_because_of] reason is ignored
@@ -325,6 +311,10 @@ module type S = sig
   (** Annotation for functions that may require the importing of types from
       .cmx files. *)
   type 'a with_importer = importer:(module Importer) -> 'a
+
+  (** Each type has a unique kind.  This is mostly syntactic save for the
+      "Value" cases. *)
+  val kind : (t -> Flambda_kind.t) with_importer
 
   (** Least upper bound of two types. *)
   val join : (t -> t -> t) with_importer

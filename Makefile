@@ -247,6 +247,7 @@ MIDDLE_END_BASE_TYPES=\
   middle_end/base_types/closure_origin.cmo \
   middle_end/base_types/export_id.cmo \
   middle_end/base_types/id_types.cmo \
+  middle_end/base_types/immediate.cmo \
   middle_end/base_types/mutable_variable.cmo \
   middle_end/base_types/num_continuation_uses.cmo \
   middle_end/base_types/parameter.cmo \

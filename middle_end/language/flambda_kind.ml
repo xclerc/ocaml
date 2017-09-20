@@ -17,15 +17,15 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type t =
-  | Value
+  | Value_must_scan
+  | Value_can_scan
   | Naked_immediate
   | Naked_float
   | Naked_int32
   | Naked_int64
   | Naked_nativeint
-  | Bottom
 
-let value () = Value
+let value ~must_scan = if must_scan then Value_must_scan else Value_can_scan
 let naked_immediate () = Naked_immediate
 
 let naked_float () =
@@ -39,31 +39,17 @@ let naked_int64 () =
   else Some Naked_int64
 
 let naked_nativeint () = Naked_nativeint
-let bottom () = Bottom
-
-let compatible t1 t2 =
-  match t1, t2 with
-  | Bottom, _ | _, Bottom
-  | Value, Value
-  | Naked_immediate, Naked_immediate
-  | Naked_float, Naked_float
-  | Naked_int32, Naked_int32
-  | Naked_int64, Naked_int64
-  | Naked_nativeint, Naked_nativeint -> true
-  | (Value | Naked_immediate | Naked_float | Naked_int32 | Naked_int64
-      | Naked_nativeint), _ ->
-    false
 
 let lambda_value_kind t =
   let module L = Lambda in
   match t with
-  | Value -> Some L.Pgenval
-  | Naked_immediate -> Some L.Pintval  (* CR mshinwell: is this right? *)
+  | Value_must_scan -> Some L.Pgenval
+  | Value_can_scan -> Some L.Pintval
+  | Naked_immediate -> Some L.Pnaked_intval
   | Naked_float -> Some L.Pfloatval
   | Naked_int32 -> Some (L.Pboxedintval Pint32)
   | Naked_int64 -> Some (L.Pboxedintval Pint64)
   | Naked_nativeint -> Some (L.Pboxedintval Pnativeint)
-  | Bottom -> None
 
 include Identifiable.Make (struct
   type nonrec t = t
@@ -75,11 +61,17 @@ include Identifiable.Make (struct
 
   let print ppf t =
     match t with
-    | Value -> Format.pp_print_string ppf "value"
+    | Value_must_scan -> Format.pp_print_string ppf "value_must_scan"
+    | Value_can_scan -> Format.pp_print_string ppf "value_can_scan"
     | Naked_immediate -> Format.pp_print_string ppf "naked_immediate"
     | Naked_float -> Format.pp_print_string ppf "naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
     | Naked_int64 -> Format.pp_print_string ppf "naked_int64"
     | Naked_nativeint -> Format.pp_print_string ppf "naked_nativeint"
-    | Bottom -> Format.pp_print_string ppf "bottom"
 end)
+
+let compatible t1 t2 =
+  match t1, t2 with
+  | Value_must_can, Value_can_scan
+  | Value_can_scan, Value_must_scan -> true
+  | _, _ -> equal t1 t2

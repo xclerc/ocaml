@@ -26,13 +26,23 @@ module Nativeint = Numbers.Nativeint
 
 include F0.Flambda_type
 
-let import_type = Import_type.import
+let var (t : t) =
+  match t with
+  | Value ty -> ty.var
+  | Naked_immediate ty -> ty.var
+  | Naked_float ty -> ty.var
+  | Naked_int32 ty -> ty.var
+  | Naked_int64 ty -> ty.var
+  | Naked_nativeint ty -> ty.var
 
-let var (t : t) = t.var
-let projection (t : t) = t.projection
-let symbol (t : t) = t.symbol
-let descr (t : t) = t.descr
-let descrs ts = List.map (fun (t : t) -> t.descr) ts
+let symbol (t : t) =
+  match t with
+  | Value ty -> ty.symbol
+  | Naked_immediate ty -> ty.symbol
+  | Naked_float ty -> ty.symbol
+  | Naked_int32 ty -> ty.symbol
+  | Naked_int64 ty -> ty.symbol
+  | Naked_nativeint ty -> ty.symbol
 
 let ty_value_is_bottom (ty : ty_value) =
   match maybe_import_value_type ~import_type ty with
@@ -546,10 +556,6 @@ let reify_as_string t : string option =
   | Float_array _ | Bottom | Set_of_closures _ | Closure _
   | Load_lazily _ -> None
 
-type 'a or_wrong =
-  | Ok of 'a
-  | Wrong
-
 module Or_not_all_values_known = struct
   type 'a t =
     | Exactly of 'a
@@ -565,56 +571,6 @@ module Or_not_all_values_known = struct
     | Exactly _, Not_all_values_known
     | Not_all_values_known, Exactly _
     | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
-end
-
-module Immediate = struct
-  type t = {
-    value : Targetint.t;
-    min_value : Targetint.t;
-    max_value : Targetint.t;
-    needs_gc_root : bool;
-  }
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare t1 t2 =
-      let c = Targetint.compare t1.value t2.value in
-      if c <> 0 then c
-      else
-        let c = Targetint.compare t1.min_value t2.min_value in
-        if c <> 0 then c
-        else
-          let c = Targetint.compare t1.max_value t2.max_value in
-          if c <> 0 then c
-          else
-            Pervasives.compare t1.needs_gc_root t2.needs_gc_root
-
-    let equal t1 t2 = (compare t1 t2 = 0)
-
-    let hash t = Hashtbl.hash t
-
-    let print ppf t =
-      Format.fprintf "(immediate %a min %a max %a root? %b)"
-        Targetint.print t.value
-        (Misc.Stdlib.Option.print Targetint.print) t.min_value
-        (Misc.Stdlib.Option.print Targetint.print) t.max_value
-        Format.pp_print_bool t.needs_gc_root
-  end)
-
-  let join t1 t2 : t or_wrong =
-    if not (Targetint.equal t1.value t2.value) then
-      Wrong
-    else
-      let min_value = Targetint.min t1.min_value t2.min_value in
-      let max_value = Targetint.max t1.max_value t2.max_value in
-      let needs_gc_root = t1.needs_gc_root || t2.needs_gc_root in
-      Ok {
-        value = t1.value;
-        min_value;
-        max_value;
-        needs_gc_root;
-      }
 end
 
 module Blocks = struct

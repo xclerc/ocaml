@@ -744,3 +744,23 @@ module Unboxable_or_untaggable : sig
     -> Flambda0.Named.t
 end
 *)
+
+
+(* We'll want this at some point
+    let num_words_allocated_excluding_header t =
+      let custom_block_size = 2 in
+      match t with
+      | Encoded Tagged_int -> 0
+      | Boxed Float ->
+        begin match Targetint.num_bits with
+        | Thirty_two -> 2
+        | Sixty_four -> 1
+        end
+      | Boxed Int32 -> custom_block_size + 1
+      | Boxed Int64 ->
+        begin match Targetint.num_bits with
+        | Thirty_two -> custom_block_size + 2
+        | Sixty_four -> custom_block_size + 1
+        end
+      | Boxed Nativeint -> custom_block_size + 1
+*)

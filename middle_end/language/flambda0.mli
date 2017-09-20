@@ -51,17 +51,12 @@ end
     of [Pmakeblock] so that they easily take part in optimizations.) *)
 module Const : sig
   type t =
-    | Int of int
-    | Char of char
-    (** [Char] is kept separate from [Int] to improve printing *)
-    | Const_pointer of int
-    (** [Const_pointer] is an immediate value of a type whose values may be
-      boxed (typically a variant type with both constant and non-constant
-      constructors). *)
+    | Untagged_immediate of Immediate.t
+    | Tagged_immediate of Immediate.t
     | Unboxed_float of float
     | Unboxed_int32 of Int32.t
     | Unboxed_int64 of Int64.t
-    | Unboxed_nativeint of Nativeint.t
+    | Unboxed_nativeint of Targetint.t
 
   include Identifiable.S with type t := t
 end

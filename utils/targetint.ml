@@ -58,6 +58,8 @@ module type S = sig
   val of_string : string -> t
   val to_string : t -> string
   val repr: t -> repr
+  val min: t -> t -> t
+  val max: t -> t -> t
 
   include Identifiable.S with type t := t
 end
@@ -94,6 +96,12 @@ module Int32 = struct
     let hash = Hashtbl.hash
     let print ppf t = Format.fprintf ppf "%ld" t
   end)
+
+  let min t1 t2 =
+    if compare t1 t2 <= 0 then t1 else t2
+
+  let max t1 t2 =
+    if compare t1 t2 <= 0 then t2 else t1
 end
 
 module Int64 = struct
@@ -111,6 +119,12 @@ module Int64 = struct
     let hash = Hashtbl.hash
     let print ppf t = Format.fprintf ppf "%Ld" t
   end)
+
+  let min t1 t2 =
+    if compare t1 t2 <= 0 then t1 else t2
+
+  let max t1 t2 =
+    if compare t1 t2 <= 0 then t2 else t1
 end
 
 include (val
