@@ -1128,6 +1128,8 @@ end) = struct
       Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
     | Symbol symbol ->
       Format.fprintf ppf "Symbol %a" Symbol.print symbol
+    | Export_id id ->
+      Format.fprintf ppf "Export_id %a" Export_id.print id
 
   let print_with_var_and_symbol print_descr ppf { descr; var; symbol; } =
     let print_symbol ppf = function
@@ -1144,20 +1146,11 @@ end) = struct
   let print_maybe_unresolved print_contents ppf (m : _ maybe_unresolved) =
     match m with
     | Ok contents -> print_contents ppf contents
-    | Load_lazily (Export_id (id, kind)) ->
-      Format.fprintf ppf "lazy[%a](eid %a)"
-        K.print kind
-        Export_id.print id
-    | Load_lazily (Symbol sym) ->
-      Format.fprintf ppf "lazy[%a](sym %a)"
-        K.print (K.value ())
-        Symbol.print sym
+    | Load_lazily ll -> Format.fprintf ppf "lazy(%a)" print_load_lazily ll
 
   let print_of_kind_naked_immediate ppf (o : of_kind_naked_immediate) =
     match o with
-    | Naked_int i -> Format.fprintf ppf "%a" Targetint.print i
-    | Naked_char c -> Format.fprintf ppf "%c" c
-    | Naked_constptr i -> Format.fprintf ppf "%aa" Targetint.print i
+    | Naked_immediate i -> Format.fprintf ppf "%a" Immediate.print i
 
   let print_of_kind_naked_float ppf (o : of_kind_naked_float) =
     match o with
@@ -1173,7 +1166,27 @@ end) = struct
 
   let print_of_kind_naked_nativeint ppf (o : of_kind_naked_nativeint) =
     match o with
-    | Naked_nativeint i -> Format.fprintf ppf "%a" Nativeint.print i
+    | Naked_nativeint i -> Format.fprintf ppf "%a" Targetint.print i
+
+  let print_or_unknown_or_bottom print_contents print_unknown_payload ppf
+        (o : _ or_unknown_or_bottom) =
+    match o with
+    | Unknown (reason, payload) ->
+      begin match reason with
+      | Unresolved_value value ->
+        Format.fprintf ppf "?%a(due to unresolved %a)"
+          print_unknown_payload payload
+          print_unresolved_value value
+      | Other -> Format.fprintf ppf "?%a" print_unknown_payload payload
+      end;
+    | Ok contents -> print_contents ppf contents
+    | Bottom -> Format.fprintf ppf "bottom"
+
+  let print_ty_generic print_contents print_unknown_payload ppf ty =
+    (print_with_var_and_symbol
+      (print_maybe_unresolved
+        (print_or_unknown_or_bottom print_contents print_unknown_payload)))
+      ppf ty
 
   let rec print_of_kind_value ppf (o : of_kind_value) =
     match o with
@@ -1182,30 +1195,36 @@ end) = struct
       let print_part ppf w =
         print_with_var_and_symbol print_of_kind_value ppf w
       in
-      Format.fprintf "@[(Union (%a)(%a))@]" print w1 print w2
+      Format.fprintf ppf "@[(Union (%a)(%a))@]"
+        print_part w1 print_part w2
 
   and print_of_kind_value_singleton ppf (singleton : of_kind_value_singleton) =
     match singleton with
-    | Naked_number nn -> Naked_number.print ppf nn
+    | Tagged_immediate t ->
+      Format.fprintf ppf "(tagged_imm %a)" print_ty_naked_immediate t
+    | Boxed_float f ->
+      Format.fprintf ppf "(boxed_float %a)" print_ty_naked_float f
+    | Boxed_int32 n ->
+      Format.fprintf ppf "(boxed_int32 %a)" print_ty_naked_int32 n
+    | Boxed_int64 n ->
+      Format.fprintf ppf "(boxed_int64 %a)" print_ty_naked_int64 n
+    | Boxed_nativeint n ->
+      Format.fprintf ppf "(boxed_nativeint %a)" print_ty_naked_nativeint n
     | Block (tag, fields) ->
       Format.fprintf ppf "@[[%a: %a]@]"
         Tag.Scannable.print tag
         (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
-          print) (Array.to_list fields)
-    | Boxed_or_encoded_number (bn, t) ->
-      Format.fprintf ppf "%a(%a)"
-        Boxed_number_kind.print bn
-        print t
+          print_ty_value) (Array.to_list fields)
     | Set_of_closures set_of_closures ->
       print_set_of_closures ppf set_of_closures
     | Closure { set_of_closures; closure_id; } ->
       Format.fprintf ppf "(closure:@ @[<2>[@ %a @[<2>from@ %a@];@ ]@])"
-          Closure_id.print closure_id
-          print set_of_closures
+        Closure_id.print closure_id
+        print_ty_value set_of_closures
     | String { contents; size; } ->
       begin match contents with
-      | None -> Format.fprintf ppf "string %i" size
-      | Some s ->
+      | Unknown_or_mutable -> Format.fprintf ppf "string %i" size
+      | Contents s ->
         let s =
           if size > 10 then String.sub s 0 8 ^ "..."
           else s
@@ -1220,42 +1239,28 @@ end) = struct
         Format.fprintf ppf "float_array_imm %i" float_array.size
       end
 
-  and print_or_unknown_or_bottom print_contents ppf
-        (o : _ or_unknown_or_bottom) =
-    match o with
-    | Unknown reason ->
-      begin match reason with
-      | Unresolved_value value ->
-        Format.fprintf ppf "?(due to unresolved %a)"
-          print_unresolved_value value
-      | Other -> Format.fprintf ppf "?"
-      end;
-    | Ok contents -> print_contents ppf contents
-    | Bottom -> Format.fprintf ppf "bottom"
-
-  and print_ty_generic print_contents ppf ty =
-    print_with_var_and_symbol
-      (print_maybe_unresolved
-        (print_unknown_or_bottom print_contents))
-      ppf ty
-
   and print_ty_value ppf (ty : ty_value) =
-    print_ty_generic print_of_kind_value ppf ty
+    let print_scanning ppf (scanning : K.scanning) =
+      match scanning with
+      | Must_scan -> Format.fprintf ppf "*"
+      | Can_scan -> ()
+    in
+    print_ty_generic print_of_kind_value print_scanning ppf ty
 
   and print_ty_naked_immediate ppf (ty : ty_naked_immediate) =
-    print_ty_generic print_of_kind_naked_immediate ppf ty
+    print_ty_generic print_of_kind_naked_immediate (fun _ () -> ()) ppf ty
 
   and print_ty_naked_float ppf (ty : ty_naked_float) =
-    print_ty_generic print_of_kind_naked_float ppf ty
+    print_ty_generic print_of_kind_naked_float (fun _ () -> ()) ppf ty
 
   and print_ty_naked_int32 ppf (ty : ty_naked_int32) =
-    print_ty_generic print_of_kind_naked_int32 ppf ty
+    print_ty_generic print_of_kind_naked_int32 (fun _ () -> ()) ppf ty
 
   and print_ty_naked_int64 ppf (ty : ty_naked_int64) =
-    print_ty_generic print_of_kind_naked_int64 ppf ty
+    print_ty_generic print_of_kind_naked_int64 (fun _ () -> ()) ppf ty
 
   and print_ty_naked_nativeint ppf (ty : ty_naked_nativeint) =
-    print_ty_generic print_of_kind_naked_nativeint ppf ty
+    print_ty_generic print_of_kind_naked_nativeint (fun _ () -> ()) ppf ty
 
   and print ppf (t : t) =
     match t with
@@ -1305,11 +1310,8 @@ end) = struct
     | Naked_nativeint _ -> K.naked_nativeint ()
     | Value ty ->
       let descr =
-        match ty with
-        | Ok descr -> descr
-        | Load_lazily load_lazily ->
-          let module I = (val importer : Importer) in
-          (I.import_value_type_as_resolved_ty_value load_lazily).descr
+        let module I = (val importer : Importer) in
+        (I.import_value_type_as_resolved_ty_value ty).descr
       in
       match descr with
       | Unknown _ -> K.value ~must_scan:true
