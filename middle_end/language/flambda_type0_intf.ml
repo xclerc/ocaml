@@ -66,14 +66,18 @@ module type S = sig
     | Naked_int64 of ty_naked_int64
     | Naked_nativeint of ty_naked_nativeint
 
-  and ty_value = of_kind_value ty
-  and ty_naked_immediate = of_kind_naked_immediate ty
-  and ty_naked_float = of_kind_naked_float ty
-  and ty_naked_int32 = of_kind_naked_int32 ty
-  and ty_naked_int64 = of_kind_naked_int64 ty
-  and ty_naked_nativeint = of_kind_naked_nativeint ty
+  (** Types of kind [Value] are equipped with an extra piece of information
+      such that when we are at the top element, [Unknown], we still know
+      whether a root has to be registered.  This is necessary e.g. for
+      treating function arguments correctly. *)
+  and ty_value = (of_kind_value, Flambda_kind.scanning) ty
+  and ty_naked_immediate = (of_kind_naked_immediate, unit) ty
+  and ty_naked_float = (of_kind_naked_float, unit) ty
+  and ty_naked_int32 = (of_kind_naked_int32, unit) ty
+  and ty_naked_int64 = (of_kind_naked_int64, unit) ty
+  and ty_naked_nativeint = (of_kind_naked_nativeint, unit) ty
 
-  and 'a ty = 'a maybe_unresolved with_var_and_symbol
+  and ('a, 'u) ty = ('a, 'u) maybe_unresolved with_var_and_symbol
 
   (** "Resolved" types where the head constructor is known not to need loading
       from a .cmx file. *)
@@ -85,17 +89,17 @@ module type S = sig
     | Naked_int64 of resolved_ty_naked_int64
     | Naked_nativeint of resolved_ty_naked_nativeint
 
-  and resolved_ty_value = of_kind_value resolved_ty
-  and resolved_ty_naked_immediate = of_kind_naked_immediate resolved_ty
-  and resolved_ty_naked_float = of_kind_naked_float resolved_ty
-  and resolved_ty_naked_int32 = of_kind_naked_int32 resolved_ty
-  and resolved_ty_naked_int64 = of_kind_naked_int64 resolved_ty
-  and resolved_ty_naked_nativeint = of_kind_naked_nativeint resolved_ty
+  and resolved_ty_value = (of_kind_value, Flambda_kind.scanning) resolved_ty
+  and resolved_ty_naked_immediate = (of_kind_naked_immediate, unit) resolved_ty
+  and resolved_ty_naked_float = (of_kind_naked_float, unit) resolved_ty
+  and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
+  and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
+  and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
 
-  and 'a resolved_ty = 'a or_unknown_or_bottom with_var_and_symbol
+  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom with_var_and_symbol
 
-  and 'a maybe_unresolved = private
-    | Ok of 'a or_unknown_or_bottom
+  and ('a, 'u) maybe_unresolved = private
+    | Ok of ('a, 'u) or_unknown_or_bottom
     (** The head constructor is available in memory. *)
     | Load_lazily of load_lazily
     (** The head constructor requires loading from a .cmx file. *)
@@ -104,8 +108,8 @@ module type S = sig
       merged into one) there is a lattice of types.
       [Bottom] is the unique least element and [Unknown] is the unique top
       element. *)
-  and 'a or_unknown_or_bottom = private
-    | Unknown of unknown_because_of
+  and ('a, 'u) or_unknown_or_bottom = private
+    | Unknown of unknown_because_of * 'u
     (** "Any value can flow to this point". *)
     | Ok of 'a
     | Bottom

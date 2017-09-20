@@ -687,16 +687,16 @@ end) = struct
   let any_naked_int64 () = unknown (K.naked_int64 ())
   let any_naked_nativeint () = unknown (K.naked_nativeint ())
 
-  let type_for_predefined_exception ~name ~symbol : t =
+  let resolved_type_for_predefined_exception ~name ~symbol : resolved_t =
     let fields =
       [| immutable_string_as_ty_value name;
          unknown_as_ty_value Other;
       |]
     in
     Value {
-      descr = Ok (Ok (Singleton (Block (Tag.Scannable.object_tag, fields))));
+      descr = Ok (Singleton (Block (Tag.Scannable.object_tag, fields)));
       var = None;
-      symbol;
+      symbol = Some (symbol, None);
     }
 
   module type Importer = sig
@@ -722,13 +722,13 @@ end) = struct
   module Make_importer (S : sig
     val import_export_id : Export_id.t -> t option
     val import_symbol : Symbol.t -> t option
-    val symbol_is_predefined_exception : Symbol.t -> bool
+    val symbol_is_predefined_exception : Symbol.t -> string option
   end) : Importer = struct
     type import_result =
       | Ok of resolved_t
       | Treat_as_unknown
 
-    let import_type ll ~create_resolved_t =
+    let import_type ll ~(create_resolved_t : t -> create_resolved_t_result) =
       let rec import_type (ll : load_lazily) ~export_ids_seen ~symbols_seen
             : import_result =
         match ll with
@@ -748,11 +748,12 @@ end) = struct
           end
         | Symbol sym ->
           match S.symbol_is_predefined_exception sym with
-          | Some name -> type_for_predefined_exception ~name ~symbol:sym
+          | Some name ->
+            Ok (resolved_type_for_predefined_exception ~name ~symbol:sym)
           | None ->
-            if Symbol.Set.mem id symbols_seen then begin
+            if Symbol.Set.mem sym symbols_seen then begin
               Misc.fatal_errorf "Circularity whilst resolving symbol %a"
-                Symbol.print id
+                Symbol.print sym
             end;
             begin match S.import_symbol sym with
             | None -> Treat_as_unknown
@@ -762,12 +763,12 @@ end) = struct
                  we don't need it any more? *)
               | Ok resolved_t -> Ok resolved_t
               | Load_lazily_again ll ->
-                let symbols_seen = Symbol.Set.add id symbols_seen in
+                let symbols_seen = Symbol.Set.add sym symbols_seen in
                 import_type ll ~export_ids_seen ~symbols_seen
             end
       in
       import_type ll ~export_ids_seen:Export_id.Set.empty
-        ~symbols_seen:Symbol.Map.empty
+        ~symbols_seen:Symbol.Set.empty
 
     let import_value_type (ty : ty_value) : resolved_t =
       match ty.descr with
