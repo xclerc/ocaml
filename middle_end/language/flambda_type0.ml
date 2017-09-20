@@ -1365,23 +1365,20 @@ end) = struct
 *)
 
   let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
-        closures =
-    let type_set_of_closures value_set_of_closures =
-      { descr = Set_of_closures value_set_of_closures;
+        set_of_closures closure_id : t =
+    let set_of_closures : ty_value =
+      { descr = Ok (Ok (Singleton (Set_of_closures set_of_closures)));
         var = set_of_closures_var;
-        projection = None;
         symbol = Misc.may_map (fun s -> s, None) set_of_closures_symbol;
       }
     in
-    let potential_closures =
-      Closure_id.Map.map type_set_of_closures closures
-    in
-    { descr = Closure { potential_closures };
+    Value {
+      descr = Ok (Ok (Singleton (Closure { set_of_closures; closure_id; })));
       var = closure_var;
-      projection = None;
       symbol = None;
     }
 
+  (* CR mshinwell: crappy name *)
   let create_set_of_closures ~function_decls ~size ~bound_vars
         ~invariant_params ~freshening
         ~direct_call_surrogates : set_of_closures =
@@ -1399,10 +1396,10 @@ end) = struct
        reasonable. *)
     { set_of_closures with freshening; }
 
-  let set_of_closures ?set_of_closures_var set_of_closures =
-    { descr = Set_of_closures set_of_closures;
+  let set_of_closures ?set_of_closures_var set_of_closures : t =
+    Value {
+      descr = Ok (Ok (Singleton (Set_of_closures set_of_closures)));
       var = set_of_closures_var;
-      projection = None;
       symbol = None;
     }
 
