@@ -304,7 +304,7 @@ end) = struct
 
   let unknown (kind : K.t) reason : t =
     match kind with
-    | Value ->
+    | Value_must_scan | Value_can_scan ->
       Value {
         descr = Ok (Unknown reason);
         var = None;
@@ -343,7 +343,7 @@ end) = struct
 
   let bottom (kind : K.t) : t =
     match kind with
-    | Value ->
+    | Value_must_scan | Value_can_scan ->
       Value {
         descr = Ok Bottom;
         var = None;
@@ -388,27 +388,25 @@ end) = struct
     }
 
   let tagged_naked_immediate (i : of_kind_naked_immediate) : t =
-    let i = naked_immediate (i : of_kind_naked_immediate) in
+    let i : ty_naked_immediate =
+      { descr = Ok (Ok i);
+        var = None;
+        symbol = None;
+      }
+    in
     Value {
       descr = Ok (Ok (Singleton (Tagged_immediate i)));
       var = None;
       symbol = None;
     }
 
-  let tagged_int i = tagged_naked_immediate (Int i)
-  let tagged_char c = tagged_naked_immediate (Char c)
-  let tagged_constptr c = tagged_naked_immediate (Constptr c)
-
-  let untagged_int n = naked_immediate (Int i)
-  let untagged_char c = naked_immediate (Char c)
-  let untagged_constptr c = naked_immediate (Constptr c)
-
   let unboxed_float f =
     if Targetint.size < 64 then None
     else
       let f : t =
+        let f : of_kind_naked_float = Naked_float f in
         Naked_float {
-          descr = Ok (Ok (Naked_float f));
+          descr = Ok (Ok f);
           var = None;
           symbol = None;
         }
@@ -417,8 +415,9 @@ end) = struct
 
   let unboxed_int32 n =
     let n : t =
+      let n : of_kind_naked_int32 = Naked_int32 n in
       Naked_int32 {
-        descr = Ok (Ok (Naked_int32 n));
+        descr = Ok (Ok n);
         var = None;
         symbol = None;
       }
@@ -429,8 +428,9 @@ end) = struct
     if Targetint.size < 64 then None
     else
       let n : t =
+        let n : of_kind_naked_int64 = Naked_int64 n in
         Naked_int64 {
-          descr = Ok (Ok (Naked_int64 n));
+          descr = Ok (Ok n);
           var = None;
           symbol = None;
         }
@@ -441,8 +441,9 @@ end) = struct
     if Targetint.size < 64 then None
     else
       let n : t =
+        let n : of_kind_naked_nativeint = Naked_nativeint n in
         Naked_nativeint {
-          descr = Ok (Ok (Naked_nativeint n));
+          descr = Ok (Ok n);
           var = None;
           symbol = None;
         }
