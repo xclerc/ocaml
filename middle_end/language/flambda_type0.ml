@@ -240,7 +240,7 @@ end) = struct
   }
 
   and float_array_contents =
-    | Contents of t array
+    | Contents of ty_naked_float array
     | Unknown_or_mutable
 
   and float_array_ty = {
@@ -1423,30 +1423,65 @@ end) = struct
     in
     match descr with
     | Ok ((Unknown _) | Bottom) -> acc
-    | Ok of_kind_value ->
+    | Ok (Ok of_kind_value) ->
       free_variables_of_kind_value of_kind_value acc
     | Load_lazily _load_lazily ->
       (* Types saved in .cmx files cannot contain free variables. *)
       acc
 
+  and free_variables_ty_naked_immediate ({ var; _ } : ty_naked_immediate) acc =
+    match var with
+    | None -> acc
+    | Some var -> Variable.Set.add var acc
+
+  and free_variables_ty_naked_float ({ var; _ } : ty_naked_float) acc =
+    match var with
+    | None -> acc
+    | Some var -> Variable.Set.add var acc
+
+  and free_variables_ty_naked_int32 ({ var; _ } : ty_naked_int32) acc =
+    match var with
+    | None -> acc
+    | Some var -> Variable.Set.add var acc
+
+  and free_variables_ty_naked_int64 ({ var; _ } : ty_naked_int64) acc =
+    match var with
+    | None -> acc
+    | Some var -> Variable.Set.add var acc
+
+  and free_variables_ty_naked_nativeint ({ var; _ } : ty_naked_nativeint) acc =
+    match var with
+    | None -> acc
+    | Some var -> Variable.Set.add var acc
+
   and free_variables_of_kind_value (o : of_kind_value) acc =
     match o with
     | Singleton singleton ->
       begin match singleton with
-      | Boxed_or_encoded_number (_kind, t) ->
-        Variable.Set.union from_var (free_variables t)
+      | Tagged_immediate i ->
+        free_variables_ty_naked_immediate i acc
+      | Boxed_float f ->
+        free_variables_ty_naked_float f acc
+      | Boxed_int32 n ->
+        free_variables_ty_naked_int32 n acc
+      | Boxed_int64 n ->
+        free_variables_ty_naked_int64 n acc
+      | Boxed_nativeint n ->
+        free_variables_ty_naked_nativeint n acc
+      | Block (_tag, fields) ->
+        Array.fold_left (fun acc t -> free_variables_ty_value t acc)
+          acc fields
       | Set_of_closures set_of_closures ->
         Var_within_closure.Map.fold (fun _var t acc ->
             free_variables t acc)
           set_of_closures.bound_vars acc
       | Closure { set_of_closures; closure_id = _; } ->
-        free_variables set_of_closures acc
-      | Immutable_string _
-      | Mutable_string _ -> acc
+        free_variables_ty_value set_of_closures acc
+      | String _ -> acc
       | Float_array { contents; size = _; } ->
         begin match contents with
         | Contents ts ->
-          Array.fold_left (fun acc t -> free_variables t acc)
+          Array.fold_left (fun acc t -> free_variables_ty_naked_float t acc)
             acc ts
         | Unknown_or_mutable -> acc
         end
