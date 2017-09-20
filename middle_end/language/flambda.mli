@@ -54,7 +54,7 @@ module Reachable : sig
 end
 
 module rec Expr : sig
-  include module type of Flambda0.Expr
+  include module type of struct include Flambda0.Expr end
 
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool
@@ -177,6 +177,10 @@ module rec Expr : sig
 
     val map_expr : (t -> t) -> t -> t
 
+    val map_named : (Named.t -> Named.t) -> t -> t
+
+    val map_named_with_id : (Variable.t -> Named.t -> Named.t) -> t -> t
+
     val map_symbols : t -> f:(Symbol.t -> Symbol.t) -> t
 
     val map_sets_of_closures
@@ -238,7 +242,7 @@ module rec Expr : sig
       -> t * 'b
   end
 end and Named : sig
-  include module type of Flambda0.Named
+  include module type of struct include Flambda0.Named end
 
   val toplevel_substitution
      : Variable.t Variable.Map.t
@@ -258,7 +262,7 @@ end and Named : sig
   end
 end
 and Set_of_closures : sig
-  include module type of Flambda0.Set_of_closures
+  include module type of struct include Flambda0.Set_of_closures end
 
   (** [find_free_variable v clos] raises [Not_found] if [c] is not in [clos]. *)
   val find_free_variable
@@ -290,7 +294,7 @@ and Set_of_closures : sig
       -> 'a
   end
 end and Function_declarations : sig
-  include module type of Flambda0.Function_declarations
+  include module type of struct include Flambda0.Function_declarations end
 
   (** [find_declaration_variable f decl] raises [Not_found] if [f] is not in
       [decl]. *)
@@ -347,7 +351,7 @@ end and Function_declarations : sig
 
   val contains_stub : t -> bool
 end and Function_declaration : sig
-  include module type of Flambda0.Function_declaration
+  include module type of struct include Flambda0.Function_declaration end
 
   val function_arity : t -> int
 

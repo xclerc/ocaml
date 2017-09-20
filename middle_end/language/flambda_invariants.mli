@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-
+(*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type flambda_kind =
@@ -27,3 +27,5 @@ val check_exn
   -> ?cmxfile:bool
   -> Flambda_static.Program.t
   -> unit
+
+*)

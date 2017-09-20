@@ -29,7 +29,8 @@ module Program : sig
 
   val initialize_symbols
      : t
-    -> (Symbol.t * Tag.t * (Flambda.Expr.t * Continuation.t) list) list
+    -> (Symbol.t * Tag.Scannable.t * (Flambda.Expr.t * Continuation.t) list)
+         list
 
   val imported_symbols : t -> Symbol.Set.t
 
@@ -72,7 +73,8 @@ module Program : sig
     -> Flambda.Function_declarations.t Closure_id.Map.t
 
   module Iterators : sig
-    val iter_on_set_of_closures
+    (* CR mshinwell: give comment defining semantics *)
+    val iter_set_of_closures
        : t
       -> f:(constant:bool -> Flambda.Set_of_closures.t -> unit)
       -> unit
@@ -91,20 +93,24 @@ module Program : sig
         -> Flambda.Expr.t
         -> unit)
       -> unit
-    
+
+    (** A specialised version of [iter_toplevel_exprs] that only passes
+        [Named.t] values to the given [f]. *)
     val iter_named
        : t
       -> f:(Flambda.Named.t -> unit)
+      -> unit
+    
+    (** A specialised version of [iter_toplevel_exprs] that only passes
+        [Apply] nodes to the given [f]. *)
+    val iter_apply
+       : t
+      -> f:(Flambda.apply -> unit)
       -> unit
 
     val iter_constant_defining_values
        : t
       -> f:(Constant_defining_value.t -> unit)
-      -> unit
-    
-    val iter_apply
-       : t
-      -> f:(Flambda.apply -> unit)
       -> unit
 
     module Toplevel_only : sig
@@ -139,7 +145,8 @@ module Program : sig
        : t
       -> f:(Flambda.Expr.t -> Flambda.Expr.t)
       -> t
-    
+
+    (** Maps over the expressions iterated over by [iter_named], above. *)    
     val map_named
        : t
       -> f:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)

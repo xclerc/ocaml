@@ -129,6 +129,8 @@ module rec Expr : sig
       -> t
       -> t
     val map_expr : (t -> t) -> t -> t
+    val map_named : (Named.t -> Named.t) -> t -> t
+    val map_named_with_id : (Variable.t -> Named.t -> Named.t) -> t -> t
     val map_symbols : t -> f:(Symbol.t -> Symbol.t) -> t
     val map_sets_of_closures
        : t

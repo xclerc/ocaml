@@ -13,7 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
-
+(*
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
 type flambda_kind =
@@ -1125,3 +1125,4 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
   Format.eprintf "\n@?";
   raise Flambda_invariants_failed
 end
+*)
