@@ -1405,15 +1405,12 @@ end) = struct
 
   let rec free_variables t acc =
     match t with
-    | Value ty_value -> free_variables_ty_value ty_value acc
-    | Naked_immediate { var; _ }
-    | Naked_float { var; _ }
-    | Naked_int32 { var; _ }
-    | Naked_int64 { var; _ }
-    | Naked_nativeint { var; _ } ->
-      match var with
-      | None -> acc
-      | Some var -> Variable.Set.add var acc
+    | Value ty -> free_variables_ty_value ty acc
+    | Naked_immediate ty -> free_variables_ty_naked_immediate ty acc
+    | Naked_float ty -> free_variables_ty_naked_float ty acc
+    | Naked_int32 ty -> free_variables_ty_naked_int32 ty acc
+    | Naked_int64 ty -> free_variables_ty_naked_int64 ty acc
+    | Naked_nativeint ty -> free_variables_ty_naked_nativeint ty acc
 
   and free_variables_ty_value ({ descr; var; _ } : ty_value) acc =
     let acc =
@@ -1555,19 +1552,10 @@ end) = struct
     | Load_lazily _
     | Bottom -> t
 *)
-  let rec join_ty (type a) ~import_type join_contents (ty1 : a ty) (ty2 : a ty)
-        : a ty =
-    let resolve ty : a resolved_ty =
-      match ty with
-      | Ok descr ->
-        { descr;
-          var;
-          symbol;
-        }
-      | Load_lazily load_lazily -> import_type load_lazily
-    in
-    let ty1 : a resolved_ty = resolve ty1 in
-    let ty2 : a resolved_ty = resolve ty2 in
+  let rec join_ty (type a) (type u) ~import_type join_contents
+        (ty1 : (a, u) ty) (ty2 : (a, u) ty) : (a, u) ty =
+    let ty1 : (a, u) resolved_ty = import_type ty1 in
+    let ty2 : (a, u) resolved_ty = import_type ty2 in
     let var =
       match ty1.var, ty2.var with
       | None, _ | _, None -> None
@@ -1581,28 +1569,31 @@ end) = struct
       | Some (v1, field1), Some (v2, field2) ->
         if Symbol.equal v1 v2 then
           match field1, field2 with
-          | None, None -> a1.symbol
-          | Some f1, Some f2 when f1 = f2 -> a1.symbol
+          | None, None -> ty1.symbol
+          | Some f1, Some f2 when f1 = f2 -> ty1.symbol
           | _ -> None
         else None
     in
     let descr =
       match ty1.descr, ty2.descr with
-      | Unknown, _ -> ty1
-      | _, Unknown -> ty2
-      | Bottom, _ -> ty2
-      | _, Bottom -> ty1
+      | Unknown _, _ -> ty1.descr
+      | _, Unknown _ -> ty2.descr
+      | Bottom, _ -> ty2.descr
+      | _, Bottom -> ty1.descr
       | Ok contents1, Ok contents2 -> join_contents ty1 contents1 ty2 contents2
     in
-    Ok {
-      descr;
-      var;
-      symbol;
-    }
+    let descr : (a, u) maybe_unresolved = Ok descr in
+    let ty : (a, u) ty =
+      { descr;
+        var;
+        symbol;
+      }
+    in
+    ty
 
   and join_value ty1 (t1 : of_kind_value) ty2 t2 ~import_type
-        : of_kind_value unknown_or_bottom =
-    let form_union () : of_kind_value unknown_or_bottom =
+        : (of_kind_value, _) or_unknown_or_bottom =
+    let form_union () : (of_kind_value, _) or_unknown_or_bottom =
       let w1 : of_kind_value with_var_and_symbol =
         { descr = t1;
           var = ty1.var;
