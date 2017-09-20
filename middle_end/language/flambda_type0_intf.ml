@@ -100,16 +100,21 @@ module type S = sig
     | Load_lazily of load_lazily
     (** The head constructor requires loading from a .cmx file. *)
 
-  (** For each kind (cf. [Flambda_kind]) there is a lattice of types.
+  (** For each kind (cf. [Flambda_kind], although with the "Value" cases
+      merged into one) there is a lattice of types.
       [Bottom] is the unique least element and [Unknown] is the unique top
       element. *)
   and 'a or_unknown_or_bottom = private
-    | Unknown of unresolved_value
+    | Unknown of unknown_because_of
     (** "Any value can flow to this point". *)
     | Ok of 'a
     | Bottom
     (** "No value can flow to this point". *)
 
+  (** "Singleton" and "Union" refer to the syntactic structure of the type.
+      A [Singleton] type may still describe more than one particular runtime
+      value (for example, it may describe a boxed float whose contents is
+      unknown). *)
   and of_kind_value = private
     | Singleton of of_kind_value_singleton
     | Union of of_kind_value with_var_and_symbol

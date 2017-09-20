@@ -21,9 +21,12 @@
     and/or differences in GC (non-) registration of roots.
 *)
 
-type t = private
-  | Value_must_scan
-  | Value_can_scan
+type scanning = private
+  | Must_scan
+  | Can_scan
+
+type t =
+  | Value of scanning
   | Naked_immediate
   | Naked_float
   | Naked_int32
@@ -32,9 +35,9 @@ type t = private
 
 val value : must_scan:bool -> t
 val naked_immediate : unit -> t
-val naked_float : unit -> t option
+val naked_float : unit -> t
 val naked_int32 : unit -> t
-val naked_int64 : unit -> t option
+val naked_int64 : unit -> t
 val naked_nativeint : unit -> t
 
 (** Two value kinds are "compatible" iff they are both the same kind, or one

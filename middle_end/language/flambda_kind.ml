@@ -16,35 +16,37 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+type scanning =
+  | Must_scan
+  | Can_scan
+
 type t =
-  | Value_must_scan
-  | Value_can_scan
+  | Value of scanning
   | Naked_immediate
   | Naked_float
   | Naked_int32
   | Naked_int64
   | Naked_nativeint
 
-let value ~must_scan = if must_scan then Value_must_scan else Value_can_scan
+let value ~must_scan =
+  if must_scan then Value Must_scan else Value Can_scan
+
+(* CR mshinwell: can remove lambdas now *)
 let naked_immediate () = Naked_immediate
 
-let naked_float () =
-  if Targetint.size < 64 then None
-  else Some Naked_float
+let naked_float () = Naked_float
 
 let naked_int32 () = Naked_int32
 
-let naked_int64 () =
-  if Targetint.size < 64 then None
-  else Some Naked_int64
+let naked_int64 () = Naked_int64
 
 let naked_nativeint () = Naked_nativeint
 
 let lambda_value_kind t =
   let module L = Lambda in
   match t with
-  | Value_must_scan -> Some L.Pgenval
-  | Value_can_scan -> Some L.Pintval
+  | Value Must_scan -> Some L.Pgenval
+  | Value Can_scan -> Some L.Pintval
   | Naked_immediate -> Some L.Pnaked_intval
   | Naked_float -> Some L.Pfloatval
   | Naked_int32 -> Some (L.Pboxedintval Pint32)
@@ -61,8 +63,8 @@ include Identifiable.Make (struct
 
   let print ppf t =
     match t with
-    | Value_must_scan -> Format.pp_print_string ppf "value_must_scan"
-    | Value_can_scan -> Format.pp_print_string ppf "value_can_scan"
+    | Value Must_scan -> Format.pp_print_string ppf "value_must_scan"
+    | Value Can_scan -> Format.pp_print_string ppf "value_can_scan"
     | Naked_immediate -> Format.pp_print_string ppf "naked_immediate"
     | Naked_float -> Format.pp_print_string ppf "naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
@@ -72,6 +74,6 @@ end)
 
 let compatible t1 t2 =
   match t1, t2 with
-  | Value_must_can, Value_can_scan
-  | Value_can_scan, Value_must_scan -> true
+  | Value Must_can, Value_Can_scan
+  | Value Can_scan, Value_Must_scan -> true
   | _, _ -> equal t1 t2
