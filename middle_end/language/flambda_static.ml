@@ -30,7 +30,7 @@ module Program = struct
       match program with
       | Initialize_symbol (symbol, descr, program) ->
         (symbol, descr) :: (loop program)
-      | Effect (_, _, program)
+      | Effect (_, _, _, program)
       | Let_symbol (_, _, program)
       | Let_rec_symbol (_, program) -> loop program
       | End _ -> []
@@ -43,7 +43,7 @@ module Program = struct
   let root_symbol (program : t) =
     let rec loop (program : Program_body.t) =
       match program with
-      | Effect (_, _, program)
+      | Effect (_, _, _, program)
       | Let_symbol (_, _, program)
       | Let_rec_symbol (_, program)
       | Initialize_symbol (_, _, program) -> loop program
@@ -91,7 +91,7 @@ module Program = struct
               expr
           end;
           loop program
-        | Effect (expr, _cont, program) ->
+        | Effect (expr, _kind, _cont, program) ->
           Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false) expr;
           loop program
         | End _ -> ()
@@ -109,7 +109,7 @@ module Program = struct
           loop program
         | Initialize_symbol (_, _, program) ->
           loop program
-        | Effect (_, _, program) ->
+        | Effect (_, _, _, program) ->
           loop program
         | End _ -> ()
       in
@@ -139,28 +139,24 @@ module Program = struct
           | Let_symbol (_, _, program) ->
             loop program
           | Initialize_symbol (_, descr, program) ->
-            List.iter (fun (field, cont) ->
-                f ~continuation_arity:[Flambda_kind.value ~must_scan:true]
-                  cont field)
-              fields;
---
             begin match descr with
             | Values { fields; _ } ->
-              List.iter (fun (field, _kind, _cont) ->
-                  Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-                    field)
+              List.iter (fun (field, scanning, cont) ->
+                  let kind = Flambda_kind.value scanning in
+                  f ~continuation_arity:[kind] cont field)
                 fields
-            | Float (expr, _)
-            | Int32 (expr, _)
-            | Int64 (expr, _)
-            | Nativeint (expr, _) ->
-              Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-                expr
+            | Float (expr, cont) ->
+              f ~continuation_arity:[Flambda_kind.naked_float ()] cont expr
+            | Int32 (expr, cont) ->
+              f ~continuation_arity:[Flambda_kind.naked_int32 ()] cont expr
+            | Int64 (expr, cont) ->
+              f ~continuation_arity:[Flambda_kind.naked_int64 ()] cont expr
+            | Nativeint (expr, cont) ->
+              f ~continuation_arity:[Flambda_kind.naked_nativeint ()] cont expr
             end;
             loop program
-          | Effect (expr, cont, program) ->
-            f ~continuation_arity:[Flambda_kind.value ~must_scan:true]
-              cont expr;
+          | Effect (expr, kind, cont, program) ->
+            f ~continuation_arity:[kind] cont expr;
             loop program
           | End _ -> ()
         in
@@ -276,25 +272,38 @@ module Program = struct
             program
           else
             Let_rec_symbol (defs, loop program')
-        | Initialize_symbol (symbol, tag, fields, program') ->
+        | Initialize_symbol (symbol, descr, program') ->
           let done_something = ref false in
-          let fields =
-            List.map (fun (field, cont) ->
-                let new_field =
-                  Flambda.Expr.Mappers.map_sets_of_closures field ~f
-                in
-                if not (new_field == field) then begin
-                  done_something := true
-                end;
-                new_field, cont)
-              fields
+          let descr : Program_body.initialize_symbol =
+            let process_expr expr =
+              let new_expr =
+                Flambda.Expr.Mappers.map_sets_of_closures expr ~f
+              in
+              if not (new_expr == expr) then begin
+                done_something := true
+              end;
+              new_expr
+            in
+            match descr with
+            | Values { tag; fields; } ->
+              let fields =
+                List.map (fun (field, scanning, cont) ->
+                    let new_field = process_expr field in
+                    new_field, scanning, cont)
+                  fields
+              in
+              Values { tag; fields; }
+            | Float (expr, cont) -> Float (process_expr expr, cont)
+            | Int32 (expr, cont) -> Int32 (process_expr expr, cont)
+            | Int64 (expr, cont) -> Int64 (process_expr expr, cont)
+            | Nativeint (expr, cont) -> Nativeint (process_expr expr, cont)
           in
           let new_program' = loop program' in
           if new_program' == program' && not !done_something then
             program
           else
-            Initialize_symbol (symbol, tag, fields, new_program')
-        | Effect (expr, cont, program') ->
+            Initialize_symbol (symbol, descr, new_program')
+        | Effect (expr, kind, cont, program') ->
           let new_expr =
             Flambda.Expr.Mappers.map_sets_of_closures expr ~f
           in
@@ -302,7 +311,7 @@ module Program = struct
           if new_expr == expr && new_program' == program' then
             program
           else
-            Effect (new_expr, cont, new_program')
+            Effect (new_expr, kind, cont, new_program')
         | End _ -> program
       in
       { program with
@@ -376,29 +385,42 @@ module Program = struct
             program
           else
             Let_rec_symbol (defs, new_program')
-        | Initialize_symbol (symbol, tag, fields, program') ->
+        | Initialize_symbol (symbol, descr, program') ->
           let done_something = ref false in
-          let fields =
-            List.map (fun (field, cont) ->
-                let new_field = f field in
-                if not (new_field == field) then begin
-                  done_something := true
-                end;
-                new_field, cont)
-              fields
+          let descr : Program_body.initialize_symbol =
+            let process_expr expr =
+              let new_expr = f expr in
+              if not (new_expr == expr) then begin
+                done_something := true
+              end;
+              new_expr
+            in
+            match descr with
+            | Values { tag; fields; } ->
+              let fields =
+                List.map (fun (field, scanning, cont) ->
+                    let new_field = process_expr field in
+                    new_field, scanning, cont)
+                  fields
+              in
+              Values { tag; fields; }
+            | Float (expr, cont) -> Float (process_expr expr, cont)
+            | Int32 (expr, cont) -> Int32 (process_expr expr, cont)
+            | Int64 (expr, cont) -> Int64 (process_expr expr, cont)
+            | Nativeint (expr, cont) -> Nativeint (process_expr expr, cont)
           in
           let new_program' = loop program' in
           if new_program' == program' && not !done_something then
             program
           else
-            Initialize_symbol (symbol, tag, fields, new_program')
-        | Effect (expr, cont, program') ->
+            Initialize_symbol (symbol, descr, new_program')
+        | Effect (expr, kind, cont, program') ->
           let new_expr = f expr in
           let new_program' = loop program' in
           if new_expr == expr && new_program' == program' then
             program
           else
-            Effect (new_expr, cont, new_program')
+            Effect (new_expr, kind, cont, new_program')
         | End _ -> program
       in
       { program with
@@ -450,8 +472,8 @@ module Program = struct
         List.fold_left (fun l (symbol, decl) -> (symbol, decl) :: l)
           (loop program)
           decls
-      | Initialize_symbol (_, _, _, program)
-      | Effect (_, _, program) -> loop program
+      | Initialize_symbol (_, _, program)
+      | Effect (_, _, _, program) -> loop program
       | End _ -> []
     in
     loop program.program_body
@@ -476,7 +498,7 @@ module Program = struct
         (Symbol.Set.of_list
           (List.map fst (all_lifted_constants program)))
         (Symbol.Set.of_list
-          (List.map (fun (s, _, _) -> s) (initialize_symbols program)))
+          (List.map (fun (s, _) -> s) (initialize_symbols program)))
     in
     Symbol.Set.diff dependencies defined_symbol
 

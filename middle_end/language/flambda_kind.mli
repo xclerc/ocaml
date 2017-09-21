@@ -35,7 +35,7 @@ type t = private
   | Naked_int64
   | Naked_nativeint
 
-val value : must_scan:bool -> t
+val value : scanning -> t
 val naked_immediate : unit -> t
 val naked_float : unit -> t
 val naked_int32 : unit -> t

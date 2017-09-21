@@ -49,8 +49,9 @@ module Call_kind = struct
   let return_arity t : Return_arity.t =
     match t with
     (* Functions called indirectly must always return a singleton of
-       [Value] kind. *)
-    | Indirect -> [Flambda_kind.value ~must_scan:true]
+       [Value] kind.  We have to assume that the value needs scanning
+       by the GC. *)
+    | Indirect -> [Flambda_kind.value Must_scan]
     | Direct { return_arity; _ } -> return_arity
 end
 

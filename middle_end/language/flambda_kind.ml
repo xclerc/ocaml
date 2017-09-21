@@ -35,8 +35,7 @@ type t =
   | Naked_int64
   | Naked_nativeint
 
-let value ~must_scan =
-  if must_scan then Value Must_scan else Value Can_scan
+let value scanning = Value scanning
 
 (* CR mshinwell: can remove lambdas now *)
 let naked_immediate () = Naked_immediate

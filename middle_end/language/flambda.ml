@@ -805,9 +805,9 @@ end = struct
         ~current_compilation_unit:compilation_unit
     in
     Expr.create_let set_of_closures_var
-      (Flambda_kind.value ~must_scan:true)
+      (Flambda_kind.value Must_scan)
       (Set_of_closures set_of_closures)
-      (Expr.create_let project_closure_var (Flambda_kind.value ~must_scan:true)
+      (Expr.create_let project_closure_var (Flambda_kind.value Must_scan)
         project_closure
         (Apply_cont (continuation, None, [project_closure_var])))
 
@@ -875,7 +875,7 @@ end = struct
     let cont = Continuation.create () in
     let expr : Expr.t =
       Expr.create_let var
-        (Flambda_kind.value ~must_scan:true (* arbitrary *)) t
+        (Flambda_kind.value Must_scan (* arbitrary *)) t
         (Apply_cont (cont, None, []))
     in
     match Expr.toplevel_substitution sb expr with

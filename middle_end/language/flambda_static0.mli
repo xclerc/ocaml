@@ -105,7 +105,7 @@ module Program_body : sig
         description; but with a possibly non-constant initializer.  The
         initializer will be executed at most once (from the entry point of
         the compilation unit). *)
-    | Effect of Flambda0.Expr.t * Continuation.t * t
+    | Effect of Flambda0.Expr.t * Flambda_kind.t * Continuation.t * t
     (** Cause the given expression, which may have a side effect, to be
         executed.  The resulting value is discarded.  [Effect] constructions
         are never re-ordered. *)

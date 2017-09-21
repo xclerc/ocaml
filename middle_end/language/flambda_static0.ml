@@ -150,7 +150,7 @@ module Program_body = struct
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
     | Let_rec_symbol of (Symbol.t * Constant_defining_value.t) list * t
     | Initialize_symbol of Symbol.t * initialize_symbol * t
-    | Effect of F0.Expr.t * Continuation.t * t
+    | Effect of F0.Expr.t * Flambda_kind.t * Continuation.t * t
     | End of Symbol.t
 
   let rec print ppf (program : t) =
@@ -208,44 +208,45 @@ module Program_body = struct
           (List.mapi (fun i (defn, scan, cont) -> i, defn, scan, cont) fields)
       | Float (defn, cont) ->
         fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>float:@ %a@;@[<v>%a@]@])@]@]@."
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>float:\
+            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
           Symbol.print symbol
+          Continuation.print cont
           F0.Expr.print defn
       | Int32 (defn, cont) ->
         fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int32:@ %a@;@[<v>%a@]@])@]@]@."
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int32:\
+            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
           Symbol.print symbol
+          Continuation.print cont
           F0.Expr.print defn
       | Int64 (defn, cont) ->
         fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int64:@ %a@;@[<v>%a@]@])@]@]@."
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int64:\
+            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
           Symbol.print symbol
+          Continuation.print cont
           F0.Expr.print defn
       | Nativeint (defn, cont) ->
         fprintf ppf
-          "@[<2>initialize_symbol@ \
-            @[<hv 1>(@[<2>nativeint:@ %a@;@[<v>%a@]@])@]@]@."
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>nativeint:\
+            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
           Symbol.print symbol
+          Continuation.print cont
           F0.Expr.print defn
       end;
       print ppf program
-    | Effect (expr, cont, program) ->
-      fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
+    | Effect (expr, kind, cont, program) ->
+      fprintf ppf "@[effect(%a) @[<v 2><%a>:@. %a@]@]"
+        Flambda_kind.print kind
         Continuation.print cont
         F0.Expr.print expr;
       print ppf program;
     | End root -> fprintf ppf "End %a" Symbol.print root
-end
 
-module Program = struct
-  type t = {
-    imported_symbols : Symbol.Set.t;
-    program_body : Program_body.t;
-  }
-
-  let free_symbols (program : t) =
+  let free_symbols t =
     let symbols = ref Symbol.Set.empty in
-    let rec loop (program : Program_body.t) =
+    let rec loop (program : t) =
       match program with
       | Let_symbol (_, const, program) ->
         Constant_defining_value.free_symbols_helper symbols const;
@@ -255,19 +256,37 @@ module Program = struct
             Constant_defining_value.free_symbols_helper symbols const)
           defs;
         loop program
-      | Initialize_symbol (_, _, fields, program) ->
-        List.iter (fun (field, _cont) ->
-            symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols field))
-          fields;
+      | Initialize_symbol (_, descr, program) ->
+        begin match descr with
+        | Values { fields; _ } ->
+          List.iter (fun (field, _scanning, _cont) ->
+              symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols field))
+            fields
+        | Float (expr, _)
+        | Int32 (expr, _)
+        | Int64 (expr, _)
+        | Nativeint (expr, _) ->
+          symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr)
+        end;
         loop program
-      | Effect (expr, _cont, program) ->
+      | Effect (expr, _kind, _cont, program) ->
         symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr);
         loop program
       | End symbol -> symbols := Symbol.Set.add symbol !symbols
     in
-    (* Note that there is no need to count the [imported_symbols]. *)
-    loop program.program_body;
+    loop t;
     !symbols
+end
+
+module Program = struct
+  type t = {
+    imported_symbols : Symbol.Set.t;
+    program_body : Program_body.t;
+  }
+
+  let free_symbols (program : t) =
+    (* Note that there is no need to count the [imported_symbols]. *)
+    Program_body.free_symbols program.program_body
 
   let print ppf t =
     Symbol.Set.iter (fun symbol ->
