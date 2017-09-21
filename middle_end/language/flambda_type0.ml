@@ -1312,12 +1312,20 @@ end) = struct
      is).
      mshinwell: changed to meet *)
 
-  let rec must_scan_of_kind_value (o : of_kind_value) =
+  let must_scan_of_kind_value_or_unknown_or_bottom
+        (o : (of_kind_value, _) or_unknown_or_bottom) =
     match o with
-    | Singleton (Tagged_immediate _) -> false
-    | Singleton _ -> true
-    | Union (w1, w2) ->
-      must_scan_of_kind_value w1.descr || must_scan_of_kind_value w2.descr
+    | Unknown _ -> true
+    | Bottom -> false
+    | Ok of_kind_value ->
+      let rec must_scan_of_kind_value (o : of_kind_value) =
+        match o with
+        | Singleton (Tagged_immediate _) -> false
+        | Singleton _ -> true
+        | Union (w1, w2) ->
+          must_scan_of_kind_value w1.descr || must_scan_of_kind_value w2.descr
+      in
+      must_scan_of_kind_value of_kind_value
 
   let kind ~importer (t : t) =
     match t with
@@ -1329,11 +1337,10 @@ end) = struct
     | Value ty ->
       let module I = (val importer : Importer) in
       let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
-      match resolved_ty_value.descr with
-      | Unknown _ -> K.value ~must_scan:true
-      | Bottom -> K.value ~must_scan:false
-      | Ok of_kind_value ->
-        K.value ~must_scan:(must_scan_of_kind_value of_kind_value)
+      let must_scan =
+        must_scan_of_kind_value_or_unknown_or_bottom resolved_ty_value.descr
+      in
+      K.value ~must_scan
 
 (*
   (* CR mshinwell: read carefully *)
@@ -1568,7 +1575,7 @@ end) = struct
       match scanning2_opt with
       | Some scanning2 -> scanning2
       | None ->
-        if must_scan_of_kind_value descr2 then Must_scan
+        if must_scan_of_kind_value_or_unknown_or_bottom descr2 then Must_scan
         else Can_scan
     in
     K.join_scanning scanning1 scanning2
@@ -1579,8 +1586,8 @@ end) = struct
     | Joined of 'a
     | Form_union
 
-  let rec join_ty (type a) (type u) ~importer ~importer_this_kind
-        join_unknown_payload join_contents
+  let join_ty (type a) (type u) ~importer ~importer_this_kind
+        join_contents join_unknown_payload
         (ty1 : (a, u) ty) (ty2 : (a, u) ty) : (a, u) ty =
     let ty1 : (a, u) resolved_ty = importer_this_kind ty1 in
     let ty2 : (a, u) resolved_ty = importer_this_kind ty2 in
@@ -1626,34 +1633,8 @@ end) = struct
     in
     ty
 
-  and join_of_kind_value ~importer ty1 (t1 : of_kind_value) ty2 t2
-        : (of_kind_value, _) or_unknown_or_bottom =
-    let form_union () : (of_kind_value, _) or_unknown_or_bottom =
-      let w1 : of_kind_value with_var_and_symbol =
-        { descr = t1;
-          var = ty1.var;
-          symbol = ty1.symbol;
-        }
-      in
-      let w2 : of_kind_value with_var_and_symbol =
-        { descr = t2;
-          var = ty2.var;
-          symbol = ty2.symbol;
-        }
-      in
-      Ok (Union (w1, w2))
-    in
-    match t1, t2 with
-    | Singleton s1, Singleton s2 ->
-      begin match join_of_kind_value_singleton ~importer s1 s2 with
-      | Joined join -> join
-      | Form_union -> form_union ()
-      end
-    | Singleton _, Union _
-    | Union _, Singleton _
-    | Union _, Union _ -> form_union ()
-
-  and join_of_kind_value_singleton ~importer (t1 : of_kind_value_singleton) t2
+  let rec join_of_kind_value_singleton ~importer
+        (t1 : of_kind_value_singleton) t2
         : (of_kind_value, K.scanning) or_unknown_or_bottom or_form_union =
     let singleton s =
       Joined ((Ok (Singleton s)) : _ or_unknown_or_bottom)
@@ -1711,77 +1692,125 @@ end) = struct
          [Tagged_immediate] versus itself, which is covered above. *)
       unknown_must_scan
 
+  and join_of_kind_value ~importer ty1 (t1 : of_kind_value) ty2 t2
+        : (of_kind_value, _) or_unknown_or_bottom =
+    let form_union () : (of_kind_value, _) or_unknown_or_bottom =
+      let w1 : of_kind_value with_var_and_symbol =
+        { descr = t1;
+          var = ty1.var;
+          symbol = ty1.symbol;
+        }
+      in
+      let w2 : of_kind_value with_var_and_symbol =
+        { descr = t2;
+          var = ty2.var;
+          symbol = ty2.symbol;
+        }
+      in
+      Ok (Union (w1, w2))
+    in
+    match t1, t2 with
+    | Singleton s1, Singleton s2 ->
+      begin match join_of_kind_value_singleton ~importer s1 s2 with
+      | Joined join -> join
+      | Form_union -> form_union ()
+      end
+    | Singleton _, Union _
+    | Union _, Singleton _
+    | Union _, Union _ -> form_union ()
+
   and join_of_kind_naked_immediate ~importer
-        _ty1 (t1 : of_kind_naked_immediate) _ty2 t2
+        _ty1 (t1 : of_kind_naked_immediate) _ty2 (t2 : of_kind_naked_immediate)
         : (of_kind_naked_immediate, _) or_unknown_or_bottom =
     match t1, t2 with
     | Naked_immediate i1, Naked_immediate i2 ->
-      if Immediate.equal i1 i2 then Ok (Naked_int i1)
-      else Unknown (Other, ())
+      if not (Immediate.equal i1 i2) then Unknown (Other, ())
+      else Ok ((Naked_immediate i1) : of_kind_naked_immediate)
+
+  and join_of_kind_naked_float ~importer
+        _ty1 (t1 : of_kind_naked_float) _ty2 (t2 : of_kind_naked_float)
+        : (of_kind_naked_float, _) or_unknown_or_bottom =
+    match t1, t2 with
+    | Naked_float i1, Naked_float i2 ->
+      if not (Float.equal i1 i2) then Unknown (Other, ())
+      else Ok ((Naked_float i1) : of_kind_naked_float)
 
   and join_of_kind_naked_int32 ~importer
-        _ty1 (t1 : of_kind_naked_int32) _ty2 t2
+        _ty1 (t1 : of_kind_naked_int32) _ty2 (t2 : of_kind_naked_int32)
         : (of_kind_naked_int32, _) or_unknown_or_bottom =
     match t1, t2 with
     | Naked_int32 i1, Naked_int32 i2 ->
-      if Int32.equal i1 i2 then Ok (Naked_int32 i1)
-      else Unknown (Other, ())
+      if not (Int32.equal i1 i2) then Unknown (Other, ())
+      else Ok ((Naked_int32 i1) : of_kind_naked_int32)
 
   and join_of_kind_naked_int64 ~importer
-        _ty1 (t1 : of_kind_naked_int64) _ty2 t2
+        _ty1 (t1 : of_kind_naked_int64) _ty2 (t2 : of_kind_naked_int64)
         : (of_kind_naked_int64, _) or_unknown_or_bottom =
     match t1, t2 with
     | Naked_int64 i1, Naked_int64 i2 ->
-      if Int64.equal i1 i2 then Ok (Naked_int64 i1)
-      else Unknown (Other, ())
+      if not (Int64.equal i1 i2) then Unknown (Other, ())
+      else Ok ((Naked_int64 i1) : of_kind_naked_int64)
 
   and join_of_kind_naked_nativeint ~importer
-        _ty1 (t1 : of_kind_naked_nativeint) _ty2 t2
+        _ty1 (t1 : of_kind_naked_nativeint) _ty2 (t2 : of_kind_naked_nativeint)
         : (of_kind_naked_nativeint, _) or_unknown_or_bottom =
     match t1, t2 with
     | Naked_nativeint i1, Naked_nativeint i2 ->
-      if Targetint.equal i1 i2 then Ok (Naked_nativeint i1)
-      else Unknown (Other, ())
+      if not (Targetint.equal i1 i2) then Unknown (Other, ())
+      else Ok ((Naked_nativeint i1) : of_kind_naked_nativeint)
 
   and join_ty_value ~importer ty1 ty2 =
-    join_ty_value ~importer ~importer_this_kind:I.import_value_type
+    let module I = (val importer : Importer) in
+    join_ty ~importer
+      ~importer_this_kind:I.import_value_type_as_resolved_ty_value
       join_of_kind_value join_unknown_payload_for_value ty1 ty2
 
   and join_ty_naked_immediate ~importer ty1 ty2 =
-    join_ty ~importer ~importer_this_kind:I.import_naked_immediate_type
+    let module I = (val importer : Importer) in
+    join_ty ~importer
+      ~importer_this_kind:
+        I.import_naked_immediate_type_as_resolved_ty_naked_immediate
       join_of_kind_naked_immediate join_unknown_payload_for_non_value ty1 ty2
 
   and join_ty_naked_float ~importer ty1 ty2 =
-    join_ty ~importer ~importer_this_kind:I.import_naked_float_type
+    let module I = (val importer : Importer) in
+    join_ty ~importer
+      ~importer_this_kind:I.import_naked_float_type_as_resolved_ty_naked_float
       join_of_kind_naked_float join_unknown_payload_for_non_value ty1 ty2
 
   and join_ty_naked_int32 ~importer ty1 ty2 =
-    join_ty ~importer ~importer_this_kind:I.import_naked_int32_type
+    let module I = (val importer : Importer) in
+    join_ty ~importer
+      ~importer_this_kind:I.import_naked_int32_type_as_resolved_ty_naked_int32
       join_of_kind_naked_int32 join_unknown_payload_for_non_value ty1 ty2
 
   and join_ty_naked_int64 ~importer ty1 ty2 =
-    join_ty ~importer ~importer_this_kind:I.import_naked_int64_type
+    let module I = (val importer : Importer) in
+    join_ty ~importer
+      ~importer_this_kind:I.import_naked_int64_type_as_resolved_ty_naked_int64
       join_of_kind_naked_int64 join_unknown_payload_for_non_value ty1 ty2
 
   and join_ty_naked_nativeint ~importer ty1 ty2 =
-    join_ty ~importer ~importer_this_kind:I.import_naked_nativeint_type
+    let module I = (val importer : Importer) in
+    join_ty ~importer
+      ~importer_this_kind:
+        I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
       join_of_kind_naked_nativeint join_unknown_payload_for_non_value ty1 ty2
 
   let join ~importer (t1 : t) (t2 : t) : t =
-    let module I = (val importer : Importer) in
     match t1, t2 with
     | Value ty1, Value ty2 ->
       Value (join_ty_value ~importer ty1 ty2)
     | Naked_immediate ty1, Naked_immediate ty2 ->
-      Naked_immediate (join_ty_naked_immediate ty1 ty2)
+      Naked_immediate (join_ty_naked_immediate ~importer ty1 ty2)
     | Naked_float ty1, Naked_float ty2 ->
-      Naked_float (join_ty_naked_float ty1 ty2)
+      Naked_float (join_ty_naked_float ~importer ty1 ty2)
     | Naked_int32 ty1, Naked_int32 ty2 ->
-      Naked_int32 (join_ty_naked_int32 ty1 ty2)
+      Naked_int32 (join_ty_naked_int32 ~importer ty1 ty2)
     | Naked_int64 ty1, Naked_int64 ty2 ->
-      Naked_int64 (join_ty_naked_int64 ty1 ty2)
+      Naked_int64 (join_ty_naked_int64 ~importer ty1 ty2)
     | Naked_nativeint ty1, Naked_nativeint ty2 ->
-      Naked_nativeint (join_ty_naked_nativeint ty1 ty2)
+      Naked_nativeint (join_ty_naked_nativeint ~importer ty1 ty2)
     | _, _ ->
       Misc.fatal_errorf "Cannot take the join of two types with different \
           kinds: %a and %a"
