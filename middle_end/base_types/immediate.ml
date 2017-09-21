@@ -57,3 +57,13 @@ let join t1 t2 : t or_wrong =
       value = t1.value;
       print_as_char;
     }
+
+let bool_true = {
+  value = Targetint.of_int 1;
+  print_as_char = false;
+}
+
+let bool_false = {
+  value = Targetint.of_int 0;
+  print_as_char = false;
+}

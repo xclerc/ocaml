@@ -79,6 +79,23 @@ module type S = sig
 
   and ('a, 'u) ty = ('a, 'u) maybe_unresolved with_var_and_symbol
 
+  and resolved_t = private
+    | Value of resolved_ty_value
+    | Naked_immediate of resolved_ty_naked_immediate
+    | Naked_float of resolved_ty_naked_float
+    | Naked_int32 of resolved_ty_naked_int32
+    | Naked_int64 of resolved_ty_naked_int64
+    | Naked_nativeint of resolved_ty_naked_nativeint
+
+  and resolved_ty_value = (of_kind_value, Flambda_kind.scanning) resolved_ty
+  and resolved_ty_naked_immediate = (of_kind_naked_immediate, unit) resolved_ty
+  and resolved_ty_naked_float = (of_kind_naked_float, unit) resolved_ty
+  and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
+  and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
+  and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
+
+  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom with_var_and_symbol
+
   and ('a, 'u) maybe_unresolved = private
     | Ok of ('a, 'u) or_unknown_or_bottom
     (** The head constructor is available in memory. *)
@@ -174,18 +191,22 @@ module type S = sig
   val any_naked_int64 : unit -> t
   val any_naked_nativeint : unit -> t
 
-  (** Building of types from specified constants. *)
+  (** Building of types representing tagged / boxed values from specified
+      constants. *)
   val this_tagged_immediate : Immediate.t -> t
   val this_boxed_float : float -> t
   val this_boxed_int32 : Int32.t -> t
   val this_boxed_int64 : Int64.t -> t
   val this_boxed_nativeint : Targetint.t -> t
+  val this_immutable_string : string -> t
+
+  (** Building of types representing untagged / unboxed values from
+      specified constants. *)
   val this_naked_immediate : Immediate.t -> t
   val this_naked_float : float -> t
   val this_naked_int32 : Int32.t -> t
   val this_naked_int64 : Int64.t -> t
   val this_naked_nativeint : Targetint.t -> t
-  val this_immutable_string : string -> t
 
   (** Building of types corresponding to mutable values. *)
   val mutable_string : size:int -> t
@@ -271,11 +292,43 @@ module type S = sig
   (** Free variables in a type. *)
   val free_variables : t -> Variable.Set.t
 
-  (** A module type concealing operations for importing types from .cmx files.
+  (** A module type comprising operations for importing types from .cmx files.
       These operations are derived from the functions supplied to the
       [Make_backend] functor, below.  A first class module of this type has
       to be passed to various operations that destruct types. *)
-  module type Importer
+  module type Importer = sig
+    val import_value_type_as_resolved_ty_value
+       : ty_value
+      -> resolved_ty_value
+
+    val import_naked_immediate_type_as_resolved_ty_naked_immediate
+       : ty_naked_immediate
+      -> resolved_ty_naked_immediate
+
+    val import_naked_float_type_as_resolved_ty_naked_float
+       : ty_naked_float
+      -> resolved_ty_naked_float
+
+    val import_naked_int32_type_as_resolved_ty_naked_int32
+       : ty_naked_int32
+      -> resolved_ty_naked_int32
+
+    val import_naked_int64_type_as_resolved_ty_naked_int64
+       : ty_naked_int64
+      -> resolved_ty_naked_int64
+
+    val import_naked_nativeint_type_as_resolved_ty_naked_nativeint
+       : ty_naked_nativeint
+      -> resolved_ty_naked_nativeint
+
+    (* CR mshinwell: Are these next ones needed? *)
+    val import_value_type : ty_value -> resolved_t
+    val import_naked_immediate_type : ty_naked_immediate -> resolved_t
+    val import_naked_float_type : ty_naked_float -> resolved_t
+    val import_naked_int32_type : ty_naked_int32 -> resolved_t
+    val import_naked_int64_type : ty_naked_int64 -> resolved_t
+    val import_naked_nativeint_type : ty_naked_nativeint -> resolved_t
+  end
 
   module type Importer_intf = sig
     (** Return the type stored on disk under the given export identifier, or

@@ -29,3 +29,6 @@ type t = private {
 include Identifiable.S with type t := t
 
 val join : t -> t -> t or_wrong
+
+val bool_true : t
+val bool_false : t

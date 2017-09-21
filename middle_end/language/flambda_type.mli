@@ -23,7 +23,8 @@
 (** Basic definitions, constructors and accessors. *)
 include module type of struct include Flambda0.Flambda_type end
 
-(** The type of a symbol that cannot be resolved (e.g. missing .cmx file). *)
+(** The type of a symbol that cannot be resolved (e.g. missing .cmx file).
+    It is assumed that the symbol's value may need scanning by the GC. *)
 val unresolved_symbol : Symbol.t -> t
 
 (** Attempt to use a type to refine a value kind. *)
@@ -40,47 +41,24 @@ val strictly_more_precise : t -> than:t -> bool
     information about the corresponding value than the supplied type [than]. *)
 val as_or_more_precise : t -> than:t -> bool
 
-(** If a value with the given type is known to be some kind of projection
-    from another variable, return the projection.  (The variable is then
-    given by [Projection.projecting_from] on the returned projection.) *)
-val projection : t -> Projection.t option
+(** Building of types and terms representing tagged / boxed values from
+    specified constants. *)
+val this_int_named : Targetint.t -> Flambda0.Named.t * t
+val this_char_named : Targetint.t -> Flambda0.Named.t * t
+val this_bool_named : bool -> Flambda0.Named.t * t
+val this_immediate_named : Immediate.t -> Flambda0.Named.t * t
+val this_boxed_float_named : float -> Flambda0.Named.t * t
+val this_boxed_int32_named : Int32.t -> Flambda0.Named.t * t
+val this_boxed_int64_named : Int64.t -> Flambda0.Named.t * t
+val this_boxed_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
 
-(** Take the given integer and produce an appropriate type for it
-    together with an Flambda term (that can be [Let]-bound) representing it. *)
-val make_const_int_named : int -> Flambda0.Named.t * t
+(** Building of types and terms representing untagged / unboxed values from
+    specified constants. *)
 
-(** As for [make_const_int_named], but for characters. *)
-val make_const_char_named : char -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for "const_pointer"s. *)
-val make_const_ptr_named : int -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for booleans. *)
-val make_const_bool_named : bool -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for boxed floats. *)
-val make_const_boxed_float_named : float -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for boxed int32s. *)
-val make_const_boxed_int32_named : Int32.t -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for boxed int64s. *)
-val make_const_boxed_int64_named : Int64.t -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for boxed nativeints. *)
-val make_const_boxed_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for unboxed floats. *)
-val make_const_unboxed_float_named : float -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for unboxed int32s. *)
-val make_const_unboxed_int32_named : Int32.t -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for unboxed int64s. *)
-val make_const_unboxed_int64_named : Int64.t -> Flambda0.Named.t * t
-
-(** As for [make_const_int_named], but for unboxed nativeints. *)
-val make_const_unboxed_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
+val this_naked_float_named : float -> Flambda0.Named.t * t
+val this_naked_int32_named : Int32.t -> Flambda0.Named.t * t
+val this_naked_int64_named : Int64.t -> Flambda0.Named.t * t
+val this_naked_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
 
 (** Whether the given type says that a term of that type is unreachable. *)
 val is_bottom : t -> bool
@@ -170,10 +148,10 @@ val reify_using_env
   -> Flambda0.Named.t option
 
 (** As for [reify] but only produces terms when the type describes a
-    unique integer. *)
-val reify_as_int : t -> int option
+    unique tagged immediate. *)
+val reify_as_tagged_immediate : t -> Immediate.t option
 
-(** As for [reify_as_int], but for boxed floats. *)
+(** As for [reify_as_tagged_immediate], but for boxed floats. *)
 val reify_as_boxed_float : t -> float option
 
 (** As for [reify_as_int], but for arrays of unboxed floats (corresponding
@@ -228,8 +206,6 @@ type reified_as_scannable_block_or_immediate =
 
 (** Try to prove that the given type is of the expected form to describe
     either a GC-scannable block or an immediate. *)
-(* CR mshinwell: currently "immediate" is just int, char or constptr (need to
-   document this).  Should it include the unboxed integers? *)
 (* CR mshinwell: This doesn't actually produce a term, so doesn't reify *)
 val reify_as_scannable_block_or_immediate
    : t

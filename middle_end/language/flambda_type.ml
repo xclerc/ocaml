@@ -73,41 +73,42 @@ let unresolved_symbol sym =
      from another compilation unit in case it contains a closure. *)
   unknown (Flambda_kind.value ()) (Unresolved_value (Symbol sym))
 
-let make_const_int_named n : Named.t * t =
-  Const (Int n), int n
+let this_tagged_immediate_named n : Named.t * t =
+  Const (Tagged_immediate n), this_tagged_immediate n
 
-let make_const_char_named n : Named.t * t =
-  Const (Char n), char n
+let this_tagged_bool_named b : Named.t * t =
+  let imm =
+    if b then Immediate.bool_true
+    else Immediate.bool_false
+  in
+  this_tagged_immediate imm
 
-let make_const_ptr_named n : Named.t * t =
-  Const (Const_pointer n), constptr n
+let this_boxed_float_named f : Named.t * t =
+  Allocated_const (Float f), this_boxed_float f
 
-let make_const_bool_named b : Named.t * t =
-  make_const_ptr_named (if b then 1 else 0)
+let this_boxed_int32_named n : Named.t * t =
+  Allocated_const (Int32 n), this_boxed_int32 n
 
-let make_const_boxed_float_named f : Named.t * t =
-  Allocated_const (Float f), boxed_float f
+let this_boxed_int64_named n : Named.t * t =
+  Allocated_const (Int64 n), this_boxed_int64 n
 
-let make_const_boxed_int32_named n : Named.t * t =
-  Allocated_const (Int32 n), boxed_int32 n
+let this_boxed_nativeint_named n : Named.t * t =
+  Allocated_const (Nativeint n), this_boxed_nativeint n
 
-let make_const_boxed_int64_named n : Named.t * t =
-  Allocated_const (Int64 n), boxed_int64 n
+let this_untagged_immediate_named n : Named.t * t =
+  Const (Untagged_immediate n), this_untagged_immediate n
 
-let make_const_boxed_nativeint_named n : Named.t * t =
-  Allocated_const (Nativeint n), boxed_nativeint n
+let this_naked_float_named f : Named.t * t =
+  Const (Naked_float f), this_naked_float f
 
-let make_const_unboxed_float_named f : Named.t * t =
-  Const (Unboxed_float f), unboxed_float f
+let this_naked_int32_named n : Named.t * t =
+  Const (Naked_int32 n), this_naked_int32 n
 
-let make_const_unboxed_int32_named n : Named.t * t =
-  Const (Unboxed_int32 n), unboxed_int32 n
+let this_naked_int64_named n : Named.t * t =
+  Const (Naked_int64 n), this_naked_int64 n
 
-let make_const_unboxed_int64_named n : Named.t * t =
-  Const (Unboxed_int64 n), unboxed_int64 n
-
-let make_const_unboxed_nativeint_named n : Named.t * t =
-  Const (Unboxed_nativeint n), unboxed_nativeint n
+let this_naked_nativeint_named n : Named.t * t =
+  Const (Naked_nativeint n), this_naked_nativeint n
 
 let is_bottom t =
   match t with
@@ -513,26 +514,6 @@ let reify_using_env t ~is_present_in_env =
   | None -> named
   | Some named -> Some named
 
-let reify_as_int t : int option =
-  match descr t with
-  | Union unionable -> Unionable.as_int unionable
-  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ | Unknown _ | Immutable_string _ | Mutable_string _
-  | Float_array _ | Bottom | Set_of_closures _ | Closure _ | Load_lazily _ ->
-    None
-
-let reify_as_boxed_float t : float option =
-  match descr t with
-  | Boxed_number (Float, t) ->
-    begin match descr t with
-    | Unboxed_float fs -> Float.Set.get_singleton fs
-    | _ -> None
-    end
-  | Union _ | Unknown _ | Immutable_string _ | Mutable_string _
-  | Float_array _ | Bottom | Set_of_closures _ | Closure _ | Load_lazily _
-  | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ -> None
-
 let reify_as_unboxed_float_array (fa : float_array) : float list option =
   match fa.contents with
   | Unknown_or_mutable -> None
@@ -595,7 +576,7 @@ module Blocks = struct
     with Same_tag_different_arities -> Wrong
 end
 
-module Proved_unboxable_or_untaggable = struct
+module Summary = struct
   type t =
     | Wrong
     | Blocks_and_tagged_immediates of
@@ -604,6 +585,7 @@ module Proved_unboxable_or_untaggable = struct
     | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Nativeint.Set.t Or_not_all_values_known.t
+    | Closures of set_of_closures Closure_id.Map.t Or_not_all_values_known.t
 
   let join t1 t2 =
     let join_immediates = Or_not_all_values_known.join Immediate.join_set in
@@ -633,12 +615,17 @@ module Proved_unboxable_or_untaggable = struct
       Or_not_all_values_known.join (fun is1 is2 : Nativeint.Set.t or_wrong ->
           Nativeint.Set.union is1 is2)
         is1 is2
+    | Closures closures1, Closures closures2 ->
+      Or_not_all_values_known.join (fun map1 map2 : _ or_wrong ->
+          ...)
+        closures1 closures2
 end
 
-let prove_unboxable_or_untaggable (t : t) : proved_unboxable_or_untaggable =
+let summarize ~importer (t : t) : summary =
+  let module I = (val importer : Importer) in
   match t with
   | Value ty ->
-    begin match maybe_import_value_type ty with
+    begin match I.import_value_type_as_resolved_ty_value ty with
     | Unknown _ | Bottom -> Wrong
     | Ok of_kind_value ->
       let for_singleton (s : of_kind_value_singleton)
@@ -723,6 +710,31 @@ let prove_scannable_block t : proved_scannable_block =
   | Boxed_int32s _
   | Boxed_int64s _
   | Boxed_nativeints _ -> Wrong
+
+let reify_as_tagged_immediate t =
+  match prove_unboxable_or_untaggable t with
+  | Blocks_and_tagged_immediates (blocks, imms) ->
+    if not (Immediate.Set.is_empty blocks) then None
+    else
+      begin match imms with
+      | Not_all_values_known -> None
+      | Exactly imms -> Immediate.Set.get_singleton imms
+      end
+  | Boxed_floats _
+  | Boxed_int32s _
+  | Boxed_int64s _
+  | Boxed_nativeints _
+  | Wrong -> None
+
+let reify_as_boxed_float t =
+  match prove_unboxable_or_untaggable t with
+  | Boxed_floats fs -> Float.Set.get_singleton fs
+  | Boxed_floats Not_all_values_known
+  | Blocks_and_tagged_immediates _
+  | Boxed_int32s _
+  | Boxed_int64s _
+  | Boxed_nativeints _
+  | Wrong -> None
 
 type reified_as_set_of_closures =
   | Unknown
