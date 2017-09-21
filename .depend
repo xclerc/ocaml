@@ -1881,12 +1881,10 @@ middle_end/language/flambda_invariants.cmo : \
 middle_end/language/flambda_invariants.cmx : \
     middle_end/language/flambda_invariants.cmi
 middle_end/language/flambda_invariants.cmi :
-middle_end/language/flambda_kind.cmo : utils/targetint.cmi \
-    bytecomp/lambda.cmi utils/identifiable.cmi \
-    middle_end/language/flambda_kind.cmi
-middle_end/language/flambda_kind.cmx : utils/targetint.cmx \
-    bytecomp/lambda.cmx utils/identifiable.cmx \
-    middle_end/language/flambda_kind.cmi
+middle_end/language/flambda_kind.cmo : bytecomp/lambda.cmi \
+    utils/identifiable.cmi middle_end/language/flambda_kind.cmi
+middle_end/language/flambda_kind.cmx : bytecomp/lambda.cmx \
+    utils/identifiable.cmx middle_end/language/flambda_kind.cmi
 middle_end/language/flambda_kind.cmi : bytecomp/lambda.cmi \
     utils/identifiable.cmi
 middle_end/language/flambda_static.cmo : middle_end/base_types/variable.cmi \

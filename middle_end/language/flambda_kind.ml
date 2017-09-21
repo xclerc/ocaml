@@ -81,6 +81,6 @@ end)
 
 let compatible t1 t2 =
   match t1, t2 with
-  | Value Must_can, Value_Can_scan
-  | Value Can_scan, Value_Must_scan -> true
+  | Value Must_scan, Value Can_scan
+  | Value Can_scan, Value Must_scan -> true
   | _, _ -> equal t1 t2

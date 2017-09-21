@@ -131,11 +131,13 @@ module Program = struct
             loop program
           | Initialize_symbol (_, _, fields, program) ->
             List.iter (fun (field, cont) ->
-                f ~continuation_arity:[Flambda_kind.value ()] cont field)
+                f ~continuation_arity:[Flambda_kind.value ~must_scan:true]
+                  cont field)
               fields;
             loop program
           | Effect (expr, cont, program) ->
-            f ~continuation_arity:[Flambda_kind.value ()] cont expr;
+            f ~continuation_arity:[Flambda_kind.value ~must_scan:true]
+              cont expr;
             loop program
           | End _ -> ()
         in

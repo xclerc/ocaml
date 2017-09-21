@@ -16,7 +16,7 @@
 
 (** Immediate constants that can be held in registers. *)
 
-type 'a or_wrong =
+type 'a or_wrong = private
   | Ok of 'a
   | Wrong
 
@@ -25,6 +25,6 @@ type t = private {
   print_as_char : bool;
 }
 
-include Identifiable.S with type t := t
+val print : Format.formatter -> t -> unit
 
 val join : t -> t -> t or_wrong

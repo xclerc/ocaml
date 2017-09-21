@@ -210,7 +210,7 @@ module Proved_unboxable_or_untaggable : sig
   type t = private
     | Wrong
     | Blocks_and_tagged_immediates of
-        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
+        Blocks.t * (Targetint.Set.t Or_not_all_values_known.t)
     | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
     | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t

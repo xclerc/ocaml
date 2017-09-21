@@ -27,8 +27,6 @@ module Return_arity : sig
   type t = Flambda_kind.t list
 
   include Identifiable.S with type t := t
-
-  val single_boxed_value : t
 end
 
 (** Whether the callee in a function application is known at compile time. *)
@@ -47,18 +45,17 @@ module Call_kind : sig
   val return_arity : t -> Return_arity.t
 end
 
-(** Simple constants.  ("Structured constants" are rewritten to invocations
-    of [Pmakeblock] so that they easily take part in optimizations.) *)
+(** Simple constants which can be held entirely in registers. *)
 module Const : sig
   type t =
     | Untagged_immediate of Immediate.t
     | Tagged_immediate of Immediate.t
-    | Unboxed_float of float
-    | Unboxed_int32 of Int32.t
-    | Unboxed_int64 of Int64.t
-    | Unboxed_nativeint of Targetint.t
+    | Naked_float of float
+    | Naked_int32 of Int32.t
+    | Naked_int64 of Int64.t
+    | Naked_nativeint of Targetint.t
 
-  include Identifiable.S with type t := t
+  val print : Format.formatter -> t -> unit
 end
 
 type apply_kind =

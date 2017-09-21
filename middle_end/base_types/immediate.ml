@@ -28,8 +28,8 @@ type t = {
 let print ppf t =
   let print_as_char =
     t.print_as_char
-      && Targetint.compare t Targetint.zero >= 0
-      && Targetint.compare t (Targetint.of_int 0xff) <= 0
+      && Targetint.compare t.value Targetint.zero >= 0
+      && Targetint.compare t.value (Targetint.of_int 0xff) <= 0
   in
   if print_as_char then
     Format.fprintf ppf "(immediate '%c')"

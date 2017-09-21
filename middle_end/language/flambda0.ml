@@ -36,8 +36,6 @@ module Return_arity = struct
           Flambda_kind.print)
         t
   end)
-
-  let single_boxed_value = [Flambda_kind.value ()]
 end
 
 module Call_kind = struct
@@ -52,37 +50,27 @@ module Call_kind = struct
     match t with
     (* Functions called indirectly must always return a singleton of
        [Value] kind. *)
-    | Indirect -> [Flambda_kind.value ()]
+    | Indirect -> [Flambda_kind.value ~must_scan:true]
     | Direct { return_arity; _ } -> return_arity
 end
 
 module Const = struct
   type t =
-    | Int of int
-    | Char of char
-    | Const_pointer of int
-    | Unboxed_float of float
-    | Unboxed_int32 of Int32.t
-    | Unboxed_int64 of Int64.t
-    | Unboxed_nativeint of Nativeint.t
+    | Untagged_immediate of Immediate.t
+    | Tagged_immediate of Immediate.t
+    | Naked_float of float
+    | Naked_int32 of Int32.t
+    | Naked_int64 of Int64.t
+    | Naked_nativeint of Targetint.t
 
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare = Pervasives.compare
-    let equal t1 t2 = (compare t1 t2) = 0
-    let hash = Hashtbl.hash
-
-    let print ppf (t : t) =
-      match t with
-      | Int n -> Format.fprintf ppf "%i" n
-      | Char c -> Format.fprintf ppf "%C" c
-      | Const_pointer n -> Format.fprintf ppf "%ia" n
-      | Unboxed_float f -> Format.fprintf ppf "%f" f
-      | Unboxed_int32 n -> Format.fprintf ppf "%ld" n
-      | Unboxed_int64 n -> Format.fprintf ppf "%Ld" n
-      | Unboxed_nativeint n -> Format.fprintf ppf "%nd" n
-  end)
+  let print ppf (t : t) =
+    match t with
+    | Untagged_immediate i -> Format.fprintf ppf "%a!" Immediate.print i
+    | Tagged_immediate i -> Format.fprintf ppf "%a" Immediate.print i
+    | Naked_float f -> Format.fprintf ppf "%f!" f
+    | Naked_int32 n -> Format.fprintf ppf "%ld!" n
+    | Naked_int64 n -> Format.fprintf ppf "%Ld!" n
+    | Naked_nativeint n -> Format.fprintf ppf "%a!" Targetint.print n
 end
 
 type apply_kind =

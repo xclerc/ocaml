@@ -19,23 +19,21 @@
 module F0 = Flambda0
 
 module Constant_defining_value_block_field = struct
-  module Const = F0.Const
-
   type t =
     | Symbol of Symbol.t
-    | Const of Const.t
+    | Immediate of Targetint.t
 
   let compare (t1 : t) (t2 : t) =
     match t1, t2 with
     | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
-    | Const t1, Const t2 -> Const.compare t1 t2
-    | Symbol _, Const _ -> -1
-    | Const _, Symbol _ -> 1
+    | Immediate t1, Immediate t2 -> Targetint.compare t1 t2
+    | Symbol _, Immediate _ -> -1
+    | Immediate _, Symbol _ -> 1
 
   let print ppf (field : t) =
     match field with
     | Symbol symbol -> Symbol.print ppf symbol
-    | Const const -> Const.print ppf const
+    | Immediate const -> Targetint.print ppf const
 end
 
 module Constant_defining_value = struct
@@ -127,7 +125,7 @@ module Constant_defining_value = struct
         (function
           | (Symbol s : Constant_defining_value_block_field.t) ->
             symbols := Symbol.Set.add s !symbols
-          | (Const _ : Constant_defining_value_block_field.t) -> ())
+          | (Immediate _ : Constant_defining_value_block_field.t) -> ())
         fields
     | Set_of_closures set_of_closures ->
       symbols := Symbol.Set.union !symbols

@@ -20,7 +20,7 @@
 module Constant_defining_value_block_field : sig
   type t =
     | Symbol of Symbol.t
-    | Const of Flambda0.Const.t
+    | Immediate of Targetint.t
 end
 
 module Constant_defining_value : sig

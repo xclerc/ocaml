@@ -805,9 +805,9 @@ end = struct
         ~current_compilation_unit:compilation_unit
     in
     Expr.create_let set_of_closures_var
-      (Flambda_kind.value ())
+      (Flambda_kind.value ~must_scan:true)
       (Set_of_closures set_of_closures)
-      (Expr.create_let project_closure_var (Flambda_kind.value ())
+      (Expr.create_let project_closure_var (Flambda_kind.value ~must_scan:true)
         project_closure
         (Apply_cont (continuation, None, [project_closure_var])))
 
@@ -874,7 +874,8 @@ end = struct
     let var = Variable.create "subst" in
     let cont = Continuation.create () in
     let expr : Expr.t =
-      Expr.create_let var (Flambda_kind.value () (* arbitrary *)) t
+      Expr.create_let var
+        (Flambda_kind.value ~must_scan:true (* arbitrary *)) t
         (Apply_cont (cont, None, []))
     in
     match Expr.toplevel_substitution sb expr with
@@ -891,7 +892,10 @@ end = struct
       (* CR mshinwell: This is dubious -- check usage *)
       Misc.fatal_error "Unsupported"
 
-  let equal t1 t2 =
+  let equal _t1 _t2 = false
+    (* CR mshinwell: Sort this out.  The latest problem is lack of
+       equality on [Const.t] due to the [print_as_char] field. *)
+(*
     match t1, t2 with
     | Var var1, Var var2 -> Variable.equal var1 var2
     | Var _, _ | _, Var _ -> false
@@ -928,6 +932,7 @@ end = struct
       false
     | Prim (p1, al1, _), Prim (p2, al2, _) ->
       p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
+*)
 
   module Iterators = struct
     let iter f f_named t =
@@ -989,7 +994,7 @@ end and Set_of_closures : sig
   (* CR mshinwell: swap parameters and add "_exn" suffix or similar *)
   val find_free_variable : Var_within_closure.t -> t -> Variable.t
 
-  val equal : t -> t -> bool
+(*  val equal : t -> t -> bool *)
 
   module Mappers : sig
     val map_symbols : t -> f:(Symbol.t -> Symbol.t) -> t
@@ -1018,10 +1023,12 @@ end = struct
     in
     free_var.var
 
+(*
   let equal (t1 : t) (t2 : t) =
     Variable.Map.equal Function_declaration.equal
         t1.function_decls.funs t2.function_decls.funs
       && Variable.Map.equal Free_var.equal t1.free_vars t2.free_vars
+*)
 
   module Mappers = struct
     let map_symbols ({ function_decls; free_vars; direct_call_surrogates; }
