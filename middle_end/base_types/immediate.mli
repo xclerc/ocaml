@@ -25,6 +25,7 @@ type t = private {
   print_as_char : bool;
 }
 
-val print : Format.formatter -> t -> unit
+(** The comparison function for type [t] ignores [print_as_char]. *)
+include Identifiable.S with type t := t
 
 val join : t -> t -> t or_wrong

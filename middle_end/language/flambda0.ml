@@ -63,14 +63,54 @@ module Const = struct
     | Naked_int64 of Int64.t
     | Naked_nativeint of Targetint.t
 
-  let print ppf (t : t) =
-    match t with
-    | Untagged_immediate i -> Format.fprintf ppf "%a!" Immediate.print i
-    | Tagged_immediate i -> Format.fprintf ppf "%a" Immediate.print i
-    | Naked_float f -> Format.fprintf ppf "%f!" f
-    | Naked_int32 n -> Format.fprintf ppf "%ld!" n
-    | Naked_int64 n -> Format.fprintf ppf "%Ld!" n
-    | Naked_nativeint n -> Format.fprintf ppf "%a!" Targetint.print n
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare t1 t2 =
+      match t1, t2 with
+      | Untagged_immediate i1, Untagged_immediate i2 ->
+        Immediate.compare i1 i2
+      | Tagged_immediate i1, Tagged_immediate i2 ->
+        Immediate.compare i1 i2
+      | Naked_float f1, Naked_float f2 ->
+        Pervasives.compare f1 f2
+      | Naked_int32 n1, Naked_int32 n2 ->
+        Int32.compare n1 n2
+      | Naked_int64 n1, Naked_int64 n2 ->
+        Int64.compare n1 n2
+      | Naked_nativeint n1, Naked_nativeint n2 ->
+        Targetint.compare n1 n2
+      | Untagged_immediate _, _ -> -1
+      | _, Untagged_immediate _ -> 1
+      | Tagged_immediate _, _ -> -1
+      | _, Tagged_immediate _ -> 1
+      | Naked_float _, _ -> -1
+      | _, Naked_float _ -> 1
+      | Naked_int32 _, _ -> -1
+      | _, Naked_int32 _ -> 1
+      | Naked_int64 _, _ -> -1
+      | _, Naked_int64 _ -> 1
+
+    let equal t1 t2 = (compare t1 t2 = 0)
+
+    let hash t =
+      match t with
+      | Untagged_immediate n -> Immediate.hash n
+      | Tagged_immediate n -> Immediate.hash n
+      | Naked_float n -> Hashtbl.hash n
+      | Naked_int32 n -> Hashtbl.hash n
+      | Naked_int64 n -> Hashtbl.hash n
+      | Naked_nativeint n -> Targetint.hash n
+
+    let print ppf (t : t) =
+      match t with
+      | Untagged_immediate i -> Format.fprintf ppf "%a!" Immediate.print i
+      | Tagged_immediate i -> Format.fprintf ppf "%a" Immediate.print i
+      | Naked_float f -> Format.fprintf ppf "%f!" f
+      | Naked_int32 n -> Format.fprintf ppf "%ld!" n
+      | Naked_int64 n -> Format.fprintf ppf "%Ld!" n
+      | Naked_nativeint n -> Format.fprintf ppf "%a!" Targetint.print n
+  end)
 end
 
 type apply_kind =

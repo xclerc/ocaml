@@ -29,8 +29,7 @@ module Program : sig
 
   val initialize_symbols
      : t
-    -> (Symbol.t * Tag.Scannable.t * (Flambda.Expr.t * Continuation.t) list)
-         list
+    -> (Symbol.t * Program_body.initialize_symbol) list
 
   val imported_symbols : t -> Symbol.Set.t
 

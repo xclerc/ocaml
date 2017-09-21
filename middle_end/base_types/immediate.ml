@@ -25,18 +25,28 @@ type t = {
   print_as_char : bool;
 }
 
-let print ppf t =
-  let print_as_char =
-    t.print_as_char
-      && Targetint.compare t.value Targetint.zero >= 0
-      && Targetint.compare t.value (Targetint.of_int 0xff) <= 0
-  in
-  if print_as_char then
-    Format.fprintf ppf "(immediate '%c')"
-      (Char.chr (Targetint.to_int t.value))
-  else
-    Format.fprintf ppf "(immediate %a)"
-      Targetint.print t.value
+include Identifiable.Make (struct
+  type nonrec t = t
+
+  let compare t1 t2 = Targetint.compare t1.value t2.value
+
+  let equal t1 t2 = Targetint.equal t1.value t2.value
+
+  let hash t = Targetint.hash t.value
+
+  let print ppf t =
+    let print_as_char =
+      t.print_as_char
+        && Targetint.compare t.value Targetint.zero >= 0
+        && Targetint.compare t.value (Targetint.of_int 0xff) <= 0
+    in
+    if print_as_char then
+      Format.fprintf ppf "(immediate '%c')"
+        (Char.chr (Targetint.to_int t.value))
+    else
+      Format.fprintf ppf "(immediate %a)"
+        Targetint.print t.value
+end)
 
 let join t1 t2 : t or_wrong =
   if not (Targetint.equal t1.value t2.value) then

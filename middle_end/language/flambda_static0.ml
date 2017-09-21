@@ -21,19 +21,19 @@ module F0 = Flambda0
 module Constant_defining_value_block_field = struct
   type t =
     | Symbol of Symbol.t
-    | Immediate of Targetint.t
+    | Immediate of Immediate.t
 
   let compare (t1 : t) (t2 : t) =
     match t1, t2 with
     | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
-    | Immediate t1, Immediate t2 -> Targetint.compare t1 t2
+    | Immediate t1, Immediate t2 -> Immediate.compare t1 t2
     | Symbol _, Immediate _ -> -1
     | Immediate _, Symbol _ -> 1
 
   let print ppf (field : t) =
     match field with
     | Symbol symbol -> Symbol.print ppf symbol
-    | Immediate const -> Targetint.print ppf const
+    | Immediate immediate -> Immediate.print ppf immediate
 end
 
 module Constant_defining_value = struct
@@ -135,11 +135,21 @@ module Constant_defining_value = struct
 end
 
 module Program_body = struct
+  type initialize_symbol =
+    | Values of {
+        tag : Tag.Scannable.t;
+        fields :
+          (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
+      }
+    | Float of Flambda0.Expr.t * Continuation.t
+    | Int32 of Flambda0.Expr.t * Continuation.t
+    | Int64 of Flambda0.Expr.t * Continuation.t
+    | Nativeint of Flambda0.Expr.t * Continuation.t
+
   type t =
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
     | Let_rec_symbol of (Symbol.t * Constant_defining_value.t) list * t
-    | Initialize_symbol of Symbol.t * Tag.Scannable.t
-        * (F0.Expr.t * Continuation.t) list * t
+    | Initialize_symbol of Symbol.t * initialize_symbol * t
     | Effect of F0.Expr.t * Continuation.t * t
     | End of Symbol.t
 
@@ -175,19 +185,49 @@ module Program_body = struct
         "@[<2>let_rec_symbol@ (@[<hv 1>%a@])@]@."
         bindings defs;
       print ppf program
-    | Initialize_symbol (symbol, tag, fields, program) ->
-      let expr_and_cont ppf (field, defn, cont) =
-        fprintf ppf "Field %d, return continuation %a:@;@[<h>@ @ %a@]"
-          field
-          Continuation.print cont
+    | Initialize_symbol (symbol, contents, program) ->
+      begin match contents with
+      | Values { tag; fields; } ->
+        let expr_and_cont ppf (field, defn, scanning, cont) =
+          let scanning =
+            match (scanning : Flambda_kind.scanning) with
+            | Must_scan -> "(must scan)"
+            | Can_scan -> "(can scan)"
+          in
+          fprintf ppf "Field %d, return continuation %a %s:@;@[<h>@ @ %a@]"
+            field
+            Continuation.print cont
+            scanning
+            F0.Expr.print defn
+        in
+        fprintf ppf
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
+          Symbol.print symbol
+          Tag.Scannable.print tag
+          (Format.pp_print_list ~pp_sep:Format.pp_print_space expr_and_cont)
+          (List.mapi (fun i (defn, scan, cont) -> i, defn, scan, cont) fields)
+      | Float (defn, cont) ->
+        fprintf ppf
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>float:@ %a@;@[<v>%a@]@])@]@]@."
+          Symbol.print symbol
           F0.Expr.print defn
-      in
-      fprintf ppf
-        "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
-        Symbol.print symbol
-        Tag.Scannable.print tag
-        (Format.pp_print_list ~pp_sep:Format.pp_print_space expr_and_cont)
-        (List.mapi (fun i (defn, cont) -> i, defn, cont) fields);
+      | Int32 (defn, cont) ->
+        fprintf ppf
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int32:@ %a@;@[<v>%a@]@])@]@]@."
+          Symbol.print symbol
+          F0.Expr.print defn
+      | Int64 (defn, cont) ->
+        fprintf ppf
+          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int64:@ %a@;@[<v>%a@]@])@]@]@."
+          Symbol.print symbol
+          F0.Expr.print defn
+      | Nativeint (defn, cont) ->
+        fprintf ppf
+          "@[<2>initialize_symbol@ \
+            @[<hv 1>(@[<2>nativeint:@ %a@;@[<v>%a@]@])@]@]@."
+          Symbol.print symbol
+          F0.Expr.print defn
+      end;
       print ppf program
     | Effect (expr, cont, program) ->
       fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"

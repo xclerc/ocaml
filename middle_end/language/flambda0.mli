@@ -55,7 +55,7 @@ module Const : sig
     | Naked_int64 of Int64.t
     | Naked_nativeint of Targetint.t
 
-  val print : Format.formatter -> t -> unit
+  include Identifiable.S with type t := t
 end
 
 type apply_kind =

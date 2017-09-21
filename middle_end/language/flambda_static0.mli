@@ -20,7 +20,7 @@
 module Constant_defining_value_block_field : sig
   type t =
     | Symbol of Symbol.t
-    | Immediate of Targetint.t
+    | Immediate of Immediate.t
 end
 
 module Constant_defining_value : sig
@@ -61,6 +61,19 @@ end
     such symbols) in the object file.  As such, it is closely related to
     the compilation of toplevel modules. *)
 module Program_body : sig
+  type initialize_symbol =
+    | Values of {
+        tag : Tag.Scannable.t;
+        (* CR mshinwell: Check in Flambda_invariants that the [scannable]
+           value does not conflict with whether [tag] is below No_scan_tag *)
+        fields :
+          (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
+      }
+    | Float of Flambda0.Expr.t * Continuation.t
+    | Int32 of Flambda0.Expr.t * Continuation.t
+    | Int64 of Flambda0.Expr.t * Continuation.t
+    | Nativeint of Flambda0.Expr.t * Continuation.t
+
   type t =
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
     (** Define the given symbol to have the given constant value. *)
@@ -83,12 +96,15 @@ module Program_body : sig
         approximation of the set of closures to be present in order to
         correctly simplify the [Project_closure] construction.  (See
         [Simplify.simplify_project_closure] for that part.) *)
-    | Initialize_symbol of Symbol.t * Tag.Scannable.t
-        * (Flambda0.Expr.t * Continuation.t) list * t
-    (** Define the given symbol as a constant block of the given size and
-        tag; but with a possibly non-constant initializer.  The initializer
-        will be executed at most once (from the entry point of the compilation
-        unit). *)
+    (* CR mshinwell:
+       1. Non-[Value] kinds are only allowed if the list is a singleton.
+          This needs to be checked in [Flambda_invariants].
+       2. Don't register a GC root if it isn't needed. *)
+    | Initialize_symbol of Symbol.t * initialize_symbol * t
+    (** Define the given symbol as a constant block following the given
+        description; but with a possibly non-constant initializer.  The
+        initializer will be executed at most once (from the entry point of
+        the compilation unit). *)
     | Effect of Flambda0.Expr.t * Continuation.t * t
     (** Cause the given expression, which may have a side effect, to be
         executed.  The resulting value is discarded.  [Effect] constructions
@@ -98,9 +114,6 @@ module Program_body : sig
         eliminated. *)
 end
 
-(* CR-someday mshinwell: consider support for [Initialize_symbol] that can
-   hold unboxed numbers (e.g. floats for testsuite/tests/misc/gcwords.ml
-   when the inlining annotation is removed, as it used to be). *)
 module Program : sig
   type t = {
     imported_symbols : Symbol.Set.t;

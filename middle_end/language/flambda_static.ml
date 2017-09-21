@@ -28,8 +28,8 @@ module Program = struct
   let initialize_symbols (program : t) =
     let rec loop (program : Program_body.t) =
       match program with
-      | Initialize_symbol (symbol, tag, fields, program) ->
-        (symbol, tag, fields) :: (loop program)
+      | Initialize_symbol (symbol, descr, program) ->
+        (symbol, descr) :: (loop program)
       | Effect (_, _, program)
       | Let_symbol (_, _, program)
       | Let_rec_symbol (_, program) -> loop program
@@ -46,7 +46,7 @@ module Program = struct
       | Effect (_, _, program)
       | Let_symbol (_, _, program)
       | Let_rec_symbol (_, program)
-      | Initialize_symbol (_, _, _, program) -> loop program
+      | Initialize_symbol (_, _, program) -> loop program
       | End root ->
         root
     in
@@ -76,11 +76,20 @@ module Program = struct
           loop program
         | Let_symbol (_, _, program) ->
           loop program
-        | Initialize_symbol (_, _, fields, program) ->
-          List.iter (fun (field, _cont) ->
-              Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-                field)
-            fields;
+        | Initialize_symbol (_, descr, program) ->
+          begin match descr with
+          | Values { fields; _ } ->
+            List.iter (fun (field, _kind, _cont) ->
+                Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
+                  field)
+              fields
+          | Float (expr, _)
+          | Int32 (expr, _)
+          | Int64 (expr, _)
+          | Nativeint (expr, _) ->
+            Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
+              expr
+          end;
           loop program
         | Effect (expr, _cont, program) ->
           Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false) expr;
@@ -98,7 +107,7 @@ module Program = struct
         | Let_rec_symbol (defs, program) ->
           List.iter (fun (_, const) -> f const) defs;
           loop program
-        | Initialize_symbol (_, _, _, program) ->
+        | Initialize_symbol (_, _, program) ->
           loop program
         | Effect (_, _, program) ->
           loop program
@@ -129,11 +138,25 @@ module Program = struct
             loop program
           | Let_symbol (_, _, program) ->
             loop program
-          | Initialize_symbol (_, _, fields, program) ->
+          | Initialize_symbol (_, descr, program) ->
             List.iter (fun (field, cont) ->
                 f ~continuation_arity:[Flambda_kind.value ~must_scan:true]
                   cont field)
               fields;
+--
+            begin match descr with
+            | Values { fields; _ } ->
+              List.iter (fun (field, _kind, _cont) ->
+                  Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
+                    field)
+                fields
+            | Float (expr, _)
+            | Int32 (expr, _)
+            | Int64 (expr, _)
+            | Nativeint (expr, _) ->
+              Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
+                expr
+            end;
             loop program
           | Effect (expr, cont, program) ->
             f ~continuation_arity:[Flambda_kind.value ~must_scan:true]
