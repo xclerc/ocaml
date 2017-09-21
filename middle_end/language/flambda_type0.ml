@@ -366,45 +366,6 @@ end) = struct
       symbol = None;
     }
 
-  let unknown (kind : K.t) reason : t =
-    match kind with
-    | Value scanning ->
-      Value {
-        descr = Ok (Unknown (reason, scanning));
-        var = None;
-        symbol = None;
-      }
-    | Naked_immediate ->
-      Naked_immediate {
-        descr = Ok (Unknown (reason, ()));
-        var = None;
-        symbol = None;
-      }
-    | Naked_float ->
-      Naked_float {
-        descr = Ok (Unknown (reason, ()));
-        var = None;
-        symbol = None;
-      }
-    | Naked_int32 ->
-      Naked_int32 {
-        descr = Ok (Unknown (reason, ()));
-        var = None;
-        symbol = None;
-      }
-    | Naked_int64 ->
-      Naked_int64 {
-        descr = Ok (Unknown (reason, ()));
-        var = None;
-        symbol = None;
-      }
-    | Naked_nativeint ->
-      Naked_nativeint {
-        descr = Ok (Unknown (reason, ()));
-        var = None;
-        symbol = None;
-      }
-
   let bottom (kind : K.t) : t =
     match kind with
     | Value _ ->
@@ -451,7 +412,39 @@ end) = struct
       symbol = None;
     }
 
-  let tagged_naked_immediate (i : of_kind_naked_immediate) : t =
+  let naked_float f : t =
+    let f : of_kind_naked_float = Naked_float f in
+    Naked_float {
+      descr = Ok (Ok f);
+      var = None;
+      symbol = None;
+    }
+
+  let naked_int32 n : t =
+    let n : of_kind_naked_int32 = Naked_int32 n in
+    Naked_int32 {
+      descr = Ok (Ok n);
+      var = None;
+      symbol = None;
+    }
+
+  let naked_int64 n =
+    let n : of_kind_naked_int64 = Naked_int64 n in
+    Naked_int64 {
+      descr = Ok (Ok n);
+      var = None;
+      symbol = None;
+    }
+
+  let naked_nativeint n : t =
+    let n : of_kind_naked_nativeint = Naked_nativeint n in
+    Naked_nativeint {
+      descr = Ok (Ok n);
+      var = None;
+      symbol = None;
+    }
+
+  let tagged_immediate (i : of_kind_naked_immediate) : t =
     let i : ty_naked_immediate =
       { descr = Ok (Ok i);
         var = None;
@@ -460,38 +453,6 @@ end) = struct
     in
     Value {
       descr = Ok (Ok (Singleton (Tagged_immediate i)));
-      var = None;
-      symbol = None;
-    }
-
-  let unboxed_float f : t =
-    let f : of_kind_naked_float = Naked_float f in
-    Naked_float {
-      descr = Ok (Ok f);
-      var = None;
-      symbol = None;
-    }
-
-  let unboxed_int32 n : t =
-    let n : of_kind_naked_int32 = Naked_int32 n in
-    Naked_int32 {
-      descr = Ok (Ok n);
-      var = None;
-      symbol = None;
-    }
-
-  let unboxed_int64 n =
-    let n : of_kind_naked_int64 = Naked_int64 n in
-    Naked_int64 {
-      descr = Ok (Ok n);
-      var = None;
-      symbol = None;
-    }
-
-  let unboxed_nativeint n : t =
-    let n : of_kind_naked_nativeint = Naked_nativeint n in
-    Naked_nativeint {
-      descr = Ok (Ok n);
       var = None;
       symbol = None;
     }
@@ -687,7 +648,62 @@ end) = struct
         symbol = None;
       }
 
-  let any_boxed_float f =
+  let any_naked_immediate () : t =
+    Naked_immediate
+      { descr = Ok (Unknown (Other, ()));
+        var = None;
+        symbol = None;
+      }
+
+  let any_naked_float () : t =
+    Naked_float
+      { descr = Ok (Unknown (Other, ()));
+        var = None;
+        symbol = None;
+      }
+
+  let any_naked_int32 () : t =
+    Naked_int32
+      { descr = Ok (Unknown (Other, ()));
+        var = None;
+        symbol = None;
+      }
+
+  let any_naked_int64 () : t =
+    Naked_int64
+      { descr = Ok (Unknown (Other, ()));
+        var = None;
+        symbol = None;
+      }
+
+  let any_naked_nativeint () : t =
+    Naked_nativeint
+      { descr = Ok (Unknown (Other, ()));
+        var = None;
+        symbol = None;
+      }
+
+  let any_value scanning : t =
+    Value
+      { descr = Ok (Unknown (Other, scanning));
+        var = None;
+        symbol = None;
+      }
+
+  let any_tagged_immediate () : t =
+    let i : ty_naked_immediate =
+      { descr = Ok (Unknown (Other, ()));
+        var = None;
+        symbol = None;
+      }
+    in
+    Value {
+      descr = Ok (Ok (Singleton (Tagged_immediate i)));
+      var = None;
+      symbol = None;
+    }
+
+  let any_boxed_float () =
     let f : ty_naked_float =
       { descr = Ok (Unknown (Other, ()));
         var = None;
@@ -700,7 +716,7 @@ end) = struct
       symbol = None;
     }
 
-  let any_boxed_int32 n =
+  let any_boxed_int32 () =
     let n : ty_naked_int32 =
       { descr = Ok (Unknown (Other, ()));
         var = None;
@@ -713,7 +729,7 @@ end) = struct
       symbol = None;
     }
 
-  let any_boxed_int64 n =
+  let any_boxed_int64 () =
     let n : ty_naked_int64 =
       { descr = Ok (Unknown (Other, ()));
         var = None;
@@ -726,7 +742,7 @@ end) = struct
       symbol = None;
     }
 
-  let any_boxed_nativeint n =
+  let any_boxed_nativeint () =
     let n : ty_naked_nativeint =
       { descr = Ok (Unknown (Other, ()));
         var = None;
@@ -738,12 +754,6 @@ end) = struct
       var = None;
       symbol = None;
     }
-
-  let any_untagged_immediate () = unknown (K.naked_immediate ())
-  let any_naked_float () = unknown (K.naked_float ())
-  let any_naked_int32 () = unknown (K.naked_int32 ())
-  let any_naked_int64 () = unknown (K.naked_int64 ())
-  let any_naked_nativeint () = unknown (K.naked_nativeint ())
 
   let resolved_ty_value_for_predefined_exception ~name ~symbol
         : resolved_ty_value =
@@ -1517,6 +1527,10 @@ end) = struct
   let free_variables t =
     free_variables t Variable.Set.empty
 
+  type cleaning_spec =
+    | Available
+    | Available_different_name of Variable.t
+    | Unavailable
 
 (*
   let rec clean ~import_type t classify =

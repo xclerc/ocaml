@@ -69,8 +69,7 @@ module type S = sig
 
   (** Types of kind [Value] are equipped with an extra piece of information
       such that when we are at the top element, [Unknown], we still know
-      whether a root has to be registered.  This is necessary e.g. for
-      treating function arguments correctly. *)
+      whether a root has to be registered. *)
   and ty_value = (of_kind_value, Flambda_kind.scanning) ty
   and ty_naked_immediate = (of_kind_naked_immediate, unit) ty
   and ty_naked_float = (of_kind_naked_float, unit) ty
@@ -162,25 +161,8 @@ module type S = sig
 
   val print : Format.formatter -> t -> unit
 
-  (** Construct a top type for the given kind ("any value of the given kind
-      can flow to this point").  (The [unknown_because_of] reason is ignored
-      when considering the partial ordering on types.) *)
-  val unknown : Flambda_kind.t -> unknown_because_of -> t
-
-  (** The bottom type for the given kind ("no value can flow to this point"). *)
-  val bottom : Flambda_kind.t -> t
-
   (** Construction of types involving equalities to runtime values. *)
-  val tagged_int : Targetint.t -> t
-  val tagged_constptr : Targetint.t -> t
-  val tagged_char : char -> t
-  val untagged_int : Targetint.t -> t
-  val untagged_constptr : Targetint.t -> t
-  val untagged_char : char -> t
-  val unboxed_float : float -> t
-  val unboxed_int32 : Int32.t -> t
-  val unboxed_int64 : Int64.t -> t
-  val unboxed_nativeint : Nativeint.t -> t
+  val tagged_immediate : Immediate.t -> t
   val boxed_float : float -> t
   val boxed_int32 : Int32.t -> t
   val boxed_int64 : Int64.t -> t
@@ -190,23 +172,32 @@ module type S = sig
   val mutable_string : size:int -> t
   val immutable_string : string -> t
   val block : Tag.Scannable.t -> t array -> t
+  val naked_immediate : Immediate.t -> t
+  val naked_float : float -> t
+  val naked_int32 : Int32.t -> t
+  val naked_int64 : Int64.t -> t
+  val naked_nativeint : Targetint.t -> t
 
   (** Construction of types that link to other types which have not yet
       been loaded into memory (from a .cmx file). *)
   val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
   val symbol_loaded_lazily : Flambda_kind.t -> Symbol.t -> t
 
-  (** Construction of types without equalities to runtime values. *)
+  (** Construction of top types. *)
+  val any_value : Flambda_kind.scanning -> t
   val any_tagged_immediate : unit -> t
   val any_boxed_float : unit -> t
   val any_boxed_int32 : unit -> t
   val any_boxed_int64 : unit -> t
   val any_boxed_nativeint : unit -> t
-  val any_untagged_immediate : unit -> t
-  val any_unboxed_float : unit -> t
-  val any_unboxed_int32 : unit -> t
-  val any_unboxed_int64 : unit -> t
-  val any_unboxed_nativeint : unit -> t
+  val any_naked_immediate : unit -> t
+  val any_naked_float : unit -> t
+  val any_naked_int32 : unit -> t
+  val any_naked_int64 : unit -> t
+  val any_naked_nativeint : unit -> t
+
+  (** The bottom type for the given kind ("no value can flow to this point"). *)
+  val bottom : Flambda_kind.t -> t
 
   (** Construct a closure type given the type of the corresponding set of
       closures and the closure ID of the closure to be projected from such
@@ -219,7 +210,8 @@ module type S = sig
      : ?closure_var:Variable.t
     -> ?set_of_closures_var:Variable.t
     -> ?set_of_closures_symbol:Symbol.t
-    -> set_of_closures Closure_id.Map.t
+    -> set_of_closures
+    -> Closure_id.t
     -> t
 
   (** Create a [set_of_closures] structure which can be used for building a
