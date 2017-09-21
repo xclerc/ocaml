@@ -25,6 +25,8 @@ type scanning =
   | Must_scan
   | Can_scan
 
+val join_scanning : scanning -> scanning -> scanning
+
 type t = private
   | Value of scanning
   | Naked_immediate

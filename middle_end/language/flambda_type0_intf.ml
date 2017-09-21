@@ -80,25 +80,6 @@ module type S = sig
 
   and ('a, 'u) ty = ('a, 'u) maybe_unresolved with_var_and_symbol
 
-  (** "Resolved" types where the head constructor is known not to need loading
-      from a .cmx file. *)
-  and resolved_t = private
-    | Value of resolved_ty_value
-    | Naked_immediate of resolved_ty_naked_immediate
-    | Naked_float of resolved_ty_naked_float
-    | Naked_int32 of resolved_ty_naked_int32
-    | Naked_int64 of resolved_ty_naked_int64
-    | Naked_nativeint of resolved_ty_naked_nativeint
-
-  and resolved_ty_value = (of_kind_value, Flambda_kind.scanning) resolved_ty
-  and resolved_ty_naked_immediate = (of_kind_naked_immediate, unit) resolved_ty
-  and resolved_ty_naked_float = (of_kind_naked_float, unit) resolved_ty
-  and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
-  and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
-  and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
-
-  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom with_var_and_symbol
-
   and ('a, 'u) maybe_unresolved = private
     | Ok of ('a, 'u) or_unknown_or_bottom
     (** The head constructor is available in memory. *)
@@ -106,15 +87,13 @@ module type S = sig
     (** The head constructor requires loading from a .cmx file. *)
 
   (** For each kind (cf. [Flambda_kind], although with the "Value" cases
-      merged into one) there is a lattice of types.
-      [Bottom] is the unique least element and [Unknown] is the unique top
-      element. *)
+      merged into one) there is a lattice of types. *)
   and ('a, 'u) or_unknown_or_bottom = private
     | Unknown of unknown_because_of * 'u
-    (** "Any value can flow to this point". *)
+    (** "Any value can flow to this point": the top element. *)
     | Ok of 'a
     | Bottom
-    (** "No value can flow to this point". *)
+    (** "No value can flow to this point": the bottom element. *)
 
   (** "Singleton" and "Union" refer to the syntactic structure of the type.
       A [Singleton] type may still describe more than one particular runtime

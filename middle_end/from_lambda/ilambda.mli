@@ -50,7 +50,8 @@ and let_mutable = {
 and function_declaration =
   { kind : Lambda.function_kind;
     continuation_param : Continuation.t;
-    params : Ident.t list;
+    params : (Ident.t * Lambda.value_kind) list;
+    return : Lambda.value_kind;
     body : t;
     attr : Lambda.function_attribute;
     loc : Location.t;
