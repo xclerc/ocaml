@@ -136,7 +136,7 @@ module type S = sig
   }
 
   and float_array_contents = private
-    | Contents of t array
+    | Contents of ty_naked_float array
     | Unknown_or_mutable
 
   and float_array_ty = private {
@@ -161,28 +161,6 @@ module type S = sig
 
   val print : Format.formatter -> t -> unit
 
-  (** Construction of types involving equalities to runtime values. *)
-  val tagged_immediate : Immediate.t -> t
-  val boxed_float : float -> t
-  val boxed_int32 : Int32.t -> t
-  val boxed_int64 : Int64.t -> t
-  val boxed_nativeint : Nativeint.t -> t
-  val mutable_float_array : size:int -> t
-  val immutable_float_array : t array -> t
-  val mutable_string : size:int -> t
-  val immutable_string : string -> t
-  val block : Tag.Scannable.t -> t array -> t
-  val naked_immediate : Immediate.t -> t
-  val naked_float : float -> t
-  val naked_int32 : Int32.t -> t
-  val naked_int64 : Int64.t -> t
-  val naked_nativeint : Targetint.t -> t
-
-  (** Construction of types that link to other types which have not yet
-      been loaded into memory (from a .cmx file). *)
-  val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
-  val symbol_loaded_lazily : Flambda_kind.t -> Symbol.t -> t
-
   (** Construction of top types. *)
   val any_value : Flambda_kind.scanning -> t
   val any_tagged_immediate : unit -> t
@@ -196,8 +174,40 @@ module type S = sig
   val any_naked_int64 : unit -> t
   val any_naked_nativeint : unit -> t
 
+  (** Building of types from specified constants. *)
+  val this_tagged_immediate : Immediate.t -> t
+  val this_boxed_float : float -> t
+  val this_boxed_int32 : Int32.t -> t
+  val this_boxed_int64 : Int64.t -> t
+  val this_boxed_nativeint : Targetint.t -> t
+  val this_naked_immediate : Immediate.t -> t
+  val this_naked_float : float -> t
+  val this_naked_int32 : Int32.t -> t
+  val this_naked_int64 : Int64.t -> t
+  val this_naked_nativeint : Targetint.t -> t
+  val this_immutable_string : string -> t
+
+  (** Building of types corresponding to mutable values. *)
+  val mutable_string : size:int -> t
+  val mutable_float_array : size:int -> t
+
+  (** Building of types from other types.  These functions will fail with
+      a fatal error if the supplied type is not of the correct kind. *)
+  val tag_immediate : t -> t
+  val box_float : t -> t
+  val box_int32 : t -> t
+  val box_int64 : t -> t
+  val box_nativeint : t -> t
+  val block : Tag.Scannable.t -> t array -> t
+  val immutable_float_array : t array -> t
+
   (** The bottom type for the given kind ("no value can flow to this point"). *)
   val bottom : Flambda_kind.t -> t
+
+  (** Construction of types that link to other types which have not yet
+      been loaded into memory (from a .cmx file). *)
+  val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
+  val symbol_loaded_lazily : Flambda_kind.t -> Symbol.t -> t
 
   (** Construct a closure type given the type of the corresponding set of
       closures and the closure ID of the closure to be projected from such

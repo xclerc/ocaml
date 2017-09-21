@@ -274,6 +274,169 @@ end) = struct
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
 
+  let print_set_of_closures ppf
+        { function_decls; invariant_params; freshening; _ } =
+    Format.fprintf ppf
+      "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
+      Function_declarations.print function_decls
+      (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
+      print_closure_freshening freshening
+
+  let print_unresolved_value ppf (unresolved : unresolved_value) =
+    match unresolved with
+    | Set_of_closures_id set ->
+      Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
+    | Symbol symbol ->
+      Format.fprintf ppf "Symbol %a" Symbol.print symbol
+    | Export_id id ->
+      Format.fprintf ppf "Export_id %a" Export_id.print id
+
+  let print_with_var_and_symbol print_descr ppf { descr; var; symbol; } =
+    let print_symbol ppf = function
+      | None -> Symbol.print_opt ppf None
+      | Some (sym, None) -> Symbol.print ppf sym
+      | Some (sym, Some field) ->
+        Format.fprintf ppf "%a.(%i)" Symbol.print sym field
+    in
+    Format.fprintf ppf "{ descr=%a var=%a symbol=%a }"
+      print_descr descr
+      Variable.print_opt var
+      print_symbol symbol
+
+  let print_maybe_unresolved print_contents ppf (m : _ maybe_unresolved) =
+    match m with
+    | Ok contents -> print_contents ppf contents
+    | Load_lazily ll -> Format.fprintf ppf "lazy(%a)" print_load_lazily ll
+
+  let print_of_kind_naked_immediate ppf (o : of_kind_naked_immediate) =
+    match o with
+    | Naked_immediate i -> Format.fprintf ppf "%a" Immediate.print i
+
+  let print_of_kind_naked_float ppf (o : of_kind_naked_float) =
+    match o with
+    | Naked_float f -> Format.fprintf ppf "%f" f
+
+  let print_of_kind_naked_int32 ppf (o : of_kind_naked_int32) =
+    match o with
+    | Naked_int32 i -> Format.fprintf ppf "%a" Int32.print i
+
+  let print_of_kind_naked_int64 ppf (o : of_kind_naked_int64) =
+    match o with
+    | Naked_int64 i -> Format.fprintf ppf "%a" Int64.print i
+
+  let print_of_kind_naked_nativeint ppf (o : of_kind_naked_nativeint) =
+    match o with
+    | Naked_nativeint i -> Format.fprintf ppf "%a" Targetint.print i
+
+  let print_or_unknown_or_bottom print_contents print_unknown_payload ppf
+        (o : _ or_unknown_or_bottom) =
+    match o with
+    | Unknown (reason, payload) ->
+      begin match reason with
+      | Unresolved_value value ->
+        Format.fprintf ppf "?%a(due to unresolved %a)"
+          print_unknown_payload payload
+          print_unresolved_value value
+      | Other -> Format.fprintf ppf "?%a" print_unknown_payload payload
+      end;
+    | Ok contents -> print_contents ppf contents
+    | Bottom -> Format.fprintf ppf "bottom"
+
+  let print_ty_generic print_contents print_unknown_payload ppf ty =
+    (print_with_var_and_symbol
+      (print_maybe_unresolved
+        (print_or_unknown_or_bottom print_contents print_unknown_payload)))
+      ppf ty
+
+  let rec print_of_kind_value ppf (o : of_kind_value) =
+    match o with
+    | Singleton singleton -> print_of_kind_value_singleton ppf singleton
+    | Union (w1, w2) ->
+      let print_part ppf w =
+        print_with_var_and_symbol print_of_kind_value ppf w
+      in
+      Format.fprintf ppf "@[(Union (%a)(%a))@]"
+        print_part w1 print_part w2
+
+  and print_of_kind_value_singleton ppf (singleton : of_kind_value_singleton) =
+    match singleton with
+    | Tagged_immediate t ->
+      Format.fprintf ppf "(tagged_imm %a)" print_ty_naked_immediate t
+    | Boxed_float f ->
+      Format.fprintf ppf "(boxed_float %a)" print_ty_naked_float f
+    | Boxed_int32 n ->
+      Format.fprintf ppf "(boxed_int32 %a)" print_ty_naked_int32 n
+    | Boxed_int64 n ->
+      Format.fprintf ppf "(boxed_int64 %a)" print_ty_naked_int64 n
+    | Boxed_nativeint n ->
+      Format.fprintf ppf "(boxed_nativeint %a)" print_ty_naked_nativeint n
+    | Block (tag, fields) ->
+      Format.fprintf ppf "@[[%a: %a]@]"
+        Tag.Scannable.print tag
+        (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
+          print_ty_value) (Array.to_list fields)
+    | Set_of_closures set_of_closures ->
+      print_set_of_closures ppf set_of_closures
+    | Closure { set_of_closures; closure_id; } ->
+      Format.fprintf ppf "(closure:@ @[<2>[@ %a @[<2>from@ %a@];@ ]@])"
+        Closure_id.print closure_id
+        print_ty_value set_of_closures
+    | String { contents; size; } ->
+      begin match contents with
+      | Unknown_or_mutable -> Format.fprintf ppf "string %i" size
+      | Contents s ->
+        let s =
+          if size > 10 then String.sub s 0 8 ^ "..."
+          else s
+        in
+        Format.fprintf ppf "string %i %S" size s
+      end
+    | Float_array float_array ->
+      begin match float_array.contents with
+      | Unknown_or_mutable ->
+        Format.fprintf ppf "float_array %i" float_array.size
+      | Contents _ ->
+        Format.fprintf ppf "float_array_imm %i" float_array.size
+      end
+
+  and print_ty_value ppf (ty : ty_value) =
+    let print_scanning ppf (scanning : K.scanning) =
+      match scanning with
+      | Must_scan -> Format.fprintf ppf "*"
+      | Can_scan -> ()
+    in
+    print_ty_generic print_of_kind_value print_scanning ppf ty
+
+  and print_ty_naked_immediate ppf (ty : ty_naked_immediate) =
+    print_ty_generic print_of_kind_naked_immediate (fun _ () -> ()) ppf ty
+
+  and print_ty_naked_float ppf (ty : ty_naked_float) =
+    print_ty_generic print_of_kind_naked_float (fun _ () -> ()) ppf ty
+
+  and print_ty_naked_int32 ppf (ty : ty_naked_int32) =
+    print_ty_generic print_of_kind_naked_int32 (fun _ () -> ()) ppf ty
+
+  and print_ty_naked_int64 ppf (ty : ty_naked_int64) =
+    print_ty_generic print_of_kind_naked_int64 (fun _ () -> ()) ppf ty
+
+  and print_ty_naked_nativeint ppf (ty : ty_naked_nativeint) =
+    print_ty_generic print_of_kind_naked_nativeint (fun _ () -> ()) ppf ty
+
+  and print ppf (t : t) =
+    match t with
+    | Value ty ->
+      Format.fprintf ppf "(Value (%a))" print_ty_value ty
+    | Naked_immediate ty ->
+      Format.fprintf ppf "(Naked_immediate (%a))" print_ty_naked_immediate ty
+    | Naked_float ty ->
+      Format.fprintf ppf "(Naked_float (%a))" print_ty_naked_float ty
+    | Naked_int32 ty ->
+      Format.fprintf ppf "(Naked_int32 (%a))" print_ty_naked_int32 ty
+    | Naked_int64 ty ->
+      Format.fprintf ppf "(Naked_int64 (%a))" print_ty_naked_int64 ty
+    | Naked_nativeint ty ->
+      Format.fprintf ppf "(Naked_nativeint (%a))" print_ty_naked_nativeint ty
+
   let augment_with_variable (t : t) var : t =
     let var = Some var in
     match t with
@@ -307,7 +470,7 @@ end) = struct
   let augment_with_symbol t symbol =
     augment_with_symbol_internal t symbol None
 
-  let augment_with_symbol_field t symbol field =
+  let augment_with_symbol_field t symbol ~field =
     augment_with_symbol_internal t symbol (Some field)
 
   let replace_variable (t : t) var : t =
@@ -405,14 +568,15 @@ end) = struct
         symbol = None;
       }
 
-  let naked_immediate (i : of_kind_naked_immediate) : t =
+  let this_naked_immediate (i : Immediate.t) : t =
+    let i : of_kind_naked_immediate = Naked_immediate i in
     Naked_immediate {
       descr = Ok (Ok i);
       var = None;
       symbol = None;
     }
 
-  let naked_float f : t =
+  let this_naked_float f : t =
     let f : of_kind_naked_float = Naked_float f in
     Naked_float {
       descr = Ok (Ok f);
@@ -420,7 +584,7 @@ end) = struct
       symbol = None;
     }
 
-  let naked_int32 n : t =
+  let this_naked_int32 n : t =
     let n : of_kind_naked_int32 = Naked_int32 n in
     Naked_int32 {
       descr = Ok (Ok n);
@@ -428,7 +592,7 @@ end) = struct
       symbol = None;
     }
 
-  let naked_int64 n =
+  let this_naked_int64 n =
     let n : of_kind_naked_int64 = Naked_int64 n in
     Naked_int64 {
       descr = Ok (Ok n);
@@ -436,7 +600,7 @@ end) = struct
       symbol = None;
     }
 
-  let naked_nativeint n : t =
+  let this_naked_nativeint n : t =
     let n : of_kind_naked_nativeint = Naked_nativeint n in
     Naked_nativeint {
       descr = Ok (Ok n);
@@ -444,8 +608,89 @@ end) = struct
       symbol = None;
     }
 
-  let tagged_immediate (i : of_kind_naked_immediate) : t =
+  let tag_immediate (t : t) : t =
+    match t with
+    | Naked_immediate ty_naked_immediate ->
+      Value {
+        descr = Ok (Ok (Singleton (Tagged_immediate ty_naked_immediate)));
+        var = None;
+        symbol = None;
+      }
+    | Value _
+    | Naked_float _
+    | Naked_int32 _
+    | Naked_int64 _
+    | Naked_nativeint _ ->
+      Misc.fatal_errorf "Expected type of kind [Naked_immediate] but got %a"
+        print t
+
+  let box_float (t : t) : t =
+    match t with
+    | Naked_float ty_naked_float ->
+      Value {
+        descr = Ok (Ok (Singleton (Boxed_float ty_naked_float)));
+        var = None;
+        symbol = None;
+      }
+    | Value _
+    | Naked_immediate _
+    | Naked_int32 _
+    | Naked_int64 _
+    | Naked_nativeint _ ->
+      Misc.fatal_errorf "Expected type of kind [Naked_float] but got %a"
+        print t
+
+  let box_int32 (t : t) : t =
+    match t with
+    | Naked_int32 ty_naked_int32 ->
+      Value {
+        descr = Ok (Ok (Singleton (Boxed_int32 ty_naked_int32)));
+        var = None;
+        symbol = None;
+      }
+    | Value _
+    | Naked_immediate _
+    | Naked_float _
+    | Naked_int64 _
+    | Naked_nativeint _ ->
+      Misc.fatal_errorf "Expected type of kind [Naked_int32] but got %a"
+        print t
+
+  let box_int64 (t : t) : t =
+    match t with
+    | Naked_int64 ty_naked_int64 ->
+      Value {
+        descr = Ok (Ok (Singleton (Boxed_int64 ty_naked_int64)));
+        var = None;
+        symbol = None;
+      }
+    | Value _
+    | Naked_immediate _
+    | Naked_float _
+    | Naked_int32 _
+    | Naked_nativeint _ ->
+      Misc.fatal_errorf "Expected type of kind [Naked_int64] but got %a"
+        print t
+
+  let box_nativeint (t : t) : t =
+    match t with
+    | Naked_nativeint ty_naked_nativeint ->
+      Value {
+        descr = Ok (Ok (Singleton (Boxed_nativeint ty_naked_nativeint)));
+        var = None;
+        symbol = None;
+      }
+    | Value _
+    | Naked_immediate _
+    | Naked_float _
+    | Naked_int32 _
+    | Naked_int64 _ ->
+      Misc.fatal_errorf "Expected type of kind [Naked_nativeint] but got %a"
+        print t
+
+  let this_tagged_immediate i : t =
     let i : ty_naked_immediate =
+      let i : of_kind_naked_immediate = Naked_immediate i in
       { descr = Ok (Ok i);
         var = None;
         symbol = None;
@@ -457,7 +702,7 @@ end) = struct
       symbol = None;
     }
 
-  let boxed_float f =
+  let this_boxed_float f =
     let f : ty_naked_float =
       let f : of_kind_naked_float = Naked_float f in
       { descr = Ok (Ok f);
@@ -471,7 +716,7 @@ end) = struct
       symbol = None;
     }
 
-  let boxed_int32 n =
+  let this_boxed_int32 n =
     let n : ty_naked_int32 =
       let n : of_kind_naked_int32 = Naked_int32 n in
       { descr = Ok (Ok n);
@@ -485,7 +730,7 @@ end) = struct
       symbol = None;
     }
 
-  let boxed_int64 n =
+  let this_boxed_int64 n =
     let n : ty_naked_int64 =
       let n : of_kind_naked_int64 = Naked_int64 n in
       { descr = Ok (Ok n);
@@ -499,7 +744,7 @@ end) = struct
       symbol = None;
     }
 
-  let boxed_nativeint n =
+  let this_boxed_nativeint n =
     let n : ty_naked_nativeint =
       let n : of_kind_naked_nativeint = Naked_nativeint n in
       { descr = Ok (Ok n);
@@ -524,7 +769,7 @@ end) = struct
       symbol = None;
     }
 
-  let immutable_string str : t =
+  let this_immutable_string str : t =
     Value (immutable_string_as_ty_value str)
 
   let mutable_string ~size : t =
@@ -540,6 +785,17 @@ end) = struct
     }
 
   let immutable_float_array fields : t =
+    let fields =
+      Array.map (fun (field : t) ->
+          match field with
+          | Naked_float ty_naked_float -> ty_naked_float
+          | Value _ | Naked_immediate _ | Naked_int32 _ | Naked_int64 _
+          | Naked_nativeint _ ->
+            Misc.fatal_errorf "Can only form [Float_array] types with fields \
+                of kind [Naked_float].  Wrong field type: %a"
+              print field)
+        fields
+    in
     let float_array : float_array_ty =
       { contents = Contents fields;
         size = Array.length fields;
@@ -564,6 +820,17 @@ end) = struct
     }
 
   let block tag fields : t =
+    let fields =
+      Array.map (fun (field : t) ->
+          match field with
+          | Value ty_value -> ty_value
+          | Naked_immediate _ | Naked_float _ | Naked_int32 _ | Naked_int64 _
+          | Naked_nativeint _ ->
+            Misc.fatal_errorf "Can only form [Block] types with fields of \
+                kind [Value].  Wrong field type: %a"
+              print field)
+        fields
+    in
     Value {
       descr = Ok (Ok (Singleton (Block (tag, fields))));
       var = None;
@@ -1134,169 +1401,6 @@ end) = struct
       Naked_nativeint (
         import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty)
   end
-
-  let print_set_of_closures ppf
-        { function_decls; invariant_params; freshening; _ } =
-    Format.fprintf ppf
-      "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
-      Function_declarations.print function_decls
-      (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
-      print_closure_freshening freshening
-
-  let print_unresolved_value ppf (unresolved : unresolved_value) =
-    match unresolved with
-    | Set_of_closures_id set ->
-      Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
-    | Symbol symbol ->
-      Format.fprintf ppf "Symbol %a" Symbol.print symbol
-    | Export_id id ->
-      Format.fprintf ppf "Export_id %a" Export_id.print id
-
-  let print_with_var_and_symbol print_descr ppf { descr; var; symbol; } =
-    let print_symbol ppf = function
-      | None -> Symbol.print_opt ppf None
-      | Some (sym, None) -> Symbol.print ppf sym
-      | Some (sym, Some field) ->
-        Format.fprintf ppf "%a.(%i)" Symbol.print sym field
-    in
-    Format.fprintf ppf "{ descr=%a var=%a symbol=%a }"
-      print_descr descr
-      Variable.print_opt var
-      print_symbol symbol
-
-  let print_maybe_unresolved print_contents ppf (m : _ maybe_unresolved) =
-    match m with
-    | Ok contents -> print_contents ppf contents
-    | Load_lazily ll -> Format.fprintf ppf "lazy(%a)" print_load_lazily ll
-
-  let print_of_kind_naked_immediate ppf (o : of_kind_naked_immediate) =
-    match o with
-    | Naked_immediate i -> Format.fprintf ppf "%a" Immediate.print i
-
-  let print_of_kind_naked_float ppf (o : of_kind_naked_float) =
-    match o with
-    | Naked_float f -> Format.fprintf ppf "%f" f
-
-  let print_of_kind_naked_int32 ppf (o : of_kind_naked_int32) =
-    match o with
-    | Naked_int32 i -> Format.fprintf ppf "%a" Int32.print i
-
-  let print_of_kind_naked_int64 ppf (o : of_kind_naked_int64) =
-    match o with
-    | Naked_int64 i -> Format.fprintf ppf "%a" Int64.print i
-
-  let print_of_kind_naked_nativeint ppf (o : of_kind_naked_nativeint) =
-    match o with
-    | Naked_nativeint i -> Format.fprintf ppf "%a" Targetint.print i
-
-  let print_or_unknown_or_bottom print_contents print_unknown_payload ppf
-        (o : _ or_unknown_or_bottom) =
-    match o with
-    | Unknown (reason, payload) ->
-      begin match reason with
-      | Unresolved_value value ->
-        Format.fprintf ppf "?%a(due to unresolved %a)"
-          print_unknown_payload payload
-          print_unresolved_value value
-      | Other -> Format.fprintf ppf "?%a" print_unknown_payload payload
-      end;
-    | Ok contents -> print_contents ppf contents
-    | Bottom -> Format.fprintf ppf "bottom"
-
-  let print_ty_generic print_contents print_unknown_payload ppf ty =
-    (print_with_var_and_symbol
-      (print_maybe_unresolved
-        (print_or_unknown_or_bottom print_contents print_unknown_payload)))
-      ppf ty
-
-  let rec print_of_kind_value ppf (o : of_kind_value) =
-    match o with
-    | Singleton singleton -> print_of_kind_value_singleton ppf singleton
-    | Union (w1, w2) ->
-      let print_part ppf w =
-        print_with_var_and_symbol print_of_kind_value ppf w
-      in
-      Format.fprintf ppf "@[(Union (%a)(%a))@]"
-        print_part w1 print_part w2
-
-  and print_of_kind_value_singleton ppf (singleton : of_kind_value_singleton) =
-    match singleton with
-    | Tagged_immediate t ->
-      Format.fprintf ppf "(tagged_imm %a)" print_ty_naked_immediate t
-    | Boxed_float f ->
-      Format.fprintf ppf "(boxed_float %a)" print_ty_naked_float f
-    | Boxed_int32 n ->
-      Format.fprintf ppf "(boxed_int32 %a)" print_ty_naked_int32 n
-    | Boxed_int64 n ->
-      Format.fprintf ppf "(boxed_int64 %a)" print_ty_naked_int64 n
-    | Boxed_nativeint n ->
-      Format.fprintf ppf "(boxed_nativeint %a)" print_ty_naked_nativeint n
-    | Block (tag, fields) ->
-      Format.fprintf ppf "@[[%a: %a]@]"
-        Tag.Scannable.print tag
-        (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf "; ")
-          print_ty_value) (Array.to_list fields)
-    | Set_of_closures set_of_closures ->
-      print_set_of_closures ppf set_of_closures
-    | Closure { set_of_closures; closure_id; } ->
-      Format.fprintf ppf "(closure:@ @[<2>[@ %a @[<2>from@ %a@];@ ]@])"
-        Closure_id.print closure_id
-        print_ty_value set_of_closures
-    | String { contents; size; } ->
-      begin match contents with
-      | Unknown_or_mutable -> Format.fprintf ppf "string %i" size
-      | Contents s ->
-        let s =
-          if size > 10 then String.sub s 0 8 ^ "..."
-          else s
-        in
-        Format.fprintf ppf "string %i %S" size s
-      end
-    | Float_array float_array ->
-      begin match float_array.contents with
-      | Unknown_or_mutable ->
-        Format.fprintf ppf "float_array %i" float_array.size
-      | Contents _ ->
-        Format.fprintf ppf "float_array_imm %i" float_array.size
-      end
-
-  and print_ty_value ppf (ty : ty_value) =
-    let print_scanning ppf (scanning : K.scanning) =
-      match scanning with
-      | Must_scan -> Format.fprintf ppf "*"
-      | Can_scan -> ()
-    in
-    print_ty_generic print_of_kind_value print_scanning ppf ty
-
-  and print_ty_naked_immediate ppf (ty : ty_naked_immediate) =
-    print_ty_generic print_of_kind_naked_immediate (fun _ () -> ()) ppf ty
-
-  and print_ty_naked_float ppf (ty : ty_naked_float) =
-    print_ty_generic print_of_kind_naked_float (fun _ () -> ()) ppf ty
-
-  and print_ty_naked_int32 ppf (ty : ty_naked_int32) =
-    print_ty_generic print_of_kind_naked_int32 (fun _ () -> ()) ppf ty
-
-  and print_ty_naked_int64 ppf (ty : ty_naked_int64) =
-    print_ty_generic print_of_kind_naked_int64 (fun _ () -> ()) ppf ty
-
-  and print_ty_naked_nativeint ppf (ty : ty_naked_nativeint) =
-    print_ty_generic print_of_kind_naked_nativeint (fun _ () -> ()) ppf ty
-
-  and print ppf (t : t) =
-    match t with
-    | Value ty ->
-      Format.fprintf ppf "(Value (%a))" print_ty_value ty
-    | Naked_immediate ty ->
-      Format.fprintf ppf "(Naked_immediate (%a))" print_ty_naked_immediate ty
-    | Naked_float ty ->
-      Format.fprintf ppf "(Naked_float (%a))" print_ty_naked_float ty
-    | Naked_int32 ty ->
-      Format.fprintf ppf "(Naked_int32 (%a))" print_ty_naked_int32 ty
-    | Naked_int64 ty ->
-      Format.fprintf ppf "(Naked_int64 (%a))" print_ty_naked_int64 ty
-    | Naked_nativeint ty ->
-      Format.fprintf ppf "(Naked_nativeint (%a))" print_ty_naked_nativeint ty
 
   (* CR pchambart:  (This was written for the "join" case)
      merging the closure value might loose information in the
