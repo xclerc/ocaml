@@ -16,12 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Char = Misc.Stdlib.Char
 module Float = Numbers.Float
-module Int = Numbers.Int
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
-module Nativeint = Numbers.Nativeint
 
 module K = Flambda_kind
 
@@ -168,10 +165,6 @@ end) = struct
     var : Variable.t option;
     symbol : (Symbol.t * int option) option;
   }
-
-  type 'a or_wrong =
-    | Ok of 'a
-    | Wrong
 
   type t =
     | Value of ty_value
@@ -446,16 +439,6 @@ end) = struct
     | Naked_int32 ty -> Naked_int32 { ty with var; }
     | Naked_int64 ty -> Naked_int64 { ty with var; }
     | Naked_nativeint ty -> Naked_nativeint { ty with var; }
-
-  let augment_with_symbol (t : t) symbol : t =
-    let symbol = Some symbol in
-    match t with
-    | Value ty -> Value { ty with symbol; }
-    | Naked_immediate ty -> Naked_immediate { ty with symbol; }
-    | Naked_float ty -> Naked_float { ty with symbol; }
-    | Naked_int32 ty -> Naked_int32 { ty with symbol; }
-    | Naked_int64 ty -> Naked_int64 { ty with symbol; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with symbol; }
 
   let augment_with_symbol_internal (t : t) symbol field : t =
     let symbol = Some (symbol, field) in
@@ -1688,7 +1671,7 @@ end) = struct
     | Bottom -> t
 *)
 
-  let join_unknown_payload_for_value descr1 scanning1 descr2 scanning2_opt =
+  let join_unknown_payload_for_value _descr1 scanning1 descr2 scanning2_opt =
     let scanning2 : K.scanning =
       match scanning2_opt with
       | Some scanning2 -> scanning2
@@ -1837,7 +1820,7 @@ end) = struct
     | Union _, Singleton _
     | Union _, Union _ -> form_union ()
 
-  and join_of_kind_naked_immediate ~importer
+  and join_of_kind_naked_immediate ~importer:_
         _ty1 (t1 : of_kind_naked_immediate) _ty2 (t2 : of_kind_naked_immediate)
         : (of_kind_naked_immediate, _) or_unknown_or_bottom =
     match t1, t2 with
@@ -1845,7 +1828,7 @@ end) = struct
       if not (Immediate.equal i1 i2) then Unknown (Other, ())
       else Ok ((Naked_immediate i1) : of_kind_naked_immediate)
 
-  and join_of_kind_naked_float ~importer
+  and join_of_kind_naked_float ~importer:_
         _ty1 (t1 : of_kind_naked_float) _ty2 (t2 : of_kind_naked_float)
         : (of_kind_naked_float, _) or_unknown_or_bottom =
     match t1, t2 with
@@ -1853,7 +1836,7 @@ end) = struct
       if not (Float.equal i1 i2) then Unknown (Other, ())
       else Ok ((Naked_float i1) : of_kind_naked_float)
 
-  and join_of_kind_naked_int32 ~importer
+  and join_of_kind_naked_int32 ~importer:_
         _ty1 (t1 : of_kind_naked_int32) _ty2 (t2 : of_kind_naked_int32)
         : (of_kind_naked_int32, _) or_unknown_or_bottom =
     match t1, t2 with
@@ -1861,7 +1844,7 @@ end) = struct
       if not (Int32.equal i1 i2) then Unknown (Other, ())
       else Ok ((Naked_int32 i1) : of_kind_naked_int32)
 
-  and join_of_kind_naked_int64 ~importer
+  and join_of_kind_naked_int64 ~importer:_
         _ty1 (t1 : of_kind_naked_int64) _ty2 (t2 : of_kind_naked_int64)
         : (of_kind_naked_int64, _) or_unknown_or_bottom =
     match t1, t2 with
@@ -1869,7 +1852,7 @@ end) = struct
       if not (Int64.equal i1 i2) then Unknown (Other, ())
       else Ok ((Naked_int64 i1) : of_kind_naked_int64)
 
-  and join_of_kind_naked_nativeint ~importer
+  and join_of_kind_naked_nativeint ~importer:_
         _ty1 (t1 : of_kind_naked_nativeint) _ty2 (t2 : of_kind_naked_nativeint)
         : (of_kind_naked_nativeint, _) or_unknown_or_bottom =
     match t1, t2 with
