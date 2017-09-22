@@ -205,13 +205,13 @@ module Stdlib = struct
 
     let set t contents =
       match !t with
-      | Some _ -> Misc.fatal_error "Set_once.set: cannot [set] twice"
+      | Some _ -> fatal_error "Set_once.set: cannot [set] twice"
       | None -> t := Some contents
 
     let get t = !t
 
-    let print print_contents t =
-      Option.print print_contents !t
+    let print print_contents ppf t =
+      Option.print print_contents ppf !t
   end
 end
 

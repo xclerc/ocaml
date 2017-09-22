@@ -251,8 +251,8 @@ end) = struct
   and set_of_closures = {
     function_decls : function_declarations;
     closure_elements : t Var_within_closure.Map.t;
-    invariant_params : Variable.Set.t Variable.Map.t Misc.Stdlib.Set_once.t;
-    size : int option Variable.Map.t Misc.Stdlib.Set_once.t;
+    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
+    size : int option Variable.Map.t lazy_t;
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
@@ -280,6 +280,8 @@ end) = struct
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
 
+  let _ = Expr.print  (* temporarily silence compiler warning *)
+
   (* CR mshinwell: we should probably enhance this for debugging *)
   let print_funs ppf funs =
     match funs with
@@ -304,8 +306,7 @@ end) = struct
     Format.fprintf ppf
       "(function_decls:@ %a invariant_params=%a)"
       print_function_declarations function_decls
-      (Misc.Stdlib.Set_once.print (Variable.Map.print Variable.Set.print))
-      invariant_params
+      (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
 
   let print_unresolved_value ppf (unresolved : unresolved_value) =
     match unresolved with
@@ -1454,14 +1455,15 @@ end) = struct
         (o : (of_kind_value, _) or_unknown_or_bottom) : K.scanning =
     match o with
     | Unknown _ -> Must_scan
-    | Bottom -> false
+    | Bottom -> Can_scan
     | Ok of_kind_value ->
-      let rec must_scan_of_kind_value (o : of_kind_value) =
+      let rec must_scan_of_kind_value (o : of_kind_value) : K.scanning =
         match o with
-        | Singleton (Tagged_immediate _) -> false
-        | Singleton _ -> true
+        | Singleton (Tagged_immediate _) -> Can_scan
+        | Singleton _ -> Must_scan
         | Union (w1, w2) ->
-          must_scan_of_kind_value w1.descr || must_scan_of_kind_value w2.descr
+          K.join_scanning (must_scan_of_kind_value w1.descr)
+            (must_scan_of_kind_value w2.descr)
       in
       must_scan_of_kind_value of_kind_value
 
@@ -1534,22 +1536,14 @@ end) = struct
     }
 
   (* CR mshinwell: crappy name *)
-  let create_set_of_closures ~function_decls ~size ~bound_vars
-        ~invariant_params ~freshening
-        ~direct_call_surrogates : set_of_closures =
+  let create_set_of_closures ~function_decls ~size ~closure_elements
+        ~invariant_params ~direct_call_surrogates : set_of_closures =
     { function_decls;
-      bound_vars;
+      closure_elements;
       invariant_params;
       size;
-      freshening;
       direct_call_surrogates;
     }
-
-  let update_freshening_of_set_of_closures set_of_closures
-        ~freshening =
-    (* CR-someday mshinwell: We could maybe check that [freshening] is
-       reasonable. *)
-    { set_of_closures with freshening; }
 
   let set_of_closures ?set_of_closures_var set_of_closures : t =
     Value {
@@ -1624,9 +1618,29 @@ end) = struct
         Array.fold_left (fun acc t -> free_variables_ty_value t acc)
           acc fields
       | Set_of_closures set_of_closures ->
-        Var_within_closure.Map.fold (fun _var t acc ->
-            free_variables t acc)
-          set_of_closures.bound_vars acc
+        let acc =
+          Var_within_closure.Map.fold (fun _var t acc ->
+              free_variables t acc)
+            set_of_closures.closure_elements acc
+        in
+        begin match set_of_closures.function_decls.funs with
+        | Non_inlinable funs ->
+          Variable.Map.fold
+            (fun _fun_var (decl : non_inlinable_function_declaration) acc ->
+              free_variables decl.result acc)
+            funs
+            acc
+        | Inlinable funs ->
+          Variable.Map.fold
+            (fun _fun_var (decl : inlinable_function_declaration) acc ->
+              let acc = free_variables decl.result acc in
+              List.fold_left (fun acc (_param, ty) ->
+                  free_variables ty acc)
+                acc
+                decl.params)
+            funs
+            acc
+        end
       | Closure { set_of_closures; closure_id = _; } ->
         free_variables_ty_value set_of_closures acc
       | String _ -> acc
@@ -1716,9 +1730,7 @@ end) = struct
     let scanning2 : K.scanning =
       match scanning2_opt with
       | Some scanning2 -> scanning2
-      | None ->
-        if must_scan_of_kind_value_or_unknown_or_bottom descr2 then Must_scan
-        else Can_scan
+      | None -> must_scan_of_kind_value_or_unknown_or_bottom descr2
     in
     K.join_scanning scanning1 scanning2
 

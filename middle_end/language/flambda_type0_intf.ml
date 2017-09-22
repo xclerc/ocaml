@@ -19,13 +19,6 @@
 module type S = sig
   type expr
 
-  type closure_freshening =
-    { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
-      closure_id : Closure_id.t Closure_id.Map.t;
-    }
-
-  val print_closure_freshening : Format.formatter -> closure_freshening -> unit
-
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
@@ -173,8 +166,10 @@ module type S = sig
   and set_of_closures = private {
     function_decls : function_declarations;
     closure_elements : t Var_within_closure.Map.t;
-    invariant_params : Variable.Set.t Variable.Map.t Misc.Stdlib.Set_once.t;
-    size : int option Variable.Map.t Misc.Stdlib.Set_once.t;
+    (* CR mshinwell: try to change these to [Misc.Stdlib.Set_once.t]?
+       (ask xclerc) *)
+    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
+    size : int option Variable.Map.t lazy_t;
     (** For functions that are very likely to be inlined, the size of the
         function's body. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
@@ -279,9 +274,8 @@ module type S = sig
   val create_set_of_closures
      : function_decls:function_declarations
     -> size:int option Variable.Map.t lazy_t
-    -> bound_vars:t Var_within_closure.Map.t
+    -> closure_elements:t Var_within_closure.Map.t
     -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
-    -> freshening:closure_freshening
     -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> set_of_closures
 
@@ -291,12 +285,6 @@ module type S = sig
      : ?set_of_closures_var:Variable.t
     -> set_of_closures
     -> t
-
-  (** Change the closure freshening inside a set of closures type. *)
-  val update_freshening_of_set_of_closures
-     : set_of_closures
-    -> freshening:closure_freshening
-    -> set_of_closures
 
   (** Augment the toplevel of the given type with the given variable.  If the
       type was already augmented with a variable, the one passed to this
