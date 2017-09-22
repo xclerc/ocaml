@@ -615,7 +615,7 @@ module Summary = struct
       Or_not_all_values_known.join (fun is1 is2 : Nativeint.Set.t or_wrong ->
           Nativeint.Set.union is1 is2)
         is1 is2
-    | Closures closures1, Closures closures2 ->
+    | Closure closures1, Closure closures2 ->
       Or_not_all_values_known.join (fun map1 map2 : _ or_wrong ->
           ...)
         closures1 closures2
