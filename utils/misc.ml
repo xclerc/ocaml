@@ -197,6 +197,22 @@ module Stdlib = struct
         else loop (succ i) in
       loop 0
   end
+
+  module Set_once = struct
+    type 'a t = 'a option ref
+
+    let create () = ref None
+
+    let set t contents =
+      match !t with
+      | Some _ -> Misc.fatal_error "Set_once.set: cannot [set] twice"
+      | None -> t := Some contents
+
+    let get t = !t
+
+    let print print_contents t =
+      Option.print print_contents !t
+  end
 end
 
 let may = Stdlib.Option.iter

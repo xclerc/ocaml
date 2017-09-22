@@ -17,7 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module type S = sig
-  type function_declarations
+  type expr
 
   type closure_freshening =
     { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
@@ -138,17 +138,45 @@ module type S = sig
     | String of string_ty
     | Float_array of float_array_ty
 
-  (* CR-soon mshinwell: add support for the approximations of the results,
-     so we can do all of the tricky higher-order cases. *)
+  and funs =
+    | Non_inlinable of non_inlinable_function_declaration Variable.Map.t
+    | Inlinable of inlinable_function_declaration Variable.Map.t
+ 
+  and function_declarations = {
+    set_of_closures_id : Set_of_closures_id.t;
+    set_of_closures_origin : Set_of_closures_origin.t;
+    funs : funs;
+  }
+
+  and function_body = {
+    body : expr;
+    free_variables : Variable.Set.t;
+    free_symbols : Symbol.Set.t;
+  }
+
+  and inlinable_function_declaration = private {
+    closure_origin : Closure_origin.t;
+    params : (Parameter.t * t) list;
+    body : function_body;
+    result : t;
+    stub : bool;
+    dbg : Debuginfo.t;
+    inline : Lambda.inline_attribute;
+    specialise : Lambda.specialise_attribute;
+    is_a_functor : bool;
+  }
+
+  and non_inlinable_function_declaration = private {
+    result : t;
+  }
+
   and set_of_closures = private {
     function_decls : function_declarations;
-    bound_vars : t Var_within_closure.Map.t;
-    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-    size : int option Variable.Map.t lazy_t;
+    closure_elements : t Var_within_closure.Map.t;
+    invariant_params : Variable.Set.t Variable.Map.t Misc.Stdlib.Set_once.t;
+    size : int option Variable.Map.t Misc.Stdlib.Set_once.t;
     (** For functions that are very likely to be inlined, the size of the
         function's body. *)
-    freshening : closure_freshening;
-    (** Any freshening that has been applied to [function_decls]. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
