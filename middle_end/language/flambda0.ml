@@ -1489,9 +1489,8 @@ end = struct
       Format.pp_print_list ~pp_sep:Format.pp_print_space print ppf t
   end
 end and Flambda_type : sig
-  include Flambda_type0_intf.S
-    with type function_declarations := Function_declarations.t
-end = Flambda_type0.Make (Function_declarations)
+  include Flambda_type0_intf.S with type expr := Expr.t
+end = Flambda_type0.Make (Expr)
 
 module With_free_variables = struct
   type 'a t =

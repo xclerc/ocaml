@@ -22,11 +22,11 @@ module Int64 = Numbers.Int64
 
 module K = Flambda_kind
 
-module Make (Function_declarations : sig
+module Make (Expr : sig
   type t
   val print : Format.formatter -> t -> unit
 end) = struct
-  type function_declarations = Function_declarations.t
+  type expr = Expr.t
 
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
@@ -59,19 +59,6 @@ end) = struct
     match ll with
     | Export_id id -> Format.fprintf ppf "(eid %a)" Export_id.print id
     | Symbol sym -> Format.fprintf ppf "(sym %a)" Symbol.print sym
-
-  (* CR mshinwell: Remove this once Pierre's patch lands *)
-  type closure_freshening =
-    { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
-      closure_id : Closure_id.t Closure_id.Map.t;
-    }
-
-  let print_closure_freshening ppf t =
-    Format.fprintf ppf "{ vars_within_closure %a, closure_id %a }"
-      (Var_within_closure.Map.print Var_within_closure.print)
-      t.vars_within_closure
-      (Closure_id.Map.print Closure_id.print)
-      t.closure_id
 
   (* CR mshinwell: update comment *)
   (* A value of type [T.t] corresponds to an "approximation" of the result of
@@ -229,17 +216,43 @@ end) = struct
     | String of string_ty
     | Float_array of float_array_ty
 
-  (* CR-soon mshinwell: add support for the approximations of the results,
-     so we can do all of the tricky higher-order cases. *)
+  and funs =
+    | Non_inlinable of non_inlinable_function_declaration Variable.Map.t
+    | Inlinable of inlinable_function_declaration Variable.Map.t
+ 
+  and function_declarations = {
+    set_of_closures_id : Set_of_closures_id.t;
+    set_of_closures_origin : Set_of_closures_origin.t;
+    funs : funs;
+  }
+
+  and function_body = {
+    body : expr;
+    free_variables : Variable.Set.t;
+    free_symbols : Symbol.Set.t;
+  }
+
+  and inlinable_function_declaration = {
+    closure_origin : Closure_origin.t;
+    params : (Parameter.t * t) list;
+    body : function_body;
+    result : t;
+    stub : bool;
+    dbg : Debuginfo.t;
+    inline : Lambda.inline_attribute;
+    specialise : Lambda.specialise_attribute;
+    is_a_functor : bool;
+  }
+
+  and non_inlinable_function_declaration = {
+    result : t;
+  }
+
   and set_of_closures = {
     function_decls : function_declarations;
-    bound_vars : t Var_within_closure.Map.t;
+    closure_elements : t Var_within_closure.Map.t;
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
     size : int option Variable.Map.t lazy_t;
-    (** For functions that are very likely to be inlined, the size of the
-        function's body. *)
-    freshening : closure_freshening;
-    (** Any freshening that has been applied to [function_decls]. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
@@ -267,13 +280,33 @@ end) = struct
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
 
-  let print_set_of_closures ppf
-        { function_decls; invariant_params; freshening; _ } =
+  let _ = Expr.print  (* temporarily silence compiler warning *)
+
+  (* CR mshinwell: we should probably enhance this for debugging *)
+  let print_funs ppf funs =
+    match funs with
+    | Non_inlinable funs ->
+      Format.fprintf ppf "@[(non_inlinable %a)@]"
+        Variable.Set.print (Variable.Map.keys funs)
+    | Inlinable funs ->
+      Format.fprintf ppf "@[(inlinable %a)@]"
+        Variable.Set.print (Variable.Map.keys funs)
+
+  let print_function_declarations ppf function_decls =
     Format.fprintf ppf
-      "(set_of_closures:@ %a invariant_params=%a freshening=%a)"
-      Function_declarations.print function_decls
+      "@[(@[(set_of_closures_id %a)@]@,\
+          @[(set_of_closures_origin %a)@]@,\
+          @[(funs %a)@]@]"
+      Set_of_closures_id.print function_decls.set_of_closures_id
+      Set_of_closures_origin.print function_decls.set_of_closures_origin
+      print_funs function_decls.funs
+
+  let print_set_of_closures ppf
+        { function_decls; invariant_params; _ } =
+    Format.fprintf ppf
+      "(function_decls:@ %a invariant_params=%a)"
+      print_function_declarations function_decls
       (Variable.Map.print Variable.Set.print) (Lazy.force invariant_params)
-      print_closure_freshening freshening
 
   let print_unresolved_value ppf (unresolved : unresolved_value) =
     match unresolved with
@@ -940,6 +973,15 @@ end) = struct
         symbol = None;
       }
 
+  let unknown (kind : K.t) =
+    match kind with
+    | Value scanning -> any_value scanning
+    | Naked_immediate -> any_naked_immediate ()
+    | Naked_float -> any_naked_float ()
+    | Naked_int32 -> any_naked_int32 ()
+    | Naked_int64 -> any_naked_int64 ()
+    | Naked_nativeint -> any_naked_nativeint ()
+
   let any_tagged_immediate () : t =
     let i : ty_naked_immediate =
       { descr = Ok (Unknown (Other, ()));
@@ -1412,7 +1454,7 @@ end) = struct
   let must_scan_of_kind_value_or_unknown_or_bottom
         (o : (of_kind_value, _) or_unknown_or_bottom) : K.scanning =
     match o with
-    | Unknown (_reason, scanning) -> scanning
+    | Unknown _ -> Must_scan
     | Bottom -> Can_scan
     | Ok of_kind_value ->
       let rec must_scan_of_kind_value (o : of_kind_value) : K.scanning =
@@ -1435,10 +1477,10 @@ end) = struct
     | Value ty ->
       let module I = (val importer : Importer) in
       let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
-      let must_scan =
+      let scanning =
         must_scan_of_kind_value_or_unknown_or_bottom resolved_ty_value.descr
       in
-      K.value must_scan
+      K.value scanning
 
 (*
   (* CR mshinwell: read carefully *)
@@ -1494,22 +1536,14 @@ end) = struct
     }
 
   (* CR mshinwell: crappy name *)
-  let create_set_of_closures ~function_decls ~size ~bound_vars
-        ~invariant_params ~freshening
-        ~direct_call_surrogates : set_of_closures =
+  let create_set_of_closures ~function_decls ~size ~closure_elements
+        ~invariant_params ~direct_call_surrogates : set_of_closures =
     { function_decls;
-      bound_vars;
+      closure_elements;
       invariant_params;
       size;
-      freshening;
       direct_call_surrogates;
     }
-
-  let update_freshening_of_set_of_closures set_of_closures
-        ~freshening =
-    (* CR-someday mshinwell: We could maybe check that [freshening] is
-       reasonable. *)
-    { set_of_closures with freshening; }
 
   let set_of_closures ?set_of_closures_var set_of_closures : t =
     Value {
@@ -1584,9 +1618,29 @@ end) = struct
         Array.fold_left (fun acc t -> free_variables_ty_value t acc)
           acc fields
       | Set_of_closures set_of_closures ->
-        Var_within_closure.Map.fold (fun _var t acc ->
-            free_variables t acc)
-          set_of_closures.bound_vars acc
+        let acc =
+          Var_within_closure.Map.fold (fun _var t acc ->
+              free_variables t acc)
+            set_of_closures.closure_elements acc
+        in
+        begin match set_of_closures.function_decls.funs with
+        | Non_inlinable funs ->
+          Variable.Map.fold
+            (fun _fun_var (decl : non_inlinable_function_declaration) acc ->
+              free_variables decl.result acc)
+            funs
+            acc
+        | Inlinable funs ->
+          Variable.Map.fold
+            (fun _fun_var (decl : inlinable_function_declaration) acc ->
+              let acc = free_variables decl.result acc in
+              List.fold_left (fun acc (_param, ty) ->
+                  free_variables ty acc)
+                acc
+                decl.params)
+            funs
+            acc
+        end
       | Closure { set_of_closures; closure_id = _; } ->
         free_variables_ty_value set_of_closures acc
       | String _ -> acc
@@ -1676,9 +1730,7 @@ end) = struct
     let scanning2 : K.scanning =
       match scanning2_opt with
       | Some scanning2 -> scanning2
-      | None ->
-        if must_scan_of_kind_value_or_unknown_or_bottom descr2 then Must_scan
-        else Can_scan
+      | None -> must_scan_of_kind_value_or_unknown_or_bottom descr2
     in
     K.join_scanning scanning1 scanning2
 
@@ -1900,22 +1952,24 @@ end) = struct
       join_of_kind_naked_nativeint join_unknown_payload_for_non_value ty1 ty2
 
   let join ~importer (t1 : t) (t2 : t) : t =
-    match t1, t2 with
-    | Value ty1, Value ty2 ->
-      Value (join_ty_value ~importer ty1 ty2)
-    | Naked_immediate ty1, Naked_immediate ty2 ->
-      Naked_immediate (join_ty_naked_immediate ~importer ty1 ty2)
-    | Naked_float ty1, Naked_float ty2 ->
-      Naked_float (join_ty_naked_float ~importer ty1 ty2)
-    | Naked_int32 ty1, Naked_int32 ty2 ->
-      Naked_int32 (join_ty_naked_int32 ~importer ty1 ty2)
-    | Naked_int64 ty1, Naked_int64 ty2 ->
-      Naked_int64 (join_ty_naked_int64 ~importer ty1 ty2)
-    | Naked_nativeint ty1, Naked_nativeint ty2 ->
-      Naked_nativeint (join_ty_naked_nativeint ~importer ty1 ty2)
-    | _, _ ->
-      Misc.fatal_errorf "Cannot take the join of two types with different \
-          kinds: %a and %a"
-        print t1
-        print t2
+    if t1 == t2 then t1
+    else
+      match t1, t2 with
+      | Value ty1, Value ty2 ->
+        Value (join_ty_value ~importer ty1 ty2)
+      | Naked_immediate ty1, Naked_immediate ty2 ->
+        Naked_immediate (join_ty_naked_immediate ~importer ty1 ty2)
+      | Naked_float ty1, Naked_float ty2 ->
+        Naked_float (join_ty_naked_float ~importer ty1 ty2)
+      | Naked_int32 ty1, Naked_int32 ty2 ->
+        Naked_int32 (join_ty_naked_int32 ~importer ty1 ty2)
+      | Naked_int64 ty1, Naked_int64 ty2 ->
+        Naked_int64 (join_ty_naked_int64 ~importer ty1 ty2)
+      | Naked_nativeint ty1, Naked_nativeint ty2 ->
+        Naked_nativeint (join_ty_naked_nativeint ~importer ty1 ty2)
+      | _, _ ->
+        Misc.fatal_errorf "Cannot take the join of two types with different \
+            kinds: %a and %a"
+          print t1
+          print t2
 end

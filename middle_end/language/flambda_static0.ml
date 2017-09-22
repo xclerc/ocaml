@@ -146,11 +146,29 @@ module Program_body = struct
     | Int64 of Flambda0.Expr.t * Continuation.t
     | Nativeint of Flambda0.Expr.t * Continuation.t
 
+  let kind_of_initialize_symbol is =
+    match is with
+    | Values { fields; _ } ->
+      let scanning : Flambda_kind.scanning =
+        match fields with
+        | [] -> Can_scan
+        | (_expr, scanning, _cont)::fields ->
+          List.fold_left (fun result (_expr, scanning, _cont) ->
+              Flambda_kind.join_scanning scanning result)
+            scanning
+            fields
+      in
+      Flambda_kind.value scanning
+    | Float _ -> Flambda_kind.naked_float ()
+    | Int32 _ -> Flambda_kind.naked_int32 ()
+    | Int64 _ -> Flambda_kind.naked_int64 ()
+    | Nativeint _ -> Flambda_kind.naked_nativeint ()
+
   type t =
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
     | Let_rec_symbol of (Symbol.t * Constant_defining_value.t) list * t
     | Initialize_symbol of Symbol.t * initialize_symbol * t
-    | Effect of F0.Expr.t * Flambda_kind.t * Continuation.t * t
+    | Effect of F0.Expr.t * Continuation.t * t
     | End of Symbol.t
 
   let rec print ppf (program : t) =
@@ -236,9 +254,8 @@ module Program_body = struct
           F0.Expr.print defn
       end;
       print ppf program
-    | Effect (expr, kind, cont, program) ->
-      fprintf ppf "@[effect(%a) @[<v 2><%a>:@. %a@]@]"
-        Flambda_kind.print kind
+    | Effect (expr, cont, program) ->
+      fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
         Continuation.print cont
         F0.Expr.print expr;
       print ppf program;
@@ -269,7 +286,7 @@ module Program_body = struct
           symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr)
         end;
         loop program
-      | Effect (expr, _kind, _cont, program) ->
+      | Effect (expr, _cont, program) ->
         symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr);
         loop program
       | End symbol -> symbols := Symbol.Set.add symbol !symbols

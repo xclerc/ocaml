@@ -2680,7 +2680,8 @@ let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
     let module Backend = (val (E.backend env) : Backend_intf.S) in
     let env = E.add_symbol env symbol ty in
     let program, r = simplify_program_body env r program in
-    (* CR mshinwell: This should turn things into [Effect] when it can, no? *)
+    (* The [Initialize_symbol] will be turned into an [Effect], if suitable,
+       by [Remove_unused_program_constructs]. *)
     Initialize_symbol (symbol, tag, fields, program), r
   | Effect (expr, cont, program) ->
     let expr : Flambda.Expr.t =

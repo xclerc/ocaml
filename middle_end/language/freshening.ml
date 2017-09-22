@@ -269,205 +269,13 @@ let rewrite_recursive_calls_with_symbols t
       Flambda.Function_declarations.update function_declarations ~funs
     end
 
-module Project_var = struct
-  type t = Flambda_type0.closure_freshening =
-    { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
-      closure_id : Closure_id.t Closure_id.Map.t }
-
-  let empty =
-    { vars_within_closure = Var_within_closure.Map.empty;
-      closure_id = Closure_id.Map.empty;
-    }
-
-  let print = Flambda_type0.print_closure_freshening
-
-  let new_subst_fv t id subst =
-    match subst with
-    | Inactive -> id, subst, t
-    | Active subst ->
-      let id' = Variable.rename id in
-      let subst = add_sb_var subst id id' in
-      let off = Var_within_closure.wrap id in
-      let off' = Var_within_closure.wrap id' in
-      let off_sb = Var_within_closure.Map.add off off' t.vars_within_closure in
-      id', Active subst, { t with vars_within_closure = off_sb; }
-
-  let new_subst_fun t id subst =
-    let id' = Variable.rename id in
-    let subst = add_sb_var subst id id' in
-    let off = Closure_id.wrap id in
-    let off' = Closure_id.wrap id' in
-    let off_sb = Closure_id.Map.add off off' t.closure_id in
-    id', subst, { t with closure_id = off_sb; }
-
-  (** Returns :
-      * The map of new_identifiers -> expression
-      * The new environment with added substitution
-      * a fresh ffunction_subst with only the substitution of free variables
-   *)
-  let subst_free_vars fv subst ~only_freshen_parameters
-      : (Flambda.Free_var.t * _) Variable.Map.t * _ * _ =
-    Variable.Map.fold (fun id lam (fv, subst, t) ->
-        let id, subst, t =
-          if only_freshen_parameters then
-            id, subst, t
-          else
-            new_subst_fv t id subst
-        in
-        Variable.Map.add id lam fv, subst, t)
-      fv
-      (Variable.Map.empty, subst, empty)
-
-  (** Returns :
-      * The function_declaration with renamed function identifiers
-      * The new environment with added substitution
-      * The ffunction_subst completed with function substitution
-
-      subst_free_vars must have been used to build off_sb
-   *)
-  let func_decls_subst t (subst : subst)
-        (func_decls : Flambda.Function_declarations.t)
-        ~only_freshen_parameters =
-    match subst with
-    | Inactive -> func_decls, subst, t
-    | Active subst ->
-      let subst_func_decl _fun_id (func_decl : Flambda.Function_declaration.t)
-          subst =
-        let params, subst = active_add_parameters' subst func_decl.params in
-        (* Since all parameters are distinct, even between functions, we can
-           just use a single substitution. *)
-        let body =
-          Flambda.Expr.toplevel_substitution subst.sb_var func_decl.body
-        in
-        let function_decl =
-          Flambda.update_function_decl's_params_and_body func_decl
-            ~params ~body
-        in
-        function_decl, subst
-      in
-      let subst, t =
-        if only_freshen_parameters then
-          subst, t
-        else
-          Variable.Map.fold (fun orig_id _func_decl (subst, t) ->
-              let _id, subst, t = new_subst_fun t orig_id subst in
-              subst, t)
-            func_decls.funs
-            (subst, t)
-      in
-      let funs, subst =
-        Variable.Map.fold (fun orig_id func_decl (funs, subst) ->
-            let func_decl, subst = subst_func_decl orig_id func_decl subst in
-            let id =
-              if only_freshen_parameters then orig_id
-              else active_find_var_exn subst orig_id
-            in
-            let funs = Variable.Map.add id func_decl funs in
-            funs, subst)
-          func_decls.funs
-          (Variable.Map.empty, subst)
-      in
-      let function_decls =
-        Flambda.Function_declarations.update func_decls ~funs
-      in
-      function_decls, Active subst, t
-
-  let apply_closure_id t closure_id =
-    try Closure_id.Map.find closure_id t.closure_id
-    with Not_found -> closure_id
-
-  let apply_closure_ids t closure_id =
-    try Closure_id.Set.map (fun id -> Closure_id.Map.find id t.closure_id) closure_id
-    with Not_found -> closure_id
-
-  let apply_var_within_closure t var_in_closure =
-    try Var_within_closure.Map.find var_in_closure t.vars_within_closure
-    with Not_found -> var_in_closure
-
-  module Compose (T : Identifiable.S) = struct
-    let compose ~earlier ~later =
-      if (T.Map.equal T.equal) earlier later
-        || T.Map.cardinal later = 0
-      then
-        earlier
-      else
-        T.Map.mapi (fun src_var var ->
-            if T.Map.mem src_var later then begin
-              Misc.fatal_errorf "Freshening.Project_var.compose: domains \
-                  of substitutions must be disjoint.  earlier=%a later=%a"
-                (T.Map.print T.print) earlier
-                (T.Map.print T.print) later
-            end;
-            match T.Map.find var later with
-            | exception Not_found -> var
-            | var -> var)
-          earlier
-  end
-
-  module V = Compose (Var_within_closure)
-  module C = Compose (Closure_id)
-
-  let compose ~earlier ~later : t =
-    { vars_within_closure =
-        V.compose ~earlier:earlier.vars_within_closure
-          ~later:later.vars_within_closure;
-      closure_id =
-        C.compose ~earlier:earlier.closure_id
-          ~later:later.closure_id;
-    }
-end
-
-let apply_function_decls_and_free_vars t fv func_decls
-      ~only_freshen_parameters =
-  let module I = Project_var in
-  let fv, t, of_closures = I.subst_free_vars fv t ~only_freshen_parameters in
-  let func_decls, t, of_closures =
-    I.func_decls_subst of_closures t func_decls ~only_freshen_parameters
-  in
-  fv, func_decls, t, of_closures
-
 let does_not_freshen t vars =
   match t with
   | Inactive -> true
   | Active subst ->
     not (List.exists (fun var -> Variable.Map.mem var subst.sb_var) vars)
 
-let freshen_project_var (var: Var_within_closure.t Closure_id.Map.t)
-      ~closure_freshening : Var_within_closure.t Closure_id.Map.t =
-  Closure_id.Map.fold (fun closure_id var map ->
-    let closure_id =
-      Project_var.apply_closure_id closure_freshening closure_id
-    in
-    let var =
-      Project_var.apply_var_within_closure closure_freshening var
-    in
-    assert(not (Closure_id.Map.mem closure_id map));
-    Closure_id.Map.add closure_id var map)
-    var Closure_id.Map.empty
-
-let freshen_move_within_set_of_closures (move:Closure_id.t Closure_id.Map.t)
-      ~closure_freshening : Closure_id.t Closure_id.Map.t =
-  (* Format.printf "plop@ %a@." *)
-  (*   (Closure_id.Map.print Closure_id.print) move; *)
-  Closure_id.Map.fold (fun start_from move_to map ->
-    let start_from =
-      Project_var.apply_closure_id closure_freshening start_from
-    in
-    let move_to =
-      Project_var.apply_closure_id closure_freshening move_to
-    in
-    assert(not (Closure_id.Map.mem start_from map));
-    Closure_id.Map.add start_from move_to map)
-    move Closure_id.Map.empty
-
-let freshen_projection (projection : Projection.t) ~freshening
-      ~closure_freshening : Projection.t =
-  let get_closure_freshening () =
-    match closure_freshening with
-    | Some closure_freshening -> closure_freshening
-    | None ->
-      Misc.fatal_error "Closure freshening has not been provided"
-  in
+let freshen_projection (projection : Projection.t) ~freshening : Projection.t =
   match projection with
   | Project_var project_var ->
     let closure_freshening = get_closure_freshening () in
@@ -476,16 +284,14 @@ let freshen_projection (projection : Projection.t) ~freshening
       closure = apply_variable freshening project_var.closure;
     }
   | Project_closure { set_of_closures; closure_id; } ->
-    let closure_freshening = get_closure_freshening () in
     Project_closure {
       set_of_closures = apply_variable freshening set_of_closures;
-      closure_id = Project_var.apply_closure_ids closure_freshening closure_id;
+      closure_id;
     }
   | Move_within_set_of_closures { closure; move } ->
-    let closure_freshening = get_closure_freshening () in
     Move_within_set_of_closures {
       closure = apply_variable freshening closure;
-      move = freshen_move_within_set_of_closures ~closure_freshening move;
+      move;
     }
   | Field (field_index, var) ->
     Field (field_index, apply_variable freshening var)
@@ -494,26 +300,24 @@ let freshen_projection (projection : Projection.t) ~freshening
   | Switch var ->
     Switch (apply_variable freshening var)
 
-let freshen_free_vars_projection_relation relation ~freshening
-      ~closure_freshening =
+let freshen_free_vars_projection_relation relation ~freshening =
   Variable.Map.map (fun (spec_to : Flambda.Free_var.t) ->
       let projection =
         match spec_to.projection with
         | None -> None
         | Some projection ->
-          Some (freshen_projection projection ~freshening ~closure_freshening)
+          Some (freshen_projection projection ~freshening)
       in
       { spec_to with projection; })
     relation
 
-let freshen_free_vars_projection_relation' relation ~freshening
-      ~closure_freshening =
+let freshen_free_vars_projection_relation' relation ~freshening =
   Variable.Map.map (fun ((spec_to : Flambda.Free_var.t), data) ->
       let projection =
         match spec_to.projection with
         | None -> None
         | Some projection ->
-          Some (freshen_projection projection ~freshening ~closure_freshening)
+          Some (freshen_projection projection ~freshening)
       in
       { spec_to with projection; }, data)
     relation

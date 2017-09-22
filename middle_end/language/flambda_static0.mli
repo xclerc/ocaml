@@ -74,6 +74,8 @@ module Program_body : sig
     | Int64 of Flambda0.Expr.t * Continuation.t
     | Nativeint of Flambda0.Expr.t * Continuation.t
 
+  val kind_of_initialize_symbol : initialize_symbol -> Flambda_kind.t
+
   type t =
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
     (** Define the given symbol to have the given constant value. *)
@@ -105,7 +107,7 @@ module Program_body : sig
         description; but with a possibly non-constant initializer.  The
         initializer will be executed at most once (from the entry point of
         the compilation unit). *)
-    | Effect of Flambda0.Expr.t * Flambda_kind.t * Continuation.t * t
+    | Effect of Flambda0.Expr.t * Continuation.t * t
     (** Cause the given expression, which may have a side effect, to be
         executed.  The result, which must be of kind [Value], is discarded
         and the zero-arity continuation called.  [Effect] constructions

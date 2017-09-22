@@ -110,6 +110,25 @@ module Stdlib : sig
        Invalid_argument if the two arrays are determined to have
        different lengths. *)
   end
+
+  module Set_once : sig
+    (** A mutable container whose contents may only be modified once. *)
+    type 'a t
+
+    val create : unit -> 'a t
+
+    val set : 'a t -> 'a -> unit
+    (** If [set] has already been called on the given value of type ['a t]
+        then a fatal error will result. *)
+
+    val get : 'a t -> 'a option
+
+    val print
+       : (Format.formatter -> 'a -> unit)
+      -> Format.formatter
+      -> 'a t
+      -> unit
+  end
 end
 
 val find_in_path: string list -> string -> string

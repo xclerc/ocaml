@@ -679,8 +679,7 @@ end and Typed_parameter : sig
 *)
   val print : Format.formatter -> t -> unit
 end and Flambda_type : sig
-  include Flambda_type0_intf.S
-    with type function_declarations := Function_declarations.t
+  include Flambda_type0_intf.S with type expr := Expr.t
 end
 
 (** A module for the manipulation of terms where the recomputation of free

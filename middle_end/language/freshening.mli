@@ -94,76 +94,9 @@ val rewrite_recursive_calls_with_symbols
   -> make_closure_symbol:(Closure_id.t -> Symbol.t)
   -> Flambda.Function_declarations.t
 
-(* CR mshinwell: To be removed after Pierre's patch lands *)
-module Project_var : sig
-  (** A table used for freshening of identifiers in [Project_closure] and
-      [Move_within_set_of_closures] ("ids of closures"); and [Project_var]
-      ("bound vars of closures") expressions.
-
-      This information is propagated bottom up and populated when inlining a
-      function containing a closure declaration.
-
-      For instance,
-        [let f x =
-           let g y = ... x ... in
-           ... g.x ...           (Project_var x)
-           ... g 1 ...           (Apply (Project_closure g ...))
-           ]
-
-      If f is inlined, g is renamed. The approximation of g will carry this
-      table such that later the access to the field x of g and selection of
-      g in the closure can be substituted.
-   *)
-  type t = Flambda0.Flambda_type.closure_freshening
-
-  (* The freshening that does nothing. *)
-  val empty : t
-
-  (** Composition of two freshenings. *)
-  val compose : earlier:t -> later:t -> t
-
-  (** Freshen a closure ID based on the given renaming.  The same ID is
-      returned if the renaming does not affect it.
-      If dealing with approximations, you probably want to use
-      [Flambda_type.freshen_and_check_closure_id] instead of this
-      function.
-  *)
-  val apply_closure_id : t -> Closure_id.t -> Closure_id.t
-  val apply_closure_ids : t -> Closure_id.Set.t -> Closure_id.Set.t
-
-  (** Like [apply_closure_id], but for variables within closures. *)
-  val apply_var_within_closure
-     : t
-    -> Var_within_closure.t
-    -> Var_within_closure.t
-
-  val print : Format.formatter -> t -> unit
-end
-
-(* CR-soon mshinwell for mshinwell: add comment *)
-val apply_function_decls_and_free_vars
-   : t
-  -> (Flambda.Free_var.t * 'a) Variable.Map.t
-  -> Flambda.Function_declarations.t
-  -> only_freshen_parameters:bool
-  -> (Flambda.Free_var.t * 'a) Variable.Map.t
-    * Flambda.Function_declarations.t
-    * t
-    * Project_var.t
-
 val does_not_freshen : t -> Variable.t list -> bool
 
 val print : Format.formatter -> t -> unit
-
-val freshen_project_var
-   : Var_within_closure.t Closure_id.Map.t
-  -> closure_freshening:Project_var.t
-  -> Var_within_closure.t Closure_id.Map.t
-
-val freshen_move_within_set_of_closures
-   : Closure_id.t Closure_id.Map.t
-  -> closure_freshening:Project_var.t
-  -> Closure_id.t Closure_id.Map.t
 
 (** N.B. This does not freshen the domain of the supplied map, only the
     range. *)
@@ -171,13 +104,11 @@ val freshen_move_within_set_of_closures
 val freshen_free_vars_projection_relation
    : Flambda.Free_var.t Variable.Map.t
   -> freshening:t
-  -> closure_freshening:Project_var.t option
   -> Flambda.Free_var.t Variable.Map.t
 
 val freshen_free_vars_projection_relation'
    : (Flambda.Free_var.t * 'a) Variable.Map.t
   -> freshening:t
-  -> closure_freshening:Project_var.t option
   -> (Flambda.Free_var.t * 'a) Variable.Map.t
 
 val range_of_continuation_freshening : t -> Continuation.Set.t
