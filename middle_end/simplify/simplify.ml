@@ -2683,10 +2683,31 @@ let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
     (* CR mshinwell: This should turn things into [Effect] when it can, no? *)
     Initialize_symbol (symbol, tag, fields, program), r
   | Effect (expr, cont, program) ->
-    let cont_type =
-      Continuation_approx.create_unknown ~name:cont ~num_params:1
+    let expr : Flambda.Expr.t =
+      let discard_result_cont = Continuation.create () in
+      let result_var = Variable.create "effect_result" in
+      let result_ty = Flambda_ty.any_value Must_scan in
+      let result_param =
+        Flambda.Typed_parameter.create (Parameter.wrap result_var)
+          result_ty
+      in
+      Let_cont {
+        body = expr;
+        handlers = Nonrecursive {
+          name = discard_result_cont;
+          handler = {
+            params = [result_param];
+            stub = false;
+            is_exn_handler = false;
+            handler = Apply_cont (cont, None, []);
+          };
+        };
+      }
     in
-    let env = E.add_continuation env cont cont_type in
+    let cont_ty =
+      Continuation_approx.create_unknown ~name:cont ~num_params:0
+    in
+    let env = E.add_continuation env cont cont_ty in
     let expr, r, uses =
       let descr =
         Format.asprintf "Effect (return continuation %a)"
@@ -2696,9 +2717,9 @@ let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
     in
     begin match
       Simplify_aux.Continuation_uses.meet_of_args_types
-        uses ~num_params:1
+        uses ~num_params:0
     with
-    | [_] -> ()
+    | [] -> ()
     | _ -> assert false
     end;
     let program, r = simplify_program_body env r program in

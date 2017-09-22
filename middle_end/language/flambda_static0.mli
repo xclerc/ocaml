@@ -107,7 +107,8 @@ module Program_body : sig
         the compilation unit). *)
     | Effect of Flambda0.Expr.t * Flambda_kind.t * Continuation.t * t
     (** Cause the given expression, which may have a side effect, to be
-        executed.  The resulting value is discarded.  [Effect] constructions
+        executed.  The result, which must be of kind [Value], is discarded
+        and the zero-arity continuation called.  [Effect] constructions
         are never re-ordered. *)
     | End of Symbol.t
     (** [End] accepts the root symbol: the only symbol that can never be

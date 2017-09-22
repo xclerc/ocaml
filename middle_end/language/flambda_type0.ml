@@ -1410,17 +1410,18 @@ end) = struct
      mshinwell: changed to meet *)
 
   let must_scan_of_kind_value_or_unknown_or_bottom
-        (o : (of_kind_value, _) or_unknown_or_bottom) =
+        (o : (of_kind_value, _) or_unknown_or_bottom) : K.scanning =
     match o with
-    | Unknown _ -> true
-    | Bottom -> false
+    | Unknown (_reason, scanning) -> scanning
+    | Bottom -> Can_scan
     | Ok of_kind_value ->
-      let rec must_scan_of_kind_value (o : of_kind_value) =
+      let rec must_scan_of_kind_value (o : of_kind_value) : K.scanning =
         match o with
-        | Singleton (Tagged_immediate _) -> false
-        | Singleton _ -> true
+        | Singleton (Tagged_immediate _) -> Can_scan
+        | Singleton _ -> Must_scan
         | Union (w1, w2) ->
-          must_scan_of_kind_value w1.descr || must_scan_of_kind_value w2.descr
+          K.join_scanning (must_scan_of_kind_value w1.descr)
+            (must_scan_of_kind_value w2.descr)
       in
       must_scan_of_kind_value of_kind_value
 
@@ -1437,7 +1438,7 @@ end) = struct
       let must_scan =
         must_scan_of_kind_value_or_unknown_or_bottom resolved_ty_value.descr
       in
-      K.value ~must_scan
+      K.value must_scan
 
 (*
   (* CR mshinwell: read carefully *)

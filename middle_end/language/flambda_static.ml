@@ -156,7 +156,7 @@ module Program = struct
             end;
             loop program
           | Effect (expr, kind, cont, program) ->
-            f ~continuation_arity:[kind] cont expr;
+            f ~continuation_arity:[] cont expr;
             loop program
           | End _ -> ()
         in
