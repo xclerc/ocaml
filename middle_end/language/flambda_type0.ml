@@ -22,11 +22,11 @@ module Int64 = Numbers.Int64
 
 module K = Flambda_kind
 
-module Make (Function_declarations : sig
+module Make (Expr : sig
   type t
   val print : Format.formatter -> t -> unit
 end) = struct
-  type function_declarations = Function_declarations.t
+  type expr = Expr.t
 
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
@@ -59,19 +59,6 @@ end) = struct
     match ll with
     | Export_id id -> Format.fprintf ppf "(eid %a)" Export_id.print id
     | Symbol sym -> Format.fprintf ppf "(sym %a)" Symbol.print sym
-
-  (* CR mshinwell: Remove this once Pierre's patch lands *)
-  type closure_freshening =
-    { vars_within_closure : Var_within_closure.t Var_within_closure.Map.t;
-      closure_id : Closure_id.t Closure_id.Map.t;
-    }
-
-  let print_closure_freshening ppf t =
-    Format.fprintf ppf "{ vars_within_closure %a, closure_id %a }"
-      (Var_within_closure.Map.print Var_within_closure.print)
-      t.vars_within_closure
-      (Closure_id.Map.print Closure_id.print)
-      t.closure_id
 
   (* CR mshinwell: update comment *)
   (* A value of type [T.t] corresponds to an "approximation" of the result of
@@ -228,18 +215,39 @@ end) = struct
       }
     | String of string_ty
     | Float_array of float_array_ty
+ 
+  and function_declarations = private {
+    is_classic_mode : bool;
+    set_of_closures_id : Set_of_closures_id.t;
+    set_of_closures_origin : Set_of_closures_origin.t;
+    funs : function_declaration Variable.Map.t;
+  }
 
-  (* CR-soon mshinwell: add support for the approximations of the results,
-     so we can do all of the tricky higher-order cases. *)
+  and function_body = private {
+    free_variables : Variable.Set.t;
+    free_symbols : Symbol.Set.t;
+    body : expr;
+  }
+  
+  and function_declaration = private {
+    closure_origin : Closure_origin.t;
+    function_body : function_body option;
+    params : (Parameter.t * t) list;
+    result : t;
+    stub : bool;
+    dbg : Debuginfo.t;
+    inline : Lambda.inline_attribute;
+    specialise : Lambda.specialise_attribute;
+    is_a_functor : bool;
+  }
+
   and set_of_closures = {
     function_decls : function_declarations;
-    bound_vars : t Var_within_closure.Map.t;
-    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-    size : int option Variable.Map.t lazy_t;
+    closure_elements : t Var_within_closure.Map.t;
+    invariant_params : Variable.Set.t Variable.Map.t Misc.Stdlib.Set_once.t;
+    size : int option Variable.Map.t Misc.Stdlib.Set_once.t;
     (** For functions that are very likely to be inlined, the size of the
         function's body. *)
-    freshening : closure_freshening;
-    (** Any freshening that has been applied to [function_decls]. *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
@@ -939,6 +947,15 @@ end) = struct
         var = None;
         symbol = None;
       }
+
+  let unknown (kind : K.t) =
+    match kind with
+    | Value scanning -> any_value scanning
+    | Naked_immediate -> any_naked_immediate ()
+    | Naked_float -> any_naked_float ()
+    | Naked_int32 -> any_naked_int32 ()
+    | Naked_int64 -> any_naked_int64 ()
+    | Naked_nativeint -> any_naked_nativeint ()
 
   let any_tagged_immediate () : t =
     let i : ty_naked_immediate =

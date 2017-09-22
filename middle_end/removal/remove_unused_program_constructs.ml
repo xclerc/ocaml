@@ -54,7 +54,13 @@ let let_rec_dep defs dep =
   in
   fixpoint dep
 
-let no_effects_field (expr : Flambda.Expr.t) ~return_continuation =
+let no_effects_field_arity_0 (expr : Flambda.Expr.t) ~return_continuation =
+  match expr with
+  | Apply_cont (cont, None, [])
+      when Continuation.equal cont return_continuation -> true
+  | _ -> Effect_analysis.no_effects expr
+
+let no_effects_field_arity_1 (expr : Flambda.Expr.t) ~return_continuation =
   match expr with
   | Let { var; defining_expr;
         body = Apply_cont (cont, None, [var']); _ }
@@ -81,7 +87,7 @@ let rec loop (program : Flambda_static.Program.t_body)
       List.filter (fun (sym, _) -> Symbol.Set.mem sym dep) defs
     in
     Let_rec_symbol (defs, program), dep
-  | Initialize_symbol (sym, tag, fields, program) ->
+  | Initialize_symbol (sym, descr, program) ->
     let program, dep = loop program in
     if Symbol.Set.mem sym dep then
       let dep =
@@ -89,21 +95,43 @@ let rec loop (program : Flambda_static.Program.t_body)
             Symbol.Set.union dep (dependency field))
           dep fields
       in
-      Initialize_symbol (sym, tag, fields, program), dep
+      Initialize_symbol (sym, descr, program), dep
     else begin
-      List.fold_left
-        (fun (program, dep) (field, cont) ->
-           if no_effects_field field ~return_continuation:cont then
-             program, dep
-           else
-             let new_dep = dependency field in
-             let dep = Symbol.Set.union new_dep dep in
-             Flambda.Effect (field, cont, program), dep)
+      List.fold_left (fun (program, dep) (field, cont) ->
+          if no_effects_field_arity_1 field ~return_continuation:cont then
+            program, dep
+          else
+            let new_dep = dependency field in
+            let dep = Symbol.Set.union new_dep dep in
+            let cont' = Continuation.create cont' in
+            let result_kind =
+              Flambda_static.Program_body.kind_of_initialize_symbol descr
+            in
+            let result_var = Variable.create "effect_result" in
+            let result_type = Flambda_type.unknown result_kind in
+            let result_param =
+              Typed_parameter.create (Parameter.wrap result_var) result_type
+            in
+            let expr : Flambda.Expr.t =
+              Let_cont {
+                body = field;
+                handlers = Nonrecursive {
+                  name = cont;
+                  handler = {
+                    params = [result_param];
+                    stub = false;
+                    is_exn_handler = false;
+                    handler = Apply_cont (cont', None, []);
+                  };
+                };
+              };
+            in
+            Flambda.Effect (field, cont', program), dep)
         (program, dep) fields
     end
   | Effect (effect, cont, program) ->
     let program, dep = loop program in
-    if no_effects_field effect ~return_continuation:cont then
+    if no_effects_field_arity_0 effect ~return_continuation:cont then
       program, dep
     else begin
       let new_dep = dependency effect in

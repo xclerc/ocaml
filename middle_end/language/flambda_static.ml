@@ -30,7 +30,7 @@ module Program = struct
       match program with
       | Initialize_symbol (symbol, descr, program) ->
         (symbol, descr) :: (loop program)
-      | Effect (_, _, _, program)
+      | Effect (_, _, program)
       | Let_symbol (_, _, program)
       | Let_rec_symbol (_, program) -> loop program
       | End _ -> []
@@ -43,7 +43,7 @@ module Program = struct
   let root_symbol (program : t) =
     let rec loop (program : Program_body.t) =
       match program with
-      | Effect (_, _, _, program)
+      | Effect (_, _, program)
       | Let_symbol (_, _, program)
       | Let_rec_symbol (_, program)
       | Initialize_symbol (_, _, program) -> loop program
@@ -91,7 +91,7 @@ module Program = struct
               expr
           end;
           loop program
-        | Effect (expr, _kind, _cont, program) ->
+        | Effect (expr, _cont, program) ->
           Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false) expr;
           loop program
         | End _ -> ()
@@ -109,7 +109,7 @@ module Program = struct
           loop program
         | Initialize_symbol (_, _, program) ->
           loop program
-        | Effect (_, _, _, program) ->
+        | Effect (_, _, program) ->
           loop program
         | End _ -> ()
       in
@@ -155,8 +155,8 @@ module Program = struct
               f ~continuation_arity:[Flambda_kind.naked_nativeint ()] cont expr
             end;
             loop program
-          | Effect (expr, kind, cont, program) ->
-            f ~continuation_arity:[kind] cont expr;
+          | Effect (expr, cont, program) ->
+            f ~continuation_arity:[] cont expr;
             loop program
           | End _ -> ()
         in
@@ -303,7 +303,7 @@ module Program = struct
             program
           else
             Initialize_symbol (symbol, descr, new_program')
-        | Effect (expr, kind, cont, program') ->
+        | Effect (expr, cont, program') ->
           let new_expr =
             Flambda.Expr.Mappers.map_sets_of_closures expr ~f
           in
@@ -311,7 +311,7 @@ module Program = struct
           if new_expr == expr && new_program' == program' then
             program
           else
-            Effect (new_expr, kind, cont, new_program')
+            Effect (new_expr, cont, new_program')
         | End _ -> program
       in
       { program with
@@ -414,13 +414,13 @@ module Program = struct
             program
           else
             Initialize_symbol (symbol, descr, new_program')
-        | Effect (expr, kind, cont, program') ->
+        | Effect (expr, cont, program') ->
           let new_expr = f expr in
           let new_program' = loop program' in
           if new_expr == expr && new_program' == program' then
             program
           else
-            Effect (new_expr, kind, cont, new_program')
+            Effect (new_expr, cont, new_program')
         | End _ -> program
       in
       { program with
@@ -473,7 +473,7 @@ module Program = struct
           (loop program)
           decls
       | Initialize_symbol (_, _, program)
-      | Effect (_, _, _, program) -> loop program
+      | Effect (_, _, program) -> loop program
       | End _ -> []
     in
     loop program.program_body

@@ -179,6 +179,7 @@ module type S = sig
   val print : Format.formatter -> t -> unit
 
   (** Construction of top types. *)
+  val unknown : Flambda_kind.t -> t
   val any_value : Flambda_kind.scanning -> t
   val any_tagged_immediate : unit -> t
   val any_boxed_float : unit -> t
