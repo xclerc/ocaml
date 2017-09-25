@@ -40,23 +40,17 @@ val create
     compiler backend being used for compilation. *)
 val backend : t -> (module Backend_intf.S)
 
-(** Obtain the really_import_approx function from the backend module. *)
-val really_import_approx
-   : t
-  -> (Flambda_type.t -> Flambda_type.t)
-
 (** Which simplification round we are currently in. *)
 val round : t -> int
 
-(** Add the approximation of a variable---that is to say, some knowledge
+(** Add the type of a variable---that is to say, some knowledge
     about the value(s) the variable may take on at runtime---to the
     environment. *)
-val add : t -> Variable.t -> Value_kind.t -> Flambda_type.t -> t
+val add : t -> Variable.t -> Flambda_type.t -> t
 
 val add_outer_scope
    : t
   -> Variable.t
-  -> Value_kind.t
   -> Flambda_type.t
   -> t
 
@@ -72,7 +66,7 @@ val mem_continuation : t -> Continuation.t -> bool
 (** Find the approximation of a given variable, raising a fatal error if
     the environment does not know about the variable.  Use [find_opt]
     instead if you need to catch the failure case. *)
-val find_exn : t -> Variable.t -> Flambda_type.t * Value_kind.t
+val find_exn : t -> Variable.t -> Flambda_type.t
 
 (** Like [find_exn], but for mutable variables. *)
 val find_mutable_exn : t -> Mutable_variable.t -> Flambda_type.t

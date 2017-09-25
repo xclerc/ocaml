@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -23,19 +23,13 @@
     the "existing inner vars".
 *)
 val from_function's_free_vars
-   : env:Simplify_aux.Env.t
-  -> free_vars:Flambda.Free_var.ts
-  -> function_decl:Flambda.Function_declaration.t
-  -> Projection.Set.t
-
-val from_function's_specialised_args
-   : env:Simplify_aux.Env.t
-  -> specialised_args:Flambda.specialised_args
+   : env:Simplify_env.t
+  -> free_vars:Flambda.Free_vars.t
   -> function_decl:Flambda.Function_declaration.t
   -> Projection.Set.t
 
 (** For continuations, all parameters are checked for potential projections. *)
 val from_continuation
-   : uses:Simplify_aux.Continuation_uses.t
+   : uses:Simplify_result.Continuation_uses.t
   -> handler:Flambda.Continuation_handler.t
   -> Projection.Set.t

@@ -1141,7 +1141,8 @@ middle_end/analysis/extract_projections.cmx : \
     middle_end/base_types/closure_id.cmx \
     middle_end/analysis/extract_projections.cmi
 middle_end/analysis/extract_projections.cmi : \
-    middle_end/simplify/simplify_aux.cmi middle_end/language/projection.cmi \
+    middle_end/simplify/simplify_result.cmi \
+    middle_end/simplify/simplify_env.cmi middle_end/language/projection.cmi \
     middle_end/language/flambda.cmi
 middle_end/analysis/find_recursive_functions.cmo : \
     middle_end/base_types/variable.cmi \
@@ -2043,14 +2044,14 @@ middle_end/language/flambda_utils.cmi : middle_end/base_types/variable.cmi \
     middle_end/base_types/closure_id.cmi
 middle_end/language/freshening.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/trap_id.cmi middle_end/base_types/symbol.cmi \
-    middle_end/language/projection.cmi middle_end/base_types/parameter.cmi \
-    middle_end/base_types/mutable_variable.cmi utils/misc.cmi \
+    middle_end/language/projection.cmi \
+    middle_end/base_types/mutable_variable.cmi \
     middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi middle_end/language/freshening.cmi
 middle_end/language/freshening.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/trap_id.cmx middle_end/base_types/symbol.cmx \
-    middle_end/language/projection.cmx middle_end/base_types/parameter.cmx \
-    middle_end/base_types/mutable_variable.cmx utils/misc.cmx \
+    middle_end/language/projection.cmx \
+    middle_end/base_types/mutable_variable.cmx \
     middle_end/language/flambda.cmx middle_end/base_types/continuation.cmx \
     middle_end/base_types/closure_id.cmx middle_end/language/freshening.cmi
 middle_end/language/freshening.cmi : middle_end/base_types/variable.cmi \

@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -75,7 +75,7 @@ let known_valid_projections ~get_approx ~projections =
             (Closure_id.Map.keys move.move)
         | Wrong -> false
         end
-      | Field (field_index, _) ->
+      | Prim (Pfield field_index, _) ->
         begin match T.check_approx_for_block approx with
         | Wrong -> false
         | Ok (_tag, fields) ->
@@ -220,6 +220,7 @@ let from_function's_free_vars ~env ~free_vars
   in
   from_expr ~get_approx ~which_variables function_decl.body
 
+(*
 let from_function's_specialised_args ~env ~specialised_args
       ~(function_decl : Flambda.Function_declaration.t) =
   let which_variables = Variable.Map.keys specialised_args in
@@ -237,6 +238,7 @@ let from_function's_specialised_args ~env ~specialised_args
     E.find_exn env outer_var
   in
   from_expr ~get_approx ~which_variables function_decl.body
+*)
 
 let from_continuation ~uses ~(handler : Flambda.Continuation_handler.t) =
   let handler_params = Parameter.List.vars handler.params in
