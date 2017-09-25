@@ -44,6 +44,7 @@ let symbol (t : t) =
   | Naked_int64 ty -> ty.symbol
   | Naked_nativeint ty -> ty.symbol
 
+(*
 let ty_value_is_bottom (ty : ty_value) =
   match maybe_import_value_type ~import_type ty with
   | Ok Bottom -> true
@@ -63,16 +64,17 @@ let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
     | _ -> kind
     end
   | _ -> kind
+*)
 
 let rename_variables t ~f =
   clean t (fun var -> Available_different_name (f var))
 
 let unresolved_symbol sym =
   (* CR mshinwell: check with Pierre about this comment.  I suspect
-     this is irrelevant after closure freshening has been removed *)
+     this is irrelevant now closure freshening has been removed *)
   (* We don't know anything, but we must remember that it comes
      from another compilation unit in case it contains a closure. *)
-  unknown (Flambda_kind.value ()) (Unresolved_value (Symbol sym))
+  any_value Must_scan (Unresolved_value (Symbol sym))
 
 let this_tagged_immediate_named n : Named.t * t =
   Const (Tagged_immediate n), this_tagged_immediate n
@@ -82,7 +84,7 @@ let this_tagged_bool_named b : Named.t * t =
     if b then Immediate.bool_true
     else Immediate.bool_false
   in
-  this_tagged_immediate imm
+  Const (Tagged_immediate imm), this_tagged_immediate imm
 
 let this_boxed_float_named f : Named.t * t =
   Allocated_const (Float f), this_boxed_float f
@@ -97,7 +99,7 @@ let this_boxed_nativeint_named n : Named.t * t =
   Allocated_const (Nativeint n), this_boxed_nativeint n
 
 let this_untagged_immediate_named n : Named.t * t =
-  Const (Untagged_immediate n), this_untagged_immediate n
+  Const (Untagged_immediate n), this_naked_immediate n
 
 let this_naked_float_named f : Named.t * t =
   Const (Naked_float f), this_naked_float f
@@ -111,105 +113,127 @@ let this_naked_int64_named n : Named.t * t =
 let this_naked_nativeint_named n : Named.t * t =
   Const (Naked_nativeint n), this_naked_nativeint n
 
-let is_bottom t =
+let is_bottom ~importer (t : t) =
+  let module I = (val importer : Importer) in
   match t with
   | Value ty ->
-    begin match maybe_import_value_type ~import_type ty with
+    let ty = I.import_value_type_as_resolved_ty_value ty in
+    begin match ty.descr with
     | Bottom -> true
     | Unknown _ | Ok _ -> false
     end
   | Naked_immediate ty ->
-    begin match maybe_import_naked_immediate_type ~import_type ty with
+    let ty = I.import_naked_immediate_type_as_resolved_ty_naked_immediate ty in
+    begin match ty.descr with
     | Bottom -> true
     | Unknown _ | Ok _ -> false
     end
   | Naked_float ty ->
-    begin match maybe_import_naked_float_type ~import_type ty with
+    let ty = I.import_naked_float_type_as_resolved_ty_naked_float ty in
+    begin match ty.descr with
     | Bottom -> true
     | Unknown _ | Ok _ -> false
     end
   | Naked_int32 ty ->
-    begin match maybe_import_naked_int32_type ~import_type ty with
+    let ty = I.import_naked_int32_type_as_resolved_ty_naked_int32 ty in
+    begin match ty.descr with
     | Bottom -> true
     | Unknown _ | Ok _ -> false
     end
   | Naked_int64 ty ->
-    begin match maybe_import_naked_int64_type ~import_type ty with
+    let ty = I.import_naked_int64_type_as_resolved_ty_naked_int64 ty in
+    begin match ty.descr with
     | Bottom -> true
     | Unknown _ | Ok _ -> false
     end
   | Naked_nativeint ty ->
-    begin match maybe_import_naked_nativeint_type ~import_type ty with
+    let ty = I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty in
+    begin match ty.descr with
     | Bottom -> true
     | Unknown _ | Ok _ -> false
     end
 
-let known t =
+let known ~importer (t : t) =
+  let module I = (val importer : Importer) in
   match t with
   | Value ty ->
-    begin match maybe_import_value_type ~import_type ty with
+    let ty = I.import_value_type_as_resolved_ty_value ty in
+    begin match ty.descr with
     | Bottom | Ok _ -> true
     | Unknown _ -> false
     end
   | Naked_immediate ty ->
-    begin match maybe_import_naked_immediate_type ~import_type ty with
+    let ty = I.import_naked_immediate_type_as_resolved_ty_naked_immediate ty in
+    begin match ty.descr with
     | Bottom | Ok _ -> true
     | Unknown _ -> false
     end
   | Naked_float ty ->
-    begin match maybe_import_naked_float_type ~import_type ty with
+    let ty = I.import_naked_float_type_as_resolved_ty_naked_float ty in
+    begin match ty.descr with
     | Bottom | Ok _ -> true
     | Unknown _ -> false
     end
   | Naked_int32 ty ->
-    begin match maybe_import_naked_int32_type ~import_type ty with
+    let ty = I.import_naked_int32_type_as_resolved_ty_naked_int32 ty in
+    begin match ty.descr with
     | Bottom | Ok _ -> true
     | Unknown _ -> false
     end
   | Naked_int64 ty ->
-    begin match maybe_import_naked_int64_type ~import_type ty with
+    let ty = I.import_naked_int64_type_as_resolved_ty_naked_int64 ty in
+    begin match ty.descr with
     | Bottom | Ok _ -> true
     | Unknown _ -> false
     end
   | Naked_nativeint ty ->
-    begin match maybe_import_naked_nativeint_type ~import_type ty with
+    let ty = I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty in
+    begin match ty.descr with
     | Bottom | Ok _ -> true
     | Unknown _ -> false
     end
 
-let useful t =
+let known ~importer (t : t) =
+  let module I = (val importer : Importer) in
   match t with
   | Value ty ->
-    begin match maybe_import_value_type ~import_type ty with
+    let ty = I.import_value_type_as_resolved_ty_value ty in
+    begin match ty.descr with
     | Ok _ -> true
     | Bottom | Unknown _ -> false
     end
   | Naked_immediate ty ->
-    begin match maybe_import_naked_immediate_type ~import_type ty with
+    let ty = I.import_naked_immediate_type_as_resolved_ty_naked_immediate ty in
+    begin match ty.descr with
     | Ok _ -> true
     | Bottom | Unknown _ -> false
     end
   | Naked_float ty ->
-    begin match maybe_import_naked_float_type ~import_type ty with
+    let ty = I.import_naked_float_type_as_resolved_ty_naked_float ty in
+    begin match ty.descr with
     | Ok _ -> true
     | Bottom | Unknown _ -> false
     end
   | Naked_int32 ty ->
-    begin match maybe_import_naked_int32_type ~import_type ty with
+    let ty = I.import_naked_int32_type_as_resolved_ty_naked_int32 ty in
+    begin match ty.descr with
     | Ok _ -> true
     | Bottom | Unknown _ -> false
     end
   | Naked_int64 ty ->
-    begin match maybe_import_naked_int64_type ~import_type ty with
+    let ty = I.import_naked_int64_type_as_resolved_ty_naked_int64 ty in
+    begin match ty.descr with
     | Ok _ -> true
     | Bottom | Unknown _ -> false
     end
   | Naked_nativeint ty ->
-    begin match maybe_import_naked_nativeint_type ~import_type ty with
+    let ty = I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty in
+    begin match ty.descr with
     | Ok _ -> true
     | Bottom | Unknown _ -> false
     end
 
+(*
 let is_boxed_float t =
   match descr t with
   | Boxed_number (Float, t) ->
@@ -537,6 +561,11 @@ let reify_as_string t : string option =
   | Unboxed_int64 _ | Unboxed_nativeint _ | Unknown _ | Mutable_string _
   | Float_array _ | Bottom | Set_of_closures _ | Closure _
   | Load_lazily _ -> None
+*)
+
+type 'a or_wrong =
+  | Ok of 'a
+  | Wrong
 
 module Or_not_all_values_known = struct
   type 'a t =
@@ -618,7 +647,8 @@ module Summary = struct
         is1 is2
     | Closure closures1, Closure closures2 ->
       Or_not_all_values_known.join (fun map1 map2 : _ or_wrong ->
-          ...)
+          (* Pierre to fix *)
+          assert false)
         closures1 closures2
 end
 
@@ -691,6 +721,8 @@ let summarize ~importer (t : t) : summary =
   | Naked_int32 _
   | Naked_int64 _
   | Naked_nativeint _ -> Wrong
+
+(*
 
 type proved_scannable_block =
   | Ok of Tag.Scannable.t * ty_value array
@@ -933,3 +965,4 @@ let unique_boxed_immediate_in_join t ~import_type =
   match join_boxed_immediates t ~import_type with
   | Ok all_possible_values -> Immediate.Set.get_singleton all_possible_values
   | Unknown _ | Bottom -> None
+*)

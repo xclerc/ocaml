@@ -22,9 +22,9 @@
 
 type t =
   | Float of float
-  | Int32 of int32
-  | Int64 of int64
-  | Nativeint of nativeint
+  | Int32 of Int32.t
+  | Int64 of Int64.t
+  | Nativeint of Targetint.t
   (* CR-someday mshinwell: consider using "float array" *)
   | Float_array of float list
   | Immutable_float_array of float list
