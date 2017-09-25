@@ -30,5 +30,7 @@ include Identifiable.S with type t := t
 
 val join : t -> t -> t or_wrong
 
+val join_set : Set.t -> Set.t -> Set.t
+
 val bool_true : t
 val bool_false : t

@@ -380,6 +380,9 @@ module type S = sig
   (** Least upper bound of two types. *)
   val join : (t -> t -> t) with_importer
 
+  (** Like [join], but starts with a [ty_value], not a [t]. *)
+  val join_ty_value : (ty_value -> ty_value -> ty_value) with_importer
+
   type cleaning_spec =
     | Available
     | Available_different_name of Variable.t

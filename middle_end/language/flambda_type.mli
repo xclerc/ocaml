@@ -27,8 +27,10 @@ include module type of struct include Flambda0.Flambda_type end
     It is assumed that the symbol's value may need scanning by the GC. *)
 val unresolved_symbol : Symbol.t -> t
 
+(*
 (** Attempt to use a type to refine a value kind. *)
 val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
+*)
 
 (** Rename free variables in a type. *)
 val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
@@ -76,6 +78,36 @@ val useful : t -> bool
 (** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : t list -> bool
 
+type 'a or_wrong = private
+  | Ok of 'a
+  | Wrong
+
+module Or_not_all_values_known : sig
+  type 'a t = private
+    | Exactly of 'a
+    | Not_all_values_known
+end
+
+module Blocks : sig
+  type t = private ty_value array Tag.Scannable.Map.t
+end
+
+module Summary : sig
+  type t = private
+    | Wrong
+    | Blocks_and_tagged_immediates of
+        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
+    | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
+    | Closures of set_of_closures Closure_id.Map.t Or_not_all_values_known.t
+end
+
+(** Create a summary of a type, flattening unions as required. *)
+val summarize : t -> t
+
+(*
 (** Whether the given type describes a float array. *)
 val is_float_array : t -> bool
 
@@ -170,35 +202,6 @@ type proved_scannable_block =
     blocks, e.g. closures, that this function will return [Wrong] for.) *)
 val prove_scannable_block : t -> proved_scannable_block
 
-module Blocks : sig
-  type t = private ty_value array Tag.Scannable.Map.t
-end
-
-module Or_not_all_values_known : sig
-  type 'a t = private
-    | Exactly of 'a
-    | Not_all_values_known
-end
-
-(* CR mshinwell: This type may not be exactly what we need yet---in
-   particular we might want a variable in the [Not_all_values_known] case,
-   and we may not need the (e.g.) Float.Set.t.  We can decide for sure once
-   we adjust the unboxing code to use this type. *)
-module Proved_unboxable_or_untaggable : sig
-  type t = private
-    | Wrong
-    | Blocks_and_tagged_immediates of
-        Blocks.t * (Targetint.Set.t Or_not_all_values_known.t)
-    | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
-end
-
-(** Try to prove that the given type is of the expected form for the
-    Flambda type of a value that can be unboxed. *)
-val prove_unboxable : t -> Proved_unboxable_or_untaggable.t
-
 type reified_as_scannable_block_or_immediate =
   | Wrong
   | Immediate
@@ -277,3 +280,4 @@ val classify_switch_branch
    : t
   -> int
   -> switch_branch_classification
+*)

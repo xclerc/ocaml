@@ -58,6 +58,21 @@ let join t1 t2 : t or_wrong =
       print_as_char;
     }
 
+let join_set t1s t2s =
+  let only_in_t2s = Set.diff t2s t1s in
+  let join =
+    Set.fold (fun t1 result ->
+        match Set.find t1 t2s with
+        | exception Not_found -> Set.add t1 result
+        | t2 ->
+          match join t1 t2 with
+          | Wrong -> result
+          | Ok t -> Set.add t result)
+      t1s
+      Set.empty
+  in
+  Set.union join only_in_t2s
+
 let bool_true = {
   value = Targetint.of_int 1;
   print_as_char = false;
