@@ -293,8 +293,6 @@ MIDDLE_END_LANGUAGE=\
   middle_end/language/flambda_type0.cmo \
   middle_end/language/flambda_type0_intf.cmo \
   middle_end/language/flambda_utils.cmo \
-  middle_end/language/export_info.cmo \
-  middle_end/language/import_approx.cmo \
   middle_end/language/freshening.cmo \
   middle_end/language/projection.cmo
 

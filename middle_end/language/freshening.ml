@@ -163,23 +163,12 @@ let active_add_variable t id =
   let t = add_sb_var t id id' in
   id', t
 
-let active_add_parameter t param =
-  let param' = Parameter.rename param in
-  let t = add_sb_var t (Parameter.var param) (Parameter.var param') in
-  param', t
-
 let add_variable t id =
   match t with
   | Inactive -> id, t
   | Active t ->
      let id', t = active_add_variable t id in
      id', Active t
-
-let active_add_parameters' t (params:Parameter.t list) =
-  List.fold_right (fun param (params, t) ->
-      let param', t = active_add_parameter t param in
-      param' :: params, t)
-    params ([], t)
 
 let add_variables t defs =
   List.fold_right (fun (id, data) (defs, t) ->
@@ -203,12 +192,6 @@ let add_mutable_variable t id =
      let id', t = active_add_mutable_variable t id in
      id', Active t
 
-let active_find_var_exn t id =
-  try Variable.Map.find id t.sb_var with
-  | Not_found ->
-      Misc.fatal_error (Format.asprintf "find_var: can't find %a@."
-          Variable.print id)
-
 let apply_variable t var =
   match t with
   | Inactive -> var
@@ -230,7 +213,7 @@ let rewrite_recursive_calls_with_symbols t
   | Inactive -> function_declarations
   | Active _ ->
     let all_free_symbols =
-      Flambda_utils.all_free_symbols function_declarations
+      Flambda.Function_declarations.all_free_symbols function_declarations
     in
     let closure_symbols_used = ref false in
     let closure_symbols =
@@ -253,7 +236,7 @@ let rewrite_recursive_calls_with_symbols t
       let funs =
         Variable.Map.map (fun (func_decl : Flambda.Function_declaration.t) ->
           let body =
-            Flambda.Named.Mappers.Toplevel_only.map
+            Flambda.Expr.Mappers.Toplevel_only.map_named
               (* CR-someday pchambart: This may be worth deep substituting
                  below the closures, but that means that we need to take care
                  of functions' free variables. *)
@@ -278,9 +261,8 @@ let does_not_freshen t vars =
 let freshen_projection (projection : Projection.t) ~freshening : Projection.t =
   match projection with
   | Project_var project_var ->
-    let closure_freshening = get_closure_freshening () in
     Project_var {
-      var = freshen_project_var project_var.var ~closure_freshening;
+      var = project_var.var;
       closure = apply_variable freshening project_var.closure;
     }
   | Project_closure { set_of_closures; closure_id; } ->
@@ -293,8 +275,6 @@ let freshen_projection (projection : Projection.t) ~freshening : Projection.t =
       closure = apply_variable freshening closure;
       move;
     }
-  | Field (field_index, var) ->
-    Field (field_index, apply_variable freshening var)
   | Prim (prim, args) ->
     Prim (prim, List.map (fun arg -> apply_variable freshening arg) args)
   | Switch var ->

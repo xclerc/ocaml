@@ -149,6 +149,7 @@ module rec Expr : sig
     module Toplevel_only : sig 
       val map : (t -> t) -> (Named.t -> Named.t) -> t -> t
       val map_expr : (t -> t) -> t -> t
+      val map_named : (Named.t -> Named.t) -> t -> t
       val map_sets_of_closures
          : t
         -> f:(Set_of_closures.t -> Set_of_closures.t)
