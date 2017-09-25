@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -40,7 +40,7 @@ type constant_defining_value =
   | Project_var of constant_project_var
   | Field of Variable.t * int
   | Symbol_field of Symbol.t * int
-  | Const of Flambda.const
+  | Const of Flambda.Const.t
   | Symbol of Symbol.t
   | Variable of Variable.t
 
@@ -70,14 +70,14 @@ let print_constant_defining_value ppf = function
       Tag.print tag
       (Format.pp_print_list Variable.print) vars
   | Set_of_closures set -> Flambda.Set_of_closures.print ppf set
-  | Project_closure project -> Flambda.print_project_closure ppf project
+  | Project_closure project -> Projection.Project_closure.print ppf project
   | Move_within_set_of_closures move ->
-    Flambda.print_move_within_set_of_closures ppf move
+    Projection.Move_within_set_of_closures.print ppf move
   | Project_var project -> print_constant_project_var ppf project
   | Field (var, field) -> Format.fprintf ppf "%a.(%d)" Variable.print var field
   | Symbol_field (sym, field) ->
     Format.fprintf ppf "%a.(%d)" Symbol.print sym field
-  | Const const -> Flambda.print_const ppf const
+  | Const const -> Flambda.Const.print ppf const
   | Symbol symbol -> Symbol.print ppf symbol
   | Variable var -> Variable.print ppf var
 
@@ -139,17 +139,14 @@ and fetch_variable_field
   | Set_of_closures _ | Project_closure _ | Move_within_set_of_closures _ ->
     Symbol the_dead_constant
 
-and fetch_symbol_field
-    (definitions: definitions)
-    (sym: Symbol.t)
-    (field: int)
-    ~the_dead_constant : allocation_point =
+and fetch_symbol_field (definitions : definitions) (sym : Symbol.t)
+      (field : int) ~the_dead_constant : allocation_point =
   match Symbol.Tbl.find definitions.symbol sym with
   | Block (_, fields) ->
     begin match List.nth fields field with
     | exception Not_found -> Symbol the_dead_constant
     | Symbol s -> Symbol s
-    | Const _ -> Symbol sym
+    | Immediate _ -> Symbol sym
     end
   | exception Not_found ->
     begin match Symbol.Tbl.find definitions.initialize_symbol sym with

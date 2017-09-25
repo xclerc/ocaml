@@ -140,8 +140,6 @@ include Identifiable.Make (struct
     | _, Move_within_set_of_closures _ -> 1
     | Prim _, _ -> -1
     | _, Prim _ -> 1
-    | Switch _, _ -> -1
-    | _, Switch _ -> 1
 
   let equal t1 t2 =
     (compare t1 t2) = 0
@@ -169,18 +167,18 @@ let projecting_from t =
   | Move_within_set_of_closures { closure; _ } -> closure
   | Prim (prim, [var]) ->
     begin match prim with
-    | Pfield | Pisint | Pgettag | Punbox_float | Pbox_float
-    | Punbox_int32 | Pbox_int32 | Punbox_int64 | Punbox_int64
+    | Pfield _ | Pisint | Pgettag | Punbox_float | Pbox_float
+    | Punbox_int32 | Pbox_int32 | Punbox_int64 | Pbox_int64
     | Punbox_nativeint | Pbox_nativeint | Puntag_immediate
     | Ptag_immediate -> var
     | _ ->
       Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
-        Printlambda.primitive p
+        Printlambda.primitive prim
     end
   | Prim (prim, vars) ->
     Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
         arguments for pure primitive CSE: %a (%a)"
-      Printlambda.primitive p
+      Printlambda.primitive prim
       Variable.print_list vars
   | Switch var -> var
 
@@ -209,18 +207,18 @@ let map_projecting_from t ~f : t =
     Move_within_set_of_closures move
   | Prim (prim, [var]) ->
     begin match prim with
-    | Pfield | Pisint | Pgettag | Punbox_float | Pbox_float
-    | Punbox_int32 | Pbox_int32 | Punbox_int64 | Punbox_int64
+    | Pfield _ | Pisint | Pgettag | Punbox_float | Pbox_float
+    | Punbox_int32 | Pbox_int32 | Punbox_int64 | Pbox_int64
     | Punbox_nativeint | Pbox_nativeint | Puntag_immediate
-    | Ptag_immediate -> Prim (prim [f var])
+    | Ptag_immediate -> Prim (prim, [f var])
     | _ ->
       Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
-        Printlambda.primitive p
+        Printlambda.primitive prim
     end
   | Prim (prim, vars) ->
     Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
         arguments for pure primitive CSE: %a (%a)"
-      Printlambda.primitive p
+      Printlambda.primitive prim
       Variable.print_list vars
   | Switch var -> Switch (f var)
 

@@ -5,9 +5,9 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
-(*                                                                        *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
+
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
 (*   special exception on linking described in the file LICENSE.          *)
@@ -40,7 +40,7 @@ type constant_defining_value =
   | Project_var of constant_project_var
   | Field of Variable.t * int
   | Symbol_field of Symbol.t * int
-  | Const of Flambda.const
+  | Const of Flambda.Const.t
   | Symbol of Symbol.t
   | Variable of Variable.t
 
