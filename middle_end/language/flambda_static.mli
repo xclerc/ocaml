@@ -22,6 +22,11 @@
 module Constant_defining_value :
   module type of struct include Flambda_static0.Constant_defining_value end
 
+module Constant_defining_value_block_field :
+  module type of struct
+    include Flambda_static0.Constant_defining_value_block_field
+  end
+
 module Program_body :
   module type of struct include Flambda_static0.Program_body end
 

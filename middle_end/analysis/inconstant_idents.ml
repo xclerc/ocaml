@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -82,7 +82,7 @@ module type Param = sig
 end
 
 (* CR-soon mshinwell: consider removing functor *)
-module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
+module Inconstants (P:Param) (Importer : Flambda_type.Importer) = struct
   let program = P.program
   let compilation_unit = P.compilation_unit
   let imported_symbols = Flambda_static.Program.imported_symbols program
@@ -269,7 +269,13 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     | Var var -> mark_var var curr
     | Set_of_closures (set_of_closures) ->
       mark_loop_set_of_closures ~toplevel curr set_of_closures
-    | Const _ | Allocated_const _ -> ()
+    | Const (Tagged_immediate _) -> ()
+    | Const (Untagged_immediate _ | Naked_float _ | Naked_int32 _
+        | Naked_int64 _ | Naked_nativeint _) ->
+      (* These cannot be lifted to symbols. *)
+      (* CR mshinwell: Or do we want to allow this...? *)
+      mark_curr curr
+    | Allocated_const _ -> ()
     | Read_mutable _ -> mark_curr curr
     | Symbol symbol -> begin
         let current_unit = Compilation_unit.get_current_exn () in
@@ -278,7 +284,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
           ()
         else assert false
 (* CR mshinwell for pchambart: What should these next three lines say?
-          match (Backend.import_symbol symbol).descr with
+          match (Importer.import_symbol symbol).descr with
           | Unresolved _ ->
             (* Constant when 'for_clambda' means: can be a symbol (which is
                obviously the case here) with a known approximation.  If this
@@ -487,14 +493,14 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
     }
 end
 
-let inconstants_on_program ~compilation_unit ~backend
+let inconstants_on_program ~importer ~compilation_unit
     (program : Flambda_static.Program.t) =
   let module P = struct
     let program = program
     let compilation_unit = compilation_unit
   end in
-  let module Backend = (val backend : Backend_intf.S) in
-  let module I = Inconstants (P) (Backend) in
+  let module Importer = (val importer : Flambda_type.Importer) in
+  let module I = Inconstants (P) (Importer) in
   I.res
 
 let variable var { id; _ } =

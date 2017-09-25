@@ -20,7 +20,7 @@
 module Constant_defining_value_block_field : sig
   type t =
     | Symbol of Symbol.t
-    | Immediate of Immediate.t
+    | Tagged_immediate of Immediate.t
 end
 
 module Constant_defining_value : sig
@@ -54,6 +54,13 @@ module Constant_defining_value : sig
   val create_set_of_closures : Flambda0.Set_of_closures.t -> t
 
   val create_project_closure : Symbol.t -> Closure_id.t -> t
+
+  module Mappers : sig
+    val map_set_of_closures
+       : t
+      -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
+      -> t
+  end
 end
 
 (** A "program" is the contents of one compilation unit.  It describes the
@@ -98,10 +105,6 @@ module Program_body : sig
         approximation of the set of closures to be present in order to
         correctly simplify the [Project_closure] construction.  (See
         [Simplify.simplify_project_closure] for that part.) *)
-    (* CR mshinwell:
-       1. Non-[Value] kinds are only allowed if the list is a singleton.
-          This needs to be checked in [Flambda_invariants].
-       2. Don't register a GC root if it isn't needed. *)
     | Initialize_symbol of Symbol.t * initialize_symbol * t
     (** Define the given symbol as a constant block following the given
         description; but with a possibly non-constant initializer.  The

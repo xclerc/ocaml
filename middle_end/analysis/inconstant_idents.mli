@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -22,10 +22,9 @@ type result
     identifiers that cannot be compiled to constants by [Flambda_to_clambda].
 *)
 val inconstants_on_program
-   : compilation_unit:Compilation_unit.t
-  -> backend:(module Backend_intf.S)
+   : (compilation_unit:Compilation_unit.t
   -> Flambda_static.Program.t
-  -> result
+  -> result) Flambda_type.with_importer
 
 (** [variable var res] returns [true] if [var] is marked as inconstant
     in [res]. *)

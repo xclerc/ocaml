@@ -21,19 +21,19 @@ module F0 = Flambda0
 module Constant_defining_value_block_field = struct
   type t =
     | Symbol of Symbol.t
-    | Immediate of Immediate.t
+    | Tagged_immediate of Immediate.t
 
   let compare (t1 : t) (t2 : t) =
     match t1, t2 with
     | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
-    | Immediate t1, Immediate t2 -> Immediate.compare t1 t2
-    | Symbol _, Immediate _ -> -1
-    | Immediate _, Symbol _ -> 1
+    | Tagged_immediate t1, Tagged_immediate t2 -> Immediate.compare t1 t2
+    | Symbol _, Tagged_immediate _ -> -1
+    | Tagged_immediate _, Symbol _ -> 1
 
   let print ppf (field : t) =
     match field with
     | Symbol symbol -> Symbol.print ppf symbol
-    | Immediate immediate -> Immediate.print ppf immediate
+    | Tagged_immediate immediate -> Immediate.print ppf immediate
 end
 
 module Constant_defining_value = struct
@@ -125,13 +125,21 @@ module Constant_defining_value = struct
         (function
           | (Symbol s : Constant_defining_value_block_field.t) ->
             symbols := Symbol.Set.add s !symbols
-          | (Immediate _ : Constant_defining_value_block_field.t) -> ())
+          | (Tagged_immediate _ : Constant_defining_value_block_field.t) -> ())
         fields
     | Set_of_closures set_of_closures ->
       symbols := Symbol.Set.union !symbols
         (F0.Named.free_symbols (Set_of_closures set_of_closures))
     | Project_closure (s, _) ->
       symbols := Symbol.Set.add s !symbols
+
+  module Mappers = struct
+    let map_set_of_closures t ~f =
+      match t with
+      | Allocated_const _ | Block _ | Project_closure _ -> t
+      | Set_of_closures set ->
+        create_set_of_closures (f set)
+  end
 end
 
 module Program_body = struct

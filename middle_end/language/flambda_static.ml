@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module Constant_defining_value_block_field =
+  Flambda_static0.Constant_defining_value_block_field
 module Constant_defining_value = Flambda_static0.Constant_defining_value
 module Program_body = Flambda_static0.Program_body
 

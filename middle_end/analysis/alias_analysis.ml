@@ -33,14 +33,14 @@ type constant_project_var = {
 
 type constant_defining_value =
   | Allocated_const of allocated_const
-  | Block of Tag.t * Variable.t list
+  | Block of Tag.Scannable.t * Variable.t list
   | Set_of_closures of Flambda.Set_of_closures.t
   | Project_closure of Projection.Project_closure.t
   | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
   | Project_var of constant_project_var
   | Field of Variable.t * int
   | Symbol_field of Symbol.t * int
-  | Const of Flambda.Const.t
+  | Tagged_immediate of Immediate.t
   | Symbol of Symbol.t
   | Variable of Variable.t
 
@@ -67,7 +67,7 @@ let print_constant_defining_value ppf = function
     Format.fprintf ppf "dup_array(%a)" Variable.print var
   | Block (tag, vars) ->
     Format.fprintf ppf "[|%a: %a|]"
-      Tag.print tag
+      Tag.Scannable.print tag
       (Format.pp_print_list Variable.print) vars
   | Set_of_closures set -> Flambda.Set_of_closures.print ppf set
   | Project_closure project -> Projection.Project_closure.print ppf project
@@ -77,7 +77,7 @@ let print_constant_defining_value ppf = function
   | Field (var, field) -> Format.fprintf ppf "%a.(%d)" Variable.print var field
   | Symbol_field (sym, field) ->
     Format.fprintf ppf "%a.(%d)" Symbol.print sym field
-  | Const const -> Flambda.Const.print ppf const
+  | Tagged_immediate imm -> Immediate.print ppf imm
   | Symbol symbol -> Symbol.print ppf symbol
   | Variable var -> Variable.print ppf var
 
@@ -91,7 +91,7 @@ let rec resolve_definition
   | Block _
   | Set_of_closures _
   | Project_closure _
-  | Const _
+  | Tagged_immediate _
   | Move_within_set_of_closures _ ->
     Variable var
   | Project_var {var} ->
@@ -135,7 +135,7 @@ and fetch_variable_field
   | Symbol _ | Variable _ | Project_var _ | Field _ | Symbol_field _ ->
     (* Must have been resolved *)
     assert false
-  | Const _ | Allocated_const _
+  | Tagged_immediate _ | Allocated_const _
   | Set_of_closures _ | Project_closure _ | Move_within_set_of_closures _ ->
     Symbol the_dead_constant
 
@@ -146,7 +146,7 @@ and fetch_symbol_field (definitions : definitions) (sym : Symbol.t)
     begin match List.nth fields field with
     | exception Not_found -> Symbol the_dead_constant
     | Symbol s -> Symbol s
-    | Immediate _ -> Symbol sym
+    | Tagged_immediate _ -> Symbol sym
     end
   | exception Not_found ->
     begin match Symbol.Tbl.find definitions.initialize_symbol sym with

@@ -33,14 +33,14 @@ type constant_project_var = {
 
 type constant_defining_value =
   | Allocated_const of allocated_const
-  | Block of Tag.t * Variable.t list
+  | Block of Tag.Scannable.t * Variable.t list
   | Set_of_closures of Flambda.Set_of_closures.t
   | Project_closure of Projection.Project_closure.t
   | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
   | Project_var of constant_project_var
   | Field of Variable.t * int
   | Symbol_field of Symbol.t * int
-  | Const of Flambda.Const.t
+  | Tagged_immediate of Immediate.t
   | Symbol of Symbol.t
   | Variable of Variable.t
 
