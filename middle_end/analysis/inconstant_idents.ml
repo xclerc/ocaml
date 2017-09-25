@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+[@@@ocaml.warning "-37"]  (* XXX temporary until Pierre has worked on this *)
+
 (* This cannot be done in a single simple pass due to expressions like:
 
   let rec ... =
@@ -83,7 +85,7 @@ end
 module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
   let program = P.program
   let compilation_unit = P.compilation_unit
-  let imported_symbols = Flambda_utils.imported_symbols program
+  let imported_symbols = Flambda_static.Program.imported_symbols program
 
   (* Sets representing NC *)
   let variables : state Variable.Tbl.t = Variable.Tbl.create 42
@@ -241,10 +243,11 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_loop ~toplevel [] body;
       Continuation.Map.iter (fun _cont
               (handler : Flambda.Continuation_handler.t) ->
-          List.iter (fun param -> mark_curr [Var (Parameter.var param)])
+          List.iter (fun param ->
+              mark_curr [Var (Flambda.Typed_parameter.var param)])
             handler.params;
           mark_loop ~toplevel:false [] handler.handler)
-        (Flambda.continuation_map_of_let_handlers ~handlers)
+        (Flambda.Let_cont_handlers.to_continuation_map handlers)
       (* CR-someday pchambart: If recursive staticcatch is introduced:
          this becomes ~toplevel:false
          mshinwell: This has been set to the conservative value *)
@@ -273,7 +276,8 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
         if Compilation_unit.equal current_unit (Symbol.compilation_unit symbol)
         then
           ()
-        else
+        else assert false
+(* CR mshinwell for pchambart: What should these next three lines say?
           match (Backend.import_symbol symbol).descr with
           | Unresolved _ ->
             (* Constant when 'for_clambda' means: can be a symbol (which is
@@ -284,6 +288,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
             mark_curr curr
           | _ ->
             ()
+*)
       end
     | Read_symbol_field (symbol, index) ->
       register_implication ~in_nc:(Symbol_field (symbol, index))
@@ -391,7 +396,9 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
      blocks.  This feature should be available in a future release once the
      necessary GC changes have been merged. (See GPR#178.) *)
   and mark_loop_set_of_closures ~toplevel:_ curr
-        { Flambda. function_decls; free_vars; specialised_args } =
+        { Flambda.Set_of_closures. function_decls; free_vars; } =
+    (* CR mshinwell for pchambart: Presumably need to examine argument types *)
+(*
     (* If a function in the set of closures is specialised, do not consider
        it constant, unless all specialised args are also constant. *)
     Variable.Map.iter (fun param (spec_to : Flambda.specialised_to) ->
@@ -404,6 +411,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
             Misc.fatal_errorf "No equality to variable for specialised arg %a"
               Variable.print param)
         specialised_args;
+*)
     (* adds 'function_decls in NC => curr in NC' *)
     register_implication ~in_nc:(Closure function_decls.set_of_closures_id)
       ~implies_in_nc:curr;
@@ -420,6 +428,8 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
         register_implication ~in_nc:(Closure function_decls.set_of_closures_id)
           ~implies_in_nc:[Var fun_id];
         (* function parameters are in NC unless specialised *)
+(* CR mshinwell for pchambart: changes needed here *)
+(*
         List.iter (fun param ->
             match Variable.Map.find param specialised_args with
             | exception Not_found -> mark_curr [Var param]
@@ -431,11 +441,12 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
               | None ->
                 Misc.fatal_errorf "No equality to variable for specialised arg %a"
                   Variable.print param)
-          (Parameter.List.vars ffunc.params);
+          (Parameter.List.vars ffunc.params); *)
         mark_loop ~toplevel:false [] ffunc.body)
       function_decls.funs
 
-  let mark_constant_defining_value (const:Flambda_static.Constant_defining_value.t) =
+  let mark_constant_defining_value
+        (const : Flambda_static.Constant_defining_value.t) =
     match const with
     | Allocated_const _
     | Block _
@@ -444,14 +455,18 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_loop_set_of_closures ~toplevel:true [] set_of_closure
 
   let mark_program (program : Flambda_static.Program.t) =
-    let rec loop (program : Flambda_static.Program.t_body) =
+    let rec loop (program : Flambda_static.Program_body.t) =
       match program with
       | End _ -> ()
-      | Initialize_symbol (symbol,_tag,fields,program) ->
+      | Initialize_symbol (_symbol, _descr, program) ->
+(* CR mshinwell for pchambart: needs updating -- see Flambda_static0 (which
+   now has support for unboxed numbers that go into Initialize_symbol fields,
+   to prevent regressions from Closure due to more aggressive lifting
         List.iteri (fun i (field, _cont) ->
             mark_loop ~toplevel:true
-              [Symbol symbol; Symbol_field (symbol,i)] field)
+              [Symbol symbol; Symbol_field (symbol, i)] field)
           fields;
+*)
         loop program
       | Effect (expr, _, program) ->
         mark_loop ~toplevel:true [] expr;

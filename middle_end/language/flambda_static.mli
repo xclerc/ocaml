@@ -19,13 +19,14 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Constant_defining_value
-  : module type of Flambda_static0.Constant_defining_value
+module Constant_defining_value :
+  module type of struct include Flambda_static0.Constant_defining_value end
 
-module Program_body : module type of Flambda_static0.Program_body
+module Program_body :
+  module type of struct include Flambda_static0.Program_body end
 
 module Program : sig
-  include module type of Flambda_static0.Program
+  include module type of struct include Flambda_static0.Program end
 
   val initialize_symbols
      : t

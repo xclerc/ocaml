@@ -16,8 +16,10 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module T = Flambda_types
-module E = Simplify_aux.Env
+module E = Simplify_env
+(*
+module T = Flambda_type
+*)
 
 (* CR-soon pchambart: should we restrict only to cases
   when the field is aliased to a variable outside
@@ -30,7 +32,10 @@ module E = Simplify_aux.Env
   probably still happening).
 *)
 
-let known_valid_projections ~get_approx ~projections =
+let known_valid_projections ~get_approx:_ ~projections:_ =
+  (* XXX to be fixed after Pierre has dealt with Flambda_type *)
+  assert false
+(*
   Projection.Set.filter (fun projection ->
       let from = Projection.projecting_from projection in
       let approx = get_approx from in
@@ -83,8 +88,12 @@ let known_valid_projections ~get_approx ~projections =
         end
       | Prim _ | Switch _ -> true (* CR mshinwell: FIXME *) )
     projections
+*)
 
-let rec analyse_expr ~which_variables expr =
+let (* rec *) analyse_expr ~which_variables:_ _expr =
+  assert false
+
+(*
   let projections = ref Projection.Set.empty in
   let used_which_variables = ref Variable.Set.empty in
   let check_free_variable var =
@@ -182,6 +191,7 @@ let rec analyse_expr ~which_variables expr =
   let projections = !projections in
   let used_which_variables = !used_which_variables in
   projections, used_which_variables
+*)
 
 let from_expr ~get_approx ~which_variables expr =
   let projections, used_which_variables =
@@ -241,10 +251,10 @@ let from_function's_specialised_args ~env ~specialised_args
 *)
 
 let from_continuation ~uses ~(handler : Flambda.Continuation_handler.t) =
-  let handler_params = Parameter.List.vars handler.params in
+  let handler_params = Flambda.Typed_parameter.List.vars handler.params in
   let which_variables = Variable.Set.of_list handler_params in
   let param_approxs =
-    Simplify_aux.Continuation_uses.meet_of_args_approxs uses
+    Simplify_result.Continuation_uses.meet_of_args_approxs uses
       ~num_params:(List.length handler_params)
   in
   let params_to_approxs =

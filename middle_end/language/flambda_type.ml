@@ -618,6 +618,8 @@ module Summary = struct
     | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
     | Closures of set_of_closures Closure_id.Map.t Or_not_all_values_known.t
+    (* CR mshinwell for pchambart: We need a [Set_of_closures] case here
+       as well, I think *)
 
   let join ~importer t1 t2 =
     let join_immediates =
@@ -870,73 +872,7 @@ type reified_as_set_of_closures =
   | Wrong
 
 let reify_as_set_of_closures t : reified_as_set_of_closures =
-  match t with
-  | Value ty ->
-    begin match maybe_import_value_type ty with
-    | Unknown _ | Bottom -> Wrong
-    | Ok of_kind_value ->
-      let for_singleton (s : of_kind_value_singleton)
-            : proved_unboxable_or_untaggable =
-        match s with
-        | Tagged_int ty ->
-          begin match prove_naked_immediate_from_ty_naked_immediate ty with
-          | Wrong -> Wrong
-          | Unknown ->
-            Blocks_and_tagged_immediates (
-              Tag.Scannable.Map.empty, Not_all_values_known)
-          | Known i ->
-            Blocks_and_tagged_immediates (
-              Tag.Scannable.Map.empty, Exactly (Immediate.Set.singleton i))
-          end
-        | Boxed_float ty ->
-          begin match prove_naked_float_from_ty_naked_float ty with
-          | Wrong -> Wrong
-          | Unknown -> Boxed_floats Not_all_values_known
-          | Known f -> Boxed_floats (Exactly (Float.Set.singleton f))
-          end
-        | Boxed_int32 ty ->
-          begin match prove_naked_int32_from_ty_naked_int32 ty with
-          | Wrong -> Wrong
-          | Unknown -> Boxed_int32s Not_all_values_known
-          | Known i -> Boxed_int32s (Exactly (Int32.Set.singleton f))
-          end
-        | Boxed_int64 ty ->
-          begin match prove_naked_int64_from_ty_naked_int64 ty with
-          | Wrong -> Wrong
-          | Unknown -> Boxed_int64s Not_all_values_known
-          | Known i -> Boxed_int64s (Exactly (Int64.Set.singleton f))
-          end
-        | Boxed_nativeint ty ->
-          begin match prove_naked_nakedint_from_ty_naked_nativeint ty with
-          | Wrong -> Wrong
-          | Unknown -> Boxed_nakedints Not_all_values_known
-          | Known i -> Boxed_nakedints (Exactly (Int64.Set.singleton f))
-          end
-        | Block (tag, fields) ->
-          let blocks =
-            Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
-          in
-          Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
-        | Set_of_closures _
-        | Closure _
-        | String _
-        | Float_array _ -> Wrong
-      in
-      let rec for_of_kind_value (o : of_kind_value) =
-        match o with
-        | Singleton s -> for_singleton s
-        | Union (w1, w2) ->
-          let proved1 = for_of_kind_value w1.descr in
-          let proved2 = for_of_kind_value w2.descr in
-          Proved_unboxable_or_untaggable.join proved1 proved2
-      in
-      for_of_kind_value of_kind_value
-    end
-  | Naked_immediate _
-  | Naked_float _
-  | Naked_int32 _
-  | Naked_int64 _
-  | Naked_nativeint _ -> Wrong
+  ... this will look like one of the above functions, working on the summary
 
 type strict_reified_as_set_of_closures =
   | Wrong
