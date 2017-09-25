@@ -23,20 +23,37 @@ type apply_kind = Flambda0.apply_kind
 type apply = Flambda0.apply
 type assign = Flambda0.assign
 
-module Call_kind : module type of Flambda0.Call_kind
-module Const : module type of Flambda0.Const
-module Continuation_handler : module type of Flambda0.Continuation_handler
-module Continuation_handlers : module type of Flambda0.Continuation_handlers
-module Free_var : module type of Flambda0.Free_var
-module Let : module type of Flambda0.Let
-module Let_cont : module type of Flambda0.Let_cont
-module Let_cont_handlers : module type of Flambda0.Let_cont_handlers
-module Let_mutable : module type of Flambda0.Let_mutable
-module Return_arity : module type of Flambda0.Return_arity
-module Switch : module type of Flambda0.Switch
-module Trap_action : module type of Flambda0.Trap_action
-module Typed_parameter : module type of Flambda0.Typed_parameter
-module With_free_variables : module type of Flambda0.With_free_variables
+(* CR-someday mshinwell: Here and everywhere else, once "module type of"
+   has been fixed, we will be able to replace "module type of struct include
+   X end" with just "module type of X". *)
+module Call_kind :
+  module type of struct include Flambda0.Call_kind end
+module Const :
+  module type of struct include Flambda0.Const end
+module Continuation_handler :
+  module type of struct include Flambda0.Continuation_handler end
+module Continuation_handlers :
+  module type of struct include Flambda0.Continuation_handlers end
+module Free_var :
+  module type of struct include Flambda0.Free_var end
+module Let :
+  module type of struct include Flambda0.Let end
+module Let_cont :
+  module type of struct include Flambda0.Let_cont end
+module Let_cont_handlers :
+  module type of struct include Flambda0.Let_cont_handlers end
+module Let_mutable :
+  module type of struct include Flambda0.Let_mutable end
+module Return_arity :
+  module type of struct include Flambda0.Return_arity end
+module Switch :
+  module type of struct include Flambda0.Switch end
+module Trap_action :
+  module type of struct include Flambda0.Trap_action end
+module Typed_parameter :
+  module type of struct include Flambda0.Typed_parameter end
+module With_free_variables :
+  module type of struct include Flambda0.With_free_variables end
 
 module Free_vars : sig
   include module type of Flambda0.Free_vars

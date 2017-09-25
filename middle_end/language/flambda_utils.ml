@@ -84,6 +84,7 @@ let parameters_specialised_to_the_same_variable
     function_decls.funs
 *)
 
+(*
 let create_wrapper_params ~params ~specialised_args
       ~freshening_already_assigned =
   let renaming =
@@ -141,15 +142,20 @@ let create_wrapper_params ~params ~specialised_args
       Variable.Map.empty
   in
   renaming_map, wrapper_params, wrapper_specialised_args
+*)
 
-let make_let_cont_alias ~name ~alias_of ~arity : Flambda.Let_cont_handlers.t =
+let make_let_cont_alias ~importer ~name ~alias_of ~parameter_types
+      : Flambda.Let_cont_handlers.t =
   let handler_params, apply_params =
-    let rec aux n =
-      if n <= 0 then []
-      else let v = Variable.create "continuation_wrapper" in
-        (Parameter.wrap v, v) :: (aux (n - 1))
+    let param_and_var_for ty =
+      let kind = Flambda_type.kind ~importer ty in
+      let ty = Flambda_type.unknown kind Other in
+      let var = Variable.create "let_cont_alias" in
+      let param = Parameter.wrap var in
+      let typed_param = Flambda.Typed_parameter.create param ty in
+      typed_param, var
     in
-    List.split (aux arity)
+    List.split (List.map param_and_var_for parameter_types)
   in
   Nonrecursive {
     name;
@@ -158,6 +164,5 @@ let make_let_cont_alias ~name ~alias_of ~arity : Flambda.Let_cont_handlers.t =
       stub = true;
       is_exn_handler = false;
       handler = Apply_cont (alias_of, None, apply_params);
-      specialised_args = Variable.Map.empty;
     };
   }
