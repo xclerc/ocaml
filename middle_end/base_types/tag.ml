@@ -52,5 +52,6 @@ module Scannable = struct
     if tag < 0 || tag >= Obj.no_scan_tag then None
     else Some tag
 
+  let zero = 0
   let object_tag = Obj.object_tag
 end

@@ -41,6 +41,7 @@ module Scannable : sig
 
   val to_int : t -> int
 
+  val zero : t
   val object_tag : t
 
   include Identifiable.S with type t := t

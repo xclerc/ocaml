@@ -16,38 +16,46 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let should_copy (named:Flambda.Named.t) =
+let should_copy (named : Flambda.Named.t) =
   match named with
   | Symbol _ | Read_symbol_field _ | Const _ -> true
   | _ -> false
 
-let rec lift (expr : Flambda.Expr.t) ~to_copy =
+let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
   match expr with
   | Let_cont ({ body; handlers = Nonrecursive { name; handler = ({
       params = [param]; handler; is_exn_handler; _ } as handler_record); }; })
       when not is_exn_handler ->
-    let free_conts_body, lifted, body = lift body ~to_copy in
+    let free_conts_body, lifted, body = lift ~importer body ~to_copy in
     let our_cont = Continuation.Set.singleton name in
     if Continuation.Set.is_empty free_conts_body then begin
       (* The continuation is unused; delete it. *)
       free_conts_body, lifted, body
     end else if Continuation.Set.equal free_conts_body our_cont then begin
-      (* The body of this [Let_cont] can only return through [cont], which
+      (* The body of this [Let_cont] can only return through [name], which
          means that [handler] postdominates [body].  As such we can cut off
          [body] and put it inside an [Initialize_symbol] whose continuation
          is [handler].
          We also augment [to_copy] to ensure that the binding of the existing
          variable to the new symbol is restated at the top of each subsequent
          lifted expression. *)
-      let param = Parameter.var param in
-      let symbol = Flambda_utils.make_variable_symbol param in
+      let param_var = Flambda.Typed_parameter.var param in
+      let param_ty = Flambda.Typed_parameter.ty param in
+      let param_kind = Flambda_type.kind ~importer param_ty in
+      let symbol = Flambda_utils.make_variable_symbol param_var in
       let defining_expr : Flambda.Named.t = Read_symbol_field (symbol, 0) in
-      let to_copy = (param, defining_expr)::to_copy in
-      let free_conts_handler, lifted', handler = lift handler ~to_copy in
-      let lifted =
-        lifted @ [Tag.zero, param, symbol, [name, body, to_copy]] @ lifted'
+      let to_copy = (param_var, param_kind, defining_expr)::to_copy in
+      let free_conts_handler, lifted', handler =
+        lift ~importer handler ~to_copy
       in
-      let expr = Flambda.Expr.create_let param defining_expr handler in
+      let lifted =
+        lifted
+          @ [Tag.Scannable.zero, param_var, symbol, [name, body, to_copy]]
+          @ lifted'
+      in
+      let expr =
+        Flambda.Expr.create_let param_var param_kind defining_expr handler
+      in
       free_conts_handler, lifted, expr
     end else begin
       let handlers : Flambda.Let_cont_handlers.t =
@@ -65,23 +73,23 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
       let free_conts =
         Continuation.Set.union
           (Continuation.Set.remove name free_conts_body)
-          (Flambda.free_continuations handler_record.handler)
+          (Flambda.Expr.free_continuations handler_record.handler)
       in
       free_conts, lifted, expr
     end
-  | Let { var; defining_expr; body; _ } when should_copy defining_expr ->
+  | Let { var; kind; defining_expr; body; _ } when should_copy defining_expr ->
     (* This let-expression is not to be lifted, but instead restated at the
        top of each lifted expression. *)
-    let to_copy = (var, defining_expr)::to_copy in
-    let free_conts, lifted, body = lift body ~to_copy in
+    let to_copy = (var, kind, defining_expr)::to_copy in
+    let free_conts, lifted, body = lift ~importer body ~to_copy in
     let body =
       if Variable.Set.mem var (Flambda.Expr.free_variables body) then
-        Flambda.Expr.create_let var defining_expr body
+        Flambda.Expr.create_let var kind defining_expr body
       else
         body
     in
     free_conts, lifted, body
-  | Let { var; defining_expr; body; _ } ->
+  | Let { var; kind; defining_expr; body; _ } ->
     (* This let-expression is to be lifted. *)
     let var' = Variable.rename var in
     let symbol = Flambda_utils.make_variable_symbol var in
@@ -91,8 +99,8 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
         Symbol symbol
       | _ -> Read_symbol_field (symbol, 0)
     in
-    let to_copy = (var, sym_defining_expr)::to_copy in
-    let free_conts, lifted, body = lift body ~to_copy in
+    let to_copy = (var, kind, sym_defining_expr)::to_copy in
+    let free_conts, lifted, body = lift ~importer body ~to_copy in
     let tag, conts_exprs_and_to_copies =
       match defining_expr with
       | Prim (Pmakeblock (tag, Immutable, _shape), fields, _dbg) ->
@@ -103,64 +111,68 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
               cont, expr, to_copy)
             fields
         in
-        Tag.create_exn tag, conts_exprs_and_to_copies
+        Tag.Scannable.create_exn tag, conts_exprs_and_to_copies
       | _ ->
         let cont = Continuation.create () in
         let expr : Flambda.Expr.t =
-          Flambda.Expr.create_let var' defining_expr
+          Flambda.Expr.create_let var' kind defining_expr
             (Apply_cont (cont, None, [var']))
         in
-        Tag.zero, [cont, expr, to_copy]
+        Tag.Scannable.zero, [cont, expr, to_copy]
     in
     let lifted = (tag, var, symbol, conts_exprs_and_to_copies) :: lifted in
-    let body = Flambda.Expr.create_let var sym_defining_expr body in
+    let body = Flambda.Expr.create_let var kind sym_defining_expr body in
     free_conts, lifted, body
   | Let_cont { body; handlers; } ->
-    let free_conts_body, lifted, body = lift body ~to_copy in
+    let free_conts_body, lifted, body = lift ~importer body ~to_copy in
     let expr : Flambda.Expr.t =
       Let_cont {
         body;
         handlers;
       }
     in
-    let free_conts_handlers, bound_conts =
-      Flambda.free_continuations_of_let_cont_handlers' ~handlers
+    let free_and_bound_conts_handlers =
+      Flambda.Let_cont_handlers.free_and_bound_continuations handlers
     in
     let free_conts =
       Continuation.Set.diff
-        (Continuation.Set.union free_conts_body free_conts_handlers)
-        bound_conts
+        (Continuation.Set.union free_conts_body
+          free_and_bound_conts_handlers.free)
+        free_and_bound_conts_handlers.bound
     in
     free_conts, lifted, expr
   | Let_mutable _ | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
-    let free_conts = Flambda.free_continuations expr in
+    let free_conts = Flambda.Expr.free_continuations expr in
     free_conts, [], expr
 
 (* CR-someday mshinwell: Try to avoid having a separate substitution phase. *)
-let introduce_symbols expr =
-  let _free_conts, lifted, expr = lift expr ~to_copy:[] in
+let introduce_symbols ~importer expr =
+  let _free_conts, lifted, expr = lift ~importer expr ~to_copy:[] in
   let lifted =
     List.map (fun (tag, var, symbol, conts_exprs_and_to_copies) ->
         let conts_exprs_and_to_copies =
           List.map (fun (cont, expr, to_copy) ->
               let to_copy, subst =
-                List.fold_left (fun (to_copy, subst) (var, defining_expr) ->
+                List.fold_left (fun (to_copy, subst)
+                        (var, kind, defining_expr) ->
                     let var' = Variable.rename var in
-                    let to_copy = (var', defining_expr) :: to_copy in
+                    let to_copy = (var', kind, defining_expr) :: to_copy in
                     to_copy, Variable.Map.add var var' subst)
                   ([], Variable.Map.empty)
                   to_copy
               in
               let to_copy =
-                List.map (fun (var, defining_expr) ->
+                List.map (fun (var, kind, defining_expr) ->
                     let defining_expr =
-                      Flambda.Expr.toplevel_substitution_named subst
+                      Flambda.Named.toplevel_substitution ~importer subst
                         defining_expr
                     in
-                    var, defining_expr)
+                    var, kind, defining_expr)
                   to_copy
               in
-              let expr = Flambda.Expr.toplevel_substitution subst expr in
+              let expr =
+                Flambda.Expr.toplevel_substitution ~importer subst expr
+              in
               cont, expr, to_copy)
             conts_exprs_and_to_copies
         in
@@ -171,13 +183,14 @@ let introduce_symbols expr =
 
 let add_extracted lifted program_body =
   List.fold_left (fun acc (tag, _var, symbol, conts_exprs_and_to_copies)
-            : Flambda_static.Program.t_body ->
+            : Flambda_static.Program_body.t ->
       let fields =
         List.map (fun (cont, expr, to_copy) ->
             let expr =
-              List.fold_left (fun expr (var, defining_expr) ->
-                  if Variable.Set.mem var (Flambda.Expr.free_variables expr) then
-                    Flambda.Expr.create_let var defining_expr expr
+              List.fold_left (fun expr (var, kind, defining_expr) ->
+                  let fvs = Flambda.Expr.free_variables expr in
+                  if Variable.Set.mem var fvs then
+                    Flambda.Expr.create_let var kind defining_expr expr
                   else
                     expr)
                 expr
@@ -186,35 +199,47 @@ let add_extracted lifted program_body =
             expr, cont)
           conts_exprs_and_to_copies
       in
-      Initialize_symbol (symbol, tag, fields, acc))
+      let descr : Flambda_static.Program_body.initialize_symbol =
+        Values {
+          tag;
+          fields;
+        }
+      in
+      Initialize_symbol (symbol, descr, acc))
     program_body
     (List.rev lifted)
 
-let rec split_program (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
+(* XXX but we need to either reflect kinds fully in Initialize_symbol or
+   restrict this pass e.g. to only operate on [Value] *)
+
+let rec split_program ~importer (program : Flambda_static.Program_body.t)
+      : Flambda_static.Program_body.t =
   match program with
   | End s -> End s
   | Let_symbol (s, def, program) ->
-    Let_symbol (s, def, split_program program)
+    Let_symbol (s, def, split_program ~importer program)
   | Let_rec_symbol (defs, program) ->
-    Let_rec_symbol (defs, split_program program)
+    Let_rec_symbol (defs, split_program ~importer program)
   | Effect (expr, cont, program) ->
-    let program = split_program program in
-    let introduced, expr = introduce_symbols expr in
+    let program = split_program ~importer program in
+    let introduced, expr = introduce_symbols ~importer expr in
     add_extracted introduced (Flambda.Effect (expr, cont, program))
   | Initialize_symbol (symbol, tag, ((_::_::_) as fields), program) ->
     (* CR-someday pchambart: currently the only initialize_symbol with more
        than 1 field is the module block. This could evolve, in that case
        this pattern should be handled properly. *)
-    Initialize_symbol (symbol, tag, fields, split_program program)
+    Initialize_symbol (symbol, tag, fields, split_program ~importer program)
   | Initialize_symbol (sym, tag, [], program) ->
-    Let_symbol (sym, Block (tag, []), split_program program)
+    Let_symbol (sym, Block (tag, []), split_program ~importer program)
   | Initialize_symbol (symbol, tag, [field, cont], program) ->
-    let program = split_program program in
-    let introduced, field = introduce_symbols field in
+    let program = split_program ~importer program in
+    let introduced, field = introduce_symbols ~importer field in
     add_extracted introduced
       (Flambda.Initialize_symbol (symbol, tag, [field, cont], program))
 
-let lift ~backend:_ (program : Flambda_static.Program.t) =
+let lift ~backend (program : Flambda_static.Program.t) =
+  let module B = (val backend : Backend_intf.S) in
+  let importer = (module B : Flambda_type.Importer) in
   { program with
-    program_body = split_program program.program_body;
+    program_body = split_program ~importer program.program_body;
   }
