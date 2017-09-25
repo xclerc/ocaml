@@ -204,16 +204,16 @@ module type S = sig
   (** Construction of top types. *)
   val unknown : Flambda_kind.t -> unknown_because_of -> t
   val any_value : Flambda_kind.scanning -> unknown_because_of -> t
-  val any_tagged_immediate : unknown_because_of -> t
-  val any_boxed_float : unknown_because_of -> t
-  val any_boxed_int32 : unknown_because_of -> t
-  val any_boxed_int64 : unknown_because_of -> t
-  val any_boxed_nativeint : unknown_because_of -> t
-  val any_naked_immediate : unknown_because_of -> t
-  val any_naked_float : unknown_because_of -> t
-  val any_naked_int32 : unknown_because_of -> t
-  val any_naked_int64 : unknown_because_of -> t
-  val any_naked_nativeint : unknown_because_of -> t
+  val any_tagged_immediate : unit -> t
+  val any_boxed_float : unit -> t
+  val any_boxed_int32 : unit -> t
+  val any_boxed_int64 : unit -> t
+  val any_boxed_nativeint : unit -> t
+  val any_naked_immediate : unit -> t
+  val any_naked_float : unit -> t
+  val any_naked_int32 : unit -> t
+  val any_naked_int64 : unit -> t
+  val any_naked_nativeint : unit -> t
 
   (** Building of types representing tagged / boxed values from specified
       constants. *)

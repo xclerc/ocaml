@@ -60,18 +60,19 @@ module rec Expr : sig
 
   val equal : t -> t -> bool
   val make_closure_declaration
-     : id:Variable.t
+     : (id:Variable.t
     -> body:t
     -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
+    (* CR mshinwell: update comment. *)
     -> stub:bool
     -> continuation:Continuation.t
-    -> return_arity:F0.Return_arity.t
-    -> t
+    -> return_arity:Flambda0.Return_arity.t
+    -> t) Flambda_type.with_importer
   val toplevel_substitution
-     : Variable.t Variable.Map.t
+     : (Variable.t Variable.Map.t
     -> t
-    -> t
+    -> t) Flambda_type.with_importer
   val description_of_toplevel_node : t -> string
   val bind
      : bindings:(Variable.t * Flambda_kind.t * Named.t) list
@@ -638,11 +639,11 @@ end = struct
   end
 
   (* CR-soon mshinwell: this should use the explicit ignore functions *)
-  let toplevel_substitution sb tree =
+  let toplevel_substitution ~importer sb tree =
     let sb' = sb in
     let sb v = try Variable.Map.find v sb with Not_found -> v in
     let substitute_type ty =
-      Flambda_type.rename_variables ty ~f:(fun var -> sb var)
+      Flambda_type.rename_variables ~importer ty ~f:(fun var -> sb var)
     in
     let substitute_params_list params =
       List.map (fun param ->
@@ -741,7 +742,7 @@ end = struct
     if Variable.Map.is_empty sb' then tree
     else Mappers.Toplevel_only.map aux aux_named tree
 
-  let make_closure_declaration ~id ~body ~params ~continuation_param
+  let make_closure_declaration ~importer ~id ~body ~params ~continuation_param
         ~stub ~continuation ~return_arity : Expr.t =
     let free_variables = Expr.free_variables body in
     let param_set = Typed_parameter.List.var_set params in
@@ -756,7 +757,7 @@ end = struct
     (* CR-soon mshinwell: try to eliminate this [toplevel_substitution].  This
        function is only called from [Simplify], so we should be able
        to do something similar to what happens in [Inlining_transforms] now. *)
-    let body = toplevel_substitution sb body in
+    let body = toplevel_substitution ~importer sb body in
     let subst var = Variable.Map.find var sb in
     let subst_param param = Typed_parameter.map_var param ~f:subst in
     let function_declaration =
@@ -855,9 +856,9 @@ end and Named : sig
 
   val equal : t -> t -> bool
   val toplevel_substitution
-     : Variable.t Variable.Map.t
+     : (Variable.t Variable.Map.t
     -> t
-    -> t
+    -> t) Flambda_type.with_importer
   val of_projection : Projection.t -> Debuginfo.t -> t
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
@@ -870,7 +871,7 @@ end = struct
   include F0.Named
 
   (* CR mshinwell: Implement this properly. *)
-  let toplevel_substitution sb (t : t) =
+  let toplevel_substitution ~importer sb (t : t) =
     let var = Variable.create "subst" in
     let cont = Continuation.create () in
     let expr : Expr.t =
@@ -878,7 +879,7 @@ end = struct
         (Flambda_kind.value Must_scan (* arbitrary *)) t
         (Apply_cont (cont, None, []))
     in
-    match Expr.toplevel_substitution sb expr with
+    match Expr.toplevel_substitution ~importer sb expr with
     | Let let_expr -> let_expr.defining_expr
     | _ -> assert false
 

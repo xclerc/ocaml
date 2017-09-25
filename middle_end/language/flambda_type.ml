@@ -22,7 +22,6 @@ module Named = F0.Named
 module Float = Numbers.Float
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
-module Nativeint = Numbers.Nativeint
 
 include F0.Flambda_type
 
@@ -66,8 +65,8 @@ let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
   | _ -> kind
 *)
 
-let rename_variables t ~f =
-  clean t (fun var -> Available_different_name (f var))
+let rename_variables ~importer t ~f =
+  clean ~importer t (fun var -> Available_different_name (f var))
 
 let unresolved_symbol sym =
   (* CR mshinwell: check with Pierre about this comment.  I suspect
@@ -193,7 +192,7 @@ let known ~importer (t : t) =
     | Unknown _ -> false
     end
 
-let known ~importer (t : t) =
+let useful ~importer (t : t) =
   let module I = (val importer : Importer) in
   match t with
   | Value ty ->
@@ -233,6 +232,10 @@ let known ~importer (t : t) =
     | Bottom | Unknown _ -> false
     end
 
+let all_not_useful ~importer ts =
+  List.for_all (fun t -> not (useful ~importer t)) ts
+
+
 (*
 let is_boxed_float t =
   match descr t with
@@ -255,8 +258,6 @@ let is_float_array t =
   | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
   | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
   | Unboxed_nativeint _ -> false
-
-let all_not_useful ts = List.for_all (fun t -> not (useful t)) ts
 
 let invalid_to_mutate t =
   match descr t with
@@ -591,7 +592,7 @@ module Blocks = struct
     let exception Same_tag_different_arities in
     try
       let map =
-        Tag.Scannable.Map.union (fun tag fields1 fields2 ->
+        Tag.Scannable.Map.union (fun _tag fields1 fields2 ->
             if Array.length fields1 <> Array.length fields2 then
               raise Same_tag_different_arities
             else
@@ -671,7 +672,7 @@ module Summary = struct
       end
     | Closures closures1, Closures closures2 ->
       begin match
-        Or_not_all_values_known.join (fun map1 map2 : _ or_wrong ->
+        Or_not_all_values_known.join (fun _map1 _map2 : _ or_wrong ->
             (* Pierre to fix *)
             assert false)
           closures1 closures2

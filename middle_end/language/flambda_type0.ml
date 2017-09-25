@@ -931,37 +931,37 @@ end) = struct
         symbol = None;
       }
 
-  let any_naked_immediate unknown_because_of : t =
+  let any_naked_immediate () : t =
     Naked_immediate
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
 
-  let any_naked_float unknown_because_of : t =
+  let any_naked_float () : t =
     Naked_float
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
 
-  let any_naked_int32 unknown_because_of : t =
+  let any_naked_int32 () : t =
     Naked_int32
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
 
-  let any_naked_int64 unknown_because_of : t =
+  let any_naked_int64 () : t =
     Naked_int64
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
 
-  let any_naked_nativeint unknown_because_of : t =
+  let any_naked_nativeint () : t =
     Naked_nativeint
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -976,15 +976,15 @@ end) = struct
   let unknown (kind : K.t) unknown_because_of =
     match kind with
     | Value scanning -> any_value scanning unknown_because_of
-    | Naked_immediate -> any_naked_immediate unknown_because_of
-    | Naked_float -> any_naked_float unknown_because_of
-    | Naked_int32 -> any_naked_int32 unknown_because_of
-    | Naked_int64 -> any_naked_int64 unknown_because_of
-    | Naked_nativeint -> any_naked_nativeint unknown_because_of
+    | Naked_immediate -> any_naked_immediate ()
+    | Naked_float -> any_naked_float ()
+    | Naked_int32 -> any_naked_int32 ()
+    | Naked_int64 -> any_naked_int64 ()
+    | Naked_nativeint -> any_naked_nativeint ()
 
-  let any_tagged_immediate unknown_because_of : t =
+  let any_tagged_immediate () : t =
     let i : ty_naked_immediate =
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -995,9 +995,9 @@ end) = struct
       symbol = None;
     }
 
-  let any_boxed_float unknown_because_of =
+  let any_boxed_float () =
     let f : ty_naked_float =
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -1008,9 +1008,9 @@ end) = struct
       symbol = None;
     }
 
-  let any_boxed_int32 unknown_because_of =
+  let any_boxed_int32 () =
     let n : ty_naked_int32 =
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -1021,9 +1021,9 @@ end) = struct
       symbol = None;
     }
 
-  let any_boxed_int64 unknown_because_of =
+  let any_boxed_int64 () =
     let n : ty_naked_int64 =
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }
@@ -1034,9 +1034,9 @@ end) = struct
       symbol = None;
     }
 
-  let any_boxed_nativeint unknown_because_of =
+  let any_boxed_nativeint () =
     let n : ty_naked_nativeint =
-      { descr = Ok (Unknown (Other, unknown_because_of));
+      { descr = Ok (Unknown (Other, ()));
         var = None;
         symbol = None;
       }

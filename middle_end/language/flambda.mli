@@ -68,7 +68,7 @@ module rec Expr : sig
     lwhite: the params restriction seems odd, perhaps give a reason
     in the comment. *)
   val make_closure_declaration
-     : id:Variable.t
+     : (id:Variable.t
     -> body:t
     -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
@@ -76,12 +76,12 @@ module rec Expr : sig
     -> stub:bool
     -> continuation:Continuation.t
     -> return_arity:Flambda0.Return_arity.t
-    -> t
+    -> t) Flambda_type.with_importer
 
   val toplevel_substitution
-     : Variable.t Variable.Map.t
+     : (Variable.t Variable.Map.t
     -> t
-    -> t
+    -> t) Flambda_type.with_importer
 
   val description_of_toplevel_node : t -> string
 
@@ -245,9 +245,9 @@ end and Named : sig
   include module type of struct include Flambda0.Named end
 
   val toplevel_substitution
-     : Variable.t Variable.Map.t
+     : (Variable.t Variable.Map.t
     -> t
-    -> t
+    -> t) Flambda_type.with_importer
 
   val of_projection : Projection.t -> Debuginfo.t -> t
 

@@ -23,6 +23,13 @@
 (** Basic definitions, constructors and accessors. *)
 include module type of struct include Flambda0.Flambda_type end
 
+(** The variable to which the given type states equality, if such exists. *)
+val var : t -> Variable.t option
+
+(** The symbol, or field of a symbol, to which the given type states
+    equality, if such exists. *)
+val symbol : t -> (Symbol.t * (int option)) option
+
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file).
     It is assumed that the symbol's value may need scanning by the GC. *)
 val unresolved_symbol : Symbol.t -> t
@@ -33,50 +40,43 @@ val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
 *)
 
 (** Rename free variables in a type. *)
-val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
-
-(** Returns [true] iff the given type provides strictly more information
-    about the corresponding value than the supplied type [than]. *)
-val strictly_more_precise : t -> than:t -> bool
-
-(** Returns [true] iff the given type provides the same or strictly more
-    information about the corresponding value than the supplied type [than]. *)
-val as_or_more_precise : t -> than:t -> bool
+val rename_variables
+   : (t
+  -> f:(Variable.t -> Variable.t)
+  -> t) with_importer
 
 (** Building of types and terms representing tagged / boxed values from
     specified constants. *)
-val this_int_named : Targetint.t -> Flambda0.Named.t * t
-val this_char_named : Targetint.t -> Flambda0.Named.t * t
-val this_bool_named : bool -> Flambda0.Named.t * t
-val this_immediate_named : Immediate.t -> Flambda0.Named.t * t
+val this_tagged_bool_named : bool -> Flambda0.Named.t * t
+val this_tagged_immediate_named : Immediate.t -> Flambda0.Named.t * t
 val this_boxed_float_named : float -> Flambda0.Named.t * t
 val this_boxed_int32_named : Int32.t -> Flambda0.Named.t * t
 val this_boxed_int64_named : Int64.t -> Flambda0.Named.t * t
-val this_boxed_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
+val this_boxed_nativeint_named : Targetint.t -> Flambda0.Named.t * t
 
 (** Building of types and terms representing untagged / unboxed values from
     specified constants. *)
-
+val this_untagged_immediate_named : Immediate.t -> Flambda0.Named.t * t
 val this_naked_float_named : float -> Flambda0.Named.t * t
 val this_naked_int32_named : Int32.t -> Flambda0.Named.t * t
 val this_naked_int64_named : Int64.t -> Flambda0.Named.t * t
-val this_naked_nativeint_named : Nativeint.t -> Flambda0.Named.t * t
+val this_naked_nativeint_named : Targetint.t -> Flambda0.Named.t * t
 
 (** Whether the given type says that a term of that type is unreachable. *)
-val is_bottom : t -> bool
+val is_bottom : (t -> bool) with_importer
 
 (** Determine whether the given type provides any information about an
     Flambda term of that type.  (This holds just when the type is not
     one of the [Unknown]s.) *)
-val known : t -> bool
+val known : (t -> bool) with_importer
 
 (** Determine whether the given type provides useful information about an
     Flambda term of that type.  To be "useful" the type must satisfy
     [known] and not correspond to an unreachable term ([Bottom]). *)
-val useful : t -> bool
+val useful : (t -> bool) with_importer
 
 (** Whether all types in the given list do *not* satisfy [useful]. *)
-val all_not_useful : t list -> bool
+val all_not_useful : (t list -> bool) with_importer
 
 type 'a or_wrong = private
   | Ok of 'a
@@ -105,7 +105,7 @@ module Summary : sig
 end
 
 (** Create a summary of a type, flattening unions as required. *)
-val summarize : t -> t
+val summarize : (t -> Summary.t) with_importer
 
 (*
 (** Whether the given type describes a float array. *)
@@ -280,4 +280,13 @@ val classify_switch_branch
    : t
   -> int
   -> switch_branch_classification
+
+(** Returns [true] iff the given type provides strictly more information
+    about the corresponding value than the supplied type [than]. *)
+val strictly_more_precise : t -> than:t -> bool
+
+(** Returns [true] iff the given type provides the same or strictly more
+    information about the corresponding value than the supplied type [than]. *)
+val as_or_more_precise : t -> than:t -> bool
+
 *)
