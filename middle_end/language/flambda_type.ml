@@ -68,7 +68,8 @@ let rename_variables t ~f =
   clean t (fun var -> Available_different_name (f var))
 
 let unresolved_symbol sym =
-  (* CR mshinwell: check with Pierre about this comment *)
+  (* CR mshinwell: check with Pierre about this comment.  I suspect
+     this is irrelevant after closure freshening has been removed *)
   (* We don't know anything, but we must remember that it comes
      from another compilation unit in case it contains a closure. *)
   unknown (Flambda_kind.value ()) (Unresolved_value (Symbol sym))

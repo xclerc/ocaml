@@ -165,7 +165,7 @@ module type S = sig
 
   and set_of_closures = private {
     function_decls : function_declarations;
-    closure_elements : t Var_within_closure.Map.t;
+    closure_elements : ty_value Var_within_closure.Map.t;
     (* CR mshinwell: try to change these to [Misc.Stdlib.Set_once.t]?
        (ask xclerc) *)
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
@@ -274,7 +274,7 @@ module type S = sig
   val create_set_of_closures
      : function_decls:function_declarations
     -> size:int option Variable.Map.t lazy_t
-    -> closure_elements:t Var_within_closure.Map.t
+    -> closure_elements:ty_value Var_within_closure.Map.t
     -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
     -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> set_of_closures
@@ -384,11 +384,10 @@ module type S = sig
     | Available
     | Available_different_name of Variable.t
     | Unavailable
-(*
+
   (** Adjust a type so that all of the free variables it references are in
       scope in some context. The context is expressed by a function that says
       whether the variable is available under its existing name, available
       under another name, or unavailable. *)
   val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_importer
-*)
 end

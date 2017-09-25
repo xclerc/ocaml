@@ -250,7 +250,7 @@ end) = struct
 
   and set_of_closures = {
     function_decls : function_declarations;
-    closure_elements : t Var_within_closure.Map.t;
+    closure_elements : ty_value Var_within_closure.Map.t;
     invariant_params : Variable.Set.t Variable.Map.t lazy_t;
     size : int option Variable.Map.t lazy_t;
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
@@ -1619,8 +1619,8 @@ end) = struct
           acc fields
       | Set_of_closures set_of_closures ->
         let acc =
-          Var_within_closure.Map.fold (fun _var t acc ->
-              free_variables t acc)
+          Var_within_closure.Map.fold (fun _var ty_value acc ->
+              free_variables_ty_value ty_value acc)
             set_of_closures.closure_elements acc
         in
         begin match set_of_closures.function_decls.funs with
@@ -1669,62 +1669,231 @@ end) = struct
   let free_variables t =
     free_variables t Variable.Set.empty
 
+  (* CR mshinwell: We need tests to check that [clean] matches up with
+     [free_variables]. *)
+
   type cleaning_spec =
     | Available
     | Available_different_name of Variable.t
     | Unavailable
 
-(*
-  let rec clean ~import_type t classify =
-    let clean_var var_opt =
+  let rec clean ~importer t classify =
+    let clean_var var =
+      match classify var with
+      | Available -> Some var
+      | Available_different_name new_var -> Some new_var
+      | Unavailable -> None
+    in
+    let clean_var_opt var_opt =
       match var_opt with
       | None -> None
       | Some var ->
-        match classify var with
-        | Available -> var_opt
-        | Available_different_name new_var -> Some new_var
-        | Unavailable -> None
+        match clean_var var with
+        | None -> None
+        | (Some var') as var_opt' ->
+          if var == var' then var_opt
+          else var_opt'
     in
-    let t = update_variable t (clean_var t.var) in
-    match t.descr with
-    | Union unionable ->
-      let unionable =
-        Unionable.map_blocks unionable ~f:(fun blocks ->
-          Tag.Scannable.Map.map (fun ts ->
-            Array.map (fun t -> clean t classify) ts) blocks)
+    clean_t ~importer t clean_var_opt
+
+  and clean_t ~importer (t : t) clean_var_opt : t =
+    match t with
+    | Value ty ->
+      Value (clean_ty_value ~importer ty clean_var_opt)
+    | Naked_immediate ty ->
+      Naked_immediate (clean_ty_naked_immediate ~importer ty clean_var_opt)
+    | Naked_float ty ->
+      Naked_float (clean_ty_naked_float ~importer ty clean_var_opt)
+    | Naked_int32 ty ->
+      Naked_int32 (clean_ty_naked_int32 ~importer ty clean_var_opt)
+    | Naked_int64 ty ->
+      Naked_int64 (clean_ty_naked_int64 ~importer ty clean_var_opt)
+    | Naked_nativeint ty ->
+      Naked_nativeint (clean_ty_naked_nativeint ~importer ty clean_var_opt)
+
+  and clean_ty_value ~importer ty_value clean_var_opt : ty_value =
+    let module I = (val importer : Importer) in
+    let ty_value = I.import_value_type_as_resolved_ty_value ty_value in
+    let var = clean_var_opt ty_value.var in
+    let descr : (of_kind_value, _) or_unknown_or_bottom =
+      match ty_value.descr with
+      | (Unknown _) | Bottom -> ty_value.descr
+      | Ok of_kind_value ->
+        Ok (clean_of_kind_value ~importer of_kind_value clean_var_opt)
+    in
+    { var;
+      symbol = ty_value.symbol;
+      descr = Ok descr;
+    }
+
+  and clean_ty_naked_immediate ~importer ty_naked_immediate clean_var_opt
+        : ty_naked_immediate =
+    let module I = (val importer : Importer) in
+    let ty_naked_immediate =
+      I.import_naked_immediate_type_as_resolved_ty_naked_immediate
+        ty_naked_immediate
+    in
+    let var = clean_var_opt ty_naked_immediate.var in
+    { var;
+      symbol = ty_naked_immediate.symbol;
+      descr = Ok ty_naked_immediate.descr;
+    }
+
+  and clean_ty_naked_float ~importer ty_naked_float clean_var_opt
+        : ty_naked_float =
+    let module I = (val importer : Importer) in
+    let ty_naked_float =
+      I.import_naked_float_type_as_resolved_ty_naked_float ty_naked_float
+    in
+    let var = clean_var_opt ty_naked_float.var in
+    { var;
+      symbol = ty_naked_float.symbol;
+      descr = Ok ty_naked_float.descr;
+    }
+
+  and clean_ty_naked_int32 ~importer ty_naked_int32 clean_var_opt
+        : ty_naked_int32 =
+    let module I = (val importer : Importer) in
+    let ty_naked_int32 =
+      I.import_naked_int32_type_as_resolved_ty_naked_int32 ty_naked_int32
+    in
+    let var = clean_var_opt ty_naked_int32.var in
+    { var;
+      symbol = ty_naked_int32.symbol;
+      descr = Ok ty_naked_int32.descr;
+    }
+
+  and clean_ty_naked_int64 ~importer ty_naked_int64 clean_var_opt
+        : ty_naked_int64 =
+    let module I = (val importer : Importer) in
+    let ty_naked_int64 =
+      I.import_naked_int64_type_as_resolved_ty_naked_int64 ty_naked_int64
+    in
+    let var = clean_var_opt ty_naked_int64.var in
+    { var;
+      symbol = ty_naked_int64.symbol;
+      descr = Ok ty_naked_int64.descr;
+    }
+
+  and clean_ty_naked_nativeint ~importer ty_naked_nativeint clean_var_opt
+        : ty_naked_nativeint =
+    let module I = (val importer : Importer) in
+    let ty_naked_nativeint =
+      I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
+        ty_naked_nativeint
+    in
+    let var = clean_var_opt ty_naked_nativeint.var in
+    { var;
+      symbol = ty_naked_nativeint.symbol;
+      descr = Ok ty_naked_nativeint.descr;
+    }
+
+  and clean_of_kind_value ~importer (o : of_kind_value) clean_var_opt
+        : of_kind_value =
+    match o with
+    | Singleton singleton ->
+      let singleton : of_kind_value_singleton =
+        match singleton with
+        | Tagged_immediate i ->
+          Tagged_immediate (clean_ty_naked_immediate ~importer i clean_var_opt)
+        | Boxed_float f ->
+          Boxed_float (clean_ty_naked_float ~importer f clean_var_opt)
+        | Boxed_int32 n ->
+          Boxed_int32 (clean_ty_naked_int32 ~importer n clean_var_opt)
+        | Boxed_int64 n ->
+          Boxed_int64 (clean_ty_naked_int64 ~importer n clean_var_opt)
+        | Boxed_nativeint n ->
+          Boxed_nativeint (clean_ty_naked_nativeint ~importer n clean_var_opt)
+        | Block (tag, fields) ->
+          let fields =
+            Array.map (fun t -> clean_ty_value ~importer t clean_var_opt)
+              fields
+          in
+          Block (tag, fields)
+        | Set_of_closures set_of_closures ->
+          let closure_elements =
+            Var_within_closure.Map.map (fun t ->
+                clean_ty_value ~importer t clean_var_opt)
+              set_of_closures.closure_elements
+          in
+          let function_decls = set_of_closures.function_decls in
+          let funs : funs =
+          match function_decls.funs with
+          | Non_inlinable funs ->
+            let funs =
+              Variable.Map.map
+                (fun (decl : non_inlinable_function_declaration)
+                      : non_inlinable_function_declaration ->
+                  let result = clean_t ~importer decl.result clean_var_opt in
+                  { result; })
+                funs
+            in
+            Non_inlinable funs
+          | Inlinable funs ->
+            let funs =
+              Variable.Map.map
+                (fun (decl : inlinable_function_declaration)
+                      : inlinable_function_declaration ->
+                  let params =
+                    List.map (fun (param, t) ->
+                        param, clean_t ~importer t clean_var_opt)
+                      decl.params
+                  in
+                  let result = clean_t ~importer decl.result clean_var_opt in
+                  { decl with
+                    params;
+                    result;
+                  })
+                funs
+            in
+            Inlinable funs
+          in
+          let function_decls : function_declarations =
+            { set_of_closures_id = function_decls.set_of_closures_id;
+              set_of_closures_origin = function_decls.set_of_closures_origin;
+              funs;
+            }
+          in
+          Set_of_closures {
+            function_decls;
+            closure_elements = closure_elements;
+            invariant_params = set_of_closures.invariant_params;
+            size = set_of_closures.size;
+            direct_call_surrogates = set_of_closures.direct_call_surrogates;
+          }
+        | Closure { set_of_closures; closure_id; } ->
+          let set_of_closures =
+            clean_ty_value ~importer set_of_closures clean_var_opt
+          in
+          Closure { set_of_closures; closure_id; }
+        | String _ -> singleton
+        | Float_array { contents; size; } ->
+          begin match contents with
+          | Contents ts ->
+            let ts =
+              Array.map (fun t ->
+                  clean_ty_naked_float ~importer t clean_var_opt)
+                ts
+            in
+            Float_array { contents = Contents ts; size; }
+          | Unknown_or_mutable -> singleton
+          end
       in
-      { t with descr = Union unionable; }
-    | Unknown _
-    | Unboxed_float _
-    | Unboxed_int32 _
-    | Unboxed_int64 _
-    | Unboxed_nativeint _ -> t
-    | Boxed_number (kind, contents) ->
-      { t with descr = Boxed_number (kind, clean contents classify); }
-    | Set_of_closures set_of_closures ->
-      let bound_vars =
-        Var_within_closure.Map.map (fun t -> clean t classify)
-          set_of_closures.bound_vars
+      Singleton singleton
+    | Union (w1, w2) ->
+      let w1 =
+        { var = clean_var_opt w1.var;
+          symbol = w1.symbol;
+          descr = clean_of_kind_value ~importer w1.descr clean_var_opt;
+        }
       in
-      { t with descr = Set_of_closures { set_of_closures with bound_vars; }; }
-    | Closure closure ->
-      let potential_closures =
-        Closure_id.Map.map (fun t -> clean t classify)
-          closure.potential_closures
+      let w2 =
+        { var = clean_var_opt w2.var;
+          symbol = w2.symbol;
+          descr = clean_of_kind_value ~importer w2.descr clean_var_opt;
+        }
       in
-      { t with descr = Closure { potential_closures; }; }
-    | Immutable_string _
-    | Mutable_string _ -> t
-    | Float_array { contents; size; } ->
-      let contents : float_array_contents =
-        match contents with
-        | Contents ts -> Contents (Array.map (fun t -> clean t classify) ts)
-        | Unknown_or_mutable -> Unknown_or_mutable
-      in
-      { t with descr = Float_array { contents; size; }; }
-    | Load_lazily _
-    | Bottom -> t
-*)
+      Union (w1, w2)
 
   let join_unknown_payload_for_value _descr1 scanning1 descr2 scanning2_opt =
     let scanning2 : K.scanning =
