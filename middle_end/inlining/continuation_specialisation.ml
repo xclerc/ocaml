@@ -181,7 +181,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
    parameters flow information.  This saves multiple rounds of simplification
    being required to propagate around mutually-recursive continuations.
 *)
-let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handler.ts)
+let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handlers.t)
       ~(newly_specialised_args : Flambda.specialised_args)
       ~invariant_params_flow ~env ~(recursive : Asttypes.rec_flag)
       ~simplify_let_cont_handlers ~definitions_with_uses
