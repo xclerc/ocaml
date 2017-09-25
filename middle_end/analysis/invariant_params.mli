@@ -66,19 +66,19 @@ module Continuations : sig
   end
 
   val invariant_params_in_recursion
-     : Flambda.Continuation_handler.ts
+     : Flambda.Continuation_handlers.t
     -> backend:(module Backend_intf.S)
     -> Variable.Set.t Variable.Map.t
 
   val invariant_param_sources
-     : Flambda.Continuation_handler.ts
+     : Flambda.Continuation_handlers.t
     -> backend:(module Backend_intf.S)
     -> Continuation_and_variable.Set.t Variable.Map.t
 
   (* CR-soon mshinwell: think about whether this function should
      be in this file.  Should it be called "unused_parameters"? *)
   val unused_arguments
-     : Flambda.Continuation_handler.ts
+     : Flambda.Continuation_handlers.t
     -> backend:(module Backend_intf.S)
     -> Variable.Set.t
 end

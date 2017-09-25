@@ -96,7 +96,7 @@ module For_functions = struct
 
   module Declaration = struct
     type t = Flambda.Function_declaration.t
-    let params (t : t) = Parameter.List.vars t.params
+    let params (t : t) = Flambda.Typed_parameter.List.vars t.params
     let body (t : t) = t.body
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =
@@ -202,7 +202,7 @@ module For_continuations = struct
 
   module Declaration = struct
     type t = Flambda.Continuation_handler.t
-    let params (t : t) = Parameter.List.vars t.params
+    let params (t : t) = Flambda.Typed_parameter.List.vars t.params
     let body (t : t) = t.handler
 
     let free_variables_of_body_excluding_callees_and_args (t : t) =
@@ -211,7 +211,7 @@ module For_continuations = struct
   end
 
   module Declarations = struct
-    type t = Flambda.Continuation_handler.ts
+    type t = Flambda.Continuation_handlers.t
     let declarations (t : t) = t
 
     let function_variable_aliases _t ~backend:_ = Variable.Map.empty

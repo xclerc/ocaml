@@ -67,7 +67,7 @@ end
 
 type being_placed = {
   handlers : Flambda.Let_cont_handlers.t;
-  handlers_as_map : Flambda.Continuation_handler.ts;
+  handlers_as_map : Flambda.Continuation_handlers.t;
   needed_fvs : Variable.Set.t;
 }
 
@@ -139,7 +139,7 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
             let pending = Continuation.Map.remove name state.pending in
             let needed_fvs =
               Variable.Set.diff
-                (Flambda.Expr.free_variables_of_let_cont_handlers new_handlers)
+                (Flambda.Let_cont_handlers.free_variables new_handlers)
                 state.vars_in_scope
             in
             let being_placed =
@@ -166,7 +166,8 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
       Continuation.Map.fold (fun name
               (handler : Flambda.Continuation_handler.t) state ->
           let params =
-            Variable.Set.of_list (Parameter.List.vars handler.params)
+            Variable.Set.of_list
+              (Flambda.Typed_parameter.List.vars handler.params)
           in
           let vars_in_scope =
             Variable.Set.union state.vars_in_scope params
@@ -210,7 +211,7 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
       in
       find_insertion_points body ~state
     | Let_cont { body; handlers; } ->
-      let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+      let handlers = Flambda.Let_cont_handlers.to_continuation_map handlers in
       passing_continuation_bindings ~body ~handlers ~state
     | Let_mutable { body; _ } -> find_insertion_points body ~state
     | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> state
@@ -229,7 +230,7 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
     Misc.fatal_errorf "Failed to find pre-existing continuations after \
         which to find placements for the following: %a"
       (Continuation.Map.print
-        (Format.pp_print_list Flambda.print_let_cont_handlers))
+        (Format.pp_print_list Flambda.Let_cont_handlers.print))
       state.pending
   end;
   assert (state.placing = []);

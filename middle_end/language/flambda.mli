@@ -56,7 +56,7 @@ module With_free_variables :
   module type of struct include Flambda0.With_free_variables end
 
 module Free_vars : sig
-  include module type of Flambda0.Free_vars
+  include module type of struct include Flambda0.Free_vars end
 
   (* Ensure that projection information is suitably erased if we have deleted
      the variable being projected from. *)
