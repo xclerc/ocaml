@@ -143,39 +143,54 @@ module Constant_defining_value = struct
 end
 
 module Program_body = struct
-  type initialize_symbol =
-    | Values of {
-        tag : Tag.Scannable.t;
-        fields :
-          (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
-      }
-    | Float of Flambda0.Expr.t * Continuation.t
-    | Int32 of Flambda0.Expr.t * Continuation.t
-    | Int64 of Flambda0.Expr.t * Continuation.t
-    | Nativeint of Flambda0.Expr.t * Continuation.t
+  module Initialize_symbol = struct
+    type t =
+      | Values of {
+          tag : Tag.Scannable.t;
+          fields :
+            (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
+        }
+      | Float of (Flambda0.Expr.t * Continuation.t) list
+      | Int32 of Flambda0.Expr.t * Continuation.t
+      | Int64 of Flambda0.Expr.t * Continuation.t
+      | Nativeint of Flambda0.Expr.t * Continuation.t
 
-  let kind_of_initialize_symbol is =
-    match is with
-    | Values { fields; _ } ->
-      let scanning : Flambda_kind.scanning =
-        match fields with
-        | [] -> Can_scan
-        | (_expr, scanning, _cont)::fields ->
-          List.fold_left (fun result (_expr, scanning, _cont) ->
-              Flambda_kind.join_scanning scanning result)
-            scanning
-            fields
-      in
-      Flambda_kind.value scanning
-    | Float _ -> Flambda_kind.naked_float ()
-    | Int32 _ -> Flambda_kind.naked_int32 ()
-    | Int64 _ -> Flambda_kind.naked_int64 ()
-    | Nativeint _ -> Flambda_kind.naked_nativeint ()
+    let eligible_return_arity t (arity : Flambda.Return_arity.t) =
+      match arity with
+      | [] | [_] -> true
+      | kinds ->
+        List.for_all Flambda_kind.is_float kinds
+          || List.for_all Flambda_kind.is_value kinds
+
+    let tag_and_scanning t : Tag.t * Flambda_kind.scanning =
+      match t with
+      | Values { fields; _ } ->
+        let scanning : Flambda_kind.scanning =
+          match fields with
+          | [] -> Can_scan
+          | (_expr, scanning, _cont)::fields ->
+            List.fold_left (fun result (_expr, scanning, _cont) ->
+                Flambda_kind.join_scanning scanning result)
+              scanning
+              fields
+        in
+        Tag.zero, scanning
+      | Float fs ->
+        let tag =
+          match fs with
+          | [_] -> Tag.double_tag
+          | _ -> Tag.double_array_tag
+        in
+        tag, Can_scan
+      | Int32 _
+      | Int64 _
+      | Nativeint _ -> Tag.custom_tag, Can_scan
+  end
 
   type t =
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
     | Let_rec_symbol of (Symbol.t * Constant_defining_value.t) list * t
-    | Initialize_symbol of Symbol.t * initialize_symbol * t
+    | Initialize_symbol of Symbol.t * Initialize_symbol.t * t
     | Effect of F0.Expr.t * Continuation.t * t
     | End of Symbol.t
 

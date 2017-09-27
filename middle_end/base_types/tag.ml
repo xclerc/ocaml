@@ -30,6 +30,9 @@ let create_exn tag =
 let to_int t = t
 
 let zero = 0
+let double_tag = Obj.double_tag
+let double_array_tag = Obj.double_array_tag
+let custom_tag = Obj.custom_tag
 
 module Scannable = struct
   type nonrec t = t

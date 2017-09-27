@@ -30,8 +30,9 @@ module Constant_defining_value : sig
       be directly assigned to symbols in the object file (see below). *)
   type t = private
     | Allocated_const of Allocated_const.t
-      (** A single constant.  These are never "simple constants" (type [const])
-          but instead more complicated constructions. *)
+      (** A single constant.  These are never "simple constants"
+          (i.e. of type [Flambda.Const.t]) but are instead more complicated
+          constructions. *)
     | Block of Tag.Scannable.t * Constant_defining_value_block_field.t list
       (** A pre-allocated block full of constants (either simple constants
           or references to other constants, see below). *)
@@ -68,20 +69,35 @@ end
     such symbols) in the object file.  As such, it is closely related to
     the compilation of toplevel modules. *)
 module Program_body : sig
-  type initialize_symbol =
-    | Values of {
-        tag : Tag.Scannable.t;
-        (* CR mshinwell: Check in Flambda_invariants that the [scannable]
-           value does not conflict with whether [tag] is below No_scan_tag *)
-        fields :
-          (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
-      }
-    | Float of Flambda0.Expr.t * Continuation.t
-    | Int32 of Flambda0.Expr.t * Continuation.t
-    | Int64 of Flambda0.Expr.t * Continuation.t
-    | Nativeint of Flambda0.Expr.t * Continuation.t
+  module Initialize_symbol : sig
+    (** Type [t] is written to match up precisely with the constraints
+        imposed by polymorphic operations such as comparison.  In particular
+        whilst we could in theory lift say a pair of a float and an int64, this
+        is disallowed, since there is no suitable tag that both prevents the
+        GC from scanning the contents and yet allows comparison, hash, etc
+        to see through.  (Symbols always have kind [Value] and thus
+        [Initialize_symbol] blocks must always be traversable by the GC, even
+        if a particular block is not registered in the compilation unit's
+        GC roots table, by virtue of it not _needing_ to be scanned.) *)
+    type t =
+      | Values of {
+          tag : Tag.Scannable.t;
+          fields :
+            (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
+        }
+      | Float of (Flambda0.Expr.t * Continuation.t) list
+      | Int32 of Flambda0.Expr.t * Continuation.t
+      | Int64 of Flambda0.Expr.t * Continuation.t
+      | Nativeint of Flambda0.Expr.t * Continuation.t
 
-  val kind_of_initialize_symbol : initialize_symbol -> Flambda_kind.t
+    (** Whether an expression with the given return arity may be lifted to
+        an [Initialize_symbol]. *)
+    val eligible_return_arity : Return_arity.t -> bool
+
+    (** The tag to be put on the statically-allocated block together with a
+        flag indicating whether the block must be registered as a root. *)
+    val tag_and_scanning : t -> Tag.t * Flambda_kind.scanning
+  end
 
   type t =
     | Let_symbol of Symbol.t * Constant_defining_value.t * t
@@ -105,7 +121,7 @@ module Program_body : sig
         approximation of the set of closures to be present in order to
         correctly simplify the [Project_closure] construction.  (See
         [Simplify.simplify_project_closure] for that part.) *)
-    | Initialize_symbol of Symbol.t * initialize_symbol * t
+    | Initialize_symbol of Symbol.t * Initialize_symbol.t * t
     (** Define the given symbol as a constant block following the given
         description; but with a possibly non-constant initializer.  The
         initializer will be executed at most once (from the entry point of

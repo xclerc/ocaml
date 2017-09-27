@@ -1403,6 +1403,7 @@ end and Typed_parameter : sig
     type nonrec t = t list
     val vars : t -> Variable.t list
     val var_set : t -> Variable.Set.t
+    val kind : (t -> Flambda_kind.t list) Flambda_type.with_importer
     val free_variables : t -> Variable.Set.t
     val print : Format.formatter -> t -> unit
   end
@@ -1484,6 +1485,9 @@ end = struct
     let vars t = List.map var t
 
     let var_set t = Variable.Set.of_list (vars t)
+
+    let kind ~importer t =
+      List.map (fun t -> Flambda_type.kind ~importer (ty t)) t
 
     let print ppf t =
       Format.pp_print_list ~pp_sep:Format.pp_print_space print ppf t

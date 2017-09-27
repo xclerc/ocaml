@@ -27,6 +27,9 @@ val create_exn : int -> t
 val to_int : t -> int
 
 val zero : t
+val double_tag : t
+val double_array_tag : t
+val custom_tag : t
 
 module Scannable : sig
   (** Tags that are strictly less than [No_scan_tag], corresponding to

@@ -669,6 +669,8 @@ end and Typed_parameter : sig
     (** As for [vars] but returns a set. *)
     val var_set : t -> Variable.Set.t
 
+    val kind : (t -> Flambda_kind.t list) Flambda_type.with_importer
+
     val print : Format.formatter -> t -> unit
   end
 

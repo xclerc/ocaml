@@ -83,3 +83,21 @@ let compatible t1 t2 =
   | Value Must_scan, Value Can_scan
   | Value Can_scan, Value Must_scan -> true
   | _, _ -> equal t1 t2
+
+let is_value t =
+  match t with
+  | Value _ -> true
+  | Naked_immediate
+  | Naked_float
+  | Naked_int32
+  | Naked_int64
+  | Naked_nativeint -> false
+
+let is_naked_float t =
+  match t with
+  | Naked_float -> true
+  | Value _
+  | Naked_immediate
+  | Naked_int32
+  | Naked_int64
+  | Naked_nativeint -> false

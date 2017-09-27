@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,16 +16,29 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* XXX We need to implement an unboxing pass on [Initialize_symbol] that's
+   like [Unbox_returns], except that no wrapper is needed---we can simply
+   rewrite the [Read_symbol_field] expressions.  This will subsume the previous
+   special-case handling of [Pmakeblock] in this pass.  The unboxing needs to
+   be restricted according to [Flambda_static.Program_body.Initialize_symbol.t].
+*)
+
 let should_copy (named : Flambda.Named.t) =
   match named with
   | Symbol _ | Read_symbol_field _ | Const _ -> true
   | _ -> false
 
+let eligible_params ~importer params =
+  (* [arity] is the return arity of the block whose continuation has parameters
+     [params]. *)
+  let arity = Typed_parameter.List.kind ~importer params in
+  Flambda_static.Program_body.Initialize_symbol.eligible_return_arity arity
+
 let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
   match expr with
   | Let_cont ({ body; handlers = Nonrecursive { name; handler = ({
-      params = [param]; handler; is_exn_handler; _ } as handler_record); }; })
-      when not is_exn_handler ->
+      params; handler; is_exn_handler; _ } as handler_record); }; })
+      when (not is_exn_handler) && eligible_params ~importer params ->
     let free_conts_body, lifted, body = lift ~importer body ~to_copy in
     let our_cont = Continuation.Set.singleton name in
     if Continuation.Set.is_empty free_conts_body then begin
@@ -90,7 +103,8 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
     in
     free_conts, lifted, body
   | Let { var; kind; defining_expr; body; _ } ->
-    (* This let-expression is to be lifted. *)
+    (* This let-expression is to be lifted.  (Since only a single value is
+       involved, no check on [kind] is required.) *)
     let var' = Variable.rename var in
     let symbol = Flambda_utils.make_variable_symbol var in
     let sym_defining_expr : Flambda.Named.t =
@@ -209,9 +223,6 @@ let add_extracted lifted program_body =
     program_body
     (List.rev lifted)
 
-(* XXX but we need to either reflect kinds fully in Initialize_symbol or
-   restrict this pass e.g. to only operate on [Value] *)
-
 let rec split_program ~importer (program : Flambda_static.Program_body.t)
       : Flambda_static.Program_body.t =
   match program with
@@ -225,9 +236,6 @@ let rec split_program ~importer (program : Flambda_static.Program_body.t)
     let introduced, expr = introduce_symbols ~importer expr in
     add_extracted introduced (Flambda.Effect (expr, cont, program))
   | Initialize_symbol (symbol, tag, ((_::_::_) as fields), program) ->
-    (* CR-someday pchambart: currently the only initialize_symbol with more
-       than 1 field is the module block. This could evolve, in that case
-       this pattern should be handled properly. *)
     Initialize_symbol (symbol, tag, fields, split_program ~importer program)
   | Initialize_symbol (sym, tag, [], program) ->
     Let_symbol (sym, Block (tag, []), split_program ~importer program)

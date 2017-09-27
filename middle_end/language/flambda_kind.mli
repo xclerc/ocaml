@@ -48,4 +48,7 @@ val compatible : t -> t -> bool
 
 val lambda_value_kind : t -> Lambda.value_kind option
 
+val is_value : t -> bool
+val is_naked_float : t -> bool
+
 include Identifiable.S with type t := t
