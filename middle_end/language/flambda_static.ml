@@ -85,7 +85,11 @@ module Program = struct
                 Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
                   field)
               fields
-          | Float (expr, _)
+          | Float fields ->
+            List.iter (fun (field, _cont) ->
+                Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
+                  field)
+              fields
           | Int32 (expr, _)
           | Int64 (expr, _)
           | Nativeint (expr, _) ->
@@ -147,8 +151,11 @@ module Program = struct
                   let kind = Flambda_kind.value scanning in
                   f ~continuation_arity:[kind] cont field)
                 fields
-            | Float (expr, cont) ->
-              f ~continuation_arity:[Flambda_kind.naked_float ()] cont expr
+            | Float fields ->
+              List.iter (fun (field, cont) ->
+                  let kind = Flambda_kind.naked_float () in
+                  f ~continuation_arity:[kind] cont field)
+                fields
             | Int32 (expr, cont) ->
               f ~continuation_arity:[Flambda_kind.naked_int32 ()] cont expr
             | Int64 (expr, cont) ->
@@ -276,7 +283,7 @@ module Program = struct
             Let_rec_symbol (defs, loop program')
         | Initialize_symbol (symbol, descr, program') ->
           let done_something = ref false in
-          let descr : Program_body.initialize_symbol =
+          let descr : Program_body.Initialize_symbol.t =
             let process_expr expr =
               let new_expr =
                 Flambda.Expr.Mappers.map_sets_of_closures expr ~f
@@ -295,7 +302,14 @@ module Program = struct
                   fields
               in
               Values { tag; fields; }
-            | Float (expr, cont) -> Float (process_expr expr, cont)
+            | Float fields ->
+              let fields =
+                List.map (fun (field, cont) ->
+                    let new_field = process_expr field in
+                    new_field, cont)
+                  fields
+              in
+              Float fields
             | Int32 (expr, cont) -> Int32 (process_expr expr, cont)
             | Int64 (expr, cont) -> Int64 (process_expr expr, cont)
             | Nativeint (expr, cont) -> Nativeint (process_expr expr, cont)
@@ -389,7 +403,7 @@ module Program = struct
             Let_rec_symbol (defs, new_program')
         | Initialize_symbol (symbol, descr, program') ->
           let done_something = ref false in
-          let descr : Program_body.initialize_symbol =
+          let descr : Program_body.Initialize_symbol.t =
             let process_expr expr =
               let new_expr = f expr in
               if not (new_expr == expr) then begin
@@ -406,7 +420,14 @@ module Program = struct
                   fields
               in
               Values { tag; fields; }
-            | Float (expr, cont) -> Float (process_expr expr, cont)
+            | Float fields ->
+              let fields =
+                List.map (fun (field, cont) ->
+                    let new_field = process_expr field in
+                    new_field, cont)
+                  fields
+              in
+              Float fields
             | Int32 (expr, cont) -> Int32 (process_expr expr, cont)
             | Int64 (expr, cont) -> Int64 (process_expr expr, cont)
             | Nativeint (expr, cont) -> Nativeint (process_expr expr, cont)

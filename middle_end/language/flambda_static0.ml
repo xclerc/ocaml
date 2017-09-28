@@ -155,11 +155,11 @@ module Program_body = struct
       | Int64 of Flambda0.Expr.t * Continuation.t
       | Nativeint of Flambda0.Expr.t * Continuation.t
 
-    let eligible_return_arity t (arity : Flambda.Return_arity.t) =
+    let eligible_return_arity arity =
       match arity with
       | [] | [_] -> true
       | kinds ->
-        List.for_all Flambda_kind.is_float kinds
+        List.for_all Flambda_kind.is_naked_float kinds
           || List.for_all Flambda_kind.is_value kinds
 
     let tag_and_scanning t : Tag.t * Flambda_kind.scanning =
@@ -227,6 +227,7 @@ module Program_body = struct
         bindings defs;
       print ppf program
     | Initialize_symbol (symbol, contents, program) ->
+      (* CR mshinwell: tidy this up by adding [Initialize_symbol.print] *)
       begin match contents with
       | Values { tag; fields; } ->
         let expr_and_cont ppf (field, defn, scanning, cont) =
@@ -247,13 +248,19 @@ module Program_body = struct
           Tag.Scannable.print tag
           (Format.pp_print_list ~pp_sep:Format.pp_print_space expr_and_cont)
           (List.mapi (fun i (defn, scan, cont) -> i, defn, scan, cont) fields)
-      | Float (defn, cont) ->
+      | Float fields ->
+        let expr_and_cont ppf (field, defn, cont) =
+          fprintf ppf "Field %d, return continuation %a:@;@[<h>@ @ %a@]"
+            field
+            Continuation.print cont
+            F0.Expr.print defn
+        in
         fprintf ppf
           "@[<2>initialize_symbol@ @[<hv 1>(@[<2>float:\
-            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
+            @ %a@;@[<v>%a@]@])@]@]@."
           Symbol.print symbol
-          Continuation.print cont
-          F0.Expr.print defn
+          (Format.pp_print_list ~pp_sep:Format.pp_print_space expr_and_cont)
+          (List.mapi (fun i (defn, cont) -> i, defn, cont) fields)
       | Int32 (defn, cont) ->
         fprintf ppf
           "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int32:\
@@ -302,7 +309,10 @@ module Program_body = struct
           List.iter (fun (field, _scanning, _cont) ->
               symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols field))
             fields
-        | Float (expr, _)
+        | Float fields ->
+          List.iter (fun (field, _cont) ->
+              symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols field))
+            fields
         | Int32 (expr, _)
         | Int64 (expr, _)
         | Nativeint (expr, _) ->

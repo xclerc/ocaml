@@ -181,7 +181,10 @@ let assign_symbols_and_collect_constant_definitions
           List.map (fun (_field, _scanning, _cont) -> None) fields
         in
         Symbol.Tbl.add initialize_symbol_to_definition_tbl symbol fields
-      | Float (_expr, _cont)
+      | Float _ ->
+        (* CR mshinwell for pchambart: Need to decide what to do. (Possibly
+           nothing, since [Symbol]s are currently always [Value].) *)
+        assert false
       | Int32 (_expr, _cont)
       | Int64 (_expr, _cont)
       | Nativeint (_expr, _cont) ->
@@ -685,7 +688,7 @@ let add_definition_of_symbol constant_definitions
   | Symbol_SCC.No_loop sym ->
     match Symbol.Tbl.find initialize_symbol_tbl sym with
     | (tag, fields, _previous) ->
-      let descr : Flambda_static.Program_body.initialize_symbol =
+      let descr : Flambda_static.Program_body.Initialize_symbol.t =
         Values {
           tag;
           fields;

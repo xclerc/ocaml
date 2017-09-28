@@ -92,7 +92,7 @@ module Program_body : sig
 
     (** Whether an expression with the given return arity may be lifted to
         an [Initialize_symbol]. *)
-    val eligible_return_arity : Return_arity.t -> bool
+    val eligible_return_arity : Flambda0.Return_arity.t -> bool
 
     (** The tag to be put on the statically-allocated block together with a
         flag indicating whether the block must be registered as a root. *)

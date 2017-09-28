@@ -35,7 +35,7 @@ module Program : sig
 
   val initialize_symbols
      : t
-    -> (Symbol.t * Program_body.initialize_symbol) list
+    -> (Symbol.t * Program_body.Initialize_symbol.t) list
 
   val imported_symbols : t -> Symbol.Set.t
 
