@@ -86,6 +86,7 @@ module type S = sig
   and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
   and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
   and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
+  and resolved_ty_set_of_closures = (set_of_closures, unit) resolved_ty
 
   and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom with_var_and_symbol
 
@@ -125,21 +126,35 @@ module type S = sig
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
     | Closure of {
-        set_of_closures : ty_value;
+        (* CR pchambart: should Unknown or Bottom really be allowed here ? *)
+        set_of_closures : resolved_ty_set_of_closures;
         closure_id : Closure_id.t
       }
     | String of string_ty
     | Float_array of float_array_ty
 
-  and funs =
-    | Non_inlinable of non_inlinable_function_declaration Variable.Map.t
-    | Inlinable of inlinable_function_declaration Variable.Map.t
- 
-  and function_declarations = {
+  and inlinable_function_declarations = private {
     set_of_closures_id : Set_of_closures_id.t;
     set_of_closures_origin : Set_of_closures_origin.t;
-    funs : funs;
+    funs : inlinable_function_declaration Variable.Map.t;
+    (* CR mshinwell: try to change these to [Misc.Stdlib.Set_once.t]?
+       (ask xclerc) *)
+    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
+    size : int option Variable.Map.t lazy_t;
+    (** For functions that are very likely to be inlined, the size of the
+        function's body. *)
+    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
+
+  and non_inlinable_function_declarations = {
+    funs : non_inlinable_function_declaration Variable.Map.t
+  }
+
+  (* CR pchambart: the inlinable property should maybe be a
+     per function property *)
+  and function_declarations =
+    | Non_inlinable of non_inlinable_function_declarations
+    | Inlinable of inlinable_function_declarations
 
   and function_body = {
     body : expr;
@@ -151,7 +166,7 @@ module type S = sig
     closure_origin : Closure_origin.t;
     params : (Parameter.t * t) list;
     body : function_body;
-    result : t;
+    result : t list;
     stub : bool;
     dbg : Debuginfo.t;
     inline : Lambda.inline_attribute;
@@ -159,20 +174,13 @@ module type S = sig
     is_a_functor : bool;
   }
 
-  and non_inlinable_function_declaration = private {
-    result : t;
+  and non_inlinable_function_declaration = {
+    result : t list;
   }
 
   and set_of_closures = private {
     function_decls : function_declarations;
     closure_elements : ty_value Var_within_closure.Map.t;
-    (* CR mshinwell: try to change these to [Misc.Stdlib.Set_once.t]?
-       (ask xclerc) *)
-    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-    size : int option Variable.Map.t lazy_t;
-    (** For functions that are very likely to be inlined, the size of the
-        function's body. *)
-    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
   and float_array_contents = private
@@ -269,14 +277,14 @@ module type S = sig
     -> Closure_id.t
     -> t
 
+  (* CR pchambart: inlinable_function_declaration should be made
+     private now that it is expected to maintain the invariants that
+     create_set_of_closures was supposed to maintain. *)
   (** Create a [set_of_closures] structure which can be used for building a
       type describing a set of closures. *)
   val create_set_of_closures
      : function_decls:function_declarations
-    -> size:int option Variable.Map.t lazy_t
     -> closure_elements:ty_value Var_within_closure.Map.t
-    -> invariant_params:Variable.Set.t Variable.Map.t lazy_t
-    -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> set_of_closures
 
   (** Construct a set of closures type. [set_of_closures_var] is as for the
