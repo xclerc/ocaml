@@ -100,7 +100,7 @@ end
 
 module Free_vars : sig
   (** For closures: map from "inner" to "outer" variables. *)
-  type t = Free_var.t Variable.Map.t
+  type t = Free_var.t Var_within_closure.Map.t
 end
 
 (** Actions affecting exception traps on the stack.  These are always
@@ -467,7 +467,7 @@ end and Set_of_closures : sig
         variables in scope at the definition point of the [set_of_closures].
         The domain of this map is sometimes known as the "variables bound by
         the closure". *)
-    direct_call_surrogates : Variable.t Variable.Map.t;
+    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
     (** If [direct_call_surrogates] maps [fun_var1] to [fun_var2] then direct
         calls to [fun_var1] should be redirected to [fun_var2].  This is used
         to reduce the overhead of transformations that introduce wrapper
@@ -481,7 +481,7 @@ end and Set_of_closures : sig
   val create
      : function_decls:Function_declarations.t
     -> free_vars:Free_vars.t
-    -> direct_call_surrogates:Variable.t Variable.Map.t
+    -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> t
 
   (** Returns true iff the given set of closures has an empty environment. *)
@@ -517,21 +517,21 @@ end and Function_declarations : sig
         function declarations is based.  Used to prevent different
         specialisations of the same functions from being inlined/specialised
         within each other. *)
-    funs : Function_declaration.t Variable.Map.t;
+    funs : Function_declaration.t Closure_id.Map.t;
     (** The function(s) defined by the set of function declarations.  The
         keys of this map are often referred to in the code as "fun_var"s. *)
   }
 
   (** Create a set of function declarations given the individual
       declarations. *)
-  val create : funs:Function_declaration.t Variable.Map.t -> t
+  val create : funs:Function_declaration.t Closure_id.Map.t -> t
 
   (** [find f t] raises [Not_found] if [f] is not in [t]. *)
   val find : Closure_id.t -> t -> Function_declaration.t
 
   (** Create a set of function declarations based on another set of function
       declarations. *)
-  val update : t -> funs:Function_declaration.t Variable.Map.t -> t
+  val update : t -> funs:Function_declaration.t Closure_id.Map.t -> t
 
   val import_for_pack
      : t
@@ -564,10 +564,6 @@ end and Function_declaration : sig
     (** The code of the function's body. *)
     (* CR-soon mshinwell: inconsistent naming free_variables/free_vars here and
       above *)
-    free_variables : Variable.Set.t;
-    (** All variables free in the *body* of the function.  For example, a
-        variable that is bound as one of the function's parameters will still
-        be included in this set.  This field is present as an optimization. *)
     free_symbols : Symbol.Set.t;
     (** All symbols that occur in the function's body.  (Symbols can never be
         bound in a function's body; the only thing that binds symbols is the
@@ -585,6 +581,8 @@ end and Function_declaration : sig
     (** Specialising requirements from the source code. *)
     is_a_functor : bool;
     (** Whether the function is known definitively to be a functor. *)
+    my_closure : Variable.t;
+    (** Binding name of the closure inside the function body *)
   }
 
   (** Create a function declaration.  This calculates the free variables and
@@ -602,6 +600,7 @@ end and Function_declaration : sig
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
     -> return_arity:Return_arity.t
+    -> my_closure:Variable.t
     -> body:Expr.t
     -> stub:bool
     -> dbg:Debuginfo.t
@@ -629,7 +628,7 @@ end and Function_declaration : sig
       are used in the body. *)
   val used_params : t -> Variable.Set.t
 
-  val print : Variable.t -> Format.formatter -> t -> unit
+  val print : Closure_id.t -> Format.formatter -> t -> unit
 end and Typed_parameter : sig
   (** A parameter (to a function, continuation, etc.) together with its
       type. *)

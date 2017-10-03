@@ -170,12 +170,12 @@ module Free_var = struct
 end
 
 module Free_vars = struct
-  type t = Free_var.t Variable.Map.t
+  type t = Free_var.t Var_within_closure.Map.t
 
   let print ppf free_vars =
-    Variable.Map.iter (fun inner_var outer_var ->
+    Var_within_closure.Map.iter (fun inner_var outer_var ->
         fprintf ppf "@ %a -rename-> %a"
-          Variable.print inner_var
+          Var_within_closure.print inner_var
           Free_var.print outer_var)
       free_vars
 end
@@ -662,7 +662,7 @@ end = struct
       | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
       | Set_of_closures { function_decls = funcs; _; } ->
         if not toplevel then begin
-          Variable.Map.iter (fun _ (decl : Function_declaration.t) ->
+          Closure_id.Map.iter (fun _ (decl : Function_declaration.t) ->
               aux decl.body)
             funcs.funs
         end
@@ -815,7 +815,7 @@ end = struct
     | Symbol symbol
     | Read_symbol_field (symbol, _) -> symbols := Symbol.Set.add symbol !symbols
     | Set_of_closures set_of_closures ->
-      Variable.Map.iter (fun _ (function_decl : Function_declaration.t) ->
+      Closure_id.Map.iter (fun _ (function_decl : Function_declaration.t) ->
           symbols := Symbol.Set.union function_decl.free_symbols !symbols)
         set_of_closures.function_decls.funs
     | _ -> ()
@@ -844,7 +844,7 @@ end = struct
         (* Sets of closures are, well, closed---except for the free variable and
            specialised argument lists, which may identify variables currently in
            scope outside of the closure. *)
-        Variable.Map.iter (fun _ (renamed_to : Free_var.t) ->
+        Var_within_closure.Map.iter (fun _ (renamed_to : Free_var.t) ->
             (* We don't need to do anything with [renamed_to.projectee.var], if
                it is present, since it would only be another free variable
                in the same set of closures. *)
@@ -1101,13 +1101,13 @@ end and Set_of_closures : sig
   type t = {
     function_decls : Function_declarations.t;
     free_vars : Free_vars.t;
-    direct_call_surrogates : Variable.t Variable.Map.t;
+    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
   val create
      : function_decls:Function_declarations.t
     -> free_vars:Free_vars.t
-    -> direct_call_surrogates:Variable.t Variable.Map.t
+    -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> t
   val has_empty_environment : t -> bool
   val print : Format.formatter -> t -> unit
@@ -1116,8 +1116,10 @@ end = struct
 
   let create ~(function_decls : Function_declarations.t) ~free_vars
         ~direct_call_surrogates =
+    (* CR pchambart: there is nothing to check about free vars anymore. *)
+    (*
     if !Clflags.flambda_invariant_checks then begin
-      let all_fun_vars = Variable.Map.keys function_decls.funs in
+      let all_fun_vars = Closure_id.Map.keys function_decls.funs in
       let expected_free_vars =
         Variable.Map.fold (fun _fun_var (function_decl : Function_declaration.t)
                   expected_free_vars ->
@@ -1146,7 +1148,7 @@ end = struct
  
          mshinwell: see CR in Flambda_invariants about this too
       *)
-      let free_vars_domain = Variable.Map.keys free_vars in
+      let free_vars_domain = Closure_id.Map.keys free_vars in
       if not (Variable.Set.subset expected_free_vars free_vars_domain) then begin
         Misc.fatal_errorf "Set_of_closures.create: [free_vars] mapping of \
             variables bound by the closure(s) is wrong.  (Must map at least \
@@ -1156,19 +1158,20 @@ end = struct
           Function_declarations.print function_decls
       end
     end;
+    *)
     { function_decls;
       free_vars;
       direct_call_surrogates;
     }
 
   let has_empty_environment t =
-    Variable.Map.is_empty t.free_vars
+    Var_within_closure.Map.is_empty t.free_vars
 
   let print ppf t =
     match t with
     | { function_decls; free_vars; } ->
       let funs ppf t =
-        Variable.Map.iter (fun var decl ->
+        Closure_id.Map.iter (fun var decl ->
             Function_declaration.print var ppf decl)
           t
       in
@@ -1178,18 +1181,18 @@ end = struct
         Set_of_closures_id.print function_decls.set_of_closures_id
         funs function_decls.funs
         Free_vars.print free_vars
-        (Variable.Map.print Variable.print) t.direct_call_surrogates
+        (Closure_id.Map.print Closure_id.print) t.direct_call_surrogates
         Set_of_closures_origin.print function_decls.set_of_closures_origin
 end and Function_declarations : sig
   type t = {
     set_of_closures_id : Set_of_closures_id.t;
     set_of_closures_origin : Set_of_closures_origin.t;
-    funs : Function_declaration.t Variable.Map.t;
+    funs : Function_declaration.t Closure_id.Map.t;
   }
 
-  val create : funs:Function_declaration.t Variable.Map.t -> t
+  val create : funs:Function_declaration.t Closure_id.Map.t -> t
   val find : Closure_id.t -> t -> Function_declaration.t
-  val update : t -> funs:Function_declaration.t Variable.Map.t -> t
+  val update : t -> funs:Function_declaration.t Closure_id.Map.t -> t
   val import_for_pack
      : t
     -> (Set_of_closures_id.t -> Set_of_closures_id.t)
@@ -1211,7 +1214,7 @@ end = struct
     }
 
   let find cf ({ funs } : t) =
-    Variable.Map.find (Closure_id.unwrap cf) funs
+    Closure_id.Map.find cf funs
 
   let update function_decls ~funs =
     let compilation_unit = Compilation_unit.get_current_exn () in
@@ -1233,7 +1236,7 @@ end = struct
 
   let print ppf (t : t) =
     let funs ppf t =
-      Variable.Map.iter (fun var decl ->
+      Closure_id.Map.iter (fun var decl ->
           Function_declaration.print var ppf decl)
         t
     in
@@ -1246,19 +1249,20 @@ end and Function_declaration : sig
     return_arity : Return_arity.t;
     params : Typed_parameter.t list;
     body : Expr.t;
-    free_variables : Variable.Set.t;
     free_symbols : Symbol.Set.t;
     stub : bool;
     dbg : Debuginfo.t;
     inline : Lambda.inline_attribute;
     specialise : Lambda.specialise_attribute;
     is_a_functor : bool;
+    my_closure : Variable.t;
   }
 
   val create
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
     -> return_arity:Return_arity.t
+    -> my_closure:Variable.t
     -> body:Expr.t
     -> stub:bool
     -> dbg:Debuginfo.t
@@ -1275,11 +1279,12 @@ end and Function_declaration : sig
     -> body:Expr.t
     -> t
   val used_params : t -> Variable.Set.t
-  val print : Variable.t -> Format.formatter -> t -> unit
+  val print : Closure_id.t -> Format.formatter -> t -> unit
 end = struct
   include Function_declaration
 
-  let create ~params ~continuation_param ~return_arity ~body ~stub ~dbg
+  let create ~params ~continuation_param ~return_arity ~my_closure
+        ~body ~stub ~dbg
         ~(inline : Lambda.inline_attribute)
         ~(specialise : Lambda.specialise_attribute) ~is_a_functor
         ~closure_origin : t =
@@ -1304,13 +1309,13 @@ end = struct
       continuation_param;
       return_arity;
       body;
-      free_variables = Expr.free_variables body;
       free_symbols = Expr.free_symbols body;
       stub;
       dbg;
       inline;
       specialise;
       is_a_functor;
+      my_closure;
     }
 
   let update_body (t : t) ~body : t =
@@ -1319,13 +1324,13 @@ end = struct
       continuation_param = t.continuation_param;
       return_arity = t.return_arity;
       body;
-      free_variables = Expr.free_variables body;
       free_symbols = Expr.free_symbols body;
       stub = t.stub;
       dbg = t.dbg;
       inline = t.inline;
       specialise = t.specialise;
       is_a_functor = t.is_a_functor;
+      my_closure = t.my_closure
     }
 
   let update_params_and_body (t : t) ~params ~body : t =
@@ -1334,13 +1339,13 @@ end = struct
       continuation_param = t.continuation_param;
       return_arity = t.return_arity;
       body;
-      free_variables = Expr.free_variables body;
       free_symbols = Expr.free_symbols body;
       stub = t.stub;
       dbg = t.dbg;
       inline = t.inline;
       specialise = t.specialise;
       is_a_functor = t.is_a_functor;
+      my_closure = t.my_closure; (* Updating that field is probably needed also *)
     }
 
   let update_params t ~params =
@@ -1348,10 +1353,10 @@ end = struct
 
   let used_params (function_decl : Function_declaration.t) =
     Variable.Set.filter (fun param ->
-        Variable.Set.mem param function_decl.free_variables)
+        Variable.Set.mem param (Expr.free_variables function_decl.body))
       (Typed_parameter.List.var_set function_decl.params)
 
-  let print var ppf (f : t) =
+  let print closure_id ppf (f : t) =
     let stub =
       if f.stub then
         " *stub*"
@@ -1380,7 +1385,7 @@ end = struct
     fprintf ppf
       "@[<2>(%a%s( return arity %a)%s%s%s(origin %a)@ =@ \
         fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
-      Variable.print var
+      Closure_id.print closure_id
       stub
       Return_arity.print f.return_arity
       is_a_functor inline specialise
