@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -19,10 +19,13 @@
 type t = {
   compilation_unit : Compilation_unit.t;
   label : Linkage_name.t;
+  field_kinds : Flambda_kind.t list;
   hash : int;
 }
 
-include Identifiable.Make (struct
+type symbol = t
+
+module I = Identifiable.Make (struct
   type nonrec t = t
 
   let compare t1 t2 =
@@ -46,7 +49,9 @@ include Identifiable.Make (struct
     Linkage_name.print ppf t.label
 end)
 
-let create compilation_unit label =
+include I
+
+let create compilation_unit label ~field_kinds =
   let unit_linkage_name =
     Linkage_name.to_string
       (Compilation_unit.get_linkage_name compilation_unit)
@@ -56,18 +61,19 @@ let create compilation_unit label =
       (unit_linkage_name ^ "__" ^ (Linkage_name.to_string label))
   in
   let hash = Linkage_name.hash label in
-  { compilation_unit; label; hash; }
+  { compilation_unit; label; field_kinds; hash; }
 
-let unsafe_create compilation_unit label =
+let unsafe_create compilation_unit label ~field_kinds =
   let hash = Linkage_name.hash label in
-  { compilation_unit; label; hash; }
+  { compilation_unit; label; hash; field_kinds; }
 
-let import_for_pack ~pack:compilation_unit symbol =
+let import_for_pack ~pack:compilation_unit symbol ~field_kinds =
   let hash = Linkage_name.hash symbol.label in
-  { compilation_unit; label = symbol.label; hash; }
+  { compilation_unit; label = symbol.label; hash; field_kinds; }
 
 let compilation_unit t = t.compilation_unit
 let label t = t.label
+let field_kinds t = t.field_kinds
 
 let print_opt ppf = function
   | None -> Format.fprintf ppf "<no symbol>"
@@ -75,3 +81,18 @@ let print_opt ppf = function
 
 let compare_lists l1 l2 =
   Misc.Stdlib.List.compare compare l1 l2
+
+module Of_kind_value = struct
+  type t = symbol
+
+  include I
+
+  let to_symbol t = t
+
+  let of_symbol t =
+    let all_values = List.for_all Flambda_kind.is_value t.field_kinds in
+    if all_values then t
+    else
+      Misc.fatal_errorf "Symbol %a has fields not of kind [Value]"
+        print t
+end

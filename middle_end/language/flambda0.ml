@@ -784,8 +784,8 @@ end and Named : sig
     | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
-    | Symbol of Symbol.t
-    | Read_symbol_field of Symbol.t * int
+    | Symbol of Symbol.Of_kind_value.t
+    | Read_symbol_field of { symbol : Symbol.t; logical_field : int; }
     | Allocated_const of Allocated_const.t
     | Set_of_closures of Set_of_closures.t
     | Project_closure of Projection.Project_closure.t

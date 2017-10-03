@@ -144,47 +144,10 @@ end
 
 module Program_body = struct
   module Initialize_symbol = struct
-    type t =
-      | Values of {
-          tag : Tag.Scannable.t;
-          fields :
-            (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
-        }
-      | Float of (Flambda0.Expr.t * Continuation.t) list
-      | Int32 of Flambda0.Expr.t * Continuation.t
-      | Int64 of Flambda0.Expr.t * Continuation.t
-      | Nativeint of Flambda0.Expr.t * Continuation.t
-
-    let eligible_return_arity arity =
-      match arity with
-      | [] | [_] -> true
-      | kinds ->
-        List.for_all Flambda_kind.is_naked_float kinds
-          || List.for_all Flambda_kind.is_value kinds
-
-    let tag_and_scanning t : Tag.t * Flambda_kind.scanning =
-      match t with
-      | Values { fields; _ } ->
-        let scanning : Flambda_kind.scanning =
-          match fields with
-          | [] -> Can_scan
-          | (_expr, scanning, _cont)::fields ->
-            List.fold_left (fun result (_expr, scanning, _cont) ->
-                Flambda_kind.join_scanning scanning result)
-              scanning
-              fields
-        in
-        Tag.zero, scanning
-      | Float fs ->
-        let tag =
-          match fs with
-          | [_] -> Tag.double_tag
-          | _ -> Tag.double_array_tag
-        in
-        tag, Can_scan
-      | Int32 _
-      | Int64 _
-      | Nativeint _ -> Tag.custom_tag, Can_scan
+    type t = {
+      tag : Tag.Scannable.t;
+      fields : Flambda0.Expr.t * Continuation.t * Flambda0.Return_arity.t;
+    }
   end
 
   type t =

@@ -70,33 +70,10 @@ end
     the compilation of toplevel modules. *)
 module Program_body : sig
   module Initialize_symbol : sig
-    (** Type [t] is written to match up precisely with the constraints
-        imposed by polymorphic operations such as comparison.  In particular
-        whilst we could in theory lift say a pair of a float and an int64, this
-        is disallowed, since there is no suitable tag that both prevents the
-        GC from scanning the contents and yet allows comparison, hash, etc
-        to see through.  (Symbols always have kind [Value] and thus
-        [Initialize_symbol] blocks must always be traversable by the GC, even
-        if a particular block is not registered in the compilation unit's
-        GC roots table, by virtue of it not _needing_ to be scanned.) *)
-    type t =
-      | Values of {
-          tag : Tag.Scannable.t;
-          fields :
-            (Flambda0.Expr.t * Flambda_kind.scanning * Continuation.t) list;
-        }
-      | Float of (Flambda0.Expr.t * Continuation.t) list
-      | Int32 of Flambda0.Expr.t * Continuation.t
-      | Int64 of Flambda0.Expr.t * Continuation.t
-      | Nativeint of Flambda0.Expr.t * Continuation.t
-
-    (** Whether an expression with the given return arity may be lifted to
-        an [Initialize_symbol]. *)
-    val eligible_return_arity : Flambda0.Return_arity.t -> bool
-
-    (** The tag to be put on the statically-allocated block together with a
-        flag indicating whether the block must be registered as a root. *)
-    val tag_and_scanning : t -> Tag.t * Flambda_kind.scanning
+    type t = {
+      tag : Tag.Scannable.t;
+      fields : Flambda0.Expr.t * Continuation.t * Flambda0.Return_arity.t;
+    }
   end
 
   type t =

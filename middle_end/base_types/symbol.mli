@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -28,16 +28,39 @@
 
 include Identifiable.S
 
-val create : Compilation_unit.t -> Linkage_name.t -> t
+type symbol = t
+
+val create
+   : Compilation_unit.t
+  -> Linkage_name.t
+  -> field_kinds:Flambda_kind.t list
+  -> t
+
 (* Create the symbol without prefixing with the compilation unit.
    Used for predefined exceptions *)
-val unsafe_create : Compilation_unit.t -> Linkage_name.t -> t
+val unsafe_create
+   : Compilation_unit.t
+  -> Linkage_name.t
+  -> field_kinds:Flambda_kind.t list
+  -> t
 
-val import_for_pack : pack:Compilation_unit.t -> t -> t
+val import_for_pack
+   : pack:Compilation_unit.t
+  -> field_kinds:Flambda_kind.t list
+  -> t
+  -> t
 
 val compilation_unit : t -> Compilation_unit.t
 val label : t -> Linkage_name.t
+val field_kinds : t -> Flambda_kind.t list
 
 val print_opt : Format.formatter -> t option -> unit
 
 val compare_lists : t list -> t list -> int
+
+module Of_kind_value : sig
+  include Identifiable.S
+
+  val to_symbol : t -> symbol
+  val of_symbol_exn : symbol -> t
+end
