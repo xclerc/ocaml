@@ -58,9 +58,14 @@ module With_free_variables :
 module Free_vars : sig
   include module type of struct include Flambda0.Free_vars end
 
+  (* This is probably not needed anymore: closure elements are part of
+     the set of closures not of the closure themselves anymore. This
+     means that there are no elements that are projections from
+     others elements of the same set. So no need to clean them (I think) *)
+
   (* Ensure that projection information is suitably erased if we have deleted
      the variable being projected from. *)
-  val clean_projections : t -> t
+  (* val clean_projections : t -> t *)
 end
 
 module Reachable : sig
@@ -86,6 +91,7 @@ module rec Expr : sig
     in the comment. *)
   val make_closure_declaration
      : (id:Variable.t
+    -> free_variable_kind:(Variable.t -> Flambda_kind.t)
     -> body:t
     -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
@@ -306,7 +312,7 @@ and Set_of_closures : sig
     val fold_function_decls_ignoring_stubs
        : t
       -> init:'a
-      -> f:(fun_var:Variable.t
+      -> f:(closure_id:Closure_id.t
         -> function_decl:Function_declaration.t
         -> 'a
         -> 'a)
@@ -315,26 +321,7 @@ and Set_of_closures : sig
 end and Function_declarations : sig
   include module type of struct include Flambda0.Function_declarations end
 
-  (** [find_declaration_variable f decl] raises [Not_found] if [f] is not in
-      [decl]. *)
-  val find_declaration_variable
-     : Closure_id.t
-    -> t
-    -> Variable.t
-
-  (** Variables "bound by a closure" are those variables free in the
-      corresponding function's body that are neither:
-      - bound as parameters of that function; nor
-      - bound by the [let] binding that introduces the function declaration(s).
-      In particular, if [f], [g] and [h] are being introduced by a
-      simultaneous, possibly mutually-recursive [let] binding then none of
-      [f], [g] or [h] are bound in any of the closures for [f], [g] and [h].
-  *)
-  val variables_bound_by_the_closure
-     : Closure_id.t
-    -> t
-    -> Variable.Set.t
-
+  (* CR pchambart: Update this comment *)
   (** Within a set of function declarations there is a set of function bodies,
       each of which may (or may not) reference one of the other functions in
       the same set.  Initially such intra-set references are by [Var]s (known
@@ -353,16 +340,15 @@ end and Function_declarations : sig
   val fun_vars_referenced_in_decls
      : t
     -> backend:(module Backend_intf.S)
-    -> Variable.Set.t Variable.Map.t
+    -> Closure_id.Set.t Closure_id.Map.t
 
   (** Computes the set of closure_id in the set of closures that are
       used (transitively) by the [entry_point]. *)
-  (* CR mshinwell: except it returns a set of variables... *)
   val closures_required_by_entry_point
      : entry_point:Closure_id.t
     -> backend:(module Backend_intf.S)
     -> t
-    -> Variable.Set.t
+    -> Closure_id.Set.t
 
   val all_functions_parameters : t -> Variable.Set.t
 
@@ -374,14 +360,14 @@ end and Function_declaration : sig
 
   val function_arity : t -> int
 
-  (** The number of variables in the function's closure.  Such variables are
-      taken to be the free variables of the function's body but ignoring
-      variables that are either function parameters or the name of one of
-      the other functions simultaneously-defined with [t]. *)
-  val num_variables_in_closure
-     : t
-    -> function_decls:Function_declarations.t
-    -> int
+  (* (\** The number of variables in the function's closure.  Such variables are *)
+  (*     taken to be the free variables of the function's body but ignoring *)
+  (*     variables that are either function parameters or the name of one of *)
+  (*     the other functions simultaneously-defined with [t]. *\) *)
+  (* val num_variables_in_closure *)
+  (*    : t *)
+  (*   -> function_decls:Function_declarations.t *)
+  (*   -> int *)
 
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool

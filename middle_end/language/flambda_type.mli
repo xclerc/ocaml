@@ -102,6 +102,7 @@ module Summary : sig
     | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
     | Closures of set_of_closures Closure_id.Map.t Or_not_all_values_known.t
+    | Set_of_closures of set_of_closures Or_not_all_values_known.t
 end
 
 (** Create a summary of a type, flattening unions as required. *)

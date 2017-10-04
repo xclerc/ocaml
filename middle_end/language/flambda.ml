@@ -37,15 +37,15 @@ module With_free_variables = F0.With_free_variables
 module Free_vars = struct
   include F0.Free_vars
 
-  let clean_projections t =
-    Variable.Map.map (fun (free_var : Free_var.t) ->
-        match free_var.projection with
-        | None -> free_var
-        | Some projection ->
-          let from = Projection.projecting_from projection in
-          if Variable.Map.mem from t then free_var
-          else ({ free_var with projection = None; } : Free_var.t))
-      t
+  (* let clean_projections (t : Closure_id.t) = *)
+  (*   Closure_id.Map.map (fun (free_var : Free_var.t) -> *)
+  (*       match free_var.projection with *)
+  (*       | None -> free_var *)
+  (*       | Some projection -> *)
+  (*         let from = Projection.projecting_from projection in *)
+  (*         if Closure_id.Map.mem from t then free_var *)
+  (*         else ({ free_var with projection = None; } : Free_var.t)) *)
+  (*     t *)
 end
 
 module Reachable = struct
@@ -409,13 +409,13 @@ end = struct
           | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
           | Assign _ | Project_closure _ | Move_within_set_of_closures _
           | Project_var _ | Prim _ | Read_symbol_field _ -> named
-          | Set_of_closures ({ function_decls; free_vars; 
+          | Set_of_closures ({ function_decls; free_vars;
               direct_call_surrogates }) ->
             if toplevel then named
             else begin
               let done_something = ref false in
               let funs =
-                Variable.Map.map (fun (func_decl : Function_declaration.t) ->
+                Closure_id.Map.map (fun (func_decl : Function_declaration.t) ->
                     let new_body = aux func_decl.body in
                     if new_body == func_decl.body then begin
                       func_decl
@@ -716,7 +716,7 @@ end = struct
           Set_of_closures.create
             ~function_decls
             ~free_vars:
-              (Variable.Map.map (fun (free_var : Free_var.t) ->
+              (Var_within_closure.Map.map (fun (free_var : Free_var.t) ->
                   { free_var with var = sb free_var.var; })
                 set_of_closures.free_vars)
             ~direct_call_surrogates:set_of_closures.direct_call_surrogates
@@ -743,8 +743,11 @@ end = struct
     if Variable.Map.is_empty sb' then tree
     else Mappers.Toplevel_only.map aux aux_named tree
 
-  let make_closure_declaration ~importer ~id ~body ~params ~continuation_param
+  let make_closure_declaration ~importer ~id
+        ~free_variable_kind ~body ~params ~continuation_param
         ~stub ~continuation ~return_arity : Expr.t =
+    let my_closure = Variable.rename id in
+    let closure_id = Closure_id.wrap id in
     let free_variables = Expr.free_variables body in
     let param_set = Typed_parameter.List.var_set params in
     if not (Variable.Set.subset param_set free_variables) then begin
@@ -759,29 +762,65 @@ end = struct
        function is only called from [Simplify], so we should be able
        to do something similar to what happens in [Inlining_transforms] now. *)
     let body = toplevel_substitution ~importer sb body in
+    let vars_within_closure =
+      Variable.Map.of_set Var_within_closure.wrap
+        (Variable.Set.diff free_variables param_set)
+    in
+    let body =
+      Variable.Map.fold (fun var var_within_closure body ->
+        let new_var = Variable.Map.find var sb in
+        let kind : Flambda_kind.t = free_variable_kind var in
+        let projection : Named.t =
+          Project_var {
+            closure = my_closure;
+            var = Closure_id.Map.singleton closure_id var_within_closure }
+        in
+        match kind with
+        | Value _ ->
+          Expr.create_let new_var kind projection body
+        | _ ->
+          let boxed_var = Variable.rename new_var in
+          let unbox, boxed_kind = Flambda_utils.unbox_value boxed_var kind in
+          Expr.create_let boxed_var boxed_kind projection
+            (Expr.create_let new_var kind unbox
+               body))
+        vars_within_closure body
+    in
     let subst var = Variable.Map.find var sb in
     let subst_param param = Typed_parameter.map_var param ~f:subst in
-    let function_declaration =
-      Function_declaration.create ~params:(List.map subst_param params)
+    let function_declaration : Function_declaration.t =
+      Function_declaration.create
+        ~params:(List.map subst_param params)
         ~continuation_param ~return_arity ~body ~stub ~dbg:Debuginfo.none
         ~inline:Default_inline ~specialise:Default_specialise
         ~is_a_functor:false
-        ~closure_origin:(Closure_origin.create (Closure_id.wrap id))
+        ~closure_origin:(Closure_origin.create closure_id)
+        ~my_closure
     in
-    assert (Variable.Set.equal (Variable.Set.map subst free_variables)
-      function_declaration.free_variables);
-    let free_vars =
-      Variable.Map.fold (fun id id' fv' ->
-          let free_var : Free_var.t =
-            { var = id;
-              projection = None;
-            }
-          in
-          Variable.Map.add id' free_var fv')
-        (Variable.Map.filter
-          (fun id _ -> not (Variable.Set.mem id param_set))
-          sb)
-        Variable.Map.empty
+    (* Should be checked differently *)
+    (* assert (Variable.Set.equal (Variable.Set.map subst free_variables) *)
+    (*   function_declaration.free_variables); *)
+    let free_vars, boxed_var =
+      Variable.Map.fold (fun id var_within_closure (fv', boxed_vars) ->
+        let var, boxed_vars =
+          match free_variable_kind var with
+          | Value _ ->
+            id, boxed_vars
+          | kind ->
+            let boxed_var = Variable.rename id in
+            let box, boxed_kind = Flambda_utils.box_value id kind in
+            boxed_var,
+            (boxed_var, box, boxed_kind) :: boxed_vars
+        in
+        let free_var : Free_var.t =
+          { var;
+            projection = None;
+          }
+        in
+        Var_within_closure.Map.add var_within_closure free_var fv',
+        boxed_vars)
+        vars_within_closure
+        Var_within_closure.Map.empty
     in
     let compilation_unit = Compilation_unit.get_current_exn () in
     let set_of_closures_var =
@@ -799,19 +838,24 @@ end = struct
     let project_closure : Named.t =
       Project_closure {
           set_of_closures = set_of_closures_var;
-          closure_id = Closure_id.Set.singleton (Closure_id.wrap id);
+          closure_id = Closure_id.Set.singleton closure_id;
         }
     in
     let project_closure_var =
       Variable.create "project_closure"
         ~current_compilation_unit:compilation_unit
     in
-    Expr.create_let set_of_closures_var
-      (Flambda_kind.value Must_scan)
-      (Set_of_closures set_of_closures)
-      (Expr.create_let project_closure_var (Flambda_kind.value Must_scan)
-        project_closure
-        (Apply_cont (continuation, None, [project_closure_var])))
+    let body =
+      Expr.create_let set_of_closures_var
+        (Flambda_kind.value Must_scan)
+        (Set_of_closures set_of_closures)
+        (Expr.create_let project_closure_var (Flambda_kind.value Must_scan)
+           project_closure
+           (Apply_cont (continuation, None, [project_closure_var])))
+    in
+    List.fold_left (fun body (boxed_var, box, boxed_kind) ->
+      Expr.create_let boxed_var boxed_kind box body)
+      body boxed_var
 
   let all_defined_continuations_toplevel expr =
     let defined_continuations = ref Continuation.Set.empty in
@@ -1010,7 +1054,7 @@ end and Set_of_closures : sig
     val fold_function_decls_ignoring_stubs
        : t
       -> init:'a
-      -> f:(fun_var:Variable.t
+      -> f:(closure_id:Closure_id.t
         -> function_decl:Function_declaration.t
         -> 'a
         -> 'a)
@@ -1021,7 +1065,7 @@ end = struct
 
   let find_free_variable cv ({ free_vars } : t) =
     let free_var : Free_var.t =
-      Variable.Map.find (Var_within_closure.unwrap cv) free_vars
+      Var_within_closure.Map.find cv free_vars
     in
     free_var.var
 
@@ -1037,7 +1081,7 @@ end = struct
           as set_of_closures) ~f =
       let done_something = ref false in
       let funs =
-        Variable.Map.map (fun (func_decl : Function_declaration.t) ->
+        Closure_id.Map.map (fun (func_decl : Function_declaration.t) ->
             let body = Expr.Mappers.map_symbols func_decl.body ~f in
             if not (body == func_decl.body) then begin
               done_something := true;
@@ -1056,7 +1100,7 @@ end = struct
     let map_function_bodies ?ignore_stubs (set_of_closures : t) ~f =
       let done_something = ref false in
       let funs =
-        Variable.Map.map (fun (function_decl : Function_declaration.t) ->
+        Closure_id.Map.map (fun (function_decl : Function_declaration.t) ->
             let new_body =
               match ignore_stubs, function_decl.stub with
               | Some (), true -> function_decl.body
@@ -1083,8 +1127,8 @@ end = struct
 
   module Folders = struct
     let fold_function_decls_ignoring_stubs (t : t) ~init ~f =
-      Variable.Map.fold (fun fun_var function_decl acc ->
-          f ~fun_var ~function_decl acc)
+      Closure_id.Map.fold (fun closure_id function_decl acc ->
+          f ~closure_id ~function_decl acc)
         t.function_decls.funs
         init
   end
@@ -1096,12 +1140,12 @@ end and Function_declarations : sig
   val fun_vars_referenced_in_decls
      : t
     -> backend:(module Backend_intf.S)
-    -> Variable.Set.t Variable.Map.t
+    -> Closure_id.Set.t Closure_id.Map.t
   val closures_required_by_entry_point
      : entry_point:Closure_id.t
     -> backend:(module Backend_intf.S)
     -> t
-    -> Variable.Set.t
+    -> Closure_id.Set.t
   val all_functions_parameters : t -> Variable.Set.t
   val all_free_symbols : t -> Symbol.Set.t
   val contains_stub : t -> bool
@@ -1109,19 +1153,8 @@ end and Function_declarations : sig
 end = struct
   include Function_declarations
 
-  let find_declaration_variable cf ({ funs } : t) =
-    let var = Closure_id.unwrap cf in
-    if not (Variable.Map.mem var funs)
-    then raise Not_found  (* CR mshinwell: think about this *)
-    else var
-
-  let variables_bound_by_the_closure cf (decls : Function_declarations.t) =
-    let func = find cf decls in
-    let params = Typed_parameter.List.var_set func.params in
-    let functions = Variable.Map.keys decls.funs in
-    Variable.Set.diff (Variable.Set.diff func.free_variables params) functions
-
   let fun_vars_referenced_in_decls (function_decls : t) ~backend =
+(*
     let fun_vars = Variable.Map.keys function_decls.funs in
     let symbols_to_fun_vars =
       let module Backend = (val backend : Backend_intf.S) in
@@ -1148,55 +1181,58 @@ end = struct
         in
         Variable.Set.union from_symbols from_variables)
       function_decls.funs
+*)
+    (* CR pchambart: this needs another way to do it *)
+    assert false
 
   let closures_required_by_entry_point ~(entry_point : Closure_id.t) ~backend
       (function_decls : t) =
     let dependencies =
       fun_vars_referenced_in_decls function_decls ~backend
     in
-    let set = ref Variable.Set.empty in
+    let set = ref Closure_id.Set.empty in
     let queue = Queue.create () in
     let add v =
-      if not (Variable.Set.mem v !set) then begin
-        set := Variable.Set.add v !set;
+      if not (Closure_id.Set.mem v !set) then begin
+        set := Closure_id.Set.add v !set;
         Queue.push v queue
       end
     in
-    add (Closure_id.unwrap entry_point);
+    add entry_point;
     while not (Queue.is_empty queue) do
-      let fun_var = Queue.pop queue in
-      match Variable.Map.find fun_var dependencies with
+      let closure_id = Queue.pop queue in
+      match Closure_id.Map.find closure_id dependencies with
       | exception Not_found -> ()
       | fun_dependencies ->
-        Variable.Set.iter (fun dep ->
-            if Variable.Map.mem dep function_decls.funs then
+        Closure_id.Set.iter (fun dep ->
+            if Closure_id.Map.mem dep function_decls.funs then
               add dep)
           fun_dependencies
     done;
     !set
 
   let all_functions_parameters (function_decls : t) =
-    Variable.Map.fold
+    Closure_id.Map.fold
       (fun _ ({ params } : Function_declaration.t) set ->
         Variable.Set.union set (Typed_parameter.List.var_set params))
       function_decls.funs Variable.Set.empty
 
   let all_free_symbols (function_decls : t) =
-    Variable.Map.fold (fun _ (function_decl : Function_declaration.t) syms ->
+    Closure_id.Map.fold (fun _ (function_decl : Function_declaration.t) syms ->
         Symbol.Set.union syms function_decl.free_symbols)
       function_decls.funs Symbol.Set.empty
 
   let contains_stub (fun_decls : t) =
     let number_of_stub_functions =
-      Variable.Map.cardinal
-        (Variable.Map.filter (fun _ ({ stub } : Function_declaration.t) -> stub)
+      Closure_id.Map.cardinal
+        (Closure_id.Map.filter (fun _ ({ stub } : Function_declaration.t) -> stub)
           fun_decls.funs)
     in
     number_of_stub_functions > 0
 
   let map_parameter_types t ~f =
     let funs =
-      Variable.Map.map (fun (decl : Function_declaration.t) ->
+      Closure_id.Map.map (fun (decl : Function_declaration.t) ->
           Function_declaration.map_parameter_types decl ~f)
         t.funs
     in
@@ -1205,10 +1241,10 @@ end and Function_declaration : sig
   include module type of F0.Function_declaration
 
   val function_arity : t -> int
-  val num_variables_in_closure
-     : t
-    -> function_decls:Function_declarations.t
-    -> int
+  (* val num_variables_in_closure *)
+  (*    : t *)
+  (*   -> function_decls:Function_declarations.t *)
+  (*   -> int *)
   val equal : t -> t -> bool
   val map_parameter_types : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 end = struct
@@ -1216,13 +1252,19 @@ end = struct
 
   let function_arity t = List.length t.params
 
+  (* Removed because useless now.
+     This was used to evaluate the size increase of inlining the closure.
+     As there is no additionnal projections inserted at the inlining point
+     since this is now already part of the body of the function. *)
+  (*
   let num_variables_in_closure t ~(function_decls : Function_declarations.t) =
-    let functions = Variable.Map.keys function_decls.funs in
+    let functions = Closure_id.Map.keys function_decls.funs in
     let params = Typed_parameter.List.var_set t.params in
     let vars_in_closure =
       Variable.Set.diff (Variable.Set.diff t.free_variables params) functions
     in
     Variable.Set.cardinal vars_in_closure
+  *)
 
   let equal _t1 _t2 =
     false  (* CR mshinwell: see above *)

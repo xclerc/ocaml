@@ -702,8 +702,7 @@ module Summary = struct
     | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
     | Closures of set_of_closures Closure_id.Map.t Or_not_all_values_known.t
-    (* CR mshinwell for pchambart: We need a [Set_of_closures] case here
-       as well, I think *)
+    | Set_of_closures of set_of_closures Or_not_all_values_known.t
 
   let join ~importer t1 t2 =
     let join_immediates =
@@ -770,12 +769,22 @@ module Summary = struct
       | Ok closures -> Closures closures
       | Wrong -> Wrong
       end
+    | Set_of_closures set1, Set_of_closures set2 ->
+      begin match
+        Or_not_all_values_known.join (fun set1 set2 : _ or_wrong ->
+          Ok (Set_of_closures.join ~importer set1 set2))
+          set1 set2
+      with
+      | Ok set_of_closures -> Set_of_closures set_of_closures
+      | Wrong -> Wrong
+      end
     | (Blocks_and_tagged_immediates _
       | Boxed_floats _
       | Boxed_int32s _
       | Boxed_int64s _
       | Boxed_nativeints _
-      | Closures _), _ -> Wrong
+      | Closures _
+      | Set_of_closures _), _ -> Wrong
 end
 
 type 'a known_unknown_or_wrong =
@@ -886,8 +895,12 @@ let summarize ~importer (t : t) : Summary.t =
             Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
           in
           Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
-        | Set_of_closures _
-        | Closure _
+        | Closure _ ->
+          Wrong
+            (* [@ppwarning "TODO"] *)
+        | Set_of_closures _ ->
+          Wrong
+            (* [@ppwarning "TODO"] *)
         | String _
         | Float_array _ -> Wrong
       in
