@@ -128,7 +128,7 @@ end
 
 module Switch : sig
   (* CR-someday mshinwell: (idea from @stedolan) Use [Switch] with zero
-     cases instead of [Proved_unreachable].  Then references to unreachable
+     cases instead of [Unreachable].  Then references to unreachable
      continuations can be removed by using an algorithm for coalescing
      [Switch]es. *)
   (** Equivalent to the similar type in [Ilambda]. *)
@@ -182,7 +182,7 @@ module rec Expr : sig
     | Apply of apply
     | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
     | Switch of Variable.t * Switch.t
-    | Proved_unreachable
+    | Unreachable
 
   (** Creates a [Let] expression.  (This computes the free variables of the
       defining expression and the body.) *)

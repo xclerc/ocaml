@@ -155,6 +155,6 @@ let run program ~backend =
           for_continuation ~body ~handlers ~unused ~original:expr
             ~recursive:Asttypes.Recursive
         | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
-        | Proved_unreachable -> expr)
+        | Unreachable -> expr)
       expr)
 

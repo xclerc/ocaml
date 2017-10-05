@@ -483,7 +483,7 @@ and do_expr env (expr:Flambda.expr) : unit =
     Misc.may (fun continutation ->
       assert(Continuation.Tbl.find env.cont continutation = []))
       failaction
-  | Proved_unreachable ->
+  | Unreachable ->
     ()
 
 and declare_continuation env name (handler:Flambda.continuation_handler) : unit =

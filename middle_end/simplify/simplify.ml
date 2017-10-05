@@ -1968,12 +1968,12 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
                Note that stubs are not allowed to call themselves.
                The code for [handler] is also put in the environment if
                the continuation is just an [Apply_cont] acting as a
-               continuation alias or just contains [Proved_unreachable].  This
+               continuation alias or just contains [Unreachable].  This
                enables earlier [Switch]es that branch to such continuation
                to be simplified, in some cases removing them entirely. *)
             let alias_or_unreachable =
               match handler.handler with
-              | Proved_unreachable -> true
+              | Unreachable -> true
               (* CR mshinwell: share somehow with [Continuation_approx].
                  Also, think about this in the multi-argument case -- need
                  to freshen. *)
@@ -2172,7 +2172,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
       | None | Some (Recursive _) -> false
       | Some (Nonrecursive handler) ->
         match handler.handler with
-        | Proved_unreachable -> true
+        | Unreachable -> true
         | _ -> false
     in
     let rec filter_branches filter branches compatible_branches =
@@ -2214,7 +2214,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
                  match v with   <-- This match is unreachable
                  | Boxed_float f -> ...]
         *)
-        Proved_unreachable, r
+        Unreachable, r
       | [_, cont], None ->
         let cont, r =
           simplify_apply_cont_to_cont env r cont ~args_types:[]
@@ -2222,7 +2222,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
         Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
       | [], Some cont ->
         if destination_is_unreachable cont then
-          Proved_unreachable, R.map_benefit r B.remove_branch
+          Unreachable, R.map_benefit r B.remove_branch
         else
           let cont, r =
             simplify_apply_cont_to_cont env r cont ~args_types:[]
@@ -2301,7 +2301,7 @@ and simplify env r (tree : Flambda.Expr.t) : Flambda.Expr.t * R.t =
     simplify_free_variables env args ~f:(fun env args args_types ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_types)
   | Switch (arg, sw) -> simplify_switch env r arg sw
-  | Proved_unreachable -> Proved_unreachable, ret r T.bottom
+  | Unreachable -> Unreachable, ret r T.bottom
 
 and simplify_toplevel env r expr ~continuation ~descr =
   if not (Continuation.Map.mem continuation (E.continuations_in_scope env))

@@ -304,7 +304,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     Let_cont { body; handlers =
       Nonrecursive { name; handler = {
         params; stub; is_exn_handler; handler; specialised_args; }; }; }, state
-  | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable ->
+  | Apply _ | Apply_cont _ | Switch _ | Unreachable ->
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
@@ -366,7 +366,7 @@ and sink (expr : Flambda.Expr.t) =
           handlers
       in
       Let_cont { body; handlers = Recursive handlers; }
-    | Apply _ | Apply_cont _ | Switch _ | Proved_unreachable -> expr
+    | Apply _ | Apply_cont _ | Switch _ | Unreachable -> expr
   in
   sink expr
 

@@ -261,7 +261,7 @@ module Inconstants (P:Param) (Importer : Flambda_type.Importer) = struct
     | Switch (arg, _) ->
       mark_curr curr;
       mark_var arg curr
-    | Proved_unreachable ->
+    | Unreachable ->
       mark_curr curr
 
   and mark_named ~toplevel curr (named : Flambda.Named.t) =

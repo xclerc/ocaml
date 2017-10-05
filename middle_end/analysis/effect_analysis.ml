@@ -31,7 +31,7 @@ let rec no_effects (flam : Flambda.Expr.t) =
   | Switch _ -> false
   | Let_cont { body; _ } -> no_effects body
   | Apply _ | Apply_cont _ -> false
-  | Proved_unreachable -> true
+  | Unreachable -> true
 
 and no_effects_named (named : Flambda.Named.t) =
   match named with

@@ -121,7 +121,7 @@ let for_toplevel_expression expr r =
             handler.handler
             handler.params args
         end
-      | Apply _ | Switch _ | Proved_unreachable -> expr
+      | Apply _ | Switch _ | Unreachable -> expr
     in
     let expr = substitute Continuation.Map.empty expr in
 (*

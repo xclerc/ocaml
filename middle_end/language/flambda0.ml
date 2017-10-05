@@ -287,7 +287,7 @@ module rec Expr : sig
     | Apply of apply
     | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
     | Switch of Variable.t * Switch.t
-    | Proved_unreachable
+    | Unreachable
 
   val create_let : Variable.t -> Flambda_kind.t -> Named.t -> t -> t
   val create_switch
@@ -420,7 +420,7 @@ end = struct
             handlers
         end
       | Switch (var, _) -> free_variable var
-      | Proved_unreachable -> ()
+      | Unreachable -> ()
     in
     aux tree;
     if all_used_variables then
@@ -475,11 +475,11 @@ end = struct
         print result
     end;
     if num_possible_values < 1 then begin
-      Proved_unreachable, Continuation.Map.empty
+      Unreachable, Continuation.Map.empty
     end else if num_arms = 0 && default = None then begin
       (* [num_possible_values] might be strictly greater than zero in this
          case, but that doesn't matter. *)
-      Proved_unreachable, Continuation.Map.empty
+      Unreachable, Continuation.Map.empty
     end else begin
       let default =
         if num_arm_values = num_possible_values then None
@@ -558,7 +558,7 @@ end = struct
         | Some cont -> Continuation.Set.singleton cont
       in
       Continuation.Set.union failaction (Continuation.Set.of_list consts)
-    | Proved_unreachable -> Continuation.Set.empty
+    | Unreachable -> Continuation.Set.empty
 
   let create_let var kind defining_expr body : t =
     begin match !Clflags.dump_flambda_let with
@@ -653,7 +653,7 @@ end = struct
                 aux handler)
               handlers
           end
-        | Proved_unreachable -> ()
+        | Unreachable -> ()
     and aux_named (named : Named.t) =
       f_named named;
       match named with
@@ -773,7 +773,7 @@ end = struct
           (Format.pp_print_list ~pp_sep
             Let_cont_handlers.print_using_where) let_conts
       end
-    | Proved_unreachable -> fprintf ppf "unreachable"
+    | Unreachable -> fprintf ppf "unreachable"
 
   let print ppf t =
     fprintf ppf "%a@." print t

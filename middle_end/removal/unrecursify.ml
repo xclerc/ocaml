@@ -40,7 +40,7 @@ let unrecursify_function ~fun_var:function_variable
           did_something := true;
           Apply_cont (loop_continuation, None, args)
         | Let _ | Let_mutable _ | Let_cont _ | Apply_cont _ | Switch _
-        | Apply _ | Proved_unreachable -> expr)
+        | Apply _ | Unreachable -> expr)
       function_decl.body
   in
   if not !did_something then None

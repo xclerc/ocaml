@@ -66,7 +66,7 @@ let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
         handlers
     | Apply _ | Apply_cont _ | Switch _ ->
       set := Variable.Set.union !set (Flambda.Expr.free_variables flam)
-    | Proved_unreachable -> ()
+    | Unreachable -> ()
   in
   loop tree;
   !set
@@ -177,7 +177,7 @@ let eliminate_ref_of_expr flam =
         in
         flam
       | Let_mutable _ | Apply _ | Switch _
-      | Apply_cont _ | Let_cont _ | Proved_unreachable -> flam
+      | Apply_cont _ | Let_cont _ | Unreachable -> flam
     in
     Flambda.Expr.Mappers.map_expr aux flam
 
