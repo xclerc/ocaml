@@ -16,10 +16,14 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+type symbol_kind =
+  | Mixed of Flambda_kind.t list
+  | Value
+
 type t = {
   compilation_unit : Compilation_unit.t;
   label : Linkage_name.t;
-  field_kinds : Flambda_kind.t list;
+  kind : symbol_kind;
   hash : int;
 }
 
@@ -51,7 +55,14 @@ end)
 
 include I
 
-let create compilation_unit label ~field_kinds =
+let value_kind = Value
+let mixed_kind fields =
+  if List.for_all Flambda_kind.is_value fields then
+    Value
+  else
+    Mixed fields
+
+let create compilation_unit label ~kind =
   let unit_linkage_name =
     Linkage_name.to_string
       (Compilation_unit.get_linkage_name compilation_unit)
@@ -61,22 +72,22 @@ let create compilation_unit label ~field_kinds =
       (unit_linkage_name ^ "__" ^ (Linkage_name.to_string label))
   in
   let hash = Linkage_name.hash label in
-  { compilation_unit; label; field_kinds; hash; }
+  { compilation_unit; label; kind; hash; }
 
-let unsafe_create compilation_unit label ~field_kinds =
+let unsafe_create compilation_unit label ~kind =
   let hash = Linkage_name.hash label in
-  { compilation_unit; label; hash; field_kinds; }
+  { compilation_unit; label; hash; kind; }
 
-let import_for_pack t ~pack:compilation_unit ~field_kinds =
+let import_for_pack t ~pack:compilation_unit ~kind =
   let hash = Linkage_name.hash t.label in
   { compilation_unit;
     label = t.label; hash;
-    field_kinds;
+    kind;
   }
 
 let compilation_unit t = t.compilation_unit
 let label t = t.label
-let field_kinds t = t.field_kinds
+let kind t = t.kind
 
 let print_opt ppf = function
   | None -> Format.fprintf ppf "<no symbol>"
@@ -93,9 +104,9 @@ module Of_kind_value = struct
   let to_symbol t = t
 
   let of_symbol t =
-    let all_values = List.for_all Flambda_kind.is_value t.field_kinds in
-    if all_values then Some t
-    else None
+    match t.kind with
+    | Mixed _ -> None
+    | Value -> Some t
 
   let of_symbol_exn t =
     match of_symbol t with
