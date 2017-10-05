@@ -373,7 +373,7 @@ end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
     initial_value : Variable.t;
-    contents_kind : Flambda_kind.t;
+    contents_type : Flambda_type.t;
     body : Expr.t;
   }
 end and Let_cont : sig

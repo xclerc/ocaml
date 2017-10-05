@@ -200,12 +200,14 @@ end = struct
       Variable.equal var1 var2 && Named.equal defining_expr1 defining_expr2
         && equal body1 body2
     | Let _, _ | _, Let _ -> false
-    | Let_mutable {var = mv1; initial_value = v1; contents_kind = ck1; body = b1},
-      Let_mutable {var = mv2; initial_value = v2; contents_kind = ck2; body = b2}
+    | Let_mutable {var = mv1; initial_value = v1; contents_type = ct1; body = b1},
+      Let_mutable {var = mv2; initial_value = v2; contents_type = ct2; body = b2}
       ->
       Mutable_variable.equal mv1 mv2
         && Variable.equal v1 v2
-        && ck1 = ck2
+        && ct1 == ct2
+        (* CR pchambart: There should be a proper equality function
+           for Flambda_type.t to handle that *)
         && equal b1 b2
     | Let_mutable _, _ | _, Let_mutable _ -> false
     | Switch (a1, s1), Switch (a2, s2) ->

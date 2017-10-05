@@ -726,9 +726,9 @@ end = struct
           Variable.print id Named.print arg;
         let expr = letbody body in
         fprintf ppf ")@]@ %a)@]" print expr
-    | Let_mutable { var = mut_var; initial_value = var; body; contents_kind } ->
+    | Let_mutable { var = mut_var; initial_value = var; body; contents_type } ->
       fprintf ppf "@[<2>(let_mutable%a@ @[<2>%a@ %a@]@ %a)@]"
-        Flambda_kind.print contents_kind
+        Flambda_type.print contents_type
         Mutable_variable.print mut_var
         Variable.print var
         print body
@@ -908,7 +908,7 @@ end = struct
         (Debuginfo.to_string dbg)
         Variable.print_list args
 
-  let box_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+  let box_value var (kind : Flambda_kind.t) : Named.t * Flambda_kind.t =
     match kind with
     | Value _ -> Var var, kind
     | Naked_immediate ->
@@ -922,7 +922,7 @@ end = struct
     | Naked_nativeint ->
       Prim (Pbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
 
-  let unbox_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+  let unbox_value var (kind : Flambda_kind.t) : Named.t * Flambda_kind.t =
     match kind with
     | Value _ -> Var var, kind
     | Naked_immediate ->
@@ -970,7 +970,7 @@ end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
     initial_value : Variable.t;
-    contents_kind : Flambda_kind.t;
+    contents_type : Flambda_type.t;
     body : Expr.t;
   }
 end = struct
