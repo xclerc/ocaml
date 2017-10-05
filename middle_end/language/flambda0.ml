@@ -809,6 +809,14 @@ end and Named : sig
     -> t
     -> Variable.Set.t
   val print : Format.formatter -> t -> unit
+  val box_value
+      : Variable.t
+     -> Flambda_kind.t
+     -> Named.t * Flambda_kind.t
+  val unbox_value
+      : Variable.t
+     -> Flambda_kind.t
+     -> Named.t * Flambda_kind.t
 end = struct
   include Named
 
@@ -899,6 +907,35 @@ end = struct
         Printlambda.primitive prim
         (Debuginfo.to_string dbg)
         Variable.print_list args
+
+  let box_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+    match kind with
+    | Value _ -> Var var, kind
+    | Naked_immediate ->
+      Prim (Ptag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_float ->
+      Prim (Pbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_int32 ->
+      Prim (Pbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_int64 ->
+      Prim (Pbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_nativeint ->
+      Prim (Pbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
+
+  let unbox_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+    match kind with
+    | Value _ -> Var var, kind
+    | Naked_immediate ->
+      Prim (Puntag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_float ->
+      Prim (Punbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_int32 ->
+      Prim (Punbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_int64 ->
+      Prim (Punbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
+    | Naked_nativeint ->
+      Prim (Punbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
+
 end and Let : sig
   type t = {
     var : Variable.t;

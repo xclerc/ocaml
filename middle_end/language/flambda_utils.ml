@@ -165,31 +165,3 @@ let make_let_cont_alias ~importer ~name ~alias_of ~parameter_types
       handler = Apply_cont (alias_of, None, apply_params);
     };
   }
-
-let box_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
-  match kind with
-  | Value _ -> Var var, kind
-  | Naked_immediate ->
-    Prim (Ptag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_float ->
-    Prim (Pbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_int32 ->
-    Prim (Pbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_int64 ->
-    Prim (Pbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_nativeint ->
-    Prim (Pbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
-
-let unbox_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
-  match kind with
-  | Value _ -> Var var, kind
-  | Naked_immediate ->
-    Prim (Puntag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_float ->
-    Prim (Punbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_int32 ->
-    Prim (Punbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_int64 ->
-    Prim (Punbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
-  | Naked_nativeint ->
-    Prim (Punbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan

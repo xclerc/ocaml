@@ -61,6 +61,7 @@ module rec Expr : sig
   val equal : t -> t -> bool
   val make_closure_declaration
      : (id:Variable.t
+    -> free_variable_kind:(Variable.t -> Flambda_kind.t)
     -> body:t
     -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
@@ -788,7 +789,7 @@ end = struct
           Expr.create_let new_var kind projection body
         | _ ->
           let boxed_var = Variable.rename new_var in
-          let unbox, boxed_kind = Flambda_utils.unbox_value boxed_var kind in
+          let unbox, boxed_kind = Flambda0.Named.unbox_value boxed_var kind in
           Expr.create_let boxed_var boxed_kind projection
             (Expr.create_let new_var kind unbox
                body))
@@ -811,12 +812,12 @@ end = struct
     let free_vars, boxed_var =
       Variable.Map.fold (fun id var_within_closure (fv', boxed_vars) ->
         let var, boxed_vars =
-          match free_variable_kind var with
+          match (free_variable_kind id : Flambda_kind.t) with
           | Value _ ->
             id, boxed_vars
           | kind ->
             let boxed_var = Variable.rename id in
-            let box, boxed_kind = Flambda_utils.box_value id kind in
+            let box, boxed_kind = Flambda0.Named.box_value id kind in
             boxed_var,
             (boxed_var, box, boxed_kind) :: boxed_vars
         in
@@ -828,7 +829,7 @@ end = struct
         Var_within_closure.Map.add var_within_closure free_var fv',
         boxed_vars)
         vars_within_closure
-        Var_within_closure.Map.empty
+        (Var_within_closure.Map.empty, [])
     in
     let compilation_unit = Compilation_unit.get_current_exn () in
     let set_of_closures_var =
@@ -838,10 +839,10 @@ end = struct
     let set_of_closures =
       let function_decls =
         Function_declarations.create
-          ~funs:(Variable.Map.singleton id function_declaration)
+          ~funs:(Closure_id.Map.singleton closure_id function_declaration)
       in
       Set_of_closures.create ~function_decls ~free_vars
-        ~direct_call_surrogates:Variable.Map.empty
+        ~direct_call_surrogates:Closure_id.Map.empty
     in
     let project_closure : Named.t =
       Project_closure {
@@ -1161,7 +1162,7 @@ end and Function_declarations : sig
 end = struct
   include Function_declarations
 
-  let fun_vars_referenced_in_decls (function_decls : t) ~backend =
+  let fun_vars_referenced_in_decls (_function_decls : t) ~backend:_ =
 (*
     let fun_vars = Variable.Map.keys function_decls.funs in
     let symbols_to_fun_vars =
