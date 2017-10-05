@@ -23,7 +23,7 @@ type normal_or_lifted =
 (** Checking of invariants on Flambda expressions.  Raises an exception if
     a check fails. *)
 val check_exn
-   : ?kind:normal_or_lifted
+   : (?kind:normal_or_lifted
   -> ?cmxfile:bool
   -> Flambda_static.Program.t
-  -> unit
+  -> unit) Flambda_type.with_importer

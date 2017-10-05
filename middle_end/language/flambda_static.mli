@@ -78,7 +78,8 @@ module Program : sig
     -> Flambda.Function_declarations.t Closure_id.Map.t
 
   module Iterators : sig
-    (* CR mshinwell: give comment defining semantics *)
+    (* CR mshinwell: give comment defining semantics.  Also rename to
+       [iter_sets_of_closures] to match [Flambda.Expr.Iterators]. *)
     val iter_set_of_closures
        : t
       -> f:(constant:bool -> Flambda.Set_of_closures.t -> unit)

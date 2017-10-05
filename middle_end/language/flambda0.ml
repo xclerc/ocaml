@@ -154,7 +154,18 @@ module Free_var = struct
 end
 
 module Free_vars = struct
+  (* CR mshinwell: We could make this abstract in the interface and maintain
+     the reverse map too. *)
   type t = Free_var.t Var_within_closure.Map.t
+
+  let find_by_variable t var =
+    let exception Found of Var_within_closure.t in
+    try
+      Var_within_closure.Map.iter (fun in_closure (outer_var : Free_var.t) ->
+          if Variable.equal var outer_var.var then raise (Found in_closure))
+        t;
+      None
+    with Found in_closure -> Some in_closure
 
   let print ppf free_vars =
     Var_within_closure.Map.iter (fun inner_var outer_var ->

@@ -31,21 +31,19 @@ type normal_or_lifted =
 *)
 (* CR-someday pchambart: for sum types, we should probably add an exhaustive
    pattern in ignores functions to be reminded if a type change *)
-let ignore_variable (_ : Variable.t) = ()
-let ignore_typed_parameter_list (_ : Flambda.Typed_parameter.t list) = ()
 let ignore_call_kind (_ : Flambda.Call_kind.t) = ()
 let ignore_debuginfo (_ : Debuginfo.t) = ()
 let ignore_meth_kind (_ : Lambda.meth_kind) = ()
-let ignore_int (_ : int) = ()
 let ignore_targetint (_ : Targetint.t) = ()
-let ignore_int_set (_ : Numbers.Int.Set.t) = ()
 let ignore_targetint_set (_ : Targetint.Set.t) = ()
 let ignore_bool (_ : bool) = ()
 let ignore_continuation (_ : Continuation.t) = ()
 let ignore_primitive ( _ : Lambda.primitive) = ()
 let ignore_const (_ : Flambda.Const.t) = ()
+let ignore_immediate (_ : Immediate.t) = ()
 let ignore_allocated_const (_ : Allocated_const.t) = ()
 let ignore_flambda_kind (_ : Flambda_kind.t) = ()
+let ignore_flambda_arity (_ : Flambda_arity.t) = ()
 let ignore_set_of_closures_id (_ : Set_of_closures_id.t) = ()
 let ignore_set_of_closures_origin (_ : Set_of_closures_origin.t) = ()
 let ignore_closure_id (_ : Closure_id.t) = ()
@@ -53,9 +51,9 @@ let ignore_closure_id_set (_ : Closure_id.Set.t) = ()
 let ignore_closure_id_map (_ : 'a -> unit) (_ : 'a Closure_id.Map.t) = ()
 let ignore_var_within_closure (_ : Var_within_closure.t) = ()
 let ignore_tag (_ : Tag.t) = ()
+let ignore_scannable_tag (_ : Tag.Scannable.t) = ()
 let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
 let ignore_specialise_attribute (_ : Lambda.specialise_attribute) = ()
-let ignore_value_kind (_ : Lambda.value_kind) = ()
 
 exception Binding_occurrence_not_from_current_compilation_unit of Variable.t
 exception Mutable_binding_occurrence_not_from_current_compilation_unit of
@@ -70,10 +68,8 @@ exception Unbound_symbol of Symbol.t
 exception Bad_free_vars_in_function_body of
   Variable.Set.t * Flambda.Set_of_closures.t * Closure_id.t
 exception Function_decls_have_overlapping_parameters of Variable.Set.t
-exception Specialised_arg_that_is_not_a_parameter of Variable.t
 exception Projection_must_be_a_free_var of Projection.t
-exception Projection_must_be_a_specialised_arg of Projection.t
-exception Set_of_closures_free_vars_map_has_wrong_range of Variable.Set.t
+exception Projection_must_be_a_parameter of Projection.t
 exception Continuation_not_caught of Continuation.t * string
 exception Continuation_called_with_wrong_arity of
   Continuation.t * Flambda_arity.t * Flambda_arity.t
@@ -85,14 +81,10 @@ exception Prevapply_should_be_expanded
 exception Ploc_should_be_expanded
 exception Sequential_logical_operator_primitives_must_be_expanded of
   Lambda.primitive
-exception Var_within_closure_bound_multiple_times of Var_within_closure.t
 exception Declared_closure_from_another_unit of Compilation_unit.t
-exception Closure_id_is_bound_multiple_times of Closure_id.t
 exception Set_of_closures_id_is_bound_multiple_times of Set_of_closures_id.t
 exception Unbound_closure_ids of Closure_id.Set.t
 exception Unbound_vars_within_closures of Var_within_closure.Set.t
-exception Move_to_a_closure_not_in_the_free_variables
-  of Variable.t * Variable.Set.t
 exception Exception_handler_used_as_normal_continuation of Continuation.t
 exception Exception_handler_used_as_return_continuation of Continuation.t
 exception Normal_continuation_used_as_exception_handler of Continuation.t
@@ -630,7 +622,8 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
           ignore_var_within_closure var;
           check_variable_is_bound env var_in_closure.var)
         free_vars;
-      let all_params, all_free_vars =
+      let _all_params, _all_free_vars =
+        (* CR mshinwell: change to [iter] *)
         Closure_id.Map.fold (fun fun_var function_decl acc ->
             let all_params, all_free_vars = acc in
             (* CR-soon mshinwell: check function_decl.all_symbols *)
@@ -663,10 +656,22 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
                 Variable.Set.iter (fun fv -> check_variable_is_bound env fv)
                   fvs)
               params;
+            (* Check that projections on parameters only describe projections
+               from other parameters of the same function. *)
+            let params' = Flambda.Typed_parameter.List.var_set params in
+            List.iter (fun param ->
+                match Flambda.Typed_parameter.projection param with
+                | None -> ()
+                | Some projection ->
+                  let projecting_from = Projection.projecting_from projection in
+                  if not (Variable.Set.mem projecting_from params') then begin 
+                    raise (Projection_must_be_a_parameter projection)
+                  end)
+              params;
             (* Check that parameters are unique across all functions in the
                declaration. *)
             let old_all_params_size = Variable.Set.cardinal all_params in
-            let params = Flambda.Typed_parameter.List.var_set params in
+            let params = params' in
             let params_size = Variable.Set.cardinal params in
             let all_params = Variable.Set.union all_params params in
             let all_params_size = Variable.Set.cardinal all_params in
@@ -692,16 +697,21 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
             all_params, Variable.Set.union free_variables all_free_vars)
           funs (Variable.Set.empty, Variable.Set.empty)
       in
-      Variable.Map.iter (fun _inner_var (free_var : Flambda.Free_var.t) ->
-          check_variable_is_bound env free_var.var;
-          match free_var.projection with
+      Var_within_closure.Map.iter
+        (fun _in_closure (outer_var : Flambda.Free_var.t) ->
+          check_variable_is_bound env outer_var.var;
+          match outer_var.projection with
           | None -> ()
           | Some projection ->
             let projecting_from = Projection.projecting_from projection in
-            if not (Variable.Map.mem projecting_from free_vars)
-            then begin
+            let in_closure =
+              Flambda.Free_vars.find_by_variable free_vars projecting_from
+            in
+            match in_closure with
+            | None ->
+              (* CR mshinwell: bad exception name? *)
               raise (Projection_must_be_a_free_var projection)
-            end)
+            | Some _in_closure -> ())
         free_vars
   in
   let loop_constant_defining_value env
@@ -710,11 +720,11 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
     | Allocated_const c ->
       ignore_allocated_const c
     | Block (tag, fields) ->
-      ignore_tag tag;
+      ignore_scannable_tag tag;
       List.iter
         (fun (fields : Flambda_static.Constant_defining_value_block_field.t) ->
           match fields with
-          | Const c -> ignore_const c
+          | Tagged_immediate i -> ignore_immediate i
           | Symbol s -> check_symbol_is_bound env s)
         fields
     | Set_of_closures set_of_closures ->
@@ -722,14 +732,15 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       (* Constant sets of closures must not have free variables.  This should
          be enforced by an abstract type boundary (see [Flambda_static0]), so
          we just [assert false] if this fails. *)
-      if not (Variable.Map.is_empty set_of_closures.free_vars) then begin
+      if not (Var_within_closure.Map.is_empty set_of_closures.free_vars) then
+      begin
         assert false
       end
     | Project_closure (symbol, closure_id) ->
       ignore_closure_id closure_id;
       check_symbol_is_bound env symbol
   in
-  let rec loop_program_body env (program : Flambda_static.Program.t_body) =
+  let rec loop_program_body env (program : Flambda_static.Program_body.t) =
     match program with
     | Let_rec_symbol (defs, program) ->
       let env =
@@ -745,11 +756,14 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       loop_constant_defining_value env def;
       let env = add_binding_occurrence_of_symbol env symbol in
       loop_program_body env program
-    | Initialize_symbol (symbol, _tag, fields, program) ->
-      List.iter (fun (field, cont) ->
-          loop env field;
-          ignore_continuation cont)
-        fields;
+    | Initialize_symbol (symbol, descr, program) ->
+      let { Flambda_static.Program_body.Initialize_symbol.
+            tag; expr; return_cont; return_arity; } = descr
+      in
+      ignore_tag tag;
+      loop env expr;
+      ignore_continuation return_cont;
+      ignore_flambda_arity return_arity;
       let env = add_binding_occurrence_of_symbol env symbol in
       loop_program_body env program
     | Effect (expr, cont, program) ->
@@ -768,7 +782,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
   loop_program_body env program.program_body
 
 let primitive_invariants flam ~no_access_to_global_module_identifiers =
-  Flambda.Named.Iterators.iter_expr (function
+  Flambda.Expr.Iterators.iter_named (function
       | Prim (prim, _, _) ->
         begin match prim with
         | Psequand | Psequor ->
@@ -788,33 +802,19 @@ let primitive_invariants flam ~no_access_to_global_module_identifiers =
       | _ -> ())
     flam
 
-let declared_var_within_closure (flam:Flambda_static.Program.t) =
+let declared_var_within_closure (flam : Flambda_static.Program.t) =
   let bound = ref Var_within_closure.Set.empty in
-  let bound_multiple_times = ref None in
-  let add_and_check var =
-    if Var_within_closure.Set.mem var !bound then begin
-      bound_multiple_times := Some var
-    end;
-    bound := Var_within_closure.Set.add var !bound
-  in
-  Flambda_iterators.iter_on_set_of_closures_of_program
-    ~f:(fun ~constant:_ { Flambda. free_vars; _ } ->
-      Variable.Map.iter (fun id _ ->
-          let var = Var_within_closure.wrap id in
-          add_and_check var)
-        free_vars)
-    flam;
-  !bound, !bound_multiple_times
-
-let no_var_within_closure_is_bound_multiple_times (flam:Flambda_static.Program.t) =
-  match declared_var_within_closure flam with
-  | _, Some var -> raise (Var_within_closure_bound_multiple_times var)
-  | _, None -> ()
+  Flambda_static.Program.Iterators.iter_set_of_closures flam
+    ~f:(fun ~constant:_ { Flambda.Set_of_closures. free_vars; _ } ->
+      Var_within_closure.Map.iter (fun in_closure _ ->
+          bound := Var_within_closure.Set.add in_closure !bound)
+        free_vars);
+  !bound
 
 let every_declared_closure_is_from_current_compilation_unit flam =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
-  Flambda.Set_of_closures.iter (fun
-        { Flambda. function_decls; _ } ->
+  Flambda.Expr.Iterators.iter_sets_of_closures
+    (fun { Flambda.Set_of_closures. function_decls; _ } ->
       let compilation_unit =
         Set_of_closures_id.get_compilation_unit
           function_decls.set_of_closures_id
@@ -825,15 +825,11 @@ let every_declared_closure_is_from_current_compilation_unit flam =
 
 let declared_closure_ids program =
   let bound = ref Closure_id.Set.empty in
-  let add_and_check var =
-    bound := Closure_id.Set.add var !bound
-  in
-  Flambda_iterators.iter_on_set_of_closures_of_program program
-    ~f:(fun ~constant:_ { Flambda. function_decls; _; } ->
-        Variable.Map.iter (fun id _ ->
-            let var = Closure_id.wrap id in
-            add_and_check var)
-          function_decls.funs);
+  Flambda_static.Program.Iterators.iter_set_of_closures program
+    ~f:(fun ~constant:_ { Flambda.Set_of_closures. function_decls; _; } ->
+      Closure_id.Map.iter (fun closure_id _ ->
+          bound := Closure_id.Set.add closure_id !bound)
+        function_decls.funs);
   !bound
 
 let declared_set_of_closures_ids program =
@@ -844,8 +840,8 @@ let declared_set_of_closures_ids program =
     then bound_multiple_times := Some var;
     bound := Set_of_closures_id.Set.add var !bound
   in
-  Flambda_iterators.iter_on_set_of_closures_of_program program
-    ~f:(fun ~constant:_ { Flambda. function_decls; _; } ->
+  Flambda_static.Program.Iterators.iter_set_of_closures program
+    ~f:(fun ~constant:_ { Flambda.Set_of_closures. function_decls; _; } ->
         add_and_check function_decls.set_of_closures_id);
   !bound, !bound_multiple_times
 
@@ -890,9 +886,9 @@ let used_vars_within_closures (flam:Flambda_static.Program.t) =
   !used
 
 let every_used_function_from_current_compilation_unit_is_declared
-      (program:Flambda_static.Program.t) =
+      (program : Flambda_static.Program.t) =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
-  let declared, _ = declared_closure_ids program in
+  let declared = declared_closure_ids program in
   let used = used_closure_ids program in
   let used_from_current_unit =
     Closure_id.Set.filter (fun cu ->
@@ -909,7 +905,7 @@ let every_used_function_from_current_compilation_unit_is_declared
 let every_used_var_within_closure_from_current_compilation_unit_is_declared
       (flam:Flambda_static.Program.t) =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
-  let declared, _ = declared_var_within_closure flam in
+  let declared = declared_var_within_closure flam in
   let used = used_vars_within_closures flam in
   let used_from_current_unit =
     Var_within_closure.Set.filter (fun cu ->
@@ -922,13 +918,13 @@ let every_used_var_within_closure_from_current_compilation_unit_is_declared
   then ()
   else raise (Unbound_vars_within_closures counter_examples)
 
-let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
+let check_exn ~importer ?(kind = Normal) ?(cmxfile = false)
+      (flam : Flambda_static.Program.t) =
   ignore kind;
   try
     variable_and_symbol_invariants flam;
     no_set_of_closures_id_is_bound_multiple_times flam;
     every_used_function_from_current_compilation_unit_is_declared flam;
-    no_var_within_closure_is_bound_multiple_times flam;
     every_used_var_within_closure_from_current_compilation_unit_is_declared
       flam;
     Flambda_static.Program.Iterators.iter_toplevel_exprs flam
@@ -937,7 +933,7 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
           ~no_access_to_global_module_identifiers:cmxfile;
         every_declared_closure_is_from_current_compilation_unit flam);
     Push_pop_invariants.check flam;
-    Continuation_scoping.check flam
+    Continuation_scoping.check ~importer flam
   with exn -> begin
   (* CR-someday split printing code into its own function *)
     begin match exn with
@@ -973,45 +969,27 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
     | Bad_free_vars_in_function_body
         (vars, set_of_closures, fun_var) ->
       Format.eprintf ">> Variable(s) (%a) in the body of a function \
-          declaration (fun_var = %a) that is neither the [my_closure] variable \
-          nor one of the function's parameters.  Set of closures: %a"
+          declaration (closure_id = %a) that is neither the [my_closure] \
+          variable nor one of the function's parameters.  Set of closures: %a"
         Variable.Set.print vars
-        Variable.print fun_var
+        Closure_id.print fun_var
         Flambda.Set_of_closures.print set_of_closures
     | Function_decls_have_overlapping_parameters vars ->
       Format.eprintf ">> Function declarations whose parameters overlap: \
           %a"
         Variable.Set.print vars
-    | Specialised_arg_that_is_not_a_parameter var ->
-      Format.eprintf ">> Variable in [specialised_args] that is not a \
-          parameter of any of the function(s) in the corresponding \
-          declaration(s): %a"
-        Variable.print var
     | Projection_must_be_a_free_var var ->
       Format.eprintf ">> Projection %a in [free_vars] from a variable that is \
           not a (inner) free variable of the set of closures"
         Projection.print var
-    | Projection_must_be_a_specialised_arg var ->
-      Format.eprintf ">> Projection %a in [specialised_args] from a variable \
-          that is not a (inner) specialised argument variable of the set of \
-          closures"
+    | Projection_must_be_a_parameter var ->
+      Format.eprintf ">> Projection %a in [params] from a variable \
+          that is not a parameter of the same function"
         Projection.print var
-    | Set_of_closures_free_vars_map_has_wrong_range vars ->
-      Format.eprintf ">> [free_vars] map in set of closures has in its range \
-          variables that are not free variables of the corresponding \
-          functions: %a"
-        Variable.Set.print vars
     | Sequential_logical_operator_primitives_must_be_expanded prim ->
       Format.eprintf ">> Sequential logical operator primitives must be \
           expanded (see closure_conversion.ml): %a"
         Printlambda.primitive prim
-    | Var_within_closure_bound_multiple_times var ->
-      Format.eprintf ">> Variable within a closure is bound multiple times: \
-          %a"
-        Var_within_closure.print var
-    | Closure_id_is_bound_multiple_times closure_id ->
-      Format.eprintf ">> Closure ID is bound multiple times: %a"
-        Closure_id.print closure_id
     | Set_of_closures_id_is_bound_multiple_times set_of_closures_id ->
       Format.eprintf ">> Set of closures ID is bound multiple times: %a"
         Set_of_closures_id.print set_of_closures_id
@@ -1048,11 +1026,6 @@ let check_exn ?(kind=Normal) ?(cmxfile=false) (flam:Flambda_static.Program.t) =
     | Ploc_should_be_expanded ->
       Format.eprintf ">> The Ploc primitive should never occur in an \
         Flambda expression (see translcore.ml); use Apply instead"
-    | Move_to_a_closure_not_in_the_free_variables (start_from, move_to) ->
-      Format.eprintf ">> A Move_within_set_of_closures from the closure %a \
-        to closures that are not parts of its free variables: %a"
-          Variable.print start_from
-          Variable.Set.print move_to
     | Malformed_exception_continuation (cont, str) ->
       Format.eprintf ">> Malformed exception continuation %a: %s"
         Continuation.print cont
