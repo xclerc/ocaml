@@ -20,6 +20,11 @@ type normal_or_lifted =
   | Normal
   | Lifted
 
+(* CR pchambart:
+   Check that symbol definitions match the kind of the symbol.
+   Check that read symbol field correspond too.
+   Check that a symbol of kind 'mixed' is never used in a Symbol construct *)
+
 (* CR mshinwell: Check that apply_cont is well-formed when there is a
    trap installation or removal. *)
 
