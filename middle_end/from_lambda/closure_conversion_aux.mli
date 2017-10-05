@@ -70,7 +70,7 @@ module Function_decls : sig
        : let_rec_ident:Ident.t option
       -> closure_bound_var:Variable.t
       -> kind:Lambda.function_kind
-      -> params:Ident.t list
+      -> params:(Ident.t * Lambda.value_kind) list
       -> continuation_param:Continuation.t
       -> body:Ilambda.t
       -> attr:Lambda.function_attribute
@@ -82,7 +82,7 @@ module Function_decls : sig
     val let_rec_ident : t -> Ident.t
     val closure_bound_var : t -> Variable.t
     val kind : t -> Lambda.function_kind
-    val params : t -> Ident.t list
+    val params : t -> (Ident.t * Lambda.value_kind) list
     val continuation_param : t -> Continuation.t
     val body : t -> Ilambda.t
     val inline : t -> Lambda.inline_attribute

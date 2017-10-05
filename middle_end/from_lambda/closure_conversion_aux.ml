@@ -105,7 +105,7 @@ module Function_decls = struct
       let_rec_ident : Ident.t;
       closure_bound_var : Variable.t;
       kind : Lambda.function_kind;
-      params : Ident.t list;
+      params : (Ident.t * Lambda.value_kind) list;
       continuation_param : Continuation.t;
       body : Ilambda.t;
       free_idents_of_body : IdentSet.t;
@@ -179,7 +179,7 @@ module Function_decls = struct
      difference *)
   let all_free_idents function_decls =
     set_diff (set_diff (all_free_idents function_decls)
-        (all_params function_decls))
+        (List.map fst (all_params function_decls)))
       (let_rec_idents function_decls)
 
   let create function_decls =
