@@ -146,7 +146,9 @@ module Program_body = struct
   module Initialize_symbol = struct
     type t = {
       tag : Tag.t;
-      contents : Flambda0.Expr.t * Continuation.t * Flambda0.Return_arity.t;
+      expr : Flambda0.Expr.t;
+      return_cont : Continuation.t;
+      return_arity : Flambda_arity.t;
     }
   end
 
@@ -189,63 +191,13 @@ module Program_body = struct
         "@[<2>let_rec_symbol@ (@[<hv 1>%a@])@]@."
         bindings defs;
       print ppf program
-    | Initialize_symbol (symbol, contents, program) ->
-      (* CR mshinwell: tidy this up by adding [Initialize_symbol.print] *)
-      begin match contents with
-      | Values { tag; fields; } ->
-        let expr_and_cont ppf (field, defn, scanning, cont) =
-          let scanning =
-            match (scanning : Flambda_kind.scanning) with
-            | Must_scan -> "(must scan)"
-            | Can_scan -> "(can scan)"
-          in
-          fprintf ppf "Field %d, return continuation %a %s:@;@[<h>@ @ %a@]"
-            field
-            Continuation.print cont
-            scanning
-            F0.Expr.print defn
-        in
-        fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
-          Symbol.print symbol
-          Tag.Scannable.print tag
-          (Format.pp_print_list ~pp_sep:Format.pp_print_space expr_and_cont)
-          (List.mapi (fun i (defn, scan, cont) -> i, defn, scan, cont) fields)
-      | Float fields ->
-        let expr_and_cont ppf (field, defn, cont) =
-          fprintf ppf "Field %d, return continuation %a:@;@[<h>@ @ %a@]"
-            field
-            Continuation.print cont
-            F0.Expr.print defn
-        in
-        fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>float:\
-            @ %a@;@[<v>%a@]@])@]@]@."
-          Symbol.print symbol
-          (Format.pp_print_list ~pp_sep:Format.pp_print_space expr_and_cont)
-          (List.mapi (fun i (defn, cont) -> i, defn, cont) fields)
-      | Int32 (defn, cont) ->
-        fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int32:\
-            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
-          Symbol.print symbol
-          Continuation.print cont
-          F0.Expr.print defn
-      | Int64 (defn, cont) ->
-        fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>int64:\
-            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
-          Symbol.print symbol
-          Continuation.print cont
-          F0.Expr.print defn
-      | Nativeint (defn, cont) ->
-        fprintf ppf
-          "@[<2>initialize_symbol@ @[<hv 1>(@[<2>nativeint:\
-            @ %a@;@[<v>Return continuation %a:@;%a@]@])@]@]@."
-          Symbol.print symbol
-          Continuation.print cont
-          F0.Expr.print defn
-      end;
+    | Initialize_symbol (symbol, descr, program) ->
+      fprintf ppf
+        "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
+        Symbol.print symbol
+        Tag.print descr.tag
+        Flambda.Expr.print descr.expr;
+        (* CR mshinwell: Print continuation and arity *)
       print ppf program
     | Effect (expr, cont, program) ->
       fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
@@ -267,20 +219,7 @@ module Program_body = struct
           defs;
         loop program
       | Initialize_symbol (_, descr, program) ->
-        begin match descr with
-        | Values { fields; _ } ->
-          List.iter (fun (field, _scanning, _cont) ->
-              symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols field))
-            fields
-        | Float fields ->
-          List.iter (fun (field, _cont) ->
-              symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols field))
-            fields
-        | Int32 (expr, _)
-        | Int64 (expr, _)
-        | Nativeint (expr, _) ->
-          symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr)
-        end;
+        symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols descr.expr);
         loop program
       | Effect (expr, _cont, program) ->
         symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr);

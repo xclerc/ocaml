@@ -32,7 +32,7 @@ val symbol : t -> (Symbol.t * (int option)) option
 
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file).
     It is assumed that the symbol's value may need scanning by the GC. *)
-val unresolved_symbol : Symbol.t -> t
+val unresolved_symbol : Symbol.Of_kind_value.t -> t
 
 (*
 (** Attempt to use a type to refine a value kind. *)

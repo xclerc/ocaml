@@ -31,7 +31,7 @@ end) = struct
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
-    | Symbol of Symbol.t
+    | Symbol of Symbol.Of_kind_value.t
 
   type unknown_because_of =
     | Unresolved_value of unresolved_value
@@ -45,7 +45,7 @@ end) = struct
     | Unresolved_value (Export_id s1), Unresolved_value (Export_id s2) ->
       if Export_id.equal s1 s2 then u1 else Other
     | Unresolved_value (Symbol s1), Unresolved_value (Symbol s2) ->
-      if Symbol.equal s1 s2 then u1 else Other
+      if Symbol.Of_kind_value.equal s1 s2 then u1 else Other
     | _, _ -> Other
 
   (** Types from other compilation units are loaded lazily.  There are two
@@ -53,12 +53,13 @@ end) = struct
       [Export_id.t] values and via [Symbol.t] values. *)
   type load_lazily =
     | Export_id of Export_id.t
-    | Symbol of Symbol.t
+    | Symbol of Symbol.Of_kind_value.t
 
   let print_load_lazily ppf (ll : load_lazily) =
     match ll with
     | Export_id id -> Format.fprintf ppf "(eid %a)" Export_id.print id
-    | Symbol sym -> Format.fprintf ppf "(sym %a)" Symbol.print sym
+    | Symbol sym ->
+      Format.fprintf ppf "(sym %a)" Symbol.Of_kind_value.print sym
 
   (* CR mshinwell: update comment *)
   (* A value of type [T.t] corresponds to an "approximation" of the result of
@@ -334,7 +335,7 @@ end) = struct
     | Set_of_closures_id set ->
       Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
     | Symbol symbol ->
-      Format.fprintf ppf "Symbol %a" Symbol.print symbol
+      Format.fprintf ppf "Symbol %a" Symbol.Of_kind_value.print symbol
     | Export_id id ->
       Format.fprintf ppf "Export_id %a" Export_id.print id
 
@@ -1086,7 +1087,7 @@ end) = struct
     in
     { descr = Ok (Singleton (Block (Tag.Scannable.object_tag, fields)));
       var = None;
-      symbol = Some (symbol, None);
+      symbol = Some (Symbol.Of_kind_value.to_symbol symbol, None);
     }
 
   module type Importer = sig
@@ -1124,8 +1125,8 @@ end) = struct
 
   module type Importer_intf = sig
     val import_export_id : Export_id.t -> t option
-    val import_symbol : Symbol.t -> t option
-    val symbol_is_predefined_exception : Symbol.t -> string option
+    val import_symbol : Symbol.Of_kind_value.t -> t option
+    val symbol_is_predefined_exception : Symbol.Of_kind_value.t -> string option
   end
 
   type 'a with_importer = importer:(module Importer) -> 'a
@@ -1134,18 +1135,14 @@ end) = struct
     | Ok of 'a
     | Load_lazily_again of load_lazily
 
-  module Make_importer (S : sig
-    val import_export_id : Export_id.t -> t option
-    val import_symbol : Symbol.t -> t option
-    val symbol_is_predefined_exception : Symbol.t -> string option
-  end) : Importer = struct
+  module Make_importer (S : Importer_intf) : Importer = struct
     type 'a import_result =
       | Ok of 'a
       | Treat_as_unknown_must_scan of unknown_because_of
 
     let import_type (type a) ll
           ~(create_resolved_t : t -> a create_resolved_t_result)
-          ~(resolve_predefined_exception : Symbol.t -> a option) =
+          ~(resolve_predefined_exception : Symbol.Of_kind_value.t -> a option) =
       let rec import_type (ll : load_lazily) ~export_ids_seen ~symbols_seen
             : a import_result =
         match ll with
@@ -1167,9 +1164,9 @@ end) = struct
           match resolve_predefined_exception sym with
           | Some resolved_t -> Ok resolved_t
           | None ->
-            if Symbol.Set.mem sym symbols_seen then begin
+            if Symbol.Of_kind_value.Set.mem sym symbols_seen then begin
               Misc.fatal_errorf "Circularity whilst resolving symbol %a"
-                Symbol.print sym
+                Symbol.Of_kind_value.print sym
             end;
             begin match S.import_symbol sym with
             | None -> Treat_as_unknown_must_scan (Unresolved_value (Symbol sym))
@@ -1179,12 +1176,14 @@ end) = struct
                  we don't need it any more? *)
               | Ok resolved_t -> Ok resolved_t
               | Load_lazily_again ll ->
-                let symbols_seen = Symbol.Set.add sym symbols_seen in
+                let symbols_seen =
+                  Symbol.Of_kind_value.Set.add sym symbols_seen
+                in
                 import_type ll ~export_ids_seen ~symbols_seen
             end
       in
       import_type ll ~export_ids_seen:Export_id.Set.empty
-        ~symbols_seen:Symbol.Set.empty
+        ~symbols_seen:Symbol.Of_kind_value.Set.empty
 
     let import_value_type_as_resolved_ty_value (ty : ty_value)
           : resolved_ty_value =
@@ -1554,9 +1553,15 @@ end) = struct
   let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
         set_of_closures closure_id : t =
     let set_of_closures : resolved_ty_set_of_closures =
+      let symbol =
+        match set_of_closures_symbol with
+        | None -> None
+        | Some symbol ->
+          Some (Symbol.Of_kind_value.to_symbol symbol, None)
+      in
       { descr = Ok set_of_closures;
         var = set_of_closures_var;
-        symbol = Misc.may_map (fun s -> s, None) set_of_closures_symbol;
+        symbol;
       }
     in
     Value {

@@ -60,7 +60,8 @@ module Program = struct
         match program with
         | Let_symbol (_, Set_of_closures set_of_closures, program) ->
           f ~constant:true set_of_closures;
-          Variable.Map.iter (fun _ (function_decl : F.Function_declaration.t) ->
+          Closure_id.Map.iter
+            (fun _ (function_decl : F.Function_declaration.t) ->
               F.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
                 function_decl.body)
             set_of_closures.function_decls.funs;
@@ -69,7 +70,7 @@ module Program = struct
           List.iter (function
               | (_, CDV.Set_of_closures set_of_closures) ->
                 f ~constant:true set_of_closures;
-                Variable.Map.iter
+                Closure_id.Map.iter
                   (fun _ (function_decl : F.Function_declaration.t) ->
                     F.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
                       function_decl.body)
@@ -111,7 +112,7 @@ module Program = struct
         let rec loop (program : Program_body.t) =
           match program with
           | Let_symbol (_, Set_of_closures set_of_closures, program) ->
-            Variable.Map.iter
+            Closure_id.Map.iter
               (fun _ (function_decl : F.Function_declaration.t) ->
                 f ~continuation_arity:function_decl.return_arity
                   function_decl.continuation_param function_decl.body)
@@ -120,7 +121,7 @@ module Program = struct
           | Let_rec_symbol (defs, program) ->
             List.iter (function
                 | (_, CDV.Set_of_closures set_of_closures) ->
-                  Variable.Map.iter
+                  Closure_id.Map.iter
                     (fun _ (function_decl : F.Function_declaration.t) ->
                       f ~continuation_arity:function_decl.return_arity
                         function_decl.continuation_param function_decl.body)
@@ -130,7 +131,6 @@ module Program = struct
           | Let_symbol (_, _, program) ->
             loop program
           | Initialize_symbol (_, descr, program) ->
-            let kind = Flambda_kind.value scanning in
             f ~continuation_arity:descr.return_arity descr.return_cont
               descr.expr;
             loop program
@@ -149,7 +149,7 @@ module Program = struct
             Flambda.Expr.Iterators.iter_named (fun (named : Flambda.Named.t) ->
                 match named with
                 | Set_of_closures set_of_closures ->
-                  Variable.Map.iter
+                  Closure_id.Map.iter
                     (fun _ (function_decl : F.Function_declaration.t) ->
                       iter_expr ~continuation_arity:function_decl.return_arity
                         function_decl.continuation_param
@@ -184,8 +184,8 @@ module Program = struct
           let done_something = ref false in
           let function_decls =
             let funs =
-              Variable.Map.map (fun
-                      (function_decl : F.Function_declaration.t) ->
+              Closure_id.Map.map
+                (fun (function_decl : F.Function_declaration.t) ->
                   let body =
                     Flambda.Expr.Mappers.map_sets_of_closures
                       function_decl.body ~f
@@ -290,7 +290,8 @@ module Program = struct
               (set_of_closures : F.Set_of_closures.t) =
           let done_something = ref false in
           let funs =
-            Variable.Map.map (fun (function_decl : F.Function_declaration.t) ->
+            Closure_id.Map.map
+              (fun (function_decl : F.Function_declaration.t) ->
                 let body = f function_decl.body in
                 if body == function_decl.body then
                   function_decl
@@ -406,16 +407,18 @@ module Program = struct
       (fun { Flambda.Set_of_closures. function_decls; _ } -> function_decls)
       (all_sets_of_closures_map program)
 
-  let all_function_decls_indexed_by_closure_id program =
-    let aux_fun function_decls fun_var _ map =
-      let closure_id = Closure_id.wrap fun_var in
+  (* XXX there may be multiple ones with the same closure ID now *)
+  let all_function_decls_indexed_by_closure_id _program = assert false
+(*
+    let aux_fun function_decls closure_id _ map =
       Closure_id.Map.add closure_id function_decls map
     in
     let aux _ ({ function_decls; _ } : Flambda.Set_of_closures.t) map =
-      Variable.Map.fold (aux_fun function_decls) function_decls.funs map
+      Closure_id.Map.fold (aux_fun function_decls) function_decls.funs map
     in
     Set_of_closures_id.Map.fold aux (all_sets_of_closures_map program)
       Closure_id.Map.empty
+*)
 
   let all_lifted_constants (program : t) =
     let rec loop (program : Program_body.t) =
@@ -460,15 +463,16 @@ module Program = struct
       imported_symbols = needed_import_symbols program;
     }
 
-  let make_closure_map program =
+  let make_closure_map _program = assert false (* XXX same as above! *)
+(*
     let map = ref Closure_id.Map.empty in
     let add_set_of_closures ~constant:_ : Flambda.Set_of_closures.t -> unit =
         fun { function_decls } ->
-      Variable.Map.iter (fun var _ ->
-          let closure_id = Closure_id.wrap var in
+      CLosure_id.Map.iter (fun closure_id _ ->
           map := Closure_id.Map.add closure_id function_decls !map)
         function_decls.funs
     in
     Iterators.iter_set_of_closures program ~f:add_set_of_closures;
     !map
+*)
 end
