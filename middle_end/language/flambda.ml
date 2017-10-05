@@ -805,7 +805,7 @@ end = struct
         ~closure_origin:(Closure_origin.create closure_id)
         ~my_closure
     in
-    (* Should be checked differently *)
+    (* XXX Should be checked differently *)
     (* assert (Variable.Set.equal (Variable.Set.map subst free_variables) *)
     (*   function_declaration.free_variables); *)
     let free_vars, boxed_var =
