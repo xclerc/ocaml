@@ -2067,9 +2067,8 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
           parameters have [Value_unknown] Flambda type.  This may result in
           simplifying terms with less precise Flambda types than when
           they were previously simplified (e.g. there might have been a
-          direct call to a closure whose Flambda type is now unknown).
-          We mark the environment to avoid causing errors as a result of
-          this.
+          direct call to a closure whose Flambda type is now unknown).  The
+          simplifier can now handle this.
        2. If all of the handlers are unused, there's nothing more to do.
        3. Extract the (hopefully more precise) Flambda types for the
           handlers' parameters from [r].  These will be at least as precise
@@ -2083,7 +2082,6 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
     let original_r = r in
     let original_handlers = handlers in
     let handlers, r =
-      let env = E.allow_less_precise_types body_env in
       simplify_let_cont_handlers ~env ~r ~handlers
         ~args_types:None ~recursive:Asttypes.Recursive ~freshening
     in
@@ -2139,6 +2137,8 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
             (Continuation.Map.empty, body_env, [])
       in
       let handlers, r =
+        (* CR mshinwell: check that [args_types] is at least as precise as
+           last time *)
         simplify_let_cont_handlers ~env ~r ~handlers
           ~args_types:(Some args_types) ~recursive:Asttypes.Recursive
           ~freshening

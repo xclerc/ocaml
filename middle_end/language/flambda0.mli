@@ -23,31 +23,24 @@
     - accessing constants that have been lifted to static data.
 *)
 
-(* CR mshinwell: Rename to [Continuation_arity]? *)
-module Return_arity : sig
-  type t = Flambda_kind.t list
-
-  include Identifiable.S with type t := t
-end
-
 (** Whether the callee in a function application is known at compile time. *)
 module Call_kind : sig
   type t =
     | Direct of {
         closure_id : Closure_id.t;
         (* CR mshinwell: Should this arity really permit "bottom"? *)
-        return_arity : Return_arity.t;
+        return_arity : Flambda_arity.t;
         (** [return_arity] describes what the callee returns.  It matches up
             with the arity of [continuation] in the enclosing [apply]
             record. *)
       }
     | Indirect_unknown_arity
     | Indirect_known_arity of {
-        param_arity : Return_arity.t;
-        return_arity : Return_arity.t;
+        param_arity : Flambda_arity.t;
+        return_arity : Flambda_arity.t;
       }
 
-  val return_arity : t -> Return_arity.t
+  val return_arity : t -> Flambda_arity.t
 end
 
 (** Simple constants which can be held entirely in registers. *)
@@ -570,7 +563,7 @@ end and Function_declaration : sig
         once the result of the function has been computed.  If the continuation
         takes more than one argument then the backend will compile the function
         so that it returns multiple values. *)
-    return_arity : Return_arity.t;
+    return_arity : Flambda_arity.t;
     (** The kinds of the parameters of the [continuation_param] continuation.
         (This encodes whether the function returns multiple and/or unboxed
         values, for example.) *)
@@ -619,7 +612,7 @@ end and Function_declaration : sig
   val create
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
-    -> return_arity:Return_arity.t
+    -> return_arity:Flambda_arity.t
     -> my_closure:Variable.t
     -> body:Expr.t
     -> stub:bool
@@ -693,7 +686,7 @@ end and Typed_parameter : sig
     (** As for [vars] but returns a set. *)
     val var_set : t -> Variable.Set.t
 
-    val kind : (t -> Flambda_kind.t list) Flambda_type.with_importer
+    val arity : (t -> Flambda_arity.t) Flambda_type.with_importer
 
     val print : Format.formatter -> t -> unit
   end

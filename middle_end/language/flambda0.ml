@@ -20,37 +20,19 @@ module Int = Numbers.Int
 
 let fprintf = Format.fprintf
 
-module Return_arity = struct
-  type t = Flambda_kind.t list
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare t1 t2 = Misc.Stdlib.List.compare Flambda_kind.compare t1 t2
-    let equal t1 t2 = (compare t1 t2) = 0
-    let hash = Hashtbl.hash
-
-    let print ppf t =
-      Format.fprintf ppf "@(%a@)"
-        (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
-          Flambda_kind.print)
-        t
-  end)
-end
-
 module Call_kind = struct
   type t =
     | Direct of {
         closure_id : Closure_id.t;
-        return_arity : Return_arity.t;
+        return_arity : Flambda_arity.t;
       }
     | Indirect_unknown_arity
     | Indirect_known_arity of {
-        param_arity : Return_arity.t;
-        return_arity : Return_arity.t;
+        param_arity : Flambda_arity.t;
+        return_arity : Flambda_arity.t;
       }
 
-  let return_arity t : Return_arity.t =
+  let return_arity t : Flambda_arity.t =
     match t with
     | Direct { return_arity; _ }
     | Indirect_known_arity { return_arity; _ } -> return_arity
@@ -695,7 +677,9 @@ end = struct
       in
       let direct ppf () =
         match call_kind with
-        | Indirect -> ()
+        | Indirect_unknown_arity -> ()
+        | Indirect_known_arity _ ->
+          fprintf ppf "#"
         | Direct { closure_id; _ } ->
           fprintf ppf "*[%a]" Closure_id.print closure_id
       in
@@ -710,7 +694,7 @@ end = struct
         direct ()
         inline ()
         (Debuginfo.to_string dbg)
-        Return_arity.print (Call_kind.return_arity call_kind)
+        Flambda_arity.print (Call_kind.return_arity call_kind)
         Continuation.print continuation
         print_func_and_kind func
         Variable.print_list args
@@ -822,8 +806,11 @@ end = struct
 
   let free_symbols_helper symbols (t : t) =
     match t with
-    | Symbol symbol
-    | Read_symbol_field (symbol, _) -> symbols := Symbol.Set.add symbol !symbols
+    | Symbol symbol ->
+      let symbol = Symbol.Of_kind_value.to_symbol symbol in
+      symbols := Symbol.Set.add symbol !symbols
+    | Read_symbol_field { symbol; logical_field = _; } ->
+      symbols := Symbol.Set.add symbol !symbols
     | Set_of_closures set_of_closures ->
       Closure_id.Map.iter (fun _ (function_decl : Function_declaration.t) ->
           symbols := Symbol.Set.union function_decl.free_symbols !symbols)
@@ -882,7 +869,7 @@ end = struct
   let print ppf (t : t) =
     match t with
     | Var var -> Variable.print ppf var
-    | Symbol symbol -> Symbol.print ppf symbol
+    | Symbol symbol -> Symbol.Of_kind_value.print ppf symbol
     | Const cst -> fprintf ppf "Const(%a)" Const.print cst
     | Allocated_const cst -> fprintf ppf "Aconst(%a)" Allocated_const.print cst
     | Read_mutable mut_var ->
@@ -891,8 +878,8 @@ end = struct
       fprintf ppf "@[<2>(assign@ %a@ %a)@]"
         Mutable_variable.print being_assigned
         Variable.print new_value
-    | Read_symbol_field (symbol, field) ->
-      fprintf ppf "%a.(%d)" Symbol.print symbol field
+    | Read_symbol_field { symbol; logical_field; } ->
+      fprintf ppf "%a.(%d)" Symbol.print symbol logical_field
     | Project_closure project_closure ->
       Projection.Project_closure.print ppf project_closure
     | Project_var project_var ->
@@ -908,7 +895,7 @@ end = struct
         (Debuginfo.to_string dbg)
         Variable.print_list args
 
-  let box_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+  let box_value var (kind : Flambda_kind.t) : Named.t * Flambda_kind.t =
     match kind with
     | Value _ -> Var var, kind
     | Naked_immediate ->
@@ -922,7 +909,7 @@ end = struct
     | Naked_nativeint ->
       Prim (Pbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
 
-  let unbox_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+  let unbox_value var (kind : Flambda_kind.t) : Named.t * Flambda_kind.t =
     match kind with
     | Value _ -> Var var, kind
     | Naked_immediate ->
@@ -1285,7 +1272,7 @@ end and Function_declaration : sig
   type t = {
     closure_origin : Closure_origin.t;
     continuation_param : Continuation.t;
-    return_arity : Return_arity.t;
+    return_arity : Flambda_arity.t;
     params : Typed_parameter.t list;
     body : Expr.t;
     free_symbols : Symbol.Set.t;
@@ -1300,7 +1287,7 @@ end and Function_declaration : sig
   val create
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
-    -> return_arity:Return_arity.t
+    -> return_arity:Flambda_arity.t
     -> my_closure:Variable.t
     -> body:Expr.t
     -> stub:bool
@@ -1426,7 +1413,7 @@ end = struct
         fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
       Closure_id.print closure_id
       stub
-      Return_arity.print f.return_arity
+      Flambda_arity.print f.return_arity
       is_a_functor inline specialise
       Closure_origin.print f.closure_origin
       Continuation.print f.continuation_param
@@ -1447,7 +1434,7 @@ end and Typed_parameter : sig
     type nonrec t = t list
     val vars : t -> Variable.t list
     val var_set : t -> Variable.Set.t
-    val kind : (t -> Flambda_kind.t list) Flambda_type.with_importer
+    val arity : (t -> Flambda_kind.t list) Flambda_type.with_importer
     val free_variables : t -> Variable.Set.t
     val print : Format.formatter -> t -> unit
   end
@@ -1530,7 +1517,7 @@ end = struct
 
     let var_set t = Variable.Set.of_list (vars t)
 
-    let kind ~importer t =
+    let arity ~importer t =
       List.map (fun t -> Flambda_type.kind ~importer (ty t)) t
 
     let print ppf t =

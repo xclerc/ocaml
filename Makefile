@@ -282,11 +282,12 @@ MIDDLE_END_INLINING=\
   middle_end/inlining/inlining_transforms.cmo
 
 MIDDLE_END_LANGUAGE=\
+  middle_end/language/flambda_kind.cmo \
+  middle_end/language/flambda_arity.cmo \
   middle_end/language/allocated_const.cmo \
   middle_end/language/flambda.cmo \
   middle_end/language/flambda0.cmo \
   middle_end/language/flambda_invariants.cmo \
-  middle_end/language/flambda_kind.cmo \
   middle_end/language/flambda_static.cmo \
   middle_end/language/flambda_static0.cmo \
   middle_end/language/flambda_type.cmo \

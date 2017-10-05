@@ -28,10 +28,8 @@ module Free_var = F0.Free_var
 module Let = F0.Let
 module Let_cont = F0.Let_cont
 module Let_mutable = F0.Let_mutable
-module Return_arity = F0.Return_arity
 module Switch = F0.Switch
 module Trap_action = F0.Trap_action
-module Typed_parameter = F0.Typed_parameter
 module With_free_variables = F0.With_free_variables
 
 module Free_vars = struct
@@ -55,6 +53,12 @@ module Reachable = struct
     | Unreachable
 end
 
+module Typed_parameter = struct
+  include Flambda0.Typed_parameter
+
+  let kind ~importer t = Flambda_type.kind ~importer (ty t)
+end
+
 module rec Expr : sig
   include module type of F0.Expr
 
@@ -68,7 +72,7 @@ module rec Expr : sig
     (* CR mshinwell: update comment. *)
     -> stub:bool
     -> continuation:Continuation.t
-    -> return_arity:Flambda0.Return_arity.t
+    -> return_arity:Flambda_arity.t
     -> t) Flambda_type.with_importer
   val toplevel_substitution
      : (Variable.t Variable.Map.t

@@ -93,7 +93,7 @@ module Program : sig
     *)
     val iter_toplevel_exprs
        : t
-      -> f:(continuation_arity:Flambda.Return_arity.t
+      -> f:(continuation_arity:Flambda_arity.t
         -> Continuation.t
         -> Flambda.Expr.t
         -> unit)
@@ -129,7 +129,7 @@ module Program : sig
 
       val iter_exprs
          : t
-        -> f:(continuation_arity:Flambda.Return_arity.t
+        -> f:(continuation_arity:Flambda_arity.t
           -> Continuation.t
           -> Flambda.Expr.t
           -> unit)

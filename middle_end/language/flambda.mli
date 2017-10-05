@@ -44,14 +44,10 @@ module Let_cont_handlers :
   module type of struct include Flambda0.Let_cont_handlers end
 module Let_mutable :
   module type of struct include Flambda0.Let_mutable end
-module Return_arity :
-  module type of struct include Flambda0.Return_arity end
 module Switch :
   module type of struct include Flambda0.Switch end
 module Trap_action :
   module type of struct include Flambda0.Trap_action end
-module Typed_parameter :
-  module type of struct include Flambda0.Typed_parameter end
 module With_free_variables :
   module type of struct include Flambda0.With_free_variables end
 
@@ -73,6 +69,12 @@ module Reachable : sig
     | Reachable of Flambda0.Named.t
     | Non_terminating of Flambda0.Named.t
     | Unreachable
+end
+
+module Typed_parameter : sig
+  include module type of struct include Flambda0.Typed_parameter end
+
+  val kind : (t -> Flambda_kind.t) Flambda_type.with_importer
 end
 
 module rec Expr : sig
@@ -98,7 +100,7 @@ module rec Expr : sig
     (* CR mshinwell: update comment. *)
     -> stub:bool
     -> continuation:Continuation.t
-    -> return_arity:Flambda0.Return_arity.t
+    -> return_arity:Flambda_arity.t
     -> t) Flambda_type.with_importer
 
   val toplevel_substitution

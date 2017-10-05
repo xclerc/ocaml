@@ -74,7 +74,7 @@ module Program_body : sig
       tag : Tag.Scannable.t;
       expr : Flambda0.Expr.t;
       return_cont : Continuation.t;
-      return_arity : Flambda0.Return_arity.t;
+      return_arity : Flambda_arity.t;
     }
   end
 

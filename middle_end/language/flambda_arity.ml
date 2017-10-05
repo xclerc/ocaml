@@ -14,16 +14,18 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+type t = Flambda_kind.t list
 
-type normal_or_lifted =
-  | Normal
-  | Lifted
+include Identifiable.Make (struct
+  type nonrec t = t
 
-(** Checking of invariants on Flambda expressions.  Raises an exception if
-    a check fails. *)
-val check_exn
-   : ?kind:normal_or_lifted
-  -> ?cmxfile:bool
-  -> Flambda_static.Program.t
-  -> unit
+  let compare t1 t2 = Misc.Stdlib.List.compare Flambda_kind.compare t1 t2
+  let equal t1 t2 = (compare t1 t2) = 0
+  let hash = Hashtbl.hash
+
+  let print ppf t =
+    Format.fprintf ppf "@(%a@)"
+      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
+        Flambda_kind.print)
+      t
+end)

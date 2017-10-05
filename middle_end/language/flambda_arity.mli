@@ -14,16 +14,9 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+(** Generalization of the concepts of "number of arguments" and "number
+    of return values". *)
 
-type normal_or_lifted =
-  | Normal
-  | Lifted
+type t = Flambda_kind.t list
 
-(** Checking of invariants on Flambda expressions.  Raises an exception if
-    a check fails. *)
-val check_exn
-   : ?kind:normal_or_lifted
-  -> ?cmxfile:bool
-  -> Flambda_static.Program.t
-  -> unit
+include Identifiable.S with type t := t
