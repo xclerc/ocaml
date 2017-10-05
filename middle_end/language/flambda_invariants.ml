@@ -47,7 +47,7 @@ let ignore_primitive ( _ : Lambda.primitive) = ()
 let ignore_const (_ : Flambda.Const.t) = ()
 let ignore_immediate (_ : Immediate.t) = ()
 let ignore_allocated_const (_ : Allocated_const.t) = ()
-let ignore_flambda_kind (_ : Flambda_kind.t) = ()
+let ignore_flambda_type (_ : Flambda_type.t) = ()
 let ignore_flambda_arity (_ : Flambda_arity.t) = ()
 let ignore_set_of_closures_id (_ : Set_of_closures_id.t) = ()
 let ignore_set_of_closures_origin (_ : Set_of_closures_origin.t) = ()
@@ -510,8 +510,8 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       loop_named env defining_expr;
       loop (add_binding_occurrence env var) body
     | Let_mutable { var = mut_var; initial_value = var;
-                    body; contents_kind } ->
-      ignore_flambda_kind contents_kind;
+                    body; contents_type; } ->
+      ignore_flambda_type contents_type;
       check_variable_is_bound env var;
       loop (add_mutable_binding_occurrence env mut_var) body
     | Let_cont { body; handlers; } ->

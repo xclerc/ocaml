@@ -206,7 +206,10 @@ let apply_mutable_variable t mut_var =
    try Mutable_variable.Map.find mut_var t.sb_mutable_var with
    | Not_found -> mut_var
 
-let rewrite_recursive_calls_with_symbols t
+let rewrite_recursive_calls_with_symbols _t _ ~make_closure_symbol:_ =
+  assert false
+
+(* XXX pchambart to fix
       (function_declarations : Flambda.Function_declarations.t)
       ~make_closure_symbol =
   match t with
@@ -251,6 +254,7 @@ let rewrite_recursive_calls_with_symbols t
       in
       Flambda.Function_declarations.update function_declarations ~funs
     end
+*)
 
 let does_not_freshen t vars =
   match t with

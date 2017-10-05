@@ -25,8 +25,12 @@ val make_closure_map'
    : Flambda.Function_declarations.t Set_of_closures_id.Map.t
   -> Flambda.Function_declarations.t Closure_id.Map.t
 
-val make_variable_symbol : Variable.t -> Symbol.t
-val make_variables_symbol : Variable.t list -> Symbol.t
+val make_variable_symbol : Variable.t -> kind:Symbol.symbol_kind -> Symbol.t
+
+val make_variables_symbol
+   : Variable.t list
+  -> kind:Symbol.symbol_kind
+  -> Symbol.t
 
 (** For the compilation of switch statements. *)
 module Switch_storer : sig
