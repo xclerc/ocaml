@@ -72,7 +72,9 @@ module Program_body : sig
   module Initialize_symbol : sig
     type t = {
       tag : Tag.Scannable.t;
-      contents : Flambda0.Expr.t * Continuation.t * Flambda0.Return_arity.t;
+      expr : Flambda0.Expr.t;
+      return_cont : Continuation.t;
+      return_arity : Flambda0.Return_arity.t;
     }
   end
 

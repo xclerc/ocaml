@@ -79,23 +79,8 @@ module Program = struct
         | Let_symbol (_, _, program) ->
           loop program
         | Initialize_symbol (_, descr, program) ->
-          begin match descr with
-          | Values { fields; _ } ->
-            List.iter (fun (field, _kind, _cont) ->
-                Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-                  field)
-              fields
-          | Float fields ->
-            List.iter (fun (field, _cont) ->
-                Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-                  field)
-              fields
-          | Int32 (expr, _)
-          | Int64 (expr, _)
-          | Nativeint (expr, _) ->
-            Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-              expr
-          end;
+          Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
+            descr.expr;
           loop program
         | Effect (expr, _cont, program) ->
           Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false) expr;
@@ -145,24 +130,9 @@ module Program = struct
           | Let_symbol (_, _, program) ->
             loop program
           | Initialize_symbol (_, descr, program) ->
-            begin match descr with
-            | Values { fields; _ } ->
-              List.iter (fun (field, scanning, cont) ->
-                  let kind = Flambda_kind.value scanning in
-                  f ~continuation_arity:[kind] cont field)
-                fields
-            | Float fields ->
-              List.iter (fun (field, cont) ->
-                  let kind = Flambda_kind.naked_float () in
-                  f ~continuation_arity:[kind] cont field)
-                fields
-            | Int32 (expr, cont) ->
-              f ~continuation_arity:[Flambda_kind.naked_int32 ()] cont expr
-            | Int64 (expr, cont) ->
-              f ~continuation_arity:[Flambda_kind.naked_int64 ()] cont expr
-            | Nativeint (expr, cont) ->
-              f ~continuation_arity:[Flambda_kind.naked_nativeint ()] cont expr
-            end;
+            let kind = Flambda_kind.value scanning in
+            f ~continuation_arity:descr.return_arity descr.return_cont
+              descr.expr;
             loop program
           | Effect (expr, cont, program) ->
             f ~continuation_arity:[] cont expr;
@@ -284,35 +254,15 @@ module Program = struct
         | Initialize_symbol (symbol, descr, program') ->
           let done_something = ref false in
           let descr : Program_body.Initialize_symbol.t =
-            let process_expr expr =
-              let new_expr =
-                Flambda.Expr.Mappers.map_sets_of_closures expr ~f
-              in
-              if not (new_expr == expr) then begin
-                done_something := true
-              end;
-              new_expr
+            let new_expr =
+              Flambda.Expr.Mappers.map_sets_of_closures descr.expr ~f
             in
-            match descr with
-            | Values { tag; fields; } ->
-              let fields =
-                List.map (fun (field, scanning, cont) ->
-                    let new_field = process_expr field in
-                    new_field, scanning, cont)
-                  fields
-              in
-              Values { tag; fields; }
-            | Float fields ->
-              let fields =
-                List.map (fun (field, cont) ->
-                    let new_field = process_expr field in
-                    new_field, cont)
-                  fields
-              in
-              Float fields
-            | Int32 (expr, cont) -> Int32 (process_expr expr, cont)
-            | Int64 (expr, cont) -> Int64 (process_expr expr, cont)
-            | Nativeint (expr, cont) -> Nativeint (process_expr expr, cont)
+            if not (new_expr == descr.expr) then begin
+              done_something := true
+            end;
+            { descr with
+              expr = new_expr;
+            }
           in
           let new_program' = loop program' in
           if new_program' == program' && not !done_something then
@@ -404,33 +354,13 @@ module Program = struct
         | Initialize_symbol (symbol, descr, program') ->
           let done_something = ref false in
           let descr : Program_body.Initialize_symbol.t =
-            let process_expr expr =
-              let new_expr = f expr in
-              if not (new_expr == expr) then begin
-                done_something := true
-              end;
-              new_expr
-            in
-            match descr with
-            | Values { tag; fields; } ->
-              let fields =
-                List.map (fun (field, scanning, cont) ->
-                    let new_field = process_expr field in
-                    new_field, scanning, cont)
-                  fields
-              in
-              Values { tag; fields; }
-            | Float fields ->
-              let fields =
-                List.map (fun (field, cont) ->
-                    let new_field = process_expr field in
-                    new_field, cont)
-                  fields
-              in
-              Float fields
-            | Int32 (expr, cont) -> Int32 (process_expr expr, cont)
-            | Int64 (expr, cont) -> Int64 (process_expr expr, cont)
-            | Nativeint (expr, cont) -> Nativeint (process_expr expr, cont)
+            let new_expr = f descr.expr in
+            if not (new_expr == descr.expr) then begin
+              done_something := true
+            end;
+            { descr with
+              expr = new_expr;
+            }
           in
           let new_program' = loop program' in
           if new_program' == program' && not !done_something then
