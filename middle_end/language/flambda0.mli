@@ -97,8 +97,19 @@ module Free_var : sig
 end
 
 module Free_vars : sig
-  (** For closures: map from "inner" to "outer" variables. *)
+  (** For closures: map from variables in a closure to "outer" variables.
+
+      The [Var_within_closure.t] values should not be used as keys to keep
+      track of information associated with closure variables, since the
+      _same_ such values may be bound by multiple different sets of closures
+      binding some particular closure ID.  Instead use the corresponding
+      [Variable.t] in the [Free_var.t]. *)
+  (* CR mshinwell: This makes me think we should rename [Var_within_closure].
+     Maybe just to [In_closure]? *)
+
   type t = Free_var.t Var_within_closure.Map.t
+
+  val find_by_variable : t -> Variable.t -> Var_within_closure.t option
 end
 
 (** Actions affecting exception traps on the stack.  These are always
@@ -475,6 +486,8 @@ end and Set_of_closures : sig
            Variable.Map.map (Env.find_approx env) set.free_vars
          in
        in [Build_export_info]. *)
+    (* CR mshinwell: Now that we've changed the meaning, this should definitely
+       be renamed. *)
     free_vars : Free_vars.t;
     (** Mapping from all variables free in the body of the [function_decls] to
         variables in scope at the definition point of the [set_of_closures].
@@ -575,8 +588,6 @@ end and Function_declaration : sig
     (* CR mshinwell: check non-regression property with xclerc's code *)
     body : Expr.t;
     (** The code of the function's body. *)
-    (* CR-soon mshinwell: inconsistent naming free_variables/free_vars here and
-      above *)
     free_symbols : Symbol.Set.t;
     (** All symbols that occur in the function's body.  (Symbols can never be
         bound in a function's body; the only thing that binds symbols is the
@@ -595,7 +606,11 @@ end and Function_declaration : sig
     is_a_functor : bool;
     (** Whether the function is known definitively to be a functor. *)
     my_closure : Variable.t;
-    (** Binding name of the closure inside the function body *)
+    (** Binding name of the closure inside the function body.  The only free
+        variables allowed in such a body are this variable and the parameters
+        of the function.  Accesses to variables within the closure need to go
+        via a [Project_var]; accesses to any other simultaneously-defined
+        functions need to go via a [Move_within_set_of_closures]. *)
   }
 
   (** Create a function declaration.  This calculates the free variables and

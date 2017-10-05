@@ -16,6 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* XXX We should add a structure to record the types of bound names and any
+   freshenings applied.  This can go in "r" along with continuation usage.
+   Then we should be able to use this to check that types are not regressing
+   in preciseness, even if we are now robust against that possiblity. *)
+
 module B = Inlining_cost.Benefit
 module E = Simplify_env
 module R = Simplify_result
