@@ -324,6 +324,20 @@ end and Named : sig
     -> t
     -> Variable.Set.t
 
+  (** Build an expression boxing the variable. The returned kind is the
+      one of the unboxed version *)
+  val box_value
+      : Variable.t
+     -> Flambda_kind.t
+     -> Named.t * Flambda_kind.t
+
+  (** Build an expression unboxing the variable. The returned kind is the
+      one of the unboxed version *)
+  val unbox_value
+      : Variable.t
+     -> Flambda_kind.t
+     -> Named.t * Flambda_kind.t
+
   val print : Format.formatter -> t -> unit
 end and Let : sig
   (* CR-someday mshinwell: Since we lack expression identifiers on every term,
