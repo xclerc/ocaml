@@ -19,8 +19,7 @@
 let make_closure_map' input =
   let map = ref Closure_id.Map.empty in
   let add_set_of_closures _ (function_decls : Flambda.Function_declarations.t) =
-    Variable.Map.iter (fun var _ ->
-        let closure_id = Closure_id.wrap var in
+    Closure_id.Map.iter (fun closure_id _ ->
         map := Closure_id.Map.add closure_id function_decls !map)
       function_decls.funs
   in
@@ -166,3 +165,31 @@ let make_let_cont_alias ~importer ~name ~alias_of ~parameter_types
       handler = Apply_cont (alias_of, None, apply_params);
     };
   }
+
+let box_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+  match kind with
+  | Value _ -> Var var, kind
+  | Naked_immediate ->
+    Prim (Ptag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_float ->
+    Prim (Pbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_int32 ->
+    Prim (Pbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_int64 ->
+    Prim (Pbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_nativeint ->
+    Prim (Pbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
+
+let unbox_value var (kind : Flambda_kind.t) : Flambda.Named.t * Flambda_kind.t =
+  match kind with
+  | Value _ -> Var var, kind
+  | Naked_immediate ->
+    Prim (Puntag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_float ->
+    Prim (Punbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_int32 ->
+    Prim (Punbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_int64 ->
+    Prim (Punbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
+  | Naked_nativeint ->
+    Prim (Punbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
