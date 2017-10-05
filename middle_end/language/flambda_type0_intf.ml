@@ -22,7 +22,7 @@ module type S = sig
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
-    | Symbol of Symbol.t
+    | Symbol of Symbol.Of_kind_value.t
 
   type unknown_because_of =
     | Unresolved_value of unresolved_value
@@ -30,7 +30,7 @@ module type S = sig
 
   type load_lazily =
     | Export_id of Export_id.t
-    | Symbol of Symbol.t
+    | Symbol of Symbol.Of_kind_value.t
 
   type string_contents = private
     | Contents of string
@@ -128,7 +128,7 @@ module type S = sig
     | Closure of {
         (* CR pchambart: should Unknown or Bottom really be allowed here ? *)
         set_of_closures : resolved_ty_set_of_closures;
-        closure_id : Closure_id.t
+        closure_id : Closure_id.t;
       }
     | String of string_ty
     | Float_array of float_array_ty
@@ -260,7 +260,7 @@ module type S = sig
   (** Construction of types that link to other types which have not yet
       been loaded into memory (from a .cmx file). *)
   val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
-  val symbol_loaded_lazily : Flambda_kind.t -> Symbol.t -> t
+  val symbol_loaded_lazily : Flambda_kind.t -> Symbol.Of_kind_value.t -> t
 
   (** Construct a closure type given the type of the corresponding set of
       closures and the closure ID of the closure to be projected from such
@@ -272,7 +272,7 @@ module type S = sig
   val closure
      : ?closure_var:Variable.t
     -> ?set_of_closures_var:Variable.t
-    -> ?set_of_closures_symbol:Symbol.t
+    -> ?set_of_closures_symbol:Symbol.Of_kind_value.t
     -> set_of_closures
     -> Closure_id.t
     -> t
@@ -365,12 +365,12 @@ module type S = sig
 
     (** As for [import_export_id], except that the desired type is specified by
         symbol, rather than by export identifier. *)
-    val import_symbol : Symbol.t -> t option
+    val import_symbol : Symbol.Of_kind_value.t -> t option
 
     (** Determine whether a symbol corresponds to a predefined exception.
         If it does, the function must return the corresponding [Ident.name]
         for the exception. *)
-    val symbol_is_predefined_exception : Symbol.t -> string option
+   val symbol_is_predefined_exception : Symbol.Of_kind_value.t -> string option
   end
 
   (** A functor used to construct the various type-importing operations from
