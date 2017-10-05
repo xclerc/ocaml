@@ -690,9 +690,14 @@ let maximum_interesting_size_of_function_body num_free_variables =
 
 let size ~(function_decls : Flambda.Function_declarations.t) =
   Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
-      let num_vars_in_closure =
+      let num_vars_in_closure = 1
+      (* CR pchambart: There are no projections introduced when inlining a
+         function now, so the size of the closure doesn't matter for code
+         size *)
+        (*
         Function_declaration.num_variables_in_closure function_decl
           ~function_decls:t
+        *)
       in
       let max_size =
         Inlining_cost.maximum_interesting_size_of_function_body

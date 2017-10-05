@@ -64,3 +64,6 @@ val make_let_cont_alias
   -> alias_of:Continuation.t
   -> parameter_types:Flambda_type.t list
   -> Flambda.Let_cont_handlers.t) Flambda_type.with_importer
+
+val box_value : Variable.t -> Flambda_kind.t -> Flambda.Named.t * Flambda_kind.t
+val unbox_value : Variable.t -> Flambda_kind.t -> Flambda.Named.t * Flambda_kind.t
