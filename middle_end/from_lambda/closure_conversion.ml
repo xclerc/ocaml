@@ -32,11 +32,18 @@ type t = {
 (** Generate a wrapper ("stub") function that accepts a tuple argument and
     calls another function with arguments extracted in the obvious
     manner from the tuple. *)
-let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
+let tupled_function_call_stub
+      ( original_params : ( Variable.t * Lambda.value_kind ) list )
+      unboxed_version ~closure_bound_var
       : Flambda.Function_declaration.t =
+  (* Needs to project free variables from the closure *)
+(*
   let continuation_param = Continuation.create () in
   let tuple_param_var =
     Variable.rename ~append:"tupled_stub_param" unboxed_version
+  in
+  let my_closure =
+    Variable.rename ~append:"tupled_stub" unboxed_version
   in
   let params = List.map (fun p -> Variable.rename p) original_params in
   let call : Flambda.Expr.t =
@@ -49,7 +56,7 @@ let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
            redundancy here (func is also unboxed_version) *)
         call_kind = Direct {
           closure_id = Closure_id.wrap unboxed_version;
-          return_arity = 1;
+          return_arity = [Flambda_kind.value Must_scan];
         };
         dbg = Debuginfo.none;
         inline = Default_inline;
@@ -61,70 +68,119 @@ let tupled_function_call_stub original_params unboxed_version ~closure_bound_var
         let lam : Flambda.Named.t =
           Prim (Pfield pos, [tuple_param_var], Debuginfo.none)
         in
-        pos + 1, Flambda.Expr.create_let param lam body)
+        pos + 1,
+        Flambda.Expr.create_let param (Flambda_kind.value Must_scan) lam body)
       (0, call) params
   in
-  let tuple_param = Parameter.wrap tuple_param_var in
-  Flambda.Function_declaration.create ~params:[tuple_param] ~continuation_param
-    ~return_arity:1 ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
+  let tuple_param =
+    Flambda.Typed_parameter.create (Parameter.wrap tuple_param_var)
+      (Flambda_type.any_value Must_scan Other)
+  in
+  Flambda.Function_declaration.create
+    ~my_closure
+    ~params:[tuple_param] ~continuation_param
+    ~return_arity:[Flambda_kind.value Must_scan]
+    ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
     ~specialise:Default_specialise ~is_a_functor:false
-    ~closure_origin:(Closure_origin.create (Closure_id.wrap closure_bound_var))
+    ~closure_origin:(Closure_origin.create closure_bound_var)
+*)
+  assert false
 
 let register_const t (constant:Flambda_static.Constant_defining_value.t) name
-      : Flambda_static.Constant_defining_value.t_block_field * string =
+      : Flambda_static.Constant_defining_value_block_field.t * string =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
   (* Create a variable to ensure uniqueness of the symbol *)
   let var = Variable.create ~current_compilation_unit name in
   let symbol =
     Symbol.create current_compilation_unit
+      ~kind:Symbol.value_kind
       (Linkage_name.create (Variable.unique_name var))
   in
   t.declared_symbols <- (symbol, constant) :: t.declared_symbols;
   Symbol symbol, name
 
 let rec declare_const t (const : Lambda.structured_constant)
-      : Flambda_static.Constant_defining_value.t_block_field * string =
+      : Flambda_static.Constant_defining_value_block_field.t * string =
   match const with
-  | Const_base (Const_int c) -> Const (Int c), "int"
-  | Const_base (Const_char c) -> Const (Char c), "char"
+  | Const_base (Const_int c) ->
+    Tagged_immediate (Immediate.int (Targetint.of_int c)), "int"
+  | Const_base (Const_char c) -> Tagged_immediate (Immediate.char c), "char"
   | Const_base (Const_string (s, _)) ->
     let const, name =
       if Config.safe_string then
-        Flambda.Allocated_const (Immutable_string s), "immstring"
-      else Flambda.Allocated_const (String s), "string"
+        Flambda_static.Constant_defining_value.create_allocated_const
+          (Immutable_string s),
+        "immstring"
+      else
+        Flambda_static.Constant_defining_value.create_allocated_const (String s),
+        "string"
     in
     register_const t const name
   | Const_base (Const_float c) ->
     register_const t
-      (Allocated_const (Boxed_float (float_of_string c)))
+      (Flambda_static.Constant_defining_value.create_allocated_const
+         (Float (float_of_string c)))
       "float"
   | Const_base (Const_int32 c) ->
-    register_const t (Allocated_const (Int32 c)) "int32"
+    register_const t
+      (Flambda_static.Constant_defining_value.create_allocated_const
+         (Int32 c)) "int32"
   | Const_base (Const_int64 c) ->
-    register_const t (Allocated_const (Int64 c)) "int64"
+    register_const t
+      (Flambda_static.Constant_defining_value.create_allocated_const
+         (Int64 c)) "int64"
   | Const_base (Const_nativeint c) ->
-    register_const t (Allocated_const (Nativeint c)) "nativeint"
-  | Const_pointer c -> Const (Const_pointer c), "pointer"
+    (* CR pchambart: this should be pushed further to lambda *)
+    let c = Targetint.of_int64 (Int64.of_nativeint c) in
+    register_const t
+      (Flambda_static.Constant_defining_value.create_allocated_const
+         (Nativeint c)) "nativeint"
+  | Const_pointer c ->
+    (* CR pchambart: the kind needs to be propagated somewhere to
+       say that this value must be scanned *)
+    Tagged_immediate (Immediate.int (Targetint.of_int c)), "pointer"
   | Const_immstring c ->
-    register_const t (Allocated_const (Immutable_string c)) "immstring"
+    register_const t
+      (Flambda_static.Constant_defining_value.create_allocated_const
+         (Immutable_string c)) "immstring"
   | Const_float_array c ->
     register_const t
-      (Allocated_const (Immutable_float_array (List.map float_of_string c)))
+      (Flambda_static.Constant_defining_value.create_allocated_const
+         (Immutable_float_array (List.map float_of_string c)))
       "float_array"
   | Const_block (tag, consts) ->
     let const : Flambda_static.Constant_defining_value.t =
-      Block (Tag.create_exn tag,
-             List.map (fun c -> fst (declare_const t c)) consts)
+      Flambda_static.Constant_defining_value.create_block
+        (Tag.Scannable.create_exn tag)
+        (List.map (fun c -> fst (declare_const t c)) consts)
     in
     register_const t const "const_block"
 
 let close_const t (const : Lambda.structured_constant)
       : Flambda.Named.t * string =
   match declare_const t const with
-  | Const c, name ->
-    Const c, name
+  | Tagged_immediate c, name ->
+    Const (Tagged_immediate c), name
   | Symbol s, name ->
-    Symbol s, name
+    Symbol (Symbol.Of_kind_value.of_symbol_exn s), name
+
+let flambda_type_of_lambda_value_kind (k : Lambda.value_kind) : Flambda_type.t =
+  match k with
+  | Pgenval ->
+    Flambda_type.any_value Must_scan Other
+  | Pfloatval ->
+    Flambda_type.any_boxed_float ()
+  | Pboxedintval Pint32 ->
+    Flambda_type.any_boxed_int32 ()
+  | Pboxedintval Pint64 ->
+    Flambda_type.any_boxed_int64 ()
+  | Pboxedintval Pnativeint ->
+    Flambda_type.any_boxed_nativeint ()
+  | Pintval ->
+    Flambda_type.any_tagged_immediate ()
+  | Pnaked_intval ->
+    Misc.fatal_errorf "Naked immediate shouldn't exist before flambda"
+    (* Flambda_type.any_naked_immediate () *)
 
 let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
   match lam with
@@ -132,7 +188,10 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
     let body_env, var = Env.add_var_like env id in
     let defining_expr = close_named t env defining_expr in
     let body = close t body_env body in
-    Flambda.Expr.create_let var defining_expr body
+    (* CR pchambart: Kind anntation on let should to go through Ilambda *)
+    Flambda.Expr.create_let var
+      (Flambda_kind.value Must_scan)
+      defining_expr body
   | Let_mutable { id; initial_value; contents_kind; body; } ->
     (* See comment on [Pread_mutable] below. *)
     let var = Mutable_variable.of_ident id in
@@ -142,7 +201,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       var;
       initial_value;
       body;
-      contents_kind;
+      contents_type = flambda_type_of_lambda_value_kind contents_kind;
     }
   | Let_rec (defs, body) ->
     let env =
@@ -200,7 +259,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
           (* Inside the body of the [let], each function is referred to by
              a [Project_closure] expression, which projects from the set of
              closures. *)
-          (Flambda.Expr.create_let let_bound_var
+          (Flambda.Expr.create_let let_bound_var (Flambda_kind.value Must_scan)
             (Project_closure {
               set_of_closures = set_of_closures_var;
               closure_id;
@@ -208,7 +267,8 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
             body))
         (close t env body) function_declarations
     in
-    Flambda.Expr.create_let set_of_closures_var set_of_closures body
+    Flambda.Expr.create_let set_of_closures_var (Flambda_kind.value Must_scan)
+      set_of_closures body
   | Let_cont let_cont ->
     if let_cont.is_exn_handler then begin
       assert (not let_cont.administrative);
@@ -225,12 +285,18 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       close t body_env let_cont.body
     end else begin
       let handler_env, params = Env.add_vars_like env let_cont.params in
+      let params =
+        List.map (fun param ->
+          Flambda.Typed_parameter.create
+            (Parameter.wrap param)
+            (Flambda_type.any_value Must_scan Other))
+          params
+      in
       let handler : Flambda.Continuation_handler.t =
-        { params = Parameter.List.wrap params;
+        { params;
           stub = false;
           is_exn_handler = let_cont.is_exn_handler;
           handler = close t handler_env let_cont.handler;
-          specialised_args = Variable.Map.empty;
         };
       in
       let handlers : Flambda.Let_cont_handlers.t =
@@ -261,7 +327,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       func = Env.find_var env func;
       args = Env.find_vars env args;
       continuation;
-      call_kind = Indirect;
+      call_kind = Indirect_unknown_arity;
       dbg = Debuginfo.from_location loc;
       inline = inlined;
       specialise = specialised;
@@ -284,10 +350,29 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       Apply_cont (cont, trap_action, args)
     end
   | Switch (scrutinee, sw) ->
-    let zero_to_n = Numbers.Int.zero_to_n in
+    (* CR pchambart: Switch representation should be changed.
+       There is no point in default anymore. The code sharing
+       is present by default since branches are continuations. *)
+    let arms =
+      List.map (fun (case, arm) -> Targetint.of_int_exn case, arm)
+        sw.consts
+    in
+    let all_possible_values =
+      match sw.failaction with
+      | None ->
+        List.fold_left (fun set (case, _) ->
+          Targetint.Set.add (Targetint.of_int_exn case) set)
+          Targetint.Set.empty
+          sw.consts
+      | Some f ->
+        Numbers.Int.Set.fold (fun case set ->
+          Targetint.Set.add (Targetint.of_int_exn case) set)
+          (Numbers.Int.zero_to_n (sw.numconsts - 1))
+          Targetint.Set.empty
+    in
     Flambda.Expr.create_switch ~scrutinee:(Env.find_var env scrutinee)
-      ~all_possible_values:(zero_to_n (sw.numconsts - 1))
-      ~arms:sw.consts
+      ~all_possible_values
+      ~arms
       ~default:sw.failaction
   | Event (ilam, _) -> close t env ilam
 
@@ -295,9 +380,9 @@ and close_named t env (named : Ilambda.named) : Flambda.Named.t =
   match named with
   | Var id ->
     if Ident.is_predef_exn id then begin
-      let symbol = t.symbol_for_global' id in 
+      let symbol = t.symbol_for_global' id in
       t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-      Symbol symbol
+      Symbol (Symbol.Of_kind_value.of_symbol_exn symbol)
     end else begin
       Var (Env.find_var env id)
     end
@@ -310,12 +395,12 @@ and close_named t env (named : Ilambda.named) : Flambda.Named.t =
   | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    Symbol symbol
+    Symbol (Symbol.Of_kind_value.of_symbol_exn symbol)
   | Prim (Pgetglobal id, [], _) ->
     assert (not (Ident.same id t.current_unit_id));
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    Symbol symbol
+    Symbol (Symbol.Of_kind_value.of_symbol_exn symbol)
   | Prim (p, args, loc) ->
     Prim (p, Env.find_vars env args, Debuginfo.from_location loc)
   | Assign { being_assigned; new_value; } ->
@@ -328,6 +413,9 @@ and close_named t env (named : Ilambda.named) : Flambda.Named.t =
     set of closures.  (The set will often only contain a single function;
     the only case where it cannot is for "let rec".) *)
 and close_functions t external_env function_declarations : Flambda.Named.t =
+  (* Do the required for the closure projections *)
+
+(*
   let closure_env_without_parameters =
     Function_decls.closure_env_without_parameters
       external_env function_declarations
@@ -344,12 +432,13 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
     let loc = Function_decl.loc decl in
     let dbg = Debuginfo.from_location loc in
     let params = Function_decl.params decl in
+    let my_closure = Variable.create "my_closure" in
     (* Create fresh variables for the elements of the closure (cf.
        the comment on [Function_decl.closure_env_without_parameters], above).
        This induces a renaming on [Function_decl.free_idents]; the results of
        that renaming are stored in [free_variables]. *)
     let closure_env =
-      List.fold_right (fun id env ->
+      List.fold_right (fun (id, _) env ->
           let env, _var = Env.add_var_like env id in
           env)
         params closure_env_without_parameters
@@ -359,8 +448,15 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
        CR-someday pchambart: eta-expansion wrapper for a primitive are
        not marked as stub but certainly should *)
     let stub = Function_decl.stub decl in
-    let param_vars = List.map (Env.find_var closure_env) params in
-    let params = List.map Parameter.wrap param_vars in
+    let param_vars =
+      List.map (fun (p, t) -> Env.find_var closure_env p, t) params
+    in
+    let params =
+      List.map (fun (p, t) ->
+        Flambda.Typed_parameter.create (Parameter.wrap p)
+          (flambda_type_of_lambda_value_kind t))
+        param_vars
+    in
     let closure_bound_var = Function_decl.closure_bound_var decl in
     let unboxed_version = Variable.rename closure_bound_var in
     let body = close t closure_env body in
@@ -368,9 +464,12 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
       let closure_origin =
         Closure_origin.create (Closure_id.wrap unboxed_version)
       in
-      Flambda.Function_declaration.create ~params
+      Flambda.Function_declaration.create
+        ~my_closure
+        ~params
         ~continuation_param:(Function_decl.continuation_param decl)
-        ~return_arity:1 ~body ~stub ~dbg
+        ~return_arity:[Flambda_kind.value Must_scan]
+        ~body ~stub ~dbg
         ~inline:(Function_decl.inline decl)
         ~specialise:(Function_decl.specialise decl)
         ~is_a_functor:(Function_decl.is_a_functor decl)
@@ -413,6 +512,8 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
       ~direct_call_surrogates:Variable.Map.empty
   in
   Set_of_closures set_of_closures
+*)
+  assert false
 
 let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       (ilam, ilam_result_cont) : Flambda_static.Program.t =
@@ -429,44 +530,61 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   let module_symbol = Backend.symbol_for_global' module_ident in
   let block_symbol =
     let linkage_name = Linkage_name.create "module_as_block" in
-    Symbol.create compilation_unit linkage_name
+    Symbol.create compilation_unit ~kind:Symbol.value_kind linkage_name
   in
   (* The global module block is built by accessing the fields of all the
      introduced symbols. *)
   (* CR-soon mshinwell for mshinwell: Add a comment describing how modules are
      compiled. *)
-  let fields =
-    Array.init size (fun pos ->
-      let pos_str = string_of_int pos in
-      let sym_v = Variable.create ("block_symbol_" ^ pos_str) in
-      let result_v = Variable.create ("block_symbol_get_" ^ pos_str) in
-      let value_v = Variable.create ("block_symbol_get_field_" ^ pos_str) in
-      let continuation = Continuation.create () in
-      let flam =
-        Flambda.Expr.create_let
-          sym_v (Symbol block_symbol)
-          (Flambda.Expr.create_let result_v
-              (Prim (Pfield 0, [sym_v], Debuginfo.none))
-              (Flambda.Expr.create_let value_v
-                (Prim (Pfield pos, [result_v], Debuginfo.none))
-                (Apply_cont (continuation, None, [value_v]))))
-      in
-      flam, continuation)
+  let continuation = Continuation.create () in
+  let main_module_block_expr =
+    let field_vars =
+      List.init size
+        (fun pos ->
+           let pos_str = string_of_int pos in
+           pos, Variable.create ("block_symbol_" ^ pos_str))
+    in
+    let call_continuation : Flambda.Expr.t =
+      Apply_cont (continuation, None, List.map snd field_vars)
+    in
+    let block_symbol_var = Variable.create "block_symbol" in
+    let body =
+      List.fold_left (fun body (pos, var) ->
+        Flambda.Expr.create_let var
+          (Flambda_kind.value Must_scan)
+          (Prim (Pfield pos, [block_symbol_var], Debuginfo.none))
+          body)
+        call_continuation field_vars
+    in
+    Flambda.Expr.create_let block_symbol_var
+      (Flambda_kind.value Must_scan)
+      (Read_symbol_field { symbol = block_symbol; logical_field = 0 })
+      body
   in
-  let module_initializer : Flambda_static.Program.t_body =
+  let block_initialize : Flambda_static.Program_body.Initialize_symbol.t =
+    { tag = Tag.Scannable.create_exn 0;
+      expr = close t Env.empty ilam;
+      return_cont = ilam_result_cont;
+      return_arity = [Flambda_kind.value Must_scan]; }
+  in
+  let module_initialize : Flambda_static.Program_body.Initialize_symbol.t =
+    { tag = Tag.Scannable.create_exn 0;
+      expr = main_module_block_expr;
+      return_cont = continuation;
+      return_arity = List.init size (fun _ -> Flambda_kind.value Must_scan); }
+  in
+  let module_initializer : Flambda_static.Program_body.t =
     Initialize_symbol (
       block_symbol,
-      Tag.create_exn 0,
-      [close t Env.empty ilam, ilam_result_cont],
+      block_initialize,
       Initialize_symbol (
         module_symbol,
-        Tag.create_exn 0,
-        Array.to_list fields,
+        module_initialize,
         End module_symbol))
   in
   let program_body =
     List.fold_left
-      (fun program_body (symbol, constant) : Flambda_static.Program.t_body ->
+      (fun program_body (symbol, constant) : Flambda_static.Program_body.t ->
          Let_symbol (symbol, constant, program_body))
       module_initializer
       t.declared_symbols
