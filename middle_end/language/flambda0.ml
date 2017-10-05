@@ -721,9 +721,9 @@ end = struct
           Variable.print id Named.print arg;
         let expr = letbody body in
         fprintf ppf ")@]@ %a)@]" print expr
-    | Let_mutable { var = mut_var; initial_value = var; body; contents_kind } ->
+    | Let_mutable { var = mut_var; initial_value = var; body; contents_type } ->
       fprintf ppf "@[<2>(let_mutable%a@ @[<2>%a@ %a@]@ %a)@]"
-        Flambda_kind.print contents_kind
+        Flambda_type.print contents_type
         Mutable_variable.print mut_var
         Variable.print var
         print body
@@ -968,7 +968,7 @@ end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
     initial_value : Variable.t;
-    contents_kind : Flambda_kind.t;
+    contents_type : Flambda_type.t;
     body : Expr.t;
   }
 end = struct
