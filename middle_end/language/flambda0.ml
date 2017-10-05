@@ -40,19 +40,21 @@ end
 
 module Call_kind = struct
   type t =
-    | Indirect
     | Direct of {
         closure_id : Closure_id.t;
+        return_arity : Return_arity.t;
+      }
+    | Indirect_unknown_arity
+    | Indirect_known_arity of {
+        param_arity : Return_arity.t;
         return_arity : Return_arity.t;
       }
 
   let return_arity t : Return_arity.t =
     match t with
-    (* Functions called indirectly must always return a singleton of
-       [Value] kind.  We have to assume that the value needs scanning
-       by the GC. *)
-    | Indirect -> [Flambda_kind.value Must_scan]
-    | Direct { return_arity; _ } -> return_arity
+    | Direct { return_arity; _ }
+    | Indirect_known_arity { return_arity; _ } -> return_arity
+    | Indirect_unknown_arity -> [Flambda_kind.value Must_scan]
 end
 
 module Const = struct

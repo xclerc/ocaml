@@ -23,6 +23,7 @@
     - accessing constants that have been lifted to static data.
 *)
 
+(* CR mshinwell: Rename to [Continuation_arity]? *)
 module Return_arity : sig
   type t = Flambda_kind.t list
 
@@ -32,7 +33,6 @@ end
 (** Whether the callee in a function application is known at compile time. *)
 module Call_kind : sig
   type t =
-    | Indirect
     | Direct of {
         closure_id : Closure_id.t;
         (* CR mshinwell: Should this arity really permit "bottom"? *)
@@ -40,6 +40,11 @@ module Call_kind : sig
         (** [return_arity] describes what the callee returns.  It matches up
             with the arity of [continuation] in the enclosing [apply]
             record. *)
+      }
+    | Indirect_unknown_arity
+    | Indirect_known_arity of {
+        param_arity : Return_arity.t;
+        return_arity : Return_arity.t;
       }
 
   val return_arity : t -> Return_arity.t

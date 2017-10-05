@@ -915,25 +915,33 @@ Format.eprintf "...freshened cont is %a\n%!"
                 Closure_id.print closure_id_being_applied
           in
           let arity_of_application =
-            match apply.call_kind with
-            | Direct { return_arity; } -> return_arity
-            | Indirect -> 1
+            Flambda.Call_kind.return_arity apply.call_kind
           in
-          if arity_of_application <> function_decl.return_arity then begin
+          let arity_mismatch =
+            not (Flambda.Call_kind.equal arity_of_application
+              function_decl.return_arity)
+          in
+          if arity_mismatch then begin
             Misc.fatal_errorf "Application of %a (%a):@,function has return \
-                arity %d but the application expression is expecting it \
-                to have arity %d.  Function declaration is:@,%a"
+                arity %a but the application expression is expecting it \
+                to have arity %a.  Function declaration is:@,%a"
               Variable.print lhs_of_application
               Variable.print_list args
-              function_decl.return_arity
-              arity_of_application
+              Return_arity.print function_decl.return_arity
+              Return_arity.print arity_of_application
               Flambda.print_function_declaration
               (lhs_of_application, function_decl)
           end;
           let r =
             match apply.call_kind with
-            | Indirect ->
-              R.map_benefit r Inlining_cost.Benefit.direct_call_of_indirect
+            | Indirect_unknown_arity ->
+              R.map_benefit r
+                Inlining_cost.Benefit.direct_call_of_indirect_unknown_arity
+            | Indirect_known_arity _ ->
+              (* CR mshinwell: This should check that the [param_arity] inside
+                 the call kind is compatible with the kinds of [args]. *)
+              R.map_benefit r
+                Inlining_cost.Benefit.direct_call_of_indirect_known_arity
             | Direct _ -> r
           in
           let nargs = List.length args in
@@ -960,45 +968,33 @@ Format.eprintf "...freshened cont is %a\n%!"
                   application expression: %a"
                 arity Flambda.Expr.print (Flambda.Apply apply)
           in
-(*
-let used_conts = R.continuation_uses r in
-Format.eprintf "After simplifying application of %a to %a, r contains:\n@ %a\n%!"
-  Variable.print lhs_of_application
-  Variable.print_list args
-  (Continuation.Map.print
-    Simplify_aux.Continuation_uses.print) used_conts;
-let joins =
-  Continuation.Map.map (fun uses ->
-    Simplify_aux.Continuation_uses.meet_of_args_types uses
-      ~num_params:0)
-    used_conts
-in
-Format.eprintf "Continuation args join:\n@ %a\n%!"
-  (Continuation.Map.print
-    (Format.pp_print_list T.print)) joins;
-*)
           wrap result, r
-        | Wrong ->  (* Insufficient Flambda type information to simplify. *)
-          let arity =
+        | Wrong ->
+          let call_kind : Flambda.Call_kind.t =
             match call_kind with
-            | Indirect _ -> Flambda.Call_kind.return_arity call_kind
-            | Direct _ when E.less_precise_types env ->
-              Flambda.Call_kind.return_arity call_kind
-            | Direct _ ->
-              Misc.fatal_errorf "Application of function %a (%a) is marked as \
-                  a direct call but the Flambda type of the function was \
-                  wrong: %a@ \nEnvironment:@ %a\n%!"
-                Variable.print lhs_of_application
-                Variable.print_list args
-                T.print lhs_of_application_type
-                E.print env
+            | Indirect_unknown_arity
+            | Indirect_known_arity _ -> call_kind
+            | Direct { return_arity; _ } ->
+              let param_arity =
+                (* Some types have regressed in precision.  Since this was a
+                   direct call, we know exactly how many arguments the function
+                   takes. *)
+                (* CR mshinwell: Add note about the GC scanning flag
+                   regressing?  (This should be ok because if it regresses it
+                   should still be conservative.) *)
+                List.map (fun arg ->
+                    let ty = E.find_exn env arg in
+                    Flambda_type.kind ~importer:(E.backend env) ty)
+                  args
+              in
+              Indirect_known_arity {
+                param_arity;
+                return_arity;
+              }
           in
+          let return_arity = Flambda.Call_kind.return_arity call_kind in
           let continuation, r =
             simplify_apply_cont_to_cont env r continuation ~arity
-          in
-          let call_kind : Flambda.call_kind =
-            if E.less_precise_types env then call_kind
-            else Indirect
           in
           Apply ({ kind; func = lhs_of_application; args; call_kind;
               dbg; inline = inline_requested; specialise = specialise_requested;
