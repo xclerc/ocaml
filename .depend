@@ -1098,6 +1098,7 @@ middle_end/analysis/alias_analysis.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/tag.cmi middle_end/base_types/symbol.cmi \
     middle_end/language/projection.cmi utils/misc.cmi bytecomp/lambda.cmi \
+    middle_end/base_types/immediate.cmi \
     middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
     middle_end/base_types/closure_id.cmi parsing/asttypes.cmi \
     middle_end/language/allocated_const.cmi \
@@ -1106,6 +1107,7 @@ middle_end/analysis/alias_analysis.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/var_within_closure.cmx \
     middle_end/base_types/tag.cmx middle_end/base_types/symbol.cmx \
     middle_end/language/projection.cmx utils/misc.cmx bytecomp/lambda.cmx \
+    middle_end/base_types/immediate.cmx \
     middle_end/language/flambda_static.cmx middle_end/language/flambda.cmx \
     middle_end/base_types/closure_id.cmx parsing/asttypes.cmi \
     middle_end/language/allocated_const.cmx \
@@ -1114,6 +1116,7 @@ middle_end/analysis/alias_analysis.cmi : middle_end/base_types/variable.cmi \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/tag.cmi middle_end/base_types/symbol.cmi \
     middle_end/language/projection.cmi bytecomp/lambda.cmi \
+    middle_end/base_types/immediate.cmi \
     middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
     middle_end/base_types/closure_id.cmi parsing/asttypes.cmi \
     middle_end/language/allocated_const.cmi
@@ -1126,19 +1129,15 @@ middle_end/analysis/effect_analysis.cmx : \
 middle_end/analysis/effect_analysis.cmi : middle_end/language/flambda.cmi
 middle_end/analysis/extract_projections.cmo : \
     middle_end/base_types/variable.cmi \
-    middle_end/base_types/var_within_closure.cmi \
-    middle_end/simplify/simplify_aux.cmi middle_end/language/projection.cmi \
-    middle_end/base_types/parameter.cmi utils/misc.cmi \
+    middle_end/simplify/simplify_result.cmi \
+    middle_end/simplify/simplify_env.cmi middle_end/language/projection.cmi \
     middle_end/language/freshening.cmi middle_end/language/flambda.cmi \
-    middle_end/base_types/closure_id.cmi \
     middle_end/analysis/extract_projections.cmi
 middle_end/analysis/extract_projections.cmx : \
     middle_end/base_types/variable.cmx \
-    middle_end/base_types/var_within_closure.cmx \
-    middle_end/simplify/simplify_aux.cmx middle_end/language/projection.cmx \
-    middle_end/base_types/parameter.cmx utils/misc.cmx \
+    middle_end/simplify/simplify_result.cmx \
+    middle_end/simplify/simplify_env.cmx middle_end/language/projection.cmx \
     middle_end/language/freshening.cmx middle_end/language/flambda.cmx \
-    middle_end/base_types/closure_id.cmx \
     middle_end/analysis/extract_projections.cmi
 middle_end/analysis/extract_projections.cmi : \
     middle_end/simplify/simplify_result.cmi \
@@ -1146,58 +1145,52 @@ middle_end/analysis/extract_projections.cmi : \
     middle_end/language/flambda.cmi
 middle_end/analysis/find_recursive_functions.cmo : \
     middle_end/base_types/variable.cmi \
-    utils/strongly_connected_components.cmi \
-    middle_end/language/flambda_utils.cmi middle_end/language/flambda.cmi \
+    utils/strongly_connected_components.cmi middle_end/language/flambda.cmi \
     middle_end/analysis/find_recursive_functions.cmi
 middle_end/analysis/find_recursive_functions.cmx : \
     middle_end/base_types/variable.cmx \
-    utils/strongly_connected_components.cmx \
-    middle_end/language/flambda_utils.cmx middle_end/language/flambda.cmx \
+    utils/strongly_connected_components.cmx middle_end/language/flambda.cmx \
     middle_end/analysis/find_recursive_functions.cmi
 middle_end/analysis/find_recursive_functions.cmi : \
     middle_end/base_types/variable.cmi middle_end/language/flambda.cmi \
     middle_end/to_clambda/backend_intf.cmi
 middle_end/analysis/inconstant_idents.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/symbol.cmi \
-    middle_end/base_types/set_of_closures_id.cmi \
-    middle_end/base_types/parameter.cmi utils/numbers.cmi utils/misc.cmi \
+    middle_end/base_types/set_of_closures_id.cmi utils/numbers.cmi \
     bytecomp/lambda.cmi utils/identifiable.cmi \
-    middle_end/language/flambda_utils.cmi \
+    middle_end/language/flambda_type.cmi \
     middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/base_types/compilation_unit.cmi \
-    middle_end/base_types/closure_id.cmi \
-    middle_end/to_clambda/backend_intf.cmi parsing/asttypes.cmi \
+    middle_end/base_types/closure_id.cmi parsing/asttypes.cmi \
     middle_end/analysis/inconstant_idents.cmi
 middle_end/analysis/inconstant_idents.cmx : \
     middle_end/base_types/variable.cmx middle_end/base_types/symbol.cmx \
-    middle_end/base_types/set_of_closures_id.cmx \
-    middle_end/base_types/parameter.cmx utils/numbers.cmx utils/misc.cmx \
+    middle_end/base_types/set_of_closures_id.cmx utils/numbers.cmx \
     bytecomp/lambda.cmx utils/identifiable.cmx \
-    middle_end/language/flambda_utils.cmx \
+    middle_end/language/flambda_type.cmx \
     middle_end/language/flambda_static.cmx middle_end/language/flambda.cmx \
     middle_end/base_types/continuation.cmx \
     middle_end/base_types/compilation_unit.cmx \
-    middle_end/base_types/closure_id.cmx \
-    middle_end/to_clambda/backend_intf.cmi parsing/asttypes.cmi \
+    middle_end/base_types/closure_id.cmx parsing/asttypes.cmi \
     middle_end/analysis/inconstant_idents.cmi
 middle_end/analysis/inconstant_idents.cmi : \
     middle_end/base_types/variable.cmi \
     middle_end/base_types/set_of_closures_id.cmi \
+    middle_end/language/flambda_type.cmi \
     middle_end/language/flambda_static.cmi \
-    middle_end/base_types/compilation_unit.cmi \
-    middle_end/to_clambda/backend_intf.cmi
+    middle_end/base_types/compilation_unit.cmi
 middle_end/analysis/invariant_params.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/symbol.cmi \
-    middle_end/base_types/parameter.cmi utils/misc.cmi utils/identifiable.cmi \
-    middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
+    utils/misc.cmi utils/identifiable.cmi middle_end/language/flambda.cmi \
+    middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi utils/clflags.cmi \
     middle_end/to_clambda/backend_intf.cmi \
     middle_end/analysis/invariant_params.cmi
 middle_end/analysis/invariant_params.cmx : \
     middle_end/base_types/variable.cmx middle_end/base_types/symbol.cmx \
-    middle_end/base_types/parameter.cmx utils/misc.cmx utils/identifiable.cmx \
-    middle_end/language/flambda.cmx middle_end/base_types/continuation.cmx \
+    utils/misc.cmx utils/identifiable.cmx middle_end/language/flambda.cmx \
+    middle_end/base_types/continuation.cmx \
     middle_end/base_types/closure_id.cmx utils/clflags.cmx \
     middle_end/to_clambda/backend_intf.cmi \
     middle_end/analysis/invariant_params.cmi
@@ -1206,15 +1199,13 @@ middle_end/analysis/invariant_params.cmi : \
     middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
     middle_end/to_clambda/backend_intf.cmi
 middle_end/analysis/place_continuations.cmo : \
-    middle_end/base_types/variable.cmi middle_end/base_types/parameter.cmi \
-    utils/misc.cmi utils/identifiable.cmi middle_end/language/flambda.cmi \
-    middle_end/base_types/continuation.cmi utils/clflags.cmi \
-    middle_end/analysis/place_continuations.cmi
+    middle_end/base_types/variable.cmi utils/misc.cmi utils/identifiable.cmi \
+    middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
+    utils/clflags.cmi middle_end/analysis/place_continuations.cmi
 middle_end/analysis/place_continuations.cmx : \
-    middle_end/base_types/variable.cmx middle_end/base_types/parameter.cmx \
-    utils/misc.cmx utils/identifiable.cmx middle_end/language/flambda.cmx \
-    middle_end/base_types/continuation.cmx utils/clflags.cmx \
-    middle_end/analysis/place_continuations.cmi
+    middle_end/base_types/variable.cmx utils/misc.cmx utils/identifiable.cmx \
+    middle_end/language/flambda.cmx middle_end/base_types/continuation.cmx \
+    utils/clflags.cmx middle_end/analysis/place_continuations.cmi
 middle_end/analysis/place_continuations.cmi : \
     middle_end/base_types/variable.cmi utils/identifiable.cmi \
     middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi
@@ -1355,14 +1346,17 @@ middle_end/base_types/set_of_closures_origin.cmi : \
     middle_end/base_types/compilation_unit.cmi
 middle_end/base_types/symbol.cmo : utils/misc.cmi \
     middle_end/base_types/linkage_name.cmi utils/identifiable.cmi \
+    middle_end/language/flambda_kind.cmi \
     middle_end/base_types/compilation_unit.cmi \
     middle_end/base_types/symbol.cmi
 middle_end/base_types/symbol.cmx : utils/misc.cmx \
     middle_end/base_types/linkage_name.cmx utils/identifiable.cmx \
+    middle_end/language/flambda_kind.cmx \
     middle_end/base_types/compilation_unit.cmx \
     middle_end/base_types/symbol.cmi
 middle_end/base_types/symbol.cmi : middle_end/base_types/linkage_name.cmi \
-    utils/identifiable.cmi middle_end/base_types/compilation_unit.cmi
+    utils/identifiable.cmi middle_end/language/flambda_kind.cmi \
+    middle_end/base_types/compilation_unit.cmi
 middle_end/base_types/tag.cmo : utils/numbers.cmi utils/misc.cmi \
     utils/identifiable.cmi middle_end/base_types/tag.cmi
 middle_end/base_types/tag.cmx : utils/numbers.cmx utils/misc.cmx \
@@ -1463,14 +1457,15 @@ middle_end/cmx/export_info_for_pack.cmi : middle_end/cmx/export_info.cmi \
     middle_end/base_types/compilation_unit.cmi
 middle_end/code_motion/lift_constants.cmo : \
     middle_end/base_types/variable.cmi \
-    middle_end/base_types/var_within_closure.cmi \
+    middle_end/base_types/var_within_closure.cmi utils/targetint.cmi \
     middle_end/base_types/tag.cmi middle_end/base_types/symbol.cmi \
-    utils/strongly_connected_components.cmi utils/misc.cmi \
+    utils/strongly_connected_components.cmi \
+    middle_end/language/projection.cmi utils/misc.cmi \
     middle_end/base_types/linkage_name.cmi \
     middle_end/analysis/inconstant_idents.cmi \
-    middle_end/language/flambda_utils.cmi \
     middle_end/language/flambda_type.cmi \
-    middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
+    middle_end/language/flambda_static.cmi \
+    middle_end/language/flambda_kind.cmi middle_end/language/flambda.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/base_types/compilation_unit.cmi \
     middle_end/base_types/closure_id.cmi \
@@ -1480,14 +1475,15 @@ middle_end/code_motion/lift_constants.cmo : \
     middle_end/code_motion/lift_constants.cmi
 middle_end/code_motion/lift_constants.cmx : \
     middle_end/base_types/variable.cmx \
-    middle_end/base_types/var_within_closure.cmx \
+    middle_end/base_types/var_within_closure.cmx utils/targetint.cmx \
     middle_end/base_types/tag.cmx middle_end/base_types/symbol.cmx \
-    utils/strongly_connected_components.cmx utils/misc.cmx \
+    utils/strongly_connected_components.cmx \
+    middle_end/language/projection.cmx utils/misc.cmx \
     middle_end/base_types/linkage_name.cmx \
     middle_end/analysis/inconstant_idents.cmx \
-    middle_end/language/flambda_utils.cmx \
     middle_end/language/flambda_type.cmx \
-    middle_end/language/flambda_static.cmx middle_end/language/flambda.cmx \
+    middle_end/language/flambda_static.cmx \
+    middle_end/language/flambda_kind.cmx middle_end/language/flambda.cmx \
     middle_end/base_types/continuation.cmx \
     middle_end/base_types/compilation_unit.cmx \
     middle_end/base_types/closure_id.cmx \
@@ -1500,33 +1496,36 @@ middle_end/code_motion/lift_constants.cmi : \
     middle_end/to_clambda/backend_intf.cmi
 middle_end/code_motion/lift_let_cont.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/symbol.cmi \
-    middle_end/base_types/parameter.cmi \
     middle_end/base_types/mutable_variable.cmi utils/misc.cmi \
-    bytecomp/lambda.cmi utils/identifiable.cmi \
-    middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
+    utils/identifiable.cmi middle_end/language/flambda_static.cmi \
+    middle_end/language/flambda_kind.cmi middle_end/language/flambda.cmi \
     middle_end/base_types/continuation.cmi parsing/asttypes.cmi \
     middle_end/code_motion/lift_let_cont.cmi
 middle_end/code_motion/lift_let_cont.cmx : \
     middle_end/base_types/variable.cmx middle_end/base_types/symbol.cmx \
-    middle_end/base_types/parameter.cmx \
     middle_end/base_types/mutable_variable.cmx utils/misc.cmx \
-    bytecomp/lambda.cmx utils/identifiable.cmx \
-    middle_end/language/flambda_static.cmx middle_end/language/flambda.cmx \
+    utils/identifiable.cmx middle_end/language/flambda_static.cmx \
+    middle_end/language/flambda_kind.cmx middle_end/language/flambda.cmx \
     middle_end/base_types/continuation.cmx parsing/asttypes.cmi \
     middle_end/code_motion/lift_let_cont.cmi
 middle_end/code_motion/lift_let_cont.cmi : \
+    middle_end/language/flambda_type.cmi \
     middle_end/language/flambda_static.cmi
 middle_end/code_motion/lift_let_to_initialize_symbol.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \
-    middle_end/base_types/parameter.cmi middle_end/language/flambda_utils.cmi \
+    middle_end/language/flambda_utils.cmi \
+    middle_end/language/flambda_type.cmi \
     middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
     middle_end/base_types/continuation.cmi \
+    middle_end/to_clambda/backend_intf.cmi \
     middle_end/code_motion/lift_let_to_initialize_symbol.cmi
 middle_end/code_motion/lift_let_to_initialize_symbol.cmx : \
     middle_end/base_types/variable.cmx middle_end/base_types/tag.cmx \
-    middle_end/base_types/parameter.cmx middle_end/language/flambda_utils.cmx \
+    middle_end/language/flambda_utils.cmx \
+    middle_end/language/flambda_type.cmx \
     middle_end/language/flambda_static.cmx middle_end/language/flambda.cmx \
     middle_end/base_types/continuation.cmx \
+    middle_end/to_clambda/backend_intf.cmi \
     middle_end/code_motion/lift_let_to_initialize_symbol.cmi
 middle_end/code_motion/lift_let_to_initialize_symbol.cmi : \
     middle_end/language/flambda_static.cmi \
@@ -1824,6 +1823,7 @@ middle_end/language/flambda.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/symbol.cmi middle_end/language/projection.cmi \
     middle_end/base_types/mutable_variable.cmi utils/misc.cmi \
+    middle_end/language/flambda_utils.cmi \
     middle_end/language/flambda_type.cmi middle_end/language/flambda_kind.cmi \
     middle_end/language/flambda0.cmi middle_end/base_types/debuginfo.cmi \
     middle_end/base_types/continuation.cmi \
@@ -1836,6 +1836,7 @@ middle_end/language/flambda.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/var_within_closure.cmx \
     middle_end/base_types/symbol.cmx middle_end/language/projection.cmx \
     middle_end/base_types/mutable_variable.cmx utils/misc.cmx \
+    middle_end/language/flambda_utils.cmx \
     middle_end/language/flambda_type.cmx middle_end/language/flambda_kind.cmx \
     middle_end/language/flambda0.cmx middle_end/base_types/debuginfo.cmx \
     middle_end/base_types/continuation.cmx \
@@ -1853,6 +1854,7 @@ middle_end/language/flambda.cmi : middle_end/base_types/variable.cmi \
     middle_end/base_types/closure_id.cmi \
     middle_end/to_clambda/backend_intf.cmi parsing/asttypes.cmi
 middle_end/language/flambda0.cmo : middle_end/base_types/variable.cmi \
+    middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/trap_id.cmi utils/targetint.cmi \
     middle_end/base_types/symbol.cmi \
     middle_end/base_types/set_of_closures_origin.cmi \
@@ -1870,6 +1872,7 @@ middle_end/language/flambda0.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/closure_id.cmi utils/clflags.cmi \
     middle_end/language/allocated_const.cmi middle_end/language/flambda0.cmi
 middle_end/language/flambda0.cmx : middle_end/base_types/variable.cmx \
+    middle_end/base_types/var_within_closure.cmx \
     middle_end/base_types/trap_id.cmx utils/targetint.cmx \
     middle_end/base_types/symbol.cmx \
     middle_end/base_types/set_of_closures_origin.cmx \
@@ -1887,6 +1890,7 @@ middle_end/language/flambda0.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/closure_id.cmx utils/clflags.cmx \
     middle_end/language/allocated_const.cmx middle_end/language/flambda0.cmi
 middle_end/language/flambda0.cmi : middle_end/base_types/variable.cmi \
+    middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/trap_id.cmi utils/targetint.cmi \
     middle_end/base_types/symbol.cmi \
     middle_end/base_types/set_of_closures_origin.cmi \
@@ -1951,18 +1955,26 @@ middle_end/language/flambda_static0.cmx : middle_end/base_types/tag.cmx \
     middle_end/language/flambda_static0.cmi
 middle_end/language/flambda_static0.cmi : middle_end/base_types/tag.cmi \
     middle_end/base_types/symbol.cmi middle_end/base_types/immediate.cmi \
-    utils/identifiable.cmi middle_end/language/flambda_kind.cmi \
-    middle_end/language/flambda0.cmi middle_end/base_types/continuation.cmi \
+    utils/identifiable.cmi middle_end/language/flambda0.cmi \
+    middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi \
     middle_end/language/allocated_const.cmi
-middle_end/language/flambda_type.cmo : utils/targetint.cmi \
-    middle_end/base_types/tag.cmi utils/numbers.cmi \
-    middle_end/base_types/immediate.cmi middle_end/language/flambda0.cmi \
-    middle_end/base_types/closure_id.cmi middle_end/language/flambda_type.cmi
-middle_end/language/flambda_type.cmx : utils/targetint.cmx \
-    middle_end/base_types/tag.cmx utils/numbers.cmx \
-    middle_end/base_types/immediate.cmx middle_end/language/flambda0.cmx \
-    middle_end/base_types/closure_id.cmx middle_end/language/flambda_type.cmi
+middle_end/language/flambda_type.cmo : middle_end/base_types/variable.cmi \
+    middle_end/base_types/var_within_closure.cmi utils/targetint.cmi \
+    middle_end/base_types/tag.cmi \
+    middle_end/base_types/set_of_closures_origin.cmi \
+    middle_end/base_types/set_of_closures_id.cmi utils/numbers.cmi \
+    utils/misc.cmi middle_end/base_types/immediate.cmi \
+    middle_end/language/flambda0.cmi middle_end/base_types/closure_id.cmi \
+    middle_end/language/flambda_type.cmi
+middle_end/language/flambda_type.cmx : middle_end/base_types/variable.cmx \
+    middle_end/base_types/var_within_closure.cmx utils/targetint.cmx \
+    middle_end/base_types/tag.cmx \
+    middle_end/base_types/set_of_closures_origin.cmx \
+    middle_end/base_types/set_of_closures_id.cmx utils/numbers.cmx \
+    utils/misc.cmx middle_end/base_types/immediate.cmx \
+    middle_end/language/flambda0.cmx middle_end/base_types/closure_id.cmx \
+    middle_end/language/flambda_type.cmi
 middle_end/language/flambda_type.cmi : middle_end/base_types/variable.cmi \
     utils/targetint.cmi middle_end/base_types/tag.cmi \
     middle_end/base_types/symbol.cmi utils/numbers.cmi \
@@ -2021,7 +2033,8 @@ middle_end/language/flambda_utils.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/set_of_closures_id.cmi \
     middle_end/base_types/parameter.cmi \
     middle_end/base_types/linkage_name.cmi \
-    middle_end/language/flambda_type.cmi middle_end/language/flambda.cmi \
+    middle_end/language/flambda_type.cmi middle_end/language/flambda_kind.cmi \
+    middle_end/language/flambda.cmi middle_end/base_types/debuginfo.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/base_types/compilation_unit.cmi \
     middle_end/base_types/closure_id.cmi \
@@ -2031,7 +2044,8 @@ middle_end/language/flambda_utils.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/set_of_closures_id.cmx \
     middle_end/base_types/parameter.cmx \
     middle_end/base_types/linkage_name.cmx \
-    middle_end/language/flambda_type.cmx middle_end/language/flambda.cmx \
+    middle_end/language/flambda_type.cmx middle_end/language/flambda_kind.cmx \
+    middle_end/language/flambda.cmx middle_end/base_types/debuginfo.cmx \
     middle_end/base_types/continuation.cmx \
     middle_end/base_types/compilation_unit.cmx \
     middle_end/base_types/closure_id.cmx \
@@ -2039,8 +2053,8 @@ middle_end/language/flambda_utils.cmx : middle_end/base_types/variable.cmx \
 middle_end/language/flambda_utils.cmi : middle_end/base_types/variable.cmi \
     middle_end/base_types/symbol.cmi bytecomp/switch.cmi \
     middle_end/base_types/set_of_closures_id.cmi \
-    middle_end/language/flambda_type.cmi middle_end/language/flambda.cmi \
-    middle_end/base_types/continuation.cmi \
+    middle_end/language/flambda_type.cmi middle_end/language/flambda_kind.cmi \
+    middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi
 middle_end/language/freshening.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/trap_id.cmi middle_end/base_types/symbol.cmi \
@@ -2369,14 +2383,14 @@ middle_end/simplify/simplify_primitives.cmo : middle_end/base_types/tag.cmi \
     middle_end/simplify/simplify_boxed_integer_ops.cmi \
     bytecomp/semantics_of_primitives.cmi bytecomp/lambda.cmi \
     middle_end/inlining/inlining_cost.cmi middle_end/language/flambda.cmi \
-    utils/clflags.cmi parsing/asttypes.cmi a.cmo \
+    utils/clflags.cmi parsing/asttypes.cmi \
     middle_end/simplify/simplify_primitives.cmi
 middle_end/simplify/simplify_primitives.cmx : middle_end/base_types/tag.cmx \
     middle_end/simplify/simplify_common.cmx \
     middle_end/simplify/simplify_boxed_integer_ops.cmx \
     bytecomp/semantics_of_primitives.cmx bytecomp/lambda.cmx \
     middle_end/inlining/inlining_cost.cmx middle_end/language/flambda.cmx \
-    utils/clflags.cmx parsing/asttypes.cmi a.cmx \
+    utils/clflags.cmx parsing/asttypes.cmi \
     middle_end/simplify/simplify_primitives.cmi
 middle_end/simplify/simplify_primitives.cmi : \
     middle_end/base_types/variable.cmi bytecomp/lambda.cmi \

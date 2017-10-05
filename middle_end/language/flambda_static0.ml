@@ -146,7 +146,7 @@ module Program_body = struct
   module Initialize_symbol = struct
     type t = {
       tag : Tag.Scannable.t;
-      fields : Flambda0.Expr.t * Continuation.t * Flambda0.Return_arity.t;
+      contents : Flambda0.Expr.t * Continuation.t * Flambda0.Return_arity.t;
     }
   end
 

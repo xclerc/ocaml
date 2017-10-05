@@ -506,18 +506,26 @@ end = struct
 
     let map_symbols tree ~f =
       map_named (function
-          | (Symbol sym) as named ->
-            let new_sym = f sym in
-            if new_sym == sym then
+          | (Symbol symbol) as named ->
+            let symbol = Symbol.Of_kind_value.to_symbol symbol in
+            let new_symbol = f symbol in
+            if new_symbol == symbol then
               named
             else
-              Symbol new_sym
-          | ((Read_symbol_field (sym, field)) as named) ->
-            let new_sym = f sym in
-            if new_sym == sym then
+              begin match Symbol.Of_kind_value.of_symbol new_symbol with
+              | Some new_symbol -> Symbol new_symbol
+              | None ->
+                Misc.fatal_errorf "Cannot use [map_symbols] to change the kind \
+                    of a symbol:@ old=%a@ new=%a"
+                  Symbol.print symbol
+                  Symbol.print new_symbol
+              end
+          | ((Read_symbol_field { symbol; logical_field; }) as named) ->
+            let new_symbol = f symbol in
+            if new_symbol == symbol then
               named
             else
-              Read_symbol_field (new_sym, field)
+              Read_symbol_field { symbol = new_symbol; logical_field; }
           | (Var _ | Const _ | Allocated_const _ | Set_of_closures _
              | Read_mutable _ | Project_closure _
              | Move_within_set_of_closures _ | Project_var _ | Prim _

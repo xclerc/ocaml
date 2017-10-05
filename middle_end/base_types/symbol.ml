@@ -67,9 +67,12 @@ let unsafe_create compilation_unit label ~field_kinds =
   let hash = Linkage_name.hash label in
   { compilation_unit; label; hash; field_kinds; }
 
-let import_for_pack ~pack:compilation_unit symbol ~field_kinds =
-  let hash = Linkage_name.hash symbol.label in
-  { compilation_unit; label = symbol.label; hash; field_kinds; }
+let import_for_pack t ~pack:compilation_unit ~field_kinds =
+  let hash = Linkage_name.hash t.label in
+  { compilation_unit;
+    label = t.label; hash;
+    field_kinds;
+  }
 
 let compilation_unit t = t.compilation_unit
 let label t = t.label
@@ -91,8 +94,13 @@ module Of_kind_value = struct
 
   let of_symbol t =
     let all_values = List.for_all Flambda_kind.is_value t.field_kinds in
-    if all_values then t
-    else
+    if all_values then Some t
+    else None
+
+  let of_symbol_exn t =
+    match of_symbol t with
+    | Some t -> t
+    | None ->
       Misc.fatal_errorf "Symbol %a has fields not of kind [Value]"
         print t
 end

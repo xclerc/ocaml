@@ -45,9 +45,9 @@ val unsafe_create
   -> t
 
 val import_for_pack
-   : pack:Compilation_unit.t
+   : t
+  -> pack:Compilation_unit.t
   -> field_kinds:Flambda_kind.t list
-  -> t
   -> t
 
 val compilation_unit : t -> Compilation_unit.t
@@ -62,5 +62,7 @@ module Of_kind_value : sig
   include Identifiable.S
 
   val to_symbol : t -> symbol
+
   val of_symbol_exn : symbol -> t
+  val of_symbol : symbol -> t option
 end
