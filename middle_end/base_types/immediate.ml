@@ -82,3 +82,13 @@ let bool_false = {
   value = Targetint.of_int 0;
   print_as_char = false;
 }
+
+let int value = {
+  value;
+  print_as_char = false;
+}
+
+let char value = {
+  value = Targetint.of_int (Char.code value);
+  print_as_char = true;
+}

@@ -34,34 +34,45 @@ type t = {
     manner from the tuple. *)
 let tupled_function_call_stub
       ( original_params : ( Variable.t * Lambda.value_kind ) list )
-      unboxed_version ~closure_bound_var
+      (unboxed_version : Closure_id.t) ~(closure_bound_var : Closure_id.t)
       : Flambda.Function_declaration.t =
-  (* Needs to project free variables from the closure *)
-(*
   let continuation_param = Continuation.create () in
   let tuple_param_var =
-    Variable.rename ~append:"tupled_stub_param" unboxed_version
+    Variable.rename ~append:"tupled_stub_param"
+      (Closure_id.unwrap unboxed_version)
   in
   let my_closure =
-    Variable.rename ~append:"tupled_stub" unboxed_version
+    Variable.rename ~append:"tupled_stub"
+      (Closure_id.unwrap unboxed_version)
   in
-  let params = List.map (fun p -> Variable.rename p) original_params in
+  let params = List.map (fun (p, _) -> Variable.rename p) original_params in
+  let unboxed_version_var =
+    Variable.create "unboxed_version"
+  in
   let call : Flambda.Expr.t =
     Apply ({
         kind = Function;
         continuation = continuation_param;
-        func = unboxed_version;
+        func = unboxed_version_var;
         args = params;
         (* CR-someday mshinwell for mshinwell: investigate if there is some
            redundancy here (func is also unboxed_version) *)
         call_kind = Direct {
-          closure_id = Closure_id.wrap unboxed_version;
+          closure_id = unboxed_version;
           return_arity = [Flambda_kind.value Must_scan];
         };
         dbg = Debuginfo.none;
         inline = Default_inline;
         specialise = Default_specialise;
       })
+  in
+  let body_with_closure_bound =
+    Flambda.Expr.create_let unboxed_version_var (Flambda_kind.value Must_scan)
+      (Move_within_set_of_closures {
+         closure = my_closure;
+         move = Closure_id.Map.singleton closure_bound_var unboxed_version;
+       })
+      call
   in
   let _, body =
     List.fold_left (fun (pos, body) param ->
@@ -70,11 +81,13 @@ let tupled_function_call_stub
         in
         pos + 1,
         Flambda.Expr.create_let param (Flambda_kind.value Must_scan) lam body)
-      (0, call) params
+      (0, body_with_closure_bound) params
   in
   let tuple_param =
     Flambda.Typed_parameter.create (Parameter.wrap tuple_param_var)
-      (Flambda_type.any_value Must_scan Other)
+      (Flambda_type.block Tag.Scannable.zero
+         (Array.of_list
+            (List.map (fun _ -> Flambda_type.any_value Must_scan Other) params)))
   in
   Flambda.Function_declaration.create
     ~my_closure
@@ -83,8 +96,6 @@ let tupled_function_call_stub
     ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
     ~specialise:Default_specialise ~is_a_functor:false
     ~closure_origin:(Closure_origin.create closure_bound_var)
-*)
-  assert false
 
 let register_const t (constant:Flambda_static.Constant_defining_value.t) name
       : Flambda_static.Constant_defining_value_block_field.t * string =
@@ -164,6 +175,7 @@ let close_const t (const : Lambda.structured_constant)
   | Symbol s, name ->
     Symbol (Symbol.Of_kind_value.of_symbol_exn s), name
 
+(* CR pchambart: move to flambda_type ? *)
 let flambda_type_of_lambda_value_kind (k : Lambda.value_kind) : Flambda_type.t =
   match k with
   | Pgenval ->
@@ -218,7 +230,8 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
               ({ kind; continuation_param; params; body; attr; loc; stub;
                 free_idents_of_body; } : Ilambda.function_declaration)) ->
             let closure_bound_var =
-              Variable.create_with_same_name_as_ident let_rec_ident
+              Closure_id.wrap
+                (Variable.create_with_same_name_as_ident let_rec_ident)
             in
             let function_declaration =
               Function_decl.create ~let_rec_ident:(Some let_rec_ident)
@@ -254,7 +267,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
           let closure_bound_var = Function_decl.closure_bound_var decl in
           let let_bound_var = Env.find_var env let_rec_ident in
           let closure_id =
-            Closure_id.Set.singleton (Closure_id.wrap closure_bound_var)
+            Closure_id.Set.singleton closure_bound_var
           in
           (* Inside the body of the [let], each function is referred to by
              a [Project_closure] expression, which projects from the set of
@@ -364,7 +377,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
           Targetint.Set.add (Targetint.of_int_exn case) set)
           Targetint.Set.empty
           sw.consts
-      | Some f ->
+      | Some _ ->
         Numbers.Int.Set.fold (fun case set ->
           Targetint.Set.add (Targetint.of_int_exn case) set)
           (Numbers.Int.zero_to_n (sw.numconsts - 1))
@@ -413,13 +426,6 @@ and close_named t env (named : Ilambda.named) : Flambda.Named.t =
     set of closures.  (The set will often only contain a single function;
     the only case where it cannot is for "let rec".) *)
 and close_functions t external_env function_declarations : Flambda.Named.t =
-  (* Do the required for the closure projections *)
-
-(*
-  let closure_env_without_parameters =
-    Function_decls.closure_env_without_parameters
-      external_env function_declarations
-  in
   let all_free_idents =
     (* Filter out predefined exception identifiers, since they will be
        turned into symbols when we closure-convert the body. *)
@@ -427,12 +433,88 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
         not (Ident.is_predef_exn ident))
       (Function_decls.all_free_idents function_declarations)
   in
+  let var_within_closure_from_ident =
+    Ident.Set.fold (fun id map ->
+      let v = Variable.create_with_same_name_as_ident id in
+      Ident.Map.add id (Var_within_closure.wrap v) map)
+      all_free_idents Ident.Map.empty
+  in
+  let closure_id_from_ident =
+    List.fold_left (fun map decl ->
+      let id = Function_decl.let_rec_ident decl in
+      let closure_id = Function_decl.closure_bound_var decl in
+      Ident.Map.add id closure_id map)
+      Ident.Map.empty
+      (Function_decls.to_list function_declarations)
+  in
+
   let close_one_function map decl =
     let body = Function_decl.body decl in
     let loc = Function_decl.loc decl in
     let dbg = Debuginfo.from_location loc in
     let params = Function_decl.params decl in
     let my_closure = Variable.create "my_closure" in
+
+    let closure_bound_var =
+      Function_decl.closure_bound_var decl
+    in
+    let unboxed_version =
+      (* Better variable name *)
+      Closure_id.wrap (Variable.create "unboxed_version")
+    in
+    let my_closure_id =
+      match Function_decl.kind decl with
+      | Curried -> closure_bound_var
+      | Tupled -> unboxed_version
+    in
+
+    (* les variables libres sont:
+       les paramètres: substitution directe en variables
+       la fonction définie: accessible avec 'my_closure'
+       les autres fonctions: accessibles avec un move
+       let autres variables libres: accessibles avec une projection *)
+
+    let var_within_closure_to_bind,
+        var_for_ident_within_closure =
+      Ident.Map.fold (fun id var_within_closure (to_bind, var_for_ident) ->
+        let var = Variable.create_with_same_name_as_ident id in
+        Variable.Map.add var var_within_closure to_bind,
+        Ident.Map.add id var var_for_ident)
+        var_within_closure_from_ident
+        (Variable.Map.empty, Ident.Map.empty)
+    in
+
+    let project_closure_to_bind,
+        var_for_project_closure =
+      List.fold_left (fun (to_bind, var_for_ident) function_decl ->
+        let let_rec_ident = Function_decl.let_rec_ident function_decl in
+        let to_bind, var =
+          if Ident.same (Function_decl.let_rec_ident function_decl)
+               let_rec_ident then
+            (* my_closure is already bound *)
+            to_bind, my_closure
+          else
+            let variable =
+              Variable.create_with_same_name_as_ident let_rec_ident
+            in
+            let closure_id =
+              Ident.Map.find let_rec_ident closure_id_from_ident
+            in
+            Variable.Map.add variable closure_id to_bind, variable
+        in
+        to_bind,
+        Ident.Map.add let_rec_ident var var_for_ident)
+        (Variable.Map.empty, Ident.Map.empty)
+        (Function_decls.to_list function_declarations)
+    in
+
+    let closure_env_without_parameters =
+      let empty_env = Env.clear_local_bindings external_env in
+      Env.add_var_map
+        (Env.add_var_map empty_env var_for_ident_within_closure)
+        var_for_project_closure
+    in
+
     (* Create fresh variables for the elements of the closure (cf.
        the comment on [Function_decl.closure_env_without_parameters], above).
        This induces a renaming on [Function_decl.free_idents]; the results of
@@ -457,12 +539,41 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
           (flambda_type_of_lambda_value_kind t))
         param_vars
     in
-    let closure_bound_var = Function_decl.closure_bound_var decl in
-    let unboxed_version = Variable.rename closure_bound_var in
     let body = close t closure_env body in
+    let free_var_of_body =
+      Flambda.Expr.free_variables body
+    in
+
+    let body =
+      Variable.Map.fold (fun var closure_id body ->
+        if Variable.Set.mem var free_var_of_body then
+          Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+            (Move_within_set_of_closures
+               { closure = my_closure;
+                 move = Closure_id.Map.singleton my_closure_id closure_id })
+            body
+        else
+          body
+      ) project_closure_to_bind body
+    in
+
+    let body =
+      Variable.Map.fold (fun var var_within_closure body ->
+        if Variable.Set.mem var free_var_of_body then
+          Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+            (Project_var
+               { closure = my_closure;
+                 var = Closure_id.Map.singleton my_closure_id var_within_closure })
+            body
+        else
+          body
+      ) var_within_closure_to_bind body
+    in
+
     let fun_decl =
       let closure_origin =
-        Closure_origin.create (Closure_id.wrap unboxed_version)
+        Closure_origin.create my_closure_id
+        (* Closure_origin.create (Closure_id.wrap unboxed_version) *)
       in
       Flambda.Function_declaration.create
         ~my_closure
@@ -476,18 +587,18 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
         ~closure_origin
     in
     match Function_decl.kind decl with
-    | Curried -> Variable.Map.add closure_bound_var fun_decl map
+    | Curried -> Closure_id.Map.add my_closure_id fun_decl map
     | Tupled ->
       let generic_function_stub =
         tupled_function_call_stub param_vars unboxed_version ~closure_bound_var
       in
-      Variable.Map.add unboxed_version fun_decl
-        (Variable.Map.add closure_bound_var generic_function_stub map)
+      Closure_id.Map.add unboxed_version fun_decl
+        (Closure_id.Map.add closure_bound_var generic_function_stub map)
   in
   let function_decls =
     Flambda.Function_declarations.create
       ~funs:
-        (List.fold_left close_one_function Variable.Map.empty
+        (List.fold_left close_one_function Closure_id.Map.empty
           (Function_decls.to_list function_declarations))
   in
   (* The closed representation of a set of functions is a "set of closures".
@@ -495,25 +606,20 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
      a single block with tag [Closure_tag].) *)
   let set_of_closures =
     let free_vars =
-      IdentSet.fold (fun var map ->
-          let internal_var =
-            Env.find_var closure_env_without_parameters var
-          in
-          let external_var : Flambda.Free_var.t =
-            { var = Env.find_var external_env var;
-              projection = None;
-            }
-          in
-          Variable.Map.add internal_var external_var map)
-        all_free_idents Variable.Map.empty
+      Ident.Map.fold (fun id var_within_closure map ->
+        let external_var : Flambda.Free_var.t =
+          { var = Env.find_var external_env id;
+            projection = None;
+          }
+        in
+        Var_within_closure.Map.add var_within_closure external_var map)
+        var_within_closure_from_ident
+        Var_within_closure.Map.empty
     in
     Flambda.Set_of_closures.create ~function_decls ~free_vars
-      ~specialised_args:Variable.Map.empty
-      ~direct_call_surrogates:Variable.Map.empty
+      ~direct_call_surrogates:Closure_id.Map.empty
   in
   Set_of_closures set_of_closures
-*)
-  assert false
 
 let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       (ilam, ilam_result_cont) : Flambda_static.Program.t =
@@ -562,13 +668,13 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       body
   in
   let block_initialize : Flambda_static.Program_body.Initialize_symbol.t =
-    { tag = Tag.Scannable.create_exn 0;
+    { tag = Tag.create_exn 0;
       expr = close t Env.empty ilam;
       return_cont = ilam_result_cont;
       return_arity = [Flambda_kind.value Must_scan]; }
   in
   let module_initialize : Flambda_static.Program_body.Initialize_symbol.t =
-    { tag = Tag.Scannable.create_exn 0;
+    { tag = Tag.create_exn 0;
       expr = main_module_block_expr;
       return_cont = continuation;
       return_arity = List.init size (fun _ -> Flambda_kind.value Must_scan); }

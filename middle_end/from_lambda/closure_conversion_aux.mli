@@ -26,8 +26,11 @@ module Env : sig
 
   val empty : t
 
+  val clear_local_bindings : t -> t
+
   val add_var : t -> Ident.t -> Variable.t -> t
   val add_vars : t -> Ident.t list -> Variable.t list -> t
+  val add_var_map : t -> Variable.t Ident.Map.t -> t
 
   val add_var_like : t -> Ident.t -> t * Variable.t
   val add_vars_like : t -> Ident.t list -> t * Variable.t list
@@ -68,7 +71,7 @@ module Function_decls : sig
 
     val create
        : let_rec_ident:Ident.t option
-      -> closure_bound_var:Variable.t
+      -> closure_bound_var:Closure_id.t
       -> kind:Lambda.function_kind
       -> params:(Ident.t * Lambda.value_kind) list
       -> continuation_param:Continuation.t
@@ -79,8 +82,9 @@ module Function_decls : sig
       -> stub:bool
       -> t
 
-    val let_rec_ident : t -> Ident.t
-    val closure_bound_var : t -> Variable.t
+     val let_rec_ident : t -> Ident.t
+    (* CR pchambart: should be renamed *)
+    val closure_bound_var : t -> Closure_id.t
     val kind : t -> Lambda.function_kind
     val params : t -> (Ident.t * Lambda.value_kind) list
     val continuation_param : t -> Continuation.t
@@ -108,5 +112,5 @@ module Function_decls : sig
      is the set of all identifiers free in the bodies of the declarations that
      are not bound as parameters.
      It also contains the globals bindings of the provided environment. *)
-  val closure_env_without_parameters : Env.t -> t -> Env.t
+  (* val closure_env_without_parameters : Env.t -> t -> Env.t *)
 end

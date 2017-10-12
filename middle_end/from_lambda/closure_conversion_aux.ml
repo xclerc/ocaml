@@ -40,6 +40,8 @@ module Env = struct
 
   let add_var t id var = { t with variables = Ident.add id var t.variables }
   let add_vars t ids vars = List.fold_left2 add_var t ids vars
+  let add_var_map t map =
+    { t with variables = Ident.Map.union_right t.variables map }
 
   let add_var_like t id =
     let var = Variable.create_with_same_name_as_ident id in
@@ -103,7 +105,7 @@ module Function_decls = struct
   module Function_decl = struct
     type t = {
       let_rec_ident : Ident.t;
-      closure_bound_var : Variable.t;
+      closure_bound_var : Closure_id.t;
       kind : Lambda.function_kind;
       params : (Ident.t * Lambda.value_kind) list;
       continuation_param : Continuation.t;
@@ -156,12 +158,12 @@ module Function_decls = struct
      indexed by the identifiers corresponding to the functions themselves. *)
   let free_idents_by_function function_decls =
     List.fold_right (fun decl map ->
-        Variable.Map.add (Function_decl.closure_bound_var decl)
+        Closure_id.Map.add (Function_decl.closure_bound_var decl)
           (Function_decl.free_idents decl) map)
-      function_decls Variable.Map.empty
+      function_decls Closure_id.Map.empty
 
   let all_free_idents function_decls =
-    Variable.Map.fold (fun _ -> IdentSet.union)
+    Closure_id.Map.fold (fun _ -> IdentSet.union)
       (free_idents_by_function function_decls) IdentSet.empty
 
   (* All identifiers of simultaneously-defined functions in [ts]. *)
@@ -191,16 +193,16 @@ module Function_decls = struct
 
   let all_free_idents t = t.all_free_idents
 
-  let closure_env_without_parameters external_env t =
-    let closure_env =
-      (* For "let rec"-bound functions. *)
-      List.fold_right (fun function_decl env ->
-          Env.add_var env (Function_decl.let_rec_ident function_decl)
-            (Function_decl.closure_bound_var function_decl))
-        t.function_decls (Env.clear_local_bindings external_env)
-    in
-    (* For free variables. *)
-    IdentSet.fold (fun id env ->
-        Env.add_var env id (Variable.create (Ident.name id)))
-      t.all_free_idents closure_env
+  (* let closure_env_without_parameters external_env t = *)
+  (*   let closure_env = *)
+  (*     (\* For "let rec"-bound functions. *\) *)
+  (*     List.fold_right (fun function_decl env -> *)
+  (*         Env.add_var env (Function_decl.let_rec_ident function_decl) *)
+  (*           (Function_decl.closure_bound_var function_decl)) *)
+  (*       t.function_decls (Env.clear_local_bindings external_env) *)
+  (*   in *)
+  (*   (\* For free variables. *\) *)
+  (*   IdentSet.fold (fun id env -> *)
+  (*       Env.add_var env id (Variable.create (Ident.name id))) *)
+  (*     t.all_free_idents closure_env *)
 end
