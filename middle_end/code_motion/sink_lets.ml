@@ -178,14 +178,14 @@ end
 
 let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
   match expr with
-  | Let ({ var; defining_expr; body; } as let_expr) ->
+  | Let ({ var; kind; defining_expr; body; } as let_expr) ->
     let body, state = sink_expr body ~state in
     let defining_expr, state =
       match defining_expr with
       | Set_of_closures set_of_closures ->
         let set_of_closures = sink_set_of_closures set_of_closures in
         let defining_expr : Flambda.Named.t = Set_of_closures set_of_closures in
-        W.of_named defining_expr, state
+        W.of_named kind defining_expr, state
       | _ -> W.of_defining_expr_of_let let_expr, state
     in
     let sink_into, state = State.remove_candidate_to_sink state var in
@@ -235,14 +235,14 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
         keep_let (), add_candidates ~sink_into:[]
       end
     end
-  | Let_mutable { var; initial_value; contents_kind; body; }->
+  | Let_mutable { var; initial_value; contents_type; body; }->
     let body, state = sink_expr body ~state in
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
         ~candidates_to_sink:(Variable.Set.singleton initial_value)
     in
-    Let_mutable { var; initial_value; contents_kind; body; }, state
+    Let_mutable { var; initial_value; contents_type; body; }, state
   | Let_cont { body; handlers = Recursive handlers; } ->
     let body = sink body in
     let handlers, state =
@@ -254,12 +254,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
              generative effects" but cannot unconditionally be moved into
              loops. *)
           let new_handler = sink handler.handler in
-          let fvs =
-            Variable.Set.union
-              (Flambda.Expr.free_variables_of_specialised_args
-                 handler.specialised_args)
-              (Flambda.Expr.free_variables new_handler)
-          in
+          let fvs = Flambda.Expr.free_variables new_handler in
           let state =
             State.add_candidates_to_sink state
               ~sink_into:[]
@@ -282,8 +277,8 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     Let_cont { body; handlers = Recursive handlers; }, state
   | Let_cont { body; handlers =
       Nonrecursive { name; handler = {
-        params; stub; is_exn_handler; handler; specialised_args; }; }; } ->
-    let params_set = Variable.Set.of_list (Parameter.List.vars params) in
+        params; stub; is_exn_handler; handler; }; }; } ->
+    let params_set = Flambda.Typed_parameter.List.var_set params in
     let body, state = sink_expr body ~state in
     let handler, handler_state =
       sink_expr handler ~state:(State.create ())
@@ -298,12 +293,11 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     let state =
       State.add_candidates_to_sink state
         ~sink_into:[]
-        ~candidates_to_sink:
-          (Flambda.Expr.free_variables_of_specialised_args specialised_args)
+        ~candidates_to_sink:(Flambda.Typed_parameter.List.free_variables params)
     in
     Let_cont { body; handlers =
       Nonrecursive { name; handler = {
-        params; stub; is_exn_handler; handler; specialised_args; }; }; }, state
+        params; stub; is_exn_handler; handler; }; }; }, state
   | Apply _ | Apply_cont _ | Switch _ | Unreachable ->
     let state =
       State.add_candidates_to_sink state
@@ -314,7 +308,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
 
 and sink_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   let funs =
-    Variable.Map.map (fun
+    Closure_id.Map.map (fun
             (function_decl : Flambda.Function_declaration.t) ->
         Flambda.Function_declaration.update_body function_decl
           ~body:(sink function_decl.body))
@@ -326,7 +320,6 @@ and sink_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
   in
   Flambda.Set_of_closures.create ~function_decls
     ~free_vars:set_of_closures.free_vars
-    ~specialised_args:set_of_closures.specialised_args
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
 and sink (expr : Flambda.Expr.t) =
@@ -340,11 +333,11 @@ and sink (expr : Flambda.Expr.t) =
       else
         let defining_expr = W.of_defining_expr_of_let let_expr in
         W.create_let_reusing_defining_expr var defining_expr body
-    | Let_mutable { var; initial_value; contents_kind; body; } ->
+    | Let_mutable { var; initial_value; contents_type; body; } ->
       let body = sink body in
-      Let_mutable { var; initial_value; contents_kind; body; }
+      Let_mutable { var; initial_value; contents_type; body; }
     | Let_cont { body; handlers = Nonrecursive { name; handler = {
-        params; stub; is_exn_handler; handler; specialised_args; }; }; } ->
+        params; stub; is_exn_handler; handler; }; }; } ->
       let body = sink body in
       let handler =
         let handler = sink handler in
@@ -355,7 +348,7 @@ and sink (expr : Flambda.Expr.t) =
           (List.rev bindings)
       in
       Let_cont { body; handlers = Nonrecursive { name; handler =
-        { params; stub; is_exn_handler; handler; specialised_args; }; }; }
+        { params; stub; is_exn_handler; handler; }; }; }
     | Let_cont { body; handlers = Recursive handlers; } ->
       let body = sink body in
       let handlers =
