@@ -103,6 +103,8 @@ module CDV = Flambda_static.Constant_defining_value
 let register_const t (constant : CDV.t) name
       : Flambda_static.Constant_defining_value_block_field.t * string =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
+  (* Create a variable to ensure uniqueness of the symbol *)
+  let var = Variable.create ~current_compilation_unit name in
   let symbol =
     Flambda_utils.make_variable_symbol var
       ~kind:(Symbol.value_kind (CDV.tag constant))
@@ -631,7 +633,8 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   let module_symbol = Backend.symbol_for_global' module_ident in
   let block_symbol =
     let linkage_name = Linkage_name.create "module_as_block" in
-    Symbol.create compilation_unit ~kind:Symbol.value_kind linkage_name
+    Symbol.create compilation_unit ~kind:(Symbol.value_kind Tag.zero)
+      linkage_name
   in
   (* The global module block is built by accessing the fields of all the
      introduced symbols. *)
@@ -663,15 +666,13 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       body
   in
   let block_initialize : Flambda_static.Program_body.Initialize_symbol.t =
-    { tag = Tag.create_exn 0;
-      expr = close t Env.empty ilam;
+    { expr = close t Env.empty ilam;
       return_cont = ilam_result_cont;
       return_arity = [Flambda_kind.value Must_scan];
     }
   in
   let module_initialize : Flambda_static.Program_body.Initialize_symbol.t =
-    { tag = Tag.create_exn 0;
-      expr = main_module_block_expr;
+    { expr = main_module_block_expr;
       return_cont = continuation;
       return_arity = List.init size (fun _ -> Flambda_kind.value Must_scan);
     }
