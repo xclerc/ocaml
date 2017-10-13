@@ -71,7 +71,6 @@ end
 module Program_body : sig
   module Initialize_symbol : sig
     type t = {
-      tag : Tag.t;
       expr : Flambda0.Expr.t;
       return_cont : Continuation.t;
       return_arity : Flambda_arity.t;

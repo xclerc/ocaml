@@ -35,7 +35,7 @@ type symbol_kind = private
   (** The symbol cannot be used as a value. Its fields can be accessed by
       Read_symbol_field, and yields the corresponding kind.
       All fields can't be of kind value, otherwise the symbol kind is Value *)
-  | Value
+  | Value of Tag.t
   (** The symbol contains a GC-scannable value. it is either a block and
       each fields are of kind value, or a boxed value (string, floats, ...)
       and doesn't have any field *)
@@ -61,7 +61,7 @@ val import_for_pack
   -> t
 
 val mixed_kind : Flambda_kind.t list -> symbol_kind
-val value_kind : symbol_kind
+val value_kind : Tag.t -> symbol_kind
 
 val compilation_unit : t -> Compilation_unit.t
 val label : t -> Linkage_name.t

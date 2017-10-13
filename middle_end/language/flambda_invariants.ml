@@ -55,7 +55,6 @@ let ignore_closure_id (_ : Closure_id.t) = ()
 let ignore_closure_id_set (_ : Closure_id.Set.t) = ()
 let ignore_closure_id_map (_ : 'a -> unit) (_ : 'a Closure_id.Map.t) = ()
 let ignore_var_within_closure (_ : Var_within_closure.t) = ()
-let ignore_tag (_ : Tag.t) = ()
 let ignore_scannable_tag (_ : Tag.Scannable.t) = ()
 let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
 let ignore_specialise_attribute (_ : Lambda.specialise_attribute) = ()
@@ -763,9 +762,8 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       loop_program_body env program
     | Initialize_symbol (symbol, descr, program) ->
       let { Flambda_static.Program_body.Initialize_symbol.
-            tag; expr; return_cont; return_arity; } = descr
+            expr; return_cont; return_arity; } = descr
       in
-      ignore_tag tag;
       loop env expr;
       ignore_continuation return_cont;
       ignore_flambda_arity return_arity;

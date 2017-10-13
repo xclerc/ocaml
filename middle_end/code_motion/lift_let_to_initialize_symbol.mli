@@ -16,7 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(* CR mshinwell: Rename this module.  Update comment *)
+(* CR mshinwell: Rename this module.  Update comment
+   Maybe we should call it [Lift_to_initialize_symbol] *)
 
 (** Lift toplevel [Let]-expressions to Flambda [program] constructions such
     that the results of evaluation of such expressions may be accessed

@@ -145,7 +145,6 @@ end
 module Program_body = struct
   module Initialize_symbol = struct
     type t = {
-      tag : Tag.t;
       expr : Flambda0.Expr.t;
       return_cont : Continuation.t;
       return_arity : Flambda_arity.t;
@@ -193,9 +192,8 @@ module Program_body = struct
       print ppf program
     | Initialize_symbol (symbol, descr, program) ->
       fprintf ppf
-        "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@ %a@;@[<v>%a@]@])@]@]@."
+        "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@;@[<v>%a@]@])@]@]@."
         Symbol.print symbol
-        Tag.print descr.tag
         Flambda.Expr.print descr.expr;
         (* CR mshinwell: Print continuation and arity *)
       print ppf program

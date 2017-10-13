@@ -18,7 +18,7 @@
 
 type symbol_kind =
   | Mixed of Flambda_kind.t list
-  | Value
+  | Value of Tag.t
 
 type t = {
   compilation_unit : Compilation_unit.t;
@@ -55,10 +55,11 @@ end)
 
 include I
 
-let value_kind = Value
+let value_kind tag = Value tag
+
 let mixed_kind fields =
   if List.for_all Flambda_kind.is_value fields then
-    Value
+    Value Tag.zero
   else
     Mixed fields
 
@@ -106,7 +107,7 @@ module Of_kind_value = struct
   let of_symbol t =
     match t.kind with
     | Mixed _ -> None
-    | Value -> Some t
+    | Value _ -> Some t
 
   let of_symbol_exn t =
     match of_symbol t with
