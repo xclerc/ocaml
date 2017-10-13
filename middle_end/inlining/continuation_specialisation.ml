@@ -16,14 +16,16 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+let pass_name = "continuation-specialisation"
+let () = Pass_wrapper.register ~pass_name
+
+(*
+
 module T = Flambda_type
 module E = Simplify_env
 module R = Simplify_result
 
 module Typed_parameter = Flambda.Typed_parameter
-
-let pass_name = "continuation-specialisation"
-let () = Pass_wrapper.register ~pass_name
 
 type specialising_result =
   | Didn't_specialise
@@ -112,20 +114,12 @@ let handlers_for_simplification ~old_handlers ~newly_specialised_args
 
 let usage_information_for_simplification ~env ~old_handlers ~new_handlers
       ~definitions_with_uses ~freshening =
-  (* Add usage information for the parameters of the continuations.  The
-     parameters are partitioned into two:
-     1. the specialised arguments (either pre-existing or
-        newly-specialised).  When newly-specialised arguments are added this
-        will produce an increase in precision of the arguments' types over and
-        above that used when the handler was previously simplified;
-     2. other arguments, whose types will be the same as they were when the
-        handler was previously simplified.  (Such types are the join of the
-        types at all use points.)
+  (* Add usage information for the parameters of the continuations.
      Apart from this information, the [r] used for simplification is
      empty. *)
   Continuation.Map.fold (fun cont
           (handler : Flambda.Continuation_handler.t) r ->
-      let join_tys =
+      let arg_tys =
         match Continuation.Map.find cont definitions_with_uses with
         | exception Not_found ->
           Misc.fatal_errorf "Continuation %a does not occur in the \
@@ -139,34 +133,6 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
       in
       let freshened_cont =
         Freshening.apply_static_exception freshening cont
-      in
-      let specialised_args =
-        match Continuation.Map.find freshened_cont new_handlers with
-        | exception Not_found -> assert false  (* see above *)
-        | (handler : Flambda.Continuation_handler.t) -> handler.specialised_args
-      in
-      let arg_tys =
-        List.map2 (fun param join_ty ->
-            let param = Parameter.var param in
-            match Variable.Map.find param specialised_args with
-            | exception Not_found -> join_approx
-            | spec_to ->
-              match spec_to.var with
-              | None -> join_approx
-              | Some spec_to ->
-                begin match E.find_opt env spec_to with
-                | None ->
-                  Misc.fatal_errorf "Variable %a of %a specialised to %a \
-                      but %a is not in the environment:@ \n%a"
-                    Variable.print param
-                    Continuation.print cont
-                    Variable.print spec_to
-                    Variable.print spec_to
-                    E.print env
-                | Some approx -> approx
-                end)
-          handler.params
-          join_tys
       in
       R.use_continuation r env freshened_cont
         (Not_inlinable_or_specialisable arg_tys))
@@ -517,13 +483,16 @@ let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
       | Apply _ | Let_mutable _ | Switch _ | Unreachable -> expr)
     expr
 
-let for_toplevel_expression expr ~vars_in_scope r ~simplify_let_cont_handlers
-      ~backend =
+*)
+
+let for_toplevel_expression expr ~vars_in_scope:_ _r
+      ~simplify_let_cont_handlers:_ ~backend:_ =
   Pass_wrapper.with_dump ~pass_name
     ~input:expr
-    ~print_input:Flambda.print
-    ~print_output:Flambda.print
-    ~f:(fun () ->
+    ~print_input:Flambda.Expr.print
+    ~print_output:Flambda.Expr.print
+    ~f:(fun () -> None)
+(*
       let new_conts, apply_cont_rewrites =
         let specialisations = find_candidate_specialisations r ~backend in
         beneficial_specialisations r ~specialisations
@@ -533,3 +502,4 @@ let for_toplevel_expression expr ~vars_in_scope r ~simplify_let_cont_handlers
       else
         Some (insert_specialisations expr ~vars_in_scope ~new_conts
           ~apply_cont_rewrites))
+*)

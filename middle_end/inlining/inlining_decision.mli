@@ -22,8 +22,8 @@
 (** Try to inline a full application of a known function, guided by various
     heuristics. *)
 val for_call_site
-   : env:Simplify_aux.Env.t
-  -> r:Simplify_aux.Result.t
+   : env:Simplify_env.t
+  -> r:Simplify_result.t
   -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
   -> closure_id_being_applied:Closure_id.t
@@ -36,14 +36,14 @@ val for_call_site
   -> simplify:Inlining_decision_intf.simplify
   -> simplify_apply_cont_to_cont:(
        ?don't_record_use:unit
-    -> Simplify_aux.Env.t
-    -> Simplify_aux.Result.t
+    -> Simplify_env.t
+    -> Simplify_result.t
     -> Continuation.t
     -> args_approxs:Flambda_type.t list
-    -> Continuation.t * Simplify_aux.Result.t)
+    -> Continuation.t * Simplify_result.t)
   -> inline_requested:Lambda.inline_attribute
   -> specialise_requested:Lambda.specialise_attribute
-  -> Flambda.Expr.t * Simplify_aux.Result.t
+  -> Flambda.Expr.t * Simplify_result.t
 
 (** When a function declaration is encountered by [for_call_site], the body
     may be subject to inlining immediately, thus changing the declaration.

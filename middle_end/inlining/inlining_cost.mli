@@ -153,4 +153,4 @@ val lambda_size : Flambda.Expr.t -> int
 (* CR mshinwell: check name -- and should it be here? *)
 val size
    : function_decls : Flambda.Function_declarations.t
-  -> int option Variable.Map.t
+  -> int option Closure_id.Map.t

@@ -60,12 +60,12 @@ module Continuation_uses : sig
 
   val num_uses : t -> int
 
-  val meet_of_args_approxs
+  val meet_of_arg_tys
      : t
     -> num_params:int
     -> Flambda_type.t list
 
-  val meet_of_args_approxs_opt : t -> Flambda_type.t list option
+  val meet_of_arg_tys_opt : t -> Flambda_type.t list option
 end
 
 module Continuation_usage_snapshot : sig

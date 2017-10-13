@@ -17,12 +17,14 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module B = Inlining_cost.Benefit
-module E = Simplify_aux.Env
-module R = Simplify_aux.Result
+module E = Simplify_env
+module R = Simplify_result
 
 let new_var name =
   Variable.create name
     ~current_compilation_unit:(Compilation_unit.get_current_exn ())
+
+(*
 
 let which_function_parameters_can_we_specialise ~params ~args
       ~args_tys ~(invariant_params:Variable.Set.t Variable.Map.t lazy_t)
@@ -50,6 +52,8 @@ let which_function_parameters_can_we_specialise ~params ~args
       worth_specialising_args, spec_args, arg :: args, args_decl)
     (List.combine params args) args_tys
     (Variable.Set.empty, Variable.Map.empty, [], [])
+
+*)
 
 (** Fold over all variables bound by the given closure, which is bound to the
     variable [lhs_of_application], and corresponds to the given
@@ -192,6 +196,8 @@ let inline_by_copying_function_body ~env ~r
   let env = E.activate_freshening (E.set_never_inline env) in
   let env = E.set_inline_debuginfo ~dbg env in
   simplify env r expr
+
+(*
 
 let inline_by_copying_function_declaration ~env ~r
     ~(function_decls : Flambda.Function_declarations.t)
@@ -555,3 +561,4 @@ let inline_by_copying_function_declaration ~env ~r
     in
     let env = E.activate_freshening (E.set_never_inline env) in
     Some (simplify env r expr)
+*)

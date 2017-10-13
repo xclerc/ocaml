@@ -65,8 +65,8 @@
         f (fst x') (y' + snd x')  (* body of [f] with parameters freshened *)
 *)
 val inline_by_copying_function_body
-   : env:Simplify_aux.Env.t
-  -> r:Simplify_aux.Result.t
+   : env:Simplify_env.t
+  -> r:Simplify_result.t
   -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
   -> inline_requested:Lambda.inline_attribute
@@ -77,8 +77,9 @@ val inline_by_copying_function_body
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
-  -> Flambda.Expr.t * Simplify_aux.Result.t
+  -> Flambda.Expr.t * Simplify_result.t
 
+(*
 (** Inlining of recursive function(s) yields a copy of the functions'
     definitions (not just their bodies, unlike the non-recursive case) and
     a direct application of the new body.
@@ -87,8 +88,8 @@ val inline_by_copying_function_body
     non-recursive] is not sufficient.
 *)
 val inline_by_copying_function_declaration
-   : env:Simplify_aux.Env.t
-  -> r:Simplify_aux.Result.t
+   : env:Simplify_env.t
+  -> r:Simplify_result.t
   -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
   -> inline_requested:Lambda.inline_attribute
@@ -102,4 +103,5 @@ val inline_by_copying_function_declaration
   -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
-  -> (Flambda.Expr.t * Simplify_aux.Result.t) option
+  -> (Flambda.Expr.t * Simplify_result.t) option
+*)

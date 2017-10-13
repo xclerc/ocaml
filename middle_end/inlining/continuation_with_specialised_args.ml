@@ -16,12 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(* A continuation together with, for each of its specialised arguments, the
-    variable corresponding to such argument in a particular application of
-    that continuation.
-*)
-
-type t = Continuation.t * Flambda.specialised_args
+type t = Continuation.t * (Flambda_type.t list)
 
 include Identifiable.Make (struct
   type nonrec t = t
@@ -29,18 +24,22 @@ include Identifiable.Make (struct
   let compare t1 t2 =
     let c = Continuation.compare (fst t1) (fst t2) in
     if c <> 0 then c
-    else
+    else assert false
+(* XXX need to think about what to do here
       (Variable.Map.compare Flambda.compare_specialised_to) (snd t1) (snd t2)
+*)
 
   let equal t1 t2 =
     compare t1 t2 = 0
 
-  let hash t =
+  let hash _t = assert false
+(*
     Hashtbl.hash (Continuation.hash (fst t),
       Hashtbl.hash (Variable.Map.bindings (snd t)))
+*)
 
-  let print ppf (cont, spec_args) =
+  let print ppf (cont, tys) =
     Format.fprintf ppf "@[(%a, %a)@]"
       Continuation.print cont
-      Flambda.print_specialised_args spec_args
+      (Format.pp_print_list Flambda_type.print) tys
 end)

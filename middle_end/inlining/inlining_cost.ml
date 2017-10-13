@@ -77,7 +77,10 @@ let lambda_smaller' lam ~than:threshold =
     match lam with
     | Apply ({ func = _; args = _; call_kind = direct }) ->
       let call_cost =
-        match direct with Indirect -> 6 | Direct _ -> direct_call_size
+        match direct with
+        | Indirect_unknown_arity -> 6
+        | Indirect_known_arity _ -> 6  (* CR mshinwell: what should this say? *)
+        | Direct _ -> direct_call_size
       in
       size := !size + call_cost
     | Let { defining_expr; body; _ } ->
@@ -108,7 +111,7 @@ let lambda_smaller' lam ~than:threshold =
     | Const _ | Allocated_const _ -> incr size
     | Read_symbol_field _ -> incr size
     | Set_of_closures ({ function_decls = ffuns }) ->
-      Variable.Map.iter (fun _ (ffun : Flambda.Function_declaration.t) ->
+      Closure_id.Map.iter (fun _ (ffun : Flambda.Function_declaration.t) ->
           lambda_size ffun.body)
         ffuns.funs
     | Project_closure _ | Project_var _ ->
@@ -689,7 +692,7 @@ let maximum_interesting_size_of_function_body num_free_variables =
   base + (num_free_variables * multiplier)
 
 let size ~(function_decls : Flambda.Function_declarations.t) =
-  Variable.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
+  Closure_id.Map.map (fun (function_decl : Flambda.Function_declaration.t) ->
       let num_vars_in_closure = 1
       (* CR pchambart: There are no projections introduced when inlining a
          function now, so the size of the closure doesn't matter for code
@@ -700,8 +703,8 @@ let size ~(function_decls : Flambda.Function_declarations.t) =
         *)
       in
       let max_size =
-        Inlining_cost.maximum_interesting_size_of_function_body
+        maximum_interesting_size_of_function_body
           num_vars_in_closure
       in
-      Inlining_cost.lambda_smaller' function_decl.body ~than:max_size)
-    t.funs
+      lambda_smaller' function_decl.body ~than:max_size)
+    function_decls.funs
