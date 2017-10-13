@@ -16,9 +16,11 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module T = Flambda_types
-module E = Simplify_aux.Env
-module R = Simplify_aux.Result
+module T = Flambda_type
+module E = Simplify_env
+module R = Simplify_result
+
+module Typed_parameter = Flambda.Typed_parameter
 
 let pass_name = "continuation-specialisation"
 let () = Pass_wrapper.register ~pass_name
@@ -132,7 +134,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
             Continuation.Set.print
             (Continuation.Map.keys definitions_with_uses)
         | (uses, _approx, _env, _recursive) ->
-          Simplify_aux.Continuation_uses.meet_of_arg_tys
+          Simplify_result.Continuation_uses.meet_of_arg_tys
             uses ~num_params:(List.length handler.params)
       in
       let freshened_cont =
@@ -367,6 +369,10 @@ let find_candidate_specialisations r ~backend =
      arguments across those uses.  The range of the map, amongst other things,
      enables identification of the corresponding [Apply_cont] nodes which will
      need to be repointed if the continuation is specialised for those uses. *)
+  (* CR-someday mshinwell: We always look at all of the uses.  In some cases
+     specialisation might turn out better if we only consider some subset of
+     those uses.  How to pick from the potentially many possible combinations
+     here is an open question. *)
   Continuation.Map.fold (fun cont (uses, approx, _env, recursive)
         specialisations ->
       match handlers_and_invariant_params ~cont ~approx ~backend with

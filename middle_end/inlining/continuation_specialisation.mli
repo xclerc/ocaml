@@ -21,13 +21,13 @@
 val for_toplevel_expression
    : Flambda.Expr.t
   -> vars_in_scope:Variable.Set.t
-  -> Simplify_aux.Result.t
-  -> simplify_let_cont_handlers:(env:Simplify_aux.Env.t
-    -> r:Simplify_aux.Result.t
+  -> Simplify_result.t
+  -> simplify_let_cont_handlers:(env:Simplify_env.t
+    -> r:Simplify_result.t
     -> handlers:Flambda.Continuation_handler.t Continuation.Map.t
     -> args_approxs:Flambda_type.t list Continuation.Map.t option
     -> recursive:Asttypes.rec_flag
     -> freshening:Freshening.t
-    -> Flambda.Let_cont_handlers.t option * Simplify_aux.Result.t)
+    -> Flambda.Let_cont_handlers.t option * Simplify_result.t)
   -> backend:(module Backend_intf.S)
   -> Flambda.Expr.t option

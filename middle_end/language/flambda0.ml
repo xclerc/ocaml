@@ -1445,6 +1445,7 @@ end and Typed_parameter : sig
     type nonrec t = t list
     val vars : t -> Variable.t list
     val var_set : t -> Variable.Set.t
+    val equal_vars : t -> Variable.t list -> bool
     val arity : (t -> Flambda_kind.t list) Flambda_type.with_importer
     val free_variables : t -> Variable.Set.t
     val print : Format.formatter -> t -> unit
@@ -1525,6 +1526,11 @@ end = struct
       Variable.Set.union_list (List.map free_variables t)
 
     let vars t = List.map var t
+
+    let equal_vars t1 t2 =
+      List.length t1 = List.length t2
+        && List.for_all2 (fun param1 var2 -> Variable.equal (var param1) var2)
+             t1 t2
 
     let var_set t = Variable.Set.of_list (vars t)
 

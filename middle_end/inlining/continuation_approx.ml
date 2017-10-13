@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2016--2017 OCamlPro SAS                                    *)
+(*   Copyright 2016--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -18,7 +18,7 @@
 
 type continuation_handlers =
   | Nonrecursive of Flambda.Continuation_handler.t
-  | Recursive of Flambda.Continuation_handler.ts
+  | Recursive of Flambda.Continuation_handlers.t
 
 type t = {
   name : Continuation.t;
@@ -48,7 +48,7 @@ let is_alias t =
   | Some (Nonrecursive handler) ->
     match handler.handler with
     | Apply_cont (cont, None, args) ->
-      if Parameter.List.equal_vars handler.params args then
+      if Flambda.Typed_parameter.List.equal_vars handler.params args then
         Some cont
       else
         None
@@ -60,10 +60,10 @@ let print ppf t =
     | Some handlers ->
       match handlers with
       | Nonrecursive handler ->
-        Flambda.print_let_cont_handlers ppf
+        Flambda.Let_cont_handlers.print ppf
           (Nonrecursive { name = t.name; handler; })
       | Recursive handlers ->
-        Flambda.print_let_cont_handlers ppf (Recursive handlers)
+        Flambda.Let_cont_handlers.print ppf (Recursive handlers)
   in
   Format.fprintf ppf "@[(%a with %d params %a)@]"
     Continuation.print t.name

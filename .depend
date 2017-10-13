@@ -1616,29 +1616,28 @@ middle_end/from_lambda/prepare_lambda.cmx : typing/types.cmx \
     middle_end/from_lambda/prepare_lambda.cmi
 middle_end/from_lambda/prepare_lambda.cmi : bytecomp/lambda.cmi
 middle_end/inlining/continuation_approx.cmo : \
-    middle_end/base_types/parameter.cmi middle_end/language/flambda.cmi \
-    middle_end/base_types/continuation.cmi \
+    middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
     middle_end/inlining/continuation_approx.cmi
 middle_end/inlining/continuation_approx.cmx : \
-    middle_end/base_types/parameter.cmx middle_end/language/flambda.cmx \
-    middle_end/base_types/continuation.cmx \
+    middle_end/language/flambda.cmx middle_end/base_types/continuation.cmx \
     middle_end/inlining/continuation_approx.cmi
 middle_end/inlining/continuation_approx.cmi : \
     middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi
 middle_end/inlining/continuation_inlining.cmo : \
-    middle_end/simplify/simplify_aux.cmi middle_end/base_types/parameter.cmi \
-    utils/misc.cmi middle_end/language/flambda.cmi \
+    middle_end/simplify/simplify_result.cmi utils/misc.cmi \
+    middle_end/language/flambda.cmi \
     middle_end/inlining/continuation_approx.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/inlining/continuation_inlining.cmi
 middle_end/inlining/continuation_inlining.cmx : \
-    middle_end/simplify/simplify_aux.cmx middle_end/base_types/parameter.cmx \
-    utils/misc.cmx middle_end/language/flambda.cmx \
+    middle_end/simplify/simplify_result.cmx utils/misc.cmx \
+    middle_end/language/flambda.cmx \
     middle_end/inlining/continuation_approx.cmx \
     middle_end/base_types/continuation.cmx \
     middle_end/inlining/continuation_inlining.cmi
 middle_end/inlining/continuation_inlining.cmi : \
-    middle_end/simplify/simplify_aux.cmi middle_end/language/flambda.cmi
+    middle_end/simplify/simplify_result.cmi \
+    middle_end/language/flambda_type.cmi middle_end/language/flambda.cmi
 middle_end/inlining/continuation_specialisation.cmo : \
     middle_end/base_types/variable.cmi middle_end/simplify/simplify_aux.cmi \
     middle_end/analysis/place_continuations.cmi utils/pass_wrapper.cmi \
@@ -1664,9 +1663,11 @@ middle_end/inlining/continuation_specialisation.cmx : \
     middle_end/base_types/continuation.cmx utils/clflags.cmx \
     parsing/asttypes.cmi middle_end/inlining/continuation_specialisation.cmi
 middle_end/inlining/continuation_specialisation.cmi : \
-    middle_end/base_types/variable.cmi middle_end/simplify/simplify_aux.cmi \
-    middle_end/language/freshening.cmi middle_end/language/flambda_type.cmi \
-    middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
+    middle_end/base_types/variable.cmi \
+    middle_end/simplify/simplify_result.cmi \
+    middle_end/simplify/simplify_env.cmi middle_end/language/freshening.cmi \
+    middle_end/language/flambda_type.cmi middle_end/language/flambda.cmi \
+    middle_end/base_types/continuation.cmi \
     middle_end/to_clambda/backend_intf.cmi parsing/asttypes.cmi
 middle_end/inlining/continuation_with_specialised_args.cmo : \
     middle_end/base_types/variable.cmi utils/identifiable.cmi \

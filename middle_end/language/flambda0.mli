@@ -702,6 +702,8 @@ end and Typed_parameter : sig
     (** As for [vars] but returns a set. *)
     val var_set : t -> Variable.Set.t
 
+    val equal_vars : t -> Variable.t list -> bool
+
     val arity : (t -> Flambda_arity.t) Flambda_type.with_importer
 
     val print : Format.formatter -> t -> unit

@@ -16,9 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module R = Simplify_aux.Result
+module R = Simplify_result
 
-let for_toplevel_expression expr r =
+let for_toplevel_expression ~importer expr r =
   (* This pass only performs linear inlining, even for stubs.  Non-linear
      inlining for stubs is done by [Simplify]. *)
   let used_linearly =
@@ -33,7 +33,7 @@ let for_toplevel_expression expr r =
 *)
     let r = ref r in
     (* CR mshinwell: Consider adding phys-equal checks and use of the tail
-      recursive [Let] mapper. *)
+       recursive [Let] mapper. *)
     let rec substitute env (expr : Flambda.Expr.t) : Flambda.Expr.t =
       match expr with
       | Let ({ var; body; _ } as let_expr) ->
@@ -117,7 +117,9 @@ let for_toplevel_expression expr r =
           end;
           r := R.forget_continuation_definition !r cont;
           List.fold_left2 (fun expr param arg ->
-              Flambda.Expr.create_let (Parameter.var param) (Var arg) expr)
+              let var = Flambda.Typed_parameter.var param in
+              let kind = Flambda.Typed_parameter.kind ~importer param in
+              Flambda.Expr.create_let var kind (Var arg) expr)
             handler.handler
             handler.params args
         end
