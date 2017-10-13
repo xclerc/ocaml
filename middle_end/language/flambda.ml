@@ -1014,7 +1014,7 @@ end and Let_cont_handlers : sig
 
   val equal : t -> t -> bool
 end = struct
-  include Let_cont_handlers
+  include F0.Let_cont_handlers
 
   let equal t1 t2 =
     match t1, t2 with
@@ -1030,7 +1030,7 @@ end and Continuation_handler : sig
 
   val equal : t -> t -> bool
 end = struct
-  include Continuation_handler
+  include F0.Continuation_handler
 
   let equal _ _ = false
 (* CR mshinwell: Can we remove this?  We don't have equality on types at
@@ -1046,12 +1046,14 @@ end and Continuation_handlers : sig
 
   val equal : t -> t -> bool
 end = struct
-  include Continuation_handlers
+  include F0.Continuation_handlers
 
   let equal t1 t2 =
     Continuation.Map.equal Continuation_handler.equal t1 t2
 end and Set_of_closures : sig
   include module type of F0.Set_of_closures
+
+  val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
 
   (* CR mshinwell: swap parameters and add "_exn" suffix or similar *)
   val find_free_variable : Var_within_closure.t -> t -> Variable.t
@@ -1078,6 +1080,9 @@ end and Set_of_closures : sig
   end
 end = struct
   include F0.Set_of_closures
+
+  let variables_bound_by_the_closure t =
+    Var_within_closure.Map.keys t.free_vars
 
   let find_free_variable cv ({ free_vars } : t) =
     let free_var : Free_var.t =
@@ -1152,7 +1157,6 @@ end and Function_declarations : sig
   include module type of F0.Function_declarations
 
   val find_declaration_variable : Closure_id.t -> t -> Variable.t
-  val variables_bound_by_the_closure : Closure_id.t -> t -> Variable.Set.t
   val fun_vars_referenced_in_decls
      : t
     -> backend:(module Backend_intf.S)
@@ -1167,7 +1171,12 @@ end and Function_declarations : sig
   val contains_stub : t -> bool
   val map_parameter_types : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 end = struct
-  include Function_declarations
+  include F0.Function_declarations
+
+  let find_declaration_variable _closure_id _t =
+    (* CR mshinwell for pchambart: What should this do?  Return the
+       [my_closure]? *)
+    assert false  (* XXX *)
 
   let fun_vars_referenced_in_decls (_function_decls : t) ~backend:_ =
 (*
@@ -1264,7 +1273,7 @@ end and Function_declaration : sig
   val equal : t -> t -> bool
   val map_parameter_types : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 end = struct
-  include Function_declaration
+  include F0.Function_declaration
 
   let function_arity t = List.length t.params
 

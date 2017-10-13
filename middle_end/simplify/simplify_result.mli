@@ -83,21 +83,6 @@ val create : unit -> t
 
 val union : t -> t -> t
 
-(** The inferred Flambda type of the subexpression that has just been
-    simplified. *)
-val inferred_type : t -> Flambda_type.t
-
-(** Record the inferred Flambda type of the subexpression that has just been
-    simplified.  Typically used just before returning from a case of the
-    simplification algorithm. *)
-val record_inferred_type : t -> Flambda_type.t -> t
-
-(** Set the Flambda type of the subexpression to the meet of the
-    current return approximation and the provided one. Typically
-    used just before returning from a branch case of the
-    simplification algorithm. *)
-val meet_approx : t -> Env.t -> Flambda_type.t -> t
-
 (** Check that [prepare_for_continuation_uses] has been called on the given
     result structure. *)
 val is_used_continuation : t -> Continuation.t -> bool

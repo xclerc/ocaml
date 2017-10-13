@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -60,19 +60,22 @@ let which_function_parameters_can_we_specialise ~params ~args
     [function_decls].  Each variable bound by the closure is passed to the
     user-specified function as an [Flambda.Named.t] value that projects the
     variable from its closure. *)
-let fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
-      ~lhs_of_application ~function_decls ~init ~f =
-  Variable.Set.fold (fun var acc ->
+(* XXX this might provide to [f] things in the closure which aren't used
+   by the specific function being referred to.  Does this matter? *)
+let fold_over_projections_of_vars_bound_by_closure
+      ~closure_id_being_applied ~lhs_of_application ~set_of_closures ~init ~f =
+  Var_within_closure.Set.fold (fun var acc ->
+      let var =
+        Closure_id.Map.singleton closure_id_being_applied var
+      in
       let expr : Flambda.Named.t =
         Project_var {
           closure = lhs_of_application;
-          var = Closure_id.Map.singleton closure_id_being_applied
-                  (Var_within_closure.wrap var);
+          var;
         }
       in
       f ~acc ~var ~expr)
-    (Flambda.Function_declarations.variables_bound_by_the_closure
-      closure_id_being_applied function_decls)
+    (Flambda.Set_of_closures.variables_bound_by_the_closure set_of_closures)
     init
 
 let set_inline_attribute_on_all_apply body inline specialise =
@@ -83,10 +86,10 @@ let set_inline_attribute_on_all_apply body inline specialise =
 
 (** Assign fresh names for a function's parameters and rewrite the body to
     use these new names. *)
-let copy_of_function's_body_with_freshened_params env
+let copy_of_function's_body_with_freshened_params ~importer env
       ~(function_decl : Flambda.Function_declaration.t) =
   let params = function_decl.params in
-  let param_vars = Parameter.List.vars params in
+  let param_vars = Flambda.Typed_parameter.List.vars params in
   (* We cannot avoid the substitution in the case where we are inlining
      inside the function itself.  This can happen in two ways: either
      (a) we are inlining the function itself directly inside its declaration;
@@ -100,18 +103,20 @@ let copy_of_function's_body_with_freshened_params env
   then
     params, function_decl.body
   else
-    let freshened_params = List.map (fun p -> Parameter.rename p) params in
+    let freshened_params =
+      List.map (fun p ->
+          Flambda.Typed_parameter.map_var p ~f:(fun var -> Variable.rename var))
+        params
+    in
     let subst =
       Variable.Map.of_list
-        (List.combine param_vars (Parameter.List.vars freshened_params))
+        (List.combine param_vars
+          (Flambda.Typed_parameter.List.vars freshened_params))
     in
-    let body = Flambda.Expr.toplevel_substitution subst function_decl.body in
+    let body =
+      Flambda.Expr.toplevel_substitution ~importer subst function_decl.body
+    in
     freshened_params, body
-
-(* CR-soon mshinwell: Add a note somewhere to explain why "bound by the closure"
-   does not include the function identifiers for other functions in the same
-   set of closures.
-   mshinwell: The terminology may be used inconsistently. *)
 
 (** Inline a function by copying its body into a context where it becomes
     closed.  That is to say, we bind the free variables of the body
@@ -125,6 +130,7 @@ let inline_by_copying_function_body ~env ~r
       ~closure_id_being_applied
       ~(function_decl : Flambda.Function_declaration.t) ~args
       ~continuation ~dbg ~simplify =
+  let importer = E.importer env in
   assert (E.mem env lhs_of_application);
   assert (List.for_all (E.mem env) args);
   let r =
@@ -132,7 +138,7 @@ let inline_by_copying_function_body ~env ~r
     else R.map_benefit r B.remove_call
   in
   let freshened_params, body =
-    copy_of_function's_body_with_freshened_params env ~function_decl
+    copy_of_function's_body_with_freshened_params ~importer env ~function_decl
   in
   let body =
     if function_decl.stub &&
@@ -150,14 +156,12 @@ let inline_by_copying_function_body ~env ~r
   in
   (* Arrange for the continuation through which the function returns to be
      that supplied at the call site. *)
-  let handlers = Flambda.Expr.make_let_cont_alias
-    ~name:function_decl.continuation_param
-    ~alias_of:continuation
-    ~arity:function_decl.return_arity
+  let handlers =
+    Flambda_utils.make_let_cont_alias ~name:function_decl.continuation_param
+      ~alias_of:continuation
+      ~arity:function_decl.return_arity
   in
-  let body : Flambda.Expr.t =
-    Let_cont { body; handlers; }
-  in
+  let body : Flambda.Expr.t = Let_cont { body; handlers; } in
   let bindings_for_params_to_args =
     (* Bind the function's parameters to the arguments from the call site. *)
     let args = List.map (fun arg -> Flambda.Var arg) args in

@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -28,7 +28,7 @@ val for_call_site
   -> lhs_of_application:Variable.t
   -> closure_id_being_applied:Closure_id.t
   -> function_decl:Flambda.Function_declaration.t
-  -> value_set_of_closures:Flambda_type.value_set_of_closures
+  -> value_set_of_closures:Flambda_type.set_of_closures
   -> args:Variable.t list
   -> args_approxs:Flambda_type.t list
   -> continuation:Continuation.t
@@ -39,7 +39,7 @@ val for_call_site
     -> Simplify_env.t
     -> Simplify_result.t
     -> Continuation.t
-    -> args_approxs:Flambda_type.t list
+    -> arg_tys:Flambda_type.t list
     -> Continuation.t * Simplify_result.t)
   -> inline_requested:Lambda.inline_attribute
   -> specialise_requested:Lambda.specialise_attribute

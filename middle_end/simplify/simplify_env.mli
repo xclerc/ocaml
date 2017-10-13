@@ -40,6 +40,8 @@ val create
     compiler backend being used for compilation. *)
 val backend : t -> (module Backend_intf.S)
 
+val importer : t -> (module Flambda_type.Importer)
+
 (** Which simplification round we are currently in. *)
 val round : t -> int
 

@@ -43,6 +43,9 @@ let symbol (t : t) =
   | Naked_int64 ty -> ty.symbol
   | Naked_nativeint ty -> ty.symbol
 
+let unknown_types_from_arity t =
+  List.map (fun kind -> unknown kind Other) t
+
 (*
 let ty_value_is_bottom (ty : ty_value) =
   match maybe_import_value_type ~import_type ty with

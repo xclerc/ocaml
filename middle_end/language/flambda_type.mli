@@ -34,6 +34,10 @@ val symbol : t -> (Symbol.t * (int option)) option
     It is assumed that the symbol's value may need scanning by the GC. *)
 val unresolved_symbol : Symbol.Of_kind_value.t -> t
 
+(** For each of the kinds in an arity, create an "unknown" type, with
+    reason [Other]. *)
+val unknown_types_from_arity : Flambda_arity.t -> t list
+
 (*
 (** Attempt to use a type to refine a value kind. *)
 val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind

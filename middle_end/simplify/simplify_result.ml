@@ -19,9 +19,7 @@
 module Env = Simplify_env
 
 type t =
-  (* CR mshinwell: remove [approx]? *)
-  { approx : Flambda_type.t;
-    (* CR mshinwell: What about combining these next two? *)
+  { (* CR mshinwell: What about combining these next two? *)
     used_continuations : Continuation_uses.t Continuation.Map.t;
     defined_continuations :
       (Continuation_uses.t * Continuation_approx.t * Env.t
@@ -54,16 +52,6 @@ let union t1 t2 =
     num_direct_applications =
       t1.num_direct_applications + t2.num_direct_applications;
   }
-
-let approx t = t.approx
-let set_approx t approx = { t with approx }
-
-let meet_approx t env approx =
-  let really_import_approx = Env.really_import_approx env in
-  let meet =
-    Flambda_type.join ~really_import_approx t.approx approx
-  in
-  set_approx t meet
 
 let use_continuation t env cont kind =
   let args = Continuation_uses.Use.Kind.args kind in

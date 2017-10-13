@@ -291,6 +291,8 @@ end
 and Set_of_closures : sig
   include module type of struct include Flambda0.Set_of_closures end
 
+  val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
+
   (** [find_free_variable v clos] raises [Not_found] if [c] is not in [clos]. *)
   val find_free_variable
      : Var_within_closure.t
@@ -322,6 +324,8 @@ and Set_of_closures : sig
   end
 end and Function_declarations : sig
   include module type of struct include Flambda0.Function_declarations end
+
+  val find_declaration_variable : Closure_id.t -> t -> Variable.t
 
   (* CR pchambart: Update this comment *)
   (** Within a set of function declarations there is a set of function bodies,
