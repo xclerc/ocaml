@@ -19,7 +19,7 @@
 module Constant_or_symbol = struct
   type t =
     | Constant of Flambda.Const.t
-    | Symbol of Symbol.t
+    | Symbol of Symbol.Of_kind_value.t
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -27,7 +27,7 @@ module Constant_or_symbol = struct
     let compare t1 t2 =
       match t1, t2 with
       | Constant c1, Constant c2 -> Flambda.Const.compare c1 c2
-      | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
+      | Symbol s1, Symbol s2 -> Symbol.Of_kind_value.compare s1 s2
       | Constant _, _ -> (-1)
       | _, Constant _ -> 1
 
@@ -36,14 +36,14 @@ module Constant_or_symbol = struct
     let hash t =
       match t with
       | Constant c -> Hashtbl.hash (0, Flambda.Const.hash c)
-      | Symbol s -> Hashtbl.hash (1, Symbol.hash s)
+      | Symbol s -> Hashtbl.hash (1, Symbol.Of_kind_value.hash s)
 
     let print ppf t =
       match t with
       | Constant c ->
         Format.fprintf ppf "(Constant %a)" Flambda.Const.print c
       | Symbol s ->
-        Format.fprintf ppf "(Symbol %a)" Symbol.print s
+        Format.fprintf ppf "(Symbol %a)" Symbol.Of_kind_value.print s
   end)
 
   let to_named t : Flambda.Named.t =
@@ -54,7 +54,7 @@ end
 
 type thing_to_lift =
   | Let of Variable.t * Flambda.Named.t Flambda.With_free_variables.t
-  | Let_mutable of Mutable_variable.t * Variable.t * Flambda_kind.t
+  | Let_mutable of Mutable_variable.t * Variable.t * Flambda_type.t
   | Let_cont of Flambda.Let_cont_handlers.t
 
 let bind_things_to_remain ~rev_things ~around =
@@ -63,8 +63,8 @@ let bind_things_to_remain ~rev_things ~around =
       | Let (var, defining_expr) ->
         Flambda.With_free_variables.create_let_reusing_defining_expr var
           defining_expr body
-      | Let_mutable (var, initial_value, contents_kind) ->
-        Let_mutable { var; initial_value; contents_kind; body; }
+      | Let_mutable (var, initial_value, contents_type) ->
+        Let_mutable { var; initial_value; contents_type; body; }
       | Let_cont handlers ->
         Let_cont { body; handlers; })
     around
@@ -303,9 +303,9 @@ and lift_expr ~importer (expr : Flambda.Expr.t) ~state =
       let state = State.to_remain state (Let (var, defining_expr)) in
       lift_expr ~importer body ~state
     end
-  | Let_mutable { var; initial_value; contents_kind; body; } ->
+  | Let_mutable { var; initial_value; contents_type; body; } ->
     let state =
-      State.to_remain state (Let_mutable (var, initial_value, contents_kind))
+      State.to_remain state (Let_mutable (var, initial_value, contents_type))
     in
     let expr, state = lift_expr ~importer body ~state in
     expr, State.forget_mutable_variable state var
@@ -354,7 +354,7 @@ and lift_expr ~importer (expr : Flambda.Expr.t) ~state =
 and lift_set_of_closures ~importer
       (set_of_closures : Flambda.Set_of_closures.t) =
   let funs =
-    Variable.Map.map (fun
+    Closure_id.Map.map (fun
             (function_decl : Flambda.Function_declaration.t) ->
         Flambda.Function_declaration.update_body function_decl
           ~body:(lift ~importer function_decl.body))

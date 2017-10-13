@@ -14,6 +14,10 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(* XXX vlaviron is going to try a new implementation based on Reachability *)
+
+(*
+
 (* XXX we need to make sure that e.g.
    Ptag_immediate (Const (Untagged_immediate 42)) is treated as a constant *)
 
@@ -1152,3 +1156,8 @@ let lift_constants ~backend (program : Flambda_static.Program.t) =
   in
   Flambda_static.Program.introduce_needed_import_symbols
     { program with program_body; }
+
+*)
+
+let lift_constants ~backend:_ (program : Flambda_static.Program.t) =
+  program

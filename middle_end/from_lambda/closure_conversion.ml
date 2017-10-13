@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -26,7 +26,8 @@ type t = {
   symbol_for_global' : (Ident.t -> Symbol.t);
   filename : string;
   mutable imported_symbols : Symbol.Set.t;
-  mutable declared_symbols : (Symbol.t * Flambda_static.Constant_defining_value.t) list;
+  mutable declared_symbols :
+    (Symbol.t * Flambda_static.Constant_defining_value.t) list;
 }
 
 (** Generate a wrapper ("stub") function that accepts a tuple argument and
@@ -86,8 +87,8 @@ let tupled_function_call_stub
   let tuple_param =
     Flambda.Typed_parameter.create (Parameter.wrap tuple_param_var)
       (Flambda_type.block Tag.Scannable.zero
-         (Array.of_list
-            (List.map (fun _ -> Flambda_type.any_value Must_scan Other) params)))
+        (Array.of_list
+          (List.map (fun _ -> Flambda_type.any_value Must_scan Other) params)))
   in
   Flambda.Function_declaration.create
     ~my_closure
@@ -247,7 +248,9 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
     *)
     let name =
       (* The Microsoft assembler has a 247-character limit on symbol
-          names, so we keep them shorter to try not to hit this. *)
+         names, so we keep them shorter to try not to hit this. *)
+      (* CR-soon mshinwell: We should work out how to shorten symbol names
+         anyway, to help avoid enormous ELF string tables. *)
       if Sys.win32 then begin
         match defs with
         | (id, _)::_ -> (Ident.unique_name id) ^ "_let_rec"
@@ -671,13 +674,15 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
     { tag = Tag.create_exn 0;
       expr = close t Env.empty ilam;
       return_cont = ilam_result_cont;
-      return_arity = [Flambda_kind.value Must_scan]; }
+      return_arity = [Flambda_kind.value Must_scan];
+    }
   in
   let module_initialize : Flambda_static.Program_body.Initialize_symbol.t =
     { tag = Tag.create_exn 0;
       expr = main_module_block_expr;
       return_cont = continuation;
-      return_arity = List.init size (fun _ -> Flambda_kind.value Must_scan); }
+      return_arity = List.init size (fun _ -> Flambda_kind.value Must_scan);
+    }
   in
   let module_initializer : Flambda_static.Program_body.t =
     Initialize_symbol (
