@@ -27,6 +27,8 @@ val create_exn : int -> t
 val to_int : t -> int
 
 val zero : t
+val string_tag : t
+val closure_tag : t
 val double_tag : t
 val double_array_tag : t
 val custom_tag : t
@@ -43,6 +45,7 @@ module Scannable : sig
   val of_tag : tag -> t option
 
   val to_int : t -> int
+  val to_tag : t -> tag
 
   val zero : t
   val object_tag : t

@@ -98,15 +98,14 @@ let tupled_function_call_stub
     ~specialise:Default_specialise ~is_a_functor:false
     ~closure_origin:(Closure_origin.create closure_bound_var)
 
-let register_const t (constant:Flambda_static.Constant_defining_value.t) name
+module CDV = Flambda_static.Constant_defining_value
+
+let register_const t (constant : CDV.t) name
       : Flambda_static.Constant_defining_value_block_field.t * string =
   let current_compilation_unit = Compilation_unit.get_current_exn () in
-  (* Create a variable to ensure uniqueness of the symbol *)
-  let var = Variable.create ~current_compilation_unit name in
   let symbol =
-    Symbol.create current_compilation_unit
-      ~kind:Symbol.value_kind
-      (Linkage_name.create (Variable.unique_name var))
+    Flambda_utils.make_variable_symbol var
+      ~kind:(Symbol.value_kind (CDV.tag constant))
   in
   t.declared_symbols <- (symbol, constant) :: t.declared_symbols;
   Symbol symbol, name
@@ -120,49 +119,42 @@ let rec declare_const t (const : Lambda.structured_constant)
   | Const_base (Const_string (s, _)) ->
     let const, name =
       if Config.safe_string then
-        Flambda_static.Constant_defining_value.create_allocated_const
+        CDV.create_allocated_const
           (Immutable_string s),
         "immstring"
       else
-        Flambda_static.Constant_defining_value.create_allocated_const (String s),
+        CDV.create_allocated_const (String s),
         "string"
     in
     register_const t const name
   | Const_base (Const_float c) ->
-    register_const t
-      (Flambda_static.Constant_defining_value.create_allocated_const
-         (Float (float_of_string c)))
+    register_const t (CDV.create_allocated_const (Float (float_of_string c)))
       "float"
   | Const_base (Const_int32 c) ->
-    register_const t
-      (Flambda_static.Constant_defining_value.create_allocated_const
-         (Int32 c)) "int32"
+    register_const t (CDV.create_allocated_const (Int32 c)) "int32"
   | Const_base (Const_int64 c) ->
-    register_const t
-      (Flambda_static.Constant_defining_value.create_allocated_const
-         (Int64 c)) "int64"
+    register_const t (CDV.create_allocated_const (Int64 c)) "int64"
   | Const_base (Const_nativeint c) ->
     (* CR pchambart: this should be pushed further to lambda *)
     let c = Targetint.of_int64 (Int64.of_nativeint c) in
-    register_const t
-      (Flambda_static.Constant_defining_value.create_allocated_const
-         (Nativeint c)) "nativeint"
+    register_const t (CDV.create_allocated_const (Nativeint c)) "nativeint"
   | Const_pointer c ->
-    (* CR pchambart: the kind needs to be propagated somewhere to
-       say that this value must be scanned *)
+    (* XCR pchambart: the kind needs to be propagated somewhere to
+       say that this value must be scanned
+       mshinwell: I don't think it does need to be scanned?
+    *)
     Tagged_immediate (Immediate.int (Targetint.of_int c)), "pointer"
   | Const_immstring c ->
-    register_const t
-      (Flambda_static.Constant_defining_value.create_allocated_const
-         (Immutable_string c)) "immstring"
+    register_const t (CDV.create_allocated_const (Immutable_string c))
+      "immstring"
   | Const_float_array c ->
     register_const t
-      (Flambda_static.Constant_defining_value.create_allocated_const
+      (CDV.create_allocated_const
          (Immutable_float_array (List.map float_of_string c)))
       "float_array"
   | Const_block (tag, consts) ->
-    let const : Flambda_static.Constant_defining_value.t =
-      Flambda_static.Constant_defining_value.create_block
+    let const : CDV.t =
+      CDV.create_block
         (Tag.Scannable.create_exn tag)
         (List.map (fun c -> fst (declare_const t c)) consts)
     in

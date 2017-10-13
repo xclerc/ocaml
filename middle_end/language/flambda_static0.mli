@@ -56,6 +56,8 @@ module Constant_defining_value : sig
 
   val create_project_closure : Symbol.t -> Closure_id.t -> t
 
+  val tag : t -> Tag.t
+
   module Mappers : sig
     val map_set_of_closures
        : t

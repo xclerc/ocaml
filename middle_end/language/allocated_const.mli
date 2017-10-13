@@ -31,6 +31,8 @@ type t =
   | String of string
   | Immutable_string of string
 
+val tag : t -> Tag.t
+
 val compare : t -> t -> int
 
 val print : Format.formatter -> t -> unit

@@ -26,6 +26,17 @@ type t =
   | String of string
   | Immutable_string of string
 
+let tag t =
+  match t with
+  | Float _ -> Tag.double_tag
+  | Int32 _
+  | Int64 _
+  | Nativeint _ -> Tag.custom_tag
+  | Float_array _
+  | Immutable_float_array _ -> Tag.double_array_tag
+  | String _
+  | Immutable_string _ -> Tag.string_tag
+
 let compare (x : t) (y : t) =
   let compare_floats x1 x2 =
     (* It is important to compare the bit patterns here, so as not to

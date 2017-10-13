@@ -117,6 +117,13 @@ module Constant_defining_value = struct
 
   let create_project_closure sym closure_id = Project_closure (sym, closure_id)
 
+  let tag t =
+    match t with
+    | Allocated_const const -> Allocated_const.tag const
+    | Block (tag, _) -> Tag.Scannable.to_tag tag
+    | Set_of_closures _
+    | Project_closure _ -> Tag.closure_tag
+
   let free_symbols_helper symbols (const : t) =
     match const with
     | Allocated_const _ -> ()

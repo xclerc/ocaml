@@ -30,9 +30,11 @@ let create_exn tag =
 let to_int t = t
 
 let zero = 0
+let string_tag = Obj.string_tag
 let double_tag = Obj.double_tag
 let double_array_tag = Obj.double_array_tag
 let custom_tag = Obj.custom_tag
+let closure_tag = Obj.closure_tag
 
 module Scannable = struct
   type nonrec t = t
@@ -50,6 +52,7 @@ module Scannable = struct
       Misc.fatal_error (Printf.sprintf "Tag.Scannable.create_exn %d" tag)
 
   let to_int t = t
+  let to_tag t = t
 
   let of_tag tag =
     if tag < 0 || tag >= Obj.no_scan_tag then None
