@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,36 +16,35 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Constant_defining_value = Flambda.Constant_defining_value
+module CDV = Flambda_static.Constant_defining_value
+module BF = Flambda_static.Constant_defining_value_block_field
 
-let update_constant_for_sharing sharing_symbol_tbl const
-      : Flambda_static.Constant_defining_value.t =
+let update_constant_for_sharing sharing_symbol_tbl const : CDV.t =
   let substitute_symbol sym =
     match Symbol.Tbl.find sharing_symbol_tbl sym with
     | exception Not_found -> sym
     | symbol -> symbol
   in
-  match (const:Flambda_static.Constant_defining_value.t) with
-  | Allocated_const _ -> const
+  match (const : Flambda_static.Constant_defining_value.t) with
+  | Allocated_const const ->
+    CDV.create_allocated_const const
   | Block (tag, fields) ->
-    let subst_field (field:Flambda_static.Constant_defining_value.t_block_field) :
-      Flambda_static.Constant_defining_value.t_block_field =
+    let subst_field (field : BF.t) : BF.t =
       match field with
-      | Const _ -> field
+      | Tagged_immediate _ -> field
       | Symbol sym ->
         Symbol (substitute_symbol sym)
     in
     let fields = List.map subst_field fields in
-    Block (tag, fields)
+    CDV.create_block tag fields
   | Set_of_closures set_of_closures ->
-    Set_of_closures (
-      Flambda.Set_of_closures.Mappers.map_symbols
-        ~f:substitute_symbol set_of_closures
-    )
+    CDV.create_set_of_closures
+      (Flambda.Set_of_closures.Mappers.map_symbols
+        ~f:substitute_symbol set_of_closures)
   | Project_closure (sym, closure_id) ->
-    Project_closure (substitute_symbol sym, closure_id)
+    CDV.create_project_closure (substitute_symbol sym) closure_id
 
-let cannot_share (const : Flambda_static.Constant_defining_value.t) =
+let cannot_share (const : CDV.t) =
   match const with
   (* Strings and float arrays are mutable; we never share them. *)
   | Allocated_const ((String _) | (Float_array _)) -> true
@@ -53,41 +52,33 @@ let cannot_share (const : Flambda_static.Constant_defining_value.t) =
     false
 
 let share_definition constant_to_symbol_tbl sharing_symbol_tbl
-    symbol def end_symbol =
+      symbol def root_symbol =
   let def = update_constant_for_sharing sharing_symbol_tbl def in
-  if cannot_share def || Symbol.equal symbol end_symbol then
-    (* The symbol exported by the unit (end_symbol), cannot be removed
+  if cannot_share def || Symbol.equal symbol root_symbol then
+    (* The symbol exported by the unit (root_symbol), cannot be removed
        from the module. We prevent it from being shared to avoid that. *)
     Some def
   else
-    begin match Constant_defining_value.Tbl.find constant_to_symbol_tbl def with
+    begin match CDV.Tbl.find constant_to_symbol_tbl def with
     | exception Not_found ->
-      Constant_defining_value.Tbl.add constant_to_symbol_tbl def symbol;
+      CDV.Tbl.add constant_to_symbol_tbl def symbol;
       Some def
     | equal_symbol ->
       Symbol.Tbl.add sharing_symbol_tbl symbol equal_symbol;
       None
     end
 
-(* CR-soon mshinwell: move to [Flambda_utils] *)
-let rec end_symbol (program : Flambda_static.Program.t_body) =
-  match program with
-  | End symbol -> symbol
-  | Let_symbol (_, _, program)
-  | Let_rec_symbol (_, program)
-  | Initialize_symbol (_, _, _, program)
-  | Effect (_, _, program) -> end_symbol program
-
 let share_constants (program : Flambda_static.Program.t) =
-  let end_symbol = end_symbol program.program_body in
+  let root_symbol = Flambda_static.Program.root_symbol program in
   let sharing_symbol_tbl = Symbol.Tbl.create 42 in
-  let constant_to_symbol_tbl = Constant_defining_value.Tbl.create 42 in
-  let rec loop (program : Flambda_static.Program.t_body) : Flambda_static.Program.t_body =
+  let constant_to_symbol_tbl = CDV.Tbl.create 42 in
+  let rec loop (program : Flambda_static.Program_body.t)
+        : Flambda_static.Program_body.t =
     match program with
     | Let_symbol (symbol, def, program) ->
       begin match
         share_definition constant_to_symbol_tbl sharing_symbol_tbl symbol
-          def end_symbol
+          def root_symbol
       with
       | None ->
         loop program
@@ -102,19 +93,13 @@ let share_constants (program : Flambda_static.Program.t) =
           defs
       in
       Let_rec_symbol (defs, loop program)
-    | Initialize_symbol (symbol, tag, fields, program) ->
-      let fields =
-        List.map (fun (field, cont) ->
-            let field =
-              Flambda.Expr.Mappers.map_symbols ~f:(fun symbol ->
-                  try Symbol.Tbl.find sharing_symbol_tbl symbol with
-                  | Not_found -> symbol)
-                field
-            in
-            field, cont)
-          fields
+    | Initialize_symbol (symbol, descr, program) ->
+      let expr =
+        Flambda.Expr.Mappers.map_symbols descr.expr ~f:(fun symbol ->
+            try Symbol.Tbl.find sharing_symbol_tbl symbol with
+            | Not_found -> symbol)
       in
-      Initialize_symbol (symbol, tag, fields, loop program)
+      Initialize_symbol (symbol, { descr with expr; }, loop program)
     | Effect (expr, cont, program) ->
       let expr =
         Flambda.Expr.Mappers.map_symbols

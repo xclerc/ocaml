@@ -14,13 +14,12 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(* CR mshinwell for pchambart: Given your changes in Closure_conversion, maybe
+   we don't need the special [Pmakeblock] case here now. *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module IS = Flambda_static.Program_body.Initialize_symbol
-
-(* XXX We need to implement an unboxing pass on [Initialize_symbol] that's
-   like [Unbox_returns], except that no wrapper is needed---we can simply
-   rewrite the [Read_symbol_field] expressions. *)
 
 let should_copy (named : Flambda.Named.t) =
   match named with

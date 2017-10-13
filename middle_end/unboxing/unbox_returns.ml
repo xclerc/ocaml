@@ -19,6 +19,9 @@
 
 module U = Simplify_aux.Continuation_uses
 
+(* CR mshinwell: Add another pass which is like this one but applies to
+   [Initialize_symbol] constructions. *)
+
 (* CR mshinwell: To be implemented: new strategy:
    - Use the approximation only to avoid unnecessary work
    - Find variables passed to return continuations
