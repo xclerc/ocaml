@@ -82,6 +82,7 @@ module type Continuations_or_functions = sig
   val check_application : Flambda.Expr.t -> application option
 end
 
+(*
 module For_functions = struct
   module Name = struct
     include Variable
@@ -167,6 +168,7 @@ module For_functions = struct
     | Apply { func; args; } -> Some { callee = func; args; }
     | _ -> None
 end
+*)
 
 module For_continuations = struct
   module Name = struct
@@ -569,7 +571,9 @@ module Analyse (CF : Continuations_or_functions) = struct
     arguments
 end
 
+(*
 module Functions = Analyse (For_functions)
+*)
 
 module Continuations = struct
   module Continuation_and_variable = For_continuations.Name_and_variable

@@ -239,7 +239,8 @@ MIDDLE_END_ANALYSIS=\
   middle_end/analysis/find_recursive_functions.cmo \
   middle_end/analysis/inconstant_idents.cmo \
   middle_end/analysis/invariant_params.cmo \
-  middle_end/analysis/place_continuations.cmo
+  middle_end/analysis/place_continuations.cmo \
+  middle_end/analysis/reachability.cmo
 
 MIDDLE_END_BASE_TYPES=\
   middle_end/base_types/closure_element.cmo \

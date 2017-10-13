@@ -1,36 +1,22 @@
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*            Pierre Chambart and Vincent Laviron, OCamlPro               *)
+(*           Mark Shinwell and Leo White, Jane Street Europe              *)
+(*                                                                        *)
+(*   Copyright 2017 OCamlPro SAS                                          *)
+(*   Copyright 2017 Jane Street Group LLC                                 *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
+
+(* CR mshinwell for pchambart / vlaviron: Please format to 80 columns. *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
-
-(* Analysis propagating the possibility for a value to reach a
-   variable.
-
-   We say that a variable x 'flow' to another variable y if there exists an
-   execution where a value bound to x can later be bound to y.
-
-   We define the partial order '<=' as the transitive closure of the
-   'flow' relation. ('flow' is not necessarilly transitively closed,
-   but is usualy quite close).
-
-   For instance
-
-   let f b x y =
-   let v = if b then x else y in
-   if b then
-     let w = v in
-     w
-   else
-     let z = v in
-     z
-
-   x and y flow to v,
-   v flow to w and z
-   x flow to w,
-   y flow to z
-   but x does not flow to z, yet z <= x
-
-   This analysis computes an over-approximation of the '<=' relation.
-
-   The main approximation point is about functions: ...
-*)
 
 module Int = Numbers.Int
 
@@ -49,12 +35,12 @@ type descr =
     (* This is the value to which the projection is bound.
        If we want cross function analysis, we need to add the return continuation argument variable
        here to fetch it when applying. *)
-    mutable const : Flambda.const option;
+    mutable const : Flambda.Const.t option;
     mutable proj : Closure_id.t option;
     (* This can contain a closure projected using this closure_id from the original closure 'variable' *)
     mutable original_closure : Variable.t option;
     mutable closure_value : closure_descr option;
-    created_as : Flambda.named option;
+    created_as : Flambda.Named.t option;
   }
 
   (* Pour rendre évident les cas constants:
@@ -102,15 +88,20 @@ type env = {
 
 let find_info env var =
   try Variable.Tbl.find env.info var
-  with _ ->
-    Misc.fatal_errorf "Undefined variable %a" Variable.print var
+  with _ -> Misc.fatal_errorf "Undefined variable %a" Variable.print var
+
 let find_mut_info env var = Mutable_variable.Tbl.find env.mut_var var
 
 let ext_comp_unit =
   let ln = Linkage_name.create "__dummy__" in
   Compilation_unit.create (Ident.create_persistent "__dummy__") ln
-let external_world_source = Variable.create ~current_compilation_unit:ext_comp_unit "external_world_source"
-let external_world_sink = Variable.create ~current_compilation_unit:ext_comp_unit "external_world_sink"
+
+let external_world_source =
+  Variable.create ~current_compilation_unit:ext_comp_unit
+    "external_world_source"
+let external_world_sink =
+  Variable.create ~current_compilation_unit:ext_comp_unit
+    "external_world_sink"
 
 let fresh_variable name = Variable.create name
 
@@ -146,13 +137,13 @@ let empty_env () =
   Variable.Tbl.add tables.info external_world_sink (fresh_info external_world_sink);
   tables
 
-(* Be careful this reads in the other direction as one might expect:
-   This is a comparison operator, not an arrow.
+(* Be careful: this reads in the other direction from what one might expect:
+   this is a comparison operator, not an arrow.
 
-   a <== b means: The set of values reaching a is smaller than the set
-   reaching b.
+   a <== b means:
+   "The set of values reaching a is smaller than the set reaching b."
 
-   for instance, `let b = a in` would produce such an inequality.
+   For example `let b = a in ...` would produce such an inequality.
 *)
 let (<==) (v1, info1) (v2, info2) =
   (*Format.printf "cons %24s  <  %s@." v1 v2;*)
@@ -166,6 +157,8 @@ let (<==) (v1, info1) (v2, info2) =
 let (<=|) info1 info2 =
   (info1.var, info1) <== (info2.var, info2)
 
+(** When [arg] corresponds to a symbol, then [n] is a logical field, not a
+    physical field. *)
 let field env n arg ~assigned_to : info =
   let arg_info = Variable.Tbl.find env.info arg in
   let new_info = fresh_info assigned_to in
@@ -241,7 +234,6 @@ let var_within_closure env var_within_closure ~arg ~assigned_to : info =
   (* Si version direct: ajouter la propagation ici *)
   new_info
 
-
 let proj env closure_id arg ~created_as ~assigned_to : info =
   let arg_info = Variable.Tbl.find env.info arg in
   let new_info = fresh_info ~created_as assigned_to in
@@ -270,6 +262,7 @@ let from_external env var info =
   let external_info = Variable.Tbl.find env.info external_world_source in
   (external_world_source, external_info) <== (var, info)
 
+(* CR mshinwell: move to utils/ somewhere. *)
 let (-->) i j =
   let rec loop i j acc =
     if i > j then acc
@@ -280,42 +273,47 @@ let (-->) i j =
 let init_return env cont arity : Variable.t list =
   let results =
     List.map (fun i ->
-      let result = Variable.create (Printf.sprintf "variable_from_cont_%i" i) in
-      let result_info = fresh_info result in
-      leak env result result_info;
-      Variable.Tbl.add env.info result result_info;
-      result)
-      (1 --> arity)
+        let result =
+          Variable.create (Printf.sprintf "variable_from_cont_%i" i)
+        in
+        let result_info = fresh_info result in
+        leak env result result_info;
+        Variable.Tbl.add env.info result result_info;
+        result)
+      (1 --> Flambda_arity.length arity)
   in
   Continuation.Tbl.add env.cont cont results;
   results
 
-let closure env ~assigned_to functs (variables:Flambda.free_var Var_within_closure.Map.t) =
+let closure env ~assigned_to functs (variables : Flambda.Free_vars.t) =
   let new_info = fresh_info assigned_to in
   new_info.descr.vars_within_closure <-
-    Var_within_closure.Map.mapi (fun inner_var (free_var:Flambda.free_var) ->
-      (* Quand les var_within_closure ne seront plus bindindés dans la
-         fonction, ce sera simplement une variable fraiche quelconque *)
-      let inner_var = Var_within_closure.unwrap inner_var in
-      let inner_info = init_fresh_info env inner_var in
-      let exter_info = find_info env free_var.var in
-      exter_info <=| inner_info;
-      free_var.var)
+    Var_within_closure.Map.mapi
+      (fun inner_var (free_var : Flambda.Free_var.t) ->
+        (* Quand les var_within_closure ne seront plus bindindés dans la
+           fonction, ce sera simplement une variable fraiche quelconque *)
+        let inner_var = Var_within_closure.unwrap inner_var in
+        let inner_info = init_fresh_info env inner_var in
+        let exter_info = find_info env free_var.var in
+        exter_info <=| inner_info;
+        free_var.var)
       variables;
   let functs =
-    Closure_id.Map.mapi (fun closure_id (funct:Flambda.function_declaration) ->
-      (* let var = funct.self in *)
-      let var = Closure_id.unwrap closure_id in
-      let info = init_fresh_info env var in
-      info.descr.proj <- Some closure_id;
-      let closure_return = init_return env funct.continuation_param funct.return_arity in
-      info.descr.closure_value <- Some {
-        closure_args = Parameter.List.vars funct.params;
-        closure_return;
-      };
-      Variable.Tbl.add env.info var info;
-      var
-    ) functs
+    Closure_id.Map.mapi
+      (fun closure_id (funct : Flambda.Function_declaration.t) ->
+        let var = funct.my_closure in
+        let info = init_fresh_info env var in
+        info.descr.proj <- Some closure_id;
+        let closure_return =
+          init_return env funct.continuation_param funct.return_arity
+        in
+        info.descr.closure_value <- Some {
+          closure_args = Flambda.Typed_parameter.List.vars funct.params;
+          closure_return;
+        };
+        Variable.Tbl.add env.info var info;
+        var)
+      functs
   in
   new_info.descr.closures <- functs;
   new_info.descr.original_closure <- Some assigned_to;
@@ -328,15 +326,15 @@ let var env v ~assigned_to =
   new_info
 
 let unit_info _env ~assigned_to =
-  let created_as : Flambda.named = Const (Flambda.Const.Const_pointer 0) in
-  let new_info = fresh_info ~created_as assigned_to in
-  new_info
+  let created_as : Flambda.Named.t =
+    Const (Flambda.Const.Tagged_immediate (Immediate.int Targetint.zero))
+  in
+  fresh_info ~created_as assigned_to
 
 let symbol env v ~assigned_to =
   let prev_var =
     try Symbol.Tbl.find env.info_symbol v
-    with _ ->
-      Misc.fatal_errorf "Undefined symbol %a" Symbol.print v
+    with _ -> Misc.fatal_errorf "Undefined symbol %a" Symbol.print v
   in
   var env prev_var ~assigned_to
 
@@ -354,10 +352,11 @@ let apply env cont func args =
   let cont_arg =
     match Continuation.Tbl.find env.cont cont with
     | exception Not_found ->
+      (* CR mshinwell for pchambart / vlaviron: This should probably be a
+         [Misc.fatal_errorf]. *)
       assert false
     | args -> args
   in
-
   (* TODO: on peut ne pas creer de nouvelle variable en regardant la tête de func.
      Mais ça fait un peu plus de cas *)
   let fresh_func_var = Variable.rename func in
@@ -375,10 +374,11 @@ let init_param env var =
   from_external env var info;
   Variable.Tbl.add env.info var info
 
-let do_allocated_const _env ~(assigned_to:Variable.t) (constant:Allocated_const.t) : info =
+let do_allocated_const _env ~(assigned_to : Variable.t)
+      (constant : Allocated_const.t) : info =
   fresh_info ~created_as:(Allocated_const constant) assigned_to
 
-let rec do_named env (assigned_to:Variable.t) (named:Flambda.named) : unit =
+let rec do_named env (assigned_to : Variable.t) (named : Flambda.Named.t) =
   let info =
     match named with
     | Var v ->
@@ -400,10 +400,10 @@ let rec do_named env (assigned_to:Variable.t) (named:Flambda.named) : unit =
       let read_info = find_mut_info env mut_var in
       var env read_info.var ~assigned_to
     | Symbol s ->
-      symbol env s ~assigned_to
-    | Read_symbol_field (symbol,i) ->
+      symbol env (Symbol.Of_kind_value.to_symbol s) ~assigned_to
+    | Read_symbol_field { symbol; logical_field; } ->
       let var = Symbol.Tbl.find env.info_symbol symbol in
-      field env i var ~assigned_to
+      field env logical_field var ~assigned_to
     | Allocated_const constant ->
       do_allocated_const env ~assigned_to constant
     | Set_of_closures set_of_closures ->
@@ -432,27 +432,27 @@ let rec do_named env (assigned_to:Variable.t) (named:Flambda.named) : unit =
   in
   Variable.Tbl.replace env.info assigned_to info
 
-and do_set_of_closures env ~assigned_to (set_of_closures:Flambda.set_of_closures) =
-  let functs = (Closure_id.wrap_map (set_of_closures.function_decls.funs)) in
+and do_set_of_closures env ~assigned_to
+      (set_of_closures : Flambda.Set_of_closures.t) =
+  let functs = set_of_closures.function_decls.funs in
   let info =
     closure env ~assigned_to
       functs
-      (Var_within_closure.wrap_map set_of_closures.free_vars)
+      set_of_closures.free_vars
   in
   Variable.Tbl.add env.info assigned_to info;
-  Closure_id.Map.iter (fun _ (funct:Flambda.function_declaration) ->
-    List.iter (fun param -> init_param env (Parameter.var param)) funct.params;
-    do_expr env funct.body) functs;
+  Closure_id.Map.iter (fun _ (funct : Flambda.Function_declaration.t) ->
+      List.iter (fun param ->
+          init_param env (Flambda.Typed_parameter.var param))
+        funct.params;
+      do_expr env funct.body)
+    functs;
   info
 
-and do_expr env (expr:Flambda.expr) : unit =
+and do_expr env (expr : Flambda.Expr.t) : unit =
   match expr with
   | Let { var; defining_expr; body } ->
     do_named env var defining_expr;
-    do_expr env body
-  | Let_cont { body; handlers = Alias { name; alias_of } } ->
-    let cont = Continuation.Tbl.find env.cont alias_of in
-    Continuation.Tbl.add env.cont name cont;
     do_expr env body
   | Let_cont { body; handlers = Nonrecursive { name; handler } } ->
     declare_continuation env name handler;
@@ -486,33 +486,34 @@ and do_expr env (expr:Flambda.expr) : unit =
   | Unreachable ->
     ()
 
-and declare_continuation env name (handler:Flambda.continuation_handler) : unit =
-  let params = Parameter.List.vars handler.params in
+and declare_continuation env name (handler : Flambda.Continuation_handler.t) =
+  let params = Flambda.Typed_parameter.List.vars handler.params in
   Continuation.Tbl.add env.cont name params;
-  let declare_var var =
-    Variable.Tbl.add env.info var (fresh_info var)
-  in
+  let declare_var var = Variable.Tbl.add env.info var (fresh_info var) in
   List.iter declare_var params
 
-and do_continuation env _name (handler:Flambda.continuation_handler) : unit =
+and do_continuation env _name (handler : Flambda.Continuation_handler.t) =
   do_expr env handler.handler
 
-and do_constant_to_variable env ~(assigned_to:Variable.t) (constant:Flambda.constant_defining_value) : info =
+and do_constant_to_variable env ~(assigned_to : Variable.t)
+      (constant : Flambda_static.Constant_defining_value.t) : info =
   match constant with
   | Allocated_const constant ->
     do_allocated_const env ~assigned_to constant
   | Block (_tag, fields) ->
     let fields =
-      List.map (fun (field:Flambda.constant_defining_value_block_field) ->
-        match field with
-        | Symbol s ->
-          Symbol.Tbl.find env.info_symbol s
-        | Const c ->
-          let assigned_to = fresh_variable "constant" in
-          (* TODO: give real named definition *)
-          let info = const env (Var assigned_to) c ~assigned_to in
-          Variable.Tbl.add env.info assigned_to info;
-          assigned_to)
+      List.map
+        (fun (field : Flambda_static.Constant_defining_value_block_field.t) ->
+          match field with
+          | Symbol s ->
+            Symbol.Tbl.find env.info_symbol s
+          | Tagged_immediate imm ->
+            let assigned_to = fresh_variable "constant" in
+            (* TODO: give real named definition *)
+            let c : Flambda.Const.t = Tagged_immediate imm in
+            let info = const env (Var assigned_to) c ~assigned_to in
+            Variable.Tbl.add env.info assigned_to info;
+            assigned_to)
         fields
     in
     block env None fields ~assigned_to
@@ -522,7 +523,7 @@ and do_constant_to_variable env ~(assigned_to:Variable.t) (constant:Flambda.cons
     let set_of_closures =
       (Symbol.Tbl.find env.info_symbol set_of_closures_sym)
     in
-    let named : Flambda.named =
+    let named : Flambda.Named.t =
       Project_closure
         { set_of_closures;
           closure_id = Closure_id.Set.singleton closure_id
@@ -530,13 +531,14 @@ and do_constant_to_variable env ~(assigned_to:Variable.t) (constant:Flambda.cons
     in
     proj env closure_id set_of_closures ~created_as:named ~assigned_to
 
-and do_constant env ~(assigned_to_symbol:Symbol.t) (constant:Flambda.constant_defining_value) : unit =
+and do_constant env ~(assigned_to_symbol : Symbol.t)
+      (constant : Flambda_static.Constant_defining_value.t) : unit =
   let assigned_to = fresh_variable "symbol" in
   let info = do_constant_to_variable env ~assigned_to constant in
   Symbol.Tbl.add env.info_symbol assigned_to_symbol assigned_to;
   Variable.Tbl.add env.info assigned_to info
 
-and do_program env (prog:Flambda.program_body) : unit =
+and do_program env (prog : Flambda_static.Program_body.t) : unit =
   match prog with
   | Let_symbol (s,const,body) ->
     do_constant env ~assigned_to_symbol:s const;
@@ -557,29 +559,19 @@ and do_program env (prog:Flambda.program_body) : unit =
     ) declared_defs;
     do_program env body
   | Effect (expr,cont,body) ->
-    (* Effect continuation arity should really be 0 *)
-    let _var : Variable.t list = init_return env cont 1 in
+    let _ret_vars : Variable.t list = init_return env cont [] in
     do_expr env expr;
     do_program env body
-  | Initialize_symbol ( s, _tag, fields, body) ->
-
-    let do_field (expr, cont) =
-      let ret_var = init_return env cont 1 in
-      do_expr env expr;
-      ret_var
-    in
-    (* TODO factoriser *)
-    let fields = List.flatten (List.map do_field fields) in
+  | Initialize_symbol (s, descr, body) ->
+    let ret_vars = init_return env descr.return_cont descr.return_arity in
+    do_expr env descr.expr;
     let assigned_to = fresh_variable "symbol" in
     Symbol.Tbl.add env.info_symbol s assigned_to;
-
     (* TODO: donner une définition de la structure du bloc, pour
        l'analyse de constantes *)
-    let info = block env None fields ~assigned_to in
+    let info = block env None ret_vars ~assigned_to in
     Variable.Tbl.replace env.info assigned_to info;
-
     do_program env body
-
   | End s ->
     let var = Symbol.Tbl.find env.info_symbol s in
     let info = Variable.Tbl.find env.info var in
@@ -778,22 +770,21 @@ and do_program env (prog:Flambda.program_body) : unit =
     done;
     Format.printf "add count: %i@." !count
 
-let define_imported_symbols env (program:Flambda.program) =
+let define_imported_symbols env (program : Flambda_static.Program.t) =
   Symbol.Set.iter (fun imported_symbol ->
-    let assigned_to =
-      fresh_variable
-        (Format.asprintf "imported_symbol_%a" Symbol.print imported_symbol)
-    in
-    Symbol.Tbl.add env.info_symbol imported_symbol assigned_to;
+      let assigned_to =
+        fresh_variable
+          (Format.asprintf "imported_symbol_%a" Symbol.print imported_symbol)
+      in
+      Symbol.Tbl.add env.info_symbol imported_symbol assigned_to;
 
-    (* TODO: donner une définition de la structure de la valeur, pour
-       l'analyse de constantes. Sinon, c'est aussi possible de faire
-       ça à la propagation, pour éviter de charger des choses
-       inutiles. *)
-    let info = fresh_info assigned_to in
-    Variable.Tbl.replace env.info assigned_to info;
-  ) program.imported_symbols
-
+      (* TODO: donner une définition de la structure de la valeur, pour
+         l'analyse de constantes. Sinon, c'est aussi possible de faire
+         ça à la propagation, pour éviter de charger des choses
+         inutiles. *)
+      let info = fresh_info assigned_to in
+      Variable.Tbl.replace env.info assigned_to info)
+    program.imported_symbols
 
 type result = unit
 
@@ -811,7 +802,7 @@ let show env =
   let () = Format.printf "computation done@.@." in
   show env
 
-let run (prog:Flambda.program) : result =
+let run (prog : Flambda_static.Program.t) : result =
   let env = empty_env () in
   Profile.record ~accumulate:true "traverse" (fun () ->
     define_imported_symbols env prog;

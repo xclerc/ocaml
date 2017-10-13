@@ -16,6 +16,8 @@
 
 type t = Flambda_kind.t list
 
+let length t = List.length t
+
 include Identifiable.Make (struct
   type nonrec t = t
 

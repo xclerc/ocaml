@@ -14,6 +14,11 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(* XXX commented out until Pierre and Vincent have investigated a
+   replacement for Lift_constants based on the new Reachability pass *)
+
+(*
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 [@@@ocaml.warning "-37"]  (* XXX temporary until Pierre has worked on this *)
@@ -514,3 +519,5 @@ let closure cl { closure; _ } =
   | Not_constant -> true
   | Implication _ -> false
   | exception Not_found -> false
+
+*)

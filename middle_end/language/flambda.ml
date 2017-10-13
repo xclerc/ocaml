@@ -948,7 +948,8 @@ end = struct
     | Project_var project_var -> Project_var project_var
     | Project_closure project_closure -> Project_closure project_closure
     | Move_within_set_of_closures move -> Move_within_set_of_closures move
-    | Prim (prim, vars) -> Prim (prim, vars, dbg)
+    | Pure_primitive (prim, vars) -> Prim (prim, vars, dbg)
+    | Field (field, block) -> Prim (Pfield field, [block], dbg)
     | Switch _ ->
       (* CR mshinwell: This is dubious -- check usage *)
       Misc.fatal_error "Unsupported"

@@ -181,9 +181,10 @@ module rec Expr : sig
 
       Exception flow is currently handled (for simplicity) using explicit push
       and pop trap operations (see above) rather than double-barrelled CPS.
+      This will likely change in the future.
 
       Note: All bound variables in Flambda terms must be distinct.
-      [Flambda_invariants] verifies this. *)
+  *)
   type t =
     | Let of Let.t
     | Let_mutable of Let_mutable.t

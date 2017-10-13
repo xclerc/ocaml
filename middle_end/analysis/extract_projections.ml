@@ -14,12 +14,12 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(*
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module E = Simplify_env
-(*
 module T = Flambda_type
-*)
 
 (* CR-soon pchambart: should we restrict only to cases
   when the field is aliased to a variable outside
@@ -32,10 +32,7 @@ module T = Flambda_type
   probably still happening).
 *)
 
-let known_valid_projections ~get_approx:_ ~projections:_ =
-  (* XXX to be fixed after Pierre has dealt with Flambda_type *)
-  assert false
-(*
+let known_valid_projections ~get_approx ~projections =
   Projection.Set.filter (fun projection ->
       let from = Projection.projecting_from projection in
       let approx = get_approx from in
@@ -88,12 +85,8 @@ let known_valid_projections ~get_approx:_ ~projections:_ =
         end
       | Prim _ | Switch _ -> true (* CR mshinwell: FIXME *) )
     projections
-*)
 
-let (* rec *) analyse_expr ~which_variables:_ _expr =
-  assert false
-
-(*
+let rec analyse_expr ~which_variables expr =
   let projections = ref Projection.Set.empty in
   let used_which_variables = ref Variable.Set.empty in
   let check_free_variable var =
@@ -191,7 +184,6 @@ let (* rec *) analyse_expr ~which_variables:_ _expr =
   let projections = !projections in
   let used_which_variables = !used_which_variables in
   projections, used_which_variables
-*)
 
 let from_expr ~get_approx ~which_variables expr =
   let projections, used_which_variables =
@@ -230,26 +222,6 @@ let from_function's_free_vars ~env ~free_vars
   in
   from_expr ~get_approx ~which_variables function_decl.body
 
-(*
-let from_function's_specialised_args ~env ~specialised_args
-      ~(function_decl : Flambda.Function_declaration.t) =
-  let which_variables = Variable.Map.keys specialised_args in
-  let get_approx from =
-    let outer_var =
-      match Variable.Map.find from specialised_args with
-      | exception Not_found -> assert false
-      | (outer_var : Flambda.specialised_to) ->
-        match outer_var.var with
-        | Some var -> Freshening.apply_variable (E.freshening env) var
-        | None ->
-          Misc.fatal_errorf "No equality to variable for specialised arg %a"
-            Variable.print from
-    in
-    E.find_exn env outer_var
-  in
-  from_expr ~get_approx ~which_variables function_decl.body
-*)
-
 let from_continuation ~uses ~(handler : Flambda.Continuation_handler.t) =
   let handler_params = Flambda.Typed_parameter.List.vars handler.params in
   let which_variables = Variable.Set.of_list handler_params in
@@ -271,3 +243,5 @@ Format.eprintf "params_to_approxs:\n@;%a\n"
     | approx -> approx
   in
   from_expr ~get_approx ~which_variables handler.handler
+
+*)

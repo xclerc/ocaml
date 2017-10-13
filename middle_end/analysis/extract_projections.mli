@@ -14,6 +14,8 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(*
+
 (** Identify projections from variables used in function or continuation
     bodies (free variables or specialised args, for example, according to
     [which_variables] below).  Projections from variables that are also
@@ -33,3 +35,5 @@ val from_continuation
    : uses:Simplify_result.Continuation_uses.t
   -> handler:Flambda.Continuation_handler.t
   -> Projection.Set.t
+
+*)

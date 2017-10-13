@@ -113,7 +113,8 @@ type t =
   | Project_var of Project_var.t
   | Project_closure of Project_closure.t
   | Move_within_set_of_closures of Move_within_set_of_closures.t
-  | Prim of Lambda.primitive * Variable.t list
+  | Pure_primitive of Lambda.primitive * Variable.t list
+  | Field of int * Variable.t
   | Switch of Variable.t
 
 include Identifiable.Make (struct
@@ -127,10 +128,14 @@ include Identifiable.Make (struct
       Project_closure.compare project_closure1 project_closure2
     | Move_within_set_of_closures move1, Move_within_set_of_closures move2 ->
       Move_within_set_of_closures.compare move1 move2
-    | Prim (prim1, args1), Prim (prim2, args2) ->
+    | Pure_primitive (prim1, args1), Pure_primitive (prim2, args2) ->
       let c = Pervasives.compare prim1 prim2 in
       if c <> 0 then c
       else Variable.compare_lists args1 args2
+    | Field (field1, block1), Field (field2, block2) ->
+      let c = Pervasives.compare field1 field2 in
+      if c <> 0 then c
+      else Variable.compare block1 block2
     | Switch arg1, Switch arg2 -> Variable.compare arg1 arg2
     | Project_var _, _ -> -1
     | _, Project_var _ -> 1
@@ -138,8 +143,10 @@ include Identifiable.Make (struct
     | _, Project_closure _ -> 1
     | Move_within_set_of_closures _, _ -> -1
     | _, Move_within_set_of_closures _ -> 1
-    | Prim _, _ -> -1
-    | _, Prim _ -> 1
+    | Pure_primitive _, _ -> -1
+    | _, Pure_primitive _ -> 1
+    | Field _, _ -> -1
+    | _, Field _ -> 1
 
   let equal t1 t2 =
     (compare t1 t2) = 0
@@ -153,10 +160,12 @@ include Identifiable.Make (struct
     | Project_var (project_var) -> Project_var.print ppf project_var
     | Move_within_set_of_closures (move_within_set_of_closures) ->
       Move_within_set_of_closures.print ppf move_within_set_of_closures
-    | Prim (prim, args) ->
-      Format.fprintf ppf "Prim (%a, %a)"
+    | Pure_primitive (prim, args) ->
+      Format.fprintf ppf "Pure_primitive (%a, %a)"
         Printlambda.primitive prim
         Variable.print_list args
+    | Field (field, block) ->
+      Format.fprintf ppf "Field (%d, %a)" field Variable.print block
     | Switch arg -> Format.fprintf ppf "Switch %a" Variable.print arg
 end)
 
@@ -165,7 +174,7 @@ let projecting_from t =
   | Project_var { closure; _ } -> closure
   | Project_closure { set_of_closures; _ } -> set_of_closures
   | Move_within_set_of_closures { closure; _ } -> closure
-  | Prim (prim, [var]) ->
+  | Pure_primitive (prim, [var]) ->
     begin match prim with
     | Pfield _ | Pisint | Pgettag | Punbox_float | Pbox_float
     | Punbox_int32 | Pbox_int32 | Punbox_int64 | Pbox_int64
@@ -175,11 +184,12 @@ let projecting_from t =
       Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
         Printlambda.primitive prim
     end
-  | Prim (prim, vars) ->
+  | Pure_primitive (prim, vars) ->
     Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
         arguments for pure primitive CSE: %a (%a)"
       Printlambda.primitive prim
       Variable.print_list vars
+  | Field (_field, block) -> block
   | Switch var -> var
 
 let map_projecting_from t ~f : t =
@@ -205,21 +215,22 @@ let map_projecting_from t ~f : t =
       }
     in
     Move_within_set_of_closures move
-  | Prim (prim, [var]) ->
+  | Pure_primitive (prim, [var]) ->
     begin match prim with
     | Pfield _ | Pisint | Pgettag | Punbox_float | Pbox_float
     | Punbox_int32 | Pbox_int32 | Punbox_int64 | Pbox_int64
     | Punbox_nativeint | Pbox_nativeint | Puntag_immediate
-    | Ptag_immediate -> Prim (prim, [f var])
+    | Ptag_immediate -> Pure_primitive (prim, [f var])
     | _ ->
       Misc.fatal_errorf "Unsupported pure primitive %a for CSE"
         Printlambda.primitive prim
     end
-  | Prim (prim, vars) ->
+  | Pure_primitive (prim, vars) ->
     Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
         arguments for pure primitive CSE: %a (%a)"
       Printlambda.primitive prim
       Variable.print_list vars
+  | Field (field, block) -> Field (field, f block)
   | Switch var -> Switch (f var)
 
 let free_variables t =
@@ -228,5 +239,6 @@ let free_variables t =
   | Project_closure proj -> Project_closure.free_variables proj
   | Move_within_set_of_closures move ->
     Move_within_set_of_closures.free_variables move
-  | Prim (_prim, vars) -> Variable.Set.of_list vars
+  | Pure_primitive (_prim, vars) -> Variable.Set.of_list vars
+  | Field (_field, block) -> Variable.Set.singleton block
   | Switch var -> Variable.Set.singleton var

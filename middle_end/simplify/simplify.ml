@@ -1285,6 +1285,9 @@ and simplify_primitive env r prim args dbg =
       let default () : (Variable.t * Flambda.Named.t) list
             * Flambda.Named.t_reachable * R.t =
         let named, ty, benefit =
+          (* CR mshinwell: if the primitive is pure, add it to the environment
+             so CSE will work.  Need to be careful if the variable being
+             bound is a continuation argument *)
           let module Backend = (val (E.backend env) : Backend_intf.S) in
           Simplify_primitives.primitive prim (args, args_tys) tree dbg
             ~size_int:Backend.size_int ~big_endian:Backend.big_endian

@@ -13,6 +13,7 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
+(*
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
@@ -33,3 +34,5 @@ val variable : Variable.t -> result -> bool
 (** [closure cl res] returns [true] if [cl] is marked as inconstant
     in [res]. *)
 val closure : Set_of_closures_id.t -> result -> bool
+
+*)

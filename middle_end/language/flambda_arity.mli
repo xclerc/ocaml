@@ -19,4 +19,6 @@
 
 type t = Flambda_kind.t list
 
+val length : t -> int
+
 include Identifiable.S with type t := t

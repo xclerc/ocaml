@@ -279,8 +279,10 @@ let freshen_projection (projection : Projection.t) ~freshening : Projection.t =
       closure = apply_variable freshening closure;
       move;
     }
-  | Prim (prim, args) ->
-    Prim (prim, List.map (fun arg -> apply_variable freshening arg) args)
+  | Pure_primitive (prim, args) ->
+    Pure_primitive (prim,
+      List.map (fun arg -> apply_variable freshening arg) args)
+  | Field (field, block) -> Field (field, apply_variable freshening block)
   | Switch var ->
     Switch (apply_variable freshening var)
 

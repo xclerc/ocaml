@@ -41,6 +41,7 @@
      x -> { x; z }
 *)
 
+(* XXX needs fixing for the closure change
 module Functions : sig
   val invariant_params_in_recursion
      : Flambda.Function_declarations.t
@@ -59,6 +60,7 @@ module Functions : sig
     -> backend:(module Backend_intf.S)
     -> Variable.Set.t
 end
+*)
 
 module Continuations : sig
   module Continuation_and_variable : sig
