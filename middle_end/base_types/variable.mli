@@ -58,4 +58,15 @@ val debug_when_stamp_matches : t -> stamp:int -> f:(unit -> unit) -> unit
 type pair = t * t
 module Pair : Identifiable.S with type t := pair
 
+(* CR mshinwell: move to List.compare *)
 val compare_lists : t list -> t list -> int
+
+module List : sig
+  type nonrec t = t list
+
+  val rename
+     : ?current_compilation_unit:Compilation_unit.t
+    -> ?append:string
+    -> t
+    -> t
+end

@@ -149,29 +149,38 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
     in
     let to_copy = (var, kind, sym_defining_expr)::to_copy in
     let free_conts, lifted, body = lift ~importer body ~to_copy in
-    let tag, to_copy =
+    let return_cont, return_arity, expr =
       match defining_expr with
-      | Prim (Pmakeblock (tag, Immutable, _shape), fields, _dbg) ->
-        let conts_exprs_and_to_copies =
-          List.map (fun field ->
-              let cont = Continuation.create () in
-              let expr : Flambda.Expr.t = Apply_cont (cont, None, [field]) in
-              cont, expr, to_copy)
-            fields
+      | Prim (Pmakeblock (_tag, Immutable, shape), fields, _dbg) ->
+        let return_cont = Continuation.create () in
+        let num_fields = List.length fields in
+        let return_arity = Flambda_arity.of_block_shape shape ~num_fields in
+        let fields' = Variable.List.rename fields in
+        let field_renaming = List.combine fields fields' in
+        assert (Flambda_arity.length return_arity = List.length fields');
+        let bindings =
+          List.map2 (fun (old_field, new_field) kind ->
+              let defining_expr : Flambda.Named.t = Var old_field in
+              new_field, kind, defining_expr)
+            field_renaming
+            return_arity
         in
-        Tag.Scannable.create_exn tag, conts_exprs_and_to_copies
+        let body : Flambda.Expr.t = Apply_cont (return_cont, None, fields') in
+        let expr = Flambda.Expr.bind ~bindings ~body in
+        return_cont, return_arity, expr
       | _ ->
-        let cont = Continuation.create () in
+        let return_cont = Continuation.create () in
+        let return_arity = [Flambda_kind.value Must_scan] in
         let expr : Flambda.Expr.t =
           Flambda.Expr.create_let var' kind defining_expr
-            (Apply_cont (cont, None, [var']))
+            (Apply_cont (return_cont, None, [var']))
         in
-        Tag.Scannable.zero, [cont, expr, to_copy]
+        return_cont, return_arity, expr
     in
     let descr : IS.t =
-      { expr = ...;
-        return_cont = ...;
-        return_arity = ...;
+      { expr;
+        return_cont;
+        return_arity;
       }
     in
     let lifted = (symbol, descr, to_copy) :: lifted in
@@ -205,7 +214,7 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
 let introduce_symbols ~importer expr =
   let _free_conts, lifted, expr = lift ~importer expr ~to_copy:[] in
   let lifted =
-    List.map (fun (symbol, (descr : IS.t), to_copy) : IS.t ->
+    List.map (fun (symbol, (descr : IS.t), to_copy) ->
         let to_copy, subst =
           List.fold_left (fun (to_copy, subst)
                   (var, kind, defining_expr) ->
@@ -225,7 +234,8 @@ let introduce_symbols ~importer expr =
             to_copy
         in
         let expr = Flambda.Expr.toplevel_substitution ~importer subst expr in
-        { descr with expr; })
+        let descr = { descr with expr; } in
+        symbol, descr, to_copy)
       lifted
   in
   lifted, expr
@@ -259,16 +269,14 @@ let rec lift_program ~importer (program : Flambda_static.Program_body.t)
   | Effect (expr, cont, program) ->
     let program = lift_program ~importer program in
     let introduced, expr = introduce_symbols ~importer expr in
-    add_extracted introduced (Flambda.Effect (expr, cont, program))
-  | Initialize_symbol (symbol, tag, ((_::_::_) as fields), program) ->
-    Initialize_symbol (symbol, tag, fields, lift_program ~importer program)
-  | Initialize_symbol (sym, tag, [], program) ->
-    Let_symbol (sym, Block (tag, []), lift_program ~importer program)
-  | Initialize_symbol (symbol, tag, [field, cont], program) ->
-    let program = lift_program ~importer program in
-    let introduced, field = introduce_symbols ~importer field in
     add_extracted introduced
-      (Flambda.Initialize_symbol (symbol, tag, [field, cont], program))
+      (Flambda_static.Program_body.Effect (expr, cont, program))
+  | Initialize_symbol (symbol, descr, program) ->
+    let program = lift_program ~importer program in
+    let introduced, expr = introduce_symbols ~importer descr.expr in
+    add_extracted introduced
+      (Flambda_static.Program_body.Initialize_symbol
+        (symbol, { descr with expr; }, program))
 
 let lift ~backend (program : Flambda_static.Program.t) =
   let module B = (val backend : Backend_intf.S) in

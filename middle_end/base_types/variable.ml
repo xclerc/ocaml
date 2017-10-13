@@ -119,3 +119,10 @@ module Pair = Identifiable.Make (Identifiable.Pair (T) (T))
 
 let compare_lists l1 l2 =
   Misc.Stdlib.List.compare compare l1 l2
+
+module List = struct
+  type nonrec t = t list
+
+  let rename ?current_compilation_unit ?append t =
+    List.map (fun var -> rename ?current_compilation_unit ?append var) t
+end

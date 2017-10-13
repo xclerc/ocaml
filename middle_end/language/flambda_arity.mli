@@ -17,7 +17,11 @@
 (** Generalization of the concepts of "number of arguments" and "number
     of return values". *)
 
+[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+
 type t = Flambda_kind.t list
+
+val of_block_shape : Lambda.block_shape -> num_fields:int -> t
 
 val length : t -> int
 
