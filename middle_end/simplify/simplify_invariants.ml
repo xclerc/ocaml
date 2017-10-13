@@ -107,7 +107,7 @@ let count = ref 1 in
 List.iter (fun (use : Simplify_aux.Continuation_uses.Use.t) ->
   let env = use.env in
   Format.eprintf "Use %d: %a@ \n%!"
-    (!count) Simplify_aux.Env.print env;
+    (!count) Simplify_env.print env;
   incr count)
 application_points;
 *)

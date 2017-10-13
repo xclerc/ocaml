@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module E = Simplify_aux.Env
+module E = Simplify_env
 module B = Inlining_cost.Benefit
 
 module Definition = struct
@@ -100,7 +100,7 @@ module type S = sig
   val variable_suffix : string
 
   val what_to_specialise
-     : env:Simplify_aux.Env.t
+     : env:Simplify_env.t
     -> set_of_closures:Flambda.Set_of_closures.t
     -> What_to_specialise.t
 end

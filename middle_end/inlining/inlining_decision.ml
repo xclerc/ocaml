@@ -17,8 +17,8 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module T = Flambda_types
-module E = Simplify_aux.Env
-module R = Simplify_aux.Result
+module E = Simplify_env
+module R = Simplify_result
 module U = Flambda_utils
 module W = Inlining_cost.Whether_sufficient_benefit
 module T = Inlining_cost.Threshold
