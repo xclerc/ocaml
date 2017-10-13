@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2016 OCamlPro SAS                                          *)
-(*   Copyright 2016 Jane Street Group LLC                                 *)
+(*   Copyright 2016--2017 OCamlPro SAS                                    *)
+(*   Copyright 2016--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -624,7 +624,8 @@ and cps_function (func : Lambda.lfunction) : Ilambda.function_declaration =
   let body, _k_count = cps_tail body body_cont in
   { kind = func.kind;
     continuation_param = body_cont;
-    params = func.params;
+    params = List.map (fun param -> param, Lambda.Pgenval) func.params;
+    return = Pgenval;
     body;
     attr = func.attr;
     loc = func.loc;

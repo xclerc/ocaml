@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2016 OCamlPro SAS                                          *)
-(*   Copyright 2016 Jane Street Group LLC                                 *)
+(*   Copyright 2016--2017 OCamlPro SAS                                    *)
+(*   Copyright 2016--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -48,7 +48,8 @@ and let_mutable = {
 and function_declaration =
   { kind : L.function_kind;
     continuation_param : Continuation.t;
-    params : Ident.t list;
+    params : (Ident.t * Lambda.value_kind) list;
+    return : Lambda.value_kind;
     body : t;
     attr : L.function_attribute;
     loc : Location.t;
@@ -94,11 +95,11 @@ let rec print_function ppf
   let pr_params ppf params =
     match kind with
     | Curried ->
-      List.iter (fun param -> fprintf ppf "@ %a" Ident.print param) params
+      List.iter (fun (param, _) -> fprintf ppf "@ %a" Ident.print param) params
     | Tupled ->
       fprintf ppf " (";
       let first = ref true in
-      List.iter (fun param ->
+      List.iter (fun (param, _) ->
           if !first then first := false else fprintf ppf ",@ ";
           Ident.print ppf param)
         params;
