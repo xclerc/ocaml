@@ -24,10 +24,10 @@ val for_non_recursive_continuation
   -> handler:Flambda.Continuation_handler.t
   -> args_types:Flambda_type.t list
   -> backend:(module Backend_intf.S)
-  -> Flambda_utils.with_wrapper
+  -> Flambda.Expr.with_wrapper
 
 val for_recursive_continuations
-   : handlers:Flambda.Continuation_handler.ts
+   : handlers:Flambda.Continuation_handlers.t
   -> args_types:Flambda_type.t list Continuation.Map.t
   -> backend:(module Backend_intf.S)
-  -> Flambda_utils.with_wrapper Continuation.Map.t
+  -> Flambda.Expr.with_wrapper Continuation.Map.t

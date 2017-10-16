@@ -20,15 +20,14 @@
     The aim is to cause the closure to become closed. *)
 
 val rewrite_set_of_closures
-   : env:Simplify_aux.Env.t
+   : env:Simplify_env.t
   (* CR-soon mshinwell: eliminate superfluous parameter *)
   -> duplicate_function:(
-       env:Simplify_aux.Env.t
+       env:Simplify_env.t
     -> set_of_closures:Flambda.Set_of_closures.t
-    -> fun_var:Variable.t
-    -> new_fun_var:Variable.t
-    -> Flambda.Function_declaration.t
-      * Flambda.specialised_to Variable.Map.t)
+    -> closure_id:Closure_id.t
+    -> new_closure_id:Closure_id.t
+    -> Flambda.Function_declaration.t)
   -> set_of_closures:Flambda.Set_of_closures.t
   -> ((Variable.t * Flambda.Named.t) list
     * Flambda.Set_of_closures.t * Inlining_cost.Benefit.t) option

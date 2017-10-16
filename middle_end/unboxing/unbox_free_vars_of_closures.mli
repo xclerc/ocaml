@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -21,7 +21,7 @@
     of closures. *)
 
 val run
-   : env:Simplify_aux.Env.t
+   : env:Simplify_env.t
   -> set_of_closures:Flambda.Set_of_closures.t
   -> ((Variable.t * Flambda.Named.t) list
     * Flambda.Set_of_closures.t * Inlining_cost.Benefit.t) option

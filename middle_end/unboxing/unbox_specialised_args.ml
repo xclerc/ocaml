@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -22,6 +22,8 @@ module W = AST.What_to_specialise
 module Transform = struct
   let pass_name = "unbox-specialised-args"
   let variable_suffix = ""
+
+(*
 
   let precondition ~env:_ ~(set_of_closures : Flambda.Set_of_closures.t) =
     !Clflags.unbox_specialised_args
@@ -99,6 +101,17 @@ module Transform = struct
             what_to_specialise)
         projections_by_function
         what_to_specialise
+
+*)
+
+  let precondition ~env:_ ~(set_of_closures : Flambda.Set_of_closures.t) =
+    ignore set_of_closures;
+    false
+
+  let what_to_specialise ~env:_
+    ~(set_of_closures : Flambda.Set_of_closures.t) =
+    ignore set_of_closures;
+    Variable.Set.empty
 end
 
 include AST.Make (Transform)
