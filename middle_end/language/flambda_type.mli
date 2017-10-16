@@ -170,6 +170,8 @@ val get_field : t -> field_index:int -> get_field_result
     of that array; in all other cases return [None]. *)
 val length_of_array : t -> int option
 
+*)
+
 (** If the given type identifies another variable and [is_present_in_env]
     deems it to be in scope, return that variable (wrapped in a [Some]),
     otherwise return [None]. *)
@@ -191,6 +193,8 @@ val reify_using_env
   -> is_present_in_env:(Variable.t -> bool)
   -> Flambda0.Named.t option
 
+
+(*
 (** As for [reify] but only produces terms when the type describes a
     unique tagged immediate. *)
 val reify_as_tagged_immediate : t -> Immediate.t option

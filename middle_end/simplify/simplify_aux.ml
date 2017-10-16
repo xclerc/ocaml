@@ -29,6 +29,8 @@ let prepare_to_simplify_set_of_closures ~env
           let var =
             Freshening.apply_variable (E.freshening env) external_var.var
           in
+          (* XXX This should use [reify], since there's an advantage if that
+             works: removing a free variable. *)
           match
             T.follow_variable_equality (E.find_exn env var)
               ~is_present_in_env:(fun var -> E.mem env var)

@@ -119,6 +119,10 @@ let this_naked_int64_named n : Named.t * t =
 let this_naked_nativeint_named n : Named.t * t =
   Const (Naked_nativeint n), this_naked_nativeint n
 
+(* CR mshinwell: We need to think about tests such as [is_unknown] which maybe
+   should return [true] e.g. if a union turns out to be inconsistent.  Or else
+   we should rule out all such unions from the beginning. *)
+
 let is_bottom ~importer (t : t) =
   let module I = (val importer : Importer) in
   match t with
@@ -468,84 +472,14 @@ let length_of_array t =
   | Union union -> Unionable.size_of_block union
   | Float_array { contents = Contents floats; _ } -> Some (Array.length floats)
   | _ -> None  (* Could be improved later if required. *)
+*)
 
 let follow_variable_equality t ~is_present_in_env =
   match var t with
   | Some var when is_present_in_env var -> Some var
   | _ -> None
 
-let reify t : Named.t option =
-  let try_symbol () =
-    match symbol t with
-    | Some (sym, None) -> Some (Named.Symbol sym)
-    | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
-    | None -> None
-  in
-  match descr t with
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Block _) | Bottom | Unknown -> try_symbol ()
-    | Ok (Int n) -> Some (fst (make_const_int_named n))
-    | Ok (Char n) -> Some (fst (make_const_char_named n))
-    | Ok (Constptr n) -> Some (fst (make_const_ptr_named n))
-    end
-  | Boxed_number (Float, { descr = Unboxed_float fs; _ }) ->
-    begin match Float.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_boxed_float_named f))
-    | None -> try_symbol ()
-    end
-  | Boxed_number (Int32, { descr = Unboxed_int32 ns; _ }) ->
-    begin match Int32.Set.get_singleton ns with
-    | Some n -> Some (fst (make_const_boxed_int32_named n))
-    | None -> try_symbol ()
-    end
-  | Boxed_number (Int64, { descr = Unboxed_int64 ns; _ }) ->
-    begin match Int64.Set.get_singleton ns with
-    | Some n -> Some (fst (make_const_boxed_int64_named n))
-    | None -> try_symbol ()
-    end
-  | Boxed_number (Nativeint, { descr = Unboxed_nativeint ns; _ }) ->
-    begin match Nativeint.Set.get_singleton ns with
-    | Some n -> Some (fst (make_const_boxed_nativeint_named n))
-    | None -> try_symbol ()
-    end
-  | Unboxed_float fs ->
-    begin match Float.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_float_named f))
-    | None -> try_symbol ()
-    end
-  | Unboxed_int32 fs ->
-    begin match Int32.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_int32_named f))
-    | None -> try_symbol ()
-    end
-  | Unboxed_int64 fs ->
-    begin match Int64.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_int64_named f))
-    | None -> try_symbol ()
-    end
-  | Unboxed_nativeint fs ->
-    begin match Nativeint.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_nativeint_named f))
-    | None -> try_symbol ()
-    end
-  | Boxed_number _ | Immutable_string _ | Mutable_string _ | Float_array _
-  | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Load_lazily _ ->
-    try_symbol ()
-
-let reify_using_env t ~is_present_in_env =
-  let named =
-    match var t with
-    | Some var when is_present_in_env var -> Some (Named.Var var)
-    | _ ->
-      match symbol t with
-      | Some (sym, None) -> Some (Named.Symbol sym)
-      | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
-      | None -> None
-  in
-  match reify t with
-  | None -> named
-  | Some named -> Some named
+(*
 
 let reify_as_unboxed_float_array (fa : float_array) : float list option =
   match fa.contents with
@@ -970,6 +904,112 @@ let summarize ~importer (t : t) : Summary.t =
   | Naked_int32 _
   | Naked_int64 _
   | Naked_nativeint _ -> Wrong
+
+let reify t : (Variable.t * ...) * Named.t option =
+  let try_symbol () =
+    match symbol t with
+    | Some (sym, None) ->
+      begin match Symbol.Of_kind_value.of_symbol sym with
+      | None -> None
+      | Some sym -> Some (Named.Symbol sym)
+      end
+    | Some (sym, Some field) ->
+      Some (Named.Read_symbol_field {
+        symbol = sym;
+        logical_field = field;
+      })
+    | None -> None
+  in
+  match summarize t with
+  | Wrong -> None
+  | Blocks_and_tagged_immediates (blocks, imms) ->
+    begin match imms with
+    | Exactly imms ->
+      begin match Immediate.Set.get_singleton imms with
+      | Some imm ->
+        if Tag.Scannable.Map.is_empty blocks then
+          Some (Const (Tagged_immediate imm))
+        else
+          None
+      | None -> None
+      end
+    | Not_all_values_unknown -> None
+    end
+  | Boxed_floats fs ->
+    begin match Float.Set.get_singleton fs with
+    | Some f -> Some (Const (Boxed_float
+  | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
+  | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
+  | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
+  | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
+  | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
+
+
+
+  | Union union ->
+    begin match Unionable.flatten union with
+    | Ok (Block _) | Bottom | Unknown -> try_symbol ()
+    | Ok (Int n) -> Some (fst (make_const_int_named n))
+    | Ok (Char n) -> Some (fst (make_const_char_named n))
+    | Ok (Constptr n) -> Some (fst (make_const_ptr_named n))
+    end
+  | Boxed_number (Float, { descr = Unboxed_float fs; _ }) ->
+    begin match Float.Set.get_singleton fs with
+    | Some f -> Some (fst (make_const_boxed_float_named f))
+    | None -> try_symbol ()
+    end
+  | Boxed_number (Int32, { descr = Unboxed_int32 ns; _ }) ->
+    begin match Int32.Set.get_singleton ns with
+    | Some n -> Some (fst (make_const_boxed_int32_named n))
+    | None -> try_symbol ()
+    end
+  | Boxed_number (Int64, { descr = Unboxed_int64 ns; _ }) ->
+    begin match Int64.Set.get_singleton ns with
+    | Some n -> Some (fst (make_const_boxed_int64_named n))
+    | None -> try_symbol ()
+    end
+  | Boxed_number (Nativeint, { descr = Unboxed_nativeint ns; _ }) ->
+    begin match Nativeint.Set.get_singleton ns with
+    | Some n -> Some (fst (make_const_boxed_nativeint_named n))
+    | None -> try_symbol ()
+    end
+  | Unboxed_float fs ->
+    begin match Float.Set.get_singleton fs with
+    | Some f -> Some (fst (make_const_unboxed_float_named f))
+    | None -> try_symbol ()
+    end
+  | Unboxed_int32 fs ->
+    begin match Int32.Set.get_singleton fs with
+    | Some f -> Some (fst (make_const_unboxed_int32_named f))
+    | None -> try_symbol ()
+    end
+  | Unboxed_int64 fs ->
+    begin match Int64.Set.get_singleton fs with
+    | Some f -> Some (fst (make_const_unboxed_int64_named f))
+    | None -> try_symbol ()
+    end
+  | Unboxed_nativeint fs ->
+    begin match Nativeint.Set.get_singleton fs with
+    | Some f -> Some (fst (make_const_unboxed_nativeint_named f))
+    | None -> try_symbol ()
+    end
+  | Boxed_number _ | Immutable_string _ | Mutable_string _ | Float_array _
+  | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Load_lazily _ ->
+    try_symbol ()
+
+let reify_using_env t ~is_present_in_env =
+  let named =
+    match var t with
+    | Some var when is_present_in_env var -> Some (Named.Var var)
+    | _ ->
+      match symbol t with
+      | Some (sym, None) -> Some (Named.Symbol sym)
+      | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
+      | None -> None
+  in
+  match reify t with
+  | None -> named
+  | Some named -> Some named
 
 (*
 
