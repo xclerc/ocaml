@@ -16,15 +16,16 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(* XXX We should add a structure to record the types of bound names and any
-   freshenings applied.  This can go in "r" along with continuation usage.
-   Then we should be able to use this to check that types are not regressing
-   in preciseness, even if we are now robust against that possiblity. *)
+(* CR mshinwell: We should add a structure to record the types of bound names
+   and any freshenings applied.  This can go in "r" along with continuation
+   usage.  Then we should be able to use this to check that types are not
+   regressing in preciseness, even if we are now robust against that
+   possibility. *)
 
 module B = Inlining_cost.Benefit
 module E = Simplify_env
 module R = Simplify_result
-module T = Flambda_types
+module T = Flambda_type
 
 (** Values of two types hold the information propagated during simplification:
     - [E.t] "environments", top-down, almost always called "env";
@@ -35,8 +36,6 @@ module T = Flambda_types
     simplifications to be performed; for example, some variable may be known
     to always hold a particular constant.
 *)
-
-let ret = R.record_inferred_type
 
 type simplify_variable_result =
   | No_binding of Variable.t
@@ -138,21 +137,21 @@ let simplify_named_using_ty r named (ty, value_kind)
       : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
           * Value_kind.t * R.t =
   if not (Flambda.Named.no_effects named) then
-    [], Reachable named, value_kind, ret r ty
+    [], Reachable named, value_kind, ty
   else
     match T.reify ty with
-    | None -> [], Reachable named, value_kind, ret r ty
-    | Some named -> [], Reachable named, value_kind, ret r ty
+    | None -> [], Reachable named, value_kind, ty
+    | Some named -> [], Reachable named, value_kind, ty
 
 let simplify_named_using_ty_and_env env r original_named ty
       : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable * R.t =
   if not (Flambda.Named.no_effects original_named) then
-    [], Reachable original_named, value_kind, ret r ty
+    [], Reachable original_named, value_kind, ty
   else
     match T.reify_using_env ty ~is_present_in_env:(E.mem env) with
-    | None -> [], Reachable original_named, value_kind, ret r ty
+    | None -> [], Reachable original_named, value_kind, ty
     | Some named ->
-      let r = R.map_benefit (ret r ty) (B.remove_code_named original_named) in
+      let r = R.map_benefit (ty) (B.remove_code_named original_named) in
       [], Reachable named, r
 
 let type_for_const (const : Flambda.const) =
@@ -262,7 +261,7 @@ let simplify_project_closure env r
         | Some (var, projection) ->
           simplify_free_variable_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_ty)
+            [], Reachable (Var var), var_ty)
         | None ->
           let if_not_reference_recursive_function_directly ()
             : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
@@ -279,14 +278,14 @@ let simplify_project_closure env r
                    closure_id)
             in
             [], Reachable (Project_closure { set_of_closures; closure_id; }),
-              ret r ty
+              ty
           in
           match Closure_id.Set.get_singleton closure_id with
           | None ->
             if_not_reference_recursive_function_directly ()
           | Some closure_id ->
             match reference_recursive_function_directly env closure_id with
-            | Some (flam, ty) -> [], Reachable flam, ret r ty
+            | Some (flam, ty) -> [], Reachable flam, ty
             | None ->
               if_not_reference_recursive_function_directly ())
 
@@ -393,22 +392,22 @@ let simplify_move_within_set_of_closures env r
         let move_within : Projection.Move_within_set_of_closures.t =
           { closure; move; }
         in
-        [], Reachable (Move_within_set_of_closures move_within), ret r ty
+        [], Reachable (Move_within_set_of_closures move_within), ty
       | Some (_start_from, value_set_of_closures),
         Some (start_from, move_to) ->
         match E.find_projection env ~projection with
         | Some var ->
           simplify_free_variable_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_ty)
+            [], Reachable (Var var), var_ty)
         | None ->
           match reference_recursive_function_directly env move_to with
-          | Some (flam, ty) -> [], Reachable flam, ret r ty
+          | Some (flam, ty) -> [], Reachable flam, ty
           | None ->
             if Closure_id.equal start_from move_to then
               (* Moving from one closure to itself is a no-op.  We can return an
                  [Var] since we already have a variable bound to the closure. *)
-              [], Reachable (Var closure), ret r closure_ty
+              [], Reachable (Var closure), closure_ty
             else
               match set_of_closures_var with
               | Some set_of_closures_var when E.mem env set_of_closures_var ->
@@ -424,7 +423,7 @@ let simplify_move_within_set_of_closures env r
                   T.closure ~set_of_closures_var
                     (Closure_id.Map.singleton move_to value_set_of_closures)
                 in
-                [], Reachable (Project_closure project_closure), ret r ty
+                [], Reachable (Project_closure project_closure), ty
               | Some _ | None ->
                 match set_of_closures_symbol with
                 | Some set_of_closures_symbol ->
@@ -443,7 +442,7 @@ let simplify_move_within_set_of_closures env r
                   ]
                   in
                   bindings, Reachable (Project_closure project_closure),
-                    ret r ty
+                    ty
                 | None ->
                   (* The set of closures is not available in scope, and we
                     have no other information by which to simplify the move. *)
@@ -452,7 +451,7 @@ let simplify_move_within_set_of_closures env r
                   in
                   let ty = T.closure ty_map in
                   [], Reachable (Move_within_set_of_closures move_within),
-                    ret r ty)
+                    ty)
 
 (* Transform an expression denoting an access to a variable bound in
    a closure.  Variables in the closure ([project_var.closure]) may
@@ -563,7 +562,7 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t) =
         | Some var ->
           simplify_free_variable_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_ty)
+            [], Reachable (Var var), var_ty)
         | None ->
           let expr : Flambda.Named.t =
             Project_var { closure; var = project_var_var; }
@@ -1280,7 +1279,7 @@ and simplify_primitive env r prim args dbg =
          continuation parameters of variant type. *)
       simplify_free_variable_named env var ~f:(fun _env var var_ty ->
         let r = R.map_benefit r (B.remove_projection projection) in
-        [], Reachable (Var var), ret r var_ty)
+        [], Reachable (Var var), var_ty)
     | None ->
       let default () : (Variable.t * Flambda.Named.t) list
             * Flambda.Named.t_reachable * R.t =
@@ -1298,7 +1297,7 @@ and simplify_primitive env r prim args dbg =
           | Popaque -> T.unknown Other
           | _ -> ty
         in
-        [], Reachable (named, value_kind), ret r ty
+        [], Reachable (named, value_kind), ty
       in
       begin match prim, args, args_tys with
       | Pgetglobal _, _, _ ->
@@ -1309,7 +1308,7 @@ and simplify_primitive env r prim args dbg =
         | Some var ->
           simplify_free_variable_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), ret r var_ty)
+            [], Reachable (Var var), var_ty)
         | None ->
           begin match T.get_field arg_ty ~field_index with
           | Unreachable ->
@@ -1390,7 +1389,7 @@ and simplify_primitive env r prim args dbg =
               ]
             in
             bindings, Reachable (Prim (Praise Raise_regular, [exn_var], dbg)),
-              ret r T.bottom
+              T.bottom
           end else begin
             let kind =
               match T.is_float_array block_ty, T.is_boxed_float value_ty with
@@ -2305,7 +2304,7 @@ and simplify env r (tree : Flambda.Expr.t) : Flambda.Expr.t * R.t =
     simplify_free_variables env args ~f:(fun env args args_types ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_types)
   | Switch (arg, sw) -> simplify_switch env r arg sw
-  | Unreachable -> Unreachable, ret r T.bottom
+  | Unreachable -> Unreachable, T.bottom
 
 and simplify_toplevel env r expr ~continuation ~descr =
   if not (Continuation.Map.mem continuation (E.continuations_in_scope env))
@@ -2619,7 +2618,7 @@ let simplify_constant_defining_value
       r, constant_defining_value, closure_type
   in
   let ty = T.augment_with_symbol ty symbol in
-  let r = ret r ty in
+  let r = ty in
   r, constant_defining_value, ty
 
 let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
@@ -2648,6 +2647,9 @@ let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
     let program, r = simplify_program_body env r program in
     Let_symbol (symbol, constant_defining_value, program), r
   | Initialize_symbol (symbol, tag, fields, program) ->
+    (* CR mshinwell: Work out how to deal with [Initialize_symbol] so that there
+       can be constant initializers amongst inconstant initializing
+       expressions -- with the constants filled in early. *)
     let rec simplify_fields env r l =
       match l with
       | [] -> [], [], r
@@ -2743,7 +2745,7 @@ let simplify_program env r ~backend (program : Flambda_static.Program.t) =
             E.add_symbol env symbol ty, ty
           | ty -> env, ty
         in
-        env, ret r ty)
+        env, ty)
       (env, r)
   in
   let program_body, r = simplify_program_body env r program.program_body in

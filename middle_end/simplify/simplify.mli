@@ -33,9 +33,8 @@ val run
   -> Flambda_static.Program.t
 
 val duplicate_function
-   : env:Simplify_aux.Env.t
+   : env:Simplify_env.t
   -> set_of_closures:Flambda.Set_of_closures.t
-  -> fun_var:Variable.t
-  -> new_fun_var:Variable.t
+  -> closure_id:Closure_id.t
+  -> new_closure_id:Closure_id.t
   -> Flambda.Function_declaration.t
-    * Flambda.specialised_to Variable.Map.t  (* new specialised arguments *)
