@@ -61,17 +61,18 @@ let which_function_parameters_can_we_specialise ~params ~args
     user-specified function as an [Flambda.Named.t] value that projects the
     variable from its closure. *)
 (* XXX this might provide to [f] things in the closure which aren't used
-   by the specific function being referred to.  Does this matter? *)
+   by the specific function being referred to.  Does this matter?
+   (Presumably not since such bindings will be unused) *)
 let fold_over_projections_of_vars_bound_by_closure
       ~closure_id_being_applied ~lhs_of_application ~set_of_closures ~init ~f =
   Var_within_closure.Set.fold (fun var acc ->
-      let var =
+      let var_map =
         Closure_id.Map.singleton closure_id_being_applied var
       in
       let expr : Flambda.Named.t =
         Project_var {
           closure = lhs_of_application;
-          var;
+          var = var_map;
         }
       in
       f ~acc ~var ~expr)
@@ -123,7 +124,7 @@ let copy_of_function's_body_with_freshened_params ~importer env
     (= "variables bound by the closure"), and any function identifiers
     introduced by the corresponding set of closures. *)
 let inline_by_copying_function_body ~env ~r
-      ~(function_decls : Flambda.Function_declarations.t)
+      ~(set_of_closures : Flambda.Set_of_closures.t)
       ~lhs_of_application
       ~(inline_requested : Lambda.inline_attribute)
       ~(specialise_requested : Lambda.specialise_attribute)
@@ -133,6 +134,7 @@ let inline_by_copying_function_body ~env ~r
   let importer = E.importer env in
   assert (E.mem env lhs_of_application);
   assert (List.for_all (E.mem env) args);
+  let function_decls = set_of_closures.function_decls in
   let r =
     if function_decl.stub then r
     else R.map_benefit r B.remove_call
@@ -157,22 +159,37 @@ let inline_by_copying_function_body ~env ~r
   (* Arrange for the continuation through which the function returns to be
      that supplied at the call site. *)
   let handlers =
-    Flambda_utils.make_let_cont_alias ~name:function_decl.continuation_param
+    let parameter_types =
+      Flambda_type.unknown_types_from_arity function_decl.return_arity
+    in
+    Flambda_utils.make_let_cont_alias ~importer
+      ~name:function_decl.continuation_param
       ~alias_of:continuation
-      ~arity:function_decl.return_arity
+      ~parameter_types
   in
   let body : Flambda.Expr.t = Let_cont { body; handlers; } in
   let bindings_for_params_to_args =
     (* Bind the function's parameters to the arguments from the call site. *)
-    let args = List.map (fun arg -> Flambda.Var arg) args in
-    Flambda.Expr.bind ~body
-      ~bindings:(List.combine (Parameter.List.vars freshened_params) args)
+    let bindings =
+      List.map2 (fun param arg ->
+          let var = Flambda.Typed_parameter.var param in
+          let kind =
+            Flambda_type.kind ~importer (Flambda.Typed_parameter.ty param)
+          in
+          var, kind, Flambda.Named.Var arg)
+        freshened_params
+        args
+    in
+    Flambda.Expr.bind ~body ~bindings
   in
   (* Add bindings for the variables bound by the closure. *)
   let bindings_for_vars_bound_by_closure_and_params_to_args =
     fold_over_projections_of_vars_bound_by_closure ~closure_id_being_applied
-      ~lhs_of_application ~function_decls ~init:bindings_for_params_to_args
-      ~f:(fun ~acc:body ~var ~expr -> Flambda.Expr.create_let var expr body)
+      ~lhs_of_application ~set_of_closures ~init:bindings_for_params_to_args
+      ~f:(fun ~acc:body ~var ~expr ->
+        let var = Var_within_closure.unwrap var in
+        let kind = Flambda_kind.value Must_scan in
+        Flambda.Expr.create_let var kind expr body)
   in
   (* Add bindings for variables corresponding to the functions introduced by
      the whole set of closures.  Each such variable will be bound to a closure;

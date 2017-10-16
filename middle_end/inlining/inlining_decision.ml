@@ -198,7 +198,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
   Variable.print lhs_of_application Flambda.Expr.print function_decl.body;
 *)
       Inlining_transforms.inline_by_copying_function_body ~env
-        ~r:(R.reset_benefit r) ~function_decls ~lhs_of_application
+        ~r:(R.reset_benefit r) ~set_of_closures ~lhs_of_application
         ~closure_id_being_applied ~specialise_requested ~inline_requested
         ~function_decl ~args ~continuation ~dbg ~simplify
     in
