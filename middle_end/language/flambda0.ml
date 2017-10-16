@@ -1446,6 +1446,7 @@ end and Typed_parameter : sig
     val vars : t -> Variable.t list
     val var_set : t -> Variable.Set.t
     val equal_vars : t -> Variable.t list -> bool
+    val rename : t -> t
     val arity : (t -> Flambda_kind.t list) Flambda_type.with_importer
     val free_variables : t -> Variable.Set.t
     val print : Format.formatter -> t -> unit
@@ -1471,6 +1472,8 @@ end = struct
 
   let with_type t ty = { t with ty; }
   let with_projection t projection = { t with projection; } 
+
+  let rename t = { t with param = Parameter.rename t.param; }
 
   let map_var t ~f = { t with param = Parameter.map_var f t.param; }
 
@@ -1533,6 +1536,8 @@ end = struct
              t1 t2
 
     let var_set t = Variable.Set.of_list (vars t)
+
+    let rename t = List.map (fun t -> rename t) t
 
     let arity ~importer t =
       List.map (fun t -> Flambda_type.kind ~importer (ty t)) t

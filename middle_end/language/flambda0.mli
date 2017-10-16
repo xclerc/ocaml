@@ -704,6 +704,8 @@ end and Typed_parameter : sig
 
     val equal_vars : t -> Variable.t list -> bool
 
+    val rename : t -> t
+
     val arity : (t -> Flambda_arity.t) Flambda_type.with_importer
 
     val print : Format.formatter -> t -> unit

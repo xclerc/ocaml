@@ -16,6 +16,15 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* XXX needs fixing:
+  1. closure changes
+  2. removal of specialised_args change
+  3. direct_call_surrogate is now recorded in the function declaration not
+     in a map in the set of closures
+*)
+
+(*
+
 (** A variable in a closure can either be used by the closure itself
     or by an inlined version of the function. *)
 let remove_unused_closure_variables ~remove_direct_call_surrogates program =
@@ -128,3 +137,6 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
     | e -> e
   in
   Flambda_static.Program.Mappers.map_named ~f:aux_named program
+
+*)
+let remove_unused_closure_variables ~remove_direct_call_surrogates:_ p = p

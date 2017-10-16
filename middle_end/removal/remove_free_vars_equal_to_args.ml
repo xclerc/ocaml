@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,8 +16,12 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* XXX this needs fixing for the specialised_args removal change *)
+
 let pass_name = "remove-free-vars-equal-to-args"
 let () = Pass_wrapper.register ~pass_name
+
+(*
 
 let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
       ~back_free_vars ~specialised_args =
@@ -55,7 +59,13 @@ let rewrite_one_function_decl ~(function_decl : Flambda.Function_declaration.t)
     in
     Flambda.Function_declaration.update_body function_decl ~body
 
+*)
+
 let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
+  ignore set_of_closures;
+  None
+
+(*
   let back_free_vars =
     Variable.Map.fold (fun var (outside_var : Flambda.Free_var.t) map ->
         let set =
@@ -94,6 +104,7 @@ let rewrite_one_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
         ~direct_call_surrogates:set_of_closures.direct_call_surrogates
     in
     Some set_of_closures
+*)
 
 let run set_of_closures =
   Pass_wrapper.with_dump ~pass_name ~input:set_of_closures

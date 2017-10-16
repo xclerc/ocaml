@@ -16,21 +16,24 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-let dependency (expr:Flambda.Expr.t) = Flambda.free_symbols expr
+(* XXX Pierre and Vincent should think about this one too
+
+let dependency (expr : Flambda.Expr.t) = Flambda.Expr.free_symbols expr
 
 (* CR-soon pchambart: copied from lift_constant.  Needs remerging *)
-let constant_dependencies (const:Flambda_static.Constant_defining_value.t) =
-  let closure_dependencies (set_of_closures:Flambda.Set_of_closures.t) =
-    Flambda.free_symbols_named (Set_of_closures set_of_closures)
+let constant_dependencies (const : Flambda_static.Constant_defining_value.t) =
+  let closure_dependencies (set_of_closures : Flambda.Set_of_closures.t) =
+    Flambda.Named.free_symbols (Set_of_closures set_of_closures)
   in
   match const with
   | Allocated_const _ -> Symbol.Set.empty
   | Block (_, fields) ->
     let symbol_fields =
-      Misc.Stdlib.List.filter_map (function
-          | (Symbol s : Flambda_static.Constant_defining_value.t_block_field) ->
-            Some s
-          | Flambda.Const _ -> None)
+      Misc.Stdlib.List.filter_map
+        (fun (field : Flambda_static.Constant_defining_value_block_field.t) ->
+          match field with
+          | Symbol sym -> Some sym
+          | Tagged_immediate _ -> None)
         fields
     in
     Symbol.Set.of_list symbol_fields
@@ -70,8 +73,8 @@ let no_effects_field_arity_1 (expr : Flambda.Expr.t) ~return_continuation =
     true
   | _ -> Effect_analysis.no_effects expr
 
-let rec loop (program : Flambda_static.Program.t_body)
-      : Flambda_static.Program.t_body * Symbol.Set.t =
+let rec loop (program : Flambda_static.Program_body.t)
+      : Flambda_static.Program_body.t * Symbol.Set.t =
   match program with
   | Let_symbol (sym, def, program) ->
     let program, dep = loop program in
@@ -144,3 +147,7 @@ let remove_unused_program_constructs (program : Flambda_static.Program.t) =
   { program with
     program_body = fst (loop program.program_body);
   }
+
+*)
+
+let remove_unused_program_constructs p = p

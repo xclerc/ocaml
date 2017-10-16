@@ -20,10 +20,13 @@
    enough between functions and continuations then we can probably share
    code for doing remove-unused-parameters. *)
 
+(* XXX needs fixing
+
 let remove_parameters ~(handler : Flambda.Continuation_handler.t)
-        ~to_remove : Flambda_utils.with_wrapper =
+        ~to_remove : Flambda.with_wrapper =
   let freshened_params =
-    List.map (fun param -> param, Parameter.rename param) handler.params
+    List.map (fun param -> param, Flambda.Typed_parameter.rename param)
+      handler.params
   in
   let wrapper_params =
     List.map (fun (_param, freshened_param) -> freshened_param)
@@ -158,3 +161,6 @@ let run program ~backend =
         | Unreachable -> expr)
       expr)
 
+*)
+
+let run program ~backend:_ = program
