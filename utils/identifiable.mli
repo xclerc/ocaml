@@ -62,7 +62,19 @@ module type Map = sig
   (** [union_left m1 m2 = union_right m2 m1] *)
   val union_left : 'a t -> 'a t -> 'a t
 
+  (** [union_merge f m1 m2] contains all bindings from [m1] and [m2].  Bindings
+      present in both [m1] and [m2] are sent through [f]. *)
   val union_merge : ('a -> 'a -> 'a) -> 'a t -> 'a t -> 'a t
+
+  (** [union_both f g m1 m2] contains all bindings from [m1] and [m2].
+      Bindings present in only one of [m1] and [m2] are sent through [f];
+      bindings present in both [m1] and [m2] are sent through [g]. *)
+  val union_both
+     : ('a -> 'a)
+    -> ('a -> 'a -> 'a)
+    -> 'a t
+    -> 'a t
+    -> 'a t
 
   val inter : ('a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
 

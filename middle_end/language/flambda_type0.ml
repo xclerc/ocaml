@@ -25,6 +25,7 @@ module K = Flambda_kind
 module Make (Expr : sig
   type t
   val print : Format.formatter -> t -> unit
+  val free_symbols : t -> Symbol.Set.t
 end) = struct
   type expr = Expr.t
 
@@ -218,47 +219,37 @@ end) = struct
     | String of string_ty
     | Float_array of float_array_ty
 
-  and inlinable_function_declarations = {
-    set_of_closures_id : Set_of_closures_id.t;
-    set_of_closures_origin : Set_of_closures_origin.t;
-    funs : inlinable_function_declaration Variable.Map.t;
-    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-    size : int option Variable.Map.t lazy_t;
-    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
-  }
-
-  and non_inlinable_function_declarations = {
-    funs : non_inlinable_function_declaration Variable.Map.t
-  }
-
-  and function_declarations =
-    | Non_inlinable of non_inlinable_function_declarations
-    | Inlinable of inlinable_function_declarations
-
-  and function_body = {
-    body : expr;
-    free_variables : Variable.Set.t;
-    free_symbols : Symbol.Set.t;
-  }
-
   and inlinable_function_declaration = {
     closure_origin : Closure_origin.t;
+    continuation_param : Continuation.t;
+    is_classic_mode : bool;
     params : (Parameter.t * t) list;
-    body : function_body;
+    body : expr;
+    free_symbols : Symbol.Set.t;
     result : t list;
     stub : bool;
     dbg : Debuginfo.t;
     inline : Lambda.inline_attribute;
     specialise : Lambda.specialise_attribute;
     is_a_functor : bool;
+    invariant_params : Variable.Set.t lazy_t;
+    size : int option lazy_t;
+    direct_call_surrogate : Closure_id.t option;
   }
 
   and non_inlinable_function_declaration = {
     result : t list;
+    direct_call_surrogate : Closure_id.t option;
   }
 
+  and function_declaration =
+    | Non_inlinable of non_inlinable_function_declaration
+    | Inlinable of inlinable_function_declaration
+
   and set_of_closures = {
-    function_decls : function_declarations;
+    set_of_closures_id : Set_of_closures_id.t;
+    set_of_closures_origin : Set_of_closures_origin.t;
+    function_decls : function_declaration Closure_id.Map.t;
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
@@ -285,50 +276,6 @@ end) = struct
 
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
-
-  let _ = Expr.print  (* temporarily silence compiler warning *)
-
-  (* CR mshinwell: we should probably enhance this for debugging *)
-  let print_non_inlinable_funs ppf
-        (funs : non_inlinable_function_declaration Variable.Map.t) =
-    Format.fprintf ppf "@[(non_inlinable %a)@]"
-      Variable.Set.print (Variable.Map.keys funs)
-
-  let print_inlinable_funs ppf funs =
-    Format.fprintf ppf "@[(inlinable %a)@]"
-      Variable.Set.print (Variable.Map.keys funs)
-
-  let print_non_inlinable_function_declarations ppf
-        (function_decls : non_inlinable_function_declarations) =
-    print_non_inlinable_funs ppf function_decls.funs
-
-  let print_inlinable_function_declarations ppf
-        (function_decls : inlinable_function_declarations) =
-    Format.fprintf ppf
-      "@[(@[(set_of_closures_id %a)@]@,\
-          @[(set_of_closures_origin %a)@]@,\
-          @[(invariant_params %a)@]@,\
-          @[(funs %a)@]@]"
-      Set_of_closures_id.print function_decls.set_of_closures_id
-      Set_of_closures_origin.print function_decls.set_of_closures_origin
-      (Variable.Map.print Variable.Set.print)
-        (Lazy.force function_decls.invariant_params)
-      print_inlinable_funs function_decls.funs
-
-  let print_function_declarations ppf function_decls =
-    match function_decls with
-    | Non_inlinable function_decls ->
-      Format.fprintf ppf "@[(non_inlinable %a)@]"
-        print_non_inlinable_function_declarations function_decls
-    | Inlinable function_decls ->
-      Format.fprintf ppf "@[(inlinable %a)@]"
-        print_inlinable_function_declarations function_decls
-
-  let print_set_of_closures ppf
-        { function_decls; _ } =
-    Format.fprintf ppf
-      "(function_decls:@ %a)"
-      print_function_declarations function_decls
 
   let print_unresolved_value ppf (unresolved : unresolved_value) =
     match unresolved with
@@ -459,6 +406,82 @@ end) = struct
       | Can_scan -> ()
     in
     print_ty_generic print_of_kind_value print_scanning ppf ty
+
+  and _unused = Expr.print
+
+  and print_inlinable_function_declaration ppf
+        (decl : inlinable_function_declaration) =
+    Format.fprintf ppf
+      "@[(inlinable@ \
+        @[(closure_origin %a)@]@,\
+        @[(continuation_param %a)@]@,\
+        @[(is_classic_mode %b)@]@,\
+        @[(params (%a))@]@,\
+        @[(body <elided>)@]@,\
+        @[(free_symbols %a)@]@,\
+        @[(result (%a))@]@,\
+        @[(stub %b)@]@,\
+        @[(dbg %a)@]@,\
+        @[(inline %a)@]@,\
+        @[(specialise %a)@]@,\
+        @[(is_a_functor %b)@]@,\
+        @[(invariant_params %a)@]@,\
+        @[(size %a)@]@,\
+        @[(direct_call_surrogate %a)@])@]"
+      Closure_origin.print decl.closure_origin
+      Continuation.print decl.continuation_param
+      decl.is_classic_mode
+      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
+        (fun ppf (param, ty) ->
+          Format.fprintf ppf "@[(%a@ :@ %a)@]"
+            Parameter.print param
+            print ty)) decl.params
+      Symbol.Set.print decl.free_symbols
+      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
+        (fun ppf ty ->
+          Format.fprintf ppf "%a"
+            print ty)) decl.result
+      decl.stub
+      Debuginfo.print_compact decl.dbg
+      Printlambda.apply_inlined_attribute decl.inline
+      Printlambda.apply_specialised_attribute decl.specialise
+      decl.is_a_functor
+      Variable.Set.print (Lazy.force decl.invariant_params)
+      (Misc.Stdlib.Option.print Format.pp_print_int) (Lazy.force decl.size)
+      (Misc.Stdlib.Option.print Closure_id.print) decl.direct_call_surrogate
+
+  and print_non_inlinable_function_declaration ppf
+        (decl : non_inlinable_function_declaration) =
+    Format.fprintf ppf
+      "@[(non_inlinable@ \
+        @[(result (%a))@]@,\
+        @[(direct_call_surrogate %a)@])@]"
+      (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
+        (fun ppf ty ->
+          Format.fprintf ppf "%a"
+            print ty)) decl.result
+      (Misc.Stdlib.Option.print Closure_id.print) decl.direct_call_surrogate
+
+  and print_function_declaration ppf (decl : function_declaration) =
+    match decl with
+    | Inlinable decl -> print_inlinable_function_declaration ppf decl
+    | Non_inlinable decl -> print_non_inlinable_function_declaration ppf decl
+
+  and print_function_declarations ppf function_decls =
+    Format.fprintf ppf "%a"
+      (Closure_id.Map.print print_function_declaration)
+      function_decls
+
+  and print_set_of_closures ppf set =
+    Format.fprintf ppf
+      "@[(@[(set_of_closures_id@ %a)@]@,\
+          @[(set_of_closures_origin@ %a)@]@,\
+          @[(function_decls@ %a)@]@,\
+          @[(closure_elements@ %a)@])@]"
+      Set_of_closures_id.print set.set_of_closures_id
+      Set_of_closures_origin.print set.set_of_closures_origin
+      print_function_declarations set.function_decls
+      (Var_within_closure.Map.print print_ty_value) set.closure_elements
 
   and print_ty_naked_immediate ppf (ty : ty_naked_immediate) =
     print_ty_generic print_of_kind_naked_immediate (fun _ () -> ()) ppf ty
@@ -997,12 +1020,14 @@ end) = struct
         symbol = None;
       }
 
+  let any_value_as_ty_value scanning unknown_because_of : ty_value =
+    { descr = Ok (Unknown (unknown_because_of, scanning));
+      var = None;
+      symbol = None;
+    }
+
   let any_value scanning unknown_because_of : t =
-    Value
-      { descr = Ok (Unknown (unknown_because_of, scanning));
-        var = None;
-        symbol = None;
-      }
+    Value (any_value_as_ty_value scanning unknown_because_of)
 
   let unknown (kind : K.t) unknown_because_of =
     match kind with
@@ -1496,6 +1521,15 @@ end) = struct
       in
       must_scan_of_kind_value of_kind_value
 
+  let scanning_ty_value ~importer (ty : ty_value) =
+    let module I = (val importer : Importer) in
+    let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
+    must_scan_of_kind_value_or_unknown_or_bottom resolved_ty_value.descr
+
+  let kind_ty_value ~importer (ty : ty_value) =
+    let scanning = scanning_ty_value ~importer (ty : ty_value) in
+    K.value scanning
+
   let kind ~importer (t : t) =
     match t with
     | Naked_immediate _ -> K.naked_immediate ()
@@ -1503,13 +1537,7 @@ end) = struct
     | Naked_int32 _ -> K.naked_int32 ()
     | Naked_int64 _ -> K.naked_int64 ()
     | Naked_nativeint _ -> K.naked_nativeint ()
-    | Value ty ->
-      let module I = (val importer : Importer) in
-      let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
-      let scanning =
-        must_scan_of_kind_value_or_unknown_or_bottom resolved_ty_value.descr
-      in
-      K.value scanning
+    | Value ty -> kind_ty_value ~importer ty
 
 (*
   (* CR mshinwell: read carefully *)
@@ -1550,6 +1578,41 @@ end) = struct
     | _ -> t
 *)
 
+  let create_inlinable_function_declaration ~is_classic_mode ~closure_origin
+        ~continuation_param ~params ~body ~result ~stub ~dbg ~inline
+        ~specialise ~is_a_functor ~invariant_params ~size ~direct_call_surrogate
+        : inlinable_function_declaration =
+    { closure_origin;
+      continuation_param;
+      is_classic_mode;
+      params;
+      body;
+      free_symbols = Expr.free_symbols body;
+      result;
+      stub;
+      dbg;
+      inline;
+      specialise;
+      is_a_functor;
+      invariant_params;
+      size;
+      direct_call_surrogate;
+    }
+
+  let create_non_inlinable_function_declaration ~result ~direct_call_surrogate
+        : non_inlinable_function_declaration =
+    { result;
+      direct_call_surrogate;
+    }
+
+  let create_set_of_closures ~set_of_closures_id ~set_of_closures_origin
+        ~function_decls ~closure_elements : set_of_closures =
+    { set_of_closures_id;
+      set_of_closures_origin;
+      function_decls;
+      closure_elements;
+    }
+
   let closure ?closure_var ?set_of_closures_var ?set_of_closures_symbol
         set_of_closures closure_id : t =
     let set_of_closures : resolved_ty_set_of_closures =
@@ -1570,18 +1633,18 @@ end) = struct
       symbol = None;
     }
 
-  (* CR mshinwell: crappy name *)
-  let create_set_of_closures ~function_decls ~closure_elements
-        : set_of_closures =
-    { function_decls;
-      closure_elements;
-    }
-
-  let set_of_closures ?set_of_closures_var set_of_closures : t =
+  let set_of_closures ?set_of_closures_var ?set_of_closures_symbol
+        set_of_closures : t =
+    let symbol =
+      match set_of_closures_symbol with
+      | None -> None
+      | Some symbol ->
+        Some (Symbol.Of_kind_value.to_symbol symbol, None)
+    in
     Value {
       descr = Ok (Ok (Singleton (Set_of_closures set_of_closures)));
       var = set_of_closures_var;
-      symbol = None;
+      symbol;
     }
 
   let rec free_variables t acc =
@@ -1638,19 +1701,10 @@ end) = struct
           free_variables_ty_value ty_value acc)
         set_of_closures.closure_elements acc
     in
-    begin match set_of_closures.function_decls with
-    | Non_inlinable function_decls ->
-      Variable.Map.fold
-        (fun _fun_var (decl : non_inlinable_function_declaration) acc ->
-          List.fold_left (fun acc ty ->
-            free_variables ty acc)
-            acc
-            decl.result)
-        function_decls.funs
-        acc
-    | Inlinable function_decls ->
-      Variable.Map.fold
-        (fun _fun_var (decl : inlinable_function_declaration) acc ->
+    Closure_id.Map.fold
+      (fun _closure_id (decl : function_declaration) acc ->
+        match decl with
+        | Inlinable decl ->
           let acc =
             List.fold_left (fun acc ty ->
               free_variables ty acc)
@@ -1660,10 +1714,14 @@ end) = struct
           List.fold_left (fun acc (_param, ty) ->
               free_variables ty acc)
             acc
-            decl.params)
-        function_decls.funs
-        acc
-    end
+            decl.params
+        | Non_inlinable decl ->
+          List.fold_left (fun acc ty ->
+            free_variables ty acc)
+            acc
+            decl.result)
+      set_of_closures.function_decls
+      acc
 
   and free_variables_resolved_ty_set_of_closures
         ({ descr; var; _ } : resolved_ty_set_of_closures) acc =
@@ -1865,27 +1923,11 @@ end) = struct
           clean_ty_value ~importer t clean_var_opt)
         set_of_closures.closure_elements
     in
-    let function_decls : function_declarations =
-    match set_of_closures.function_decls with
-    | Non_inlinable function_decls ->
-      let funs =
-        Variable.Map.map
-          (fun (decl : non_inlinable_function_declaration)
-                : non_inlinable_function_declaration ->
-            let result =
-              List.map (fun ty ->
-                clean_t ~importer ty clean_var_opt)
-                decl.result
-            in
-            { result; })
-          function_decls.funs
-      in
-      Non_inlinable { funs }
-    | Inlinable function_decls ->
-      let funs =
-        Variable.Map.map
-          (fun (decl : inlinable_function_declaration)
-                : inlinable_function_declaration ->
+    let function_decls =
+      Closure_id.Map.map
+        (fun (decl : function_declaration) : function_declaration ->
+          match decl with
+          | Inlinable decl ->
             let params =
               List.map (fun (param, t) ->
                   param, clean_t ~importer t clean_var_opt)
@@ -1896,25 +1938,19 @@ end) = struct
                 clean_t ~importer ty clean_var_opt)
                 decl.result
             in
-            { decl with
-              params;
-              result;
-            })
-          function_decls.funs
-      in
-      let function_decls : inlinable_function_declarations =
-        { set_of_closures_id = function_decls.set_of_closures_id;
-          set_of_closures_origin = function_decls.set_of_closures_origin;
-          funs;
-          invariant_params = function_decls.invariant_params;
-          size = function_decls.size;
-          direct_call_surrogates = function_decls.direct_call_surrogates;
-        }
-      in
-      Inlinable function_decls
+            Inlinable { decl with params; result; }
+          | Non_inlinable decl ->
+            let result =
+              List.map (fun ty ->
+                clean_t ~importer ty clean_var_opt)
+                decl.result
+            in
+            Non_inlinable { decl with result; })
+        set_of_closures.function_decls
     in
-    { function_decls;
-      closure_elements = closure_elements;
+    { set_of_closures with
+      function_decls;
+      closure_elements;
     }
 
   and clean_of_kind_value ~importer (o : of_kind_value) clean_var_opt

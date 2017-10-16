@@ -3,7 +3,7 @@
 (*                                 OCaml                                  *)
 (*                                                                        *)
 (*                       Pierre Chambart, OCamlPro                        *)
-(*           Mark Shinwell and Leo White, Jane Street Europe              *)
+(*     Mark Shinwell, Fu Yong Quah and Leo White, Jane Street Europe      *)
 (*                                                                        *)
 (*   Copyright 2013--2017 OCamlPro SAS                                    *)
 (*   Copyright 2014--2017 Jane Street Group LLC                           *)
@@ -33,27 +33,26 @@ type 'b good_idea =
   | Don't_try_it of 'b
 
 let inline ~importer env r ~lhs_of_application
-    ~(function_decls : Flambda.Function_declarations.t)
-    ~closure_id_being_applied ~(function_decl : Flambda.Function_declaration.t)
-    ~(value_set_of_closures : T.set_of_closures)
+    ~closure_id_being_applied
+    ~(function_decl : T.inlinable_function_declaration)
+    ~(set_of_closures : T.set_of_closures)
     ~only_use_of_function ~original ~recursive
     ~(args : Variable.t list) ~continuation ~size_from_approximation ~dbg
     ~simplify ~(inline_requested : Lambda.inline_attribute)
     ~(specialise_requested : Lambda.specialise_attribute)
     ~self_call ~fun_cost ~inlining_threshold =
-  ignore value_set_of_closures; (* XXX *)
   let toplevel = E.at_toplevel env in
   let branch_depth = E.branch_depth env in
   let unrolling, always_inline, never_inline, env =
     let unrolling =
-      E.actively_unrolling env function_decls.set_of_closures_origin
+      E.actively_unrolling env set_of_closures.set_of_closures_origin
     in
     match unrolling with
     | Some count ->
       if count > 0 then
         let env =
-          E.continue_actively_unrolling
-            env function_decls.set_of_closures_origin
+          E.continue_actively_unrolling env
+            set_of_closures.set_of_closures_origin
         in
         true, true, false, env
       else false, false, true, env
@@ -72,8 +71,8 @@ let inline ~importer env r ~lhs_of_application
         | Unroll count ->
           if count > 0 then
             let env =
-              E.start_actively_unrolling
-                env function_decls.set_of_closures_origin (count - 1)
+              E.start_actively_unrolling env
+                set_of_closures.set_of_closures_origin (count - 1)
             in
             true, true, false, env
           else false, false, true, env
@@ -84,7 +83,9 @@ let inline ~importer env r ~lhs_of_application
     else Lazy.force fun_cost
   in
   let try_inlining =
-    if unrolling then
+    if function_decl.is_classic_mode then
+      Don't_try_it S.Not_inlined.Classic_mode
+    else if unrolling then
       Try_it
     else if self_call then
       Don't_try_it S.Not_inlined.Self_call
@@ -94,9 +95,7 @@ let inline ~importer env r ~lhs_of_application
       Try_it
     else if never_inline then
       Don't_try_it S.Not_inlined.Annotation
-    else if !Clflags.classic_inlining then
-      Don't_try_it S.Not_inlined.Classic_mode
-    else if not (E.unrolling_allowed env function_decls.set_of_closures_origin)
+    else if not (E.unrolling_allowed env set_of_closures.set_of_closures_origin)
          && (Lazy.force recursive) then
       Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
     else if remaining_inlining_threshold = IT.Never_inline then
@@ -138,25 +137,9 @@ let inline ~importer env r ~lhs_of_application
       match size_from_approximation with
       | Some body_size ->
         let wsb =
-          let benefit = Inlining_cost.Benefit.zero in
-          let benefit = Inlining_cost.Benefit.remove_call benefit in
-(* XXX this needs to be altered...
           let benefit =
-            Variable.Set.fold (fun v acc ->
-                try
-                  let t =
-                    Var_within_closure.Map.find (Var_within_closure.wrap v)
-                      value_set_of_closures.closure_elements
-                  in
-                  match t.T.var with
-                  | Some v ->
-                    if (E.mem env v) then Inlining_cost.Benefit.remove_prim acc
-                    else acc
-                  | None -> acc
-                with Not_found -> acc)
-              function_decl.free_variables benefit
+            Inlining_cost.Benefit.remove_call Inlining_cost.Benefit.zero
           in
-*)
           W.create_estimate
             ~original_size:Inlining_cost.direct_call_size
             ~new_size:body_size
@@ -198,9 +181,17 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
   Variable.print lhs_of_application Flambda.Expr.print function_decl.body;
 *)
       Inlining_transforms.inline_by_copying_function_body ~env
-        ~r:(R.reset_benefit r) ~set_of_closures ~lhs_of_application
-        ~closure_id_being_applied ~specialise_requested ~inline_requested
-        ~function_decl ~args ~continuation ~dbg ~simplify
+        ~r:(R.reset_benefit r)
+        ~set_of_closures
+        ~lhs_of_application
+        ~inline_requested
+        ~specialise_requested
+        ~closure_id_being_applied
+        ~function_decl
+        ~args
+        ~continuation
+        ~dbg
+        ~simplify
     in
     let num_direct_applications_seen =
       (R.num_direct_applications r_inlined) - (R.num_direct_applications r)
@@ -231,7 +222,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
       let env =
         (* We decrement the unrolling count even if the function is not
            recursive to avoid having to check whether or not it is recursive *)
-        E.inside_unrolled_function env function_decls.set_of_closures_origin
+        E.inside_unrolled_function env set_of_closures.set_of_closures_origin
       in
       let env = E.inside_inlined_function env function_decl.closure_origin in
       let env =
@@ -272,7 +263,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
         let env =
           (* We decrement the unrolling count even if the function is recursive
              to avoid having to check whether or not it is recursive *)
-          E.inside_unrolled_function env function_decls.set_of_closures_origin
+          E.inside_unrolled_function env set_of_closures.set_of_closures_origin
         in
         (* CR mshinwell: note: this next line was missing in the old Flambda *)
         let env = E.inside_inlined_function env function_decl.closure_origin in
@@ -388,7 +379,7 @@ let specialise env r ~lhs_of_application
        - is closed (it and all other members of the set of closures on which
          it depends); and
        - has useful approximations for some invariant parameters. *)
-    if !Clflags.classic_inlining then
+    if set_of_closures.is_classic_mode then
       Don't_try_it S.Not_specialised.Classic_mode
     else if self_call then
       Don't_try_it S.Not_specialised.Self_call
@@ -534,16 +525,16 @@ Format.eprintf "Application env: %a@ \nExpression:\n%a%!"
     end
 *)
 
-let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
+let for_call_site ~env ~r
       ~lhs_of_application ~closure_id_being_applied
-      ~(function_decl : Flambda.Function_declaration.t)
-      ~(value_set_of_closures : Flambda_type.set_of_closures)
-      ~args ~args_approxs ~continuation ~dbg ~simplify
+      ~(function_decl : Flambda_type.inlinable_function_declaration)
+      ~(set_of_closures : Flambda_type.set_of_closures)
+      ~args ~arg_tys ~continuation ~dbg ~simplify
       ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested =
   let importer = E.importer env in
-  if List.length args <> List.length args_approxs then begin
+  if List.length args <> List.length arg_tys then begin
     Misc.fatal_error "Inlining_decision.for_call_site: inconsistent lengths \
-        of [args] and [args_approxs]"
+        of [args] and [arg_tys]"
   end;
   (* Remove unroll attributes from functions we are already actively
      unrolling, otherwise they'll be unrolled again next round. *)
@@ -551,13 +542,16 @@ let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
     match (inline_requested : Lambda.inline_attribute) with
     | Unroll _ ->
       let unrolling =
-        E.actively_unrolling env function_decls.set_of_closures_origin
+        E.actively_unrolling env set_of_closures.set_of_closures_origin
       in
       begin match unrolling with
       | Some _ -> Default_inline
       | None -> inline_requested
       end
     | Always_inline | Default_inline | Never_inline -> inline_requested
+  in
+  let return_arity =
+    List.map (fun ty -> Flambda_type.kind ~importer ty) function_decl.result
   in
   let original_apply : Flambda.apply =
     { kind = Function;
@@ -566,7 +560,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
       args;
       call_kind = Direct {
         closure_id = closure_id_being_applied;
-        return_arity = function_decl.return_arity;
+        return_arity;
       };
       dbg;
       inline = inline_requested;
@@ -577,7 +571,7 @@ let for_call_site ~env ~r ~(function_decls : Flambda.Function_declarations.t)
   let original r =
     let continuation, r =
       let arg_tys =
-        Flambda_type.unknown_types_from_arity function_decl.return_arity
+        Flambda_type.unknown_types_from_arity return_arity
       in
       simplify_apply_cont_to_cont ?don't_record_use:None env r continuation
         ~arg_tys
@@ -603,22 +597,94 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
 *)
   let original_r = R.seen_direct_application r in
   if function_decl.stub then
-    let body, r =
-      Inlining_transforms.inline_by_copying_function_body ~env
-        ~r ~function_decls ~lhs_of_application
-        ~closure_id_being_applied ~specialise_requested ~inline_requested
-        ~function_decl ~args ~continuation ~dbg ~simplify
-    in
-(* CR mshinwell: This was simplifying the body again!
-    simplify env r body
-*)
-    body, r
+    Inlining_transforms.inline_by_copying_function_body ~env ~r
+      ~set_of_closures ~lhs_of_application ~closure_id_being_applied
+      ~specialise_requested ~inline_requested ~function_decl ~args
+      ~continuation ~dbg ~simplify
   else if E.never_inline env then
     (* This case only occurs when examining the body of a stub function
        but not in the context of inlining said function.  As such, there
        is nothing to do here (and no decision to report). *)
     original original_r
-  else begin
+  else if function_decl.is_classic_mode then begin
+    let env =
+      E.note_entering_call env
+        ~closure_id:closure_id_being_applied ~dbg:dbg
+    in
+    let simpl =
+      let self_call =
+        E.inside_set_of_closures_declaration
+          set_of_closures.set_of_closures_origin env
+      in
+      let try_inlining =
+        if self_call then
+          Don't_try_it S.Not_inlined.Self_call
+        else if not (E.inlining_allowed env function_decl.closure_origin) then
+          Don't_try_it S.Not_inlined.Unrolling_depth_exceeded
+        else begin
+          (* There are useful approximations, so we should simplify. *)
+          Try_it
+        end
+      in
+      match try_inlining with
+      | Don't_try_it decision -> Original decision
+      | Try_it ->
+        let body, r =
+          Inlining_transforms.inline_by_copying_function_body ~env
+            ~r ~set_of_closures ~lhs_of_application
+            ~closure_id_being_applied ~specialise_requested ~inline_requested
+            ~function_decl ~args ~continuation ~dbg ~simplify
+        in
+        let env = E.note_entering_inlined env in
+        let env =
+          (* We decrement the unrolling count, even if the function is not
+             recursive, to avoid having to check whether or not it is
+             recursive. *)
+          E.inside_unrolled_function env set_of_closures.set_of_closures_origin
+        in
+        let env =
+          E.inside_inlined_function env function_decl.closure_origin
+        in
+        Changed ((simplify env r body), S.Inlined.Classic_mode)
+    in
+    let res, decision =
+      match simpl with
+      | Original decision ->
+        let decision =
+          S.Decision.Unchanged (S.Not_specialised.Classic_mode, decision)
+        in
+        original original_r, decision
+      | Changed ((expr, r), decision) ->
+        let max_inlining_threshold =
+          if E.at_toplevel env then
+            Simplify_aux.initial_inlining_toplevel_threshold
+              ~round:(E.round env)
+          else
+            Simplify_aux.initial_inlining_threshold
+              ~round:(E.round env)
+        in
+        let raw_inlining_threshold = R.inlining_threshold r in
+        let unthrottled_inlining_threshold =
+          match raw_inlining_threshold with
+          | None -> max_inlining_threshold
+          | Some inlining_threshold -> inlining_threshold
+        in
+        let inlining_threshold =
+          IT.min unthrottled_inlining_threshold max_inlining_threshold
+        in
+        let inlining_threshold_diff =
+          IT.sub unthrottled_inlining_threshold inlining_threshold
+        in
+        let res =
+          if E.inlining_level env = 0
+          then expr, R.set_inlining_threshold r raw_inlining_threshold
+          else expr, R.add_inlining_threshold r inlining_threshold_diff
+        in
+        res, S.Decision.Inlined (S.Not_specialised.Classic_mode, decision)
+    in
+    E.record_decision env decision;
+    res
+  end else begin
     let env = E.unset_never_inline_inside_closures env in
     let env =
       E.note_entering_call env
@@ -659,7 +725,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
       else begin
         let self_call =
           E.inside_set_of_closures_declaration
-            function_decls.set_of_closures_origin env
+            set_of_closures.set_of_closures_origin env
         in
         let fun_cost =
           lazy
@@ -673,6 +739,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
         in
         (* CR mshinwell for pchambart and lwhite: Think about how to do
            specialisation in the new world *)
+(* Note: fquah's diff for specialising has not been applied here yet. *)
         let recursive = lazy false in  (* XXX *)
 (*
         let fun_var =
@@ -691,7 +758,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
 (*
           specialise env r ~lhs_of_application ~function_decls ~recursive
             ~closure_id_being_applied ~function_decl ~value_set_of_closures
-            ~args ~args_approxs ~continuation ~dbg ~simplify
+            ~args ~arg_tys ~continuation ~dbg ~simplify
             ~original:original_expr
             ~inline_requested ~specialise_requested ~fun_cost ~self_call
             ~inlining_threshold
@@ -718,8 +785,8 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
 *)
           let r = R.roll_back_continuation_uses r cont_usage_snapshot in
           let inline_result =
-            inline ~importer env r ~function_decls ~lhs_of_application
-              ~closure_id_being_applied ~function_decl ~value_set_of_closures
+            inline ~importer env r ~lhs_of_application
+              ~closure_id_being_applied ~function_decl ~set_of_closures
               ~only_use_of_function ~original:original_expr ~recursive
               ~inline_requested ~specialise_requested ~args ~continuation
               ~size_from_approximation ~dbg ~simplify ~fun_cost ~self_call

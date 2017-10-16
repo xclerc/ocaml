@@ -133,53 +133,47 @@ module type S = sig
     | String of string_ty
     | Float_array of float_array_ty
 
-  and inlinable_function_declarations = private {
-    set_of_closures_id : Set_of_closures_id.t;
-    set_of_closures_origin : Set_of_closures_origin.t;
-    funs : inlinable_function_declaration Variable.Map.t;
-    (* CR mshinwell: try to change these to [Misc.Stdlib.Set_once.t]?
-       (ask xclerc) *)
-    invariant_params : Variable.Set.t Variable.Map.t lazy_t;
-    size : int option Variable.Map.t lazy_t;
-    (** For functions that are very likely to be inlined, the size of the
-        function's body. *)
-    direct_call_surrogates : Closure_id.t Closure_id.Map.t;
-  }
-
-  and non_inlinable_function_declarations = {
-    funs : non_inlinable_function_declaration Variable.Map.t
-  }
-
-  (* CR pchambart: the inlinable property should maybe be a
-     per function property *)
-  and function_declarations =
-    | Non_inlinable of non_inlinable_function_declarations
-    | Inlinable of inlinable_function_declarations
-
-  and function_body = {
-    body : expr;
-    free_variables : Variable.Set.t;
-    free_symbols : Symbol.Set.t;
-  }
-
   and inlinable_function_declaration = private {
     closure_origin : Closure_origin.t;
+    continuation_param : Continuation.t;
+    (* CR-someday mshinwell: [is_classic_mode] should be changed to use a
+       new type which records the combination of inlining (etc) options
+       applied to the originating source file. *)
+    is_classic_mode : bool;
+    (** Whether the file from which this function declaration originated was
+        compiled in classic mode. *)
     params : (Parameter.t * t) list;
-    body : function_body;
+    body : expr;
+    free_symbols : Symbol.Set.t;
+    (** All free symbols in [body]. *)
     result : t list;
     stub : bool;
     dbg : Debuginfo.t;
     inline : Lambda.inline_attribute;
     specialise : Lambda.specialise_attribute;
     is_a_functor : bool;
+    (* CR mshinwell: try to change these to [Misc.Stdlib.Set_once.t]?
+       (ask xclerc) *)
+    invariant_params : Variable.Set.t lazy_t;
+    size : int option lazy_t;
+    (** For functions that are very likely to be inlined, the size of the
+        function's body. *)
+    direct_call_surrogate : Closure_id.t option;
   }
 
-  and non_inlinable_function_declaration = {
+  and non_inlinable_function_declaration = private {
     result : t list;
+    direct_call_surrogate : Closure_id.t option;
   }
+
+  and function_declaration =
+    | Non_inlinable of non_inlinable_function_declaration
+    | Inlinable of inlinable_function_declaration
 
   and set_of_closures = private {
-    function_decls : function_declarations;
+    set_of_closures_id : Set_of_closures_id.t;
+    set_of_closures_origin : Set_of_closures_origin.t;
+    function_decls : function_declaration Closure_id.Map.t;
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
@@ -212,6 +206,10 @@ module type S = sig
   (** Construction of top types. *)
   val unknown : Flambda_kind.t -> unknown_because_of -> t
   val any_value : Flambda_kind.scanning -> unknown_because_of -> t
+  val any_value_as_ty_value
+     : Flambda_kind.scanning
+    -> unknown_because_of
+    -> ty_value
   val any_tagged_immediate : unit -> t
   val any_boxed_float : unit -> t
   val any_boxed_int32 : unit -> t
@@ -262,13 +260,41 @@ module type S = sig
   val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
   val symbol_loaded_lazily : Flambda_kind.t -> Symbol.Of_kind_value.t -> t
 
+  val create_inlinable_function_declaration
+     : is_classic_mode:bool
+    -> closure_origin:Closure_origin.t
+    -> continuation_param:Continuation.t
+    -> params:(Parameter.t * t) list
+    -> body:expr
+    -> result:t list
+    -> stub:bool
+    -> dbg:Debuginfo.t
+    -> inline:Lambda.inline_attribute
+    -> specialise:Lambda.specialise_attribute
+    -> is_a_functor:bool
+    -> invariant_params:Variable.Set.t lazy_t
+    -> size:int option lazy_t
+    -> direct_call_surrogate:Closure_id.t option
+    -> inlinable_function_declaration
+
+  val create_non_inlinable_function_declaration
+     : result:t list
+    -> direct_call_surrogate:Closure_id.t option
+    -> non_inlinable_function_declaration
+
+  val create_set_of_closures
+     : set_of_closures_id:Set_of_closures_id.t
+    -> set_of_closures_origin:Set_of_closures_origin.t
+    -> function_decls:function_declaration Closure_id.Map.t
+    -> closure_elements:ty_value Var_within_closure.Map.t
+    -> set_of_closures
+
   (** Construct a closure type given the type of the corresponding set of
       closures and the closure ID of the closure to be projected from such
       set. [closure_var] and/or [set_of_closures_var] may be specified to
       augment the type with variables that may be used to access the closure
       value itself, so long as they are in scope at the proposed point of
       use. *)
-  (* CR mshinwell: bad name? *)
   val closure
      : ?closure_var:Variable.t
     -> ?set_of_closures_var:Variable.t
@@ -277,20 +303,10 @@ module type S = sig
     -> Closure_id.t
     -> t
 
-  (* CR pchambart: inlinable_function_declaration should be made
-     private now that it is expected to maintain the invariants that
-     create_set_of_closures was supposed to maintain. *)
-  (** Create a [set_of_closures] structure which can be used for building a
-      type describing a set of closures. *)
-  val create_set_of_closures
-     : function_decls:function_declarations
-    -> closure_elements:ty_value Var_within_closure.Map.t
-    -> set_of_closures
-
-  (** Construct a set of closures type. [set_of_closures_var] is as for the
-      parameter of the same name in [closure], above. *)
+  (** Construct a set of closures type. *)
   val set_of_closures
      : ?set_of_closures_var:Variable.t
+    -> ?set_of_closures_symbol:Symbol.Of_kind_value.t
     -> set_of_closures
     -> t
 
@@ -384,6 +400,10 @@ module type S = sig
   (** Each type has a unique kind.  This is mostly syntactic save for the
       "Value" cases. *)
   val kind : (t -> Flambda_kind.t) with_importer
+
+  (** Given a type of kind [Value] determine whether values of that type
+      have to be scanned by the GC. *)
+  val scanning_ty_value : (ty_value -> Flambda_kind.scanning) with_importer
 
   (** Least upper bound of two types. *)
   val join : (t -> t -> t) with_importer

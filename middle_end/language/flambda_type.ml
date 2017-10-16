@@ -615,84 +615,133 @@ module Blocks = struct
     with Same_tag_different_arities -> Wrong
 end
 
-module Set_of_closures = struct
-  type t = set_of_closures
+module Set_of_closures : sig
+  type t
 
-  let non_inlinable_function_declaration (f : inlinable_function_declaration)
-        : non_inlinable_function_declaration =
-    { result = f.result }
+  val create : set_of_closures -> t
 
-  let non_inlinable_function_declarations (t : t)
-        : non_inlinable_function_declarations =
-    match t.function_decls with
-    | Non_inlinable non_inlinable_function_decls ->
-      non_inlinable_function_decls
-    | Inlinable function_decls ->
-      let funs =
-        Variable.Map.map
-          non_inlinable_function_declaration
-          function_decls.funs
+  val function_decls : t -> function_declaration Closure_id.Map.t
+  val closure_elements : t -> ty_value Var_within_closure.Map.t
+
+  val join : (t -> t -> t) with_importer
+end = struct
+  type t = {
+    set_of_closures_id_and_origin :
+      (Set_of_closures_id.t * Set_of_closures_origin.t)
+        Or_not_all_values_known.t;
+    function_decls : function_declaration Closure_id.Map.t;
+    closure_elements : ty_value Var_within_closure.Map.t;
+  }
+
+  let function_decls t = t.function_decls
+  let closure_elements t = t.closure_elements
+
+  let print ppf t =
+    Format.fprintf ppf "@[((function_decls %a)@ (closure_elements %a))@]"
+      Closure_id.Set.print
+      (Closure_id.Map.keys t.function_decls)
+      Var_within_closure.Set.print
+      (Var_within_closure.Map.keys t.closure_elements)
+
+  let create (set : set_of_closures) : t =
+    { set_of_closures_id_and_origin =
+        Exactly (set.set_of_closures_id, set.set_of_closures_origin);
+      function_decls = set.function_decls;
+      closure_elements = set.closure_elements;
+    }
+
+  let make_non_inlinable_function_declaration (f : function_declaration)
+        : function_declaration =
+    match f with
+    | Inlinable decl ->
+      let decl =
+        create_non_inlinable_function_declaration ~result:decl.result
+          ~direct_call_surrogate:decl.direct_call_surrogate
       in
-      { funs }
+      Non_inlinable decl
+    | Non_inlinable _ -> f
 
-  let join_non_inlinable ~importer (t1 : t) (t2 : t) : t =
-    let f1 = non_inlinable_function_declarations t1 in
-    let f2 = non_inlinable_function_declarations t2 in
-    let join_results
-        (f1:non_inlinable_function_declaration)
-        (f2:non_inlinable_function_declaration) =
-      if List.length f1.result <> List.length f2.result then
-        Misc.fatal_error "A function appear with 2 different return arities";
-      let result = List.map2 (join ~importer) f1.result f2.result in
-      { result }
+  let join_and_make_all_functions_non_inlinable ~importer
+        (t1 : t) (t2 : t) : t =
+    let join_results_and_make_non_inlinable (f1 : function_declaration)
+          (f2 : function_declaration) : function_declaration =
+      let f1_result =
+        match f1 with
+        | Inlinable f1 -> f1.result
+        | Non_inlinable f1 -> f1.result
+      in
+      let f2_result =
+        match f2 with
+        | Inlinable f2 -> f2.result
+        | Non_inlinable f2 -> f2.result
+      in
+      if List.length f1_result <> List.length f2_result then begin
+        Misc.fatal_errorf "Function appears with two different return arities: \
+            %a and %a"
+          print t1
+          print t2
+      end;
+      let result = List.map2 (join ~importer) f1_result f2_result in
+      let decl =
+        create_non_inlinable_function_declaration ~result
+          ~direct_call_surrogate:None
+      in
+      Non_inlinable decl
     in
-    let funs =
-      Variable.Map.union_merge join_results f1.funs f2.funs
+    let function_decls =
+      Closure_id.Map.union_both
+        (fun f -> make_non_inlinable_function_declaration f)
+        (fun f1 f2 -> join_results_and_make_non_inlinable f1 f2)
+        t1.function_decls t2.function_decls
     in
-    let function_decls = Non_inlinable { funs } in
     let closure_elements =
-      Var_within_closure.Map.union_merge (join_ty_value ~importer)
+      Var_within_closure.Map.union_both
+        (fun ty -> any_value_as_ty_value (scanning_ty_value ~importer ty) Other)
+        (fun ty1 ty2 -> join_ty_value ~importer ty1 ty2)
         t1.closure_elements t2.closure_elements
     in
-    create_set_of_closures
-      ~function_decls
-      ~closure_elements
+    { set_of_closures_id_and_origin = Not_all_values_known;
+      function_decls;
+      closure_elements;
+    }
 
   let join ~importer (t1 : t) (t2 : t) : t =
-    match t1.function_decls, t2.function_decls with
-    | Non_inlinable _, (Inlinable _ | Non_inlinable _)
-    | Inlinable _, Non_inlinable _ ->
-      join_non_inlinable ~importer t1 t2
-    | Inlinable f1, Inlinable f2 ->
-      if Set_of_closures_id.equal
-          f1.set_of_closures_id
-          f2.set_of_closures_id
-      then begin
-      (* If the set_of_closures are the same, the result is inlinable.
-         The real constraint is that the union of two functions is
-         inlinable if any of the two functions can be replaced by the
-         other. This is an overapproximation, but might not be too
-         restrictive in practice. *)
-      assert(
-        Set_of_closures_origin.equal
-          f1.set_of_closures_origin
-          f2.set_of_closures_origin);
+    let set_of_closures_id_and_origin =
+      Or_not_all_values_known.join (fun (id1, origin1) (id2, origin2) ->
+          if Set_of_closures_id.equal id1 id2 then begin
+            (* CR mshinwell: We should think more about [Set_of_closures_id]
+               particularly in the context of recursive cases vs. the previous
+               version of a set of closures *)
+            assert (Set_of_closures_origin.equal origin1 origin2);
+            Ok (id1, origin1)
+          end else begin
+            Wrong
+          end)
+        t1.set_of_closures_id_and_origin
+        t2.set_of_closures_id_and_origin
+    in
+    match set_of_closures_id_and_origin with
+    | Ok ((Exactly _) as set_of_closures_id_and_origin) ->
+      (* If the [set_of_closures_id]s are the same, the result is eligible for
+         inlining, when the input function declarations are.
+
+         The real constraint is that the union of two functions is inlinable
+         if either of the two functions can be replaced by the other.  As such
+         our behaviour here is conservative but hopefully not too restrictive in
+         practice. *)
       (* CR pchambart: this is too strong, but should hold in general.
          It can be kept for now to help debugging *)
-      assert(f1.funs == f2.funs);
+      assert (t1.function_decls == t2.function_decls);
       let closure_elements =
         Var_within_closure.Map.union_merge (join_ty_value ~importer)
           t1.closure_elements t2.closure_elements
       in
-      create_set_of_closures
-        ~function_decls:t1.function_decls
-        ~closure_elements
-    end
-      else
-        (* We assume here that functions are different, hence the result
-           is not inlinable *)
-        join_non_inlinable ~importer t1 t2
-
+      { set_of_closures_id_and_origin;
+        function_decls = t1.function_decls;
+        closure_elements;
+      }
+    | Ok Not_all_values_known | Wrong ->
+      join_and_make_all_functions_non_inlinable ~importer t1 t2
 end
 
 module Summary = struct
@@ -704,8 +753,8 @@ module Summary = struct
     | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
-    | Closures of set_of_closures Closure_id.Map.t Or_not_all_values_known.t
-    | Set_of_closures of set_of_closures Or_not_all_values_known.t
+    | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
+    | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
 
   let join ~importer t1 t2 =
     let join_immediates =
@@ -901,9 +950,8 @@ let summarize ~importer (t : t) : Summary.t =
         | Closure _ ->
           Wrong
             (* [@ppwarning "TODO"] *)
-        | Set_of_closures _ ->
-          Wrong
-            (* [@ppwarning "TODO"] *)
+        | Set_of_closures set ->
+          Set_of_closures (Exactly (Set_of_closures.create set))
         | String _
         | Float_array _ -> Wrong
       in

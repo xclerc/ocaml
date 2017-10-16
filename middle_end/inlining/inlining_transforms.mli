@@ -67,12 +67,12 @@
 val inline_by_copying_function_body
    : env:Simplify_env.t
   -> r:Simplify_result.t
-  -> function_decls:Flambda.Function_declarations.t
+  -> set_of_closures:Flambda_type.set_of_closures
   -> lhs_of_application:Variable.t
   -> inline_requested:Lambda.inline_attribute
   -> specialise_requested:Lambda.specialise_attribute
   -> closure_id_being_applied:Closure_id.t
-  -> function_decl:Flambda.Function_declaration.t
+  -> function_decl:Flambda_type.inlinable_function_declaration
   -> args:Variable.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t

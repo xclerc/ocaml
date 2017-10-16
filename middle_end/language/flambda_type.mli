@@ -96,6 +96,13 @@ module Blocks : sig
   type t = private ty_value array Tag.Scannable.Map.t
 end
 
+module Set_of_closures : sig
+  type t
+
+  val function_decls : t -> function_declaration Closure_id.Map.t
+  val closure_elements : t -> ty_value Var_within_closure.Map.t
+end
+
 module Summary : sig
   type t = private
     | Wrong
@@ -105,8 +112,8 @@ module Summary : sig
     | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
-    | Closures of set_of_closures Closure_id.Map.t Or_not_all_values_known.t
-    | Set_of_closures of set_of_closures Or_not_all_values_known.t
+    | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
+    | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
 end
 
 (** Create a summary of a type, flattening unions as required. *)

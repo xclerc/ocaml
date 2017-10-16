@@ -53,6 +53,14 @@ module type Map = sig
   val union_left : 'a t -> 'a t -> 'a t
 
   val union_merge : ('a -> 'a -> 'a) -> 'a t -> 'a t -> 'a t
+
+  val union_both
+     : ('a -> 'a)
+    -> ('a -> 'a -> 'a)
+    -> 'a t
+    -> 'a t
+    -> 'a t
+
   val inter : ('a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
   val inter_merge : ('a -> 'a -> 'a) -> 'a t -> 'a t -> 'a t
   val rename : key t -> key -> key
@@ -147,6 +155,15 @@ module Make_map (T : Thing) = struct
       match m1, m2 with
       | None, m | m, None -> m
       | Some m1, Some m2 -> Some (f m1 m2)
+    in
+    merge aux m1 m2
+
+  let union_both f g m1 m2 =
+    let aux _ m1 m2 =
+      match m1, m2 with
+      | None, None -> None
+      | None, Some m | Some m, None -> Some (f m)
+      | Some m1, Some m2 -> Some (g m1 m2)
     in
     merge aux m1 m2
 

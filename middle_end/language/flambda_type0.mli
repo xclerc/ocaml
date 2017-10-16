@@ -27,4 +27,5 @@
 module Make (Expr : sig
   type t
   val print : Format.formatter -> t -> unit
+  val free_symbols : t -> Symbol.Set.t
 end) : Flambda_type0_intf.S with type expr = Expr.t

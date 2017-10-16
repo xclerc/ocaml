@@ -24,13 +24,12 @@
 val for_call_site
    : env:Simplify_env.t
   -> r:Simplify_result.t
-  -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
   -> closure_id_being_applied:Closure_id.t
-  -> function_decl:Flambda.Function_declaration.t
-  -> value_set_of_closures:Flambda_type.set_of_closures
+  -> function_decl:Flambda_type.inlinable_function_declaration
+  -> set_of_closures:Flambda_type.set_of_closures
   -> args:Variable.t list
-  -> args_approxs:Flambda_type.t list
+  -> arg_tys:Flambda_type.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> simplify:Inlining_decision_intf.simplify
