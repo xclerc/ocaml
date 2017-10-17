@@ -309,15 +309,13 @@ MIDDLE_END_REMOVAL=\
   middle_end/removal/unrecursify.cmo
 
 MIDDLE_END_SIMPLIFY=\
-  middle_end/simplify/simplify.cmo \
-  middle_end/simplify/simplify_expr.cmo \
-  middle_end/simplify/simplify_named.cmo \
-  middle_end/simplify/simplify_program.cmo \
-  middle_end/simplify/simplify_invariants.cmo \
-  middle_end/simplify/simplify_aux.cmo \
-  middle_end/simplify/simplify_common.cmo \
   middle_end/simplify/simplify_env.cmo \
-  middle_end/simplify/simplify_result.cmo
+  middle_end/simplify/simplify_result.cmo \
+  middle_end/simplify/simplify_aux.cmo \
+  middle_end/simplify/simplify_named.cmo \
+  middle_end/simplify/simplify_expr.cmo \
+  middle_end/simplify/simplify_program.cmo \
+  middle_end/simplify/simplify.cmo
 
 MIDDLE_END_UNBOXING=\
   middle_end/unboxing/augment_specialised_args.cmo \
