@@ -65,10 +65,12 @@ module Free_vars : sig
 end
 
 module Reachable : sig
-  type nonrec t =
+  type t = private
     | Reachable of Flambda0.Named.t
-    | Non_terminating of Flambda0.Named.t
-    | Unreachable
+    | Invalid of Flambda0.invalid_term_semantics
+
+  val reachable : Flambda0.Named.t -> t
+  val invalid : unit -> t
 end
 
 module Typed_parameter : sig

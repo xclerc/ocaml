@@ -123,7 +123,7 @@ let for_toplevel_expression ~importer expr r =
             handler.handler
             handler.params args
         end
-      | Apply _ | Switch _ | Unreachable -> expr
+      | Apply _ | Switch _ | Invalid _ -> expr
     in
     let expr = substitute Continuation.Map.empty expr in
 (*

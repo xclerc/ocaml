@@ -349,7 +349,7 @@ and lift_expr ~importer (expr : Flambda.Expr.t) ~state =
     in
     let handlers = Flambda.Let_cont_handlers.to_continuation_map handlers in
     lift_let_cont ~importer ~body ~handlers ~state ~recursive
-  | Apply _ | Apply_cont _ | Switch _ | Unreachable -> expr, state
+  | Apply _ | Apply_cont _ | Switch _ | Invalid _ -> expr, state
 
 and lift_set_of_closures ~importer
       (set_of_closures : Flambda.Set_of_closures.t) =

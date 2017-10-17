@@ -509,7 +509,7 @@ result
         []
     in
     Ucatch (Normal Recursive, conts, to_clambda t env body)
-  | Unreachable -> Uunreachable
+  | Invalid _ -> Uunreachable
 
 and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
   match named with

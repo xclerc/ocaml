@@ -258,7 +258,7 @@ module Push_pop_invariants = struct
         in
         unify_stack cont cont_stack current_stack
       end
-    | Unreachable -> ()
+    | Invalid _ -> ()
 
   and well_formed_trap ~continuation_arity:_ k (expr : Flambda.Expr.t) =
     let root = ref Root in
@@ -431,7 +431,7 @@ module Continuation_scoping = struct
       | None -> ()
       | Some cont -> check ((), cont)
       end
-    | Unreachable -> ()
+    | Invalid _ -> ()
 
   and check_expr ~importer ~continuation_arity k (expr : Flambda.Expr.t) =
     let env =
@@ -578,7 +578,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
       end;
       ignore_continuation static_exn;
       List.iter (check_variable_is_bound env) es
-    | Unreachable -> ()
+    | Invalid _ -> ()
   and loop_named env (named : Flambda.Named.t) =
     match named with
     | Var var -> check_variable_is_bound env var

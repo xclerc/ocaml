@@ -1592,7 +1592,7 @@ end) = struct
       | Mutable_string _
       | Float_array _
       | Bottom ->
-        (* Unreachable *)
+        (* Invalid _ *)
         { t with descr = Bottom }
       | Load_lazily _ ->
         (* We don't know yet *)

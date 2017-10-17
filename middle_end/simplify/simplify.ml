@@ -51,14 +51,14 @@ let freshen_and_squash_aliaseses env vars =
 let simpler_equivalent_term env r original_named ty
       : (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t * R.t =
   if not (Effect_analysis.no_effects_named original_named) then
-    [], Reachable original_named, r
+    [], Flambda.Reachable.reachable original_named, r
   else
     let importer = E.importer env in
     match T.reify_using_env ~importer ty ~is_present_in_env:(E.mem env) with
-    | None -> [], Reachable original_named, r
+    | None -> [], Flambda.Reachable.reachable original_named, r
     | Some named ->
       let r = R.map_benefit r (B.remove_code_named original_named) in
-      [], Reachable named, r
+      [], Flambda.Reachable.reachable named, r
 
 let type_for_const (const : Flambda.Const.t) =
   match const with
@@ -98,15 +98,17 @@ let simplify_project_closure env r
   let set_of_closures, set_of_closures_ty =
     freshen_and_squash_aliases env project_closure.set_of_closures
   in
-  match T.prove_set_of_closures set_of_closures_ty with
-  | Wrong -> [], Unreachable, r
-  | Unknown reason ->
-    [], Reachable (Project_closure {
+  let closure_id = project_closure.closure_id in
+  let importer = E.importer env in
+  match T.prove_set_of_closures ~importer set_of_closures_ty with
+  | Wrong -> [], Flambda.Reachable.invalid (), r
+  | Unknown ->
+    [], Flambda.Reachable.reachable (Project_closure {
       set_of_closures;
-      closure_id = project_closure.closure_id;
+      closure_id;
     }), r
-  | Ok set_of_closures ->
-    let closure_id = project_closure.closure_id in
+  | Known set ->
+(*
     begin match Closure_id.Set.elements closure_id with
       | _ :: _ :: _ ->
         Format.printf "Set of closures type is not a singleton \
@@ -120,9 +122,10 @@ let simplify_project_closure env r
           Projection.print_project_closure project_closure
       | _ ->
         ()
-    in
+    end;
+*)
     let projecting_from =
-      match set_of_closures_var with
+      match Flambda_type.Set_of_closures.set_of_closures_var set with
       | None -> None
       | Some set_of_closures_var ->
         let projection : Projection.t =
@@ -137,10 +140,15 @@ let simplify_project_closure env r
     in
     match projecting_from with
     | Some (var, projection) ->
-      let var = freshen_and_squash_aliases_named env var in
+      let var, var_ty = freshen_and_squash_aliases env var in
       let r = R.map_benefit r (B.remove_projection projection) in
-      [], Reachable (Var var), r
+      if Flambda_type.is_bottom ~importer var_ty then
+        [], Flambda.Reachable.invalid (), r
+      else
+        [], Flambda.Reachable.reachable (Var var), r
     | None ->
+      assert false
+(* XXX for pchambart to fix: 
       let if_not_reference_recursive_function_directly ()
         : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
             * R.t =
@@ -166,6 +174,7 @@ let simplify_project_closure env r
         | Some (flam, ty) -> [], Reachable flam, ty
         | None ->
           if_not_reference_recursive_function_directly ()
+*)
 
 (* Simplify an expression that, given one closure within some set of
    closures, returns another closure (possibly the same one) within the
@@ -1081,8 +1090,8 @@ and simplify_primitive env r prim args dbg =
             [], Reachable (Var var), var_ty)
         | None ->
           begin match T.get_field arg_ty ~field_index with
-          | Unreachable ->
-            [], Unreachable, r
+          | Invalid _ ->
+            [], Flambda.Reachable.invalid (), r
           | Ok ty ->
             let tree, ty =
               match arg_ty.symbol with
@@ -1108,11 +1117,7 @@ and simplify_primitive env r prim args dbg =
           [_block; _field; _value],
           [block_ty; field_ty; value_ty] ->
         if T.invalid_to_mutate block_ty then begin
-          if !Clflags.treat_invalid_code_as_dead then
-            [], Flambda.Unreachable, r
-          else
-            [], Flambda.Reachable (Prim (prim, args, dbg)),
-              ret r (T.unknown Other)
+          [], Flambda.Reachable.invalid (), r
         end else begin
           let size = T.length_of_array block_ty in
           let index = T.reify_as_int field_ty in
@@ -1187,11 +1192,7 @@ and simplify_primitive env r prim args dbg =
         end
       | Psetfield _, _block::_, block_ty::_ ->
         if T.invalid_to_mutate block_ty then begin
-          if !Clflags.treat_invalid_code_as_dead then
-            [], Flambda.Unreachable, r
-          else
-            [], Flambda.Reachable (Prim (prim, args, dbg)),
-              ret r (T.unknown Other)
+          [], Flambda.Reachable.invalid (), r
         end else begin
           [], Reachable tree, ret r (T.unknown Other)
         end
@@ -1272,8 +1273,7 @@ and simplify_named env r (tree : Flambda.Named.t)
   | Read_symbol_field (symbol, field_index) ->
     let ty = E.find_or_load_symbol env symbol in
     begin match T.get_field ty ~field_index with
-    (* CR-someday mshinwell: Think about [Unreachable] vs. [Bottom]. *)
-    | Unreachable -> [], Unreachable, r
+    | (Invalid _) as invalid -> [], invalid, r
     | Ok flambda_type ->
       let flambda_type = T.augment_with_symbol_field ty symbol field_index in
       simpler_equivalent_term env r tree ty
@@ -1400,38 +1400,32 @@ and simplify_named env r (tree : Flambda.Named.t)
 *)
 and simplify_newly_introduced_let_bindings env r ~bindings
       ~(around : Flambda.Named.t) =
-  let bindings, env, r, _stop =
+  let bindings, env, r, invalid_term_semantics =
     List.fold_left (fun ((bindings, env, r, stop) as acc)
             (var, defining_expr) ->
-        if stop then
-          acc
-        else
+        match stop with
+        | Some _ -> acc
+        | None ->
           let (env, r), new_bindings, var, ty, defining_expr =
             for_defining_expr_of_let (env, r) var defining_expr
           in
-          match (defining_expr : Flambda.Named.t_reachable) with
+          match (defining_expr : Flambda.Reachable.t) with
           | Reachable defining_expr ->
             let bindings =
               (var, ty, defining_expr) :: (List.rev new_bindings) @ bindings
             in
-            bindings, env, r, false
-          | Non_terminating defining_expr ->
-            let bindings =
-              (var, ty, defining_expr) :: (List.rev new_bindings) @ bindings
-            in
-            bindings, env, r, true
-          | Unreachable ->
+            bindings, env, r, None
+          | Invalid invalid_term_semantics ->
             let bindings = (List.rev new_bindings) @ bindings in
-            bindings, env, r, true)
-      ([], env, r, false)
+            bindings, env, r, Some invalid_term_semantics)
+      ([], env, r, None)
       bindings
   in
   let new_bindings, around, r = simplify_named env r around in
   let around_fvs =
     match around with
-    | Reachable around
-    | Non_terminating around -> Flambda.Named.free_variables around
-    | Unreachable -> Variable.Set.empty
+    | Reachable around -> Flambda.Named.free_variables around
+    | Invalid _ -> Variable.Set.empty
   in
   let bindings, r, _fvs =
     List.fold_left (fun (bindings, r, fvs) (var, ty, defining_expr) ->
@@ -1450,21 +1444,19 @@ and simplify_newly_introduced_let_bindings env r ~bindings
       ([], r, around_fvs)
       ((List.rev new_bindings) @ bindings)
   in
-  bindings, around, r
+  bindings, around, invalid_term_semantics, r
 
 and for_defining_expr_of_let (env, r) var defining_expr =
   let new_bindings, defining_expr, r =
     simplify_named env r defining_expr
   in
   let ty = R.inferred_type r in
-  let defining_expr : Flambda.Named.t_reachable =
+  let defining_expr : Flambda.Reachable.t =
     match defining_expr with
-    | Non_terminating _ | Unreachable -> defining_expr
-    | Reachable defining_expr ->
-      (* Cause subsequent code to be deleted if the evaluation of this
-         [Let]'s defining expression doesn't terminate. *)
-      if T.is_bottom ty then Non_terminating defining_expr
-      else Reachable defining_expr
+    | Invalid _ -> defining_expr
+    | Reachable _ ->
+      if T.is_bottom ty then Flambda.Reachable.invalid ()
+      else defining_expr
   in
   let var, sb = Freshening.add_variable (E.freshening env) var in
   let env = E.set_freshening env sb in
@@ -1736,12 +1728,13 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
                Note that stubs are not allowed to call themselves.
                The code for [handler] is also put in the environment if
                the continuation is just an [Apply_cont] acting as a
-               continuation alias or just contains [Unreachable].  This
-               enables earlier [Switch]es that branch to such continuation
-               to be simplified, in some cases removing them entirely. *)
+               continuation alias or just contains
+               [Invalid Treat_as_unreachable].  This enables earlier [Switch]es
+               that branch to such continuation to be simplified, in some cases
+               removing them entirely. *)
             let alias_or_unreachable =
               match handler.handler with
-              | Unreachable -> true
+              | Invalid Treat_as_unreachable -> true
               (* CR mshinwell: share somehow with [Continuation_approx].
                  Also, think about this in the multi-argument case -- need
                  to freshen. *)
@@ -1940,7 +1933,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
       | None | Some (Recursive _) -> false
       | Some (Nonrecursive handler) ->
         match handler.handler with
-        | Unreachable -> true
+        | Invalid Treat_as_unreachable -> true
         | _ -> false
     in
     let rec filter_branches filter branches compatible_branches =
@@ -1969,20 +1962,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
       expr, R.map_benefit r B.remove_branch
     | Can_be_taken consts ->
       match consts, sw.failaction with
-      | [], None ->
-        (* If the switch is applied to a statically-known value that does not
-           match any case:
-           * if there is a default action take that case;
-           * otherwise this is something that is guaranteed not to
-             be reachable by the type checker.  For example:
-             [type 'a t = Int : int -> int t | Boxed_float : float -> float t
-               match Int 1 with
-               | Int _ -> ...
-               | Boxed_float f as v ->
-                 match v with   <-- This match is unreachable
-                 | Boxed_float f -> ...]
-        *)
-        Unreachable, r
+      | [], None -> Flambda.Expr.invalid (), r
       | [_, cont], None ->
         let cont, r =
           simplify_apply_cont_to_cont env r cont ~args_types:[]
@@ -1990,7 +1970,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
         Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
       | [], Some cont ->
         if destination_is_unreachable cont then
-          Unreachable, R.map_benefit r B.remove_branch
+          Invalid Treat_as_unreachable, R.map_benefit r B.remove_branch
         else
           let cont, r =
             simplify_apply_cont_to_cont env r cont ~args_types:[]
@@ -2069,7 +2049,7 @@ and simplify env r (tree : Flambda.Expr.t) : Flambda.Expr.t * R.t =
     freshen_and_squash_aliaseses env args ~f:(fun env args args_types ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_types)
   | Switch (arg, sw) -> simplify_switch env r arg sw
-  | Unreachable -> Unreachable, T.bottom
+  | Invalid _ -> tree, r
 
 and simplify_toplevel env r expr ~continuation ~descr =
   if not (Continuation.Map.mem continuation (E.continuations_in_scope env))

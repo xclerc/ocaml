@@ -483,7 +483,7 @@ and do_expr env (expr : Flambda.Expr.t) : unit =
     Misc.may (fun continutation ->
       assert(Continuation.Tbl.find env.cont continutation = []))
       failaction
-  | Unreachable ->
+  | Invalid _ ->
     ()
 
 and declare_continuation env name (handler : Flambda.Continuation_handler.t) =

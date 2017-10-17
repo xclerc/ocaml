@@ -480,7 +480,7 @@ let insert_specialisations (expr : Flambda.Expr.t) ~vars_in_scope ~new_conts
         | exception Not_found -> expr
         | new_cont -> Apply_cont (new_cont, trap_action, args)
         end
-      | Apply _ | Let_mutable _ | Switch _ | Unreachable -> expr)
+      | Apply _ | Let_mutable _ | Switch _ | Invalid _ -> expr)
     expr
 
 *)

@@ -47,10 +47,17 @@ module Free_vars = struct
 end
 
 module Reachable = struct
-  type nonrec t =
-    | Reachable of F0.Named.t
-    | Non_terminating of F0.Named.t
-    | Unreachable
+  type t =
+    | Reachable of Flambda0.Named.t
+    | Invalid of Flambda0.invalid_term_semantics
+
+  let reachable named = Reachable named
+
+  let invalid () =
+    if !Clflags.treat_invalid_code_as_unreachable then
+      Invalid Treat_as_unreachable
+    else
+      Invalid Halt_and_catch_fire
 end
 
 module Typed_parameter = struct
@@ -225,8 +232,8 @@ end = struct
         Let_cont { body = body2; handlers = handlers2; } ->
       equal body1 body2
         && Let_cont_handlers.equal handlers1 handlers2
-    | Unreachable, Unreachable -> true
-    | Unreachable, _ | _, Unreachable -> false
+    | Invalid _, Invalid _ -> true
+    | Invalid _, _ | _, Invalid _ -> false
 
   let description_of_toplevel_node (expr : Expr.t) =
     match expr with
@@ -236,7 +243,7 @@ end = struct
     | Apply _ -> "apply"
     | Apply_cont  _ -> "staticraise"
     | Switch _ -> "switch"
-    | Unreachable -> "unreachable"
+    | Invalid _ -> "unreachable"
 
   let bind ~bindings ~body =
     List.fold_left (fun expr (var, kind, var_def) ->
@@ -306,7 +313,7 @@ end = struct
 
     let iter_subexpressions f f_named (t : t) =
       match t with
-      | Apply _ | Apply_cont _ | Switch _ | Unreachable -> ()
+      | Apply _ | Apply_cont _ | Switch _ | Invalid _ -> ()
       | Let { defining_expr; body; _ } ->
         f_named defining_expr;
         f body
@@ -363,7 +370,7 @@ end = struct
         | _ ->
           let exp : t =
             match tree with
-            | Apply _ | Apply_cont _ | Switch _ | Unreachable -> tree
+            | Apply _ | Apply_cont _ | Switch _ | Invalid _ -> tree
             | Let _ -> assert false
             | Let_mutable mutable_let ->
               let new_body = aux mutable_let.body in
@@ -461,7 +468,7 @@ end = struct
 
     let map_subexpressions f f_named (tree : t) : t =
       match tree with
-      | Apply _ | Apply_cont _ | Switch _ | Unreachable -> tree
+      | Apply _ | Apply_cont _ | Switch _ | Invalid _ -> tree
       | Let { var; kind; defining_expr; body; _ } ->
         let new_named = f_named var defining_expr in
         let new_body = f body in
@@ -636,15 +643,10 @@ end = struct
               (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
             in
             loop body ~acc ~rev_lets
-          | Non_terminating defining_expr ->
-            let rev_lets =
-              (var, kind, defining_expr) :: (List.rev bindings) @ rev_lets
-            in
-            let last_body, acc = for_last_body acc Unreachable in
-            finish ~last_body ~acc ~rev_lets
-          | Unreachable ->
+          | Invalid invalid_term_semantics ->
             let rev_lets = (List.rev bindings) @ rev_lets in
-            let last_body, acc = for_last_body acc Unreachable in
+            let body : Expr.t = Invalid invalid_term_semantics in
+            let last_body, acc = for_last_body acc body in
             finish ~last_body ~acc ~rev_lets
           end
         | t ->
@@ -694,7 +696,6 @@ end = struct
       | Apply_cont (cont, trap_action, args) ->
         let args = substitute_args_list args in
         Apply_cont (cont, trap_action, args)
-      | Let _ | Unreachable -> expr
       | Let_cont { body; handlers; } ->
         let f handlers =
           Continuation.Map.map (fun (handler : Continuation_handler.t)
@@ -708,6 +709,7 @@ end = struct
           body;
           handlers = Let_cont_handlers.map handlers ~f;
         }
+      | Let _ | Invalid _ -> expr
     in
     let aux_named (named : Named.t) : Named.t =
       match named with
@@ -907,7 +909,7 @@ end = struct
           | None -> ()
           | Some cont -> use cont
           end
-        | Let _ | Let_mutable _ | Let_cont _ | Unreachable -> ())
+        | Let _ | Let_mutable _ | Let_cont _ | Invalid _ -> ())
       (fun _named -> ())
       expr;
     Continuation.Tbl.to_map counts

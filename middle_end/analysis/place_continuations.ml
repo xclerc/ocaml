@@ -214,7 +214,7 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
       let handlers = Flambda.Let_cont_handlers.to_continuation_map handlers in
       passing_continuation_bindings ~body ~handlers ~state
     | Let_mutable { body; _ } -> find_insertion_points body ~state
-    | Apply _ | Apply_cont _ | Switch _ | Unreachable -> state
+    | Apply _ | Apply_cont _ | Switch _ | Invalid _ -> state
   in
   let state =
     let state =

@@ -67,7 +67,7 @@ let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
         handlers
     | Apply _ | Apply_cont _ | Switch _ ->
       set := Variable.Set.union !set (Flambda.Expr.free_variables flam)
-    | Unreachable -> ()
+    | Invalid _ -> ()
   in
   loop tree;
   !set
@@ -128,16 +128,16 @@ let eliminate_ref_of_expr flam =
       | Prim (Pfield field, [v], _)
           when convertible_variable v ->
         begin match get_variable v field with
-        | None -> (), [], var, kind, R.Unreachable
+        | None -> (), [], var, kind, R.invalid ()
         | Some (var', kind', _size) ->
           assert (Flambda_kind.equal kind kind');
-          (), [], var, kind, R.Reachable (Read_mutable var')
+          (), [], var, kind, R.reachable (Read_mutable var')
         end
       | Prim (Poffsetref delta, [v], dbg)
           when convertible_variable v ->
         assert (Flambda_kind.is_value kind);
         begin match get_variable v 0 with
-        | None -> (), [], var, kind, R.Unreachable
+        | None -> (), [], var, kind, R.invalid ()
         | Some (var', kind', size) ->
           if size = 1
           then begin
@@ -150,24 +150,24 @@ let eliminate_ref_of_expr flam =
                 Flambda.Named.Prim (Poffsetint delta, [mut], dbg);
             ] in
             (), new_bindings, var, kind,
-              R.Reachable (Assign { being_assigned = var'; new_value; })
+              R.reachable (Assign { being_assigned = var'; new_value; })
           end
           else
-            (), [], var, kind, R.Unreachable
+            (), [], var, kind, R.invalid ()
         end
       | Prim (Psetfield (field, _, _), [v; new_value], _)
           when convertible_variable v ->
         assert (Flambda_kind.is_value kind);
         begin match get_variable v field with
-        | None -> (), [], var, kind, R.Unreachable
+        | None -> (), [], var, kind, R.invalid ()
         | Some (being_assigned, _kind, _size) ->
           (), [], var, kind,
-            R.Reachable (Assign { being_assigned; new_value })
+            R.reachable (Assign { being_assigned; new_value })
         end
       | Prim _ | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Read_symbol_field _ | Set_of_closures _ | Project_closure _
       | Move_within_set_of_closures _ | Project_var _ | Assign _ ->
-        (), [], var, kind, R.Reachable named
+        (), [], var, kind, R.reachable named
     in
     let aux (flam : Flambda.Expr.t) : Flambda.Expr.t =
       match flam with
@@ -213,7 +213,7 @@ let eliminate_ref_of_expr flam =
         in
         flam
       | Let_mutable _ | Apply _ | Switch _
-      | Apply_cont _ | Let_cont _ | Unreachable -> flam
+      | Apply_cont _ | Let_cont _ | Invalid _ -> flam
     in
     Flambda.Expr.Mappers.map_expr aux flam
 

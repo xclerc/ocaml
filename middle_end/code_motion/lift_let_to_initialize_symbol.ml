@@ -203,7 +203,7 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
         free_and_bound_conts_handlers.bound
     in
     free_conts, lifted, expr
-  | Let_mutable _ | Apply _ | Apply_cont _ | Switch _ | Unreachable ->
+  | Let_mutable _ | Apply _ | Apply_cont _ | Switch _ | Invalid _ ->
     let free_conts = Flambda.Expr.free_continuations expr in
     free_conts, [], expr
 

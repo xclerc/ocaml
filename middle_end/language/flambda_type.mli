@@ -99,13 +99,15 @@ end
 module Set_of_closures : sig
   type t
 
+  val set_of_closures_var : t -> Variable.t option
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 end
 
 module Summary : sig
   type t = private
-    | Wrong
+    | Unknown
+    | Bottom
     | Blocks_and_tagged_immediates of
         Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
     | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
@@ -231,10 +233,9 @@ val reify_as_scannable_block_or_immediate
 
 *)
 
-type 'a proof =
+type 'a known_unknown_or_wrong =
   | Known of 'a
   | Unknown
-  | Unreachable
   | Wrong
 
 (** Try to prove that a value with the given type may be used as a

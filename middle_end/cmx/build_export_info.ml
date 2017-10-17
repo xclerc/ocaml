@@ -328,7 +328,7 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.Expr.t)
   | Apply_cont (cont, _trap, args) ->
     let args_approxs = List.map (fun arg -> Env.find_approx env arg) args in
     Result.add_continuation_use_approx r cont ~args_approxs
-  | Apply { kind = Method _; _ } | Switch _ | Unreachable -> r
+  | Apply { kind = Method _; _ } | Switch _ | Invalid _ -> r
 
 and descr_of_named (env : Env.t) (named : Flambda.named)
       : Export_info.approx =

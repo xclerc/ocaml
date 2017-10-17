@@ -137,7 +137,7 @@ end
 
 module Switch : sig
   (* CR-someday mshinwell: (idea from @stedolan) Use [Switch] with zero
-     cases instead of [Unreachable].  Then references to unreachable
+     cases instead of [Invalid].  Then references to unreachable
      continuations can be removed by using an algorithm for coalescing
      [Switch]es. *)
   (** Equivalent to the similar type in [Ilambda]. *)
@@ -250,6 +250,8 @@ module rec Expr : sig
 
   (* CR mshinwell: Consider if we want to cache these. *)
   val free_continuations : t -> Continuation.Set.t
+
+  val invalid : unit -> t
 
   val iter_lets
      : t

@@ -421,7 +421,7 @@ let physically_different_values (types : t list) =
 
 type get_field_result =
   | Ok of t
-  | Unreachable
+  | Invalid _
 
 let get_field t ~field_index:i : get_field_result =
   match descr t with
@@ -434,19 +434,19 @@ let get_field t ~field_index:i : get_field_result =
         (* This (unfortunately) cannot be a fatal error; it can happen if a
            .cmx file is missing or with GADT code.  However for debugging the
            compiler this can be a useful point to put a [Misc.fatal_errorf]. *)
-        Unreachable
+        Invalid _
       end
     | Ok (Int _ | Char _ | Constptr _) ->
       (* Something seriously wrong is happening: either the user is doing
          something exceptionally unsafe, or it is an unreachable branch.
          We consider this as unreachable and mark the result accordingly. *)
-      Unreachable
-    | Bottom -> Unreachable
+      Invalid _
+    | Bottom -> Invalid _
     | Unknown -> Ok (unknown (Flambda_kind.value ()) Other)
     end
-  (* CR-someday mshinwell: This should probably return Unreachable in more
+  (* CR-someday mshinwell: This should probably return Invalid _ in more
      cases.  I added a couple more. *)
-  | Bottom -> Unreachable
+  | Bottom -> Invalid _
   | Float_array _ ->
     (* For the moment we return "unknown" even for immutable arrays, since
        it isn't possible for user code to project from an immutable array. *)
@@ -457,7 +457,7 @@ let get_field t ~field_index:i : get_field_result =
   | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
   | Immutable_string _ | Mutable_string _ | Boxed_number _ ->
     (* The user is doing something unsafe. *)
-    Unreachable
+    Invalid _
   | Set_of_closures _ | Closure _
     (* These are used by [CamlinternalMod]. *)
   | Load_lazily _ ->
@@ -572,7 +572,7 @@ end = struct
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
-  let set_of_closures_var = t.set_of_closures_var
+  let set_of_closures_var t = t.set_of_closures_var
   let function_decls t = t.function_decls
   let closure_elements t = t.closure_elements
 
@@ -723,7 +723,7 @@ module Summary = struct
       let imms_join = join_immediates imms1 imms2 in
       begin match blocks_join, imms_join with
       | Ok blocks, Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
-      | Unknown, _ | _, Unknown -> Unknown
+      | Wrong, _ | _, Wrong -> Unknown
       end
     | Boxed_floats fs1, Boxed_floats fs2 ->
       begin match
@@ -732,7 +732,7 @@ module Summary = struct
           fs1 fs2
       with
       | Ok fs -> Boxed_floats fs
-      | Unknown -> Unknown
+      | Wrong -> Unknown
       end
     | Boxed_int32s is1, Boxed_int32s is2 ->
       begin match
@@ -741,7 +741,7 @@ module Summary = struct
           is1 is2
       with
       | Ok is -> Boxed_int32s is
-      | Unknown -> Unknown
+      | Wrong -> Unknown
       end
     | Boxed_int64s is1, Boxed_int64s is2 ->
       begin match
@@ -750,7 +750,7 @@ module Summary = struct
           is1 is2
       with
       | Ok is -> Boxed_int64s is
-      | Unknown -> Unknown
+      | Wrong -> Unknown
       end
     | Boxed_nativeints is1, Boxed_nativeints is2 ->
       begin match
@@ -759,7 +759,7 @@ module Summary = struct
           is1 is2
       with
       | Ok is -> Boxed_nativeints is
-      | Unknown -> Unknown
+      | Wrong -> Unknown
       end
     | Closures closures1, Closures closures2 ->
       begin match
@@ -773,7 +773,7 @@ module Summary = struct
           closures1 closures2
       with
       | Ok closures -> Closures closures
-      | Unknown -> Unknown
+      | Wrong -> Unknown
       end
     | Set_of_closures set1, Set_of_closures set2 ->
       begin match
@@ -782,7 +782,7 @@ module Summary = struct
           set1 set2
       with
       | Ok set_of_closures -> Set_of_closures set_of_closures
-      | Unknown -> Unknown
+      | Wrong -> Unknown
       end
     | (Blocks_and_tagged_immediates _
       | Boxed_floats _
@@ -849,7 +849,7 @@ let summarize ~importer (t : t) : Summary.t =
   | Value ty ->
     let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
     begin match resolved_ty_value.descr with
-    | Unknown -> Unknown
+    | Unknown _ -> Unknown
     | Bottom -> Bottom
     | Ok of_kind_value ->
       let for_singleton (s : of_kind_value_singleton) : Summary.t =
@@ -904,7 +904,7 @@ let summarize ~importer (t : t) : Summary.t =
           in
           Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
         | Closure _ ->
-          Wrong
+          Unknown
             (* [@ppwarning "TODO"] *)
         | Set_of_closures set ->
           Set_of_closures (Exactly (
@@ -982,7 +982,7 @@ let reify_using_env ~importer t ~is_present_in_env =
   | Some named -> Some named
 
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
-  match summary ~importer t with
+  match summarize ~importer t with
   | Set_of_closures (Exactly set) -> Known set
   | Set_of_closures Not_all_values_known
   | Unknown -> Unknown

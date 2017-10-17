@@ -41,7 +41,7 @@ let unrecursify_function ~closure_id
           did_something := true;
           Apply_cont (loop_continuation, None, args)
         | Let _ | Let_mutable _ | Let_cont _ | Apply_cont _ | Switch _
-        | Apply _ | Unreachable -> expr)
+        | Apply _ | Invalid _ -> expr)
       function_decl.body
   in
   if not !did_something then None

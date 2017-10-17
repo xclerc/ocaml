@@ -110,7 +110,7 @@ let rec analyse_expr ~which_variables expr =
     | Switch (var, _) -> check_free_variable var
     | Apply_cont (_, _, args) ->
       List.iter check_free_variable args
-    | Let _ | Let_cont _ | Unreachable -> ()
+    | Let _ | Let_cont _ | Invalid _ -> ()
   in
   let for_named (named : Flambda.Named.t) =
     match named with

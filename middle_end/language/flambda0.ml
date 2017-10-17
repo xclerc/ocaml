@@ -318,6 +318,7 @@ module rec Expr : sig
     -> t
     -> Variable.Set.t
   val free_continuations : t -> Continuation.Set.t
+  val invalid : unit -> t
   val iter_lets
      : t
     -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> unit)
@@ -419,7 +420,7 @@ end = struct
             handlers
         end
       | Switch (var, _) -> free_variable var
-      | Unreachable -> ()
+      | Invalid _ -> ()
     in
     aux tree;
     if all_used_variables then
@@ -439,6 +440,12 @@ end = struct
     variable_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var
       ~all_used_variables:true tree
+
+  let invalid () =
+    if !Clflags.treat_invalid_code_as_unreachable then
+      Invalid Treat_as_unreachable
+    else
+      Invalid Halt_and_catch_fire
 
   let create_switch' ~scrutinee ~all_possible_values ~arms ~default
         : t * (int Continuation.Map.t) =
@@ -474,11 +481,11 @@ end = struct
         print result
     end;
     if num_possible_values < 1 then begin
-      Unreachable, Continuation.Map.empty
+      invalid (), Continuation.Map.empty
     end else if num_arms = 0 && default = None then begin
       (* [num_possible_values] might be strictly greater than zero in this
          case, but that doesn't matter. *)
-      Unreachable, Continuation.Map.empty
+      invalid (), Continuation.Map.empty
     end else begin
       let default =
         if num_arm_values = num_possible_values then None
@@ -557,7 +564,7 @@ end = struct
         | Some cont -> Continuation.Set.singleton cont
       in
       Continuation.Set.union failaction (Continuation.Set.of_list consts)
-    | Unreachable -> Continuation.Set.empty
+    | Invalid _ -> Continuation.Set.empty
 
   let create_let var kind defining_expr body : t =
     begin match !Clflags.dump_flambda_let with
@@ -652,7 +659,7 @@ end = struct
                 aux handler)
               handlers
           end
-        | Unreachable -> ()
+        | Invalid _ -> ()
     and aux_named (named : Named.t) =
       f_named named;
       match named with
@@ -774,7 +781,7 @@ end = struct
           (Format.pp_print_list ~pp_sep
             Let_cont_handlers.print_using_where) let_conts
       end
-    | Unreachable -> fprintf ppf "unreachable"
+    | Invalid _ -> fprintf ppf "unreachable"
 
   let print ppf t =
     fprintf ppf "%a@." print t
