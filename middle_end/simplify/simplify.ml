@@ -235,8 +235,8 @@ let simplify_move_within_set_of_closures env r
               (value_set_of_closures:T.set_of_closures)
               (move, type_map) ->
           (* Pas efficace: on refait le freshening de tout pour ne
-              garder que la partie pertinente, mais n'est pas très
-              grave parce que ces map sont petites (normalement) *)
+             garder que la partie pertinente, mais n'est pas très
+             grave parce que ces map sont petites (normalement) *)
           let freshened_move =
             Freshening.freshen_move_within_set_of_closures
               ~closure_freshening:value_set_of_closures.freshening

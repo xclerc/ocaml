@@ -464,15 +464,16 @@ let mk_dtimings f =
 ;;
 
 let mk_treat_invalid_code_as_unreachable f =
-  "-treat-invalid-code-as-dead", Arg.Unit f,
+  "-treat-invalid-code-as-unreachable", Arg.Unit f,
     " Delete code performing operations that will misbehave at runtime or \
-      whose semantics may not be preserved during compilation (see OCaml \
-      manual for full details)"
+      whose semantics may not be preserved during compilation.  Without this \
+      option such code will be replaced by a runtime abort trap"
 ;;
 
 let mk_no_treat_invalid_code_as_unreachable f =
-  "-no-treat-invalid-code-as-dead", Arg.Unit f,
-    " Disable code deletion performed by -treat-invalid-code-as-dead"
+  "-no-treat-invalid-code-as-unreachable", Arg.Unit f,
+    " Disable code deletion performed by -treat-invalid-code-as-unreachable \
+      in favour of runtime abort traps"
 ;;
 
 let mk_dprofile f =
