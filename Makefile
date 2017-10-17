@@ -310,6 +310,9 @@ MIDDLE_END_REMOVAL=\
 
 MIDDLE_END_SIMPLIFY=\
   middle_end/simplify/simplify.cmo \
+  middle_end/simplify/simplify_expr.cmo \
+  middle_end/simplify/simplify_named.cmo \
+  middle_end/simplify/simplify_program.cmo \
   middle_end/simplify/simplify_aux.cmo \
   middle_end/simplify/simplify_boxed_integer_ops.cmo \
   middle_end/simplify/simplify_common.cmo \
