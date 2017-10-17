@@ -83,7 +83,7 @@ let simplify_newly_introduced_let_bindings env r ~bindings
       ([], env, r, None)
       bindings
   in
-  let new_bindings, around, r = simplify_named env r around in
+  let new_bindings, around, r = Simplify_named.simplify_named env r around in
   let around_fvs =
     match around with
     | Reachable around -> Flambda.Named.free_variables around

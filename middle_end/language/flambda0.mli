@@ -136,18 +136,14 @@ module Trap_action : sig
 end
 
 module Switch : sig
-  (* CR-someday mshinwell: (idea from @stedolan) Use [Switch] with zero
-     cases instead of [Invalid].  Then references to unreachable
-     continuations can be removed by using an algorithm for coalescing
-     [Switch]es. *)
   (** Equivalent to the similar type in [Ilambda]. *)
   type t = private {
-    (* CR mshinwell: [numconsts] should move onto the default case. *)
-    (* CR pchambart: [numconsts] and [failaction] should be removed in fact.
+    (* CR pchambart: [numconsts] and [failaction] should be removed.
        This was useful when the cases contents were not continuations. It
        allowed sharing without declaring a continuation. Now that sharing is
        there by default, there is no benefit of not having that part of
-       consts. *)
+       consts.
+       mshinwell: Let's fix this once everything is compiling again. *)
     numconsts : Targetint.Set.t;
     (** All possible values that the scrutinee might have. *)
     consts : (Targetint.t * Continuation.t) list;
@@ -160,10 +156,16 @@ module Switch : sig
 end
 
 (** What the optimizer should do when it reaches a term that is known to be
-    invalid (for example because it is not type correct). *)
+    invalid (for example because it is not type correct).  In all cases, code
+    _after_ invalid code will be deleted. *)
 type invalid_term_semantics =
   | Treat_as_unreachable
+  (** Invalid code should be treated as unreachable and thus deleted.  The
+      unreachability property may be propagated backwards through the term
+      possibly causing other parts to be deleted. *)
   | Halt_and_catch_fire
+  (** Invalid code should be replaced by an abort trap.  No back-propagation
+      is performed. *)
 
 module rec Expr : sig
   (** With the exception of applications of primitives ([Prim]), Flambda terms
