@@ -274,6 +274,10 @@ module Switch = struct
   end)
 end
 
+type invalid_term_semantics =
+  | Treat_as_unreachable
+  | Halt_and_catch_fire
+
 module rec Expr : sig
   type t =
     | Let of Let.t
@@ -282,7 +286,7 @@ module rec Expr : sig
     | Apply of apply
     | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
     | Switch of Variable.t * Switch.t
-    | Unreachable
+    | Invalid of invalid_term_semantics
 
   val create_let : Variable.t -> Flambda_kind.t -> Named.t -> t -> t
   val create_switch

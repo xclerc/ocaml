@@ -159,6 +159,12 @@ module Switch : sig
   val equal : t -> t -> bool
 end
 
+(** What the optimizer should do when it reaches a term that is known to be
+    invalid (for example because it is not type correct). *)
+type invalid_term_semantics =
+  | Treat_as_unreachable
+  | Halt_and_catch_fire
+
 module rec Expr : sig
   (** With the exception of applications of primitives ([Prim]), Flambda terms
       are in CPS.
@@ -192,7 +198,7 @@ module rec Expr : sig
     | Apply of apply
     | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
     | Switch of Variable.t * Switch.t
-    | Unreachable
+    | Invalid of invalid_term_semantics
 
   (** Creates a [Let] expression.  (This computes the free variables of the
       defining expression and the body.) *)
