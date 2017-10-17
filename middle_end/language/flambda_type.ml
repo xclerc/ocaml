@@ -93,16 +93,16 @@ let this_tagged_bool_named b : Named.t * t =
   Const (Tagged_immediate imm), this_tagged_immediate imm
 
 let this_boxed_float_named f : Named.t * t =
-  Allocated_const (Float f), this_boxed_float f
+  Allocated_const (Boxed_float f), this_boxed_float f
 
 let this_boxed_int32_named n : Named.t * t =
-  Allocated_const (Int32 n), this_boxed_int32 n
+  Allocated_const (Boxed_int32 n), this_boxed_int32 n
 
 let this_boxed_int64_named n : Named.t * t =
-  Allocated_const (Int64 n), this_boxed_int64 n
+  Allocated_const (Boxed_int64 n), this_boxed_int64 n
 
 let this_boxed_nativeint_named n : Named.t * t =
-  Allocated_const (Nativeint n), this_boxed_nativeint n
+  Allocated_const (Boxed_nativeint n), this_boxed_nativeint n
 
 let this_untagged_immediate_named n : Named.t * t =
   Const (Untagged_immediate n), this_naked_immediate n
@@ -552,14 +552,19 @@ end
 module Set_of_closures : sig
   type t
 
-  val create : set_of_closures -> t
+  val create
+     : set_of_closures_var:Variable.t option
+    -> set_of_closures
+    -> t
 
+  val set_of_closures_var : t -> Variable.t Or_not_all_values_known.t
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 
   val join : (t -> t -> t) with_importer
 end = struct
   type t = {
+    set_of_closures_var : Variable.t Or_not_all_values_known.t;
     set_of_closures_id_and_origin :
       (Set_of_closures_id.t * Set_of_closures_origin.t)
         Or_not_all_values_known.t;
@@ -567,6 +572,7 @@ end = struct
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
+  let set_of_closures_var = t.set_of_closures_var
   let function_decls t = t.function_decls
   let closure_elements t = t.closure_elements
 
@@ -905,7 +911,7 @@ let summarize ~importer (t : t) : Summary.t =
   | Naked_int64 _
   | Naked_nativeint _ -> Wrong
 
-let reify t : (Variable.t * ...) * Named.t option =
+let reify ~importer t : Named.t option =
   let try_symbol () =
     match symbol t with
     | Some (sym, None) ->
@@ -920,7 +926,7 @@ let reify t : (Variable.t * ...) * Named.t option =
       })
     | None -> None
   in
-  match summarize t with
+  match summarize ~importer t with
   | Wrong -> None
   | Blocks_and_tagged_immediates (blocks, imms) ->
     begin match imms with
@@ -928,88 +934,50 @@ let reify t : (Variable.t * ...) * Named.t option =
       begin match Immediate.Set.get_singleton imms with
       | Some imm ->
         if Tag.Scannable.Map.is_empty blocks then
-          Some (Const (Tagged_immediate imm))
+          Some (Flambda.Named.Const (Tagged_immediate imm))
         else
           None
       | None -> None
       end
-    | Not_all_values_unknown -> None
+    | Not_all_values_known -> None
     end
-  | Boxed_floats fs ->
-    begin match Float.Set.get_singleton fs with
-    | Some f -> Some (Const (Boxed_float
-  | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
-  | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
-  | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
-  | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
-  | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
-
-
-
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Block _) | Bottom | Unknown -> try_symbol ()
-    | Ok (Int n) -> Some (fst (make_const_int_named n))
-    | Ok (Char n) -> Some (fst (make_const_char_named n))
-    | Ok (Constptr n) -> Some (fst (make_const_ptr_named n))
-    end
-  | Boxed_number (Float, { descr = Unboxed_float fs; _ }) ->
-    begin match Float.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_boxed_float_named f))
-    | None -> try_symbol ()
-    end
-  | Boxed_number (Int32, { descr = Unboxed_int32 ns; _ }) ->
-    begin match Int32.Set.get_singleton ns with
-    | Some n -> Some (fst (make_const_boxed_int32_named n))
-    | None -> try_symbol ()
-    end
-  | Boxed_number (Int64, { descr = Unboxed_int64 ns; _ }) ->
-    begin match Int64.Set.get_singleton ns with
-    | Some n -> Some (fst (make_const_boxed_int64_named n))
-    | None -> try_symbol ()
-    end
-  | Boxed_number (Nativeint, { descr = Unboxed_nativeint ns; _ }) ->
-    begin match Nativeint.Set.get_singleton ns with
-    | Some n -> Some (fst (make_const_boxed_nativeint_named n))
-    | None -> try_symbol ()
-    end
-  | Unboxed_float fs ->
-    begin match Float.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_float_named f))
-    | None -> try_symbol ()
-    end
-  | Unboxed_int32 fs ->
-    begin match Int32.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_int32_named f))
-    | None -> try_symbol ()
-    end
-  | Unboxed_int64 fs ->
-    begin match Int64.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_int64_named f))
-    | None -> try_symbol ()
-    end
-  | Unboxed_nativeint fs ->
-    begin match Nativeint.Set.get_singleton fs with
-    | Some f -> Some (fst (make_const_unboxed_nativeint_named f))
-    | None -> try_symbol ()
-    end
-  | Boxed_number _ | Immutable_string _ | Mutable_string _ | Float_array _
-  | Set_of_closures _ | Closure _ | Unknown _ | Bottom | Load_lazily _ ->
+  | Boxed_floats _
+  | Boxed_int32s _
+  | Boxed_int64s _
+  | Boxed_nativeints _
+  | Closures _
+  | Set_of_closures _ ->
+    (* CR mshinwell: This doesn't do anything for boxed integers at the moment
+       unless there is a symbol assigned, to ensure that we don't introduce
+       an allocation.  I think this behaviour is different from the previous
+       version. *)
     try_symbol ()
 
-let reify_using_env t ~is_present_in_env =
-  let named =
-    match var t with
-    | Some var when is_present_in_env var -> Some (Named.Var var)
-    | _ ->
-      match symbol t with
-      | Some (sym, None) -> Some (Named.Symbol sym)
-      | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
-      | None -> None
-  in
-  match reify t with
-  | None -> named
+let reify_using_env ~importer t ~is_present_in_env =
+  match reify ~importer t with
+  | None ->
+    begin match var t with
+    | Some var when is_present_in_env var -> Some (Flambda.Named.Var var)
+    | _ -> None
+    end
   | Some named -> Some named
+
+type proved_as_set_of_closures =
+  | Unknown of unknown_because_of
+  | Ok of Set_of_closures.t
+  | Wrong
+
+let prove_set_of_closures t : reified_as_set_of_closures =
+  ... this will look like one of the above functions, working on the summary
+    | Wrong
+    | Blocks_and_tagged_immediates of
+        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
+    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
+    | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
+    | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
 
 (*
 
@@ -1057,14 +1025,6 @@ let reify_as_boxed_float t =
   | Boxed_int64s _
   | Boxed_nativeints _
   | Wrong -> None
-
-type reified_as_set_of_closures =
-  | Unknown
-  | Ok of Variable.t option * set_of_closures
-  | Wrong
-
-let reify_as_set_of_closures t : reified_as_set_of_closures =
-  ... this will look like one of the above functions, working on the summary
 
 type strict_reified_as_set_of_closures =
   | Wrong

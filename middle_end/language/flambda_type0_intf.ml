@@ -229,6 +229,7 @@ module type S = sig
   val this_boxed_int64 : Int64.t -> t
   val this_boxed_nativeint : Targetint.t -> t
   val this_immutable_string : string -> t
+  val this_immutable_float_array : float array -> t
 
   (** Building of types representing untagged / unboxed values from
       specified constants. *)

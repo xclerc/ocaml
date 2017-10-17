@@ -46,9 +46,11 @@ let update_constant_for_sharing sharing_symbol_tbl const : CDV.t =
 
 let cannot_share (const : CDV.t) =
   match const with
-  (* Strings and float arrays are mutable; we never share them. *)
-  | Allocated_const ((String _) | (Float_array _)) -> true
-  | Allocated_const _ | Set_of_closures _ | Project_closure _ | Block _ ->
+  | Allocated_const ((Mutable_string _) | (Mutable_float_array _)) -> true
+  | Allocated_const ((Boxed_float _) | (Boxed_int32 _) | (Boxed_int64 _)
+      | (Boxed_nativeint _) | (Immutable_string _)
+      | (Immutable_float_array _))
+  | Set_of_closures _ | Project_closure _ | Block _ ->
     false
 
 let share_definition constant_to_symbol_tbl sharing_symbol_tbl

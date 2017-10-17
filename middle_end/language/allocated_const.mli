@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -21,14 +21,14 @@
     [Prim (Pmakeblock, ...)]. *)
 
 type t =
-  | Float of float
-  | Int32 of Int32.t
-  | Int64 of Int64.t
-  | Nativeint of Targetint.t
+  | Boxed_float of float
+  | Boxed_int32 of Int32.t
+  | Boxed_int64 of Int64.t
+  | Boxed_nativeint of Targetint.t
   (* CR-someday mshinwell: consider using "float array" *)
-  | Float_array of float list
+  | Mutable_float_array of { initial_value : float list; }
   | Immutable_float_array of float list
-  | String of string
+  | Mutable_string of { initial_value : string; }
   | Immutable_string of string
 
 val tag : t -> Tag.t

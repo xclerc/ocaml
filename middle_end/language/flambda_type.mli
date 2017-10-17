@@ -182,16 +182,15 @@ val follow_variable_equality
 
 (** Try to produce a canonical Flambda term, with no free variables, that has
     the given Flambda type. *)
-val reify : t -> Flambda0.Named.t option
+val reify : (t -> Flambda0.Named.t option) with_importer
 
 (** As for [reify], but in the event where a type cannot be reified, may
-    return a [Var], [Symbol] or [Read_symbol_field] term (save that for
-    [Var] this will only happen if [is_present_in_env] says that the
-    particular variable is in scope). *)
+    return a [Var] (if [is_present_in_env] says that the particular variable
+    is in scope). *)
 val reify_using_env
-   : t
+   : (t
   -> is_present_in_env:(Variable.t -> bool)
-  -> Flambda0.Named.t option
+  -> Flambda0.Named.t option) with_importer
 
 
 (*
@@ -230,6 +229,8 @@ val reify_as_scannable_block_or_immediate
    : t
   -> reified_as_scannable_block_or_immediate
 
+*)
+
 type reified_as_set_of_closures =
   | Wrong
   | Unresolved of unresolved_value
@@ -242,6 +243,8 @@ type reified_as_set_of_closures =
     set of closures.  Values coming from external compilation units with
     unresolved types are permitted. *)
 val reify_as_set_of_closures : t -> reified_as_set_of_closures
+
+(*
 
 type strict_reified_as_set_of_closures =
   | Wrong

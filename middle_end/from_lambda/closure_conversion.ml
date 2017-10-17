@@ -121,25 +121,24 @@ let rec declare_const t (const : Lambda.structured_constant)
   | Const_base (Const_string (s, _)) ->
     let const, name =
       if Config.safe_string then
-        CDV.create_allocated_const
-          (Immutable_string s),
-        "immstring"
+        CDV.create_allocated_const (Immutable_string s), "immstring"
       else
-        CDV.create_allocated_const (String s),
-        "string"
+        CDV.create_allocated_const (Mutable_string { initial_value = s; }),
+          "string"
     in
     register_const t const name
   | Const_base (Const_float c) ->
-    register_const t (CDV.create_allocated_const (Float (float_of_string c)))
-      "float"
+    let c = float_of_string c in
+    register_const t (CDV.create_allocated_const (Boxed_float c)) "float"
   | Const_base (Const_int32 c) ->
-    register_const t (CDV.create_allocated_const (Int32 c)) "int32"
+    register_const t (CDV.create_allocated_const (Boxed_int32 c)) "int32"
   | Const_base (Const_int64 c) ->
-    register_const t (CDV.create_allocated_const (Int64 c)) "int64"
+    register_const t (CDV.create_allocated_const (Boxed_int64 c)) "int64"
   | Const_base (Const_nativeint c) ->
     (* CR pchambart: this should be pushed further to lambda *)
     let c = Targetint.of_int64 (Int64.of_nativeint c) in
-    register_const t (CDV.create_allocated_const (Nativeint c)) "nativeint"
+    register_const t (CDV.create_allocated_const (Boxed_nativeint c))
+      "nativeint"
   | Const_pointer c ->
     (* XCR pchambart: the kind needs to be propagated somewhere to
        say that this value must be scanned
@@ -150,6 +149,7 @@ let rec declare_const t (const : Lambda.structured_constant)
     register_const t (CDV.create_allocated_const (Immutable_string c))
       "immstring"
   | Const_float_array c ->
+    (* CR mshinwell: check that Const_float_array is always immutable *)
     register_const t
       (CDV.create_allocated_const
          (Immutable_float_array (List.map float_of_string c)))

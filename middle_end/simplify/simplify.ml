@@ -45,15 +45,15 @@ let squash_variable_alias env var =
   | Some var -> var, ty
 
 let squash_variable_aliases env vars =
-  List.map (fun var -> squash_variable_alias_internal env var) vars
+  List.map (fun var -> squash_variable_alias env var) vars
 
 let simpler_equivalent_term env r original_named ty
-      : (Variable.t * Flambda.Named.t) list
-          * Flambda.Named.t Flambda.Reachable.t * R.t =
-  if not (Flambda.Named.no_effects original_named) then
+      : (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t * R.t =
+  if not (Effect_analysis.no_effects_named original_named) then
     [], Reachable original_named, r
   else
-    match T.reify_using_env ty ~is_present_in_env:(E.mem env) with
+    let importer = E.importer env in
+    match T.reify_using_env ~importer ty ~is_present_in_env:(E.mem env) with
     | None -> [], Reachable original_named, r
     | Some named ->
       let r = R.map_benefit r (B.remove_code_named original_named) in
@@ -61,7 +61,8 @@ let simpler_equivalent_term env r original_named ty
 
 let type_for_const (const : Flambda.Const.t) =
   match const with
-  | Untagged_immediate i -> T.this_untagged_immediate i
+  (* CR mshinwell: unify terminology: "untagged" vs "naked" *)
+  | Untagged_immediate i -> T.this_naked_immediate i
   | Tagged_immediate i -> T.this_tagged_immediate i
   | Naked_float f -> T.this_naked_float f
   | Naked_int32 n -> T.this_naked_int32 n
@@ -70,58 +71,43 @@ let type_for_const (const : Flambda.Const.t) =
 
 let type_for_allocated_const (const : Allocated_const.t) =
   match const with
-  | String s -> T.mutable_string s
+  | Mutable_string { initial_value; } ->
+    T.mutable_string ~size:(String.length initial_value)
   | Immutable_string s -> T.this_immutable_string s
-  | Int32 i -> T.this_boxed_int32 i
-  | Int64 i -> T.this_boxed_int64 i
-  | Nativeint i -> T.this_boxed_nativeint i
+  | Boxed_int32 i -> T.this_boxed_int32 i
+  | Boxed_int64 i -> T.this_boxed_int64 i
+  | Boxed_nativeint i -> T.this_boxed_nativeint i
   | Boxed_float f -> T.this_boxed_float f
-  | Float_array a -> T.mutable_float_array ~size:(List.length a)
-  | Immutable_float_array a ->
-    T.this_immutable_float_array (Array.map T.boxed_float (Array.of_list a))
+  | Mutable_float_array { initial_value; } ->
+    T.mutable_float_array ~size:(List.length initial_value)
+  | Immutable_float_array fs ->
+    T.this_immutable_float_array (Array.of_list fs)
 
 type filtered_switch_branches =
   | Must_be_taken of Continuation.t
   | Can_be_taken of (Targetint.t * Continuation.t) list
 
+type named_simplifier =
+  (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t * R.t
+
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)
 let simplify_project_closure env r
-      ~(project_closure : Projection.Project_closure.t)
-      : (Variable.t * Flambda.Named.t) list
-          * Flambda.Named.t Flambda.Reachable.t * R.t =
+      ~(project_closure : Projection.Project_closure.t) : named_simplifier =
   let set_of_closures, set_of_closures_ty =
     squash_variable_alias env project_closure.set_of_closures
   in
-  match T.reify_as_set_of_closures set_of_closures_ty with
+  match T.prove_set_of_closures set_of_closures_ty with
   | Wrong ->
     Misc.fatal_errorf "Wrong Flambda type when projecting closure: %a"
       Flambda.print_project_closure project_closure
-  | Unresolved value ->
-    (* A set of closures coming from another compilation unit, whose .cmx is
-        missing; as such, we cannot have rewritten the function and don't
-        need to do any freshening. *)
+  | Unknown reason ->
     [], Reachable (Project_closure {
       set_of_closures;
       closure_id = project_closure.closure_id;
-    }), ret r (T.unknown Value value)
-  | Unknown ->
-    (* CR-soon mshinwell: see CR comment in e.g. simple_value_type.ml
-        [check_type_for_closure_allowing_unresolved] *)
-    [], Reachable (Project_closure {
-      set_of_closures;
-      closure_id = project_closure.closure_id;
-    }), ret r (T.unknown Value Other)
-  | Unknown_because_of_unresolved_value value ->
-    [], Reachable (Project_closure {
-      set_of_closures;
-      closure_id = project_closure.closure_id;
-    }), ret r (T.unknown Value (Unresolved_value value))
+    }), ret r (T.unknown Value reason)
   | Ok (set_of_closures_var, value_set_of_closures) ->
-    let closure_id =
-      T.freshen_and_check_closure_id value_set_of_closures
-        project_closure.closure_id
-    in
+    let closure_id = project_closure.closure_id in
     let () =
       match Closure_id.Set.elements closure_id with
       | _ :: _ :: _ ->
@@ -188,8 +174,7 @@ let simplify_project_closure env r
    same set. *)
 let simplify_move_within_set_of_closures env r
       ~(move_within_set_of_closures : Projection.Move_within_set_of_closures.t)
-      : (Variable.t * Flambda.Named.t) list
-          * Flambda.Named.t Flambda.Reachable.t * R.t =
+      : named_simplifier =
   let closure, closure_ty =
     squash_variable_alias env move_within_set_of_closures.closure
   in
@@ -347,7 +332,8 @@ let simplify_move_within_set_of_closures env r
                 let ty = T.closure ty_map in
                 [], Reachable (Move_within_set_of_closures move_within), ty
 
-let rec simplify_project_var env r ~(project_var : Projection.Project_var.t) =
+let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
+      : named_simplifier =
   let closure, ty = squash_variable_alias env project_var.closure in
     match T.reify_as_closure_allowing_unresolved ty with
     | Ok (value_closures, _set_of_closures_var, _set_of_closures_symbol) ->
@@ -448,66 +434,6 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t) =
         Variable.print closure
         T.print ty
 
-(* Transforms closure definitions by applying [loop] on the code of every
-   one of the set and on the expressions of the free variables.
-   If the substitution is activated, alpha renaming also occur on everything
-   defined by the set of closures:
-   * Variables bound by a closure of the set
-   * closure identifiers
-   * parameters
-
-   The rewriting occurs in a clean environment without any of the variables
-   defined outside reachable.  This helps increase robustness against
-   accidental, potentially unsound simplification of variable accesses by
-   [simplify_using_type_and_env].
-
-   The rewriting occurs in an environment filled with:
-   * The Flambda type of the free variables
-   * Flambda types for function parameters.
-   * An Flambda type for the closures in the set. It contains the code of
-     the functions before rewriting.
-
-   The Flambda type of the currently defined closures is available to
-   allow marking recursives calls as direct and in some cases, allow
-   inlining of one closure from the set inside another one. For this to
-   be correct an alpha renaming is first applied on the expressions by
-   [apply_function_decls_and_free_vars].
-
-   For instance when rewriting the declaration
-
-     [let rec f_1 x_1 =
-        let y_1 = x_1 + 1 in
-        g_1 y_1
-      and g_1 z_1 = f_1 (f_1 z_1)]
-
-   When rewriting this function, the first substitution will contain
-   some mapping:
-   { f_1 -> f_2;
-     g_1 -> g_2;
-     x_1 -> x_2;
-     z_1 -> z_2 }
-
-   And the Flambda type for the closure will contain
-
-   { f_2:
-       fun x_2 ->
-         let y_1 = x_2 + 1 in
-         g_2 y_1
-     g_2:
-       fun z_2 -> f_2 (f_2 z_2) }
-
-   Note that no substitution is applied to the let-bound variable [y_1].
-   If [f_2] where to be inlined inside [g_2], we known that a new substitution
-   will be introduced in the current scope for [y_1] each time.
-
-
-   If the function where a recursive one coming from another compilation
-   unit, the code already went through [Flambdasym] that could have
-   replaced the function variable by the symbol identifying the function
-   (this occur if the function contains only constants in its closure).
-   To handle that case, we first replace those symbols by the original
-   variable.
-*)
 and simplify_set_of_closures original_env r
       (set_of_closures : Flambda.Set_of_closures.t)
       : Flambda.Set_of_closures.t * R.t * Freshening.Project_var.t =
@@ -1184,8 +1110,6 @@ and simplify_primitive env r prim args dbg =
           [_block; _field; _value],
           [block_ty; field_ty; value_ty] ->
         if T.invalid_to_mutate block_ty then begin
-          Location.prerr_warning (Debuginfo.to_location dbg)
-            Warnings.Assignment_to_non_mutable_value;
           if !Clflags.treat_invalid_code_as_dead then
             [], Flambda.Unreachable, r
           else
@@ -1265,8 +1189,6 @@ and simplify_primitive env r prim args dbg =
         end
       | Psetfield _, _block::_, block_ty::_ ->
         if T.invalid_to_mutate block_ty then begin
-          Location.prerr_warning (Debuginfo.to_location dbg)
-            Warnings.Assignment_to_non_mutable_value;
           if !Clflags.treat_invalid_code_as_dead then
             [], Flambda.Unreachable, r
           else

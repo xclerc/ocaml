@@ -854,6 +854,30 @@ end) = struct
       symbol = None;
     }
 
+  (* CR mshinwell: We need to think about these float array functions in
+     conjunction with the 4.06 feature for disabling the float array
+     optimisation *)
+
+  let this_immutable_float_array fields : t =
+    let make_field f : ty_naked_float =
+      let f : of_kind_naked_float = Naked_float f in
+      { descr = Ok (Ok f);
+        var = None;
+        symbol = None;
+      }
+    in
+    let fields = Array.map make_field fields in
+    let float_array : float_array_ty =
+      { contents = Contents fields;
+        size = Array.length fields;
+      }
+    in
+    Value {
+      descr = Ok (Ok (Singleton (Float_array float_array)));
+      var = None;
+      symbol = None;
+    }
+
   let immutable_float_array fields : t =
     let fields =
       Array.map (fun (field : t) ->
