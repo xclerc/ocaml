@@ -37,15 +37,16 @@ module T = Flambda_type
     to always hold a particular constant.
 *)
 
-let squash_variable_alias env var =
+let freshen_and_squash_aliases env var =
+  let var = Freshening.apply_variable (E.freshening env) var in
   let ty = E.find_exn env var in
   (* CR mshinwell: Shouldn't the variable always be in the env now? *)
   match T.follow_variable_equality ty ~is_present_in_env:(E.mem env) with
   | None -> var, ty
   | Some var -> var, ty
 
-let squash_variable_aliases env vars =
-  List.map (fun var -> squash_variable_alias env var) vars
+let freshen_and_squash_aliaseses env vars =
+  List.map (fun var -> freshen_and_squash_aliases env var) vars
 
 let simpler_equivalent_term env r original_named ty
       : (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t * R.t =
@@ -95,21 +96,18 @@ type named_simplifier =
 let simplify_project_closure env r
       ~(project_closure : Projection.Project_closure.t) : named_simplifier =
   let set_of_closures, set_of_closures_ty =
-    squash_variable_alias env project_closure.set_of_closures
+    freshen_and_squash_aliases env project_closure.set_of_closures
   in
   match T.prove_set_of_closures set_of_closures_ty with
-  | Wrong ->
-    Misc.fatal_errorf "Wrong Flambda type when projecting closure: %a"
-      Flambda.print_project_closure project_closure
+  | Wrong -> [], Unreachable, r
   | Unknown reason ->
     [], Reachable (Project_closure {
       set_of_closures;
       closure_id = project_closure.closure_id;
-    }), ret r (T.unknown Value reason)
-  | Ok (set_of_closures_var, value_set_of_closures) ->
+    }), r
+  | Ok set_of_closures ->
     let closure_id = project_closure.closure_id in
-    let () =
-      match Closure_id.Set.elements closure_id with
+    begin match Closure_id.Set.elements closure_id with
       | _ :: _ :: _ ->
         Format.printf "Set of closures type is not a singleton \
             in project closure@ %a@ %a@."
@@ -139,9 +137,9 @@ let simplify_project_closure env r
     in
     match projecting_from with
     | Some (var, projection) ->
-      squash_variable_alias_named env var ~f:(fun _env var var_ty ->
-        let r = R.map_benefit r (B.remove_projection projection) in
-        [], Reachable (Var var), var_ty)
+      let var = freshen_and_squash_aliases_named env var in
+      let r = R.map_benefit r (B.remove_projection projection) in
+      [], Reachable (Var var), r
     | None ->
       let if_not_reference_recursive_function_directly ()
         : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
@@ -176,7 +174,7 @@ let simplify_move_within_set_of_closures env r
       ~(move_within_set_of_closures : Projection.Move_within_set_of_closures.t)
       : named_simplifier =
   let closure, closure_ty =
-    squash_variable_alias env move_within_set_of_closures.closure
+    freshen_and_squash_aliases env move_within_set_of_closures.closure
   in
   match T.reify_as_closure_allowing_unresolved closure_ty with
   | Wrong ->
@@ -277,7 +275,7 @@ let simplify_move_within_set_of_closures env r
       Some (start_from, move_to) ->
       match E.find_projection env ~projection with
       | Some var ->
-        squash_variable_alias_named env var ~f:(fun _env var var_ty ->
+        freshen_and_squash_aliases_named env var ~f:(fun _env var var_ty ->
           let r = R.map_benefit r (B.remove_projection projection) in
           [], Reachable (Var var), var_ty)
       | None ->
@@ -334,7 +332,7 @@ let simplify_move_within_set_of_closures env r
 
 let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
       : named_simplifier =
-  let closure, ty = squash_variable_alias env project_var.closure in
+  let closure, ty = freshen_and_squash_aliases env project_var.closure in
     match T.reify_as_closure_allowing_unresolved ty with
     | Ok (value_closures, _set_of_closures_var, _set_of_closures_symbol) ->
       let () =
@@ -392,7 +390,7 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
       in
       begin match E.find_projection env ~projection with
       | Some var ->
-        squash_variable_alias_named env var ~f:(fun _env var var_ty ->
+        freshen_and_squash_aliases_named env var ~f:(fun _env var var_ty ->
           let r = R.map_benefit r (B.remove_projection projection) in
           [], Reachable (Var var), var_ty)
       | None ->
@@ -593,9 +591,9 @@ and simplify_apply env r ~(apply : Flambda.apply) : Flambda.Expr.t * R.t =
     simplify_method_call env r ~apply ~kind ~obj
 
 and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
-  squash_variable_alias env obj ~f:(fun env obj _obj_type ->
-    squash_variable_alias env apply.func ~f:(fun env func _func_type ->
-      squash_variable_aliases env apply.args ~f:(fun env args _args_types ->
+  freshen_and_squash_aliases env obj ~f:(fun env obj _obj_type ->
+    freshen_and_squash_aliases env apply.func ~f:(fun env func _func_type ->
+      freshen_and_squash_aliaseses env apply.args ~f:(fun env args _args_types ->
         let continuation, r =
           simplify_apply_cont_to_cont env r apply.continuation
             ~arity:(Flambda.Call_kind.return_arity apply.call_kind)
@@ -629,9 +627,9 @@ Format.eprintf "Simplifying function application with cont %a\n%!"
 Format.eprintf "...freshened cont is %a\n%!"
   Continuation.print continuation;
 *)
-  squash_variable_alias env lhs_of_application
+  freshen_and_squash_aliases env lhs_of_application
     ~f:(fun env lhs_of_application lhs_of_application_type ->
-      squash_variable_aliases env args ~f:(fun env args args_types ->
+      freshen_and_squash_aliaseses env args ~f:(fun env args args_types ->
         (* By using the type of the left-hand side of the
            application, attempt to determine which function is being applied
            (even if the application is currently [Indirect]).  If
@@ -1041,7 +1039,7 @@ and simplify_apply_cont_to_cont ?don't_record_use env r cont ~arity =
 
 and simplify_primitive env r prim args dbg =
   let dbg = E.add_inlined_debuginfo env ~dbg in
-  squash_variable_aliases_named env args ~f:(fun env args args_tys ->
+  freshen_and_squash_aliaseses_named env args ~f:(fun env args args_tys ->
     let tree = Flambda.Prim (prim, args, dbg) in
     let projection : Projection.t = Prim (prim, args) in
     begin match E.find_projection env ~projection with
@@ -1049,7 +1047,7 @@ and simplify_primitive env r prim args dbg =
       (* CSE of pure primitives.
          The [Pisint] case in particular is also used when unboxing
          continuation parameters of variant type. *)
-      squash_variable_alias_named env var ~f:(fun _env var var_ty ->
+      freshen_and_squash_aliases_named env var ~f:(fun _env var var_ty ->
         let r = R.map_benefit r (B.remove_projection projection) in
         [], Reachable (Var var), var_ty)
     | None ->
@@ -1078,7 +1076,7 @@ and simplify_primitive env r prim args dbg =
         let projection : Projection.t = Prim (Pfield field_index, [arg]) in
         begin match E.find_projection env ~projection with
         | Some var ->
-          squash_variable_alias_named env var ~f:(fun _env var var_ty ->
+          freshen_and_squash_aliases_named env var ~f:(fun _env var var_ty ->
             let r = R.map_benefit r (B.remove_projection projection) in
             [], Reachable (Var var), var_ty)
         | None ->
@@ -1377,12 +1375,12 @@ and simplify_named env r (tree : Flambda.Named.t)
   | Move_within_set_of_closures move_within_set_of_closures ->
     simplify_move_within_set_of_closures env r ~move_within_set_of_closures
   | Assign { being_assigned; new_value; } ->
-    (* No need to use something like [squash_variable_alias]: the
+    (* No need to use something like [freshen_and_squash_aliases]: the
        Flambda type of [being_assigned] is always unknown. *)
     let being_assigned =
       Freshening.apply_mutable_variable (E.freshening env) being_assigned
     in
-    squash_variable_alias_named env new_value ~f:(fun _env new_value _type ->
+    freshen_and_squash_aliases_named env new_value ~f:(fun _env new_value _type ->
       [], Reachable (Assign { being_assigned; new_value; }),
         ret r (T.unknown Value Other))
   | Prim (prim, args, dbg) -> simplify_primitive env r prim args dbg
@@ -1932,7 +1930,7 @@ and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
   end
 
 let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
-  squash_variable_alias env arg ~f:(fun env arg arg_type ->
+  freshen_and_squash_aliases env arg ~f:(fun env arg arg_type ->
     let destination_is_unreachable cont =
       (* CR mshinwell: This unreachable thing should be tidied up and also
          done on [Apply_cont]. *)
@@ -2051,7 +2049,7 @@ and simplify env r (tree : Flambda.Expr.t) : Flambda.Expr.t * R.t =
       ~filter_defining_expr:filter_defining_expr_of_let
   | Let_mutable { var = mut_var; initial_value = var; body; contents_kind } ->
     (* CR-someday mshinwell: add the dead let elimination, as above. *)
-    squash_variable_alias env var ~f:(fun env var _var_type ->
+    freshen_and_squash_aliases env var ~f:(fun env var _var_type ->
       let mut_var, sb =
         Freshening.add_mutable_variable (E.freshening env) mut_var
       in
@@ -2068,7 +2066,7 @@ and simplify env r (tree : Flambda.Expr.t) : Flambda.Expr.t * R.t =
   | Let_cont { body; handlers; } -> simplify_let_cont env r ~body ~handlers
   | Apply apply -> simplify_apply env r ~apply
   | Apply_cont (cont, trap_action, args) ->
-    squash_variable_aliases env args ~f:(fun env args args_types ->
+    freshen_and_squash_aliaseses env args ~f:(fun env args args_types ->
       simplify_apply_cont env r cont ~trap_action ~args ~args_types)
   | Switch (arg, sw) -> simplify_switch env r arg sw
   | Unreachable -> Unreachable, T.bottom

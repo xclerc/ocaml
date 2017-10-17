@@ -231,18 +231,17 @@ val reify_as_scannable_block_or_immediate
 
 *)
 
-type reified_as_set_of_closures =
-  | Wrong
-  | Unresolved of unresolved_value
+type 'a proof =
+  | Known of 'a
   | Unknown
-  | Ok of Variable.t option * set_of_closures
-  (** In the [Ok] case, there may not be a variable associated with the set of
-      closures; it might be out of scope. *)
+  | Unreachable
+  | Wrong
 
 (** Try to prove that a value with the given type may be used as a
-    set of closures.  Values coming from external compilation units with
-    unresolved types are permitted. *)
-val reify_as_set_of_closures : t -> reified_as_set_of_closures
+    set of closures. *)
+val prove_set_of_closures
+   : (t
+  -> Set_of_closures.t known_unknown_or_wrong) with_importer
 
 (*
 

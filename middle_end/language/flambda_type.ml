@@ -557,14 +557,14 @@ module Set_of_closures : sig
     -> set_of_closures
     -> t
 
-  val set_of_closures_var : t -> Variable.t Or_not_all_values_known.t
+  val set_of_closures_var : t -> Variable.t option
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 
   val join : (t -> t -> t) with_importer
 end = struct
   type t = {
-    set_of_closures_var : Variable.t Or_not_all_values_known.t;
+    set_of_closures_var : Variable.t option;
     set_of_closures_id_and_origin :
       (Set_of_closures_id.t * Set_of_closures_origin.t)
         Or_not_all_values_known.t;
@@ -583,8 +583,9 @@ end = struct
       Var_within_closure.Set.print
       (Var_within_closure.Map.keys t.closure_elements)
 
-  let create (set : set_of_closures) : t =
-    { set_of_closures_id_and_origin =
+  let create ~set_of_closures_var (set : set_of_closures) : t =
+    { set_of_closures_var;
+      set_of_closures_id_and_origin =
         Exactly (set.set_of_closures_id, set.set_of_closures_origin);
       function_decls = set.function_decls;
       closure_elements = set.closure_elements;
@@ -640,7 +641,8 @@ end = struct
         (fun ty1 ty2 -> join_ty_value ~importer ty1 ty2)
         t1.closure_elements t2.closure_elements
     in
-    { set_of_closures_id_and_origin = Not_all_values_known;
+    { set_of_closures_var = None;
+      set_of_closures_id_and_origin = Not_all_values_known;
       function_decls;
       closure_elements;
     }
@@ -676,7 +678,16 @@ end = struct
         Var_within_closure.Map.union_merge (join_ty_value ~importer)
           t1.closure_elements t2.closure_elements
       in
-      { set_of_closures_id_and_origin;
+      let set_of_closures_var =
+        match t1.set_of_closures_var with
+        | Some var -> Some var
+        | None ->
+          match t2.set_of_closures_var with
+          | Some var -> Some var
+          | None -> None
+      in
+      { set_of_closures_var;
+        set_of_closures_id_and_origin;
         function_decls = t1.function_decls;
         closure_elements;
       }
@@ -686,7 +697,8 @@ end
 
 module Summary = struct
   type t =
-    | Wrong
+    | Unknown
+    | Bottom
     | Blocks_and_tagged_immediates of
         Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
     | Boxed_floats of Float.Set.t Or_not_all_values_known.t
@@ -702,14 +714,16 @@ module Summary = struct
         Ok (Immediate.join_set imms1  imms2))
     in
     match t1, t2 with
-    | Wrong, _ | _, Wrong -> Wrong
+    | Unknown, _ | _, Unknown -> Unknown
+    | Bottom, _ -> t2
+    | _, Bottom -> t1
     | Blocks_and_tagged_immediates (b1, imms1),
         Blocks_and_tagged_immediates (b2, imms2) ->
       let blocks_join = Blocks.join ~importer b1 b2 in
       let imms_join = join_immediates imms1 imms2 in
       begin match blocks_join, imms_join with
       | Ok blocks, Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
-      | Wrong, _ | _, Wrong -> Wrong
+      | Unknown, _ | _, Unknown -> Unknown
       end
     | Boxed_floats fs1, Boxed_floats fs2 ->
       begin match
@@ -718,7 +732,7 @@ module Summary = struct
           fs1 fs2
       with
       | Ok fs -> Boxed_floats fs
-      | Wrong -> Wrong
+      | Unknown -> Unknown
       end
     | Boxed_int32s is1, Boxed_int32s is2 ->
       begin match
@@ -727,7 +741,7 @@ module Summary = struct
           is1 is2
       with
       | Ok is -> Boxed_int32s is
-      | Wrong -> Wrong
+      | Unknown -> Unknown
       end
     | Boxed_int64s is1, Boxed_int64s is2 ->
       begin match
@@ -736,7 +750,7 @@ module Summary = struct
           is1 is2
       with
       | Ok is -> Boxed_int64s is
-      | Wrong -> Wrong
+      | Unknown -> Unknown
       end
     | Boxed_nativeints is1, Boxed_nativeints is2 ->
       begin match
@@ -745,7 +759,7 @@ module Summary = struct
           is1 is2
       with
       | Ok is -> Boxed_nativeints is
-      | Wrong -> Wrong
+      | Unknown -> Unknown
       end
     | Closures closures1, Closures closures2 ->
       begin match
@@ -759,7 +773,7 @@ module Summary = struct
           closures1 closures2
       with
       | Ok closures -> Closures closures
-      | Wrong -> Wrong
+      | Unknown -> Unknown
       end
     | Set_of_closures set1, Set_of_closures set2 ->
       begin match
@@ -768,7 +782,7 @@ module Summary = struct
           set1 set2
       with
       | Ok set_of_closures -> Set_of_closures set_of_closures
-      | Wrong -> Wrong
+      | Unknown -> Unknown
       end
     | (Blocks_and_tagged_immediates _
       | Boxed_floats _
@@ -776,7 +790,7 @@ module Summary = struct
       | Boxed_int64s _
       | Boxed_nativeints _
       | Closures _
-      | Set_of_closures _), _ -> Wrong
+      | Set_of_closures _), _ -> Unknown
 end
 
 type 'a known_unknown_or_wrong =
@@ -833,8 +847,10 @@ let summarize ~importer (t : t) : Summary.t =
   let module I = (val importer : Importer) in
   match t with
   | Value ty ->
-    begin match (I.import_value_type_as_resolved_ty_value ty).descr with
-    | Unknown _ | Bottom -> Wrong
+    let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
+    begin match resolved_ty_value.descr with
+    | Unknown -> Unknown
+    | Bottom -> Bottom
     | Ok of_kind_value ->
       let for_singleton (s : of_kind_value_singleton) : Summary.t =
         match s with
@@ -842,7 +858,7 @@ let summarize ~importer (t : t) : Summary.t =
           begin match
             prove_naked_immediate_from_ty_naked_immediate ~importer ty
           with
-          | Wrong -> Wrong
+          | Wrong -> Unknown
           | Unknown ->
             Blocks_and_tagged_immediates (
               Tag.Scannable.Map.empty, Not_all_values_known)
@@ -854,7 +870,7 @@ let summarize ~importer (t : t) : Summary.t =
           begin match
             prove_naked_float_from_ty_naked_float ~importer ty
           with
-          | Wrong -> Wrong
+          | Wrong -> Unknown
           | Unknown -> Boxed_floats Not_all_values_known
           | Known f -> Boxed_floats (Exactly (Float.Set.singleton f))
           end
@@ -862,7 +878,7 @@ let summarize ~importer (t : t) : Summary.t =
           begin match
             prove_naked_int32_from_ty_naked_int32 ~importer ty
           with
-          | Wrong -> Wrong
+          | Wrong -> Unknown
           | Unknown -> Boxed_int32s Not_all_values_known
           | Known i -> Boxed_int32s (Exactly (Int32.Set.singleton i))
           end
@@ -870,7 +886,7 @@ let summarize ~importer (t : t) : Summary.t =
           begin match
             prove_naked_int64_from_ty_naked_int64 ~importer ty
           with
-          | Wrong -> Wrong
+          | Wrong -> Unknown
           | Unknown -> Boxed_int64s Not_all_values_known
           | Known i -> Boxed_int64s (Exactly (Int64.Set.singleton i))
           end
@@ -878,7 +894,7 @@ let summarize ~importer (t : t) : Summary.t =
           begin match
             prove_naked_nativeint_from_ty_naked_nativeint ~importer ty
           with
-          | Wrong -> Wrong
+          | Wrong -> Unknown
           | Unknown -> Boxed_nativeints Not_all_values_known
           | Known i -> Boxed_nativeints (Exactly (Targetint.Set.singleton i))
           end
@@ -891,9 +907,11 @@ let summarize ~importer (t : t) : Summary.t =
           Wrong
             (* [@ppwarning "TODO"] *)
         | Set_of_closures set ->
-          Set_of_closures (Exactly (Set_of_closures.create set))
+          Set_of_closures (Exactly (
+            Set_of_closures.create ~set_of_closures_var:resolved_ty_value.var
+              set))
         | String _
-        | Float_array _ -> Wrong
+        | Float_array _ -> Unknown
       in
       let rec for_of_kind_value (o : of_kind_value) =
         match o with
@@ -909,7 +927,7 @@ let summarize ~importer (t : t) : Summary.t =
   | Naked_float _
   | Naked_int32 _
   | Naked_int64 _
-  | Naked_nativeint _ -> Wrong
+  | Naked_nativeint _ -> Unknown
 
 let reify ~importer t : Named.t option =
   let try_symbol () =
@@ -927,7 +945,6 @@ let reify ~importer t : Named.t option =
     | None -> None
   in
   match summarize ~importer t with
-  | Wrong -> None
   | Blocks_and_tagged_immediates (blocks, imms) ->
     begin match imms with
     | Exactly imms ->
@@ -941,6 +958,8 @@ let reify ~importer t : Named.t option =
       end
     | Not_all_values_known -> None
     end
+  | Bottom -> None
+  | Unknown
   | Boxed_floats _
   | Boxed_int32s _
   | Boxed_int64s _
@@ -962,22 +981,18 @@ let reify_using_env ~importer t ~is_present_in_env =
     end
   | Some named -> Some named
 
-type proved_as_set_of_closures =
-  | Unknown of unknown_because_of
-  | Ok of Set_of_closures.t
-  | Wrong
-
-let prove_set_of_closures t : reified_as_set_of_closures =
-  ... this will look like one of the above functions, working on the summary
-    | Wrong
-    | Blocks_and_tagged_immediates of
-        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
-    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
-    | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
-    | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
+let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
+  match summary ~importer t with
+  | Set_of_closures (Exactly set) -> Known set
+  | Set_of_closures Not_all_values_known
+  | Unknown -> Unknown
+  | Bottom
+  | Blocks_and_tagged_immediates _
+  | Boxed_floats _
+  | Boxed_int32s _
+  | Boxed_int64s _
+  | Boxed_nativeints _
+  | Closures _ -> Wrong
 
 (*
 
