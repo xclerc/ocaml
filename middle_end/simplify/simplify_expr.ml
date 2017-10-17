@@ -207,7 +207,7 @@ let simplify_let_cont_handler ~env ~r ~cont
   in
   r, handler
 
-and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
+let simplify_let_cont_handlers ~env ~r ~handlers ~args_types
       ~(recursive : Asttypes.rec_flag) ~freshening
       : Flambda.Let_cont_handlers.t option * R.t =
   Continuation.Map.iter (fun cont _handler ->
@@ -369,7 +369,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~args_types
           Some (Flambda.Nonrecursive { name; handler; }), r
         | None -> Some (Flambda.Recursive handlers), r
 
-and simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
+let simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
   (* In two stages we form the environment to be used for simplifying the
      [body].  If the continuations in [handlers] are recursive then
      that environment will also be used for simplifying the continuations
