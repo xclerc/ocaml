@@ -584,7 +584,8 @@ let simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
     end
   end
 
-let simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj =
+let simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj
+      : Flambda.Expr.t * R.t =
   let obj, _obj_type = freshen_and_squash_aliases env obj in
   let func, _func_type = freshen_and_squash_aliases env func in
   let args, _args_type = freshen_and_squash_aliases_list env args in
@@ -611,8 +612,8 @@ let simplify_full_application env r ~function_decls ~lhs_of_application
       ~args_types ~continuation ~dbg ~inline_requested ~specialise_requested =
   Inlining_decision.for_call_site ~env ~r ~function_decls
     ~lhs_of_application ~closure_id_being_applied ~function_decl
-    ~value_set_of_closures ~args ~args_types ~continuation ~dbg ~simplify
-    ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested
+    ~value_set_of_closures ~args ~args_types ~continuation ~dbg
+    ~inline_requested ~specialise_requested
 
 let simplify_partial_application env r ~lhs_of_application
       ~closure_id_being_applied

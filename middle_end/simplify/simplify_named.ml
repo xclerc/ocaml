@@ -541,7 +541,7 @@ let simplify_set_of_closures original_env r
             let descr =
               Format.asprintf "the body of %a" Variable.print fun_var
             in
-            simplify_toplevel body_env r function_decl.body
+            (E.simplify_toplevel body_env) body_env r function_decl.body
               ~continuation:continuation_param
               ~descr
           in
@@ -899,198 +899,198 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
 
 let simplify_primitive env r prim args dbg : named_simplifier =
   let dbg = E.add_inlined_debuginfo env ~dbg in
-  freshen_and_squash_aliases_list_named env args ~f:(fun env args args_tys ->
-    let tree = Flambda.Prim (prim, args, dbg) in
-    let projection : Projection.t = Prim (prim, args) in
-    begin match E.find_projection env ~projection with
-    | Some var ->
-      (* CSE of pure primitives.
-         The [Pisint] case in particular is also used when unboxing
-         continuation parameters of variant type. *)
-      freshen_and_squash_aliases_named env var ~f:(fun _env var var_ty ->
-        let r = R.map_benefit r (B.remove_projection projection) in
-        [], Reachable (Var var), var_ty)
-    | None ->
-      let default () : (Variable.t * Flambda.Named.t) list
-            * Flambda.Named.t_reachable * R.t =
-        let named, ty, benefit =
-          (* CR mshinwell: if the primitive is pure, add it to the environment
-             so CSE will work.  Need to be careful if the variable being
-             bound is a continuation argument *)
-          let module Backend = (val (E.backend env) : Backend_intf.S) in
-          simplify_primitive0 prim (args, args_tys) tree dbg
-            ~size_int:Backend.size_int ~big_endian:Backend.big_endian
-        in
-        let r = R.map_benefit r (B.(+) benefit) in
-        let ty =
-          match prim with
-          | Popaque -> T.unknown Other
-          | _ -> ty
-        in
-        [], Reachable (named, value_kind), ty
+  let args, args_tys = freshen_and_squash_aliases_list env args in
+  let tree = Flambda.Prim (prim, args, dbg) in
+  let projection : Projection.t = Prim (prim, args) in
+  begin match E.find_projection env ~projection with
+  | Some var ->
+    (* CSE of pure primitives.
+       The [Pisint] case in particular is also used when unboxing
+       continuation parameters of variant type. *)
+    let var, var_ty = freshen_and_squash_aliases env var in
+    let r = R.map_benefit r (B.remove_projection projection) in
+    [], Reachable (Var var), var_ty
+  | None ->
+    let default () : (Variable.t * Flambda.Named.t) list
+          * Flambda.Named.t_reachable * R.t =
+      let named, ty, benefit =
+        (* CR mshinwell: if the primitive is pure, add it to the environment
+           so CSE will work.  Need to be careful if the variable being
+           bound is a continuation argument *)
+        let module Backend = (val (E.backend env) : Backend_intf.S) in
+        simplify_primitive0 prim (args, args_tys) tree dbg
+          ~size_int:Backend.size_int ~big_endian:Backend.big_endian
       in
-      begin match prim, args, args_tys with
-      | Pgetglobal _, _, _ ->
-        Misc.fatal_error "Pgetglobal is forbidden in Flambda"
-      | Pfield field_index, [arg], [arg_ty] ->
-        let projection : Projection.t = Prim (Pfield field_index, [arg]) in
-        begin match E.find_projection env ~projection with
-        | Some var ->
-          freshen_and_squash_aliases_named env var ~f:(fun _env var var_ty ->
-            let r = R.map_benefit r (B.remove_projection projection) in
-            [], Reachable (Var var), var_ty)
-        | None ->
-          begin match T.get_field arg_ty ~field_index with
-          | Invalid _ ->
-            [], Flambda.Reachable.invalid (), r
-          | Ok ty ->
-            let tree, ty =
-              match arg_ty.symbol with
-              (* If the [Pfield] is projecting directly from a symbol, rewrite
-                  the expression to [Read_symbol_field]. *)
-              | Some (symbol, None) ->
-                let ty =
-                  T.augment_with_symbol_field ty symbol field_index
-                in
-                Flambda.Read_symbol_field (symbol, field_index), ty
-              | None | Some (_, Some _ ) ->
-                (* This [Pfield] is either not projecting from a symbol at
-                   all, or it is the projection of a projection from a
-                   symbol. *)
-                let ty' = E.really_import_ty env ty in
-                tree, ty'
-            in
-            simpler_equivalent_term env r tree ty
-          end
-        end
-      | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
-      | (Parraysetu kind | Parraysets kind),
-          [_block; _field; _value],
-          [block_ty; field_ty; value_ty] ->
-        if T.invalid_to_mutate block_ty then begin
+      let r = R.map_benefit r (B.(+) benefit) in
+      let ty =
+        match prim with
+        | Popaque -> T.unknown Other
+        | _ -> ty
+      in
+      [], Reachable (named, value_kind), ty
+    in
+    begin match prim, args, args_tys with
+    | Pgetglobal _, _, _ ->
+      Misc.fatal_error "Pgetglobal is forbidden in Flambda"
+    | Pfield field_index, [arg], [arg_ty] ->
+      let projection : Projection.t = Prim (Pfield field_index, [arg]) in
+      begin match E.find_projection env ~projection with
+      | Some var ->
+        let var, var_ty = freshen_and_squash_aliases env var in
+        let r = R.map_benefit r (B.remove_projection projection) in
+        [], Reachable (Var var), var_ty
+      | None ->
+        begin match T.get_field arg_ty ~field_index with
+        | Invalid _ ->
           [], Flambda.Reachable.invalid (), r
-        end else begin
-          let size = T.length_of_array block_ty in
-          let index = T.reify_as_int field_ty in
-          let bounds_check_definitely_fails =
-            match size, index with
-            | Some size, _ when size <= 0 ->
-              assert (size = 0);  (* see [Simple_value_ty] *)
-              true
-            | Some size, Some index ->
-              (* This is ok even in the presence of [Obj.truncate], since that
-                 can only make blocks smaller. *)
-              index >= 0 && index < size
-            | _, _ -> false
+        | Ok ty ->
+          let tree, ty =
+            match arg_ty.symbol with
+            (* If the [Pfield] is projecting directly from a symbol, rewrite
+                the expression to [Read_symbol_field]. *)
+            | Some (symbol, None) ->
+              let ty =
+                T.augment_with_symbol_field ty symbol field_index
+              in
+              Flambda.Read_symbol_field (symbol, field_index), ty
+            | None | Some (_, Some _ ) ->
+              (* This [Pfield] is either not projecting from a symbol at
+                 all, or it is the projection of a projection from a
+                 symbol. *)
+              let ty' = E.really_import_ty env ty in
+              tree, ty'
           in
-          let convert_to_raise =
-            match prim with
-            | Parraysets _ -> bounds_check_definitely_fails
-            | Parraysetu _ -> false
-            | _ -> assert false  (* see above *)
-          in
-          if convert_to_raise then begin
-            (* CR mshinwell: move to separate function *)
-            let invalid_argument_var = Variable.create "invalid_argument" in
-            let invalid_argument : Flambda.Named.t =
-              let module Backend = (val (E.backend env) : Backend_intf.S) in
-              Symbol (Backend.symbol_for_global'
-                Predef.ident_invalid_argument)
-            in
-            let msg_var = Variable.create "msg" in
-            let msg : Flambda.Named.t =
-              Allocated_const (String "index out of bounds")
-            in
-            let exn_var = Variable.create "exn" in
-            let exn : Flambda.Named.t =
-              Prim (Pmakeblock (0, Immutable, None),
-                [invalid_argument_var; msg_var], dbg)
-            in
-            let bindings = [
-                invalid_argument_var, invalid_argument;
-                msg_var, msg;
-                exn_var, exn;
-              ]
-            in
-            bindings, Reachable (Prim (Praise Raise_regular, [exn_var], dbg)),
-              T.bottom
-          end else begin
-            let kind =
-              match T.is_float_array block_ty, T.is_boxed_float value_ty with
-              | (true, _)
-              | (_, true) ->
-                begin match kind with
-                | Pfloatarray | Pgenarray -> ()
-                | Paddrarray | Pintarray ->
-                  (* CR pchambart: Do a proper warning here *)
-                  Misc.fatal_errorf "Assignment of a float to a specialised \
-                                    non-float array: %a"
-                    Flambda.Named.print tree
-                end;
-                Lambda.Pfloatarray
-                (* CR pchambart: This should be accounted by the benefit *)
-              | _ ->
-                kind
-            in
-            let prim : Lambda.primitive =
-              match prim with
-              | Parraysetu _ -> Parraysetu kind
-              | Parraysets _ -> Parraysets kind
-              | _ -> assert false
-            in
-            [], Reachable (Prim (prim, args, dbg)), ret r (T.unknown Other)
-          end
+          simpler_equivalent_term env r tree ty
         end
-      | Psetfield _, _block::_, block_ty::_ ->
-        if T.invalid_to_mutate block_ty then begin
-          [], Flambda.Reachable.invalid (), r
-        end else begin
-          [], Reachable tree, ret r (T.unknown Other)
-        end
-      | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
-        Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
-      | Pisint, [_arg], [arg_ty] ->
-        begin match T.reify_as_block_or_immediate arg_ty with
-        | Wrong -> default ()
-        | Immediate ->
-          let r = R.map_benefit r B.remove_prim in
-          let const_true = Variable.create "true" in
-          [const_true, Const (Int 1)], Reachable (Var const_true),
-            ret r (T.int 1)
-        | Block ->
-          let r = R.map_benefit r B.remove_prim in
-          let const_false = Variable.create "false" in
-          [const_false, Const (Int 0)], Reachable (Var const_false),
-            ret r (T.int 0)
-        end
-      | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
-      | Pgettag, [_arg], [arg_ty] ->
-        begin match T.reify_as_block arg_ty with
-        | Wrong -> default ()
-        | Ok (tag, _fields) ->
-          let r = R.map_benefit r B.remove_prim in
-          let const_tag = Variable.create "tag" in
-          let tag = Tag.to_int tag in
-          [const_tag, Const (Int tag)], Reachable (Var const_tag),
-            ret r (T.int tag)
-        end
-      | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
-      | Parraylength _, [_arg], [arg_ty] ->
-        begin match T.length_of_array arg_ty with
-        | None -> default ()
-        | Some length ->
-          let r = R.map_benefit r B.remove_prim in
-          let const_length = Variable.create "length" in
-          [const_length, Const (Int length)], Reachable (Var const_length),
-            ret r (T.int length)
-        end
-      | Parraylength _, _, _ -> Misc.fatal_error "Parraylength arity error"
-      | (Psequand | Psequor), _, _ ->
-        Misc.fatal_error "Psequand and Psequor must be expanded (see \
-            handling in closure_conversion.ml)"
-      | _, _, _ -> default ()
       end
-    end)
+    | Pfield _, _, _ -> Misc.fatal_error "Pfield arity error"
+    | (Parraysetu kind | Parraysets kind),
+        [_block; _field; _value],
+        [block_ty; field_ty; value_ty] ->
+      if T.invalid_to_mutate block_ty then begin
+        [], Flambda.Reachable.invalid (), r
+      end else begin
+        let size = T.length_of_array block_ty in
+        let index = T.reify_as_int field_ty in
+        let bounds_check_definitely_fails =
+          match size, index with
+          | Some size, _ when size <= 0 ->
+            assert (size = 0);  (* see [Simple_value_ty] *)
+            true
+          | Some size, Some index ->
+            (* This is ok even in the presence of [Obj.truncate], since that
+               can only make blocks smaller. *)
+            index >= 0 && index < size
+          | _, _ -> false
+        in
+        let convert_to_raise =
+          match prim with
+          | Parraysets _ -> bounds_check_definitely_fails
+          | Parraysetu _ -> false
+          | _ -> assert false  (* see above *)
+        in
+        if convert_to_raise then begin
+          (* CR mshinwell: move to separate function *)
+          let invalid_argument_var = Variable.create "invalid_argument" in
+          let invalid_argument : Flambda.Named.t =
+            let module Backend = (val (E.backend env) : Backend_intf.S) in
+            Symbol (Backend.symbol_for_global'
+              Predef.ident_invalid_argument)
+          in
+          let msg_var = Variable.create "msg" in
+          let msg : Flambda.Named.t =
+            Allocated_const (String "index out of bounds")
+          in
+          let exn_var = Variable.create "exn" in
+          let exn : Flambda.Named.t =
+            Prim (Pmakeblock (0, Immutable, None),
+              [invalid_argument_var; msg_var], dbg)
+          in
+          let bindings = [
+              invalid_argument_var, invalid_argument;
+              msg_var, msg;
+              exn_var, exn;
+            ]
+          in
+          bindings, Reachable (Prim (Praise Raise_regular, [exn_var], dbg)),
+            T.bottom
+        end else begin
+          let kind =
+            match T.is_float_array block_ty, T.is_boxed_float value_ty with
+            | (true, _)
+            | (_, true) ->
+              begin match kind with
+              | Pfloatarray | Pgenarray -> ()
+              | Paddrarray | Pintarray ->
+                (* CR pchambart: Do a proper warning here *)
+                Misc.fatal_errorf "Assignment of a float to a specialised \
+                                  non-float array: %a"
+                  Flambda.Named.print tree
+              end;
+              Lambda.Pfloatarray
+              (* CR pchambart: This should be accounted by the benefit *)
+            | _ ->
+              kind
+          in
+          let prim : Lambda.primitive =
+            match prim with
+            | Parraysetu _ -> Parraysetu kind
+            | Parraysets _ -> Parraysets kind
+            | _ -> assert false
+          in
+          [], Reachable (Prim (prim, args, dbg)), ret r (T.unknown Other)
+        end
+      end
+    | Psetfield _, _block::_, block_ty::_ ->
+      if T.invalid_to_mutate block_ty then begin
+        [], Flambda.Reachable.invalid (), r
+      end else begin
+        [], Reachable tree, ret r (T.unknown Other)
+      end
+    | (Psetfield _ | Parraysetu _ | Parraysets _), _, _ ->
+      Misc.fatal_error "Psetfield / Parraysetu / Parraysets arity error"
+    | Pisint, [_arg], [arg_ty] ->
+      begin match T.reify_as_block_or_immediate arg_ty with
+      | Wrong -> default ()
+      | Immediate ->
+        let r = R.map_benefit r B.remove_prim in
+        let const_true = Variable.create "true" in
+        [const_true, Const (Int 1)], Reachable (Var const_true),
+          ret r (T.int 1)
+      | Block ->
+        let r = R.map_benefit r B.remove_prim in
+        let const_false = Variable.create "false" in
+        [const_false, Const (Int 0)], Reachable (Var const_false),
+          ret r (T.int 0)
+      end
+    | Pisint, _, _ -> Misc.fatal_error "Pisint arity error"
+    | Pgettag, [_arg], [arg_ty] ->
+      begin match T.reify_as_block arg_ty with
+      | Wrong -> default ()
+      | Ok (tag, _fields) ->
+        let r = R.map_benefit r B.remove_prim in
+        let const_tag = Variable.create "tag" in
+        let tag = Tag.to_int tag in
+        [const_tag, Const (Int tag)], Reachable (Var const_tag),
+          ret r (T.int tag)
+      end
+    | Pgettag, _, _ -> Misc.fatal_error "Pgettag arity error"
+    | Parraylength _, [_arg], [arg_ty] ->
+      begin match T.length_of_array arg_ty with
+      | None -> default ()
+      | Some length ->
+        let r = R.map_benefit r B.remove_prim in
+        let const_length = Variable.create "length" in
+        [const_length, Const (Int length)], Reachable (Var const_length),
+          ret r (T.int length)
+      end
+    | Parraylength _, _, _ -> Misc.fatal_error "Parraylength arity error"
+    | (Psequand | Psequor), _, _ ->
+      Misc.fatal_error "Psequand and Psequor must be expanded (see \
+          handling in closure_conversion.ml)"
+    | _, _, _ -> default ()
+    end
+  end
 
 (** [simplify_named] returns:
     - extra [Let]-bindings to be inserted prior to the one being simplified;

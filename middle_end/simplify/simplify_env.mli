@@ -32,6 +32,25 @@ val create
    : never_inline:bool
   -> allow_continuation_inlining:bool
   -> allow_continuation_specialisation:bool
+  -> simplify_toplevel:(
+       t
+    -> Simplify_result.t
+    -> Flambda.Expr.t
+    -> continuation:Continuation.t
+    -> descr:string
+    -> Flambda.Expr.t * Simplify_result.t)
+  -> simplify_expr:(
+       t
+    -> Simplify_result.t
+    -> Flambda.Expr.t
+    -> Flambda.Expr.t * Simplify_result.t)
+  -> simplify_apply_cont_to_cont:(
+       ?don't_record_use:unit
+    -> t
+    -> Simplify_result.t
+    -> Continuation.t
+    -> arg_tys:Flambda_type.t list
+    -> Continuation.t * Simplify_result.t)
   -> backend:(module Backend_intf.S)
   -> round:int
   -> t
@@ -39,6 +58,31 @@ val create
 (** Obtain the first-class module that gives information about the
     compiler backend being used for compilation. *)
 val backend : t -> (module Backend_intf.S)
+
+val simplify_toplevel
+   : t
+  -> (t
+    -> Simplify_result.t
+    -> Flambda.Expr.t
+    -> continuation:Continuation.t
+    -> descr:string
+    -> Flambda.Expr.t * Simplify_result.t)
+
+val simplify_expr
+   : t
+  -> (t
+    -> Simplify_result.t
+    -> Flambda.Expr.t
+    -> Flambda.Expr.t * Simplify_result.t)
+
+val simplify_apply_cont_to_cont
+   : t
+  -> (?don't_record_use:unit
+    -> t
+    -> Simplify_result.t
+    -> Continuation.t
+    -> arg_tys:Flambda_type.t list
+    -> Continuation.t * Simplify_result.t)
 
 val importer : t -> (module Flambda_type.Importer)
 

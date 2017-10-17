@@ -40,9 +40,3 @@ type 'a by_copying_function_declaration =
   -> specialised_args:Variable.Set.t
   -> dbg:Debuginfo.t
   -> (Flambda.Expr.t * Simplify_result.t) option
-
-type simplify =
-     Simplify_env.t
-  -> Simplify_result.t
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t * Simplify_result.t
