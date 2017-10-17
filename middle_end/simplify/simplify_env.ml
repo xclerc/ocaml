@@ -16,14 +16,31 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type scope = Current | Outer
-
 type t = {
   backend : (module Backend_intf.S);
+  simplify_toplevel:(
+       t
+    -> Simplify_result.t
+    -> Flambda.Expr.t
+    -> continuation:Continuation.t
+    -> descr:string
+    -> Flambda.Expr.t * Simplify_result.t);
+  simplify_expr:(
+       t
+    -> Simplify_result.t
+    -> Flambda.Expr.t
+    -> Flambda.Expr.t * Simplify_result.t);
+  simplify_apply_cont_to_cont:(
+       ?don't_record_use:unit
+    -> t
+    -> Simplify_result.t
+    -> Continuation.t
+    -> arg_tys:Flambda_type.t list
+    -> Continuation.t * Simplify_result.t);
   round : int;
-  approx : (scope * Flambda_type.t) Variable.Map.t;
-  approx_mutable : Flambda_type.t Mutable_variable.Map.t;
-  approx_sym : Flambda_type.t Symbol.Map.t;
+  variables : Flambda_type.t Variable.Map.t;
+  mutable_variables : Flambda_type.t Mutable_variable.Map.t;
+  symbols : Flambda_type.t Symbol.Of_kind_value.Map.t;
   continuations : Continuation_approx.t Continuation.Map.t;
   projections : Variable.t Projection.Map.t;
   current_functions : Set_of_closures_origin.Set.t;
@@ -47,12 +64,13 @@ type t = {
 }
 
 let create ~never_inline ~allow_continuation_inlining
-      ~allow_continuation_specialisation ~backend ~round =
+      ~allow_continuation_specialisation ~round ~backend
+      ~simplify_toplevel ~simplify_expr ~simplify_apply_cont_to_cont =
   { backend;
     round;
-    approx = Variable.Map.empty;
-    approx_mutable = Mutable_variable.Map.empty;
-    approx_sym = Symbol.Map.empty;
+    variables = Variable.Map.empty;
+    mutable_variables = Mutable_variable.Map.empty;
+    symbols = Symbol.Of_kind_value.Map.empty;
     continuations = Continuation.Map.empty;
     projections = Projection.Map.empty;
     current_functions = Set_of_closures_origin.Set.empty;
@@ -71,27 +89,10 @@ let create ~never_inline ~allow_continuation_inlining
     inlining_stats_closure_stack =
       Inlining_stats.Closure_stack.create ();
     inlined_debuginfo = Debuginfo.none;
+    simplify_toplevel;
+    simplify_expr;
+    simplify_apply_cont_to_cont;
   }
-
-let backend t = t.backend
-let round t = t.round
-
-let local env =
-  { env with
-    approx = Variable.Map.empty;
-    continuations = Continuation.Map.empty;
-    projections = Projection.Map.empty;
-    freshening = Freshening.empty_preserving_activation_state env.freshening;
-    inlined_debuginfo = Debuginfo.none;
-  }
-
-let inlining_level_up env =
-  let max_level =
-    Clflags.Int_arg_helper.get ~key:(env.round) !Clflags.inline_max_depth
-  in
-  if (env.inlining_level + 1) > max_level then
-    Misc.fatal_error "Inlining level increased above maximum";
-  { env with inlining_level = env.inlining_level + 1 }
 
 let print ppf t =
   Format.fprintf ppf
@@ -99,7 +100,7 @@ let print ppf t =
       Continuations: %a@.Currently inside functions: %a@.\
       Never inline: %b@.Never inline inside closures: %b@.\
       Never inline outside closures: %b@."
-    Variable.Set.print (Variable.Map.keys t.approx)
+    Variable.Set.print (Variable.Map.keys t.variables)
     (Projection.Map.print Variable.print) t.projections
     Freshening.print t.freshening
     (Continuation.Map.print Continuation_approx.print) t.continuations
@@ -108,65 +109,47 @@ let print ppf t =
     t.never_inline_inside_closures
     t.never_inline_outside_closures
 
-let mem t var = Variable.Map.mem var t.approx
+let backend t = t.backend
+let importer t = t.backend
+let round t = t.round
+let simplify_toplevel t = t.simplify_toplevel
+let simplify_expr t = t.simplify_expr
+let simplify_apply_cont_to_cont t = t.simplify_apply_cont_to_cont
 
-let add_internal t var (approx : Flambda_type.t) ~scope =
-  let approx =
-    (* The semantics of this [match] are what preserve the property
-       described at the top of simple_value_approx.mli, namely that when a
-       [var] is mem on an approximation (amongst many possible [var]s),
-       it is the one with the outermost scope. *)
-    match approx.var with
-    | Some var when mem t var -> approx
-    | _ -> Flambda_type.augment_with_variable approx var
-  in
-  { t with approx = Variable.Map.add var (scope, approx) t.approx }
-
-let add t var approx = add_internal t var approx ~scope:Current
-let add_outer_scope t var approx = add_internal t var approx ~scope:Outer
-
-let add_mutable t mut_var approx =
-  { t with approx_mutable =
-      Mutable_variable.Map.add mut_var approx t.approx_mutable;
+let local env =
+  { env with
+    variables = Variable.Map.empty;
+    continuations = Continuation.Map.empty;
+    projections = Projection.Map.empty;
+    freshening = Freshening.empty_preserving_activation_state env.freshening;
+    inlined_debuginfo = Debuginfo.none;
   }
 
-let really_import_approx t =
-  let module Backend = (val (t.backend) : Backend_intf.S) in
-  Backend.really_import_approx
+let mem t var = Variable.Map.mem var t.variables
 
-let really_import_approx_with_scope t (scope, approx) =
-  scope, really_import_approx t approx
+let add t var ty =
+  let ty = Flambda_type.augment_with_variable ty var in
+  let variables = Variable.Map.add var ty t.variables in
+  { t with variables; }
+
+let add_mutable t mut_var ty =
+  { t with mutable_variables =
+    Mutable_variable.Map.add mut_var ty t.mutable_variables;
+  }
 
 let find_symbol_exn t symbol =
-  really_import_approx t
-    (Symbol.Map.find symbol t.approx_sym)
-
-let find_symbol_opt t symbol =
-  try Some (really_import_approx t
-              (Symbol.Map.find symbol t.approx_sym))
-  with Not_found -> None
-
-let find_symbol_fatal t symbol =
-  match find_symbol_exn t symbol with
-  | exception Not_found ->
-    Misc.fatal_errorf "Symbol %a is unbound.  Maybe there is a missing \
-        [Let_symbol], [Import_symbol] or similar?"
-      Symbol.print symbol
-  | approx -> approx
-
-let find_or_load_symbol t symbol =
-  match find_symbol_exn t symbol with
+  match Symbol.Of_kind_value.Map.find symbol t.symbols with
   | exception Not_found ->
     if Compilation_unit.equal
         (Compilation_unit.get_current_exn ())
-        (Symbol.compilation_unit symbol)
-    then
+        (Symbol.Of_kind_value.compilation_unit symbol)
+    then begin
       Misc.fatal_errorf "Symbol %a from the current compilation unit is \
           unbound.  Maybe there is a missing [Let_symbol] or similar?"
-        Symbol.print symbol;
-    let module Backend = (val (t.backend) : Backend_intf.S) in
-    Backend.import_symbol symbol
-  | approx -> approx
+        Symbol.Of_kind_value.print symbol
+    end;
+    Flambda_type.symbol_loaded_lazily symbol
+  | ty -> ty
 
 let add_projection t ~projection ~bound_to =
   { t with
@@ -179,9 +162,9 @@ let find_projection t ~projection =
   | exception Not_found -> None
   | var -> Some var
 
-let add_continuation t cont approx =
+let add_continuation t cont ty =
   { t with
-    continuations = Continuation.Map.add cont approx t.continuations;
+    continuations = Continuation.Map.add cont ty t.continuations;
   }
 
 let find_continuation t cont =
@@ -190,42 +173,52 @@ let find_continuation t cont =
     Misc.fatal_errorf "Unbound continuation %a.\n@ \n%a\n%!"
       Continuation.print cont
       print t
-  | approx -> approx
+  | ty -> ty
 
 let mem_continuation t cont =
   Continuation.Map.mem cont t.continuations
 
 let does_not_bind t vars =
-  not (List.exists (mem t) vars)
+  not (List.exists (fun var -> mem t var) vars)
 
 let does_not_freshen t vars =
   Freshening.does_not_freshen t.freshening vars
 
-let add_symbol t symbol approx =
+let add_symbol t symbol ty =
   match find_symbol_exn t symbol with
   | exception Not_found ->
     { t with
-      approx_sym = Symbol.Map.add symbol approx t.approx_sym;
+      symbols = Symbol.Of_kind_value.Map.add symbol ty t.symbols;
     }
   | _ ->
     Misc.fatal_errorf "Attempt to redefine symbol %a (to %a) in environment \
         for [Simplify]"
-      Symbol.print symbol
-      Flambda_type.print approx
+      Symbol.Of_kind_value.print symbol
+      Flambda_type.print ty
 
-let redefine_symbol t symbol approx =
+(* XXX Think again about:
+- why external symbols must be of kind Value
+- what type we give to a symbol which is of symbol kind Mixed
+
+Maybe there should be a different type used in the environment which isn't
+[Flambda_type.t].  Instead we keep a list of the types of the fields of the
+symbol.
+*)
+
+let redefine_symbol t symbol ty =
   match find_symbol_exn t symbol with
   | exception Not_found ->
-    assert false
+    Misc.fatal_errorf "Cannot redefine undefined symbol %a"
+      Symbol.Of_kind_value.print symbol
   | _ ->
     { t with
-      approx_sym = Symbol.Map.add symbol approx t.approx_sym;
+      symbols = Symbol.Of_kind_value.Map.add symbol ty t.symbols;
     }
 
-let find_with_scope_exn t id =
+let find_exn t id =
   try
-    really_import_approx_with_scope t
-      (Variable.Map.find id t.approx)
+    really_import_ty_with_scope t
+      (Variable.Map.find id t.variables)
   with Not_found ->
     Misc.fatal_errorf "Env.find_with_scope_exn: Unbound variable \
         %a@.%s@. Environment: %a@."
@@ -233,11 +226,8 @@ let find_with_scope_exn t id =
       (Printexc.raw_backtrace_to_string (Printexc.get_callstack max_int))
       print t
 
-let find_exn t id =
-  snd (find_with_scope_exn t id)
-
 let find_mutable_exn t mut_var =
-  try Mutable_variable.Map.find mut_var t.approx_mutable
+  try Mutable_variable.Map.find mut_var t.mutable_variables
   with Not_found ->
     Misc.fatal_errorf "Env.find_mutable_exn: Unbound variable \
         %a@.%s@. Environment: %a@."
@@ -248,11 +238,11 @@ let find_mutable_exn t mut_var =
 let find_list_exn t vars =
   List.map (fun var -> find_exn t var) vars
 
-let vars_in_scope t = Variable.Map.keys t.approx
+let variables_in_scope t = Variable.Map.keys t.variables
 
 let find_opt t id =
-  try Some (really_import_approx t
-              (snd (Variable.Map.find id t.approx)))
+  try Some (really_import_ty t
+              (snd (Variable.Map.find id t.variables)))
   with Not_found -> None
 
 let activate_freshening t =
@@ -289,11 +279,11 @@ let set_freshening t freshening  =
   { t with freshening; }
 
 let increase_closure_depth t =
-  let approx =
-    Variable.Map.map (fun (_scope, approx) -> Outer, approx) t.approx
+  let ty =
+    Variable.Map.map (fun (_scope, ty) -> Outer, ty) t.variables
   in
   { t with
-    approx;
+    ty;
     closure_depth = t.closure_depth + 1;
   }
 
@@ -318,6 +308,17 @@ let unset_never_inline_outside_closures t =
   if t.never_inline_outside_closures then
     { t with never_inline_outside_closures = false }
   else t
+
+let inlining_level_up env =
+  let max_level =
+    Clflags.Int_arg_helper.get ~key:(env.round) !Clflags.inline_max_depth
+  in
+  if (env.inlining_level + 1) > max_level then begin
+    (* CR mshinwell: Is this a helpful error?  Should we just make this
+       robust? *)
+    Misc.fatal_error "Inlining level increased above maximum"
+  end;
+  { env with inlining_level = env.inlining_level + 1 }
 
 let actively_unrolling t origin =
   match Set_of_closures_origin.Map.find origin t.actively_unrolling with

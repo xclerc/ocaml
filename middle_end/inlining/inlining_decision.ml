@@ -38,7 +38,7 @@ let inline ~importer env r ~lhs_of_application
     ~(set_of_closures : T.set_of_closures)
     ~only_use_of_function ~original ~recursive
     ~(args : Variable.t list) ~continuation ~size_from_approximation ~dbg
-    ~simplify ~(inline_requested : Lambda.inline_attribute)
+    ~(inline_requested : Lambda.inline_attribute)
     ~(specialise_requested : Lambda.specialise_attribute)
     ~self_call ~fun_cost ~inlining_threshold =
   let toplevel = E.at_toplevel env in
@@ -191,7 +191,6 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
         ~args
         ~continuation
         ~dbg
-        ~simplify
     in
     let num_direct_applications_seen =
       (R.num_direct_applications r_inlined) - (R.num_direct_applications r)
@@ -233,7 +232,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
         then env
         else E.inlining_level_up env
       in
-      Changed ((simplify env r body), decision)
+      Changed (((E.simplify_expr env) env r body), decision)
     in
     if always_inline then
       keep_inlined_version S.Inlined.Annotation
@@ -270,7 +269,7 @@ Format.eprintf "Inlining application of %a whose body is:@ \n%a\n%!"
         let r_inlined =
           R.roll_back_continuation_uses r_inlined cont_usage_snapshot
         in
-        let body, r_inlined = simplify env r_inlined body in
+        let body, r_inlined = (E.simplify_expr env) env r_inlined body in
         let wsb_with_subfunctions =
           W.create ~original body
             ~toplevel:(E.at_toplevel env)
@@ -529,8 +528,8 @@ let for_call_site ~env ~r
       ~lhs_of_application ~closure_id_being_applied
       ~(function_decl : Flambda_type.inlinable_function_declaration)
       ~(set_of_closures : Flambda_type.set_of_closures)
-      ~args ~arg_tys ~continuation ~dbg ~simplify
-      ~simplify_apply_cont_to_cont ~inline_requested ~specialise_requested =
+      ~args ~arg_tys ~continuation ~dbg ~inline_requested
+      ~specialise_requested =
   let importer = E.importer env in
   if List.length args <> List.length arg_tys then begin
     Misc.fatal_error "Inlining_decision.for_call_site: inconsistent lengths \
@@ -573,8 +572,8 @@ let for_call_site ~env ~r
       let arg_tys =
         Flambda_type.unknown_types_from_arity return_arity
       in
-      simplify_apply_cont_to_cont ?don't_record_use:None env r continuation
-        ~arg_tys
+      (E.simplify_apply_cont_to_cont env) ?don't_record_use:None env r
+        continuation ~arg_tys
     in
     let original_expr : Flambda.Expr.t =
       Apply {
@@ -600,7 +599,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
     Inlining_transforms.inline_by_copying_function_body ~env ~r
       ~set_of_closures ~lhs_of_application ~closure_id_being_applied
       ~specialise_requested ~inline_requested ~function_decl ~args
-      ~continuation ~dbg ~simplify
+      ~continuation ~dbg
   else if E.never_inline env then
     (* This case only occurs when examining the body of a stub function
        but not in the context of inlining said function.  As such, there
@@ -633,7 +632,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
           Inlining_transforms.inline_by_copying_function_body ~env
             ~r ~set_of_closures ~lhs_of_application
             ~closure_id_being_applied ~specialise_requested ~inline_requested
-            ~function_decl ~args ~continuation ~dbg ~simplify
+            ~function_decl ~args ~continuation ~dbg
         in
         let env = E.note_entering_inlined env in
         let env =
@@ -645,7 +644,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
         let env =
           E.inside_inlined_function env function_decl.closure_origin
         in
-        Changed ((simplify env r body), S.Inlined.Classic_mode)
+        Changed (((E.simplify_expr env) env r body), S.Inlined.Classic_mode)
     in
     let res, decision =
       match simpl with
@@ -789,7 +788,7 @@ Format.eprintf "Application of %a (%a): inline_requested=%a self_call=%b\n%!"
               ~closure_id_being_applied ~function_decl ~set_of_closures
               ~only_use_of_function ~original:original_expr ~recursive
               ~inline_requested ~specialise_requested ~args ~continuation
-              ~size_from_approximation ~dbg ~simplify ~fun_cost ~self_call
+              ~size_from_approximation ~dbg ~fun_cost ~self_call
               ~inlining_threshold
           in
           match inline_result with

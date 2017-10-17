@@ -128,7 +128,7 @@ let inline_by_copying_function_body ~env ~r
       ~(specialise_requested : Lambda.specialise_attribute)
       ~closure_id_being_applied
       ~(function_decl : Flambda_type.inlinable_function_declaration) ~args
-      ~continuation ~dbg ~simplify =
+      ~continuation ~dbg =
   let importer = E.importer env in
   assert (E.mem env lhs_of_application);
   assert (List.for_all (E.mem env) args);
@@ -220,7 +220,7 @@ let inline_by_copying_function_body ~env ~r
   in
   let env = E.activate_freshening (E.set_never_inline env) in
   let env = E.set_inline_debuginfo ~dbg env in
-  simplify env r expr
+  (E.simplify_expr env) env r expr
 
 (*
 

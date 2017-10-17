@@ -76,7 +76,6 @@ val inline_by_copying_function_body
   -> args:Variable.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
-  -> simplify:Inlining_decision_intf.simplify
   -> Flambda.Expr.t * Simplify_result.t
 
 (*
@@ -102,6 +101,5 @@ val inline_by_copying_function_declaration
   -> specialised_args:Flambda.specialised_to Variable.Map.t
   -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
   -> dbg:Debuginfo.t
-  -> simplify:Inlining_decision_intf.simplify
   -> (Flambda.Expr.t * Simplify_result.t) option
 *)

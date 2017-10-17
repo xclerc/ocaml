@@ -44,4 +44,9 @@ module type S = sig
       tail call optimization to be inhibited (in particular, if it would
       entail passing arguments on the stack; see [Selectgen]). *)
   val max_sensible_number_of_arguments : int
+
+  (** See comments in flambda_type0_intf.ml. *)
+  val import_export_id : Export_id.t -> Flambda_type.t option
+  val import_symbol : Symbol.Of_kind_value.t -> Flambda_type.t option
+  val symbol_is_predefined_exception : Symbol.Of_kind_value.t -> string option
 end

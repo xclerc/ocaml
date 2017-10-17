@@ -78,4 +78,6 @@ module Of_kind_value : sig
 
   val of_symbol_exn : symbol -> t
   val of_symbol : symbol -> t option
+
+  val compilation_unit : t -> Compilation_unit.t
 end

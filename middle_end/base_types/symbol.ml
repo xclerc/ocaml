@@ -115,4 +115,6 @@ module Of_kind_value = struct
     | None ->
       Misc.fatal_errorf "Symbol %a has fields not of kind [Value]"
         print t
+
+  let compilation_unit t = compilation_unit t
 end

@@ -259,7 +259,7 @@ module type S = sig
   (** Construction of types that link to other types which have not yet
       been loaded into memory (from a .cmx file). *)
   val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
-  val symbol_loaded_lazily : Flambda_kind.t -> Symbol.Of_kind_value.t -> t
+  val symbol_loaded_lazily : Symbol.Of_kind_value.t -> t
 
   val create_inlinable_function_declaration
      : is_classic_mode:bool
@@ -312,8 +312,7 @@ module type S = sig
     -> t
 
   (** Augment the toplevel of the given type with the given variable.  If the
-      type was already augmented with a variable, the one passed to this
-      function replaces it. *)
+      type was already augmented with a variable, this function does nothing. *)
   val augment_with_variable : t -> Variable.t -> t
 
   (** Like [augment_with_variable], but for symbol information.  The

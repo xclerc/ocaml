@@ -32,6 +32,8 @@ val create
    : never_inline:bool
   -> allow_continuation_inlining:bool
   -> allow_continuation_specialisation:bool
+  -> round:int
+  -> backend:(module Backend_intf.S)
   -> simplify_toplevel:(
        t
     -> Simplify_result.t
@@ -51,8 +53,6 @@ val create
     -> Continuation.t
     -> arg_tys:Flambda_type.t list
     -> Continuation.t * Simplify_result.t)
-  -> backend:(module Backend_intf.S)
-  -> round:int
   -> t
 
 (** Obtain the first-class module that gives information about the
@@ -134,15 +134,19 @@ val does_not_bind : t -> Variable.t list -> bool
 
 val does_not_freshen : t -> Variable.t list -> bool
 
-val add_symbol : t -> Symbol.t -> Flambda_type.t -> t
-val redefine_symbol : t -> Symbol.t -> Flambda_type.t -> t
-val find_symbol_exn : t -> Symbol.t -> Flambda_type.t
-val find_symbol_opt : t -> Symbol.t -> Flambda_type.t option
-val find_symbol_fatal : t -> Symbol.t -> Flambda_type.t
+val add_symbol
+   : t
+  -> Symbol.Of_kind_value.t
+  -> Flambda_type.t
+  -> t
 
-(* Like [find_symbol_exn], but load the symbol approximation using
-   the backend if not available in the environment. *)
-val find_or_load_symbol : t -> Symbol.t -> Flambda_type.t
+val redefine_symbol
+   : t
+  -> Symbol.t
+  -> Flambda_type.t
+  -> t
+
+val find_symbol : t -> Symbol.t -> Flambda_type.t
 
 (** Note that the given [bound_to] holds the given [projection]. *)
 (* CR mshinwell: Shouldn't need this any more? *)

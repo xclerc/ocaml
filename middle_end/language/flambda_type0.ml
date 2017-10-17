@@ -518,14 +518,37 @@ end) = struct
       Format.fprintf ppf "(Naked_nativeint (%a))" print_ty_naked_nativeint ty
 
   let augment_with_variable (t : t) var : t =
-    let var = Some var in
     match t with
-    | Value ty -> Value { ty with var; }
-    | Naked_immediate ty -> Naked_immediate { ty with var; }
-    | Naked_float ty -> Naked_float { ty with var; }
-    | Naked_int32 ty -> Naked_int32 { ty with var; }
-    | Naked_int64 ty -> Naked_int64 { ty with var; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with var; }
+    | Value ty ->
+      begin match ty.var with
+      | None -> Value { ty with var = Some var; }
+      | Some _ -> t
+      end
+    | Naked_immediate ty ->
+      begin match ty.var with
+      | None -> Naked_immediate { ty with var = Some var; }
+      | Some _ -> t
+      end
+    | Naked_float ty ->
+      begin match ty.var with
+      | None -> Naked_float { ty with var = Some var; }
+      | Some _ -> t
+      end
+    | Naked_int32 ty ->
+      begin match ty.var with
+      | None -> Naked_int32 { ty with var = Some var; }
+      | Some _ -> t
+      end
+    | Naked_int64 ty ->
+      begin match ty.var with
+      | None -> Naked_int64 { ty with var = Some var; }
+      | Some _ -> t
+      end
+    | Naked_nativeint ty ->
+      begin match ty.var with
+      | None -> Naked_nativeint { ty with var = Some var; }
+      | Some _ -> t
+      end
 
   let augment_with_symbol_internal (t : t) symbol field : t =
     let symbol = Some (symbol, field) in
@@ -970,44 +993,12 @@ end) = struct
         symbol = None;
       }
 
-  let symbol_loaded_lazily (kind : K.t) sym : t =
-    match kind with
-    | Value _ ->
-      Value {
-        descr = Load_lazily (Symbol sym);
-        var = None;
-        symbol = None;
-      }
-    | Naked_immediate ->
-      Naked_immediate {
-        descr = Load_lazily (Symbol sym);
-        var = None;
-        symbol = None;
-      }
-    | Naked_float ->
-      Naked_float {
-        descr = Load_lazily (Symbol sym);
-        var = None;
-        symbol = None;
-      }
-    | Naked_int32 ->
-      Naked_int32 {
-        descr = Load_lazily (Symbol sym);
-        var = None;
-        symbol = None;
-      }
-    | Naked_int64 ->
-      Naked_int64 {
-        descr = Load_lazily (Symbol sym);
-        var = None;
-        symbol = None;
-      }
-    | Naked_nativeint ->
-      Naked_nativeint {
-        descr = Load_lazily (Symbol sym);
-        var = None;
-        symbol = None;
-      }
+  let symbol_loaded_lazily sym : t =
+    Value {
+      descr = Load_lazily (Symbol sym);
+      var = None;
+      symbol = None;
+    }
 
   let any_naked_immediate () : t =
     Naked_immediate
