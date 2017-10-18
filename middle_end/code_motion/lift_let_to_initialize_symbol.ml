@@ -23,7 +23,7 @@ module IS = Flambda_static.Program_body.Initialize_symbol
 
 let should_copy (named : Flambda.Named.t) =
   match named with
-  | Symbol _ | Read_symbol_field _ | Const _ -> true
+  | Symbol _ | Field_of_symbol _ | Const _ -> true
   | _ -> false
 
 let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
@@ -57,7 +57,7 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
       let to_copy' =
         List.mapi (fun param_index param ->
             let defining_expr : Flambda.Named.t =
-              Read_symbol_field {
+              Field_of_symbol {
                 symbol;
                 logical_field = param_index;
               }
@@ -141,7 +141,7 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
             ~kind:(Symbol.mixed_kind [kind])
         in
         symbol,
-          Flambda.Named.Read_symbol_field {
+          Flambda.Named.Field_of_symbol {
             symbol;
             logical_field = 0;
           }

@@ -340,7 +340,7 @@ end = struct
       iter_named (function
           | Set_of_closures clos -> f clos
           | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-          | Assign _ | Read_symbol_field _ | Project_closure _
+          | Assign _ | Field_of_symbol _ | Project_closure _
           | Move_within_set_of_closures _ | Project_var _ | Prim _ -> ())
         t
 
@@ -422,7 +422,7 @@ end = struct
           match named with
           | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
           | Assign _ | Project_closure _ | Move_within_set_of_closures _
-          | Project_var _ | Prim _ | Read_symbol_field _ -> named
+          | Project_var _ | Prim _ | Field_of_symbol _ -> named
           | Set_of_closures ({ function_decls; free_vars;
               direct_call_surrogates }) ->
             if toplevel then named
@@ -534,12 +534,12 @@ end = struct
                   Symbol.print symbol
                   Symbol.print new_symbol
               end
-          | ((Read_symbol_field { symbol; logical_field; }) as named) ->
+          | ((Field_of_symbol { symbol; logical_field; }) as named) ->
             let new_symbol = f symbol in
             if new_symbol == symbol then
               named
             else
-              Read_symbol_field { symbol = new_symbol; logical_field; }
+              Field_of_symbol { symbol = new_symbol; logical_field; }
           | (Var _ | Const _ | Allocated_const _ | Set_of_closures _
              | Read_mutable _ | Project_closure _
              | Move_within_set_of_closures _ | Project_var _ | Prim _
@@ -566,7 +566,7 @@ end = struct
             else Set_of_closures new_set_of_closures
           | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
           | Move_within_set_of_closures _ | Project_var _ | Assign _
-          | Prim _ | Read_mutable _ | Read_symbol_field _) as named -> named)
+          | Prim _ | Read_mutable _ | Field_of_symbol _) as named -> named)
         tree
 
     let map_project_var_to_named_opt tree ~f =
@@ -578,7 +578,7 @@ end = struct
             end
           | (Var _ | Symbol _ | Const _ | Allocated_const _ | Set_of_closures _
           | Project_closure _ | Move_within_set_of_closures _ | Prim _
-          | Read_mutable _ | Read_symbol_field _ | Assign _) as named -> named)
+          | Read_mutable _ | Field_of_symbol _ | Assign _) as named -> named)
         tree
 
     (* CR mshinwell: duplicate function *)
@@ -600,7 +600,7 @@ end = struct
               if new_set_of_closures == set_of_closures then named
               else Set_of_closures new_set_of_closures
             | (Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-            | Read_symbol_field _ | Project_closure _
+            | Field_of_symbol _ | Project_closure _
             | Move_within_set_of_closures _ | Project_var _ | Prim _
             | Assign _) as named -> named)
           tree
@@ -722,7 +722,7 @@ end = struct
       | Assign { being_assigned; new_value; } ->
         let new_value = sb new_value in
         Assign { being_assigned; new_value; }
-      | Read_symbol_field _ -> named
+      | Field_of_symbol _ -> named
       | Set_of_closures set_of_closures ->
         let function_decls =
           Function_declarations.map_parameter_types
@@ -977,9 +977,9 @@ end = struct
       Mutable_variable.equal being_assigned1 being_assigned2
         && Variable.equal new_value1 new_value2
     | Assign _, _ | _, Assign _ -> false
-    | Read_symbol_field (s1, i1), Read_symbol_field (s2, i2) ->
+    | Field_of_symbol (s1, i1), Field_of_symbol (s2, i2) ->
       Symbol.equal s1 s2 && i1 = i2
-    | Read_symbol_field _, _ | _, Read_symbol_field _ -> false
+    | Field_of_symbol _, _ | _, Field_of_symbol _ -> false
     | Set_of_closures s1, Set_of_closures s2 ->
       Set_of_closures.equal s1 s2
     | Set_of_closures _, _ | _, Set_of_closures _ -> false

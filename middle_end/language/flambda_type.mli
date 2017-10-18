@@ -324,6 +324,10 @@ module Of_symbol : sig
       this operation only succeeds if the tag is less than [No_scan_tag]. *)
   val field : t -> logical_field:int -> flambda_type option
 
+  (** Extract the type of a symbol of kind [Value].  Returns [None] if the
+      type is [Mixed]. *)
+  val value_type : t -> flambda_type option
+
   (** Whether the given type is compatible with the given symbol kind. *)
   val matches_kind : t -> Symbol.symbol_kind -> bool
 end

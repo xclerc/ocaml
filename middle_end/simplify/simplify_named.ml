@@ -947,12 +947,12 @@ let simplify_primitive env r prim args dbg : named_simplifier =
           let tree, ty =
             match arg_ty.symbol with
             (* If the [Pfield] is projecting directly from a symbol, rewrite
-                the expression to [Read_symbol_field]. *)
+                the expression to [Field_of_symbol]. *)
             | Some (symbol, None) ->
               let ty =
                 T.augment_with_symbol_field ty symbol field_index
               in
-              Flambda.Read_symbol_field (symbol, field_index), ty
+              Flambda.Field_of_symbol (symbol, field_index), ty
             | None | Some (_, Some _ ) ->
               (* This [Pfield] is either not projecting from a symbol at
                  all, or it is the projection of a projection from a
@@ -1101,9 +1101,6 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
   | Var var ->
     let var, var_ty = freshen_and_squash_aliases env var in
 
-  | Symbol sym ->
-    let ty = E.find_or_load_symbol env sym in
-    simpler_equivalent_term r tree ty
   | Const cst -> [], Reachable tree, ret r (type_for_const cst)
   | Allocated_const cst ->
     [], Reachable tree, ret r (type_for_allocated_const cst)
@@ -1112,13 +1109,19 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
     let mut_var =
       Freshening.apply_mutable_variable (E.freshening env) mut_var
     in
-    [], Reachable (Read_mutable mut_var), ret r (T.unknown Value Other)
-  | Read_symbol_field (symbol, field_index) ->
+    [], Reachable (Read_mutable mut_var), T.unknown Value Other
+  | Address_of_symbol sym ->
+    let symbol_ty = E.find_symbol env sym in
+    begin match T.Of_symbol.value_type symbol_ty with
+    | None -> [], Reachable tree, T.any_value Can_scan Other
+    | Some 
+    end
+  | Field_of_symbol { symbol; logical_field; } ->
     let ty = E.find_or_load_symbol env symbol in
-    begin match T.get_field ty ~field_index with
-    | (Invalid _) as invalid -> [], invalid, r
-    | Ok flambda_type ->
-      let flambda_type = T.augment_with_symbol_field ty symbol field_index in
+    begin match T.Of_symbol.get_field ty ~logical_field with
+    | None -> [], invalid, r
+    | Some flambda_type ->
+      let flambda_type = T.augment_with_symbol_field ty symbol ~logical_field in
       simpler_equivalent_term env r tree ty
     end
   | Set_of_closures set_of_closures -> begin

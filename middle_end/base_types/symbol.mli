@@ -33,7 +33,7 @@ type symbol = t
 type symbol_kind = private
   | Mixed of Flambda_kind.t list
   (** The symbol cannot be used as a value. Its fields can be accessed by
-      Read_symbol_field, and yields the corresponding kind.
+      Field_of_symbol, and yields the corresponding kind.
       All fields can't be of kind value, otherwise the symbol kind is Value *)
   | Value of Tag.t
   (** The symbol contains a GC-scannable value. it is either a block and

@@ -109,7 +109,7 @@ let lambda_smaller' lam ~than:threshold =
     | Var _ | Symbol _ | Read_mutable _ -> ()
     | Assign _ -> incr size
     | Const _ | Allocated_const _ -> incr size
-    | Read_symbol_field _ -> incr size
+    | Field_of_symbol _ -> incr size
     | Set_of_closures ({ function_decls = ffuns }) ->
       Closure_id.Map.iter (fun _ (ffun : Flambda.Function_declaration.t) ->
           lambda_size ffun.body)
@@ -256,7 +256,7 @@ module Benefit = struct
          mshinwell: CR-soon -> CR *)
     | Prim _ | Project_closure _ | Project_var _
     | Move_within_set_of_closures _
-    | Read_symbol_field _ -> b := remove_prim !b
+    | Field_of_symbol _ -> b := remove_prim !b
     | Var _ | Symbol _ | Read_mutable _ | Allocated_const _ | Const _ -> ()
 
   let remove_code lam b =

@@ -100,7 +100,7 @@ let assign_symbols_and_collect_constant_definitions
       | Prim (Pmakeblock (tag, _, _value_kind), fields, _) ->
         assign_symbol ();
         record_definition (AA.Block (Tag.Scannable.create_exn tag, fields))
-      | Read_symbol_field (symbol, field) ->
+      | Field_of_symbol (symbol, field) ->
         record_definition (AA.Symbol_field (symbol, field))
       | Set_of_closures (
           { function_decls = { funs; set_of_closures_id; _ };
@@ -1112,7 +1112,7 @@ let lift_constants ~backend (program : Flambda_static.Program.t) =
           rewrite_project_var var_to_block_field_tbl project_var ~original
         | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
         | Move_within_set_of_closures _ | Prim _ | Assign _
-        | Read_mutable _ | Read_symbol_field _) as named -> named)
+        | Read_mutable _ | Field_of_symbol _) as named -> named)
       expr
   in
   let constant_definitions =

@@ -137,16 +137,16 @@ val does_not_freshen : t -> Variable.t list -> bool
 val add_symbol
    : t
   -> Symbol.Of_kind_value.t
-  -> Flambda_type.t
+  -> Flambda_type.Of_symbol.t
   -> t
 
 val redefine_symbol
    : t
   -> Symbol.t
-  -> Flambda_type.t
+  -> Flambda_type.Of_symbol.t
   -> t
 
-val find_symbol : t -> Symbol.t -> Flambda_type.t
+val find_symbol : t -> Symbol.t -> Flambda_type.Of_symbol.t
 
 (** Note that the given [bound_to] holds the given [projection]. *)
 (* CR mshinwell: Shouldn't need this any more? *)

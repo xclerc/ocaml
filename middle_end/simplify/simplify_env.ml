@@ -40,7 +40,7 @@ type t = {
   round : int;
   variables : Flambda_type.t Variable.Map.t;
   mutable_variables : Flambda_type.t Mutable_variable.Map.t;
-  symbols : Flambda_type.t Symbol.Of_kind_value.Map.t;
+  symbols : Flambda_type.Of_symbol.t Symbol.Of_kind_value.Map.t;
   continuations : Continuation_approx.t Continuation.Map.t;
   projections : Variable.t Projection.Map.t;
   current_functions : Set_of_closures_origin.Set.t;
@@ -195,15 +195,6 @@ let add_symbol t symbol ty =
         for [Simplify]"
       Symbol.Of_kind_value.print symbol
       Flambda_type.print ty
-
-(* XXX Think again about:
-- why external symbols must be of kind Value
-- what type we give to a symbol which is of symbol kind Mixed
-
-Maybe there should be a different type used in the environment which isn't
-[Flambda_type.t].  Instead we keep a list of the types of the fields of the
-symbol.
-*)
 
 let redefine_symbol t symbol ty =
   match find_symbol_exn t symbol with

@@ -120,8 +120,8 @@ let import_descr_for_pack units pack (descr : Export_info.descr)
 let rec import_code_for_pack units pack expr =
   Flambda_iterators.map_named (function
       | Symbol sym -> Symbol (import_symbol_for_pack units pack sym)
-      | Read_symbol_field (sym, field) ->
-        Read_symbol_field (import_symbol_for_pack units pack sym, field)
+      | Field_of_symbol (sym, field) ->
+        Field_of_symbol (import_symbol_for_pack units pack sym, field)
       | Set_of_closures set_of_closures ->
         let set_of_closures =
           Flambda.create_set_of_closures

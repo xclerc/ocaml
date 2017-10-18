@@ -938,7 +938,7 @@ let reify ~importer t : Named.t option =
       | Some sym -> Some (Named.Symbol sym)
       end
     | Some (sym, Some field) ->
-      Some (Named.Read_symbol_field {
+      Some (Named.Field_of_symbol {
         symbol = sym;
         logical_field = field;
       })
@@ -1185,6 +1185,11 @@ module Of_symbol = struct
       match Tag.Scannable.of_tag tag with
       | Some _tag -> Some ty
       | None -> None
+
+  let value_type t =
+    match t with
+    | Mixed _ -> None
+    | Value (_tag, ty) -> Some ty
 
   let matches_kind t (kind : Symbol.symbol_kind) =
     match t, kind with

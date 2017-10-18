@@ -557,11 +557,11 @@ let primitive_moveable (prim : Lambda.primitive)
   match prim, args with
   | Pfield _, [Uconst (Uconst_ref (_, _))] ->
     (* CR-someday mshinwell: Actually, maybe this shouldn't be needed; these
-       should have been simplified to [Read_symbol_field], which doesn't yield
+       should have been simplified to [Field_of_symbol], which doesn't yield
        a Clambda let.  This might be fixed when Inline_and_simplify can
-       turn Pfield into Read_symbol_field. *)
+       turn Pfield into Field_of_symbol. *)
     (* Allow field access of symbols to be moveable.  (The comment in
-       flambda.mli on [Read_symbol_field] may be helpful to the reader.) *)
+       flambda.mli on [Field_of_symbol] may be helpful to the reader.) *)
     Moveable
   | Pfield _, [Uvar id] when Ident.Set.mem id ident_info.closure_environment ->
     (* accesses to the function environment is coeffect free: this block

@@ -177,7 +177,7 @@ let rec analyse_expr ~which_variables expr =
     | Prim (_, vars, _) ->
       List.iter check_free_variable vars
     | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-    | Read_symbol_field _ | Project_var _ | Project_closure _
+    | Field_of_symbol _ | Project_var _ | Project_closure _
     | Move_within_set_of_closures _ -> ()
   in
   Flambda.Expr.Iterators.Toplevel_only.iter for_expr for_named expr;

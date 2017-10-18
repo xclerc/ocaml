@@ -48,7 +48,7 @@ let remove_unused_closure_variables ~remove_direct_call_surrogates program =
           Closure_id.Tbl.add used_fun move_to ())
           move
       | Var _ | Symbol _ | Const _ | Set_of_closures _ | Prim _ | Assign _
-      | Allocated_const _ | Read_mutable _ | Read_symbol_field _ -> ()
+      | Allocated_const _ | Read_mutable _ | Field_of_symbol _ -> ()
     in
     Flambda_static.Program.Iterators.iter_named ~f:aux_named program;
     used, used_fun

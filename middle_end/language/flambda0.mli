@@ -296,7 +296,7 @@ end and Named : sig
     | Assign of assign
     | Read_mutable of Mutable_variable.t
     | Address_of_symbol of Symbol.Of_kind_value.t
-    | Symbol_field of { symbol : Symbol.t; logical_field : int; }
+    | Field_of_symbol of { symbol : Symbol.t; logical_field : int; }
     (* CR mshinwell: add documentation of [logical_field] *)
     (** During the lifting of [let] bindings to [program] constructions after
         closure conversion, we generate symbols and their corresponding
@@ -316,14 +316,14 @@ end and Named : sig
         way we would like, since [Lift_constants] would not assign new symbols
         (i.e. the things we would like to simplify to) to the various
         projections from the symbols in question. To circumvent this problem we
-        use [Read_symbol_field] when generating projections from the top level
+        use [Field_of_symbol] when generating projections from the top level
         of symbols. Owing to the properties of symbols described above, such
         expressions may be eligible for declaration as constant by
         [Inconstant_idents] (and thus themselves lifted to another symbol),
-        without any further complication. [Read_symbol_field] may only be used
+        without any further complication. [Field_of_symbol] may only be used
         when the definition of the symbol is in scope in the [program]. For
         external unresolved symbols, [Pfield] may still be used; it will be
-        changed to [Read_symbol_field] by [Simplify] when (and if) the symbol is
+        changed to [Field_of_symbol] by [Simplify] when (and if) the symbol is
         imported. *)
     | Allocated_const of Allocated_const.t
     | Set_of_closures of Set_of_closures.t
