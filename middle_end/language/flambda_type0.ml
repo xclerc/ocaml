@@ -163,6 +163,8 @@ end) = struct
     | Naked_int64 of ty_naked_int64
     | Naked_nativeint of ty_naked_nativeint
 
+  and flambda_type = t
+
   and ty_value = (of_kind_value, Flambda_kind.scanning) ty
   and ty_naked_immediate = (of_kind_naked_immediate, unit) ty
   and ty_naked_float = (of_kind_naked_float, unit) ty

@@ -60,6 +60,8 @@ module type S = sig
     | Naked_int64 of ty_naked_int64
     | Naked_nativeint of ty_naked_nativeint
 
+  and flambda_type = t
+
   (** Types of kind [Value] are equipped with an extra piece of information
       such that when we are at the top element, [Unknown], we still know
       whether a root has to be registered. *)

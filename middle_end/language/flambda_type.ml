@@ -1164,3 +1164,32 @@ let unique_boxed_immediate_in_join t ~import_type =
   | Ok all_possible_values -> Immediate.Set.get_singleton all_possible_values
   | Unknown _ | Bottom -> None
 *)
+
+module Of_symbol = struct
+  type t =
+    | Mixed of flambda_type array
+    | Value of Tag.t * ty_value
+
+  let create_mixed tys = Mixed (Array.of_list tys)
+  let create_value tag = Value tag
+
+  let field t ~logical_field =
+    match t with
+    | Mixed tys ->
+      if logical_field < 0 || logical_field >= Array.length tys then begin
+        Misc.fatal_errorf "Logical field %d out of bounds for symbol"
+          logical_field
+      end;
+      Some tys.(logical_field)
+    | Value (tag, ty) ->
+      match Tag.Scannable.of_tag tag with
+      | Some _tag -> Some ty
+      | None -> None
+
+  let matches_kind t (kind : Symbol.symbol_kind) =
+    match t, kind with
+    | Mixed tys, Mixed kinds -> List.length tys = List.length kinds
+    | Value (tag1, _), Value tag2 -> Tag.equal tag1 tag2
+    | Mixed _, Value _
+    | Value _, Mixed _ -> false
+end

@@ -295,8 +295,8 @@ end and Named : sig
     | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
-    | Symbol of Symbol.Of_kind_value.t
-    | Read_symbol_field of { symbol : Symbol.t; logical_field : int; }
+    | Address_of_symbol of Symbol.Of_kind_value.t
+    | Symbol_field of { symbol : Symbol.t; logical_field : int; }
     (* CR mshinwell: add documentation of [logical_field] *)
     (** During the lifting of [let] bindings to [program] constructions after
         closure conversion, we generate symbols and their corresponding
