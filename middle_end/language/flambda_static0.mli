@@ -27,6 +27,10 @@ module Field_of_kind_value : sig
 end
 
 module Static_part : sig
+  type 'a or_variable =
+    | Const of 'a
+    | Var of Variable.t
+
   type t = private
     | Block of Tag.Scannable.t * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
@@ -88,9 +92,20 @@ module Program : sig
 
   type t = {
     imported_symbols : Symbol.Set.t;
-    definitions : definition_group list;
+    definitions_rev : definition_group list;
     root_symbol : Symbol.t;
   }
+
+  val declare_boxed_float : t -> float -> t * Symbol.t
+  val declare_boxed_int32 : t -> Int32.t -> t * Symbol.t
+  val declare_boxed_int64 : t -> Int64.t -> t * Symbol.t
+  val declare_boxed_nativeint : t -> Targetint.t -> t * Symbol.t
+  val declare_immutable_string : t -> string -> t * Symbol.t
+  val declare_mutable_string : t -> initial_value:string -> t * Symbol.t
+  val declare_float_array : t -> float list -> t * Symbol.t
+  val declare_block : t -> Tag.Scannable.t -> Symbol.t list -> t * Symbol.t
+
+  val declare_single_field_pointing_at : t -> Variable.t -> Flambda_kind.t -> t
 
   val free_symbols : t -> Symbol.Set.t
 
