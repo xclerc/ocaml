@@ -301,7 +301,7 @@ module Inconstants (P:Param) (Importer : Flambda_type.Importer) = struct
             ()
 *)
       end
-    | Field_of_symbol (symbol, index) ->
+    | Read_symbol_field (symbol, index) ->
       register_implication ~in_nc:(Symbol_field (symbol, index))
         ~implies_in_nc:curr
     | Assign _ ->  (* Not constant *)

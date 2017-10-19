@@ -36,7 +36,7 @@ let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
       set := Variable.Set.add v !set
     | Prim(_, _, _)
     | Symbol _ |Const _ | Allocated_const _ | Read_mutable _
-    | Field_of_symbol _ | Project_closure _
+    | Read_symbol_field _ | Project_closure _
     | Move_within_set_of_closures _ | Project_var _ ->
       set := Variable.Set.union !set (Flambda.Named.free_variables flam)
     | Set_of_closures set_of_closures ->
@@ -165,7 +165,7 @@ let eliminate_ref_of_expr flam =
             R.reachable (Assign { being_assigned; new_value })
         end
       | Prim _ | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Field_of_symbol _ | Set_of_closures _ | Project_closure _
+      | Read_symbol_field _ | Set_of_closures _ | Project_closure _
       | Move_within_set_of_closures _ | Project_var _ | Assign _ ->
         (), [], var, kind, R.reachable named
     in

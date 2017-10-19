@@ -277,7 +277,7 @@ and lift_expr ~importer (expr : Flambda.Expr.t) ~state =
     | Const _ | Symbol _ ->
       let state = State.add_constant state ~var ~defining_expr in
       lift_expr ~importer body ~state
-    | Var _ | Prim _ | Assign _ | Read_mutable _ | Field_of_symbol _
+    | Var _ | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _
     | Allocated_const _ | Set_of_closures _ | Project_closure _
     | Move_within_set_of_closures _ | Project_var _ ->
       let defining_expr, state =

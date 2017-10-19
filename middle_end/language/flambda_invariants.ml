@@ -592,7 +592,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
     | Assign { being_assigned; new_value; } ->
       check_mutable_variable_is_bound env being_assigned;
       check_variable_is_bound env new_value
-    | Field_of_symbol { symbol; logical_field; } ->
+    | Read_symbol_field { symbol; logical_field; } ->
       check_symbol_is_bound env symbol;
       assert (logical_field >= 0)  (* CR-someday mshinwell: add proper error *)
     | Set_of_closures set_of_closures ->
@@ -868,7 +868,7 @@ let used_closure_ids (program:Flambda_static.Program.t) =
     | Project_var { closure = _; var } ->
       used := Closure_id.Set.union (Closure_id.Map.keys var) !used
     | Set_of_closures _ | Var _ | Symbol _ | Const _ | Allocated_const _
-    | Prim _ | Assign _ | Read_mutable _ | Field_of_symbol _ -> ()
+    | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _ -> ()
   in
   (* CR-someday pchambart: check closure_ids of constant_defining_values'
     project_closures *)

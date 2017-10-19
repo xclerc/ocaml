@@ -664,7 +664,7 @@ end = struct
       f_named named;
       match named with
       | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Field_of_symbol _ | Project_closure _ | Project_var _
+      | Read_symbol_field _ | Project_closure _ | Project_var _
       | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
       | Set_of_closures { function_decls = funcs; _; } ->
         if not toplevel then begin
@@ -793,7 +793,7 @@ end and Named : sig
     | Assign of assign
     | Read_mutable of Mutable_variable.t
     | Symbol of Symbol.Of_kind_value.t
-    | Field_of_symbol of { symbol : Symbol.t; logical_field : int; }
+    | Read_symbol_field of { symbol : Symbol.t; logical_field : int; }
     | Allocated_const of Allocated_const.t
     | Set_of_closures of Set_of_closures.t
     | Project_closure of Projection.Project_closure.t
@@ -831,7 +831,7 @@ end = struct
     | Symbol symbol ->
       let symbol = Symbol.Of_kind_value.to_symbol symbol in
       symbols := Symbol.Set.add symbol !symbols
-    | Field_of_symbol { symbol; logical_field = _; } ->
+    | Read_symbol_field { symbol; logical_field = _; } ->
       symbols := Symbol.Set.add symbol !symbols
     | Set_of_closures set_of_closures ->
       Closure_id.Map.iter (fun _ (function_decl : Function_declaration.t) ->
@@ -856,7 +856,7 @@ end = struct
       begin match t with
       | Var var -> free_variable var
       | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-      | Field_of_symbol _ -> ()
+      | Read_symbol_field _ -> ()
       | Assign { being_assigned = _; new_value; } ->
         free_variable new_value
       | Set_of_closures { free_vars; _ } ->
@@ -900,7 +900,7 @@ end = struct
       fprintf ppf "@[<2>(assign@ %a@ %a)@]"
         Mutable_variable.print being_assigned
         Variable.print new_value
-    | Field_of_symbol { symbol; logical_field; } ->
+    | Read_symbol_field { symbol; logical_field; } ->
       fprintf ppf "%a.(%d)" Symbol.print symbol logical_field
     | Project_closure project_closure ->
       Projection.Project_closure.print ppf project_closure

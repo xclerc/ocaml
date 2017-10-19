@@ -947,12 +947,12 @@ let simplify_primitive env r prim args dbg : named_simplifier =
           let tree, ty =
             match arg_ty.symbol with
             (* If the [Pfield] is projecting directly from a symbol, rewrite
-                the expression to [Field_of_symbol]. *)
+                the expression to [Read_symbol_field]. *)
             | Some (symbol, None) ->
               let ty =
                 T.augment_with_symbol_field ty symbol field_index
               in
-              Flambda.Field_of_symbol (symbol, field_index), ty
+              Flambda.Read_symbol_field (symbol, field_index), ty
             | None | Some (_, Some _ ) ->
               (* This [Pfield] is either not projecting from a symbol at
                  all, or it is the projection of a projection from a
@@ -1116,7 +1116,7 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
     | None -> [], Reachable tree, T.any_value Can_scan Other
     | Some 
     end
-  | Field_of_symbol { symbol; logical_field; } ->
+  | Read_symbol_field { symbol; logical_field; } ->
     let symbol_ty = E.find_symbol env sym in
     begin match T.Of_symbol.get_field symbol_ty ~logical_field with
     | None -> [], invalid, r

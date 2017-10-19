@@ -337,7 +337,7 @@ and descr_of_named (env : Env.t) (named : Flambda.named)
   | Symbol sym -> Value_symbol sym
   | Read_mutable _ -> Value_unknown
   | Assign _ -> Value_id (Env.new_unit_descr env)
-  | Field_of_symbol (sym, i) ->
+  | Read_symbol_field (sym, i) ->
     begin match Env.get_symbol_descr env sym with
     | Some (Value_block (_, fields)) when Array.length fields > i -> fields.(i)
     | _ -> Value_unknown

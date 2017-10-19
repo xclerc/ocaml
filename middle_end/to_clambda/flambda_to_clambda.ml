@@ -539,7 +539,7 @@ and to_clambda_named (t : t) env var (named : Flambda.named) : Clambda.ulambda =
           Flambda.print_named named
     in
     Uassign (id, subst_var env new_value)
-  | Field_of_symbol (symbol, field) ->
+  | Read_symbol_field (symbol, field) ->
     Uprim (Pfield field, [to_clambda_symbol env symbol], Debuginfo.none)
   | Set_of_closures set_of_closures ->
     to_clambda_set_of_closures t env set_of_closures

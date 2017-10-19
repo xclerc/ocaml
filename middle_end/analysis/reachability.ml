@@ -401,7 +401,7 @@ let rec do_named env (assigned_to : Variable.t) (named : Flambda.Named.t) =
       var env read_info.var ~assigned_to
     | Symbol s ->
       symbol env (Symbol.Of_kind_value.to_symbol s) ~assigned_to
-    | Field_of_symbol { symbol; logical_field; } ->
+    | Read_symbol_field { symbol; logical_field; } ->
       let var = Symbol.Tbl.find env.info_symbol symbol in
       field env logical_field var ~assigned_to
     | Allocated_const constant ->

@@ -662,7 +662,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
     in
     Flambda.Expr.create_let block_symbol_var
       (Flambda_kind.value Must_scan)
-      (Field_of_symbol { symbol = block_symbol; logical_field = 0 })
+      (Read_symbol_field { symbol = block_symbol; logical_field = 0 })
       body
   in
   let block_initialize : Flambda_static.Program_body.Initialize_symbol.t =

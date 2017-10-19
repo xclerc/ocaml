@@ -36,7 +36,7 @@ let rec no_effects (flam : Flambda.Expr.t) =
 and no_effects_named (named : Flambda.Named.t) =
   match named with
   | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-  | Field_of_symbol _
+  | Read_symbol_field _
   | Set_of_closures _ | Project_closure _ | Project_var _
   | Move_within_set_of_closures _ -> true
   | Assign _ -> false
@@ -52,5 +52,5 @@ let only_generative_effects_named (named : Flambda.Named.t) =
   | Set_of_closures _ -> true
   | Prim (prim, _, _) -> only_generative_effects_prim prim
   | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
-  | Field_of_symbol _ | Project_closure _ | Project_var _
+  | Read_symbol_field _ | Project_closure _ | Project_var _
   | Move_within_set_of_closures _ | Assign _ -> false

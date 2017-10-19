@@ -938,7 +938,7 @@ let reify ~importer t : Named.t option =
       | Some sym -> Some (Named.Symbol sym)
       end
     | Some (sym, Some field) ->
-      Some (Named.Field_of_symbol {
+      Some (Named.Read_symbol_field {
         symbol = sym;
         logical_field = field;
       })
