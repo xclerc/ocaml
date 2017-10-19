@@ -89,6 +89,7 @@ type t =
   | Unused_module of string                 (* 60 *)
   | Unboxable_type_in_prim_decl of string   (* 61 *)
   | Constraint_on_gadt                      (* 62 *)
+  | Expression_cannot_raise                 (* 63 *)
 ;;
 
 (* If you remove a warning, leave a hole in the numbering.  NEVER change
@@ -160,9 +161,10 @@ let number = function
   | Unused_module _ -> 60
   | Unboxable_type_in_prim_decl _ -> 61
   | Constraint_on_gadt -> 62
+  | Expression_cannot_raise -> 63
 ;;
 
-let last_warning_number = 62
+let last_warning_number = 63
 ;;
 
 (* Must be the max number returned by the [number] function. *)
@@ -190,7 +192,7 @@ let letter = function
   | 'r' -> [9]
   | 's' -> [10]
   | 't' -> []
-  | 'u' -> [11; 12]
+  | 'u' -> [11; 12; 63]
   | 'v' -> [13]
   | 'w' -> []
   | 'x' -> [14; 15; 16; 17; 18; 19; 20; 21; 22; 23; 24; 30]
@@ -513,6 +515,8 @@ let message = function
          or [@@unboxed]." t t
   | Constraint_on_gadt ->
       "Type constraints do not apply to GADT cases of variant types."
+  | Expression_cannot_raise ->
+      "this expression cannot raise an exception."
 ;;
 
 let sub_locs = function

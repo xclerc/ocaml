@@ -2585,6 +2585,84 @@ let rec name_pattern default = function
       | Tpat_alias(_, id, _) -> id
       | _ -> name_pattern default rem
 
+(* Heuristically check whether an expression may raise an exception *)
+
+let rec cannot_raise sexp =
+  match sexp.pexp_desc with
+  | Pexp_ident _
+  | Pexp_constant _ ->
+     true
+  | Pexp_let _
+  | Pexp_function _
+  | Pexp_fun _
+  | Pexp_match _
+  | Pexp_apply _
+  | Pexp_try _
+  | Pexp_new _
+  | Pexp_send _
+  | Pexp_assert _
+  | Pexp_lazy _
+  | Pexp_poly _
+  | Pexp_object _
+  | Pexp_pack _
+  | Pexp_extension _
+  | Pexp_unreachable ->
+     false
+  | Pexp_tuple l ->
+     cannot_raise_list l
+  | Pexp_construct (_, e) ->
+     cannot_raise_option e
+  | Pexp_variant (_, e) ->
+     cannot_raise_option e
+  | Pexp_record (l, e) ->
+     cannot_raise_list (List.map snd l)
+     && cannot_raise_option e
+  | Pexp_field (e, _) ->
+     cannot_raise e
+  | Pexp_setfield (e1, _, e2) ->
+     cannot_raise e1
+     && cannot_raise e2
+  | Pexp_array l ->
+     cannot_raise_list l
+  | Pexp_ifthenelse (e1, e2, e3) ->
+     cannot_raise e1
+     && cannot_raise e2
+     && cannot_raise_option e3
+  | Pexp_sequence (e1, e2) ->
+     cannot_raise e1
+     && cannot_raise e2
+  | Pexp_while (e1, e2) ->
+     cannot_raise e1
+     && cannot_raise e2
+  | Pexp_for (_, e1, e2, _, e3) ->
+     cannot_raise e1
+     && cannot_raise e2
+     && cannot_raise e3
+  | Pexp_constraint (e, _) ->
+     cannot_raise e
+  | Pexp_coerce (e, _, _) ->
+     cannot_raise e
+  | Pexp_setinstvar (_, e) ->
+     cannot_raise e
+  | Pexp_override l ->
+     cannot_raise_list (List.map snd l)
+  | Pexp_letmodule (_, _, e) ->
+     cannot_raise e
+  | Pexp_letexception (_, e) ->
+     cannot_raise e
+  | Pexp_newtype (_, e) ->
+     cannot_raise e
+  | Pexp_open (_, _, e) ->
+     cannot_raise e
+
+and cannot_raise_list l =
+  List.for_all cannot_raise l
+
+and cannot_raise_option = function
+  | Some e -> cannot_raise e
+  | None   -> true
+
+
 (* Typing of expressions *)
 
 let unify_exp env exp expected_ty =
@@ -2830,6 +2908,8 @@ and type_expect_ ?in_function ?(recarg=Rejected) env sexp ty_expected =
             split_cases (c :: vc) ec rest
       in
       let val_caselist, exn_caselist = split_cases [] [] caselist in
+      if exn_caselist <> [] && cannot_raise sarg then
+        Location.prerr_warning sarg.pexp_loc Warnings.Expression_cannot_raise;
       if val_caselist = [] && exn_caselist <> [] then
         raise (Error (loc, env, No_value_clauses));
       (* Note: val_caselist = [] and exn_caselist = [], i.e. a fully

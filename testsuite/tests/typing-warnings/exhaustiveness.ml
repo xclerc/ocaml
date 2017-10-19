@@ -101,8 +101,8 @@ let f (x : bool t) = match x with _ -> . ;; (* ok *)
 (* trefis in PR#6437 *)
 
 let f () = match None with _ -> .;; (* error *)
-let g () = match None with _ -> () | exception _ -> .;; (* error *)
-let h () = match None with _ -> .  | exception _ -> .;; (* error *)
+let g c = match c None with _ -> () | exception _ -> .;; (* error *)
+let h c = match c None with _ -> .  | exception _ -> .;; (* error *)
 let f x = match x with _ -> () | None -> .;; (* do not warn *)
 
 (* #7059, all clauses guarded *)

@@ -1,11 +1,11 @@
 
-# * * * *               Characters 210-289:
-  ....match None with
+# * * * *               Characters 209-290:
+  ....match f None with
       | exception e -> ()
       | Some false -> ()
       | None -> ()
 Warning 8: this pattern-matching is not exhaustive.
 Here is an example of a case that is not matched:
 Some true
-val test_match_exhaustiveness : unit -> unit = <fun>
+val test_match_exhaustiveness : ('a option -> bool option) -> unit = <fun>
 # 

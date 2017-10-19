@@ -116,14 +116,14 @@ val harder : (zero succ, zero succ, zero succ) plus option -> bool = <fun>
                              ^
 Error: This match case could not be refuted.
        Here is an example of a value that would reach it: _
-# Characters 47-48:
-  let g () = match None with _ -> () | exception _ -> .;; (* error *)
-                                                 ^
+# Characters 48-49:
+  let g c = match c None with _ -> () | exception _ -> .;; (* error *)
+                                                  ^
 Error: This match case could not be refuted.
        Here is an example of a value that would reach it: _
-# Characters 27-28:
-  let h () = match None with _ -> .  | exception _ -> .;; (* error *)
-                             ^
+# Characters 28-29:
+  let h c = match c None with _ -> .  | exception _ -> .;; (* error *)
+                              ^
 Error: This match case could not be refuted.
        Here is an example of a value that would reach it: _
 # val f : 'a option -> unit = <fun>
