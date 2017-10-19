@@ -1110,15 +1110,15 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
       Freshening.apply_mutable_variable (E.freshening env) mut_var
     in
     [], Reachable (Read_mutable mut_var), T.unknown Value Other
-  | Address_of_symbol sym ->
+  | Symbol sym ->
     let symbol_ty = E.find_symbol env sym in
     begin match T.Of_symbol.value_type symbol_ty with
     | None -> [], Reachable tree, T.any_value Can_scan Other
     | Some 
     end
   | Field_of_symbol { symbol; logical_field; } ->
-    let ty = E.find_or_load_symbol env symbol in
-    begin match T.Of_symbol.get_field ty ~logical_field with
+    let symbol_ty = E.find_symbol env sym in
+    begin match T.Of_symbol.get_field symbol_ty ~logical_field with
     | None -> [], invalid, r
     | Some flambda_type ->
       let flambda_type = T.augment_with_symbol_field ty symbol ~logical_field in

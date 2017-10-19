@@ -61,3 +61,26 @@ module Scannable = struct
   let zero = 0
   let object_tag = Obj.object_tag
 end
+
+module Non_scannable = struct
+  type nonrec t = t
+
+  include Identifiable.Make (Numbers.Int)
+
+  let create tag =
+    if tag < Obj.no_scan_tag then None
+    else Some tag
+
+  let create_exn tag =
+    match create tag with
+    | Some tag -> tag
+    | None ->
+      Misc.fatal_error (Printf.sprintf "Tag.Non_scannable.create_exn %d" tag)
+
+  let to_int t = t
+  let to_tag t = t
+
+  let of_tag tag =
+    if tag < 0 || tag >= Obj.no_scan_tag then None
+    else Some tag
+end

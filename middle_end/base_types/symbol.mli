@@ -35,8 +35,12 @@ type symbol_kind = private
   (** The symbol cannot be used as a value. Its fields can be accessed by
       Field_of_symbol, and yields the corresponding kind.
       All fields can't be of kind value, otherwise the symbol kind is Value *)
-  | Value of Tag.t
-  (** The symbol contains a GC-scannable value. it is either a block and
+  | Non_scannable_value of Tag.Non_scannable.t
+  | Scannable_value of Tag.Scannable.t
+  (** The symbol contains a valid value with fields that can be traversed by
+      the GC. *)
+
+. it is either a block and
       each fields are of kind value, or a boxed value (string, floats, ...)
       and doesn't have any field *)
 

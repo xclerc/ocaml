@@ -663,7 +663,7 @@ end = struct
     and aux_named (named : Named.t) =
       f_named named;
       match named with
-      | Var _ | Address_of_symbol _ | Const _ | Allocated_const _ | Read_mutable _
+      | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Field_of_symbol _ | Project_closure _ | Project_var _
       | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
       | Set_of_closures { function_decls = funcs; _; } ->
@@ -792,7 +792,7 @@ end and Named : sig
     | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
-    | Address_of_symbol of Symbol.Of_kind_value.t
+    | Symbol of Symbol.Of_kind_value.t
     | Field_of_symbol of { symbol : Symbol.t; logical_field : int; }
     | Allocated_const of Allocated_const.t
     | Set_of_closures of Set_of_closures.t
@@ -828,7 +828,7 @@ end = struct
 
   let free_symbols_helper symbols (t : t) =
     match t with
-    | Address_of_symbol symbol ->
+    | Symbol symbol ->
       let symbol = Symbol.Of_kind_value.to_symbol symbol in
       symbols := Symbol.Set.add symbol !symbols
     | Field_of_symbol { symbol; logical_field = _; } ->
@@ -855,7 +855,7 @@ end = struct
       let free_variable fv = free := Variable.Set.add fv !free in
       begin match t with
       | Var var -> free_variable var
-      | Address_of_symbol _ | Const _ | Allocated_const _ | Read_mutable _
+      | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
       | Field_of_symbol _ -> ()
       | Assign { being_assigned = _; new_value; } ->
         free_variable new_value
@@ -891,7 +891,7 @@ end = struct
   let print ppf (t : t) =
     match t with
     | Var var -> Variable.print ppf var
-    | Address_of_symbol symbol -> Symbol.Of_kind_value.print ppf symbol
+    | Symbol symbol -> Symbol.Of_kind_value.print ppf symbol
     | Const cst -> fprintf ppf "Const(%a)" Const.print cst
     | Allocated_const cst -> fprintf ppf "Aconst(%a)" Allocated_const.print cst
     | Read_mutable mut_var ->

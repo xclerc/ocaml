@@ -1168,10 +1168,17 @@ let unique_boxed_immediate_in_join t ~import_type =
 module Of_symbol = struct
   type t =
     | Mixed of flambda_type array
-    | Value of Tag.t * ty_value
+    | Non_scannable_value of Tag.Non_scannable.t
+    | Scannable_value of Tag.Scannable.t * (ty_value array)
 
   let create_mixed tys = Mixed (Array.of_list tys)
-  let create_value tag = Value tag
+
+  let create_non_scannable_value tag =
+    match Tag.Non_scannable.of_tag tag with
+    | Some tag -> Non_scannable_value tag
+    | None -> Misc.fatal_errorf "Tag %a is scannable" Tag.print tag
+
+  let create_scannable_value tag tys = Scannable_value (tag, Array.of_list tys)
 
   let field t ~logical_field =
     match t with
@@ -1181,10 +1188,8 @@ module Of_symbol = struct
           logical_field
       end;
       Some tys.(logical_field)
-    | Value (tag, ty) ->
-      match Tag.Scannable.of_tag tag with
-      | Some _tag -> Some ty
-      | None -> None
+    | Non_scannable_value _ -> None
+    | Value (tag, tys) -> Some tys.(logical_field)
 
   let value_type t =
     match t with
