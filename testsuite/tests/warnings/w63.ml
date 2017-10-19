@@ -9,3 +9,9 @@ let g x y =
   | 0, _ -> true
   | _ -> false
   | exception Not_found -> false
+
+let h x y =
+  try
+    x.contents, Some y
+  with Not_found ->
+    0, None

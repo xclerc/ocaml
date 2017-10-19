@@ -2926,6 +2926,8 @@ and type_expect_ ?in_function ?(recarg=Rejected) env sexp ty_expected =
         exp_attributes = sexp.pexp_attributes;
         exp_env = env }
   | Pexp_try(sbody, caselist) ->
+      if cannot_raise sbody then
+        Location.prerr_warning sbody.pexp_loc Warnings.Expression_cannot_raise;
       let body = type_expect env sbody ty_expected in
       let cases, _ =
         type_cases env Predef.type_exn ty_expected false loc caselist in

@@ -2,3 +2,5 @@ File "w63.ml", line 2, characters 8-9:
 Warning 63: this expression cannot raise an exception.
 File "w63.ml", line 8, characters 8-26:
 Warning 63: this expression cannot raise an exception.
+File "w63.ml", line 15, characters 4-22:
+Warning 63: this expression cannot raise an exception.
