@@ -325,7 +325,6 @@ end and Named : sig
         external unresolved symbols, [Pfield] may still be used; it will be
         changed to [Field_of_symbol] by [Simplify] when (and if) the symbol is
         imported. *)
-    | Allocated_const of Allocated_const.t
     | Set_of_closures of Set_of_closures.t
     | Project_closure of Projection.Project_closure.t
     | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t

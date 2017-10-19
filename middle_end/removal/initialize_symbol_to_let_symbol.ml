@@ -14,9 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(* XXX mshinwell: Going to see if Simplify can do this, should be easier
-for the multi-argument continuation case of Initialize_symbol, since the
-types can tell us what constants reach which continuations *)
+(* XXX mshinwell: To be done using Pierre and Vincent's new analysis *)
 
 (*
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
