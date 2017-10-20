@@ -100,20 +100,11 @@ module Program : sig
   }
 
   (** All symbols from the given program which must be registered as roots
-      with the GC. *)
+      with the GC.  (This does not count any imported symbols.) *)
   val gc_roots : t -> Symbol.Set.t
 
-  val declare_boxed_float : t -> float -> t * Symbol.t
-  val declare_boxed_int32 : t -> Int32.t -> t * Symbol.t
-  val declare_boxed_int64 : t -> Int64.t -> t * Symbol.t
-  val declare_boxed_nativeint : t -> Targetint.t -> t * Symbol.t
-  val declare_immutable_string : t -> string -> t * Symbol.t
-  val declare_mutable_string : t -> initial_value:string -> t * Symbol.t
-  val declare_float_array : t -> float list -> t * Symbol.t
-  val declare_block : t -> Tag.Scannable.t -> Symbol.t list -> t * Symbol.t
-
-  val declare_single_field_pointing_at : t -> Variable.t -> Flambda_kind.t -> t
-
+  (** All free symbols in the given program.  Imported symbols are not treated
+      as free. *)
   val free_symbols : t -> Symbol.Set.t
 
   val print : Format.formatter -> t -> unit

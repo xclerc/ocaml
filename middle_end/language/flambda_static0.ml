@@ -290,50 +290,27 @@ module Program = struct
     body : Program_body.t;
   }
 
-  let gc_roots t = Program_body.gc_roots t.body
+  let print ppf t =
+    Format.fprintf ppf "@[(@[(imported_symbols %a)@]@ @[(body %a)@])@]"
+      Symbol.Set.print t.imported_symbols
+      Program_body.print t.body
 
-  let free_symbols (program : t) =
-    (* Note that there is no need to count the [imported_symbols]. *)
-    Program_body.free_symbols program.program_body
+  let gc_roots t =
+    let syms = Program_body.gc_roots t.body in
+    if !Clflags.flambda_invariant_checks then begin
+      Symbol.Set.iter (fun sym ->
+          if not (Compilation_unit.equal (Compilation_unit.get_current_exn ())
+            (Symbol.compilation_unit sym))
+          then begin
+            Misc.fatal_errorf "Symbol %a deemed as needing a GC root yet it \
+                comes from another compilation unit"
+              Symbol.print sym
+          end)
+        syms;
+    end;
+    syms
 
-(*
-  let declare_simple t static_part =
-    let symbol = Symbol.create "boxed_float" in
-    let definition =
-      { static_structure = [symbol, static_part];
-        computation = None;
-      }
-    in
-    let definition_group =
-      { recursive = Nonrecursive;
-        definitions = [definition];
-      }
-    in
-    { t with
-      definitions = definition_group :: t.definitions;
-    }
-
-  let declare_boxed_float t f = declare_simple t (Boxed_float (Const f))
-  let declare_boxed_int32 t n = declare_simple t (Boxed_int32 (Const n))
-  let declare_boxed_int64 t n = declare_simple t (Boxed_int64 (Const n))
-  let declare_boxed_nativeint t n = declare_simple t (Boxed_nativeint (Const n))
-
-  let declare_immutable_string t s =
-    declare_simple t (Immutable_string (Const s))
-
-  let declare_mutable_string t ~initial_value =
-    declare_simple t (Immutable_string (Const { initial_value; }))
-
-  let declare_float_array t fs =
-    let fs = List.map (fun f : _ or_variable -> Const f) fs in
-    declare_simple t (Immutable_float_array fs)
-
-  let declare_block t tag fields =
-    let fields = List.map (fun s : Field_of_kind_value.t -> Symbol s) fields in
-    declare_simple t (Block (tag, fields))
-
-  let declare_single_field_block_pointing_at t thing kind =
-    let field : Field_of_kind_value.t = Dynamically_computed thing in
-    declare_simple t (Block (Tag.Scannable.zero, [field]))
-*)
+  let free_symbols t =
+    (* N.B. [imported_symbols] are not treated as free. *)
+    Program_body.free_symbols t.program_body
 end
