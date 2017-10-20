@@ -14,8 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Flambda language terms that represent statically-allocated objects
-    (lifted closed functions, constants, etc). *)
+(** Flambda language terms that represent statically-allocated values. *)
 
 type t =
 
