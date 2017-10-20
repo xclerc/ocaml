@@ -21,6 +21,9 @@ module E = Simplify_env
 module R = Simplify_result
 module T = Flambda_type
 
+module Program = Flambda_static.Program
+module Program_body = Flambda_static.Program_body
+
 let constant_defining_value_type
     env
     (constant_defining_value:Flambda_static.Constant_defining_value.t) =
@@ -93,8 +96,7 @@ let constant_defining_value_type
             Flambda_static.Constant_defining_value.print constant_defining_value
     end
 
-(* See documentation on [Let_rec_symbol] in flambda.mli. *)
-let define_let_rec_symbol_type env defs =
+let initial_environment_for_recursive_symbols env defn =
   (* First declare an empty version of the symbols *)
   let env =
     List.fold_left (fun env (symbol, _) ->
@@ -171,9 +173,94 @@ let simplify_constant_defining_value
   let r = ty in
   r, constant_defining_value, ty
 
-let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
-  : Flambda_static.Program.t_body * R.t =
-  match program with
+let simplify_static_part env r (static_part : Flambda_static0.Static_part.t) =
+  match static_part with
+  | Block _ ->
+
+  | Set_of_closures _ ->
+
+  | Project_closure _ ->
+
+  | Boxed_float _ ->
+
+  | Boxed_int32 _ ->
+
+  | Boxed_int64 _ ->
+
+  | Boxed_nativeint _ ->
+
+  | Mutable_float_array _ ->
+
+  | Immutable_float_array _ ->
+
+  | Mutable_string _ ->
+
+  | Immutable_string _ ->
+
+
+let simplify_static_structure env r str =
+  let r, str =
+    List.fold_left
+      (fun (r, str) (sym, static_part) ->
+        let static_part = simplify_static_part env r static_part in
+        r, (static_part :: str))
+      str
+  in
+  r, List.rev str
+
+let simplify_define_symbol env r (recursive : Asttypes.rec_flag)
+      (defn : Program_body.definition)
+      : Program_body.definition * E.t * R.t =
+  let env =
+    match recursive with
+    | Nonrecursive -> env
+    | Recursive -> initial_environment_for_recursive_symbols env defn
+  in
+  let env, r =
+    match defn.computation with
+    | None -> env, r
+    | Some computation ->
+      let arity =
+        List.map (fun (_var, kind) -> kind) computation.computed_values
+      in
+      let name = computation.return_cont in
+      let return_cont_approx =
+        Continuation_approx.create_unknown ~name ~arity
+      in
+      let expr_env =
+        E.add_continuation computation.return_cont return_cont_approx
+      in
+      let expr, r =
+        Simplify_expr.simplify_expr expr_env r computation.expr
+      in
+      let args_types = R.continuation_args_types r name ~arity in
+      assert (List.for_all2 (fun (_var, kind1) ty ->
+          let kind2 = T.kind ~importer:(E.importer env) ty in
+          Flambda_kind.equal kind1 kind2)
+        computation.computed_values args_types);
+      let env =
+        List.fold_left2 (fun env (var, _kind) ty -> E.add env var ty)
+          env
+          computation.computed_values args_types
+      in
+      env, r
+  in
+  simplify_static_structure env r defn.static_structure
+
+let rec simplify_program_body env r (body : Program_body.t)
+      : Program_body.t * R.t =
+  match body with
+  | Define_symbol (defn, body) ->
+    let defn, env, r = simplify_define_symbol env r Nonrecursive defn in
+    let body = simplify_program_body env body in
+    Define_symbol (defn, body), r
+  | Define_symbol_rec (defn, body) ->
+    let defn, env, r = simplify_define_symbol env r Recursive defn in
+    let body = simplify_program_body env body in
+    Define_symbol_rec (defn, body), r
+  | Root _ -> body, r
+
+
   | Let_rec_symbol (defs, program) ->
     let env = define_let_rec_symbol_type env defs in
     let env, r, defs =
@@ -283,7 +370,7 @@ let rec simplify_program_body env r (program : Flambda_static.Program.t_body)
     Effect (expr, cont, program), r
   | End root -> End root, r
 
-let simplify_program env r ~backend (program : Flambda_static.Program.t) =
+let simplify_program env r ~backend (program : Program.t) =
   let predef_exn_symbols = Backend.all_predefined_exception_symbols () in
   let symbols = Symbol.Set.union program.imported_symbols predef_exn_symbols in
   let env, r =

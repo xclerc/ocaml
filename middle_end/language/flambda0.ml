@@ -663,7 +663,7 @@ end = struct
     and aux_named (named : Named.t) =
       f_named named;
       match named with
-      | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+      | Var _ | Symbol _ | Const _ | Read_mutable _
       | Read_symbol_field _ | Project_closure _ | Project_var _
       | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
       | Set_of_closures { function_decls = funcs; _; } ->
@@ -794,7 +794,6 @@ end and Named : sig
     | Read_mutable of Mutable_variable.t
     | Symbol of Symbol.Of_kind_value.t
     | Read_symbol_field of { symbol : Symbol.t; logical_field : int; }
-    | Allocated_const of Allocated_const.t
     | Set_of_closures of Set_of_closures.t
     | Project_closure of Projection.Project_closure.t
     | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
@@ -855,7 +854,7 @@ end = struct
       let free_variable fv = free := Variable.Set.add fv !free in
       begin match t with
       | Var var -> free_variable var
-      | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+      | Symbol _ | Const _ | Read_mutable _
       | Read_symbol_field _ -> ()
       | Assign { being_assigned = _; new_value; } ->
         free_variable new_value
@@ -893,7 +892,6 @@ end = struct
     | Var var -> Variable.print ppf var
     | Symbol symbol -> Symbol.Of_kind_value.print ppf symbol
     | Const cst -> fprintf ppf "Const(%a)" Const.print cst
-    | Allocated_const cst -> fprintf ppf "Aconst(%a)" Allocated_const.print cst
     | Read_mutable mut_var ->
       fprintf ppf "Read_mut(%a)" Mutable_variable.print mut_var
     | Assign { being_assigned; new_value; } ->

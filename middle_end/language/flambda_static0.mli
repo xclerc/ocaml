@@ -69,11 +69,7 @@ module Static_part : sig
 *)
 end
 
-(** A "program" is the contents of one compilation unit.  It describes the
-    various values that are assigned to symbols (and in some cases fields of
-    such symbols) in the object file.  As such, it is closely related to
-    the compilation of toplevel modules. *)
-module Program : sig
+module Program_body : sig
   type computation = {
     expr : Expr.t;
     return_cont : Continuation.t;
@@ -85,15 +81,18 @@ module Program : sig
     computation : computation option;
   }
 
-  type definition_group = {
-    recursive : Asttypes.rec_flag;
-    definitions : definition list;
-  }
+  type t =
+    | Define_symbol of definition * t
+    | Define_symbol_rec of definition * t
+    | Root of Symbol.t
+end
 
+(** A "program" is the contents of one compilation unit.  It describes the
+    various values that are assigned to symbols in the object file. *)
+module Program : sig
   type t = {
     imported_symbols : Symbol.Set.t;
-    definitions_rev : definition_group list;
-    root_symbol : Symbol.t;
+    body : Program_body.t;
   }
 
   val declare_boxed_float : t -> float -> t * Symbol.t

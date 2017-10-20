@@ -103,6 +103,7 @@ val add_outer_scope
 (** Like [add], but for mutable variables. *)
 val add_mutable : t -> Mutable_variable.t -> Flambda_type.t -> t
 
+(* CR mshinwell: The [Continuation.t] is in the [Continuation.approx.t] *)
 val add_continuation : t -> Continuation.t -> Continuation_approx.t -> t
 
 val find_continuation : t -> Continuation.t -> Continuation_approx.t

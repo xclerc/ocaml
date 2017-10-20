@@ -107,17 +107,17 @@ val roll_back_continuation_uses : t -> Continuation_usage_snapshot.t -> t
 val continuation_unused : t -> Continuation.t -> bool
 val continuation_defined : t -> Continuation.t -> bool
 
-val continuation_args_approxs
+val continuation_args_types
    : t
   -> Continuation.t
-  -> num_params:int
+  -> arity:Flambda_arity.t
   -> Flambda_type.t list
 
 (* CR mshinwell: improve names of these two functions *)
-val defined_continuation_args_approxs
+val defined_continuation_args_types
    : t
   -> Continuation.t
-  -> num_params:int
+  -> arity:Flambda_arity.t
   -> Flambda_type.t list
 
 (** Continuation usage information for use after examining the body of

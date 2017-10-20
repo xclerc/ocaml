@@ -25,10 +25,10 @@ type continuation_handlers =
 val create
    : name:Continuation.t
   -> handlers:continuation_handlers
-  -> num_params:int
+  -> arity:Flambda_arity.t
   -> t
 
-val create_unknown : name:Continuation.t -> num_params:int -> t
+val create_unknown : name:Continuation.t -> arity:Flambda_arity.t -> t
 
 val name : t -> Continuation.t
 
