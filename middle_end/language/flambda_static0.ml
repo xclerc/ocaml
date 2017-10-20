@@ -28,18 +28,29 @@ module Of_kind_value = struct
     match t1, t2 with
     | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
     | Tagged_immediate t1, Tagged_immediate t2 -> Immediate.compare t1 t2
+    | Dynamically_computed v1, Dynamically_computed v2 -> Variable.compare v1 v2
     | Symbol _, Tagged_immediate _ -> -1
     | Tagged_immediate _, Symbol _ -> 1
+    | Symbol _, Dynamically_computed _ -> -1
+    | Dynamically_computed _, Symbol _ -> 1
+    | Tagged_immediate _, Dynamically_computed _ -> -1
+    | Dynamically_computed _, Tagged_immediate _ -> 1
 
   let print ppf (field : t) =
     match field with
     | Symbol symbol -> Symbol.print ppf symbol
     | Tagged_immediate immediate -> Immediate.print ppf immediate
+    | Dynamically_computed var -> Variable.print ppf var
 
   let needs_gc_root t =
     match t with
     | Symbol _ | Tagged_immediate _ -> false
     | Dynamically_computed _ -> true
+
+  let free_symbols t =
+    match t with
+    | Symbol sym -> Symbol.Set.singleton sym
+    | Tagged_immediate _ | Dynamically_computed _ -> Symbol.Set.empty
 end
 
 module Static_part = struct
@@ -79,90 +90,91 @@ module Static_part = struct
     | Mutable_string _
     | Immutable_string _ -> false
 
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare (t1 : t) (t2 : t) =
-      match t1, t2 with
-      | Allocated_const c1, Allocated_const c2 ->
-        Allocated_const.compare c1 c2
-      | Block (tag1, fields1), Block (tag2, fields2) ->
-        let c = Tag.Scannable.compare tag1 tag2 in
-        if c <> 0 then c
-        else
-          Misc.Stdlib.List.compare Constant_defining_value_block_field.compare
-            fields1 fields2
-      | Set_of_closures set1, Set_of_closures set2 ->
-        Set_of_closures_id.compare set1.function_decls.set_of_closures_id
-          set2.function_decls.set_of_closures_id
-      | Closure (set1, closure_id1),
-          Closure (set2, closure_id2) ->
-        let c = Symbol.compare set1 set2 in
-        if c <> 0 then c
-        else Closure_id.compare closure_id1 closure_id2
-      | Allocated_const _, Block _ -> -1
-      | Allocated_const _, Set_of_closures _ -> -1
-      | Allocated_const _, Closure _ -> -1
-      | Block _, Allocated_const _ -> 1
-      | Block _, Set_of_closures _ -> -1
-      | Block _, Closure _ -> -1
-      | Set_of_closures _, Allocated_const _ -> 1
-      | Set_of_closures _, Block _ -> 1
-      | Set_of_closures _, Closure _ -> -1
-      | Closure _, Allocated_const _ -> 1
-      | Closure _, Block _ -> 1
-      | Closure _, Set_of_closures _ -> 1
-
-    let equal t1 t2 =
-      t1 == t2 || compare t1 t2 = 0
-
-    let hash = Hashtbl.hash
-
-    let print ppf (t : t) =
-      let fprintf = Format.fprintf in
-      match t with
-      | Allocated_const const ->
-        fprintf ppf "(Allocated_const %a)" Allocated_const.print const
-      | Block (tag, []) ->
-        fprintf ppf "(Empty block (tag %a))" Tag.Scannable.print tag
-      | Block (tag, fields) ->
-        fprintf ppf "(Block (tag %a, %a))"
-          Tag.Scannable.print tag
-          (Format.pp_print_list ~pp_sep:Format.pp_print_space
-            Constant_defining_value_block_field.print) fields
-      | Set_of_closures set_of_closures ->
-        fprintf ppf "@[<2>(Set_of_closures (@ %a))@]"
-          F0.Set_of_closures.print set_of_closures
-      | Closure (set_of_closures, closure_id) ->
-        fprintf ppf "(Closure (%a, %a))"
-          Symbol.print set_of_closures
-          Closure_id.print closure_id
-  end)
-
-(*
-  let free_symbols_helper symbols (const : t) =
-    match const with
-    | Allocated_const _ -> ()
-    | Block (_, fields) ->
-      List.iter
-        (function
-          | (Symbol s : Constant_defining_value_block_field.t) ->
-            symbols := Symbol.Set.add s !symbols
-          | (Tagged_immediate _ : Constant_defining_value_block_field.t) -> ())
+  let free_symbols t =
+    match t with
+    | Block (_tag, _mut, fields) ->
+      List.fold_left (fun syms field ->
+          Symbol.Set.union syms (Of_kind_value.free_symbols field))
+        Symbol.Set.empty
         fields
+    | Closure (sym, ) -> Symbol.Set.singleton sym
+    | Set_of_closures _
+    | Boxed_float _
+    | Boxed_int32 _
+    | Boxed_int64 _
+    | Boxed_nativeint _
+    | Mutable_float_array _
+    | Immutable_float_array _
+    | Mutable_string _
+    | Immutable_string _ -> Symbol.Set.empty
+
+  let print ppf (t : t) =
+    let fprintf = Format.fprintf in
+    let print_float_array_field ppf = function
+      | Const f -> fprintf ppf "%f" f
+      | Var v -> Variable.print ppf v
+    in
+    match t with
+    | Block (tag, mut, fields) ->
+      fprintf ppf "@[(%sblock [%a: %a])@]"
+        (match mut with Immutable -> "Immutable_" | Mutable -> "Mutable_")
+        Tag.Scannable.print tag
+        (Format.pp_print_list ~pp_sep:Format.pp_print_space
+          Of_kind_value.print) fields
     | Set_of_closures set_of_closures ->
-      symbols := Symbol.Set.union !symbols
-        (F0.Named.free_symbols (Set_of_closures set_of_closures))
-    | Closure (s, _) ->
-      symbols := Symbol.Set.add s !symbols
-*)
+      fprintf ppf "@[(Set_of_closures@ (%a))@]"
+        F0.Set_of_closures.print set_of_closures
+    | Closure (set_of_closures, closure_id) ->
+      fprintf ppf "@[(Closure (%a).%a))@]"
+        Symbol.print set_of_closures
+        Closure_id.print closure_id
+    | Boxed_float (Const f) ->
+      fprintf ppf "@[(Boxed_float %f)@]" f
+    | Boxed_float (Var v) ->
+      fprintf ppf "@[(Boxed_float %a)@]" Variable.print v
+    | Boxed_int32 (Const n) ->
+      fprintf ppf "@[(Boxed_int32 %ld)@]" n
+    | Boxed_int32 (Var v) ->
+      fprintf ppf "@[(Boxed_int32 %a)@]" Variable.print v
+    | Boxed_int64 (Const n) ->
+      fprintf ppf "@[(Boxed_int64 %ld)@]" n
+    | Boxed_int64 (Var v) ->
+      fprintf ppf "@[(Boxed_int64 %a)@]" Variable.print v
+    | Boxed_nativeint (Const n) ->
+      fprintf ppf "@[(Boxed_nativeint %ld)@]" n
+    | Boxed_nativeint (Var v) ->
+      fprintf ppf "@[(Boxed_nativeint %a)@]" Variable.print v
+    | Mutable_float_array { initial_value; } ->
+      fprintf ppf "@[(Mutable_float_array@ @[[| %a |]@])@]"
+        (Format.pp_print_list
+           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "@[; @]")
+           print_float_array_field)
+        initial_value
+    | Immutable_float_array fields ->
+      fprintf ppf "@[(Immutable_float_array@ @[[| %a |]@])@]"
+        (Format.pp_print_list
+           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "@[; ")
+           print_float_array_field)
+        initial_value
+    | Mutable_string { initial_value; } ->
+      fprintf ppf "@[(Mutable_string@ \"%s\")@]" initial_value
+    | Immutable_string s ->
+      fprintf ppf "@[(Immutable_string@ \"%s\")@]" s
 
   module Mappers = struct
     let map_set_of_closures t ~f =
       match t with
-      | Allocated_const _ | Block _ | Closure _ -> t
-      | Set_of_closures set ->
-        create_set_of_closures (f set)
+      | Set_of_closures set -> Set_of_closures (f set)
+      | Block _
+      | Closure _
+      | Boxed_float _
+      | Boxed_int32 _
+      | Boxed_int64 _
+      | Boxed_nativeint _
+      | Mutable_float_array _
+      | Immutable_float_array _
+      | Mutable_string _
+      | Immutable_string _ -> t
   end
 end
 
@@ -173,15 +185,82 @@ module Program_body = struct
     computed_values : (Variable.t * Flambda_kind.t) list;
   }
 
+  let print_computation ppf comp =
+    Format.fprintf "@[(\
+        @[(expr@ %a)@]@ \
+        @[(return_cont@ %a)@]@ \
+        @[(computed_values@ @[(%a)@])@])@]"
+      Flambda.Expr.print comp.expr
+      Continuation.print comp.return_cont
+      (Format.pp_print_list ~pp_sep:Format.pp_print_space
+        (fun ppf (var, kind) ->
+          Format.fprintf "@[(%a :: %a)@]"
+            Variable.print var
+            Flambda_kind.print kind)
+      comp.computed_values
+
+  let free_symbols_of_computation comp = Flambda.Expr.free_symbols comp.expr
+
   type definition = {
-    static_structure : (Symbol.t * Static_part.t) list;
     computation : computation option;
+    static_structure : (Symbol.t * Static_part.t) list;
   }
+
+  let print_definition ppf defn =
+    Format.fprintf "@[(\
+        @[(computation@ %a)@]@ \
+        @[(static_structure@ @[(%a)@])@])@]"
+      (Misc.Stdlib.Option.print print_computation)
+      defn.computation
+      (Format.pp_print_list ~pp_sep:Format.pp_print_space
+        (fun (sym, static_part) ->
+          Format.fprintf ppf "@[(%a@ %a)@]"
+            Symbol.print sym
+            Static_part.print static_part))
+      defn.static_structure
+
+  let free_symbols_of_definition defn (recursive : Asttypes.rec_flag) =
+    let free_in_computation =
+      match defn.computation with
+      | None -> Symbol.Set.empty
+      | Some computation -> free_symbols_of_computation computation
+    in
+    let being_defined =
+      Symbol.Set.of_list (List.map (fun (sym, _) -> sym) defn.static_structure)
+    in
+    let bound_recursively =
+      match recursive with
+      | Nonrecursive -> Symbol.Set.empty
+      | Recursive -> being_defined
+    in
+    let free_in_static_parts =
+      let symbols =
+        List.fold_left (fun syms (_sym, static_part) ->
+            Symbol.Set.union syms (Static_part.free_symbols static_part))
+          Symbol.Set.empty
+          defn.static_structure
+      in
+      Symbol.Set.diff symbols bound_recursively
+    in
+    Symbol.Set.union free_in_computation free_in_static_parts
 
   type t =
     | Define_symbol of definition * t
     | Define_symbol_rec of definition * t
     | Root of Symbol.t
+
+  let rec print ppf t =
+    match t with
+    | Define_symbol (defn, t) ->
+      Format.fprintf ppf "@[(Define_symbol@ %a)@]@;"
+        print_definition defn;
+      print ppf t
+    | Define_symbol_rec (defn, t) ->
+      Format.fprintf ppf "@[(Define_symbol_rec@ %a)@]@;"
+        print_definition defn;
+      print ppf t
+    | Root sym ->
+      Format.fprint ppf "@[(Root %a)@]" Symbol.print sym
 
   let gc_roots t =
     let rec gc_roots t roots =
@@ -198,76 +277,11 @@ module Program_body = struct
     in
     gc_roots t Symbol.Set.empty
 
-(*
-  let rec print ppf (program : t) =
-    let fprintf = Format.fprintf in
-    match program with
-    | Let_symbol (symbol, constant_defining_value, body) ->
-      let rec let_body (ul : t) =
-        match ul with
-        | Let_symbol (symbol, constant_defining_value, body) ->
-          fprintf ppf "@ @[<2>(%a@ %a)@]" Symbol.print symbol
-            Constant_defining_value.print constant_defining_value;
-          let_body body
-        | _ -> ul
-      in
-      fprintf ppf "@[<2>let_symbol@ @[<hv 1>(@[<2>%a@ %a@])@]@ "
-        Symbol.print symbol
-        Constant_defining_value.print constant_defining_value;
-      let program = let_body body in
-      fprintf ppf "@]@.";
-      print ppf program
-    | Let_rec_symbol (defs, program) ->
-      let bindings ppf id_arg_list =
-        let spc = ref false in
-        List.iter
-          (fun (symbol, constant_defining_value) ->
-            if !spc then fprintf ppf "@ " else spc := true;
-            fprintf ppf "@[<2>%a@ %a@]"
-              Symbol.print symbol
-              Constant_defining_value.print constant_defining_value)
-          id_arg_list in
-      fprintf ppf
-        "@[<2>let_rec_symbol@ (@[<hv 1>%a@])@]@."
-        bindings defs;
-      print ppf program
-    | Initialize_symbol (symbol, descr, program) ->
-      fprintf ppf
-        "@[<2>initialize_symbol@ @[<hv 1>(@[<2>%a@;@[<v>%a@]@])@]@]@."
-        Symbol.print symbol
-        Flambda.Expr.print descr.expr;
-        (* CR mshinwell: Print continuation and arity *)
-      print ppf program
-    | Effect (expr, cont, program) ->
-      fprintf ppf "@[effect @[<v 2><%a>:@. %a@]@]"
-        Continuation.print cont
-        F0.Expr.print expr;
-      print ppf program;
-    | End root -> fprintf ppf "End %a" Symbol.print root
-
-  let free_symbols t =
-    let symbols = ref Symbol.Set.empty in
-    let rec loop (program : t) =
-      match program with
-      | Let_symbol (_, const, program) ->
-        Constant_defining_value.free_symbols_helper symbols const;
-        loop program
-      | Let_rec_symbol (defs, program) ->
-        List.iter (fun (_, const) ->
-            Constant_defining_value.free_symbols_helper symbols const)
-          defs;
-        loop program
-      | Initialize_symbol (_, descr, program) ->
-        symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols descr.expr);
-        loop program
-      | Effect (expr, _cont, program) ->
-        symbols := Symbol.Set.union !symbols (F0.Expr.free_symbols expr);
-        loop program
-      | End symbol -> symbols := Symbol.Set.add symbol !symbols
-    in
-    loop t;
-    !symbols
-*)
+  let rec free_symbols t =
+    match t with
+    | Define_symbol (defn, t) | Define_symbol_rec (defn, t) ->
+      Symbol.Set.union (free_symbols_of_definition defn) (free_symbols t)
+    | Root sym -> Symbol.Set.singleton sym
 end
 
 module Program = struct
@@ -278,6 +292,9 @@ module Program = struct
 
   let gc_roots t = Program_body.gc_roots t.body
 
+  let free_symbols (program : t) =
+    (* Note that there is no need to count the [imported_symbols]. *)
+    Program_body.free_symbols program.program_body
 
 (*
   let declare_simple t static_part =
@@ -318,15 +335,5 @@ module Program = struct
   let declare_single_field_block_pointing_at t thing kind =
     let field : Field_of_kind_value.t = Dynamically_computed thing in
     declare_simple t (Block (Tag.Scannable.zero, [field]))
-
-  let free_symbols (program : t) =
-    (* Note that there is no need to count the [imported_symbols]. *)
-    Program_body.free_symbols program.program_body
-
-  let print ppf t =
-    Symbol.Set.iter (fun symbol ->
-        Format.fprintf ppf "@[import_symbol@ %a@]@." Symbol.print symbol)
-      t.imported_symbols;
-    Program_body.print ppf t.program_body
 *)
 end
