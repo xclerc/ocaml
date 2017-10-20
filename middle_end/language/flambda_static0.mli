@@ -44,29 +44,12 @@ module Static_part : sig
     | Mutable_string of { initial_value : string or_variable; }
     | Immutable_string of string or_variable
 
-(*
-  include Identifiable.S with type t := t
-
-  val create_allocated_const : Allocated_const.t -> t
-
-  val create_block
-     : Tag.Scannable.t
-    -> Block_field.t list
-    -> t
-
-  val create_set_of_closures : Flambda0.Set_of_closures.t -> t
-
-  val create_project_closure : Symbol.t -> Closure_id.t -> t
-
-  val tag : t -> Tag.t
-
   module Mappers : sig
     val map_set_of_closures
        : t
       -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
       -> t
   end
-*)
 
   val needs_gc_root : t -> bool
 end
@@ -100,6 +83,10 @@ module Program : sig
     imported_symbols : Symbol.Set.t;
     body : Program_body.t;
   }
+
+  (** All symbols from the given program which must be registered as roots
+      with the GC. *)
+  val gc_roots : t -> Symbol.Set.t
 
   val declare_boxed_float : t -> float -> t * Symbol.t
   val declare_boxed_int32 : t -> Int32.t -> t * Symbol.t

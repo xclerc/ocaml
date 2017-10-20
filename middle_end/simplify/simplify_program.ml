@@ -16,85 +16,17 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module B = Inlining_cost.Benefit
 module E = Simplify_env
 module R = Simplify_result
 module T = Flambda_type
 
 module Program = Flambda_static.Program
 module Program_body = Flambda_static.Program_body
+module Static_part = Flambda_static.Static_part
 
-let constant_defining_value_type
-    env
-    (constant_defining_value:Flambda_static.Constant_defining_value.t) =
-  match constant_defining_value with
-  | Allocated_const const ->
-    type_for_allocated_const const
-  | Block (tag, fields) ->
-    let fields =
-      List.map
-        (function
-          | Flambda.Symbol sym -> begin
-              match E.find_symbol_opt env sym with
-              | Some ty -> ty
-              | None -> T.unknown Value (Unresolved_value (Symbol sym))
-            end
-          | Flambda.Const cst -> type_for_const cst)
-        fields
-    in
-    T.block tag (Array.of_list fields)
- | Set_of_closures { function_decls; free_vars; specialised_args } ->
-    (* At toplevel, there is no freshening currently happening (this
-       cannot be the body of a currently inlined function), so we can
-       keep the original set_of_closures in the Flambda type. *)
-    assert(E.freshening env = Freshening.empty);
-    assert(Variable.Map.is_empty free_vars);
-    assert(Variable.Map.is_empty specialised_args);
-    let invariant_params =
-      lazy (Invariant_params.Functions.invariant_params_in_recursion
-        function_decls ~backend:(E.backend env))
-    in
-    let value_set_of_closures =
-      T.create_set_of_closures ~function_decls
-        ~size:(lazy (Flambda.Function_declarations.size function_decls))
-        ~bound_vars:Var_within_closure.Map.empty
-        ~invariant_params
-        ~specialised_args:Variable.Map.empty
-        ~freshening:Freshening.Project_var.empty
-        ~direct_call_surrogates:Closure_id.Map.empty
-    in
-    T.set_of_closures value_set_of_closures
-  | Project_closure (set_of_closures_symbol, closure_id) -> begin
-      match E.find_symbol_opt env set_of_closures_symbol with
-      | None -> T.unresolved_symbol set_of_closures_symbol
-      | Some set_of_closures_type ->
-        let reified_type =
-          T.reify_as_set_of_closures set_of_closures_type
-        in
-        match reified_type with
-        | Ok (_, value_set_of_closures) ->
-          let closure_id =
-            T.freshen_and_check_closure_id value_set_of_closures
-              (Closure_id.Set.singleton closure_id)
-          in
-          T.closure
-            (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
-        | Unresolved sym -> T.unresolved_symbol sym
-        | Unknown kind ->
-          begin match kind with
-          | Value -> ()
-          | _ ->
-            Misc.fatal_errorf "Project_closure %a from %a has wrong kind %a"
-              Closure_id.print closure_id
-              Symbol.print set_of_closures_symbol
-              Flambda_kind.print kind
-          end;
-          T.unknown Value Other
-        | Wrong ->
-          Misc.fatal_errorf "Wrong type for [Project_closure] when being used \
-              as a [constant_defining_value]: %a"
-            Flambda_static.Constant_defining_value.print constant_defining_value
-    end
+type 'a or_wrong =
+  | Ok of 'a
+  | Wrong
 
 let initial_environment_for_recursive_symbols env defn =
   (* First declare an empty version of the symbols *)
@@ -118,10 +50,6 @@ let initial_environment_for_recursive_symbols env defn =
       loop (times-1) env
   in
   loop 2 env
-
-type 'a or_wrong =
-  | Ok of 'a
-  | Wrong
 
 let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
       : _ or_wrong =
@@ -162,11 +90,24 @@ let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
     Ok (Block (tag, fields), ...)
   | Set_of_closures set ->
     let r = R.create () in
-    let set = Simplify_named.simplify_set_of_closures env r set in
-    Ok (Set_of_closures set, ...)
-  | Project_closure (sym, _closure_id) ->
-    E.check_symbol_bound env sym;
-    Ok (static_part, ...)
+    let set, _r = Simplify_named.simplify_set_of_closures env r set in
+    let set' =
+      (* this should be like normal simplification for this -- share? *)
+      T.create_set_of_closures ~set_of_closures_id:...
+        ~set_of_closures_origin:...
+        ~function_decls:...
+        ~closure_elements:...
+    in
+    let ty = T.set_of_closures set' in
+    Ok (Set_of_closures set, ty)
+  | Project_closure (sym, closure_id) ->
+    let ty = E.find_symbol env sym in
+    begin match T.prove_set_of_closures ~importer ty with
+    (* XXX the set of closures types don't match on the next line *)
+    | Ok set -> Ok (Project_closure (sym, closure_id), set)
+    | Unknown -> Ok (static_part, T.any_value Must_scan Other)
+    | Wrong -> Wrong
+    end
   | Boxed_float (Const f) -> Ok (static_part, T.this_boxed_float f)
   | Mutable_string { initial_value = Const s; } ->
     Ok (static_part, T.this_mutable_string ~initial_value:s)
@@ -313,39 +254,48 @@ let simplify_define_symbol env (recursive : Asttypes.rec_flag)
   let unreachable, static_structure, env =
     simplify_static_structure env defn.static_structure
   in
-  let computation =
-    match computation with
-    | None -> Flambda.Expr.invalid ()
-    | Some computation ->
-      let params =
-        List.map (fun (var, kind) ->
-            let ty = Flambda_type.unknown kind Other in
-            let param = Parameter.wrap (Variable.rename var) in
-            Flambda.Typed_parameter.create param ty)
-          computation.computed_values
-      in
-      let expr : Flambda.Expr.t =
-        Let_cont {
-          body = computation.expr;
-          handlers = Nonrecursive {
-            name = computation.return_cont;
-            handler = {
-              params;
-              stub = false;
-              is_exn_handler = false;
-              handler = Flambda.Expr.invalid ();
+  let computation, static_structure =
+    (* CR-someday mshinwell: We could imagine propagating an "unreachable"
+       (if that's what [invalid ()] turns into, rather than a trap) back to
+       previous [Define_symbol]s. *)
+    if not unreachable then
+      computation, static_structure
+    else
+      match computation with
+      | None -> Flambda.Expr.invalid (), []
+      | Some computation ->
+        let params =
+          List.map (fun (var, kind) ->
+              let ty = Flambda_type.unknown kind Other in
+              let param = Parameter.wrap var in
+              Flambda.Typed_parameter.create param ty)
+            computation.computed_values
+        in
+        let expr : Flambda.Expr.t =
+          Let_cont {
+            body = computation.expr;
+            handlers = Nonrecursive {
+              name = computation.return_cont;
+              handler = {
+                params;
+                stub = false;
+                is_exn_handler = false;
+                handler = Flambda.Expr.invalid ();
+              };
             };
-          };
-        }
-      in
-      let new_return_cont =
-        (* This continuation will never be called. *)
-        Continuation.create ()
-      in
-      { expr;
-        return_cont = new_return_cont;
-        computed_values = computation.computed_values;
-      }
+          }
+        in
+        let new_return_cont =
+          (* This continuation will never be called. *)
+          Continuation.create ()
+        in
+        let computation =
+          { expr;
+            return_cont = new_return_cont;
+            computed_values = [];
+          }
+        in
+        computation, []
   in
   let definition =
     { static_structure;

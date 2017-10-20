@@ -18,10 +18,11 @@
 
 module F0 = Flambda0
 
-module Constant_defining_value_block_field = struct
+module Of_kind_value = struct
   type t =
     | Symbol of Symbol.t
     | Tagged_immediate of Immediate.t
+    | Dynamically_computed of Variable.t
 
   let compare (t1 : t) (t2 : t) =
     match t1, t2 with
@@ -34,14 +35,49 @@ module Constant_defining_value_block_field = struct
     match field with
     | Symbol symbol -> Symbol.print ppf symbol
     | Tagged_immediate immediate -> Immediate.print ppf immediate
+
+  let needs_gc_root t =
+    match t with
+    | Symbol _ | Tagged_immediate _ -> false
+    | Dynamically_computed _ -> true
 end
 
-module Constant_defining_value = struct
-  type t =
-    | Allocated_const of Allocated_const.t
-    | Block of Tag.Scannable.t * Constant_defining_value_block_field.t list
-    | Set_of_closures of F0.Set_of_closures.t
+module Static_part = struct
+  type 'a or_variable =
+    | Const of 'a
+    | Var of Variable.t
+
+  type t = private
+    | Block of Tag.Scannable.t * Asttypes.mutable_flag * (Of_kind_value.t list)
+    | Set_of_closures of Flambda0.Set_of_closures.t
     | Project_closure of Symbol.t * Closure_id.t
+    | Boxed_float of float or_variable
+    | Boxed_int32 of Int32.t or_variable
+    | Boxed_int64 of Int64.t or_variable
+    | Boxed_nativeint of Targetint.t or_variable
+    | Mutable_float_array of { initial_value : float or_variable list; }
+    | Immutable_float_array of float or_variable list
+    | Mutable_string of { initial_value : string or_variable; }
+    | Immutable_string of string or_variable
+
+  let needs_gc_root t =
+    match t with
+    | Block (tag, mut, fields) ->
+      begin match mut with
+      | Mutable -> true
+      | Immutable -> List.exists Of_kind_value.needs_gc_root fields
+      end
+    | Set_of_closures set ->
+      not (Var_within_closure.Map.is_empty set.free_vars)
+    | Project_closure _
+    | Boxed_float _
+    | Boxed_int32 _
+    | Boxed_int64 _
+    | Boxed_nativeint _
+    | Mutable_float_array _
+    | Immutable_float_array _
+    | Mutable_string _
+    | Immutable_string _ -> false
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -103,27 +139,7 @@ module Constant_defining_value = struct
           Closure_id.print closure_id
   end)
 
-  let create_allocated_const ac = Allocated_const ac
-
-  let create_block tag fields = Block (tag, fields)
-
-  let create_set_of_closures set =
-    if not (F0.Set_of_closures.has_empty_environment set) then begin
-      Misc.fatal_errorf "Cannot have set of closures with a non-empty \
-          environment as static data: %a"
-        F0.Set_of_closures.print set
-    end;
-    Set_of_closures set
-
-  let create_project_closure sym closure_id = Project_closure (sym, closure_id)
-
-  let tag t =
-    match t with
-    | Allocated_const const -> Allocated_const.tag const
-    | Block (tag, _) -> Tag.Scannable.to_tag tag
-    | Set_of_closures _
-    | Project_closure _ -> Tag.closure_tag
-
+(*
   let free_symbols_helper symbols (const : t) =
     match const with
     | Allocated_const _ -> ()
@@ -139,6 +155,7 @@ module Constant_defining_value = struct
         (F0.Named.free_symbols (Set_of_closures set_of_closures))
     | Project_closure (s, _) ->
       symbols := Symbol.Set.add s !symbols
+*)
 
   module Mappers = struct
     let map_set_of_closures t ~f =
@@ -150,21 +167,38 @@ module Constant_defining_value = struct
 end
 
 module Program_body = struct
-  module Initialize_symbol = struct
-    type t = {
-      expr : Flambda0.Expr.t;
-      return_cont : Continuation.t;
-      return_arity : Flambda_arity.t;
-    }
-  end
+  type computation = {
+    expr : Expr.t;
+    return_cont : Continuation.t;
+    computed_values : (Variable.t * Flambda_kind.t) list;
+  }
+
+  type definition = {
+    static_structure : (Symbol.t * Static_part.t) list;
+    computation : computation option;
+  }
 
   type t =
-    | Let_symbol of Symbol.t * Constant_defining_value.t * t
-    | Let_rec_symbol of (Symbol.t * Constant_defining_value.t) list * t
-    | Initialize_symbol of Symbol.t * Initialize_symbol.t * t
-    | Effect of F0.Expr.t * Continuation.t * t
-    | End of Symbol.t
+    | Define_symbol of definition * t
+    | Define_symbol_rec of definition * t
+    | Root of Symbol.t
 
+  let gc_roots t =
+    let rec gc_roots t roots =
+      match t with
+      | Root _ -> roots
+      | Define_symbol (defn, t) | Define_symbol_rec (defn, t) ->
+        List.fold (fun roots (sym, static_part) ->
+            if Static_part.needs_gc_root static_part then
+              Symbol.Set.add sym roots
+            else
+              roots)
+          roots
+          defn
+    in
+    gc_roots t Symbol.Set.empty
+
+(*
   let rec print ppf (program : t) =
     let fprintf = Format.fprintf in
     match program with
@@ -233,31 +267,19 @@ module Program_body = struct
     in
     loop t;
     !symbols
+*)
 end
 
 module Program = struct
-  type computation = {
-    expr : Expr.t;
-    return_cont : Continuation.t;
-    computed_values : (Variable.t * Flambda_kind.t) list;
-  }
-
-  type definition = {
-    static_structure : (Symbol.t * Static_part.t) list;
-    computation : computation option;
-  }
-
-  type definition_group = {
-    recursive : Asttypes.rec_flag;
-    definitions : definition list;
-  }
-
   type t = {
     imported_symbols : Symbol.Set.t;
-    definitions : definition_group list;
-    root_symbol : Symbol.t;
+    body : Program_body.t;
   }
 
+  let gc_roots t = Program_body.gc_roots t.body
+
+
+(*
   let declare_simple t static_part =
     let symbol = Symbol.create "boxed_float" in
     let definition =
@@ -306,4 +328,5 @@ module Program = struct
         Format.fprintf ppf "@[import_symbol@ %a@]@." Symbol.print symbol)
       t.imported_symbols;
     Program_body.print ppf t.program_body
+*)
 end
