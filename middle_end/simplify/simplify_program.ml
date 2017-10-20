@@ -119,106 +119,140 @@ let initial_environment_for_recursive_symbols env defn =
   in
   loop 2 env
 
-let simplify_constant_defining_value
-    env r symbol
-    (constant_defining_value : Flambda_static.Constant_defining_value.t) =
-  let r, constant_defining_value, ty =
-    match constant_defining_value with
-    (* No simplifications are possible for [Allocated_const] or [Block]. *)
-    | Allocated_const const ->
-      r, constant_defining_value, type_for_allocated_const const
-    | Block (tag, fields) ->
-      let fields = List.map
-          (function
-            | Flambda.Symbol sym -> E.find_symbol_exn env sym
-            | Flambda.Const cst -> type_for_const cst)
-          fields
-      in
-      r, constant_defining_value, T.block tag (Array.of_list fields)
-    | Set_of_closures set_of_closures ->
-      if Variable.Map.cardinal set_of_closures.free_vars <> 0 then begin
-        Misc.fatal_errorf "Set of closures bound by [Let_symbol] is not \
-                           closed: %a"
-          Flambda.Set_of_closures.print set_of_closures
-      end;
-      let set_of_closures, r, _freshening =
-        simplify_set_of_closures env r set_of_closures
-      in
-      r, ((Set_of_closures set_of_closures) : Flambda_static.Constant_defining_value.t),
-        R.inferred_type r
-    | Project_closure (set_of_closures_symbol, closure_id) ->
-      (* No simplifications are necessary here. *)
-      let set_of_closures_type =
-        E.find_symbol_exn env set_of_closures_symbol
-      in
-      let closure_type =
-        match T.reify_as_set_of_closures set_of_closures_type with
-        | Ok (_, value_set_of_closures) ->
-          let closure_id =
-            T.freshen_and_check_closure_id value_set_of_closures
-              (Closure_id.Set.singleton closure_id)
-          in
-          T.closure
-            (Closure_id.Map.of_set (fun _ -> value_set_of_closures) closure_id)
-        | Unresolved sym -> T.unresolved_symbol sym
-        | Unknown -> T.unknown Other
-        | Wrong ->
-          Misc.fatal_errorf "Wrong Flambda type for [Project_closure] \
-                             when being used as a [constant_defining_value]: %a"
-            Flambda_static.Constant_defining_value.print constant_defining_value
-      in
-      r, constant_defining_value, closure_type
-  in
-  let ty = T.augment_with_symbol ty symbol in
-  let r = ty in
-  r, constant_defining_value, ty
+type 'a or_wrong =
+  | Ok of 'a
+  | Wrong
 
-let simplify_static_part env r (static_part : Flambda_static0.Static_part.t) =
-  match static_part with
-  | Block _ ->
-
-  | Set_of_closures _ ->
-
-  | Project_closure _ ->
-
-  | Boxed_float _ ->
-
-  | Boxed_int32 _ ->
-
-  | Boxed_int64 _ ->
-
-  | Boxed_nativeint _ ->
-
-  | Mutable_float_array _ ->
-
-  | Immutable_float_array _ ->
-
-  | Mutable_string _ ->
-
-  | Immutable_string _ ->
-
-
-let simplify_static_structure env r str =
-  let r, str =
+let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
+      : _ or_wrong =
+  let importer = E.importer env in
+  let simplify_float_fields fields =
     List.fold_left
-      (fun (r, str) (sym, static_part) ->
-        let static_part = simplify_static_part env r static_part in
-        r, (static_part :: str))
+      (fun (done_something, fields_rev) (field : _ Static_part.or_variable) ->
+        match field with
+        | Const _ -> done_something, (field :: fields_rev)
+        | Var var ->
+          begin match T.prove_naked_float ~importer ty with
+          | None -> done_something, (field :: fields_rev)
+          | Some f -> true, ((Const f) :: fields_rev)
+          end)
+      (false, [])
+      fields
+  in
+  match static_part with
+  | Block (tag, fields) ->
+    let fields =
+      List.map (fun (field : Flambda_static0.Field_of_kind_value.t) ->
+          match field with
+          | Symbol sym ->
+            E.check_symbol_bound env sym;
+            field
+          | Tagged_immediate _ -> field
+          | Dynamically_computed var ->
+            let ty = E.find env var in
+            begin match T.symbol ty with
+            | Some sym -> Symbol sym
+            | None ->
+              match T.prove_tagged_immediate ~importer ty with
+              | Some imm -> Tagged_immediate imm
+              | None -> field
+            end)
+        fields
+    in
+    Ok (Block (tag, fields), ...)
+  | Set_of_closures set ->
+    let r = R.create () in
+    let set = Simplify_named.simplify_set_of_closures env r set in
+    Ok (Set_of_closures set, ...)
+  | Project_closure (sym, _closure_id) ->
+    E.check_symbol_bound env sym;
+    Ok (static_part, ...)
+  | Boxed_float (Const f) -> Ok (static_part, T.this_boxed_float f)
+  | Mutable_string { initial_value = Const s; } ->
+    Ok (static_part, T.this_mutable_string ~initial_value:s)
+  | Immutable_string (Const s) ->
+    Ok (static_part, T.this_immutable_string s)
+  | Boxed_float (Var var) ->
+    let ty = E.find env var in
+    begin match T.prove_boxed_float ~importer ty with
+    | Ok f -> Ok (Boxed_float (Const f), T.this_boxed_float f)
+    | Unknown -> Ok (static_part, T.any_boxed_float ())
+    | Wrong -> Wrong
+    end
+  | Boxed_int32 (Const n) -> Ok (static_part, T.this_boxed_int32 n)
+  | Boxed_int32 (Var var) ->
+    let ty = E.find env var in
+    begin match T.prove_boxed_int32 ~importer ty with
+    | Ok n -> Ok (Boxed_int32 (Const n), T.this_boxed_int32 n)
+    | Unknown -> Ok (static_part, T.any_boxed_int32 ())
+    | Wrong -> Wrong
+    end
+  | Boxed_int64 (Const n) -> Ok (static_part, T.this_boxed_int64 n)
+  | Boxed_int64 (Var var) ->
+    let ty = E.find env var in
+    begin match T.prove_boxed_int64 ~importer ty with
+    | Ok n -> Ok (Boxed_int64 (Const n), T.this_boxed_int64 n)
+    | Unknown -> Ok (static_part, T.any_boxed_int64 ())
+    | Wrong -> Wrong
+    end
+  | Boxed_nativeint (Const n) -> Ok (static_part, T.this_boxed_nativeint n)
+  | Boxed_nativeint (Var var) ->
+    let ty = E.find env var in
+    begin match T.prove_boxed_nativeint ~importer ty with
+    | Ok n -> Ok (Boxed_nativeint (Const n), T.this_boxed_nativeint n)
+    | Unknown -> Ok (static_part, T.any_boxed_nativeint ())
+    | Wrong -> Wrong
+    end
+  | Mutable_float_array { initial_value = fields; } ->
+    let done_something, fields = simplify_float_fields fields in
+    let ty = T.mutable_float_array ~size:(List.length fields) in
+    if not done_something then Ok (static_part, ty)
+    else Ok (Mutable_float_array { initial_value = List.rev fields; }, ty)
+  | Immutable_float_array fields ->
+    let done_something, fields = simplify_float_fields fields in
+    if not done_something then Ok (static_part, ...)
+    else Ok (Immutable_float_array (List.rev fields), ...)
+  | Mutable_string { initial_value = Var var; } ->
+    let ty = E.find env var in
+    begin match T.prove_string ~importer ty with
+    | Ok s ->
+      let ty = T.mutable_string ~size:(String.length s) in
+      Ok (Mutable_string { initial_value = Const s; }, ty)
+    | Unknown -> Ok (static_part, ...)
+    | Wrong -> Wrong
+    end
+  | Immutable_string (Var var) ->
+    let ty = E.find env var in
+    begin match T.prove_string ~importer ty with
+    | Ok s -> Ok (Immutable_string (Const s), T.this_immutable_string s)
+    | Unknown -> Ok (static_part, ...)
+    | Wrong -> Wrong
+    end
+
+let simplify_static_structure initial_env str =
+  let unreachable, env, str =
+    List.fold_left
+      (fun ((now_unreachable, env, str) as acc) (sym, static_part) ->
+        if now_unreachable then
+          acc
+        else
+          match simplify_static_part initial_env static_part with
+          | Ok (static_part, ty) ->
+            let env = E.add_symbol env symbol ty in
+            false, env, (static_part :: str)
+          | Wrong ->
+            true, env, str)
+      (false, initial_env, r, [])
       str
   in
-  r, List.rev str
+  unreachable, env, List.rev str
 
-let simplify_define_symbol env r (recursive : Asttypes.rec_flag)
+let simplify_define_symbol env (recursive : Asttypes.rec_flag)
       (defn : Program_body.definition)
-      : Program_body.definition * E.t * R.t =
-  let env =
-    match recursive with
-    | Nonrecursive -> env
-    | Recursive -> initial_environment_for_recursive_symbols env defn
-  in
-  let env, r =
+      : Program_body.definition * E.t =
+  let env, computation =
     match defn.computation with
-    | None -> env, r
+    | None -> env, defn.computation
     | Some computation ->
       let arity =
         List.map (fun (_var, kind) -> kind) computation.computed_values
@@ -227,12 +261,25 @@ let simplify_define_symbol env r (recursive : Asttypes.rec_flag)
       let return_cont_approx =
         Continuation_approx.create_unknown ~name ~arity
       in
-      let expr_env =
-        E.add_continuation computation.return_cont return_cont_approx
-      in
       let expr, r =
-        Simplify_expr.simplify_expr expr_env r computation.expr
+        let env = E.add_continuation name return_cont_approx in
+        let r = R.create () in
+        let descr =
+          let symbol_names =
+            List.map (fun (sym, _) -> Symbol.to_string sym) defn.static_part
+          in
+          Printf.sprintf "Toplevel binding(s) of: %s"
+            (String.concat "+" symbol_names)
+        in
+        Simplify.simplify_toplevel env r computation.expr ~continuation:name
+          descr
       in
+      (* CR mshinwell: Add unboxing of the continuation here.  This will look
+         like half of Unbox_returns (same analysis and the same thing to
+         happen to [expr]; but instead of generating a function wrapper, we
+         need to do something else here).  Note that the linearity check
+         for Unbox_returns will enable us to handle mutable returned values
+         too. *)
       let args_types = R.continuation_args_types r name ~arity in
       assert (List.for_all2 (fun (_var, kind1) ty ->
           let kind2 = T.kind ~importer:(E.importer env) ty in
@@ -243,148 +290,88 @@ let simplify_define_symbol env r (recursive : Asttypes.rec_flag)
           env
           computation.computed_values args_types
       in
-      env, r
+      let computation =
+        match expr with
+        | Apply_cont (cont, None, []) ->
+          assert (Continuation.equal cont return_cont);
+          None
+        | _ ->
+          Some {
+            expr;
+            return_cont = computation.return_cont;
+            computed_values = computation.computed_values;
+          }
+      in
+      env, computation
   in
-  simplify_static_structure env r defn.static_structure
+  let env =
+    match recursive with
+    | Nonrecursive -> env
+    | Recursive ->
+      initial_environment_for_recursive_symbols env defn.static_structure
+  in
+  let unreachable, static_structure, env =
+    simplify_static_structure env defn.static_structure
+  in
+  let computation =
+    match computation with
+    | None -> Flambda.Expr.invalid ()
+    | Some computation ->
+      let params =
+        List.map (fun (var, kind) ->
+            let ty = Flambda_type.unknown kind Other in
+            let param = Parameter.wrap (Variable.rename var) in
+            Flambda.Typed_parameter.create param ty)
+          computation.computed_values
+      in
+      let expr : Flambda.Expr.t =
+        Let_cont {
+          body = computation.expr;
+          handlers = Nonrecursive {
+            name = computation.return_cont;
+            handler = {
+              params;
+              stub = false;
+              is_exn_handler = false;
+              handler = Flambda.Expr.invalid ();
+            };
+          };
+        }
+      in
+      let new_return_cont =
+        (* This continuation will never be called. *)
+        Continuation.create ()
+      in
+      { expr;
+        return_cont = new_return_cont;
+        computed_values = computation.computed_values;
+      }
+  in
+  let definition =
+    { static_structure;
+      computation;
+    }
+  in
+  definition, env
 
-let rec simplify_program_body env r (body : Program_body.t)
-      : Program_body.t * R.t =
+let rec simplify_program_body env (body : Program_body.t) : Program_body.t =
   match body with
   | Define_symbol (defn, body) ->
-    let defn, env, r = simplify_define_symbol env r Nonrecursive defn in
+    let defn, env = simplify_define_symbol env r Nonrecursive defn in
     let body = simplify_program_body env body in
-    Define_symbol (defn, body), r
+    Define_symbol (defn, body)
   | Define_symbol_rec (defn, body) ->
-    let defn, env, r = simplify_define_symbol env r Recursive defn in
+    let defn, env, r = simplify_define_symbol env Recursive defn in
     let body = simplify_program_body env body in
-    Define_symbol_rec (defn, body), r
-  | Root _ -> body, r
+    Define_symbol_rec (defn, body)
+  | Root _ -> body
 
-
-  | Let_rec_symbol (defs, program) ->
-    let env = define_let_rec_symbol_type env defs in
-    let env, r, defs =
-      List.fold_left (fun (env, r, defs) (symbol, def) ->
-          let r, def, ty =
-            simplify_constant_defining_value env r symbol def
-          in
-          let ty = T.augment_with_symbol ty symbol in
-          let env = E.redefine_symbol env symbol ty in
-          (env, r, (symbol, def) :: defs))
-        (env, r, []) defs
-    in
-    let program, r = simplify_program_body env r program in
-    Let_rec_symbol (defs, program), r
-  | Let_symbol (symbol, constant_defining_value, program) ->
-    let r, constant_defining_value, ty =
-      simplify_constant_defining_value env r symbol constant_defining_value
-    in
-    let ty = T.augment_with_symbol ty symbol in
-    let env = E.add_symbol env symbol ty in
-    let program, r = simplify_program_body env r program in
-    Let_symbol (symbol, constant_defining_value, program), r
-  | Initialize_symbol (symbol, tag, fields, program) ->
-    (* CR mshinwell: Work out how to deal with [Initialize_symbol] so that there
-       can be constant initializers amongst inconstant initializing
-       expressions -- with the constants filled in early. *)
-    let rec simplify_fields env r l =
-      match l with
-      | [] -> [], [], r
-      | (h, cont) :: t ->
-        let t', types, r = simplify_fields env r t in
-        let cont_type =
-          Continuation_approx.create_unknown ~name:cont ~num_params:1
-        in
-        let env = E.add_continuation env cont cont_type in
-        let h', r, uses =
-          let descr =
-            Format.asprintf "Initialize_symbol %a" Symbol.print symbol
-          in
-          simplify_toplevel env r h ~continuation:cont ~descr
-        in
-        let ty =
-          Simplify_aux.Continuation_uses.meet_of_args_types
-            uses ~num_params:1
-        in
-        let ty =
-          match ty with
-          | [ty] -> ty
-          | _ -> assert false
-        in
-        let tys = ty :: tys in
-        if t' == t && h' == h
-        then l, tys, r
-        else (h', cont) :: t', tys, r
-    in
-    let fields, tys, r = simplify_fields env r fields in
-    let ty =
-      T.augment_with_symbol (T.block tag (Array.of_list tys)) symbol
-    in
-    let module Backend = (val (E.backend env) : Backend_intf.S) in
-    let env = E.add_symbol env symbol ty in
-    let program, r = simplify_program_body env r program in
-    (* The [Initialize_symbol] will be turned into an [Effect], if suitable,
-       by [Remove_unused_program_constructs]. *)
-    Initialize_symbol (symbol, tag, fields, program), r
-  | Effect (expr, cont, program) ->
-    let expr : Flambda.Expr.t =
-      let discard_result_cont = Continuation.create () in
-      let result_var = Variable.create "effect_result" in
-      let result_ty = Flambda_ty.any_value Must_scan in
-      let result_param =
-        Flambda.Typed_parameter.create (Parameter.wrap result_var)
-          result_ty
-      in
-      Let_cont {
-        body = expr;
-        handlers = Nonrecursive {
-          name = discard_result_cont;
-          handler = {
-            params = [result_param];
-            stub = false;
-            is_exn_handler = false;
-            handler = Apply_cont (cont, None, []);
-          };
-        };
-      }
-    in
-    let cont_ty =
-      Continuation_approx.create_unknown ~name:cont ~num_params:0
-    in
-    let env = E.add_continuation env cont cont_ty in
-    let expr, r, uses =
-      let descr =
-        Format.asprintf "Effect (return continuation %a)"
-          Continuation.print cont
-      in
-      simplify_toplevel env r expr ~continuation:cont ~descr
-    in
-    begin match
-      Simplify_aux.Continuation_uses.meet_of_args_types
-        uses ~num_params:0
-    with
-    | [] -> ()
-    | _ -> assert false
-    end;
-    let program, r = simplify_program_body env r program in
-    Effect (expr, cont, program), r
-  | End root -> End root, r
-
-let simplify_program env r ~backend (program : Program.t) =
+let simplify_program env ~backend (program : Program.t) =
   let predef_exn_symbols = Backend.all_predefined_exception_symbols () in
-  let symbols = Symbol.Set.union program.imported_symbols predef_exn_symbols in
-  let env, r =
-    Symbol.Set.fold (fun symbol (env, r) ->
-        let env, ty =
-          match E.find_symbol_exn env symbol with
-          | exception Not_found ->
-            let ty = T.symbol_loaded_lazily (Flambda_kind.value ()) symbol in
-            E.add_symbol env symbol ty, ty
-          | ty -> env, ty
-        in
-        env, ty)
-      (env, r)
+  let env =
+    Symbol.Set.fold (fun symbol env -> E.import_symbol env symbol)
+      (Symbol.Set.union program.imported_symbols predef_exn_symbols)
+      env
   in
-  let program_body, r = simplify_program_body env r program.program_body in
-  let program = { program with program_body; } in
-  program, r
+  let program_body = simplify_program_body env program.program_body in
+  { program with program_body; }

@@ -32,7 +32,7 @@ module Static_part : sig
     | Var of Variable.t
 
   type t = private
-    | Block of Tag.Scannable.t * (Of_kind_value.t list)
+    | Block of Tag.Scannable.t * Asttypes.mutable_flag * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
     | Project_closure of Symbol.t * Closure_id.t
     | Boxed_float of float or_variable
@@ -67,6 +67,8 @@ module Static_part : sig
       -> t
   end
 *)
+
+  val needs_gc_root : t -> bool
 end
 
 module Program_body : sig
@@ -77,7 +79,11 @@ module Program_body : sig
   }
 
   type definition = {
+    (* Bindings of symbols in [static_structure] are simultaneous, not
+       ordered. *)
     static_structure : (Symbol.t * Static_part.t) list;
+    (* [computation] may not reference the symbols bound by the same
+       definition's [static_structure]. *)
     computation : computation option;
   }
 

@@ -22,6 +22,9 @@
 
 (* XXX needs fixing
 
+This also needs to remove unused continuation params from the return
+continuations in [Program_body.t] symbol definitions.
+
 let remove_parameters ~(handler : Flambda.Continuation_handler.t)
         ~to_remove : Flambda.with_wrapper =
   let freshened_params =

@@ -18,7 +18,6 @@
 
 val simplify_program
    : env:Simplify_env.t
-  -> Simplify_result.t
   -> backend:(module Backend_intf.S)
   -> program:Flambda_static.Program.t
   -> Flambda_static.Program.t
