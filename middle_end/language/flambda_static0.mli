@@ -16,8 +16,6 @@
 
 (** Flambda language terms that represent statically-allocated values. *)
 
-type t =
-
 module Field_of_kind_value : sig
   type t =
     | Symbol of Symbol.t
@@ -30,10 +28,13 @@ module Static_part : sig
     | Const of 'a
     | Var of Variable.t
 
+  (** The static structure of a symbol, possibly with holes, ready to be
+      filled with values computed at runtime.  As might be expected, this is
+      isomorphic to a subset of [Flambda_type.t]. *)
   type t = private
     | Block of Tag.Scannable.t * Asttypes.mutable_flag * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
-    | Project_closure of Symbol.t * Closure_id.t
+    | Closure of Symbol.t * Closure_id.t
     | Boxed_float of float or_variable
     | Boxed_int32 of Int32.t or_variable
     | Boxed_int64 of Int64.t or_variable
@@ -49,30 +50,45 @@ module Static_part : sig
       -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
       -> t
   end
-
-  val needs_gc_root : t -> bool
 end
 
 module Program_body : sig
   type computation = {
     expr : Expr.t;
+    (** The expression that is to be evaluated.  It must call [return_cont]
+        with its results. *)
     return_cont : Continuation.t;
+    (** The return continuation of [expr]. *)
     computed_values : (Variable.t * Flambda_kind.t) list;
+    (** Variables, with their kinds, used to reference results of the
+        computation [expr] inside the [static_structure] (see below).  This
+        list of variables must be in bijection with the parameters of the
+        [return_cont]. *)
   }
 
   type definition = {
-    (* Bindings of symbols in [static_structure] are simultaneous, not
-       ordered. *)
-    static_structure : (Symbol.t * Static_part.t) list;
-    (* [computation] may not reference the symbols bound by the same
-       definition's [static_structure]. *)
     computation : computation option;
+    (** A computation which provides values to fill in parts of the
+        statically-declared structure of one or more symbols.
+        [computation] may not reference the symbols bound by the same
+        definition's [static_structure]. *)
+    static_structure : (Symbol.t * Static_part.t) list;
+    (** The statically-declared structure of the symbols being declared.
+        Bindings of symbols in [static_structure] are simultaneous, not
+        ordered. *)
   }
 
   type t =
     | Define_symbol of definition * t
+      (** Define the given symbol(s).  No symbol defined by the
+          [definition] may be referenced by the same definition, only by
+          subsequent [Define_symbol] or [Define_symbol_rec] constructs. *)
     | Define_symbol_rec of definition * t
+      (** As for [Define_symbol] except that recursive uses of the symbols
+          being defined in the given [definition] may be used in the static
+          part of that [definition]. *)
     | Root of Symbol.t
+      (** The module block symbol for the compilation unit. *)
 end
 
 (** A "program" is the contents of one compilation unit.  It describes the

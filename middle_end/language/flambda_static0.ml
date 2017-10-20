@@ -50,7 +50,7 @@ module Static_part = struct
   type t = private
     | Block of Tag.Scannable.t * Asttypes.mutable_flag * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
-    | Project_closure of Symbol.t * Closure_id.t
+    | Closure of Symbol.t * Closure_id.t
     | Boxed_float of float or_variable
     | Boxed_int32 of Int32.t or_variable
     | Boxed_int64 of Int64.t or_variable
@@ -69,7 +69,7 @@ module Static_part = struct
       end
     | Set_of_closures set ->
       not (Var_within_closure.Map.is_empty set.free_vars)
-    | Project_closure _
+    | Closure _
     | Boxed_float _
     | Boxed_int32 _
     | Boxed_int64 _
@@ -95,23 +95,23 @@ module Static_part = struct
       | Set_of_closures set1, Set_of_closures set2 ->
         Set_of_closures_id.compare set1.function_decls.set_of_closures_id
           set2.function_decls.set_of_closures_id
-      | Project_closure (set1, closure_id1),
-          Project_closure (set2, closure_id2) ->
+      | Closure (set1, closure_id1),
+          Closure (set2, closure_id2) ->
         let c = Symbol.compare set1 set2 in
         if c <> 0 then c
         else Closure_id.compare closure_id1 closure_id2
       | Allocated_const _, Block _ -> -1
       | Allocated_const _, Set_of_closures _ -> -1
-      | Allocated_const _, Project_closure _ -> -1
+      | Allocated_const _, Closure _ -> -1
       | Block _, Allocated_const _ -> 1
       | Block _, Set_of_closures _ -> -1
-      | Block _, Project_closure _ -> -1
+      | Block _, Closure _ -> -1
       | Set_of_closures _, Allocated_const _ -> 1
       | Set_of_closures _, Block _ -> 1
-      | Set_of_closures _, Project_closure _ -> -1
-      | Project_closure _, Allocated_const _ -> 1
-      | Project_closure _, Block _ -> 1
-      | Project_closure _, Set_of_closures _ -> 1
+      | Set_of_closures _, Closure _ -> -1
+      | Closure _, Allocated_const _ -> 1
+      | Closure _, Block _ -> 1
+      | Closure _, Set_of_closures _ -> 1
 
     let equal t1 t2 =
       t1 == t2 || compare t1 t2 = 0
@@ -133,8 +133,8 @@ module Static_part = struct
       | Set_of_closures set_of_closures ->
         fprintf ppf "@[<2>(Set_of_closures (@ %a))@]"
           F0.Set_of_closures.print set_of_closures
-      | Project_closure (set_of_closures, closure_id) ->
-        fprintf ppf "(Project_closure (%a, %a))"
+      | Closure (set_of_closures, closure_id) ->
+        fprintf ppf "(Closure (%a, %a))"
           Symbol.print set_of_closures
           Closure_id.print closure_id
   end)
@@ -153,14 +153,14 @@ module Static_part = struct
     | Set_of_closures set_of_closures ->
       symbols := Symbol.Set.union !symbols
         (F0.Named.free_symbols (Set_of_closures set_of_closures))
-    | Project_closure (s, _) ->
+    | Closure (s, _) ->
       symbols := Symbol.Set.add s !symbols
 *)
 
   module Mappers = struct
     let map_set_of_closures t ~f =
       match t with
-      | Allocated_const _ | Block _ | Project_closure _ -> t
+      | Allocated_const _ | Block _ | Closure _ -> t
       | Set_of_closures set ->
         create_set_of_closures (f set)
   end
