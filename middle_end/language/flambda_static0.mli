@@ -16,11 +16,13 @@
 
 (** Flambda language terms that represent statically-allocated values. *)
 
-module Field_of_kind_value : sig
+module Of_kind_value : sig
   type t =
     | Symbol of Symbol.t
     | Tagged_immediate of Immediate.t
     | Dynamically_computed of Variable.t
+
+  val print : Format.formatter -> t -> unit
 end
 
 module Static_part : sig
@@ -50,6 +52,8 @@ module Static_part : sig
       -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
       -> t
   end
+
+  val print : Format.formatter -> t -> unit
 end
 
 module Program_body : sig
@@ -89,6 +93,8 @@ module Program_body : sig
           part of that [definition]. *)
     | Root of Symbol.t
       (** The module block symbol for the compilation unit. *)
+
+  val print : Format.formatter -> t -> unit
 end
 
 (** A "program" is the contents of one compilation unit.  It describes the
@@ -99,6 +105,8 @@ module Program : sig
     body : Program_body.t;
   }
 
+  val print : Format.formatter -> t -> unit
+
   (** All symbols from the given program which must be registered as roots
       with the GC.  (This does not count any imported symbols.) *)
   val gc_roots : t -> Symbol.Set.t
@@ -106,6 +114,4 @@ module Program : sig
   (** All free symbols in the given program.  Imported symbols are not treated
       as free. *)
   val free_symbols : t -> Symbol.Set.t
-
-  val print : Format.formatter -> t -> unit
 end
