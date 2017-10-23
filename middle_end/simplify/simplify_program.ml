@@ -28,44 +28,30 @@ type 'a or_wrong =
   | Ok of 'a
   | Wrong
 
-let initial_environment_for_recursive_symbols env defn =
-  (* First declare an empty version of the symbols *)
-  let env =
-    List.fold_left (fun env (symbol, _) ->
-        E.add_symbol env symbol (T.unresolved (Symbol symbol)))
-      env defs
-  in
-  let rec loop times env =
-    if times <= 0 then
-      env
-    else
-      let env =
-        List.fold_left (fun env (symbol, constant_defining_value) ->
-            let ty =
-              constant_defining_value_ty env constant_defining_value
-            in
-            E.redefine_symbol env symbol ty)
-          env defs
-      in
-      loop (times-1) env
-  in
-  loop 2 env
-
 let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
       : _ or_wrong =
   let importer = E.importer env in
-  let simplify_float_fields fields =
-    List.fold_left
-      (fun (done_something, fields_rev) (field : _ Static_part.or_variable) ->
-        match field with
-        | Const _ -> done_something, (field :: fields_rev)
-        | Var var ->
-          begin match T.prove_naked_float ~importer ty with
-          | None -> done_something, (field :: fields_rev)
-          | Some f -> true, ((Const f) :: fields_rev)
-          end)
-      (false, [])
-      fields
+  let simplify_float_fields mut fields =
+    let or_unknown field =
+      match mut with
+      | Immutable -> Some field
+      | Mutable -> None
+    in
+    let done_something, fields_rev =
+      List.fold_left
+        (fun (done_something, fields_rev) (field : _ Static_part.or_variable) ->
+          match field with
+          | Const f -> done_something, ((field, or_unknown f) :: fields_rev)
+          | Var var ->
+            begin match T.prove_naked_float ~importer ty with
+            | None -> done_something, ((field, None) :: fields_rev)
+            | Some f -> true, ((Const f, or_unknown f) :: fields_rev)
+            end)
+        (false, [])
+        fields
+    in
+    let static_part_fields, fields = List.split (List.rev fields_rev) in
+    done_something, static_part_fields, fields
   in
   match static_part with
   | Block (tag, mut, fields) ->
@@ -151,14 +137,19 @@ let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
     | Wrong -> Wrong
     end
   | Mutable_float_array { initial_value = fields; } ->
-    let done_something, fields = simplify_float_fields fields in
-    let ty = T.mutable_float_array ~size:(List.length fields) in
+    let done_something, initial_value, fields =
+      simplify_float_fields Mutable fields
+    in
+    let ty = T.float_array fields in
     if not done_something then Ok (static_part, ty)
-    else Ok (Mutable_float_array { initial_value = List.rev fields; }, ty)
+    else Ok (Mutable_float_array { initial_value; }, ty)
   | Immutable_float_array fields ->
-    let done_something, fields = simplify_float_fields fields in
-    if not done_something then Ok (static_part, ...)
-    else Ok (Immutable_float_array (List.rev fields), ...)
+    let done_something, initial_value, fields =
+      simplify_float_fields Immutable fields
+    in
+    let ty = T.float_array fields in
+    if not done_something then Ok (static_part, ty)
+    else Ok (Immutable_float_array { initial_value; }, ty)
   | Mutable_string { initial_value = Var var; } ->
     let ty = E.find env var in
     begin match T.prove_string ~importer ty with
@@ -195,6 +186,29 @@ let simplify_static_structure initial_env str =
       str
   in
   unreachable, env, List.rev str
+
+let initial_environment_for_recursive_symbols env defn =
+  (* First declare an empty version of the symbols *)
+  let env =
+    List.fold_left (fun env (symbol, _) ->
+        E.add_symbol env symbol (T.unresolved (Symbol symbol)))
+      env defs
+  in
+  let rec loop times env =
+    if times <= 0 then
+      env
+    else
+      let env =
+        List.fold_left (fun env (symbol, constant_defining_value) ->
+            let ty =
+              constant_defining_value_ty env constant_defining_value
+            in
+            E.redefine_symbol env symbol ty)
+          env defs
+      in
+      loop (times-1) env
+  in
+  loop 2 env
 
 let simplify_define_symbol env (recursive : Asttypes.rec_flag)
       (defn : Program_body.definition)

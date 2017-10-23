@@ -212,6 +212,7 @@ end) = struct
     | Boxed_int32 of ty_naked_int32
     | Boxed_int64 of ty_naked_int64
     | Boxed_nativeint of ty_naked_nativeint
+    (* CR mshinwell: Add an [Immutable_array] module *)
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
     | Closure of {
@@ -219,7 +220,7 @@ end) = struct
         closure_id : Closure_id.t
       }
     | String of string_ty
-    | Float_array of float_array_ty
+    | Float_array of ty_naked_float array
 
   and inlinable_function_declaration = {
     closure_origin : Closure_origin.t;
@@ -253,15 +254,6 @@ end) = struct
     set_of_closures_origin : Set_of_closures_origin.t;
     function_decls : function_declaration Closure_id.Map.t;
     closure_elements : ty_value Var_within_closure.Map.t;
-  }
-
-  and float_array_contents =
-    | Contents of ty_naked_float array
-    | Unknown_or_mutable
-
-  and float_array_ty = {
-    contents : float_array_contents;
-    size : int;
   }
 
   and of_kind_naked_immediate =

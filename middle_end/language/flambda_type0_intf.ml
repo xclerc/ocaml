@@ -133,7 +133,7 @@ module type S = sig
         closure_id : Closure_id.t;
       }
     | String of string_ty
-    | Float_array of float_array_ty
+    | Float_array of ty_naked_float array
 
   and inlinable_function_declaration = private {
     closure_origin : Closure_origin.t;
@@ -177,15 +177,6 @@ module type S = sig
     set_of_closures_origin : Set_of_closures_origin.t;
     function_decls : function_declaration Closure_id.Map.t;
     closure_elements : ty_value Var_within_closure.Map.t;
-  }
-
-  and float_array_contents = private
-    | Contents of ty_naked_float array
-    | Unknown_or_mutable
-
-  and float_array_ty = private {
-    contents : float_array_contents;
-    size : int;
   }
 
   and of_kind_naked_immediate =
