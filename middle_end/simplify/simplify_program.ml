@@ -188,27 +188,13 @@ let simplify_static_structure initial_env str =
   unreachable, env, List.rev str
 
 let initial_environment_for_recursive_symbols env defn =
-  (* First declare an empty version of the symbols *)
   let env =
-    List.fold_left (fun env (symbol, _) ->
-        E.add_symbol env symbol (T.unresolved (Symbol symbol)))
-      env defs
+    List.fold_left (fun env (symbol, _static_part) ->
+        E.add_symbol env symbol (T.unresolved_symbol symbol))
+      env defn
   in
-  let rec loop times env =
-    if times <= 0 then
-      env
-    else
-      let env =
-        List.fold_left (fun env (symbol, constant_defining_value) ->
-            let ty =
-              constant_defining_value_ty env constant_defining_value
-            in
-            E.redefine_symbol env symbol ty)
-          env defs
-      in
-      loop (times-1) env
-  in
-  loop 2 env
+  let _unreachable, env, str = simplify_static_structure env defn in
+  env
 
 let simplify_define_symbol env (recursive : Asttypes.rec_flag)
       (defn : Program_body.definition)
