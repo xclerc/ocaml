@@ -561,6 +561,8 @@ module Set_of_closures : sig
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 
+  val to_type : t -> flambda_type
+
   val join : (t -> t -> t) with_importer
 end = struct
   type t = {
@@ -590,6 +592,15 @@ end = struct
       function_decls = set.function_decls;
       closure_elements = set.closure_elements;
     }
+
+  let to_type t =
+    match t.set_of_closures_id_and_origin with
+    | Not_all_values_known -> any_value Must_scan Other
+    | Exactly (set_of_closures_id, set_of_closures_origin) ->
+      create_set_of_closures ~set_of_closures_id
+        ~set_of_closures_origin
+        ~function_decls:t.function_decls
+        ~closure_elements:t.closure_elements
 
   let make_non_inlinable_function_declaration (f : function_declaration)
         : function_declaration =

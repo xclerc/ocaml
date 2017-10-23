@@ -68,43 +68,49 @@ let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
       fields
   in
   match static_part with
-  | Block (tag, fields) ->
-    let fields =
+  | Block (tag, mut, fields) ->
+    let or_unknown scanning ty =
+      match mut with
+      | Immutable -> ty
+      | Mutable -> T.any_value scanning Other
+    in
+    let fields_and_types =
       List.map (fun (field : Flambda_static0.Field_of_kind_value.t) ->
           match field with
           | Symbol sym ->
-            E.check_symbol_bound env sym;
-            field
-          | Tagged_immediate _ -> field
+            let ty = E.find_symbol env sym in
+            field, or_unknown Can_scan ty
+          | Tagged_immediate imm ->
+            field, or_unknown Can_scan (T.this_tagged_immediate imm)
           | Dynamically_computed var ->
             let ty = E.find env var in
             begin match T.symbol ty with
-            | Some sym -> Symbol sym
+            | Some sym -> Symbol sym, or_unknown Can_scan ty
             | None ->
               match T.prove_tagged_immediate ~importer ty with
-              | Some imm -> Tagged_immediate imm
-              | None -> field
+              | Some imm ->
+                Tagged_immediate imm,
+                  or_unknown Can_scan (T.this_tagged_immediate imm)
+              | None -> field, or_unknown Must_scan ty
             end)
         fields
     in
-    Ok (Block (tag, fields), ...)
+    let fields, field_types = List.split fields_and_types in
+    assert (match mut with
+      | Immutable -> ()
+      | Mutable ->
+        List.for_all (fun ty -> not (T.known ~importer:(E.importer env) ty))
+          field_types);
+    let ty = T.block tag field_types in
+    Ok (Block (tag, fields), ty)
   | Set_of_closures set ->
     let r = R.create () in
-    let set, _r = Simplify_named.simplify_set_of_closures env r set in
-    let set' =
-      (* this should be like normal simplification for this -- share? *)
-      T.create_set_of_closures ~set_of_closures_id:...
-        ~set_of_closures_origin:...
-        ~function_decls:...
-        ~closure_elements:...
-    in
-    let ty = T.set_of_closures set' in
+    let set, ty, _r = Simplify_named.simplify_set_of_closures env r set in
     Ok (Set_of_closures set, ty)
   | Project_closure (sym, closure_id) ->
     let ty = E.find_symbol env sym in
     begin match T.prove_set_of_closures ~importer ty with
-    (* XXX the set of closures types don't match on the next line *)
-    | Ok set -> Ok (Project_closure (sym, closure_id), set)
+    | Ok set -> Ok (static_part, T.Set_of_closures.to_type ty)
     | Unknown -> Ok (static_part, T.any_value Must_scan Other)
     | Wrong -> Wrong
     end
@@ -159,14 +165,16 @@ let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
     | Ok s ->
       let ty = T.mutable_string ~size:(String.length s) in
       Ok (Mutable_string { initial_value = Const s; }, ty)
-    | Unknown -> Ok (static_part, ...)
+    | Unknown -> Ok (static_part, T.any_value Must_scan Other)
     | Wrong -> Wrong
     end
   | Immutable_string (Var var) ->
     let ty = E.find env var in
     begin match T.prove_string ~importer ty with
     | Ok s -> Ok (Immutable_string (Const s), T.this_immutable_string s)
-    | Unknown -> Ok (static_part, ...)
+    (* CR mshinwell: Should the types be able to represent "immutable string
+       of unknown length"? *)
+    | Unknown -> Ok (static_part, T.any_value Must_scan Other)
     | Wrong -> Wrong
     end
 

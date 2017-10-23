@@ -853,7 +853,7 @@ end) = struct
       symbol = None;
     }
 
-  let immutable_string_as_ty_value str : ty_value =
+  let this_immutable_string_as_ty_value str : ty_value =
     let string_ty : string_ty =
       { contents = Contents str;
         size = String.length str;
@@ -865,7 +865,7 @@ end) = struct
     }
 
   let this_immutable_string str : t =
-    Value (immutable_string_as_ty_value str)
+    Value (this_immutable_string_as_ty_value str)
 
   let mutable_string ~size : t =
     let string_ty : string_ty =

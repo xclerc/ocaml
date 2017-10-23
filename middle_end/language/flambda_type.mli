@@ -69,6 +69,9 @@ val this_naked_nativeint_named : Targetint.t -> Flambda0.Named.t * t
 (** Whether the given type says that a term of that type is unreachable. *)
 val is_bottom : (t -> bool) with_importer
 
+(* CR mshinwell: The problem with these next two is that there may be
+   union types which yield "Unknown" (at the level of the join functions in
+   this module) even though they are not directly represented as such. *)
 (** Determine whether the given type provides any information about an
     Flambda term of that type.  (This holds just when the type is not
     one of the [Unknown]s.) *)
@@ -102,6 +105,8 @@ module Set_of_closures : sig
   val set_of_closures_var : t -> Variable.t option
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
+
+  val to_type : t -> flambda_type
 end
 
 module Summary : sig

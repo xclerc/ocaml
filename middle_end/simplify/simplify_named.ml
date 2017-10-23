@@ -488,7 +488,7 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
 
 let simplify_set_of_closures original_env r
       (set_of_closures : Flambda.Set_of_closures.t)
-      : Flambda.Set_of_closures.t * R.t * Freshening.Project_var.t =
+      : Flambda.Set_of_closures.t * T.t * R.t =
   let function_decls =
     let module Backend = (val (E.backend original_env) : Backend_intf.S) in
     (* CR-soon mshinwell: Does this affect
@@ -635,8 +635,8 @@ let simplify_set_of_closures original_env r
       ~free_vars:(Variable.Map.map fst free_vars)
       ~direct_call_surrogates
   in
-  let r = ret r (T.set_of_closures value_set_of_closures) in
-  set_of_closures, r, value_set_of_closures.freshening
+  let ty = T.set_of_closures value_set_of_closures in
+  set_of_closures, ty, r
 
 let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
       ~size_int ~big_endian : Flambda.Named.t * T.t * Inlining_cost.Benefit.t =
