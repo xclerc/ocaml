@@ -82,6 +82,23 @@ end
 module rec Expr : sig
   include module type of struct include Flambda0.Expr end
 
+  (* CR mshinwell: Check that apply_cont is well-formed when there is a
+     trap installation or removal. *)
+  (* CR-someday pchambart: for sum types, we should probably add an exhaustive
+     pattern in ignores functions to be reminded if a type change *)
+  (* CR-someday mshinwell: We should make "direct applications should not have
+     overapplication" be an invariant throughout.  At the moment I think this is
+     only true after [Simplify] has split overapplications. *)
+  (* CR-someday mshinwell: What about checks for shadowed variables and
+     symbols? *)
+  (** Perform well-formedness checks on the expression. *)
+  val invariant
+     : (Invariant_env.t
+    -> return_cont:Continuation.t
+    -> return_cont_arity:Flambda_arity.t
+    -> t
+    -> unit) Flambda_type.with_importer
+
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool
 

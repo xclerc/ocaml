@@ -501,6 +501,124 @@ module Program = struct
 *)
 
 *)
+
+  let invariant (t : t) =
+    let declared_var_within_closure (flam : t) =
+      let bound = ref Var_within_closure.Set.empty in
+      Iterators.iter_set_of_closures flam
+        ~f:(fun ~constant:_ { Flambda.Set_of_closures. free_vars; _ } ->
+          Var_within_closure.Map.iter (fun in_closure _ ->
+              bound := Var_within_closure.Set.add in_closure !bound)
+            free_vars);
+      !bound
+    in
+    let declared_closure_ids program =
+      let bound = ref Closure_id.Set.empty in
+      Iterators.iter_set_of_closures program
+        ~f:(fun ~constant:_ { Flambda.Set_of_closures. function_decls; _; } ->
+          Closure_id.Map.iter (fun closure_id _ ->
+              bound := Closure_id.Set.add closure_id !bound)
+            function_decls.funs);
+      !bound
+    in
+    let declared_set_of_closures_ids program =
+      let bound = ref Set_of_closures_id.Set.empty in
+      let bound_multiple_times = ref None in
+      let add_and_check var =
+        if Set_of_closures_id.Set.mem var !bound
+        then bound_multiple_times := Some var;
+        bound := Set_of_closures_id.Set.add var !bound
+      in
+      Iterators.iter_set_of_closures program
+        ~f:(fun ~constant:_ { Flambda.Set_of_closures. function_decls; _; } ->
+            add_and_check function_decls.set_of_closures_id);
+      !bound, !bound_multiple_times
+    in
+    let no_set_of_closures_id_is_bound_multiple_times program =
+      match declared_set_of_closures_ids program with
+      | _, Some set_of_closures_id ->
+        raise (Set_of_closures_id_is_bound_multiple_times set_of_closures_id)
+      | _, None -> ()
+    in
+    let used_closure_ids (program:t) =
+      let used = ref Closure_id.Set.empty in
+      let f (flam : Flambda.Named.t) =
+        match flam with
+        | Project_closure { closure_id; _} ->
+          used := Closure_id.Set.union closure_id !used;
+        | Move_within_set_of_closures { closure = _; move; } ->
+          Closure_id.Map.iter (fun start_from move_to ->
+            used := Closure_id.Set.add start_from !used;
+            used := Closure_id.Set.add move_to !used)
+            move
+        | Project_var { closure = _; var } ->
+          used := Closure_id.Set.union (Closure_id.Map.keys var) !used
+        | Set_of_closures _ | Var _ | Symbol _ | Const _ | Allocated_const _
+        | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _ -> ()
+      in
+      (* CR-someday pchambart: check closure_ids of constant_defining_values'
+        project_closures *)
+      Iterators.iter_named ~f program;
+      !used
+    in
+    let used_vars_within_closures (flam:t) =
+      let used = ref Var_within_closure.Set.empty in
+      let f (flam : Flambda.Named.t) =
+        match flam with
+        | Project_var { closure = _; var; } ->
+          Closure_id.Map.iter (fun _ var ->
+            used := Var_within_closure.Set.add var !used)
+            var
+        | _ -> ()
+      in
+      Iterators.iter_named ~f flam;
+      !used
+    in
+    let every_used_function_from_current_compilation_unit_is_declared
+          (program : Flambda_static.Program.t) =
+      let current_compilation_unit = Compilation_unit.get_current_exn () in
+      let declared = declared_closure_ids program in
+      let used = used_closure_ids program in
+      let used_from_current_unit =
+        Closure_id.Set.filter (fun cu ->
+            Closure_id.in_compilation_unit cu current_compilation_unit)
+          used
+      in
+      let counter_examples =
+        Closure_id.Set.diff used_from_current_unit declared
+      in
+      if Closure_id.Set.is_empty counter_examples
+      then ()
+      else raise (Unbound_closure_ids counter_examples)
+    in
+    let every_used_var_within_closure_from_current_compilation_unit_is_declared
+          (flam:Flambda_static.Program.t) =
+      let current_compilation_unit = Compilation_unit.get_current_exn () in
+      let declared = declared_var_within_closure flam in
+      let used = used_vars_within_closures flam in
+      let used_from_current_unit =
+        Var_within_closure.Set.filter (fun cu ->
+            Var_within_closure.in_compilation_unit cu current_compilation_unit)
+          used
+      in
+      let counter_examples =
+        Var_within_closure.Set.diff used_from_current_unit declared in
+      if Var_within_closure.Set.is_empty counter_examples
+      then ()
+      else raise (Unbound_vars_within_closures counter_examples)
+    in
+    variable_and_symbol_invariants flam;
+    no_set_of_closures_id_is_bound_multiple_times flam;
+    every_used_function_from_current_compilation_unit_is_declared flam;
+    every_used_var_within_closure_from_current_compilation_unit_is_declared
+      flam;
+    Flambda_static.Program.Iterators.iter_toplevel_exprs flam
+      ~f:(fun ~continuation_arity:_ _cont flam ->
+        primitive_invariants flam
+          ~no_access_to_global_module_identifiers:cmxfile;
+        every_declared_closure_is_from_current_compilation_unit flam);
+    Push_pop_invariants.check flam;
+    Continuation_scoping.check ~importer flam
 end
 
 
@@ -546,4 +664,81 @@ end
     let field : Field_of_kind_value.t = Dynamically_computed thing in
     declare_simple t (Block (Tag.Scannable.zero, [field]))
 *)
+*)
+
+(* Old Flambda_invariants code:
+
+  let loop_constant_defining_value env
+        (const : Flambda_static.Constant_defining_value.t) =
+    match const with
+    | Allocated_const c ->
+      ignore_allocated_const c
+    | Block (tag, fields) ->
+      ignore_scannable_tag tag;
+      List.iter
+        (fun (fields : Flambda_static.Constant_defining_value_block_field.t) ->
+          match fields with
+          | Tagged_immediate i -> ignore_immediate i
+          | Symbol s -> check_symbol_is_bound env s)
+        fields
+    | Set_of_closures set_of_closures ->
+      loop_set_of_closures env set_of_closures;
+      (* Constant sets of closures must not have free variables.  This should
+         be enforced by an abstract type boundary (see [Flambda_static0]), so
+         we just [assert false] if this fails. *)
+      if not (Var_within_closure.Map.is_empty set_of_closures.free_vars) then
+      begin
+        assert false
+      end
+    | Project_closure (symbol, closure_id) ->
+      ignore_closure_id closure_id;
+      check_symbol_is_bound env symbol
+  in
+  let rec loop_program_body env (program : Flambda_static.Program_body.t) =
+    match program with
+    | Let_rec_symbol (defs, program) ->
+      let env =
+        List.fold_left (fun env (symbol, _) ->
+            add_binding_occurrence_of_symbol env symbol)
+          env defs
+      in
+      List.iter (fun (_, def) ->
+          loop_constant_defining_value env def)
+        defs;
+      loop_program_body env program
+    | Let_symbol (symbol, def, program) ->
+      loop_constant_defining_value env def;
+      let env = add_binding_occurrence_of_symbol env symbol in
+      loop_program_body env program
+    | Initialize_symbol (symbol, descr, program) ->
+      let { Flambda_static.Program_body.Initialize_symbol.
+            expr; return_cont; return_arity; } = descr
+      in
+      loop env expr;
+      ignore_continuation return_cont;
+      ignore_flambda_arity return_arity;
+      let env = add_binding_occurrence_of_symbol env symbol in
+      loop_program_body env program
+    | Effect (expr, cont, program) ->
+      loop env expr;
+      ignore_continuation cont;
+      loop_program_body env program
+    | End root ->
+      check_symbol_is_bound env root
+  in
+  let env =
+    Symbol.Set.fold (fun symbol env ->
+        add_binding_occurrence_of_symbol env symbol)
+      program.imported_symbols
+      (Variable.Set.empty, Mutable_variable.Set.empty, Symbol.Set.empty)
+  in
+  loop_program_body env program.program_body
+
+  let check program =
+    Flambda_static.Program.Iterators.iter_toplevel_exprs program
+      ~f:well_formed_trap
+
+  let check ~importer program =
+    Flambda_static.Program.Iterators.iter_toplevel_exprs program
+      ~f:(check_expr ~importer)
 *)

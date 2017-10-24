@@ -32,6 +32,27 @@ module Switch = F0.Switch
 module Trap_action = F0.Trap_action
 module With_free_variables = F0.With_free_variables
 
+let ignore_call_kind (_ : Flambda.Call_kind.t) = ()
+let ignore_debuginfo (_ : Debuginfo.t) = ()
+let ignore_meth_kind (_ : Lambda.meth_kind) = ()
+let ignore_targetint (_ : Targetint.t) = ()
+let ignore_targetint_set (_ : Targetint.Set.t) = ()
+let ignore_bool (_ : bool) = ()
+let ignore_continuation (_ : Continuation.t) = ()
+let ignore_primitive ( _ : Lambda.primitive) = ()
+let ignore_const (_ : Flambda.Const.t) = ()
+let ignore_immediate (_ : Immediate.t) = ()
+let ignore_allocated_const (_ : Allocated_const.t) = ()
+let ignore_flambda_type (_ : Flambda_type.t) = ()
+let ignore_flambda_arity (_ : Flambda_arity.t) = ()
+let ignore_closure_id (_ : Closure_id.t) = ()
+let ignore_closure_id_set (_ : Closure_id.Set.t) = ()
+let ignore_closure_id_map (_ : 'a -> unit) (_ : 'a Closure_id.Map.t) = ()
+let ignore_var_within_closure (_ : Var_within_closure.t) = ()
+let ignore_scannable_tag (_ : Tag.Scannable.t) = ()
+let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
+let ignore_specialise_attribute (_ : Lambda.specialise_attribute) = ()
+
 module Free_vars = struct
   include F0.Free_vars
 
@@ -69,6 +90,12 @@ end
 module rec Expr : sig
   include module type of F0.Expr
 
+  val invariant
+     : (Invariant_env.t
+    -> return_cont:Continuation.t
+    -> return_cont_arity:Flambda_arity.t
+    -> t
+    -> unit) Flambda_type.with_importer
   val equal : t -> t -> bool
   val make_closure_declaration
      : (id:Variable.t
@@ -239,11 +266,11 @@ end = struct
     match expr with
     | Let { var; _ } -> Format.asprintf "let %a" Variable.print var
     | Let_mutable _ -> "let_mutable"
-    | Let_cont  _ -> "catch"
+    | Let_cont  _ -> "let_cont"
     | Apply _ -> "apply"
-    | Apply_cont  _ -> "staticraise"
+    | Apply_cont  _ -> "apply_cont"
     | Switch _ -> "switch"
-    | Invalid _ -> "unreachable"
+    | Invalid _ -> "invalid"
 
   let bind ~bindings ~body =
     List.fold_left (fun expr (var, kind, var_def) ->
@@ -646,7 +673,6 @@ end = struct
           finish ~last_body ~acc ~rev_lets
       in
       loop t ~acc:init ~rev_lets:[]
-  end
 
   (* CR-soon mshinwell: this should use the explicit ignore functions *)
   let toplevel_substitution ~importer sb tree =
@@ -905,6 +931,439 @@ end = struct
       (fun _named -> ())
       expr;
     Continuation.Tbl.to_map counts
+
+  module Push_and_pop_invariants = struct
+    type stack_t =
+      | Root
+      | Var (* Debug *)
+      | Link of stack_type
+      | Push of Trap_id.t * Continuation.t * stack_type
+
+    and stack_type = stack_t ref
+
+    type env = stack_type Continuation.Map.t
+
+    let rec repr t =
+      match !t with
+      | Link s ->
+        let u = repr s in
+        t := u;
+        u
+      | v -> v
+
+    let rec occur_check cont t checked =
+      if t == checked then begin
+        Misc.fatal_errorf "Malformed exception continuation \
+            (recursive stack) for %a"
+          Continuation.print cont
+      end;
+      match !checked with
+      | Var
+      | Root -> ()
+      | Link s
+      | Push (_, _, s) ->
+        occur_check cont t s
+
+    let rec unify_stack cont t1 t2 =
+      if t1 == t2 then ()
+      else
+        match repr t1, repr t2 with
+        | Link _, _ | _, Link _ -> assert false
+        | Var, _ ->
+          occur_check cont t1 t2;
+          t1 := Link t2
+        | _, Var ->
+          occur_check cont t2 t1;
+          t2 := Link t1
+        | Root, Root -> ()
+        | Push (id1, c1, s1), Push (id2, c2, s2) ->
+          if not (Trap_id.equal id1 id2) then begin
+            Misc.fatal_errorf "Malformed exception continuation \
+                (mismatched trap ID) for %a"
+              Continuation.print cont
+          end;
+          if not (Continuation.equal c1 c2) then begin
+            Misc.fatal_errorf "Malformed exception continuation \
+                (mismatched continuations, %a vs. %a) for %a"
+              Continuation.print c1
+              Continuation.print c2
+              Continuation.print cont
+          end;
+          unify_stack cont s1 s2
+        | Root, Push _ | Push _, Root ->
+          Misc.fatal_errorf "Malformed exception continuation \
+              (root stack is not empty) for %a"
+            Continuation.print cont
+
+    let var () = ref Var
+
+    let push id cont s = ref (Push (id, cont, s))
+
+    let define table k stack =
+      if Continuation.Map.mem k table then begin
+        Misc.fatal_errorf "Multiple definitions of continuation %a"
+          Continuation.print k
+      end;
+      Continuation.Map.add k stack table
+
+    let rec loop (env:env) current_stack (expr : Flambda.Expr.t) =
+      match expr with
+      | Let { body; _ } | Let_mutable { body; _ } ->
+        loop env current_stack body
+      | Let_cont { body; handlers; } ->
+        let handler_stack = var () in
+        let env =
+          match handlers with
+          | Nonrecursive { name; handler; } ->
+            loop env handler_stack handler.handler;
+            define env name handler_stack
+          | Recursive handlers ->
+            let recursive_env =
+              Continuation.Map.fold (fun cont _handler env ->
+                  define env cont handler_stack)
+                handlers
+                env
+            in
+            Continuation.Map.iter (fun _cont
+                    (handler : Flambda.Continuation_handler.t) ->
+                loop recursive_env handler_stack handler.handler)
+              handlers;
+            Continuation.Map.fold (fun cont _handler env ->
+                define env cont handler_stack)
+              handlers
+              env
+        in
+        loop env current_stack body
+      | Apply_cont ( cont, exn, _args ) ->
+        let cont_stack =
+          match Continuation.Map.find cont env with
+          | exception Not_found ->
+            Misc.fatal_errorf "Unbound continuation %a in Apply_cont %a"
+              Continuation.print cont
+              Flambda.Expr.print expr
+          | cont_stack -> cont_stack
+        in
+        let stack, cont_stack =
+          match exn with
+          | None ->
+            current_stack,
+            cont_stack
+          | Some (Push { id; exn_handler }) ->
+            push id exn_handler current_stack,
+            cont_stack
+          | Some (Pop { id; exn_handler }) ->
+            current_stack,
+            push id exn_handler cont_stack
+        in
+        unify_stack cont stack cont_stack
+      | Apply { continuation; _ } ->
+        let stack = current_stack in
+        let cont_stack =
+          match Continuation.Map.find continuation env with
+          | exception Not_found ->
+            Misc.fatal_errorf "Unbound continuation %a in application %a"
+              Continuation.print continuation
+              Flambda.Expr.print expr
+          | cont_stack -> cont_stack
+        in
+        unify_stack continuation stack cont_stack
+      | Switch (_,{ consts; failaction; _ } ) ->
+        List.iter (fun (_, cont) ->
+          let cont_stack =
+            match Continuation.Map.find cont env with
+            | exception Not_found ->
+              Misc.fatal_errorf "Unbound continuation %a in switch %a"
+                Continuation.print cont
+                Flambda.Expr.print expr
+            | cont_stack -> cont_stack
+          in
+          unify_stack cont cont_stack current_stack)
+          consts;
+        begin match failaction with
+        | None -> ()
+        | Some cont ->
+          let cont_stack =
+            match Continuation.Map.find cont env with
+            | exception Not_found ->
+              Misc.fatal_errorf "Unbound continuation %a in switch %a"
+                Continuation.print cont
+                Flambda.Expr.print expr
+            | cont_stack -> cont_stack
+          in
+          unify_stack cont cont_stack current_stack
+        end
+      | Invalid _ -> ()
+
+    let check k (expr : Flambda.Expr.t) =
+      let root = ref Root in
+      let env = Continuation.Map.singleton k root in
+      loop env root expr
+  end
+
+  let invariant ~importer ~return_cont ~return_cont_arity expr =
+    let module E = Invariant_env in
+    let rec loop ~importer env (expr : t) =
+      match expr with
+    | Let { var; defining_expr; body; _ } ->
+      loop_named env defining_expr;
+      loop (add_binding_occurrence env var) body
+      | Let { var; kind; body; _ } ->
+        let env = add_variable env var kind in
+        loop ~importer env body
+      | Let_mutable { body; _ } -> loop ~importer env body
+    | Let_mutable { var = mut_var; initial_value = var;
+                    body; contents_type; } ->
+      ignore_flambda_type contents_type;
+      check_variable_is_bound env var;
+      loop (add_mutable_binding_occurrence env mut_var) body
+      | Let_cont { body; handlers; } ->
+    | Let_cont { body; handlers; } ->
+      loop env body;
+      begin match handlers with
+      | Nonrecursive { name; handler = {
+          params; stub; is_exn_handler; handler; }; } ->
+        ignore_continuation name;
+        ignore_bool stub;
+        ignore_bool is_exn_handler;
+        let params = Flambda.Typed_parameter.List.vars params in
+        loop (add_binding_occurrences env params) handler
+      | Recursive handlers ->
+        Continuation.Map.iter (fun name
+                ({ params; stub; is_exn_handler; handler; }
+                  : Flambda.Continuation_handler.t) ->
+            ignore_bool stub;
+            if is_exn_handler then begin
+              Misc.fatal_errorf "Continuation %a is declared [Recursive] but \
+                  is an exception handler"
+                Continuation.print name
+            end;
+            let params = Flambda.Typed_parameter.List.vars params in
+            loop (add_binding_occurrences env params) handler)
+          handlers
+      end
+        let env =
+          match handlers with
+          | Nonrecursive { name; handler; } ->
+            let kind = if handler.is_exn_handler then Exn_handler else Normal in
+            let params = handler.params in
+            let arity = Flambda.Typed_parameter.List.arity ~importer params in
+            let env = add_typed_parameters ~importer env params in
+            loop ~importer env handler.handler;
+            add_continuation env name arity kind
+          | Recursive handlers ->
+            let recursive_env =
+              Continuation.Map.fold (fun cont
+                      (handler : Flambda.Continuation_handler.t) env ->
+                  let arity =
+                    Flambda.Typed_parameter.List.arity ~importer handler.params
+                  in
+                  let kind =
+                    if handler.is_exn_handler then Exn_handler else Normal
+                  in
+                  add_continuation env cont arity kind)
+                handlers
+                env
+            in
+            Continuation.Map.iter (fun name
+                    ({ params; stub; is_exn_handler; handler; }
+                      : Flambda.Continuation_handler.t) ->
+                ignore_continuation name;
+                let env = add_typed_parameters ~importer recursive_env params in
+                loop ~importer env handler;
+                ignore_bool stub;
+                ignore_bool is_exn_handler)
+              handlers;
+            Continuation.Map.fold (fun cont
+                    (handler : Flambda.Continuation_handler.t) env ->
+                let arity =
+                  Flambda.Typed_parameter.List.arity ~importer handler.params
+                in
+                let kind =
+                  if handler.is_exn_handler then Exn_handler else Normal
+                in
+                add_continuation env cont arity kind)
+              handlers
+              env
+        in
+        loop ~importer env body
+      | Apply_cont (cont, trap_action, args) ->
+        begin match trap_action with
+        | None -> ()
+        | Some (Push { id = _; exn_handler; })
+        | Some (Pop { id = _; exn_handler; }) -> ignore_continuation exn_handler
+        end;
+        List.iter (E.check_variable_is_bound env) args;
+        let args_arity =
+          List.map (fun arg ->
+              match Variable.Map.find arg env.variables with
+              | kind -> kind
+              | exception Not_found ->
+                Misc.fatal_errorf "Unbound variable %a" Variable.print arg)
+            args
+        in
+        let unbound_continuation cont reason =
+          Misc.fatal_errorf "Unbound continuation %a in %s: %a"
+            Continuation.print cont
+            reason
+            print expr
+        in
+        let arity, kind =
+          try Continuation.Map.find cont env.continuations
+          with Not_found -> unbound_continuation cont "[Apply_cont] term"
+        in
+        if not (Flambda_arity.equal args_arity arity) then begin
+          Misc.fatal_errorf "Continuation %a called with wrong arity in \
+              this [Apply_cont] term: expected %a but found %a: %a"
+            Continuation.print continuation
+            Flambda_arity.print args_arity
+            Flambda_arity.print arity
+            print expr
+        end;
+        begin match kind with
+        | Normal -> ()
+        | Exn_handler ->
+          Misc.fatal_errorf "Continuation %a is an exception handler \
+              but is used in this [Apply_cont] term as a normal continuation: \
+              %a"
+            Continuation.print cont
+            print expr
+        end;
+        begin match exn with
+        | None -> ()
+        | Some (Push { id = _; exn_handler })
+        | Some (Pop { id = _; exn_handler }) ->
+          match Continuation.Map.find exn_handler env.continuations with
+          | exception Not_found ->
+            unbound_continuation exn_handler "[Apply] trap handler"
+          | (arity, kind) ->
+            begin match kind with
+            | Exn_handler -> ()
+            | Normal ->
+              Misc.fatal_errorf "Continuation %a is a normal continuation  \
+                  but is used in the trap action of this [Apply] term as an \
+                  exception handler: %a"
+                Continuation.print exn_handler
+                print expr
+            end;
+            assert (not (Continuation.equal cont exn_handler));
+            let expected_arity = [Flambda_kind.value Must_scan] in
+            if not (Flambda_arity.equal arity expected) then begin
+              Misc.fatal_errorf "Exception handler continuation %a has \
+                  the wrong arity for the trap handler action of this [Apply] \
+                  term: expected %a but found %a: %a"
+                Continuation.print continuation
+                Flambda_arity.print expected_arity
+                Flambda_arity.print arity
+                print expr
+            end
+        end
+      | Apply { continuation; call_kind; _ } ->
+    | Apply { kind = Method { kind; obj; }; func; continuation; args; call_kind;
+        dbg; inline; specialise; } ->
+      ignore_meth_kind kind;
+      check_variable_is_bound env obj;
+      check_variable_is_bound env func;
+      check_variables_are_bound env args;
+      ignore_continuation continuation;
+      ignore_call_kind call_kind;
+      ignore_debuginfo dbg;
+      ignore_inline_attribute inline;
+      ignore_specialise_attribute specialise
+    | Apply { kind = Function; func; continuation; args; call_kind; dbg; inline;
+        specialise; } ->
+      check_variable_is_bound env func;
+      check_variables_are_bound env args;
+      (* CR mshinwell: check continuations are bound *)
+      ignore_continuation continuation;
+      ignore_call_kind call_kind;
+      ignore_debuginfo dbg;
+      ignore_inline_attribute inline;
+      ignore_specialise_attribute specialise
+        begin match Continuation.Map.find continuation env.continuations with
+        | exception Not_found ->
+          unbound_continuation continuation "[Apply] term"
+        | arity, kind ->
+          begin match kind with
+          | Normal -> ()
+          | Exn_handler ->
+            Misc.fatal_errorf "Continuation %a is an exception handler \
+                but is used in this [Apply] term as a return continuation: \
+                %a"
+              Continuation.print cont
+              print expr
+          end;
+          let expected_arity = Flambda.Call_kind.return_arity call_kind in
+          if not (Flambda_arity.equal arity expected_arity) then begin
+            Misc.fatal_errorf "Continuation %a called with wrong arity in \
+                this [Apply] term: expected %a but found %a: %a"
+              Continuation.print continuation
+              Flambda_arity.print expected_arity
+              Flambda_arity.print arity
+              print expr
+          end
+        end
+      | Switch (_,{ consts; failaction; _ } ) ->
+    | Switch (arg, { numconsts; consts; failaction; }) ->
+      if List.length consts < 1 then begin
+        raise (Empty_switch arg)
+      end;
+      check_variable_is_bound env arg;
+      ignore_targetint_set numconsts;
+      List.iter (fun (n, e) ->
+          ignore_targetint n;
+          ignore_continuation e)
+        consts;
+      Misc.may ignore_continuation failaction
+        let check (_, cont) =
+          match Continuation.Map.find cont env.continuations with
+          | exception Not_found ->
+            unbound_continuation cont "[Switch] term"
+          | arity, kind ->
+            begin match kind with
+            | Normal -> ()
+            | Exn_handler ->
+              Misc.fatal_errorf "Continuation %a is an exception handler \
+                  but is used in this [Switch] as a normal continuation: %a"
+                Continuation.print cont
+                print expr
+            end;
+            if List.length arity <> 0 then begin
+              Misc.fatal_errorf "Continuation %a is used in this [Switch] \
+                  and thus must have arity [], but has arity %a"
+                Continuation.print cont
+                Flambda_arity.print arity
+            end
+        in
+        List.iter check consts;
+        begin match failaction with
+        | None -> ()
+        | Some cont -> check ((), cont)
+        end
+      | Invalid _ -> ()
+    in
+    let check ~importer ~return_cont ~return_cont_arity expr =
+      let env =
+        { continuations =
+            Continuation.Map.singleton return_cont (return_cont_arity, Normal);
+          variables = Variable.Map.empty;
+        }
+      in
+      loop ~importer env expr
+    in
+    let every_declared_closure_is_from_current_compilation_unit flam =
+      let current_compilation_unit = Compilation_unit.get_current_exn () in
+      Iterators.iter_sets_of_closures
+        (fun { Flambda.Set_of_closures. function_decls; _ } ->
+          let compilation_unit =
+            Set_of_closures_id.get_compilation_unit
+              function_decls.set_of_closures_id
+          in
+          if not (Compilation_unit.equal compilation_unit current_compilation_unit)
+          then raise (Declared_closure_from_another_unit compilation_unit))
+        flam
+    in
+    Push_and_pop_invariants.check return_cont expr;
+    check ~importer ~return_cont ~return_cont_arity expr
 end and Named : sig
   include module type of F0.Named
 
@@ -1003,6 +1462,45 @@ end = struct
         Expr.iter_general ~toplevel:true f f_named (Is_named t)
     end
   end
+
+  let invariant ~importer env t =
+    let module E = Invariant_env in
+    match t with
+    | Var var -> I.check_variable_is_bound env var
+    | Symbol symbol ->
+      I.check_symbol_is_bound env symbol
+    | Const const -> ignore_const const
+    | Read_mutable mut_var ->
+      I.check_mutable_variable_is_bound env mut_var
+    | Assign { being_assigned; new_value; } ->
+      I.check_mutable_variable_is_bound env being_assigned;
+      I.check_variable_is_bound env new_value
+    | Read_symbol_field (symbol, field) ->
+      I.check_symbol_is_bound env symbol;
+      if field < 0 then begin
+        Misc.fatal_errorf "[Read_symbol_field] with illegal field index %d: %a"
+          field
+          print t
+    | Set_of_closures set_of_closures ->
+      Set_of_closures.invariant ~importer env set_of_closures
+    | Project_closure { set_of_closures; closure_id; } ->
+      I.check_variable_is_bound env set_of_closures;
+      ignore_closure_id_set closure_id
+    | Move_within_set_of_closures { closure; move } ->
+      I.check_variable_is_bound env closure;
+      ignore_closure_id_map ignore_closure_id move
+    | Project_var { closure; var; } ->
+      I.check_variable_is_bound env closure;
+      ignore_closure_id_map ignore_var_within_closure var;
+    | Prim (prim, args, dbg) ->
+      I.check_variables_are_bound env args;
+      ignore_debuginfo dbg
+      begin match prim with
+      | Psequand | Psequor | Pgetglobal _ | Pidentity | Pdirapply
+      | Prevapply | Ploc _->
+        Misc.fatal_errorf "Primitive is forbidden: %a" print t
+      | _ -> ()
+      end
 end and Let_cont_handlers : sig
   include module type of F0.Let_cont_handlers
 
@@ -1161,6 +1659,117 @@ end = struct
         t.function_decls.funs
         init
   end
+
+  let invariant ~importer env
+        ({ function_decls; free_vars; direct_call_surrogates = _; }
+          as set_of_closures) =
+    let module I = Invariant_env in
+    let ignore_set_of_closures_id (_ : Set_of_closures_id.t) = ()
+    let ignore_set_of_closures_origin (_ : Set_of_closures_origin.t) = ()
+    (* CR-soon mshinwell: check [direct_call_surrogates] *)
+    let { Flambda.Function_declarations. set_of_closures_id;
+          set_of_closures_origin; funs; } =
+      function_decls
+    in
+    ignore_set_of_closures_id set_of_closures_id;
+    ignore_set_of_closures_origin set_of_closures_origin;
+    let functions_in_closure = Closure_id.Map.keys funs in
+    Var_within_closure.Map.iter
+      (fun var (var_in_closure : Flambda.Free_var.t) ->
+        ignore_var_within_closure var;
+        check_variable_is_bound env var_in_closure.var)
+      free_vars;
+    let _all_params, _all_free_vars =
+      (* CR mshinwell: change to [iter] *)
+      Closure_id.Map.fold (fun fun_var function_decl acc ->
+          let all_params, all_free_vars = acc in
+          (* CR-soon mshinwell: check function_decl.all_symbols *)
+          let { Flambda.Function_declaration.params; body; stub; dbg;
+                my_closure; _ } =
+            function_decl
+          in
+          assert (Closure_id.Set.mem fun_var functions_in_closure);
+          ignore_bool stub;
+          ignore_debuginfo dbg;
+          let free_variables = Flambda.Expr.free_variables body in
+          (* Check that every variable free in the body of the function is
+             either the distinguished "own closure" variable or one of the
+             function's parameters. *)
+          let acceptable_free_variables =
+            Variable.Set.add my_closure
+              (Flambda.Typed_parameter.List.var_set params)
+          in
+          let bad =
+            Variable.Set.diff free_variables acceptable_free_variables
+          in
+          if not (Variable.Set.is_empty bad) then begin
+            raise (Bad_free_vars_in_function_body
+              (bad, set_of_closures, fun_var))
+          end;
+          (* Check that free variables in parameters' types are bound. *)
+          List.iter (fun param ->
+              let ty = Flambda.Typed_parameter.ty param in
+              let fvs = Flambda_type.free_variables ty in
+              Variable.Set.iter (fun fv -> check_variable_is_bound env fv)
+                fvs)
+            params;
+          (* Check that projections on parameters only describe projections
+             from other parameters of the same function. *)
+          let params' = Flambda.Typed_parameter.List.var_set params in
+          List.iter (fun param ->
+              match Flambda.Typed_parameter.projection param with
+              | None -> ()
+              | Some projection ->
+                let projecting_from = Projection.projecting_from projection in
+                if not (Variable.Set.mem projecting_from params') then begin 
+                  raise (Projection_must_be_a_parameter projection)
+                end)
+            params;
+          (* Check that parameters are unique across all functions in the
+             declaration. *)
+          let old_all_params_size = Variable.Set.cardinal all_params in
+          let params = params' in
+          let params_size = Variable.Set.cardinal params in
+          let all_params = Variable.Set.union all_params params in
+          let all_params_size = Variable.Set.cardinal all_params in
+          if all_params_size <> old_all_params_size + params_size then begin
+            raise (Function_decls_have_overlapping_parameters all_params)
+          end;
+          (* Check that parameters are not bound somewhere else in the
+             program.  (Note that the closure ID, [fun_var], may be bound
+             by multiple sets of closures.) *)
+          declare_variables params;
+          (* Check that the body of the functions is correctly structured *)
+          let body_env =
+            let (var_env, _, sym_env) = env in
+            let var_env =
+              Variable.Set.fold (fun var -> Variable.Set.add var)
+                free_variables var_env
+            in
+            (* Mutable variables cannot be captured by closures *)
+            let mut_env = Mutable_variable.Set.empty in
+            (var_env, mut_env, sym_env)
+          in
+          loop body_env body;
+          all_params, Variable.Set.union free_variables all_free_vars)
+        funs (Variable.Set.empty, Variable.Set.empty)
+    in
+    Var_within_closure.Map.iter
+      (fun _in_closure (outer_var : Flambda.Free_var.t) ->
+        check_variable_is_bound env outer_var.var;
+        match outer_var.projection with
+        | None -> ()
+        | Some projection ->
+          let projecting_from = Projection.projecting_from projection in
+          let in_closure =
+            Flambda.Free_vars.find_by_variable free_vars projecting_from
+          in
+          match in_closure with
+          | None ->
+            (* CR mshinwell: bad exception name? *)
+            raise (Projection_must_be_a_free_var projection)
+          | Some _in_closure -> ())
+      free_vars
 end and Function_declarations : sig
   include module type of F0.Function_declarations
 

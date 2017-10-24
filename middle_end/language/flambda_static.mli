@@ -26,8 +26,14 @@ module Program_body :
 module Program : sig
   include module type of struct include Flambda_static0.Program end
 
+  (** Perform well-formedness checks on the expression. *)
+  val invariant : t -> unit
+
+  (** All symbols imported from other compilation units by the given program. *)
   val imported_symbols : t -> Symbol.Set.t
 
+  (** The module block symbol for the given program (the only symbol that
+      can never be eliminated). *)
   val root_symbol : t -> Symbol.t
 
 (*
