@@ -1178,7 +1178,7 @@ end = struct
     let env =
       E.add_continuation (E.create ()) return_cont return_cont_arity Normal
     in
-    loop ~importer env expr;
+    let result = loop ~importer env expr in
     let current_compilation_unit = Compilation_unit.get_current_exn () in
     Iterators.iter_sets_of_closures
       (fun ({ Set_of_closures. function_decls; _ } as set) ->
@@ -1193,7 +1193,8 @@ end = struct
               unit: %a"
             Set_of_closures.print t
         end)
-      t
+      t;
+    result
 end and Named : sig
   include module type of F0.Named
 
@@ -1296,17 +1297,25 @@ end = struct
   let invariant ~importer env t =
     let module E = Invariant_env in
     match t with
-    | Var var -> I.check_variable_is_bound env var
+    | Var var -> E.check_variable_is_bound env var
     | Symbol symbol ->
-      I.check_symbol_is_bound env symbol
-    | Const const -> ignore_const const
+      E.check_symbol_is_bound env symbol
+    | Const const -> ignore (const : Const.t)
     | Read_mutable mut_var ->
-      I.check_mutable_variable_is_bound env mut_var
+      E.check_mutable_variable_is_bound env mut_var
     | Assign { being_assigned; new_value; } ->
-      I.check_mutable_variable_is_bound env being_assigned;
-      I.check_variable_is_bound env new_value
+      let being_assigned_kind = E.kind_of_mutable_variable env being_assigned in
+      let new_value_kind = E.kind_of_variable env new_value in
+      if not (Flambda_kind.equal new_value_kind being_assigned_kind) then begin
+        Misc.fatal_errorf "Cannot put value %a of kind %a into mutable \
+            variable %a with contents kind %a"
+          Variable.print new_value;
+          Flambda_kind.print new_value_kind
+          Mutable_variable.print new_value
+          Flambda_kind.print being_assigned_kind
+      end
     | Read_symbol_field (symbol, field) ->
-      I.check_symbol_is_bound env symbol;
+      E.check_symbol_is_bound env symbol;
       if field < 0 then begin
         Misc.fatal_errorf "[Read_symbol_field] with illegal field index %d: %a"
           field
@@ -1314,16 +1323,16 @@ end = struct
     | Set_of_closures set_of_closures ->
       Set_of_closures.invariant ~importer env set_of_closures
     | Project_closure { set_of_closures; closure_id; } ->
-      I.check_variable_is_bound env set_of_closures;
+      E.check_variable_is_bound_and_of_kind_scannable_value env set_of_closures;
       ignore_closure_id_set closure_id
     | Move_within_set_of_closures { closure; move } ->
-      I.check_variable_is_bound env closure;
+      E.check_variable_is_bound_and_of_kind_scannable_value env closure;
       ignore_closure_id_map ignore_closure_id move
     | Project_var { closure; var; } ->
-      I.check_variable_is_bound env closure;
+      E.check_variable_is_bound_and_of_kind_scannable_value env closure;
       ignore_closure_id_map ignore_var_within_closure var;
     | Prim (prim, args, dbg) ->
-      I.check_variables_are_bound env args;
+      E.check_variables_are_bound env args;
       ignore_debuginfo dbg
       begin match prim with
       | Psequand | Psequor | Pgetglobal _ | Pidentity | Pdirapply
@@ -1491,8 +1500,7 @@ end = struct
   end
 
   let invariant ~importer env
-        ({ function_decls; free_vars; direct_call_surrogates = _; }
-          as set_of_closures) =
+        ({ function_decls; free_vars; direct_call_surrogates = _; } as t) =
     let module I = Invariant_env in
     let ignore_set_of_closures_id (_ : Set_of_closures_id.t) = ()
     let ignore_set_of_closures_origin (_ : Set_of_closures_origin.t) = ()
@@ -1540,8 +1548,7 @@ end = struct
           List.iter (fun param ->
               let ty = Flambda.Typed_parameter.ty param in
               let fvs = Flambda_type.free_variables ty in
-              Variable.Set.iter (fun fv -> check_variable_is_bound env fv)
-                fvs)
+              Variable.Set.iter (fun fv -> check_variable_is_bound env fv) fvs)
             params;
           (* Check that projections on parameters only describe projections
              from other parameters of the same function. *)
@@ -1565,10 +1572,6 @@ end = struct
           if all_params_size <> old_all_params_size + params_size then begin
             raise (Function_decls_have_overlapping_parameters all_params)
           end;
-          (* Check that parameters are not bound somewhere else in the
-             program.  (Note that the closure ID, [fun_var], may be bound
-             by multiple sets of closures.) *)
-          declare_variables params;
           (* Check that the body of the functions is correctly structured *)
           let body_env =
             let (var_env, _, sym_env) = env in

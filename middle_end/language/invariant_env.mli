@@ -32,6 +32,9 @@ module Continuation_stack : sig
   val unify : Continuation.t -> t -> t -> unit
 end
 
+(** Values of type [t] are mutable.  A fresh value should be created each time
+    invariants are checked on a [Program.t]; this will ensure that
+    freshness of bound variables is checked across the whole program. *)
 type t
 
 val create : unit -> t
@@ -71,6 +74,8 @@ val find_continuation_opt
   -> (Flambda_arity.t * continuation_kind * Continuation_stack.t) option
 
 val kind_of_variable : t -> Variable.t -> Flambda_kind.t
+
+val kind_of_mutable_variable : t -> Mutable_variable.t -> Flambda_kind.t
 
 val current_continuation_stack : t -> Continuation_stack.t
 

@@ -98,6 +98,10 @@ end = struct
 end
 
 type t = {
+  mutable all_variables_seen : Variable.Set.t;
+  mutable all_mutable_variables_seen : Mutable_variable.Set.t;
+  mutable all_continuations_seen : Continuation.Set.t;
+  mutable all_symbols_seen : Symbol.Set.t;
   variables : Flambda_kind.t Variable.Map.t;
   mutable_variables : Flambda_kind.t Mutable_variable.Set.t;
   continuations :
@@ -107,7 +111,11 @@ type t = {
 }
 
 let create () =
-  { variables = Variable.Map.empty;
+  { all_variables_seen = Variable.Set.empty;
+    all_mutable_variables_seen = Mutable_variable.Map.empty;
+    all_continuations_seen = Continuation.Set.empty;
+    all_symbols_seen = Symbol.Set.empty;
+    variables = Variable.Map.empty;
     mutable_variables = Mutable_variable.Map.empty;
     continuations = Continuation.Map.empty;
     symbols = Symbol.Set.empty;
@@ -116,7 +124,14 @@ let create () =
 
 let add_variable t var kind =
   if Variable.Map.mem var t.variables then begin
-    Misc.fatal_errorf "Duplicate binding of variable %a" Variable.print var
+    Misc.fatal_errorf "Duplicate binding of variable %a which is already \
+        bound in the current scope"
+      Variable.print var
+  end;
+  if Variable.Set.mem var t.all_variables_seen then begin
+    Misc.fatal_errorf "Duplicate binding of variable %a which is bound \
+        in some other scope"
+      Variable.print var
   end;
   let compilation_unit = Compilation_unit.get_current_exn () in
   if not (Variable.in_compilation_unit var compilation_unit) then
@@ -126,6 +141,7 @@ let add_variable t var kind =
       Variable.print var
   end;
   { t with
+    all_variables_seen = Variable.Set.add var t.all_variables_seen;
     variables = Variable.Map.add var kind t.variables;
   }
 
@@ -141,8 +157,14 @@ let add_typed_parameters ~importer t params =
     params
 
 let add_mutable_variable t var kind =
-  if Mutable_variable.Map.mem var t.variables then begin
-    Misc.fatal_errorf "Duplicate binding of mutable variable %a"
+  if Mutable_variable.Map.mem var t.mutable_variables then begin
+    Misc.fatal_errorf "Duplicate binding of mutable variable %a which is \
+        already bound in the current scope"
+      Mutable_variable.print var
+  end;
+  if Mutable_variable.Set.mem var t.all_mutable_variables_seen then begin
+    Misc.fatal_errorf "Duplicate binding of mutable variable %a which is \
+        bound in some other scope"
       Mutable_variable.print var
   end;
   let compilation_unit = Compilation_unit.get_current_exn () in
@@ -153,13 +175,28 @@ let add_mutable_variable t var kind =
       Mutable_variable.print var
   end;
   { t with
+    mutable_variables_seen =
+      Mutable_variable.Set.add var t.mutable_variables_seen;
     mutable_variables = Mutable_variable.Map.add var kind t.mutable_variables;
   }
 
 let add_symbol t sym =
   if Symbol.Map.mem sym t.symbols then begin
-    Misc.fatal_errorf "Duplicate binding of symbol %a"
-      Symbol.print cont
+    Misc.fatal_errorf "Duplicate binding of symbol %a which is already \
+        bound in the current scope"
+      Symbol.print sym
+  end;
+  if Symbol.Set.mem sym t.all_symbols_seen then begin
+    Misc.fatal_errorf "Duplicate binding of symbol %a which is bound \
+        in some other scope"
+      Symbol.print sym
+  end;
+  let compilation_unit = Compilation_unit.get_current_exn () in
+  if not (Variable.in_compilation_unit var compilation_unit) then
+    Misc.fatal_errorf "Binding occurrence of variable %a cannot occur in \
+        this compilation unit since the variable is from another compilation \
+        unit"
+      Variable.print var
   end;
   { t with
     symbols = Symbol.Set.add sym t.symbols;
@@ -167,7 +204,13 @@ let add_symbol t sym =
 
 let add_continuation t cont arity kind =
   if Continuation.Map.mem cont t.continuations then begin
-    Misc.fatal_errorf "Duplicate binding of continuation %a"
+    Misc.fatal_errorf "Duplicate binding of continuation %a which is already \
+        bound in the current scope"
+      Continuation.print cont
+  end;
+  if Continuation.Set.mem cont t.all_continuations_seen then begin
+    Misc.fatal_errorf "Duplicate binding of continuation %a which is bound \
+        in some other scope"
       Continuation.print cont
   end;
   { t with
@@ -179,6 +222,10 @@ let check_variable_is_bound t var =
   if not (Variable.Set.mem var t.variables) then begin
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
   end
+
+let check_variable_is_bound_and_of_kind_value t var =
+
+let check_variable_is_bound_and_of_kind_scannable_value t var =
 
 let check_mutable_variable_is_bound t var =
   if not (Mutable_Variable.Set.mem var t.mutable_variables) then begin
@@ -199,6 +246,12 @@ let kind_of_variable t var =
   match Variable.Set.find var t.variables with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
+  | kind -> kind
+
+let kind_of_mutable_variable t var =
+  match Mutable_variable.Set.find var t.mutable_variables with
+  | exception Not_found ->
+    Misc.fatal_errorf "Unbound mutable variable %a" Mutable_variable.print var
   | kind -> kind
 
 let current_continuation_stack t = t.current_continuation_stack
