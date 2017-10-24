@@ -32,27 +32,6 @@ module Switch = F0.Switch
 module Trap_action = F0.Trap_action
 module With_free_variables = F0.With_free_variables
 
-let ignore_call_kind (_ : Flambda.Call_kind.t) = ()
-let ignore_debuginfo (_ : Debuginfo.t) = ()
-let ignore_meth_kind (_ : Lambda.meth_kind) = ()
-let ignore_targetint (_ : Targetint.t) = ()
-let ignore_targetint_set (_ : Targetint.Set.t) = ()
-let ignore_bool (_ : bool) = ()
-let ignore_continuation (_ : Continuation.t) = ()
-let ignore_primitive ( _ : Lambda.primitive) = ()
-let ignore_const (_ : Flambda.Const.t) = ()
-let ignore_immediate (_ : Immediate.t) = ()
-let ignore_allocated_const (_ : Allocated_const.t) = ()
-let ignore_flambda_type (_ : Flambda_type.t) = ()
-let ignore_flambda_arity (_ : Flambda_arity.t) = ()
-let ignore_closure_id (_ : Closure_id.t) = ()
-let ignore_closure_id_set (_ : Closure_id.Set.t) = ()
-let ignore_closure_id_map (_ : 'a -> unit) (_ : 'a Closure_id.Map.t) = ()
-let ignore_var_within_closure (_ : Var_within_closure.t) = ()
-let ignore_scannable_tag (_ : Tag.Scannable.t) = ()
-let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
-let ignore_specialise_attribute (_ : Lambda.specialise_attribute) = ()
-
 module Free_vars = struct
   include F0.Free_vars
 
@@ -1193,11 +1172,11 @@ end = struct
               unit: %a"
             Set_of_closures.print t
         end)
-      t;
-    result
+      t
 end and Named : sig
   include module type of F0.Named
 
+  val invariant : Invariant_env.t -> t -> unit
   val equal : t -> t -> bool
   val toplevel_substitution
      : (Variable.t Variable.Map.t
@@ -1509,12 +1488,12 @@ end = struct
           set_of_closures_origin; funs; } =
       function_decls
     in
-    ignore_set_of_closures_id set_of_closures_id;
-    ignore_set_of_closures_origin set_of_closures_origin;
+    ignore (set_of_closures_id : Set_of_closures_id.t);
+    ignore (set_of_closures_origin : Set_of_closures_origin.t);
     let functions_in_closure = Closure_id.Map.keys funs in
     Var_within_closure.Map.iter
       (fun var (var_in_closure : Flambda.Free_var.t) ->
-        ignore_var_within_closure var;
+        ignore (var : Var_within_closure.t);
         check_variable_is_bound env var_in_closure.var)
       free_vars;
     let _all_params, _all_free_vars =
@@ -1541,8 +1520,12 @@ end = struct
             Variable.Set.diff free_variables acceptable_free_variables
           in
           if not (Variable.Set.is_empty bad) then begin
-            raise (Bad_free_vars_in_function_body
-              (bad, set_of_closures, fun_var))
+            Misc.fatal_errorf "The function bound to closure ID %a contains \
+                illegal free variables.  The only free variables allowed in \
+                the body of a function are the distinguished [my_closure] \
+                variable and the function's parameters: %a"
+              Closure_id.print fun_var
+              Function_declaration.print function_decl
           end;
           (* Check that free variables in parameters' types are bound. *)
           List.iter (fun param ->
@@ -1570,7 +1553,9 @@ end = struct
           let all_params = Variable.Set.union all_params params in
           let all_params_size = Variable.Set.cardinal all_params in
           if all_params_size <> old_all_params_size + params_size then begin
-            raise (Function_decls_have_overlapping_parameters all_params)
+            Misc.fatal_errorf "Function declarations have overlapping \
+                parameters: %a"
+              print t
           end;
           (* Check that the body of the functions is correctly structured *)
           let body_env =
@@ -1588,7 +1573,7 @@ end = struct
         funs (Variable.Set.empty, Variable.Set.empty)
     in
     Var_within_closure.Map.iter
-      (fun _in_closure (outer_var : Flambda.Free_var.t) ->
+      (fun in_closure0 (outer_var : Flambda.Free_var.t) ->
         check_variable_is_bound env outer_var.var;
         match outer_var.projection with
         | None -> ()
@@ -1599,8 +1584,13 @@ end = struct
           in
           match in_closure with
           | None ->
-            (* CR mshinwell: bad exception name? *)
-            raise (Projection_must_be_a_free_var projection)
+            Misc.fatal_errorf "Closure variable %a equal to outer variable %a \
+                is deemed equal to a projection from %a; but %a does not \
+                correspond to any closure variable"
+              Var_within_closure.print in_closure0
+              Variable.print outer_var
+              Variable.print projecting_from
+              Variable.print projecting_from
           | Some _in_closure -> ())
       free_vars
 end and Function_declarations : sig
