@@ -314,25 +314,3 @@ val strictly_more_precise : t -> than:t -> bool
 val as_or_more_precise : t -> than:t -> bool
 
 *)
-
-module Of_symbol : sig
-  (** The type of a [Symbol.t]. *)
-  type t
-
-  (** Create the type of a symbol of kind [Mixed] (cf. symbol.mli). *)
-  val create_mixed : flambda_type list -> t
-
-  (** Create the type of a symbol of kind [Value]. *)
-  val create_value : Tag.t -> ty_value -> t
-
-  (** Extract the type of a particular field of a symbol.  For [Value] symbols
-      this operation only succeeds if the tag is less than [No_scan_tag]. *)
-  val field : t -> logical_field:int -> flambda_type option
-
-  (** Extract the type of a symbol of kind [Value].  Returns [None] if the
-      type is [Mixed]. *)
-  val value_type : t -> flambda_type option
-
-  (** Whether the given type is compatible with the given symbol kind. *)
-  val matches_kind : t -> Symbol.symbol_kind -> bool
-end
