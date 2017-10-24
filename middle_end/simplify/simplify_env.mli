@@ -137,7 +137,7 @@ val does_not_freshen : t -> Variable.t list -> bool
 
 val add_symbol
    : t
-  -> Symbol.Of_kind_value.t
+  -> Symbol.t
   -> Flambda_type.Of_symbol.t
   -> t
 

@@ -400,7 +400,7 @@ let rec do_named env (assigned_to : Variable.t) (named : Flambda.Named.t) =
       let read_info = find_mut_info env mut_var in
       var env read_info.var ~assigned_to
     | Symbol s ->
-      symbol env (Symbol.Of_kind_value.to_symbol s) ~assigned_to
+      symbol env (Symbol.to_symbol s) ~assigned_to
     | Read_symbol_field { symbol; logical_field; } ->
       let var = Symbol.Tbl.find env.info_symbol symbol in
       field env logical_field var ~assigned_to

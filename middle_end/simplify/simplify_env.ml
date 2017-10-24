@@ -40,7 +40,7 @@ type t = {
   round : int;
   variables : Flambda_type.t Variable.Map.t;
   mutable_variables : Flambda_type.t Mutable_variable.Map.t;
-  symbols : Flambda_type.Of_symbol.t Symbol.Of_kind_value.Map.t;
+  symbols : Flambda_type.Of_symbol.t Symbol.Map.t;
   continuations : Continuation_approx.t Continuation.Map.t;
   projections : Variable.t Projection.Map.t;
   current_functions : Set_of_closures_origin.Set.t;
@@ -70,7 +70,7 @@ let create ~never_inline ~allow_continuation_inlining
     round;
     variables = Variable.Map.empty;
     mutable_variables = Mutable_variable.Map.empty;
-    symbols = Symbol.Of_kind_value.Map.empty;
+    symbols = Symbol.Map.empty;
     continuations = Continuation.Map.empty;
     projections = Projection.Map.empty;
     current_functions = Set_of_closures_origin.Set.empty;
@@ -138,15 +138,15 @@ let add_mutable t mut_var ty =
   }
 
 let find_symbol_exn t symbol =
-  match Symbol.Of_kind_value.Map.find symbol t.symbols with
+  match Symbol.Map.find symbol t.symbols with
   | exception Not_found ->
     if Compilation_unit.equal
         (Compilation_unit.get_current_exn ())
-        (Symbol.Of_kind_value.compilation_unit symbol)
+        (Symbol.compilation_unit symbol)
     then begin
       Misc.fatal_errorf "Symbol %a from the current compilation unit is \
           unbound.  Maybe there is a missing [Let_symbol] or similar?"
-        Symbol.Of_kind_value.print symbol
+        Symbol.print symbol
     end;
     Flambda_type.symbol_loaded_lazily symbol
   | ty -> ty
@@ -188,22 +188,22 @@ let add_symbol t symbol ty =
   match find_symbol_exn t symbol with
   | exception Not_found ->
     { t with
-      symbols = Symbol.Of_kind_value.Map.add symbol ty t.symbols;
+      symbols = Symbol.Map.add symbol ty t.symbols;
     }
   | _ ->
     Misc.fatal_errorf "Attempt to redefine symbol %a (to %a) in environment \
         for [Simplify]"
-      Symbol.Of_kind_value.print symbol
+      Symbol.print symbol
       Flambda_type.print ty
 
 let redefine_symbol t symbol ty =
   match find_symbol_exn t symbol with
   | exception Not_found ->
     Misc.fatal_errorf "Cannot redefine undefined symbol %a"
-      Symbol.Of_kind_value.print symbol
+      Symbol.print symbol
   | _ ->
     { t with
-      symbols = Symbol.Of_kind_value.Map.add symbol ty t.symbols;
+      symbols = Symbol.Map.add symbol ty t.symbols;
     }
 
 let find_exn t id =

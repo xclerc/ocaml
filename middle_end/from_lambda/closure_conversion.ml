@@ -168,7 +168,7 @@ let close_const t (const : Lambda.structured_constant)
   | Tagged_immediate c, name ->
     Const (Tagged_immediate c), name
   | Symbol s, name ->
-    Symbol (Symbol.Of_kind_value.of_symbol_exn s), name
+    Symbol (Symbol.of_symbol_exn s), name
 
 (* CR pchambart: move to flambda_type ? *)
 let flambda_type_of_lambda_value_kind (k : Lambda.value_kind) : Flambda_type.t =
@@ -392,7 +392,7 @@ and close_named t env (named : Ilambda.named) : Flambda.Named.t =
     if Ident.is_predef_exn id then begin
       let symbol = t.symbol_for_global' id in
       t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-      Symbol (Symbol.Of_kind_value.of_symbol_exn symbol)
+      Symbol (Symbol.of_symbol_exn symbol)
     end else begin
       Var (Env.find_var env id)
     end
@@ -405,12 +405,12 @@ and close_named t env (named : Ilambda.named) : Flambda.Named.t =
   | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    Symbol (Symbol.Of_kind_value.of_symbol_exn symbol)
+    Symbol (Symbol.of_symbol_exn symbol)
   | Prim (Pgetglobal id, [], _) ->
     assert (not (Ident.same id t.current_unit_id));
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    Symbol (Symbol.Of_kind_value.of_symbol_exn symbol)
+    Symbol (Symbol.of_symbol_exn symbol)
   | Prim (p, args, loc) ->
     Prim (p, Env.find_vars env args, Debuginfo.from_location loc)
   | Assign { being_assigned; new_value; } ->

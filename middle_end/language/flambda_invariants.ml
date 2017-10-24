@@ -583,7 +583,7 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
     match named with
     | Var var -> check_variable_is_bound env var
     | Symbol symbol ->
-      let symbol = Symbol.Of_kind_value.to_symbol symbol in
+      let symbol = Symbol.to_symbol symbol in
       check_symbol_is_bound env symbol
     | Const const -> ignore_const const
     | Allocated_const const -> ignore_allocated_const const

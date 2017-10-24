@@ -22,7 +22,7 @@ module type S = sig
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
-    | Symbol of Symbol.Of_kind_value.t
+    | Symbol of Symbol.t
 
   type unknown_because_of =
     | Unresolved_value of unresolved_value
@@ -30,7 +30,7 @@ module type S = sig
 
   type load_lazily =
     | Export_id of Export_id.t
-    | Symbol of Symbol.Of_kind_value.t
+    | Symbol of Symbol.t
 
   type string_contents = private
     | Contents of string
@@ -252,7 +252,7 @@ module type S = sig
   (** Construction of types that link to other types which have not yet
       been loaded into memory (from a .cmx file). *)
   val export_id_loaded_lazily : Flambda_kind.t -> Export_id.t -> t
-  val symbol_loaded_lazily : Symbol.Of_kind_value.t -> t
+  val symbol_loaded_lazily : Symbol.t -> t
 
   val create_inlinable_function_declaration
      : is_classic_mode:bool
@@ -292,7 +292,7 @@ module type S = sig
   val closure
      : ?closure_var:Variable.t
     -> ?set_of_closures_var:Variable.t
-    -> ?set_of_closures_symbol:Symbol.Of_kind_value.t
+    -> ?set_of_closures_symbol:Symbol.t
     -> set_of_closures
     -> Closure_id.t
     -> t
@@ -300,7 +300,7 @@ module type S = sig
   (** Construct a set of closures type. *)
   val set_of_closures
      : ?set_of_closures_var:Variable.t
-    -> ?set_of_closures_symbol:Symbol.Of_kind_value.t
+    -> ?set_of_closures_symbol:Symbol.t
     -> set_of_closures
     -> t
 
@@ -374,12 +374,12 @@ module type S = sig
 
     (** As for [import_export_id], except that the desired type is specified by
         symbol, rather than by export identifier. *)
-    val import_symbol : Symbol.Of_kind_value.t -> t option
+    val import_symbol : Symbol.t -> t option
 
     (** Determine whether a symbol corresponds to a predefined exception.
         If it does, the function must return the corresponding [Ident.name]
         for the exception. *)
-   val symbol_is_predefined_exception : Symbol.Of_kind_value.t -> string option
+   val symbol_is_predefined_exception : Symbol.t -> string option
   end
 
   (** A functor used to construct the various type-importing operations from

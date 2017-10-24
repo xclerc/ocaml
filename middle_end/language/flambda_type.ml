@@ -944,7 +944,7 @@ let reify ~importer t : Named.t option =
   let try_symbol () =
     match symbol t with
     | Some (sym, None) ->
-      begin match Symbol.Of_kind_value.of_symbol sym with
+      begin match Symbol.of_symbol sym with
       | None -> None
       | Some sym -> Some (Named.Symbol sym)
       end

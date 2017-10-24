@@ -792,7 +792,7 @@ end and Named : sig
     | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
-    | Symbol of Symbol.Of_kind_value.t
+    | Symbol of Symbol.t
     | Read_symbol_field of { symbol : Symbol.t; logical_field : int; }
     | Set_of_closures of Set_of_closures.t
     | Project_closure of Projection.Project_closure.t
@@ -828,7 +828,7 @@ end = struct
   let free_symbols_helper symbols (t : t) =
     match t with
     | Symbol symbol ->
-      let symbol = Symbol.Of_kind_value.to_symbol symbol in
+      let symbol = Symbol.to_symbol symbol in
       symbols := Symbol.Set.add symbol !symbols
     | Read_symbol_field { symbol; logical_field = _; } ->
       symbols := Symbol.Set.add symbol !symbols
@@ -890,7 +890,7 @@ end = struct
   let print ppf (t : t) =
     match t with
     | Var var -> Variable.print ppf var
-    | Symbol symbol -> Symbol.Of_kind_value.print ppf symbol
+    | Symbol symbol -> Symbol.print ppf symbol
     | Const cst -> fprintf ppf "Const(%a)" Const.print cst
     | Read_mutable mut_var ->
       fprintf ppf "Read_mut(%a)" Mutable_variable.print mut_var

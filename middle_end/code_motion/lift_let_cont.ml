@@ -19,7 +19,7 @@
 module Constant_or_symbol = struct
   type t =
     | Constant of Flambda.Const.t
-    | Symbol of Symbol.Of_kind_value.t
+    | Symbol of Symbol.t
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -27,7 +27,7 @@ module Constant_or_symbol = struct
     let compare t1 t2 =
       match t1, t2 with
       | Constant c1, Constant c2 -> Flambda.Const.compare c1 c2
-      | Symbol s1, Symbol s2 -> Symbol.Of_kind_value.compare s1 s2
+      | Symbol s1, Symbol s2 -> Symbol.compare s1 s2
       | Constant _, _ -> (-1)
       | _, Constant _ -> 1
 
@@ -36,14 +36,14 @@ module Constant_or_symbol = struct
     let hash t =
       match t with
       | Constant c -> Hashtbl.hash (0, Flambda.Const.hash c)
-      | Symbol s -> Hashtbl.hash (1, Symbol.Of_kind_value.hash s)
+      | Symbol s -> Hashtbl.hash (1, Symbol.hash s)
 
     let print ppf t =
       match t with
       | Constant c ->
         Format.fprintf ppf "(Constant %a)" Flambda.Const.print c
       | Symbol s ->
-        Format.fprintf ppf "(Symbol %a)" Symbol.Of_kind_value.print s
+        Format.fprintf ppf "(Symbol %a)" Symbol.print s
   end)
 
   let to_named t : Flambda.Named.t =

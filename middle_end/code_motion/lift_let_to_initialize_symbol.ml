@@ -134,7 +134,7 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
           Flambda_utils.make_variable_symbol var
             ~kind:(Symbol.value_kind tag)
         in
-        symbol, Flambda.Named.Symbol (Symbol.Of_kind_value.of_symbol_exn symbol)
+        symbol, Flambda.Named.Symbol (Symbol.of_symbol_exn symbol)
       | _ ->
         let symbol =
           Flambda_utils.make_variable_symbol var
