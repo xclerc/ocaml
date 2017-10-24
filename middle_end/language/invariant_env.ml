@@ -224,8 +224,27 @@ let check_variable_is_bound t var =
   end
 
 let check_variable_is_bound_and_of_kind_value t var =
+  match Variable.Set.find var t.variables with
+  | exception Not_found ->
+    Misc.fatal_errorf "Unbound variable %a" Variable.print var
+  | kind ->
+    if not (Flambda_kind.is_value kind) then begin
+      Misc.fatal_errorf "Variable %a is expected to have kind [Value] but is \
+          of kind %a"
+        Variable.print var
+        Flambda_kind.print kind
+    end
 
-let check_variable_is_bound_and_of_kind_scannable_value t var =
+let check_variable_is_bound_and_of_kind_value_must_scan t var =
+  match Variable.Set.find var t.variables with
+  | exception Not_found ->
+    Misc.fatal_errorf "Unbound variable %a" Variable.print var
+  | Value Must_scan -> ()
+  | _ ->
+    Misc.fatal_errorf "Variable %a is expected to have kind [Value Must_scan] \
+        but is of kind %a"
+      Variable.print var
+      Flambda_kind.print kind
 
 let check_mutable_variable_is_bound t var =
   if not (Mutable_Variable.Set.mem var t.mutable_variables) then begin

@@ -76,6 +76,20 @@ module Program_body = struct
           iter_expr ~continuation_arity cont expr)
 *)
   end
+
+  let invariant_define_symbol ~importer defn (recursive : Astflags.rec_flag) =
+    ...
+
+  let rec invariant ~importer env t =
+    let module E = Invariant_env in
+    match t with
+    | Define_symbol (defn, t)
+      let env = invariant_define_symbol ~importer env defn Nonrecursive in
+      invariant ~importer env t
+    | Define_symbol_rec (defn, t) ->
+      let env = invariant_define_symbol ~importer env defn Recursive in
+      invariant ~importer env t
+    | Root sym -> E.check_symbol_is_bound_and_of_kind_value_must_scan env sym
 end
 
 module Program = struct
@@ -502,7 +516,8 @@ module Program = struct
 
 *)
 
-  let invariant (t : t) =
+  let invariant ~importer t =
+    let module E = Invariant_env in
     let declared_var_within_closure (flam : t) =
       let bound = ref Var_within_closure.Set.empty in
       Iterators.iter_set_of_closures flam
@@ -592,7 +607,7 @@ module Program = struct
       else raise (Unbound_closure_ids counter_examples)
     in
     let every_used_var_within_closure_from_current_compilation_unit_is_declared
-          (flam:Flambda_static.Program.t) =
+          t =
       let current_compilation_unit = Compilation_unit.get_current_exn () in
       let declared = declared_var_within_closure flam in
       let used = used_vars_within_closures flam in
@@ -614,11 +629,22 @@ module Program = struct
       flam;
     Flambda_static.Program.Iterators.iter_toplevel_exprs flam
       ~f:(fun ~continuation_arity:_ _cont flam ->
-        primitive_invariants flam
-          ~no_access_to_global_module_identifiers:cmxfile;
         every_declared_closure_is_from_current_compilation_unit flam);
-    Push_pop_invariants.check flam;
-    Continuation_scoping.check ~importer flam
+    let env =
+      Symbol.Set.fold (fun symbol env ->
+          add_binding_occurrence_of_symbol env symbol)
+        program.imported_symbols
+        E
+    in
+    loop_program_body env program.program_body
+
+    let check program =
+      Flambda_static.Program.Iterators.iter_toplevel_exprs program
+        ~f:well_formed_trap
+
+    let check ~importer program =
+      Flambda_static.Program.Iterators.iter_toplevel_exprs program
+        ~f:(check_expr ~importer)
 end
 
 
@@ -726,19 +752,4 @@ end
     | End root ->
       check_symbol_is_bound env root
   in
-  let env =
-    Symbol.Set.fold (fun symbol env ->
-        add_binding_occurrence_of_symbol env symbol)
-      program.imported_symbols
-      (Variable.Set.empty, Mutable_variable.Set.empty, Symbol.Set.empty)
-  in
-  loop_program_body env program.program_body
-
-  let check program =
-    Flambda_static.Program.Iterators.iter_toplevel_exprs program
-      ~f:well_formed_trap
-
-  let check ~importer program =
-    Flambda_static.Program.Iterators.iter_toplevel_exprs program
-      ~f:(check_expr ~importer)
 *)

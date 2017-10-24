@@ -64,6 +64,11 @@ val check_variable_is_bound : t -> Variable.t -> unit
 
 val check_variable_is_bound_and_of_kind_value : t -> Variable.t -> unit
 
+val check_variable_is_bound_and_of_kind_value_scannable
+   : t
+  -> Variable.t
+  -> unit
+
 val check_mutable_variable_is_bound : t -> Mutable_variable.t -> unit
 
 val check_symbol_is_bound : t -> Symbol.t -> unit
