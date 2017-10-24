@@ -65,6 +65,11 @@ val check_mutable_variable_is_bound : t -> Mutable_variable.t -> unit
 
 val check_symbol_is_bound : t -> Symbol.t -> unit
 
+val find_continuation_opt
+   : t
+  -> Continuation.t
+  -> (Flambda_arity.t * continuation_kind * Continuation_stack.t) option
+
 val kind_of_variable : t -> Variable.t -> Flambda_kind.t
 
 val current_continuation_stack : t -> Continuation_stack.t

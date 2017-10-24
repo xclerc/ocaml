@@ -190,6 +190,17 @@ let check_symbol_is_bound t var =
     Misc.fatal_errorf "Unbound symbol %a" Symbol.print var
   end
 
+let find_continuation_opt t cont =
+  match Continuation.Map.find t.continuations cont with
+  | exception Not_found -> None
+  | result -> Some result
+
+let kind_of_variable t var =
+  match Variable.Set.find var t.variables with
+  | exception Not_found ->
+    Misc.fatal_errorf "Unbound variable %a" Variable.print var
+  | kind -> kind
+
 let current_continuation_stack t = t.current_continuation_stack
 
 let set_current_continuation_stack t continuation_stack =

@@ -1011,7 +1011,7 @@ end = struct
             print expr
         in
         let arity, kind, cont_stack =
-          match E.find_continuation_opt cont env.continuations with
+          match E.find_continuation_opt cont env with
           | Some result -> result
           | None -> unbound_continuation cont "[Apply_cont] term"
         in
@@ -1104,10 +1104,10 @@ end = struct
         end else begin
           check_variables_are_bound env args
         end;
-        begin match Continuation.Map.find continuation env.continuations with
-        | exception Not_found ->
+        begin match E.find_continuation_opt env continuation with
+        | None ->
           unbound_continuation continuation "[Apply] term"
-        | arity, kind, cont_stack ->
+        | Some (arity, kind, cont_stack) ->
           begin match kind with
           | Normal -> ()
           | Exn_handler ->
@@ -1159,8 +1159,6 @@ end = struct
             end
         in
         List.iter check consts;
-        List.iter (fun (_, cont) ->
-          consts;
         begin match failaction with
         | None -> ()
         | Some cont ->
