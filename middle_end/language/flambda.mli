@@ -301,6 +301,13 @@ and Set_of_closures : sig
     -> t
     -> Variable.t
 
+  module Iterators : sig
+    val iter_function_bodies
+       : t
+      -> f:(Expr.t -> unit)
+      -> unit
+  end
+
   module Mappers : sig
     val map_symbols
        : t

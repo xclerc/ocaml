@@ -793,7 +793,7 @@ end and Named : sig
     | Assign of assign
     | Read_mutable of Mutable_variable.t
     | Symbol of Symbol.t
-    | Read_symbol_field of { symbol : Symbol.t; logical_field : int; }
+    | Read_symbol_field of Symbol.t * int
     | Set_of_closures of Set_of_closures.t
     | Project_closure of Projection.Project_closure.t
     | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
@@ -828,9 +828,8 @@ end = struct
   let free_symbols_helper symbols (t : t) =
     match t with
     | Symbol symbol ->
-      let symbol = Symbol.to_symbol symbol in
       symbols := Symbol.Set.add symbol !symbols
-    | Read_symbol_field { symbol; logical_field = _; } ->
+    | Read_symbol_field (symbol, _) ->
       symbols := Symbol.Set.add symbol !symbols
     | Set_of_closures set_of_closures ->
       Closure_id.Map.iter (fun _ (function_decl : Function_declaration.t) ->
@@ -898,8 +897,8 @@ end = struct
       fprintf ppf "@[<2>(assign@ %a@ %a)@]"
         Mutable_variable.print being_assigned
         Variable.print new_value
-    | Read_symbol_field { symbol; logical_field; } ->
-      fprintf ppf "%a.(%d)" Symbol.print symbol logical_field
+    | Read_symbol_field (symbol, field) ->
+      fprintf ppf "%a.(%d)" Symbol.print symbol field
     | Project_closure project_closure ->
       Projection.Project_closure.print ppf project_closure
     | Project_var project_var ->

@@ -15,17 +15,10 @@
 (**************************************************************************)
 
 (** Operations on Flambda statically-allocated code and data whose
-    implementations cannot break invariants enforced by the private types. *)
+    implementations cannot break invariants enforced by any private or
+    abstract types. *)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
-
-module Constant_defining_value :
-  module type of struct include Flambda_static0.Constant_defining_value end
-
-module Constant_defining_value_block_field :
-  module type of struct
-    include Flambda_static0.Constant_defining_value_block_field
-  end
 
 module Program_body :
   module type of struct include Flambda_static0.Program_body end
@@ -33,18 +26,11 @@ module Program_body :
 module Program : sig
   include module type of struct include Flambda_static0.Program end
 
-  val initialize_symbols
-     : t
-    -> (Symbol.t * Program_body.Initialize_symbol.t) list
-
   val imported_symbols : t -> Symbol.Set.t
-
-  val needed_import_symbols : t -> Symbol.Set.t
-
-  val introduce_needed_import_symbols : t -> t
 
   val root_symbol : t -> Symbol.t
 
+(*
   (** Creates a map from closure IDs to function declarations by iterating over
       all sets of closures in the given program. *)
   val make_closure_map : t -> Flambda.Function_declarations.t Closure_id.Map.t
@@ -76,22 +62,21 @@ module Program : sig
   val all_function_decls_indexed_by_closure_id
      : t
     -> Flambda.Function_declarations.t Closure_id.Map.t
-
+*)
   module Iterators : sig
+(*
     (* CR mshinwell: give comment defining semantics.  Also rename to
        [iter_sets_of_closures] to match [Flambda.Expr.Iterators]. *)
     val iter_set_of_closures
        : t
       -> f:(constant:bool -> Flambda.Set_of_closures.t -> unit)
       -> unit
+*)
       
-    (** Iterate over all toplevel expressions in the program:
-        - bodies of functions, whether bound to symbols or not, including any
-          subfunctions; and
-        - [Effect] expressions.
+    (** Iterate over all toplevel expressions in the program, including
+        subfunctions.
         Note the difference in semantics between this and
-        [Toplevel_only.iter_exprs].
-    *)
+        [Toplevel_only.iter_exprs]. *)
     val iter_toplevel_exprs
        : t
       -> f:(continuation_arity:Flambda_arity.t
@@ -114,6 +99,7 @@ module Program : sig
       -> f:(Flambda.apply -> unit)
       -> unit
 
+(*
     val iter_constant_defining_values
        : t
       -> f:(Constant_defining_value.t -> unit)
@@ -122,12 +108,7 @@ module Program : sig
     module Toplevel_only : sig
       (** Iterate over all expressions occurring directly at the toplevel of the
           program. Note that the only function bodies iterated over are those
-          bound to a symbol. (That is to say, a function body in a set of
-          closures [constant_defining_value] will be iterated over---but any
-          subfunctions in the body will not be. Likewise any function body
-          defined by a normal [Let] will not be iterated over.) If you want to
-          iterate over those things as well, use [iter_toplevel_exprs]. *)
-
+          bound directly to a symbol. *)
       val iter_exprs
          : t
         -> f:(continuation_arity:Flambda_arity.t
@@ -136,8 +117,10 @@ module Program : sig
           -> unit)
         -> unit
     end
+*)
   end
 
+(*
   module Mappers : sig    
     val map_sets_of_closures
        : t
@@ -158,6 +141,7 @@ module Program : sig
       -> f:(Variable.t -> Flambda.Named.t -> Flambda.Named.t)
       -> t
   end
+*)
 end
 
 (*

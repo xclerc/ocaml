@@ -296,8 +296,7 @@ end and Named : sig
     | Assign of assign
     | Read_mutable of Mutable_variable.t
     | Symbol of Symbol.t
-    | Read_symbol_field of { symbol : Symbol.t; logical_field : int; }
-    (* CR mshinwell: add documentation of [logical_field] *)
+    | Read_symbol_field of Symbol.t * int
     (** During the lifting of [let] bindings to [program] constructions after
         closure conversion, we generate symbols and their corresponding
         definitions (which may or may not be constant), together with field

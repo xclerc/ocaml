@@ -339,7 +339,7 @@ end = struct
     let iter_sets_of_closures f t =
       iter_named (function
           | Set_of_closures clos -> f clos
-          | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+          | Var _ | Symbol _ | Const _ | Read_mutable _
           | Assign _ | Read_symbol_field _ | Project_closure _
           | Move_within_set_of_closures _ | Project_var _ | Prim _ -> ())
         t
@@ -420,7 +420,7 @@ end = struct
       and aux_named (id : Variable.t) _kind (named : Named.t) =
         let named : Named.t =
           match named with
-          | Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+          | Var _ | Symbol _ | Const _ | Read_mutable _
           | Assign _ | Project_closure _ | Move_within_set_of_closures _
           | Project_var _ | Prim _ | Read_symbol_field _ -> named
           | Set_of_closures ({ function_decls; free_vars;
@@ -521,26 +521,18 @@ end = struct
     let map_symbols tree ~f =
       map_named (function
           | (Symbol symbol) as named ->
-            let symbol = Symbol.to_symbol symbol in
             let new_symbol = f symbol in
             if new_symbol == symbol then
               named
             else
-              begin match Symbol.of_symbol new_symbol with
-              | Some new_symbol -> Symbol new_symbol
-              | None ->
-                Misc.fatal_errorf "Cannot use [map_symbols] to change the kind \
-                    of a symbol:@ old=%a@ new=%a"
-                  Symbol.print symbol
-                  Symbol.print new_symbol
-              end
-          | ((Read_symbol_field { symbol; logical_field; }) as named) ->
+              Symbol new_symbol
+          | ((Read_symbol_field (symbol, field)) as named) ->
             let new_symbol = f symbol in
             if new_symbol == symbol then
               named
             else
-              Read_symbol_field { symbol = new_symbol; logical_field; }
-          | (Var _ | Const _ | Allocated_const _ | Set_of_closures _
+              Read_symbol_field (new_symbol, field)
+          | (Var _ | Const _ | Set_of_closures _
              | Read_mutable _ | Project_closure _
              | Move_within_set_of_closures _ | Project_var _ | Prim _
              | Assign _) as named -> named)
@@ -564,7 +556,7 @@ end = struct
             let new_set_of_closures = f set_of_closures in
             if new_set_of_closures == set_of_closures then named
             else Set_of_closures new_set_of_closures
-          | (Var _ | Symbol _ | Const _ | Allocated_const _ | Project_closure _
+          | (Var _ | Symbol _ | Const _ | Project_closure _
           | Move_within_set_of_closures _ | Project_var _ | Assign _
           | Prim _ | Read_mutable _ | Read_symbol_field _) as named -> named)
         tree
@@ -576,7 +568,7 @@ end = struct
             | None -> named
             | Some named -> named
             end
-          | (Var _ | Symbol _ | Const _ | Allocated_const _ | Set_of_closures _
+          | (Var _ | Symbol _ | Const _ | Set_of_closures _
           | Project_closure _ | Move_within_set_of_closures _ | Prim _
           | Read_mutable _ | Read_symbol_field _ | Assign _) as named -> named)
         tree
@@ -599,7 +591,7 @@ end = struct
               let new_set_of_closures = f set_of_closures in
               if new_set_of_closures == set_of_closures then named
               else Set_of_closures new_set_of_closures
-            | (Var _ | Symbol _ | Const _ | Allocated_const _ | Read_mutable _
+            | (Var _ | Symbol _ | Const _ | Read_mutable _
             | Read_symbol_field _ | Project_closure _
             | Move_within_set_of_closures _ | Project_var _ | Prim _
             | Assign _) as named -> named)
@@ -718,7 +710,7 @@ end = struct
         if var == var' then named
         else Var var'
       | Symbol _ | Const _ -> named
-      | Allocated_const _ | Read_mutable _ -> named
+      | Read_mutable _ -> named
       | Assign { being_assigned; new_value; } ->
         let new_value = sb new_value in
         Assign { being_assigned; new_value; }
@@ -1062,6 +1054,13 @@ end and Set_of_closures : sig
 
 (*  val equal : t -> t -> bool *)
 
+  module Iterators : sig
+    val iter_function_bodies
+       : t
+      -> f:(Expr.t -> unit)
+      -> unit
+  end
+
   module Mappers : sig
     val map_symbols : t -> f:(Symbol.t -> Symbol.t) -> t
     val map_function_bodies
@@ -1098,6 +1097,13 @@ end = struct
         t1.function_decls.funs t2.function_decls.funs
       && Variable.Map.equal Free_var.equal t1.free_vars t2.free_vars
 *)
+
+  module Iterators = struct
+    let iter_function_bodies t ~f =
+      Closure_id.Map.iter (fun _ (function_decl : Function_declaration.t) ->
+          f function_decl.body)
+        t.function_decls.funs
+  end
 
   module Mappers = struct
     let map_symbols ({ function_decls; free_vars; direct_call_surrogates; }

@@ -16,45 +16,84 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Constant_defining_value_block_field =
-  Flambda_static0.Constant_defining_value_block_field
-module Constant_defining_value = Flambda_static0.Constant_defining_value
-module Program_body = Flambda_static0.Program_body
-
-module CDV = Constant_defining_value
 module F = Flambda
+
+module Static_part = Flambda_static0.Static_part
+
+module Program_body = struct
+  include Flambda_static0.Program_body
+
+  module Iterators = struct
+    let iter_toplevel_exprs_in_definition defn ~f =
+      begin match defn.computation with
+      | None -> ()
+      | Some computation ->
+        let continuation_arity =
+          List.map (fun (_var, kind) -> kind) computation.computed_values
+        in
+        f ~continuation_arity computation.return_cont computation.expr
+      end;
+      List.iter (fun (_sym, (static_part : Static_part.t) ->
+          | Set_of_closures set ->
+            Flambda.Set_of_closures.Iterators.iter_function_bodies set ~f
+          | Block _
+          | Closure _
+          | Boxed_float _
+          | Boxed_int32 _
+          | Boxed_int64 _
+          | Boxed_nativeint _
+          | Mutable_float_array _
+          | Immutable_float_array _
+          | Mutable_string _
+          | Immutable_string _ -> ())
+        defn.static_structure
+
+    let iter_toplevel_exprs (t : t) ~f =
+      match t with
+      | Define_symbol (defn, t)
+      | Define_symbol_rec (defn, t) ->
+        iter_toplevel_exprs_in_definition defn ~f;
+        iter_toplevel_exprs t ~f
+      | Root _ -> ()
+
+(*
+      Toplevel_only.iter_exprs program
+        ~f:(fun ~continuation_arity cont expr ->
+          let rec iter_expr ~continuation_arity cont expr =
+            Flambda.Expr.Iterators.iter_named (fun (named : Flambda.Named.t) ->
+                match named with
+                | Set_of_closures set_of_closures ->
+                  Closure_id.Map.iter
+                    (fun _ (function_decl : F.Function_declaration.t) ->
+                      iter_expr ~continuation_arity:function_decl.return_arity
+                        function_decl.continuation_param
+                        function_decl.body)
+                    set_of_closures.function_decls.funs
+                | _ -> ())
+              expr;
+            f ~continuation_arity cont expr
+          in
+          iter_expr ~continuation_arity cont expr)
+*)
+  end
+end
 
 module Program = struct
   include Flambda_static0.Program
 
-  let initialize_symbols (program : t) =
-    let rec loop (program : Program_body.t) =
-      match program with
-      | Initialize_symbol (symbol, descr, program) ->
-        (symbol, descr) :: (loop program)
-      | Effect (_, _, program)
-      | Let_symbol (_, _, program)
-      | Let_rec_symbol (_, program) -> loop program
-      | End _ -> []
-    in
-    loop program.program_body
+  let imported_symbols t = t.imported_symbols
 
-  let imported_symbols (program : t) =
-    program.imported_symbols
-
-  let root_symbol (program : t) =
-    let rec loop (program : Program_body.t) =
-      match program with
-      | Effect (_, _, program)
-      | Let_symbol (_, _, program)
-      | Let_rec_symbol (_, program)
-      | Initialize_symbol (_, _, program) -> loop program
-      | End root ->
-        root
+  let root_symbol t =
+    let rec loop (body : Program_body.t) =
+      match body with
+      | Define_symbol (_, body)
+      | Define_symbol_rec (_, body)
+      | Root root -> root
     in
-    loop program.program_body
+    loop t.body
 
   module Iterators = struct
+(*
     let iter_set_of_closures (program : t) ~f =
       let rec loop (program : Program_body.t) =
         match program with
@@ -141,28 +180,13 @@ module Program = struct
         in
         loop program.program_body
     end 
+*)
 
-    let iter_toplevel_exprs (program : t) ~f =
-      Toplevel_only.iter_exprs program
-        ~f:(fun ~continuation_arity cont expr ->
-          let rec iter_expr ~continuation_arity cont expr =
-            Flambda.Expr.Iterators.iter_named (fun (named : Flambda.Named.t) ->
-                match named with
-                | Set_of_closures set_of_closures ->
-                  Closure_id.Map.iter
-                    (fun _ (function_decl : F.Function_declaration.t) ->
-                      iter_expr ~continuation_arity:function_decl.return_arity
-                        function_decl.continuation_param
-                        function_decl.body)
-                    set_of_closures.function_decls.funs
-                | _ -> ())
-              expr;
-            f ~continuation_arity cont expr
-          in
-          iter_expr ~continuation_arity cont expr)
+    let iter_toplevel_exprs (t : t) ~f =
+      Program_body.Iterators.iter_toplevel_exprs t.body ~f
 
-    let iter_apply program ~f =
-      iter_toplevel_exprs program
+    let iter_apply t ~f =
+      iter_toplevel_exprs t
         ~f:(fun ~continuation_arity:_ _cont expr ->
           Flambda.Expr.Iterators.iter (function
               | Apply apply -> f apply
@@ -174,7 +198,7 @@ module Program = struct
       iter_toplevel_exprs t ~f:(fun ~continuation_arity:_ _ e ->
         Flambda.Expr.Iterators.iter_named f e)
   end
-
+(*
   module Mappers = struct
     let map_sets_of_closures (program : t)
           ~(f : F.Set_of_closures.t -> F.Set_of_closures.t) =
@@ -474,6 +498,8 @@ module Program = struct
     in
     Iterators.iter_set_of_closures program ~f:add_set_of_closures;
     !map
+*)
+
 *)
 end
 

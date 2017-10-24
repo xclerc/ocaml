@@ -58,7 +58,7 @@ end
 
 module Program_body : sig
   type computation = {
-    expr : Expr.t;
+    expr : Flambda.Expr.t;
     (** The expression that is to be evaluated.  It must call [return_cont]
         with its results. *)
     return_cont : Continuation.t;
