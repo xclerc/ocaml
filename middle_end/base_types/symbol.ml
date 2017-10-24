@@ -16,14 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type symbol_kind =
-  | Mixed of Flambda_kind.t list
-  | Value of Tag.t
-
 type t = {
   compilation_unit : Compilation_unit.t;
   label : Linkage_name.t;
-  kind : symbol_kind;
   hash : int;
 }
 
@@ -55,15 +50,7 @@ end)
 
 include I
 
-let value_kind tag = Value tag
-
-let mixed_kind fields =
-  if List.for_all Flambda_kind.is_value fields then
-    Value Tag.zero
-  else
-    Mixed fields
-
-let create compilation_unit label ~kind =
+let create compilation_unit label =
   let unit_linkage_name =
     Linkage_name.to_string
       (Compilation_unit.get_linkage_name compilation_unit)
@@ -73,22 +60,20 @@ let create compilation_unit label ~kind =
       (unit_linkage_name ^ "__" ^ (Linkage_name.to_string label))
   in
   let hash = Linkage_name.hash label in
-  { compilation_unit; label; kind; hash; }
+  { compilation_unit; label; hash; }
 
-let unsafe_create compilation_unit label ~kind =
+let unsafe_create compilation_unit label =
   let hash = Linkage_name.hash label in
-  { compilation_unit; label; hash; kind; }
+  { compilation_unit; label; hash; }
 
-let import_for_pack t ~pack:compilation_unit ~kind =
+let import_for_pack t ~pack:compilation_unit =
   let hash = Linkage_name.hash t.label in
   { compilation_unit;
     label = t.label; hash;
-    kind;
   }
 
 let compilation_unit t = t.compilation_unit
 let label t = t.label
-let kind t = t.kind
 
 let print_opt ppf = function
   | None -> Format.fprintf ppf "<no symbol>"
@@ -96,25 +81,3 @@ let print_opt ppf = function
 
 let compare_lists l1 l2 =
   Misc.Stdlib.List.compare compare l1 l2
-
-module Of_kind_value = struct
-  type t = symbol
-
-  include I
-
-  let to_symbol t = t
-
-  let of_symbol t =
-    match t.kind with
-    | Mixed _ -> None
-    | Value _ -> Some t
-
-  let of_symbol_exn t =
-    match of_symbol t with
-    | Some t -> t
-    | None ->
-      Misc.fatal_errorf "Symbol %a has fields not of kind [Value]"
-        print t
-
-  let compilation_unit t = compilation_unit t
-end

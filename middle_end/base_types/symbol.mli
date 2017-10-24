@@ -30,24 +30,9 @@ include Identifiable.S
 
 type symbol = t
 
-type symbol_kind = private
-  | Mixed of Flambda_kind.t list
-  (** The symbol cannot be used as a value. Its fields can be accessed by
-      Read_symbol_field, and yields the corresponding kind.
-      All fields can't be of kind value, otherwise the symbol kind is Value *)
-  | Non_scannable_value of Tag.Non_scannable.t
-  | Scannable_value of Tag.Scannable.t
-  (** The symbol contains a valid value with fields that can be traversed by
-      the GC. *)
-
-. it is either a block and
-      each fields are of kind value, or a boxed value (string, floats, ...)
-      and doesn't have any field *)
-
 val create
    : Compilation_unit.t
   -> Linkage_name.t
-  -> kind:symbol_kind
   -> t
 
 (* Create the symbol without prefixing with the compilation unit.
@@ -55,33 +40,16 @@ val create
 val unsafe_create
    : Compilation_unit.t
   -> Linkage_name.t
-  -> kind:symbol_kind
   -> t
 
 val import_for_pack
    : t
   -> pack:Compilation_unit.t
-  -> kind:symbol_kind
   -> t
-
-val mixed_kind : Flambda_kind.t list -> symbol_kind
-val value_kind : Tag.t -> symbol_kind
 
 val compilation_unit : t -> Compilation_unit.t
 val label : t -> Linkage_name.t
-val kind : t -> symbol_kind
 
 val print_opt : Format.formatter -> t option -> unit
 
 val compare_lists : t list -> t list -> int
-
-module Of_kind_value : sig
-  include Identifiable.S
-
-  val to_symbol : t -> symbol
-
-  val of_symbol_exn : symbol -> t
-  val of_symbol : symbol -> t option
-
-  val compilation_unit : t -> Compilation_unit.t
-end
