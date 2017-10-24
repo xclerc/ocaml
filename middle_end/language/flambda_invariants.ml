@@ -583,18 +583,16 @@ let variable_and_symbol_invariants (program : Flambda_static.Program.t) =
     match named with
     | Var var -> check_variable_is_bound env var
     | Symbol symbol ->
-      let symbol = Symbol.to_symbol symbol in
       check_symbol_is_bound env symbol
     | Const const -> ignore_const const
-    | Allocated_const const -> ignore_allocated_const const
     | Read_mutable mut_var ->
       check_mutable_variable_is_bound env mut_var
     | Assign { being_assigned; new_value; } ->
       check_mutable_variable_is_bound env being_assigned;
       check_variable_is_bound env new_value
-    | Read_symbol_field { symbol; logical_field; } ->
+    | Read_symbol_field (symbol, field) ->
       check_symbol_is_bound env symbol;
-      assert (logical_field >= 0)  (* CR-someday mshinwell: add proper error *)
+      assert (field >= 0)  (* CR-someday mshinwell: add proper error *)
     | Set_of_closures set_of_closures ->
       loop_set_of_closures env set_of_closures
     | Project_closure { set_of_closures; closure_id; } ->
