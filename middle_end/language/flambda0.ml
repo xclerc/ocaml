@@ -31,6 +31,7 @@ module Call_kind = struct
         param_arity : Flambda_arity.t;
         return_arity : Flambda_arity.t;
       }
+    | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
 
   let return_arity t : Flambda_arity.t =
     match t with
@@ -98,12 +99,7 @@ module Const = struct
   end)
 end
 
-type apply_kind =
-  | Function
-  | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
-
 type apply = {
-  kind : apply_kind;
   func : Variable.t;
   continuation : Continuation.t;
   args : Variable.t list;

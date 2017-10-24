@@ -39,6 +39,7 @@ module Call_kind : sig
         param_arity : Flambda_arity.t;
         return_arity : Flambda_arity.t;
       }
+    | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
 
   val return_arity : t -> Flambda_arity.t
 end
@@ -56,14 +57,9 @@ module Const : sig
   include Identifiable.S with type t := t
 end
 
-type apply_kind =
-  | Function
-  | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
-
 (** The application of a function (or method on a given object) to a list of
     arguments. *)
 type apply = {
-  kind : apply_kind;
   (* CR-soon mshinwell: rename func -> callee, and
      lhs_of_application -> callee *)
   func : Variable.t;

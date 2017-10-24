@@ -20,6 +20,18 @@
 
 type continuation_kind = Normal | Exn_handler
 
+module Continuation_stack : sig
+  type t
+
+  val var : unit -> t
+  val root : unit -> t
+  val push : Trap_id.t -> Continuation.t -> t -> t
+
+  val repr : t -> t
+
+  val unify : Continuation.t -> t -> t -> unit
+end
+
 type t
 
 val create : unit -> t
@@ -42,10 +54,19 @@ val add_continuation
   -> Continuation.t
   -> Flambda_arity.t
   -> continuation_kind
+  -> Continuation_stack.t
   -> t
 
 val check_variable_is_bound : t -> Variable.t -> unit
 
+val check_variable_is_bound_and_of_kind_value : t -> Variable.t -> unit
+
 val check_mutable_variable_is_bound : t -> Mutable_variable.t -> unit
 
 val check_symbol_is_bound : t -> Symbol.t -> unit
+
+val kind_of_variable : t -> Variable.t -> Flambda_kind.t
+
+val current_continuation_stack : t -> Continuation_stack.t
+
+val set_current_continuation_stack : t -> Continuation_stack.t -> t

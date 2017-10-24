@@ -18,11 +18,92 @@
 
 type continuation_kind = Normal | Exn_handler
 
+(* For checking that push- and pop-trap operations match up correctly. *)
+module Continuation_stack : sig
+  type t
+
+  val var : unit -> t
+  val root : unit -> t
+  val push : Trap_id.t -> Continuation.t -> t -> t
+
+  val repr : t -> t
+
+  val unify : Continuation.t -> t -> t -> unit
+end = struct
+  type t0 =
+    | Root
+    | Var (* Debug *)
+    | Link of t
+    | Push of Trap_id.t * Continuation.t * t
+
+  and t = t0 ref
+
+  let var () = ref Var
+
+  let root () = ref Root
+
+  let push id cont s = ref (Push (id, cont, s))
+
+  let rec repr t =
+    match !t with
+    | Link s ->
+      let u = repr s in
+      t := u;
+      u
+    | v -> v
+
+  let rec occurs_check cont t checked =
+    if t == checked then begin
+      Misc.fatal_errorf "Malformed exception continuation \
+          (recursive stack) for %a"
+        Continuation.print cont
+    end;
+    match !checked with
+    | Var
+    | Root -> ()
+    | Link s
+    | Push (_, _, s) ->
+      occurs_check cont t s
+
+  let rec unify cont t1 t2 =
+    if t1 == t2 then ()
+    else
+      match repr t1, repr t2 with
+      | Link _, _ | _, Link _ -> assert false
+      | Var, _ ->
+        occurs_check cont t1 t2;
+        t1 := Link t2
+      | _, Var ->
+        occurs_check cont t2 t1;
+        t2 := Link t1
+      | Root, Root -> ()
+      | Push (id1, c1, s1), Push (id2, c2, s2) ->
+        if not (Trap_id.equal id1 id2) then begin
+          Misc.fatal_errorf "Malformed exception continuation \
+              (mismatched trap ID) for %a"
+            Continuation.print cont
+        end;
+        if not (Continuation.equal c1 c2) then begin
+          Misc.fatal_errorf "Malformed exception continuation \
+              (mismatched continuations, %a vs. %a) for %a"
+            Continuation.print c1
+            Continuation.print c2
+            Continuation.print cont
+        end;
+        unify_stack cont s1 s2
+      | Root, Push _ | Push _, Root ->
+        Misc.fatal_errorf "Malformed exception continuation \
+            (root stack is not empty) for %a"
+          Continuation.print cont
+end
+
 type t = {
   variables : Flambda_kind.t Variable.Map.t;
   mutable_variables : Flambda_kind.t Mutable_variable.Set.t;
-  continuations : (Flambda_arity.t * continuation_kind) Continuation.Map.t;
+  continuations :
+    (Flambda_arity.t * continuation_kind * stack_type) Continuation.Map.t;
   symbols : Symbol.Set.t;
+  continuation_stack : Continuation_stack.t;
 }
 
 let create () =
@@ -30,6 +111,7 @@ let create () =
     mutable_variables = Mutable_variable.Map.empty;
     continuations = Continuation.Map.empty;
     symbols = Symbol.Set.empty;
+    continuation_stack = Continuation_stack.var ();
   }
 
 let add_variable t var kind =
@@ -107,3 +189,8 @@ let check_symbol_is_bound t var =
   if not (Symbol.Set.mem var t.symbols) then begin
     Misc.fatal_errorf "Unbound symbol %a" Symbol.print var
   end
+
+let current_continuation_stack t = t.current_continuation_stack
+
+let set_current_continuation_stack t continuation_stack =
+  { t with continuation_stack; }

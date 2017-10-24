@@ -286,15 +286,15 @@ MIDDLE_END_LANGUAGE=\
   middle_end/language/flambda_kind.cmo \
   middle_end/language/flambda_arity.cmo \
   middle_end/language/allocated_const.cmo \
-  middle_end/language/flambda.cmo \
-  middle_end/language/flambda0.cmo \
-  middle_end/language/flambda_static.cmo \
-  middle_end/language/flambda_static0.cmo \
-  middle_end/language/flambda_type.cmo \
-  middle_end/language/flambda_type0.cmo \
   middle_end/language/flambda_type0_intf.cmo \
+  middle_end/language/flambda_type0.cmo \
+  middle_end/language/flambda0.cmo \
+  middle_end/language/flambda_type.cmo \
+  middle_end/language/invariant_env.cmo \
+  middle_end/language/flambda.cmo \
+  middle_end/language/flambda_static0.cmo \
+  middle_end/language/flambda_static.cmo \
   middle_end/language/flambda_utils.cmo \
-  middle_end/language/freshening.cmo \
   middle_end/language/projection.cmo
 
 MIDDLE_END_REMOVAL=\
@@ -308,6 +308,7 @@ MIDDLE_END_REMOVAL=\
   middle_end/removal/unrecursify.cmo
 
 MIDDLE_END_SIMPLIFY=\
+  middle_end/language/freshening.cmo \
   middle_end/simplify/simplify_env.cmo \
   middle_end/simplify/simplify_result.cmo \
   middle_end/simplify/simplify_aux.cmo \
