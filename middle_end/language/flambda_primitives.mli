@@ -18,76 +18,89 @@
 (*                                                                        *)
 (**************************************************************************)
 
+type naked_int_kind =
+  | Untagged_immediate
+  | Naked_int32
+  | Naked_int64
+  | Naked_nativeint
+
 type t =
-  | Pbytes_to_string
-  | Pbytes_of_string
-  | Pignore
-  | Ploc of loc_kind
-  | Pmakeblock of int * mutable_flag * block_shape
-  | Pfield of int
-  | Pfield_computed
-  | Psetfield of int * immediate_or_pointer * initialization_or_assignment
-  | Psetfield_computed of immediate_or_pointer * initialization_or_assignment
-  | Pfloatfield of int
-  | Psetfloatfield of int * initialization_or_assignment
-  | Pduprecord of Types.record_representation * int
-  | Plazyforce
-  | Pccall of Primitive.description
-  | Pccall_unboxed of Primitive.description
-  | Praise of raise_kind
-  | Psequand | Psequor | Pnot
-  | Pnegint | Paddint | Psubint | Pmulint
-  | Pdivint of is_safe | Pmodint of is_safe
-  | Pandint | Porint | Pxorint
-  | Plslint | Plsrint | Pasrint
-  | Pintcomp of comparison
-  | Poffsetint of int
-  | Poffsetref of int
-  | Pintoffloat of boxed | Pfloatofint of boxed
-  | Pnegfloat of boxed | Pabsfloat of boxed
-  | Paddfloat of boxed | Psubfloat of boxed | Pmulfloat of boxed
-  | Pdivfloat of boxed
-  | Pfloatcomp of comparison * boxed
-  | Pstringlength | Pstringrefu  | Pstringrefs
-  | Pbyteslength | Pbytesrefu | Pbytessetu | Pbytesrefs | Pbytessets
-  | Pmakearray of array_kind * mutable_flag
-  | Pduparray of array_kind * mutable_flag
-  | Parraylength of array_kind
-  | Parrayrefu of array_kind
-  | Parraysetu of array_kind
-  | Parrayrefs of array_kind
-  | Parraysets of array_kind
-  | Pisint
-  | Pgettag
-  | Pisout
-  | Pbittest
-  | Pbigarrayref of bool * int * bigarray_kind * bigarray_layout * boxed
-  | Pbigarrayset of bool * int * bigarray_kind * bigarray_layout * boxed
-  | Pbigarraydim of int
-  | Pstring_load_16 of bool
-  | Pstring_load_32 of bool
-  | Pstring_load_64 of bool
-  | Pstring_set_16 of bool
-  | Pstring_set_32 of bool
-  | Pstring_set_64 of bool
-  | Pbigstring_load_16 of bool
-  | Pbigstring_load_32 of bool
-  | Pbigstring_load_64 of bool
-  | Pbigstring_set_16 of bool
-  | Pbigstring_set_32 of bool
-  | Pbigstring_set_64 of bool
-  | Pctconst of compile_time_constant
-  | Pbswap16
-  | Pbbswap of boxed_integer
-  | Pint_as_pointer
-  | Popaque
-  | Punbox_float
-  | Pbox_float
-  | Punbox_int32
-  | Pbox_int32
-  | Punbox_int64
-  | Pbox_int64
-  | Punbox_nativeint
-  | Pbox_nativeint
-  | Puntag_immediate
-  | Ptag_immediate
+  | Bytes_to_string
+  | Bytes_of_string
+  | Ignore
+  | Makeblock of int * mutable_flag * block_shape
+  | Field of int
+  | Field_computed
+  | Setfield of int * immediate_or_pointer * initialization_or_assignment
+  | Setfield_computed of immediate_or_pointer * initialization_or_assignment
+  | Floatfield of int
+  | Setfloatfield of int * initialization_or_assignment
+  | Duprecord of Types.record_representation * int
+  | Lazyforce
+  | Ccall of Primitive.description
+  | Ccall_unboxed of Primitive.description
+  | Raise of raise_kind
+  | Not of naked_int_kind
+  | Negint of naked_int_kind
+  | Addint of naked_int_kind
+  | Subint of naked_int_kind
+  | Mulint of naked_int_kind
+  | Divint of is_safe * naked_int_kind
+  | Modint of is_safe * naked_int_kind
+  | Andint of naked_int_kind
+  | Orint of naked_int_kind
+  | Xorint of naked_int_kind
+  | Lslint of naked_int_kind
+  | Lsrint of naked_int_kind
+  | Asrint of naked_int_kind
+  | Intcomp of comparison
+  | Offsetint of int
+  | Offsetref of int
+  | Intoffloat | Pfloatofint
+  | Negfloat | Pabsfloat
+  | Addfloat | Psubfloat | Pmulfloat
+  | Divfloat
+  | Floatcomp of comparison
+  | Stringlength | Pstringrefu  | Pstringrefs
+  | Byteslength | Pbytesrefu | Pbytessetu | Pbytesrefs | Pbytessets
+  | Makearray of array_kind * mutable_flag
+  | Duparray of array_kind * mutable_flag
+  | Arraylength of array_kind
+  | Arrayrefu of array_kind
+  | Arraysetu of array_kind
+  | Arrayrefs of array_kind
+  | Arraysets of array_kind
+  | Isint
+  | Gettag
+  | Isout
+  | Bittest
+  | Bigarrayref of bool * int * bigarray_kind * bigarray_layout * boxed
+  | Bigarrayset of bool * int * bigarray_kind * bigarray_layout * boxed
+  | Bigarraydim of int
+  | String_load_16 of bool
+  | String_load_32 of bool
+  | String_load_64 of bool
+  | String_set_16 of bool
+  | String_set_32 of bool
+  | String_set_64 of bool
+  | Bigstring_load_16 of bool
+  | Bigstring_load_32 of bool
+  | Bigstring_load_64 of bool
+  | Bigstring_set_16 of bool
+  | Bigstring_set_32 of bool
+  | Bigstring_set_64 of bool
+  | Ctconst of compile_time_constant
+  | Bswap16
+  | Bbswap of boxed_integer
+  | Int_as_pointer
+  | Opaque
+  | Unbox_float
+  | Box_float
+  | Unbox_int32
+  | Box_int32
+  | Unbox_int64
+  | Box_int64
+  | Unbox_nativeint
+  | Box_nativeint
+  | Untag_immediate
+  | Tag_immediate
