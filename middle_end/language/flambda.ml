@@ -1273,6 +1273,10 @@ end = struct
     end
   end
 
+  type primitive_args_kind =
+    | Exactly of Flambda_arity.t
+    | All_of_kind Flambda_kind.t
+
   let invariant ~importer env t : Flambda_kind.t =
     let module E = Invariant_env in
     match t with
@@ -1331,16 +1335,139 @@ end = struct
       Flambda_kind.value Must_scan
     | Prim (prim, args, dbg) ->
       E.check_variables_are_bound env args;
-      ignore_debuginfo dbg
-      (* CR mshinwell: We should type-check more primitives, particularly the
-         ones about boxing and unboxing of numbers, to make sure that the kinds
-         of the [args] are correct.  In fact maybe we should check all of
-         the primitives. *)
-      begin match prim with
-      | Psequand | Psequor | Pgetglobal _ | Pidentity | Pdirapply
-      | Prevapply | Ploc _->
-        Misc.fatal_errorf "Primitive is forbidden: %a" print t
-      | _ -> ()
+      ignore_debuginfo dbg;
+      let must_scan = Flambda_kind.value Must_scan in
+      let can_scan = Flambda_kind.value Can_scan in
+      let args_kind, result_kind =
+        match prim with
+        | Pbytes_to_string
+        | Pbytes_of_string
+        | Pignore
+        | Ploc of loc_kind
+        | Pmakeblock of int * mutable_flag * block_shape
+        (* CR mshinwell: Hmm, what happens if we start working out that the
+           contents of some blocks (e.g. int * int) don't need scanning? *)
+        | Pfield _ -> Exactly [must_scan], must_scan
+        | Pfield_computed -> Exactly [must_scan; can_scan], must_scan
+        | Psetfield of int * immediate_or_pointer * initialization_or_assignment
+        | Psetfield_computed of immediate_or_pointer * initialization_or_assignment
+        | Pfloatfield of int
+        | Psetfloatfield of int * initialization_or_assignment
+        | Pduprecord of Types.record_representation * int
+        | Plazyforce
+        | Pccall of Primitive.description
+        | Pccall_unboxed of Primitive.description
+        | Praise of raise_kind
+
+        | Pnot | Pnegint -> Exactly [can_scan], can_scan
+        | Paddint | Psubint | Pmulint | Pdivint _ | Pmodint _
+        | Pandint | Porint | Pxorint | Plslint | Plsrint | Pasrint
+        | Pintcomp _ ->
+          Exactly [can_scan; can_scan], can_scan
+
+
+        | Poffsetint of int
+        | Poffsetref of int
+        | Pintoffloat of boxed | Pfloatofint of boxed
+        | Pnegfloat of boxed | Pabsfloat of boxed
+        | Paddfloat of boxed | Psubfloat of boxed | Pmulfloat of boxed
+        | Pdivfloat of boxed
+        | Pfloatcomp of comparison * boxed
+        | Pstringlength | Pstringrefu  | Pstringrefs
+        | Pbyteslength | Pbytesrefu | Pbytessetu | Pbytesrefs | Pbytessets
+        | Pmakearray of array_kind * mutable_flag
+        | Pduparray of array_kind * mutable_flag
+        | Parraylength of array_kind
+        | Parrayrefu of array_kind
+        | Parraysetu of array_kind
+        | Parrayrefs of array_kind
+        | Parraysets of array_kind
+        | Pisint
+        | Pgettag
+        | Pisout
+        | Pbittest
+        | Pbintofint of boxed_integer
+        | Pintofbint of boxed_integer
+        | Pcvtbint of boxed_integer (*source*) * boxed_integer (*destination*)
+        | Pnegbint of boxed_integer
+        | Paddbint of boxed_integer
+        | Psubbint of boxed_integer
+        | Pmulbint of boxed_integer
+        | Pdivbint of { size : boxed_integer; is_safe : is_safe }
+        | Pmodbint of { size : boxed_integer; is_safe : is_safe }
+        | Pandbint of boxed_integer
+        | Porbint of boxed_integer
+        | Pxorbint of boxed_integer
+        | Plslbint of boxed_integer
+        | Plsrbint of boxed_integer
+        | Pasrbint of boxed_integer
+        | Pbintcomp of boxed_integer * comparison
+        | Pbigarrayref of bool * int * bigarray_kind * bigarray_layout * boxed
+        | Pbigarrayset of bool * int * bigarray_kind * bigarray_layout * boxed
+        | Pbigarraydim of int
+        | Pstring_load_16 of bool
+        | Pstring_load_32 of bool
+        | Pstring_load_64 of bool
+        | Pstring_set_16 of bool
+        | Pstring_set_32 of bool
+        | Pstring_set_64 of bool
+        | Pbigstring_load_16 of bool
+        | Pbigstring_load_32 of bool
+        | Pbigstring_load_64 of bool
+        | Pbigstring_set_16 of bool
+        | Pbigstring_set_32 of bool
+        | Pbigstring_set_64 of bool
+        | Pctconst of compile_time_constant
+        | Pbswap16
+        | Pbbswap of boxed_integer
+        | Pint_as_pointer ->
+          (* CR mshinwell: Is this right? *)
+          Exactly [must_scan], Flambda_kind.naked_immediate ()
+        | Popaque -> ...
+        | Punbox_float -> Exactly [must_scan], Flambda_kind.naked_float ()
+        | Pbox_float -> Exactly [Flambda_kind.naked_float ()], must_scan
+        | Punbox_int32 -> Exactly [must_scan], Flambda_kind.naked_int32 ()
+        | Pbox_int32 -> Exactly [Flambda_kind.naked_int32 ()], must_scan
+        | Punbox_int64 -> Exactly [must_scan], Flambda_kind.naked_int64 ()
+        | Pbox_int64 -> Exactly [Flambda_kind.naked_int64 ()], must_scan
+        | Punbox_nativeint ->
+          Exactly [must_scan], Flambda_kind.naked_nativeint ()
+        | Pbox_nativeint ->
+          Exactly [Flambda_kind.naked_nativeint ()], must_scan
+        | Puntag_immediate ->
+          Exactly [can_scan], Flambda_kind.naked_immediate ()
+        | Ptag_immediate ->
+          Exactly [Flambda_kind.naked_immediate ()], can_scan
+        | Pread_mutable _ ->
+          Misc.fatal_errorf "Pread_mutable may not occur in Flambda terms"
+        | Preturn | Pmake_unboxed_tuple | Punboxed_tuple_field _ ->
+          Misc.fatal_errorf "Primitive may only be used between \
+              [Flambda_to_clambda] and [Un_anf]: %a"
+            print t
+        | Psequand | Psequor | Pgetglobal _ | Psetglobal _ | Pidentity
+        | Pdirapply | Prevapply | Ploc _->
+          Misc.fatal_errorf "Primitive is forbidden in Flambda: %a" print t
+        in
+        let args_kind =
+          match args_kind with
+          | Exactly args_kind ->
+            if List.length args <> List.length args_kind then begin
+              Misc.fatal_errorf "Primitive application has the wrong number of \
+                  arguments: %a"
+                print t
+            end;
+            args_kind
+          | All_of_kind kind -> List.init (List.length args) kind
+        in
+        List.for_all2 (fun arg kind ->
+            let arg_kind = E.kind_of_variable env arg in
+            if not (Flambda_kind.compatible arg arg_kind) then begin
+              Misc.fatal_errorf "Wrong kind for primitive argument %a: %a"
+                Variable.print arg
+                print t
+            end)
+          args args_kind
+        result_kind
       end
 end and Let_cont_handlers : sig
   include module type of F0.Let_cont_handlers

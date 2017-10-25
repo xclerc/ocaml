@@ -26,7 +26,8 @@ module Program_body :
 module Program : sig
   include module type of struct include Flambda_static0.Program end
 
-  (** Perform well-formedness checks on the expression. *)
+  (** Perform well-formedness checks on the expression.  This is basically a
+      simple type / kind checking algorithm. *)
   val invariant : t -> unit
 
   (** All symbols imported from other compilation units by the given program. *)
