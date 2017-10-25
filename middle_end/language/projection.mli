@@ -56,6 +56,7 @@ end
 module Project_var : sig
   type t = {
     closure : Variable.t;  (** must yield a closure *)
+    (* CR mshinwell: Change the name of [var]. *)
     var : Var_within_closure.t Closure_id.Map.t;
     (** For each possible value of closure, get a different field of the
         closure. *)

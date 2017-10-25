@@ -18,7 +18,62 @@
 
 module F = Flambda
 
-module Static_part = Flambda_static0.Static_part
+module Of_kind_value = struct
+  include Flambda_static0.Of_kind_value
+
+  let invariant env t =
+    match t with
+    | Symbol sym -> Invariant_env.check_symbol_is_bound env sym
+    | Tagged_immediate _ -> ()
+    | Dynamically_computed var ->
+      Invariant.check_variable_is_bound_and_of_kind_value env var
+end
+
+module Static_part = struct
+  include Flambda_static0.Static_part
+
+  let invariant env t =
+    let module E = Invariant_env in
+    match t with
+    | Block (_tag, _mut, fields) ->
+      List.iter (fun field -> Of_kind_value.invariant env field) fields
+    | Set_of_closures set ->
+      let outer_vars = Flambda.Free_vars.all_outer_variables set.free_vars in
+      Variable.Set.iter (fun var ->
+          E.check_variable_is_bound_and_of_kind_value env var)
+        outer_vars;
+      let free_symbols = Flambda.Set_of_closures.free_symbols set in
+      Symbol.Set.iter (fun sym ->
+          E.check_symbol_is_bound env sym)
+        free_symbols
+    | Closure (sym, _closure_id) ->
+      E.check_symbol_is_bound env sym
+    | Boxed_float (Var v) ->
+      E.check_variable_is_bound_and_of_kind_naked_float env v
+    | Boxed_int32 (Var v)
+      E.check_variable_is_bound_and_of_kind_naked_int32 env v
+    | Boxed_int64 (Var v)
+      E.check_variable_is_bound_and_of_kind_naked_int64 env v
+    | Boxed_nativeint (Var v)
+      E.check_variable_is_bound_and_of_kind_naked_nativeint env v
+    | Mutable_string { initial_value = Var v; } ->
+    | Immutable_string (Var v) ->
+      E.check_variable_is_bound_and_of_kind_value env v
+      E.check_variable_is_bound_and_of_kind_value env v
+    | Boxed_float (Const _)
+    | Boxed_int32 (Const _)
+    | Boxed_int64 (Const _)
+    | Boxed_nativeint (Const _)
+    | Mutable_string { initial_value = Const _; }
+    | Immutable_string (Const _) -> ()
+    | Mutable_float_array { initial_value = fields; }
+    | Immutable_float_array fields ->
+      List.iter (fun (field : float or_variable) ->
+          match field with
+          | Var v -> E.check_variable_is_bound_and_of_kind_naked_float env v
+          | Const _ -> ())
+        fields
+end
 
 module Program_body = struct
   include Flambda_static0.Program_body
@@ -55,30 +110,91 @@ module Program_body = struct
         iter_toplevel_exprs_in_definition defn ~f;
         iter_toplevel_exprs t ~f
       | Root _ -> ()
-
-(*
-      Toplevel_only.iter_exprs program
-        ~f:(fun ~continuation_arity cont expr ->
-          let rec iter_expr ~continuation_arity cont expr =
-            Flambda.Expr.Iterators.iter_named (fun (named : Flambda.Named.t) ->
-                match named with
-                | Set_of_closures set_of_closures ->
-                  Closure_id.Map.iter
-                    (fun _ (function_decl : F.Function_declaration.t) ->
-                      iter_expr ~continuation_arity:function_decl.return_arity
-                        function_decl.continuation_param
-                        function_decl.body)
-                    set_of_closures.function_decls.funs
-                | _ -> ())
-              expr;
-            f ~continuation_arity cont expr
-          in
-          iter_expr ~continuation_arity cont expr)
-*)
   end
 
-  let invariant_define_symbol ~importer defn (recursive : Astflags.rec_flag) =
-    ...
+  let invariant_define_symbol ~importer env defn
+        (recursive : Astflags.rec_flag) =
+    begin match defn.computation with
+    | None -> ()
+    | Some computation ->
+      (* [Flambda.Expr.invariant] will also catch unbound variables and
+         continuations, but we can give a better error message by having
+         these two specific checks.  It also gives some amount of testing
+         of [free_variables] and [free_continuations] in [Expr]. *)
+      let free_variables = Flambda.Expr.free_variables computation.expr in
+      if not (Variable.Set.is_empty free_variables) then begin
+        Misc.fatal_errorf "Toplevel computation is not closed: %a"
+          Flambda.Expr.print computation.expr
+      end;
+      let free_conts = Flambda.Expr.free_continuations computation.expr in
+      begin match Continuation.Set.get_singleton free_conts with
+      | cont when Continuation.equal cont defn.return_cont -> ()
+      | _ ->
+        Misc.fatal_errorf "Toplevel computation has illegal free \
+            continuations (%a); the only permitted free continuation is the \
+            return continuation, %a"
+          Continuation.Set.print free_conts
+          defn.return_cont
+      end;
+      let computation_env =
+        let return_arity =
+          List.map (fun (_var, kind) -> kind) computation.computed_values
+        in
+        Invariant_env.add_continuation env
+          computation.return_cont
+          return_arity
+          Normal
+          (Invariant_env.Continuation_stack.var ())
+      in
+      Flambda.Expr.invariant computation_env computation.expr;
+      List.iter (fun (var, _kind) ->
+          if Invariant_env.variable_is_bound env var then begin
+            Misc.fatal_errorf "[computed_values] of a toplevel computation \
+                must contain fresh variables.  %a is not fresh.  \
+                Computation: %a"
+              Variable.print var
+              Flambda.Expr.print computation.expr;
+          end)
+        computation.computed_values
+    end;
+    let env =
+      match recursive with
+      | Nonrecursive -> env
+      | Recursive ->
+        List.fold_left (fun env (sym, _static_part) ->
+            E.add_symbol env sym)
+          env
+          computation.static_structure
+    in
+    let allowed_fvs =
+      match defn.computation with
+      | None -> Variable.Set.empty
+      | Some computation ->
+        Variable.Set.of_list (
+          List.map (fun (var, _kind) -> var) defn.computed_values)
+    in
+    List.iter (fun (sym, static_part) ->
+        let free_variables = Static_part.free_variables static_part in
+        (* This will also be caught by [invariant_static_part], but will
+           give a better message; and allows some testing of
+           [Static_part.free_variables]. *)
+        if not (Variable.Set.subset free_variables allowed_fvs) then begin
+          Misc.fatal_errorf "Static part is only allowed to reference \
+              the following free variables: { %a }, whereas it references \
+              { %a }.  Static part: %a = %a"
+            Variable.Set.print free_variables
+            Variable.Set.print allowed_fvs
+            Symbol.print sym
+            Static_part.print static_part
+        end;
+        invariant_static_part env static_part)
+      computation.static_structure;
+    List.fold_left (fun env (sym, _static_part) ->
+        match recursive with
+        | Nonrecursive -> E.add_symbol env sym
+        | Recursive -> E.redefine_symbol env sym)
+      env
+      computation.static_structure
 
   let rec invariant ~importer env t =
     let module E = Invariant_env in
@@ -445,19 +561,6 @@ module Program = struct
       (fun { Flambda.Set_of_closures. function_decls; _ } -> function_decls)
       (all_sets_of_closures_map program)
 
-  (* XXX there may be multiple ones with the same closure ID now *)
-  let all_function_decls_indexed_by_closure_id _program = assert false
-(*
-    let aux_fun function_decls closure_id _ map =
-      Closure_id.Map.add closure_id function_decls map
-    in
-    let aux _ ({ function_decls; _ } : Flambda.Set_of_closures.t) map =
-      Closure_id.Map.fold (aux_fun function_decls) function_decls.funs map
-    in
-    Set_of_closures_id.Map.fold aux (all_sets_of_closures_map program)
-      Closure_id.Map.empty
-*)
-
   let all_lifted_constants (program : t) =
     let rec loop (program : Program_body.t) =
       match program with
@@ -485,35 +588,10 @@ module Program = struct
   let all_lifted_constants_as_map program =
     Symbol.Map.of_list (all_lifted_constants program)
 
-  let needed_import_symbols (program : t) =
-    let dependencies = free_symbols program in
-    let defined_symbol =
-      Symbol.Set.union
-        (Symbol.Set.of_list
-          (List.map fst (all_lifted_constants program)))
-        (Symbol.Set.of_list
-          (List.map (fun (s, _) -> s) (initialize_symbols program)))
-    in
-    Symbol.Set.diff dependencies defined_symbol
-
   let introduce_needed_import_symbols program : t =
     { program with
       imported_symbols = needed_import_symbols program;
     }
-
-  let make_closure_map _program = assert false (* XXX same as above! *)
-(*
-    let map = ref Closure_id.Map.empty in
-    let add_set_of_closures ~constant:_ : Flambda.Set_of_closures.t -> unit =
-        fun { function_decls } ->
-      CLosure_id.Map.iter (fun closure_id _ ->
-          map := Closure_id.Map.add closure_id function_decls !map)
-        function_decls.funs
-    in
-    Iterators.iter_set_of_closures program ~f:add_set_of_closures;
-    !map
-*)
-
 *)
 
   let invariant ~importer t =
@@ -572,7 +650,7 @@ module Program = struct
         | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _ -> ()
       in
       (* CR-someday pchambart: check closure_ids of constant_defining_values'
-        project_closures *)
+         project_closures *)
       Iterators.iter_named ~f program;
       !used
     in
@@ -690,66 +768,4 @@ end
     let field : Field_of_kind_value.t = Dynamically_computed thing in
     declare_simple t (Block (Tag.Scannable.zero, [field]))
 *)
-*)
-
-(* Old Flambda_invariants code:
-
-  let loop_constant_defining_value env
-        (const : Flambda_static.Constant_defining_value.t) =
-    match const with
-    | Allocated_const c ->
-      ignore_allocated_const c
-    | Block (tag, fields) ->
-      ignore_scannable_tag tag;
-      List.iter
-        (fun (fields : Flambda_static.Constant_defining_value_block_field.t) ->
-          match fields with
-          | Tagged_immediate i -> ignore_immediate i
-          | Symbol s -> check_symbol_is_bound env s)
-        fields
-    | Set_of_closures set_of_closures ->
-      loop_set_of_closures env set_of_closures;
-      (* Constant sets of closures must not have free variables.  This should
-         be enforced by an abstract type boundary (see [Flambda_static0]), so
-         we just [assert false] if this fails. *)
-      if not (Var_within_closure.Map.is_empty set_of_closures.free_vars) then
-      begin
-        assert false
-      end
-    | Project_closure (symbol, closure_id) ->
-      ignore_closure_id closure_id;
-      check_symbol_is_bound env symbol
-  in
-  let rec loop_program_body env (program : Flambda_static.Program_body.t) =
-    match program with
-    | Let_rec_symbol (defs, program) ->
-      let env =
-        List.fold_left (fun env (symbol, _) ->
-            add_binding_occurrence_of_symbol env symbol)
-          env defs
-      in
-      List.iter (fun (_, def) ->
-          loop_constant_defining_value env def)
-        defs;
-      loop_program_body env program
-    | Let_symbol (symbol, def, program) ->
-      loop_constant_defining_value env def;
-      let env = add_binding_occurrence_of_symbol env symbol in
-      loop_program_body env program
-    | Initialize_symbol (symbol, descr, program) ->
-      let { Flambda_static.Program_body.Initialize_symbol.
-            expr; return_cont; return_arity; } = descr
-      in
-      loop env expr;
-      ignore_continuation return_cont;
-      ignore_flambda_arity return_arity;
-      let env = add_binding_occurrence_of_symbol env symbol in
-      loop_program_body env program
-    | Effect (expr, cont, program) ->
-      loop env expr;
-      ignore_continuation cont;
-      loop_program_body env program
-    | End root ->
-      check_symbol_is_bound env root
-  in
 *)

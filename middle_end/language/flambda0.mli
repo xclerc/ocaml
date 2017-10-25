@@ -106,6 +106,8 @@ module Free_vars : sig
   type t = Free_var.t Var_within_closure.Map.t
 
   val find_by_variable : t -> Variable.t -> Var_within_closure.t option
+
+  val all_outer_variables : t -> Variable.Set.t
 end
 
 (** Actions affecting exception traps on the stack.  These are always

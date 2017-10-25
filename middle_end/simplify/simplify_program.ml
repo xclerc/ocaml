@@ -169,7 +169,7 @@ let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
     | Wrong -> Wrong
     end
 
-let simplify_static_structure initial_env str =
+let simplify_static_structure initial_env (recursive : Asttypes.rec_flag) str =
   let unreachable, env, str =
     List.fold_left
       (fun ((now_unreachable, env, str) as acc) (sym, static_part) ->
@@ -178,7 +178,11 @@ let simplify_static_structure initial_env str =
         else
           match simplify_static_part initial_env static_part with
           | Ok (static_part, ty) ->
-            let env = E.add_symbol env symbol ty in
+            let env =
+              match recursive with
+              | Nonrecursive -> E.add_symbol env symbol ty
+              | Recursive -> E.redefine_symbol env symbol ty
+            in
             false, env, (static_part :: str)
           | Wrong ->
             true, env, str)
@@ -260,7 +264,7 @@ let simplify_define_symbol env (recursive : Asttypes.rec_flag)
       initial_environment_for_recursive_symbols env defn.static_structure
   in
   let unreachable, static_structure, env =
-    simplify_static_structure env defn.static_structure
+    simplify_static_structure env recursive defn.static_structure
   in
   let computation, static_structure =
     (* CR-someday mshinwell: We could imagine propagating an "unreachable"

@@ -47,6 +47,10 @@ module Of_kind_value = struct
     | Symbol _ | Tagged_immediate _ -> false
     | Dynamically_computed _ -> true
 
+  let free_variables t =
+    | Dynamically_computed var -> Variable.Set.singleton var
+    | Symbol _ | Tagged_immediate _ -> Variable.Set.empty
+
   let free_symbols t =
     match t with
     | Symbol sym -> Symbol.Set.singleton sym
@@ -90,6 +94,36 @@ module Static_part = struct
     | Mutable_string _
     | Immutable_string _ -> false
 
+  let free_variables t =
+    match t with
+    | Block (_tag, _mut, fields) ->
+      List.fold_left (fun fvs field ->
+          Variable.Set.union fvs (Of_kind_value.free_variables field))
+        Variable.Set.empty
+        fields
+    | Set_of_closures _
+    | Closure _ -> Variable.Set.empty
+    | Boxed_float (Var v)
+    | Boxed_int32 (Var v)
+    | Boxed_int64 (Var v)
+    | Boxed_nativeint (Var v)
+    | Mutable_string { initial_value = Var v; }
+    | Immutable_string (Var v) -> Variable.Set.singleton v
+    | Boxed_float (Const _)
+    | Boxed_int32 (Const _)
+    | Boxed_int64 (Const _)
+    | Boxed_nativeint (Const _)
+    | Mutable_string { initial_value = Const _; }
+    | Immutable_string (Const _) -> Variable.Set.empty
+    | Mutable_float_array { initial_value = fields; }
+    | Immutable_float_array fields ->
+      List.fold_left (fun fvs (field : float or_variable) ->
+          match field with
+          | Var v -> Variable.Set.add v fvs
+          | Const _ -> fvs)
+        Variable.Set.empty
+        fields
+
   let free_symbols t =
     match t with
     | Block (_tag, _mut, fields) ->
@@ -98,7 +132,7 @@ module Static_part = struct
         Symbol.Set.empty
         fields
     | Closure (sym, ) -> Symbol.Set.singleton sym
-    | Set_of_closures _
+    | Set_of_closures set -> Flambda.Set_of_closures.free_symbols set
     | Boxed_float _
     | Boxed_int32 _
     | Boxed_int64 _

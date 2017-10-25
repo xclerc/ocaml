@@ -60,14 +60,37 @@ val add_continuation
   -> Continuation_stack.t
   -> t
 
+val add_var_within_closure : t -> Var_within_closure.t -> unit
+
+val add_use_of_var_within_closure : t -> Var_within_closure.t -> unit
+
+(** Note that the same closure ID may occur on more than one set of closures. *)
+val add_closure_id : t -> Closure_id.t -> unit
+
+val add_use_of_closure_id : t -> Closure_id.t -> unit
+
+(* XXX this one needs to error upon rebinding *)
+val add_set_of_closures_id : t -> Set_of_closures.id.t -> unit
+
 val check_variable_is_bound : t -> Variable.t -> unit
 
 val check_variable_is_bound_and_of_kind_value : t -> Variable.t -> unit
 
-val check_variable_is_bound_and_of_kind_value_scannable
+val check_variable_is_bound_and_of_kind_value_must_scan
    : t
   -> Variable.t
   -> unit
+
+val check_variable_is_bound_and_of_kind_naked_int32 : t -> Variable.t -> unit
+
+val check_variable_is_bound_and_of_kind_naked_int64 : t -> Variable.t -> unit
+
+val check_variable_is_bound_and_of_kind_naked_nativeint
+   : t
+  -> Variable.t
+  -> unit
+
+val check_variable_is_bound_and_of_kind_naked_float : t -> Variable.t -> unit
 
 val check_mutable_variable_is_bound : t -> Mutable_variable.t -> unit
 

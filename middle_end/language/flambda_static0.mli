@@ -54,13 +54,20 @@ module Static_part : sig
   end
 
   val print : Format.formatter -> t -> unit
+
+  (** All variables free in the given static part. *)
+  val free_variables : t -> Variable.Set.t
+
+  (** All symbols free in the given static part.  Note that this descends
+      under closures. *)
+  val free_symbols : t -> Symbol.Set.t
 end
 
 module Program_body : sig
   type computation = {
     expr : Flambda.Expr.t;
-    (** The expression that is to be evaluated.  It must call [return_cont]
-        with its results. *)
+    (** The expression that is to be evaluated.  It must have no free
+        variables and call [return_cont] with its results. *)
     return_cont : Continuation.t;
     (** The return continuation of [expr]. *)
     computed_values : (Variable.t * Flambda_kind.t) list;

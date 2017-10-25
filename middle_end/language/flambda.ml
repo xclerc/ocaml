@@ -1273,15 +1273,20 @@ end = struct
     end
   end
 
-  let invariant ~importer env t =
+  let invariant ~importer env t : Flambda_kind.t =
     let module E = Invariant_env in
     match t with
-    | Var var -> E.check_variable_is_bound env var
+    | Var var -> E.kind_of_variable env var
     | Symbol symbol ->
-      E.check_symbol_is_bound env symbol
-    | Const const -> ignore (const : Const.t)
-    | Read_mutable mut_var ->
-      E.check_mutable_variable_is_bound env mut_var
+      E.check_symbol_is_bound env symbol;
+      Flambda_kind.value Can_scan
+    | Const (Untagged_immediate _) -> Flambda_kind.naked_immediate ()
+    | Const (Tagged_immediate _) -> Flambda_kind.value Can_scan
+    | Const (Naked_float _) -> Flambda_kind.naked_float ()
+    | Const (Naked_int32 _) -> Flambda_kind.naked_int32 ()
+    | Const (Naked_int64 _) -> Flambda_kind.naked_int64 ()
+    | Const (Naked_nativeint _) -> Flambda_kind.naked_nativeint ()
+    | Read_mutable mut_var -> E.kind_of_mutable_variable env mut_var
     | Assign { being_assigned; new_value; } ->
       let being_assigned_kind = E.kind_of_mutable_variable env being_assigned in
       let new_value_kind = E.kind_of_variable env new_value in
@@ -1292,27 +1297,45 @@ end = struct
           Flambda_kind.print new_value_kind
           Mutable_variable.print new_value
           Flambda_kind.print being_assigned_kind
-      end
+      end;
+      Flambda_kind.value Can_scan
     | Read_symbol_field (symbol, field) ->
       E.check_symbol_is_bound env symbol;
       if field < 0 then begin
         Misc.fatal_errorf "[Read_symbol_field] with illegal field index %d: %a"
           field
-          print t
+          print t;
+      ??? (* XXX how are we going to track the contents kind? *)
     | Set_of_closures set_of_closures ->
-      Set_of_closures.invariant ~importer env set_of_closures
+      Set_of_closures.invariant ~importer env set_of_closures;
+      Flambda_kind.value Must_scan
     | Project_closure { set_of_closures; closure_id; } ->
       E.check_variable_is_bound_and_of_kind_scannable_value env set_of_closures;
-      ignore_closure_id_set closure_id
+      Closure_id.Set.iter (fun closure_id ->
+          E.add_use_of_closure_id env closure_id)
+        env;
+      Flambda_kind.value Must_scan
     | Move_within_set_of_closures { closure; move } ->
       E.check_variable_is_bound_and_of_kind_scannable_value env closure;
-      ignore_closure_id_map ignore_closure_id move
+      Closure_id.Map.iter (fun closure_id move_to ->
+          E.add_use_of_closure_id env closure_id;
+          E.add_use_of_closure_id env move_to)
+        move;
+      Flambda_kind.value Must_scan
     | Project_var { closure; var; } ->
       E.check_variable_is_bound_and_of_kind_scannable_value env closure;
-      ignore_closure_id_map ignore_var_within_closure var;
+      Closure_id.Map.iter (fun closure_id var_within_closure ->
+          E.add_use_of_closure_id env closure_id;
+          E.add_use_of_var_within_closure env var_within_closure)
+        var;
+      Flambda_kind.value Must_scan
     | Prim (prim, args, dbg) ->
       E.check_variables_are_bound env args;
       ignore_debuginfo dbg
+      (* CR mshinwell: We should type-check more primitives, particularly the
+         ones about boxing and unboxing of numbers, to make sure that the kinds
+         of the [args] are correct.  In fact maybe we should check all of
+         the primitives. *)
       begin match prim with
       | Psequand | Psequor | Pgetglobal _ | Pidentity | Pdirapply
       | Prevapply | Ploc _->
