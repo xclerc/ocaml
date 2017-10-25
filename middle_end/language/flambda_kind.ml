@@ -35,6 +35,8 @@ type t =
   | Naked_int64
   | Naked_nativeint
 
+type kind = t
+
 let value scanning = Value scanning
 
 (* CR mshinwell: can remove lambdas now *)
@@ -101,3 +103,20 @@ let is_naked_float t =
   | Naked_int32
   | Naked_int64
   | Naked_nativeint -> false
+
+module Of_naked_number : sig
+  type t =
+    | Naked_immediate
+    | Naked_float
+    | Naked_int32
+    | Naked_int64
+    | Naked_nativeint
+
+  let to_kind t : kind =
+    match t with
+    | Naked_immediate -> Naked_immediate
+    | Naked_float -> Naked_float
+    | Naked_int32 -> Naked_int32
+    | Naked_int64 -> Naked_int64
+    | Naked_nativeint -> Naked_nativeint
+end

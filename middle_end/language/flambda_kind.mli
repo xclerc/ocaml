@@ -35,6 +35,8 @@ type t = private
   | Naked_int64
   | Naked_nativeint
 
+type kind = t
+
 val value : scanning -> t
 val naked_immediate : unit -> t
 val naked_float : unit -> t
@@ -52,3 +54,14 @@ val is_value : t -> bool
 val is_naked_float : t -> bool
 
 include Identifiable.S with type t := t
+
+module Of_naked_number : sig
+  type t =
+    | Naked_immediate
+    | Naked_float
+    | Naked_int32
+    | Naked_int64
+    | Naked_nativeint
+
+  val to_kind : t -> kind
+end
