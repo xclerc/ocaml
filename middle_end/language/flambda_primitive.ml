@@ -32,6 +32,14 @@ type array_kind =
   | Can_scan
   | Naked_float
 
+let print_array_kind ppf k =
+  let fprintf = Format.fprintf in
+  match k with
+  | Dynamic_must_scan_or_naked_float -> fprintf ppf "dynamic"
+  | Must_scan -> fprintf ppf "must_scan"
+  | Can_scan -> fprintf ppf "can_scan"
+  | Naked_float -> fprintf ppf "float"
+
 type field_kind = Not_a_float | Float
 
 type string_or_bytes = String | Bytes
@@ -40,7 +48,19 @@ type mutable_or_immutable = Immutable | Mutable
 
 type init_or_assign = Initialization | Assignment
 
+let print_init_or_assign ppf x =
+  let fprintf = Format.fprintf in
+  match x with
+  | Initialization -> "init"
+  | Assignment -> ""
+
 type is_safe = Safe | Unsafe
+
+let print_is_safe ppf s =
+  let fprintf = Format.fprintf in
+  match x with
+  | Safe -> fprintf ppf "safe"
+  | Unsafe -> fprintf ppf "unsafe"
 
 type array_like_operation = Reading | Writing
 
@@ -67,6 +87,16 @@ let writing_to_an_array_like_thing is_safe =
 
 type comparison = Eq | Neq | Lt | Gt | Le | Ge
 
+let print_comparison ppf c =
+  let fprintf = Format.fprintf in
+  match c with
+  | Eq  -> fprintf ppf "=="
+  | Neq -> fprintf ppf "!="
+  | Lt  -> fprintf ppf "<"
+  | Le  -> fprintf ppf "<="
+  | Gt  -> fprintf ppf ">"
+  | Ge  -> fprintf ppf ">="
+
 type bigarray_kind =
   | Unknown
   | Float32 | Float64
@@ -76,14 +106,52 @@ type bigarray_kind =
   | Caml_int | Native_int
   | Complex32 | Complex64
 
+let print_bigarray_kind ppf k =
+  let fprintf = Format.fprintf in
+  match k with
+  | Unknown -> fprintf ppf "unknown"
+  | Float32 -> fprintf ppf "float32"
+  | Float64 -> fprintf ppf "float64"
+  | Sint8 -> fprintf ppf "sint8"
+  | Uint8 -> fprintf ppf "uint8"
+  | Sint16 -> fprintf ppf "sint16"
+  | Uint16 -> fprintf ppf "uint16"
+  | Int32 -> fprintf ppf "int32"
+  | Int64 -> fprintf ppf "int64"
+  | Caml_int -> fprintf ppf "caml_int"
+  | Native_int -> fprintf ppf "native_int"
+  | Complex32 -> fprintf ppf "complex32"
+  | Complex64 -> fprintf ppf "complex64"
+
 type bigarray_layout = Unknown | C | Fortran
 
+let print_bigarray_layout ppf l =
+  let fprintf = Format.fprintf in
+  match l with
+  | Unknown -> fprintf ppf "unknown"
+  | C -> fprintf ppf "C"
+  | Fortran -> fprintf ppf "fortran"
+
 type raise_kind = Regular | Reraise | No_trace
+
+let print_raise_kind ppf k =
+  let fprintf = Format.fprintf in
+  match k with
+  | Regular -> fprintf ppf "regular"
+  | Reraise -> fprintf ppf "reraise"
+  | No_trace -> fprintf ppf "no_trace"
 
 type setfield_kind =
   | Immediate
   | Pointer
   | Float
+
+let print_setfield_kind ppf k =
+  let fprintf = Format.fprintf in
+  match k with
+  | Immediate -> fprintf ppf "imm"
+  | Pointer -> fprintf ppf "ptr"
+  | Float -> fprintf ppf "float"
 
 type string_accessor_width =
   | Eight
@@ -91,25 +159,54 @@ type string_accessor_width =
   | Thirty_two
   | Sixty_four
 
+let print_string_accessor_width ppf w =
+  let fprintf = Format.fprintf in
+  match w with
+  | Eight -> fprintf ppf "8"
+  | Sixteen -> fprintf ppf "16"
+  | Thirty_two -> fprintf ppf "32"
+  | Sixty_four -> fprintf ppf "64"
+
 type bigstring_accessor_width =
   | Sixteen
   | Thirty_two
   | Sixty_four
 
+let print_bigstring_accessor_width ppf w =
+  let fprintf = Format.fprintf in
+  match w with
+  | Sixteen -> fprintf ppf "16"
+  | Thirty_two -> fprintf ppf "32"
+  | Sixty_four -> fprintf ppf "64"
+
 type num_dimensions = int
 
-type boxed_integer = Pnativeint | Pint32 | Pint64
+let print_num_dimesions ppf d =
+  Format.fprintf ppf "%d" d
 
-type record_representation =
-  | Regular
-  | Float
-  | Unboxed { inlined : bool; }
-  | Inlined of int
-  | Extension
+type boxed_integer = Pnativeint | Pint32 | Pint64 (* CR? remove the leading 'P' *)
+
+let print_boxed_integer ppx b =
+  let fprintf = Format.fprintf in
+  match b with
+  | Pnativeint -> fprintf ppf "nativeint"
+  | Pint32 -> fprintf ppf "int32"
+  | Pint64 -> fprintf ppf "int64"
 
 type unary_int_arith_op = Neg
 
+let print_unary_int_arith_op ppf o =
+  let fprintf = Format.fprintf in
+  match o with
+  | Neg -> fprintf ppf "~"
+
 type unary_float_arith_op = Abs | Neg
+
+let print_unary_float_arith_op ppf o =
+  let fprintf = Format.fprintf in
+  match o with
+  | Abs -> fprintf ppf "abs"
+  | Neg -> fprintf ppf "~"
 
 type result_kind =
   | Singleton of K.t
@@ -120,7 +217,7 @@ type unary_primitive =
   | Block_load of int * field_kind
   | Duplicate_array of array_kind * mutable_or_immutable
   | Duplicate_record of {
-      repr : record_representation;
+      repr : Types.record_representation;
       num_fields : int;
     }
   | Is_int
@@ -135,88 +232,109 @@ type unary_primitive =
   | Int_of_float
   | Float_of_int
   | Array_length of array_kind
-  | Bigarray_length of { dimension : int; }
+  | Bigarray_length of { dimension : int; } (* CR? rename to [num_]dimensions? *)
   | Unbox_or_untag_number of K.Of_naked_number.t
   | Box_or_tag_number of K.Of_naked_number.t
 
 let print_unary_primitive p =
   let fprintf = Format.fprintf in
   match p with
-  | Block_load (n, Not_a_float) -> fprintf ppf "field %i" n
-  | Block_load (n, Float) -> fprintf ppf "floatfield %i" n
+  | Block_load (i, _k) ->
+    fprintf ppf "block_load %i" n
   | Duplicate_array (k, Mutable) ->
-    fprintf ppf "duparray[%s]" print_array_kind k
+    fprintf ppf "duplicate_array[%a]" print_array_kind k
   | Duplicate_array (k, Immutable) ->
-    fprintf ppf "duparray_imm[%s]" print_array_kind k
-  | Duplicate_record (rep, size) ->
-    fprintf ppf "duprecord %a %i" print_record_representation rep size
-  | Is_int -> fprintf ppf "isint"
-  | Get_tag -> fprintf ppf "gettag"
-  | String_length String -> fprintf ppf "string.length"
-  | String_length Bytes -> fprintf ppf "bytes.length"
-  | Swap_byte_endianness kind ->
-    fprint ppf "bswap_%a" ppf K.Of_naked_number.print kind
+    fprintf ppf "duplicate_array_imm[%a]" print_array_kind k
+  | Duplicate_record { repr; num_fields; } ->
+    fprintf ppf "duplicate_record %a %i" PL.record_rep repr num_fields
+  | Is_int -> fprintf ppf "is_int"
+  | Get_tag -> fprintf ppf "get_tag"
+  | String_length _ -> fprintf ppf "string_length"
+  | Swap_byte_endianness _ -> fprintf ppf "swap_byte_endianness"
   | Int_as_pointer -> fprintf ppf "int_as_pointer"
   | Opaque -> fprintf ppf "opaque"
-  | Raise k -> fprintf ppf "%s" print_raise_kind k
-  | Int_arith of K.Of_naked_number_not_float.t * unary_int_arith_op
-  | Float_arith Neg -> fprintf ppf "~."
+  | Praise k -> fprintf ppf "raise %a" print_raise_kind k
+  | Int_arith (_k, o) -> print_unary_int_arith_op o
+  | Float_arith o -> print_unary_float_arith_op o
   | Int_of_float -> fprintf ppf "int_of_float"
   | Float_of_int -> fprintf ppf "float_of_int"
-  | Array_length k -> fprintf ppf "array.length[%a]" array_kind k
-  | Bigarray_length { dimension; } -> fprintf ppf "Bigarray.dim_%i" dimension
-  | Punbox_number kind ->
-    fprintf ppf "unbox_%a" K.Of_naked_number.print_lowercase kind
-  | Pbox_number kind ->
-    fprintf ppf "box_%a" K.Of_naked_number.print_lowercase kind
+  | Array_length _ -> fprintf ppf "array_length"
+  | Bigarray_length { dimension; } ->
+    fprintf ppf "bigarray_length %a" print_num_dimesions dimension
+  | Unbox_or_untag_number k ->
+    fprintf ppf "unbox_%a" K.Of_naked_number.print_lowercase k
+  | Box_or_tag_number k ->
+    fprintf ppf "box_%a" K.Of_naked_number.print_lowercase k
 
 let arg_kind_of_unary_primitive p =
   match p with
-  | Block_load (_index, (Float | Not_a_float))
-  | Duplicate_array (kind, mut)
-  | Duplicate_record { repr; num_fields; }
-  | Is_int
-  | Get_tag
-  | String_length _ -> K.value Must_scan
-  | Swap_byte_endianness kind -> K.Of_naked_number.to_kind kind
-  | Int_as_pointer -> K.value Can_scan
-  | Opaque -> K.value Must_scan
-  | Raise _raise_kind -> K.value Must_scan
-  | Int_arith (kind, _) -> kind
-  | Float_arith _ -> K.naked_float ()
-  | Int_of_float -> K.naked_float ()
-  | Float_of_int -> K.naked_immediate ()
-  | Array_length _
-  | Bigarray_length _ -> K.value Must_scan
-  | Unbox_or_untag_number Naked_immediate -> K.value Can_scan
-  | Unbox_or_untag_number (
-      Naked_float Naked_int32 | Naked_int64 | Naked_nativeint) ->
-    K.value Must_scan
-  | Box_or_tag_number kind -> K.Of_naked_number.to_kind kind
+  | Field _ ->
+  | Floatfield _ ->
+  | Duparray _ ->
+  | Duprecord _ ->
+  | Lazyforce ->
+  | Isint ->
+  | Gettag ->
+  | Isout
+  | Bittest
+  | Offsetint _ ->
+  | Offsetref _ ->
+  | Bytes_to_string
+  | Bytes_of_string ->
+  | Stringlength
+  | Byteslength ->
+  | Bswap16 ->
+  | Not kind
+  | Negint kind
+  | Bswap kind ->
+  | Int_as_pointer ->
+  | Opaque ->
+  | Raise _ ->
+  | Intoffloat ->
+  | Floatofint ->
+  | Negfloat ->
+  | Arraylength _ ->
+  | Bigarrayref _ ->
+  | Bigarraydim _ ->
+  | Unbox_number kind ->
+  | Box_number _ ->
+  | Untag_immediate ->
+  | Tag_immediate ->
 
 let result_kind_of_unary_primitive p : result_kind =
   match p with
-  | Block_load (_index, Not_a_float) -> Singleton (K.value Must_scan)
-  | Block_load (_index, Float) -> Singleton (K.naked_float ())
-  | Duplicate_array _
-  | Duplicate_record _ -> Singleton (K.value Must_scan)
-  | Is_int
-  | Get_tag
-  | String_length _ -> Singleton (K.naked_immediate ())
-  | Swap_byte_endianness kind ->
-    Singleton (K.Of_naked_number_not_float.to_kind kind)
-  | Int_as_pointer -> Singleton (K.naked_immediate ())
+  | Field _ -> Singleton (K.value Must_scan)
+  | Floatfield _ -> Singleton (K.naked_float ())
+  | Duparray _ -> Singleton (K.value Must_scan)
+  | Duprecord _ -> Singleton (K.value Must_scan)
+  | Lazyforce -> Singleton (K.value Must_scan)
+  | Isint -> Singleton (K.naked_immediate ())
+  | Gettag -> Singleton (K.naked_immediate ())
+  | Isout
+  | Bittest
+  | Offsetint _ -> ...
+  | Offsetref _ -> ...
+  | Bytes_to_string
+  | Bytes_of_string -> Singleton (K.value Must_scan)
+  | Stringlength
+  | Byteslength -> Singleton (K.naked_immediate ())
+  | Bswap16 -> ???
+  | Not kind
+  | Negint kind
+  | Bswap kind -> Singleton (K.Of_naked_number.to_kind kind)
+  | Int_as_pointer -> Singleton (K.naked_immediate ())  (* CR mshinwell: ok? *)
   | Opaque -> Singleton (K.value Must_scan)
   | Raise _ -> Never_returns
-  | Int_arith (kind, _) -
-    Singleton (K.Of_naked_number_not_float.to_kind kind)
-  | Float_arith _ -> Singleton (K.naked_float ())
-  | Int_of_float -> Singleton (K.naked_immediate ())
-  | Float_of_int -> Singleton (K.naked_float ())
-  | Array_length _
-  | Bigarray_length _ -> Singleton (K.naked_immediate ())
-  | Unbox_or_untag_number kind -> Singleton (K.Of_naked_number.to_kind kind)
-  | Box_or_tag_number _ -> Singleton (K.value Must_scan)
+  | Intoffloat -> Singleton (K.naked_immediate ())
+  | Floatofint -> Singleton (K.naked_float ())
+  | Negfloat -> Singleton (K.naked_float ())
+  | Arraylength _ -> Singleton (K.naked_immediate ())
+  | Bigarrayref _ -> ???  (* the Flambda_kind needs to be in the arg. type *)
+  | Bigarraydim _ -> Singleton (K.naked_immediate ())
+  | Unbox_number kind -> Singleton (K.Of_naked_number.to_kind kind)
+  | Box_number _ -> Singleton (K.value Must_scan)
+  | Untag_immediate -> Singleton (K.naked_immediate ())
+  | Tag_immediate -> Singleton (K.value Can_scan)
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
@@ -251,19 +369,48 @@ let effects_and_coeffects_of_unary_primitive p =
       Naked_float | Naked_int32 | Naked_int64 | Naked_nativeint) ->
     Only_generative_effects, No_coeffects
 
-type int_arith_op =
+type int_arith_op = (* CR? prefix with "binary"? *)
   | Add | Sub | Mul
   | Div of is_safe
   | Mod of is_safe
   | And | Or | Xor
 
+let print_int_arith_op ppf o =
+  let fprintf = Format.fprintf in
+  match o with
+  | Add -> fprintf ppf "+"
+  | Sub -> fprintf ppf "-"
+  | Mul -> fprintf ppf "*"
+  | Div Safe -> fprintf ppf "/"
+  | Div Unsafe -> fprintf ppf "/u"
+  | Mod Safe -> fprintf ppf "mod"
+  | Mod Unsafe -> fprintf ppf "mod_unsafe"
+  | And -> fprintf ppf "and"
+  | Or -> fprintf ppf "or"
+  | Xor -> fprintf ppf "xor"
+
 type int_shift_op = Lsl | Lsr | Asr
+
+let print_int_shift_op ppf o =
+  let fprintf = Format.fprintf in
+  match o with
+  | Lsl -> fprintf ppf "lsl"
+  | Lsr -> fprintf ppf "lsr"
+  | Asr -> fprintf ppf "asr"
 
 type binary_float_arith_op = Add | Sub | Mul | Div
 
+let print_binary_float_arith_op ppf o =
+  let fprintf = Format.fprintf in
+  match o with
+  | Add -> fprintf ppf "+."
+  | Sub -> fprintf ppf "-."
+  | Mul -> fprintf ppf "*."
+  | Div -> fprintf ppf "/."
+
 type binary_primitive =
   | Block_load_computed_index
-  | Set_field of int * setfield_kind * init_or_assign
+  | Set_field of int * setfield_kind * init_or_assign (* CR? rename to Block_set? *)
   | Int_arith of K.Of_naked_number_not_float.t * binary_int_arith_op
   | Int_shift of K.Of_naked_number_not_float.t * int_shift_op
   | Int_comp of comparison
@@ -277,82 +424,36 @@ type binary_primitive =
 let print_binary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Psetfield (n, ptr, init) ->
-    let instr =
-      match ptr with
-      | Pointer -> "ptr"
-      | Immediate -> "imm"
-    in
+  | Block_load_computed_index ->
+    fprintf ppf "block_load_computed"
+  | Set_field (n, k, init) ->
     let init =
       match init with
-      | Heap_initialization -> "(heap-init)"
-      | Root_initialization -> "(root-init)"
+      | Initialization -> "init"
       | Assignment -> ""
     in
-    fprintf ppf "setfield_%s%s %i" instr init n
-  | Psetfloatfield (n, init) ->
-    let init =
-      match init with
-      | Heap_initialization -> "(heap-init)"
-      | Root_initialization -> "(root-init)"
-      | Assignment -> ""
-    in
-    fprintf ppf "setfloatfield%s %i" init n
-  | Pfield_computed -> fprintf ppf "field_computed"
-  | Paddint -> fprintf ppf "+"
-  | Psubint -> fprintf ppf "-"
-  | Pmulint -> fprintf ppf "*"
-  | Pdivint Safe -> fprintf ppf "/"
-  | Pdivint Unsafe -> fprintf ppf "/u"
-  | Pmodint Safe -> fprintf ppf "mod"
-  | Pmodint Unsafe -> fprintf ppf "mod_unsafe"
-  | Pandint -> fprintf ppf "and"
-  | Porint -> fprintf ppf "or"
-  | Pxorint -> fprintf ppf "xor"
-  | Plslint -> fprintf ppf "lsl"
-  | Plsrint -> fprintf ppf "lsr"
-  | Pasrint -> fprintf ppf "asr"
-  | Pintcomp Ceq -> fprintf ppf "=="
-  | Pintcomp Cneq -> fprintf ppf "!="
-  | Pintcomp Clt -> fprintf ppf "<"
-  | Pintcomp Cle -> fprintf ppf "<="
-  | Pintcomp Cgt -> fprintf ppf ">"
-  | Pintcomp Cge -> fprintf ppf ">="
-  | Pabsfloat -> fprintf ppf "abs.%a"
-  | Paddfloat -> fprintf ppf "+.%a"
-  | Psubfloat -> fprintf ppf "-.%a"
-  | Pmulfloat -> fprintf ppf "*.%a"
-  | Pdivfloat -> fprintf ppf "/.%a"
-  | Pfloatcomp Ceq -> fprintf ppf "==.%a"
-  | Pfloatcomp Cneq -> fprintf ppf "!=.%a"
-  | Pfloatcomp Clt -> fprintf ppf "<.%a"
-  | Pfloatcomp Cle -> fprintf ppf "<=.%a"
-  | Pfloatcomp Cgt -> fprintf ppf ">.%a"
-  | Pfloatcomp Cge -> fprintf ppf ">=.%a"
-  | Parrayrefu k -> fprintf ppf "array.unsafe_get[%s]" (array_kind k)
-  | Parrayrefs k -> fprintf ppf "array.get[%s]" (array_kind k)
-  | Pstringrefu -> fprintf ppf "string.unsafe_get"
-  | Pstringrefs -> fprintf ppf "string.get"
-  | Pbytesrefu -> fprintf ppf "bytes.unsafe_get"
-  | Pbytesrefs -> fprintf ppf "bytes.get"
-  | Pstring_load_16 unsafe ->
-    if unsafe then fprintf ppf "string.unsafe_get16"
-    else fprintf ppf "string.get16"
-  | Pstring_load_32 unsafe ->
-    if unsafe then fprintf ppf "string.unsafe_get32"
-    else fprintf ppf "string.get32"
-  | Pstring_load_64 unsafe ->
-    if unsafe then fprintf ppf "string.unsafe_get64"
-    else fprintf ppf "string.get64"
-  | Pbigstring_load_16 unsafe ->
-    if unsafe then fprintf ppf "bigarray.array1.unsafe_get16"
-    else fprintf ppf "bigarray.array1.get16"
-  | Pbigstring_load_32 unsafe ->
-    if unsafe then fprintf ppf "bigarray.array1.unsafe_get32"
-    else fprintf ppf "bigarray.array1.get32"
-  | Pbigstring_load_64 unsafe ->
-    if unsafe then fprintf ppf "bigarray.array1.unsafe_get64"
-    else fprintf ppf "bigarray.array1.get64"
+    fprintf ppf "set_field_%a%s i"
+      print_setfield_kind k
+      print_init_or_assign init
+      n
+  | Int_arith (_k, o) -> print_int_arith_op ppf o
+  | Int_shift (_k, o) -> print_int_shift_op ppf o
+  | Int_comp c -> print_comparison ppf c
+  | Float_arith o -> print_binary_float_arith_op o
+  | Float_comp c -> print_comparison ppf c; fprintf ppf "."
+  | Bit_test -> fprintf ppf "bit_test"
+  | Array_load (array_kind, is_safe) ->
+    fprintf ppf "array_load_%a[%a]"
+      print_is_safe is_safe
+      print_array_kind array_kind
+  | String_load (string_accessor_width, is_safe) ->
+    fprintf ppf "string_load_%a_%a"
+      print_is_safe is_safe
+      print_string_accessor_width string_accessor_width
+  | Bigstring_load (bigstring_accessor_width, is_safe) ->
+    fprintf ppf "bigstring_load_%a_%a"
+      print_is_safe is_safe
+      print_bigstring_accessor_width bigstring_accessor_width
 
 let args_kind_of_binary_primitive p =
   match p with
@@ -451,49 +552,28 @@ let effects_and_coeffects_of_binary_primitive p =
   | Bigstring_load (_, is_safe) -> reading_from_an_array_like_thing is_safe
 
 type ternary_primitive =
-  | Set_field_computed_index of Flambda_kind.scanning * init_or_assign
+  | Set_field_computed_index of Flambda_kind.scanning * init_or_assign (* CR? rename to Block_set_computed? *)
   | Bytes_set of string_accessor_width * is_safe
   | Array_set of array_kind * is_safe
   | Bigstring_set of bigstring_accessor_width * is_safe
 
 let print_ternary_primitive ppf p =
-  | Set_field_computed_index (ptr, init) ->
-    let instr =
-      match ptr with
-      | Pointer -> "ptr"
-      | Immediate -> "imm"
-    in
-    let init =
-      match init with
-      | Heap_initialization -> "(heap-init)"
-      | Root_initialization -> "(root-init)"
-      | Assignment -> ""
-    in
-    fprintf ppf "setfield_%s%s_computed" instr init
-  | Pbytessetu -> fprintf ppf "bytes.unsafe_set"
-  | Pbytessets -> fprintf ppf "bytes.set"
-  | Parraysetu k -> fprintf ppf "array.unsafe_set[%s]" (PL.array_kind k)
-  | Parraysets k -> fprintf ppf "array.set[%s]" (PL.array_kind k)
-  | Pbigarrayset (unsafe, _n, kind, layout, boxed) ->
-    print_bigarray "set" unsafe PL.kind ppf PL.layout boxed
-  | Pstring_set_16 unsafe ->
-    if unsafe then fprintf ppf "string.unsafe_set16"
-    else fprintf ppf "string.set16"
-  | Pstring_set_32 unsafe ->
-    if unsafe then fprintf ppf "string.unsafe_set32"
-    else fprintf ppf "string.set32"
-  | Pstring_set_64 unsafe ->
-    if unsafe then fprintf ppf "string.unsafe_set64"
-    else fprintf ppf "string.set64"
-  | Pbigstring_set_16 unsafe ->
-    if unsafe then fprintf ppf "bigarray.array1.unsafe_set16"
-    else fprintf ppf "bigarray.array1.set16"
-  | Pbigstring_set_32 unsafe ->
-    if unsafe then fprintf ppf "bigarray.array1.unsafe_set32"
-    else fprintf ppf "bigarray.array1.set32"
-  | Pbigstring_set_64 unsafe ->
-    if unsafe then fprintf ppf "bigarray.array1.unsafe_set64"
-    else fprintf ppf "bigarray.array1.set64"
+  let fprintf = Format.fprintf in
+  match p with
+  | Set_field_computed_index (_, init) ->
+    fprintf ppf "setfield_computed_index%a" print_init_or_assign init
+  | Bytes_set (string_accessor_width, is_safe) ->
+    fprintf ppf "bytes_set_%a_%a"
+      print_is_safe is_safe
+      print_string_accessor_width string_accessor_width
+  | Array_set (array_kind, is_safe) ->
+    fprintf ppf "array_set__%a[%a]"
+      print_is_safe is_safe
+      print_array_kind array_kind
+  | Bigstring_set (bigstring_accessor_width, is_safe) ->
+    fprintf ppf "bigstring_set_%a_%a"
+      print_is_safe is_safe
+      print_bigstring_accessor_width bigstring_accessor_width
 
 let args_kind_of_ternary_primitive p =
   match p with
