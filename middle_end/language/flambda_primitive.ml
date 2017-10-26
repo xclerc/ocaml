@@ -171,73 +171,51 @@ let print_unary_primitive p =
 
 let arg_kind_of_unary_primitive p =
   match p with
-  | Field _ ->
-  | Floatfield _ ->
-  | Duparray _ ->
-  | Duprecord _ ->
-  | Lazyforce ->
-  | Isint ->
-  | Gettag ->
-  | Isout
-  | Bittest
-  | Offsetint _ ->
-  | Offsetref _ ->
-  | Bytes_to_string
-  | Bytes_of_string ->
-  | Stringlength
-  | Byteslength ->
-  | Bswap16 ->
-  | Not kind
-  | Negint kind
-  | Bswap kind ->
-  | Int_as_pointer ->
-  | Opaque ->
-  | Raise _ ->
-  | Intoffloat ->
-  | Floatofint ->
-  | Negfloat ->
-  | Arraylength _ ->
-  | Bigarrayref _ ->
-  | Bigarraydim _ ->
-  | Unbox_number kind ->
-  | Box_number _ ->
-  | Untag_immediate ->
-  | Tag_immediate ->
+  | Block_load (_index, (Float | Not_a_float))
+  | Duplicate_array (kind, mut)
+  | Duplicate_record { repr; num_fields; }
+  | Is_int
+  | Get_tag
+  | String_length _ -> K.value Must_scan
+  | Swap_byte_endianness kind -> K.Of_naked_number.to_kind kind
+  | Int_as_pointer -> K.value Can_scan
+  | Opaque -> K.value Must_scan
+  | Raise _raise_kind -> K.value Must_scan
+  | Int_arith (kind, _) -> kind
+  | Float_arith _ -> K.naked_float ()
+  | Int_of_float -> K.naked_float ()
+  | Float_of_int -> K.naked_immediate ()
+  | Array_length _
+  | Bigarray_length _ -> K.value Must_scan
+  | Unbox_or_untag_number Naked_immediate -> K.value Can_scan
+  | Unbox_or_untag_number (
+      Naked_float Naked_int32 | Naked_int64 | Naked_nativeint) ->
+    K.value Must_scan
+  | Box_or_tag_number kind -> K.Of_naked_number.to_kind kind
 
 let result_kind_of_unary_primitive p : result_kind =
   match p with
-  | Field _ -> Singleton (K.value Must_scan)
-  | Floatfield _ -> Singleton (K.naked_float ())
-  | Duparray _ -> Singleton (K.value Must_scan)
-  | Duprecord _ -> Singleton (K.value Must_scan)
-  | Lazyforce -> Singleton (K.value Must_scan)
-  | Isint -> Singleton (K.naked_immediate ())
-  | Gettag -> Singleton (K.naked_immediate ())
-  | Isout
-  | Bittest
-  | Offsetint _ -> ...
-  | Offsetref _ -> ...
-  | Bytes_to_string
-  | Bytes_of_string -> Singleton (K.value Must_scan)
-  | Stringlength
-  | Byteslength -> Singleton (K.naked_immediate ())
-  | Bswap16 -> ???
-  | Not kind
-  | Negint kind
-  | Bswap kind -> Singleton (K.Of_naked_number.to_kind kind)
-  | Int_as_pointer -> Singleton (K.naked_immediate ())  (* CR mshinwell: ok? *)
+  | Block_load (_index, Not_a_float) -> Singleton (K.value Must_scan)
+  | Block_load (_index, Float) -> Singleton (K.naked_float ())
+  | Duplicate_array _
+  | Duplicate_record _ -> Singleton (K.value Must_scan)
+  | Is_int
+  | Get_tag
+  | String_length _ -> Singleton (K.naked_immediate ())
+  | Swap_byte_endianness kind ->
+    Singleton (K.Of_naked_number_not_float.to_kind kind)
+  | Int_as_pointer -> Singleton (K.naked_immediate ())
   | Opaque -> Singleton (K.value Must_scan)
   | Raise _ -> Never_returns
-  | Intoffloat -> Singleton (K.naked_immediate ())
-  | Floatofint -> Singleton (K.naked_float ())
-  | Negfloat -> Singleton (K.naked_float ())
-  | Arraylength _ -> Singleton (K.naked_immediate ())
-  | Bigarrayref _ -> ???  (* the Flambda_kind needs to be in the arg. type *)
-  | Bigarraydim _ -> Singleton (K.naked_immediate ())
-  | Unbox_number kind -> Singleton (K.Of_naked_number.to_kind kind)
-  | Box_number _ -> Singleton (K.value Must_scan)
-  | Untag_immediate -> Singleton (K.naked_immediate ())
-  | Tag_immediate -> Singleton (K.value Can_scan)
+  | Int_arith (kind, _) -
+    Singleton (K.Of_naked_number_not_float.to_kind kind)
+  | Float_arith _ -> Singleton (K.naked_float ())
+  | Int_of_float -> Singleton (K.naked_immediate ())
+  | Float_of_int -> Singleton (K.naked_float ())
+  | Array_length _
+  | Bigarray_length _ -> Singleton (K.naked_immediate ())
+  | Unbox_or_untag_number kind -> Singleton (K.Of_naked_number.to_kind kind)
+  | Box_or_tag_number _ -> Singleton (K.value Must_scan)
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
