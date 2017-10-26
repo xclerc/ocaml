@@ -22,44 +22,110 @@ module K = Flambda_kind
 module L = Lambda
 module PL = Printlambda
 
+type effects = No_effects | Only_generative_effects | Arbitrary_effects
+
+type coeffects = No_coeffects | Has_coeffects
+
+type array_kind =
+  | Dynamic_must_scan_or_naked_float
+  | Must_scan
+  | Can_scan
+  | Naked_float
+
+type field_kind = Not_a_float | Float
+
+type string_or_bytes = String | Bytes
+
+type mutable_or_immutable = Immutable | Mutable
+
+type init_or_assign = Initialization | Assignment
+
+type is_safe = Safe | Unsafe
+
+let effects_of_is_safe is_safe =
+  match is_safe with
+  | Safe -> Arbitrary_effects
+  | Unsafe -> No_effects
+
+let reading_from_an_array_like_thing is_safe =
+  let effects = effects_of_is_safe is_safe in
+  effects, Has_coeffects
+
+(* CR-someday mshinwell: Change this when [Obj.truncate] is removed (although
+   beware, bigarrays will still be resizable). *)
+let writing_to_an_array_like_thing is_safe =
+  let effects = effects_of_is_safe is_safe in
+  (* Care: the bounds check may read a mutable place---namely the size of
+     the block (for [Bytes_set] and [Array_set]) or the dimension of the
+     bigarray.  As such these primitives have coeffects. *)
+  effects, Has_coeffects
+
+type comparison = Eq | Neq | Lt | Gt | Le | Ge
+
+type bigarray_kind =
+  | Unknown
+  | Float32 | Float64
+  | Sint8 | Uint8
+  | Sint16 | Uint16
+  | Int32 | Int64
+  | Caml_int | Native_int
+  | Complex32 | Complex64
+
+type bigarray_layout = Unknown | C | Fortran
+
+type raise_kind = Regular | Reraise | No_trace
+
+type setfield_kind =
+  | Immediate
+  | Pointer
+  | Float
+
+type string_accessor_width =
+  | Eight
+  | Sixteen
+  | Thirty_two
+  | Sixty_four
+
+type bigstring_accessor_width =
+  | Sixteen
+  | Thirty_two
+  | Sixty_four
+
+type num_dimensions = int
+
+type boxed_integer = Pnativeint | Pint32 | Pint64
+
+type unary_int_arith_op = Neg
+
+type unary_float_arith_op = Abs | Neg
+
 type result_kind =
   | Singleton of K.t
   | Unit
   | Never_returns
 
 type unary_primitive =
-  | Field of int
-  | Floatfield of int
-  | Duparray of L.array_kind * Flambda.mutable_or_immutable
-  | Duprecord of Types.record_representation * int
-  | Lazyforce
-  | Isint
-  | Gettag
-  | Isout
-  | Bittest
-  | Offsetint of int
-  | Offsetref of int
-  | Bytes_to_string
-  | Bytes_of_string
-  | Stringlength
-  | Byteslength
-  | Bswap16
-  | Bswap of K.Of_naked_number.t
+  | Block_load of int * field_kind
+  | Duplicate_array of array_kind * mutable_or_immutable
+  | Duplicate_record of {
+      repr : Types.record_representation;
+      num_fields : int;
+    }
+  | Is_int
+  | Get_tag
+  | String_length of string_or_bytes
+  | Swap_byte_endianness of K.Of_naked_number_not_float.t
   | Int_as_pointer
   | Opaque
-  | Raise of L.raise_kind
-  | Not of K.Of_naked_number.t
-  | Negint of K.Of_naked_number.t
-  | Intoffloat
-  | Floatofint
-  | Negfloat
-  | Arraylength of L.array_kind
-  | Bigarrayref of bool * int * L.bigarray_kind * L.bigarray_layout
-  | Bigarraydim of int
-  | Unbox_number of K.Of_naked_number.t
-  | Box_number of K.Of_naked_number.t
-  | Untag_immediate
-  | Tag_immediate
+  | Raise of raise_kind
+  | Int_arith of K.Of_naked_number_not_float.t * unary_int_arith_op
+  | Float_arith of unary_float_arity_op
+  | Int_of_float
+  | Float_of_int
+  | Array_length of array_kind
+  | Bigarray_length of { dimension : int; }
+  | Unbox_or_untag_number of K.Of_naked_number.t
+  | Box_or_tag_number of K.Of_naked_number.t
 
 let print_unary_primitive p =
   let fprintf = Format.fprintf in
@@ -173,41 +239,60 @@ let result_kind_of_unary_primitive p : result_kind =
   | Untag_immediate -> Singleton (K.naked_immediate ())
   | Tag_immediate -> Singleton (K.value Can_scan)
 
+let effects_and_coeffects_of_unary_primitive p =
+  match p with
+  | Block_load _ -> No_effects, Has_coeffects
+  | Duplicate_array (_, Immutable) ->
+    (* Duplicate_array (_, Immutable) is allowed only on immutable arrays. *)
+    Only_generative_effects, No_coeffects
+  | Duplicate_array (_, Mutable)
+  | Duplicate_record { repr = _; num_fields = _; } ->
+    Only_generative_effects, Has_coeffects
+  | Is_int -> No_effects, No_coeffects
+  | Get_tag -> No_effects, Has_coeffects
+  | String_length _ -> No_effects, Has_coeffects
+  | Swap_byte_endianness
+  | Int_as_pointer
+  | Opaque -> No_effects, No_coeffects
+  | Raise -> Arbitrary_effects, No_coeffects
+  | Int_arith Neg
+  | Float_arith (Abs | Neg)
+  | Int_of_float
+  | Float_of_int -> No_effects, No_coeffects
+  | Array_length _ ->
+    No_effects, Has_coeffects  (* That old chestnut: [Obj.truncate]. *)
+  | Bigarray_length { dimension = _; } ->
+    No_effects, Has_coeffects  (* Some people resize bigarrays in place. *)
+  | Unbox_or_untag_number _ ->
+    No_effects, No_coeffects
+  | Box_or_tag_number Naked_immediate ->
+    No_effects, No_coeffects
+  | Box_or_tag_number (
+      Naked_float | Naked_int32 | Naked_int64 | Naked_nativeint) ->
+    Only_generative_effects, No_coeffects
+
+type int_arith_op =
+  | Add | Sub | Mul
+  | Div of is_safe
+  | Mod of is_safe
+  | And | Or | Xor
+
+type int_shift_op = Lsl | Lsr | Asr
+
+type binary_float_arith_op = Add | Sub | Mul | Div
+
 type binary_primitive =
-  | Setfield of int * L.immediate_or_pointer
-      * L.initialization_or_assignment
-  | Setfloatfield of int * L.initialization_or_assignment
-  | Field_computed
-  | Addint of K.Of_naked_number.t
-  | Subint of K.Of_naked_number.t
-  | Mulint of K.Of_naked_number.t
-  | Divint of L.is_safe * K.Of_naked_number.t
-  | Modint of L.is_safe * K.Of_naked_number.t
-  | Andint of K.Of_naked_number.t
-  | Orint of K.Of_naked_number.t
-  | Xorint of K.Of_naked_number.t
-  | Lslint of K.Of_naked_number.t
-  | Lsrint of K.Of_naked_number.t
-  | Asrint of K.Of_naked_number.t
-  | Intcomp of L.comparison
-  | Absfloat
-  | Addfloat
-  | Subfloat
-  | Mulfloat
-  | Divfloat
-  | Floatcomp of L.comparison
-  | Arrayrefu of L.array_kind
-  | Arrayrefs of L.array_kind
-  | Stringrefu
-  | Stringrefs
-  | Bytesrefu
-  | Bytesrefs
-  | String_load_16 of bool
-  | String_load_32 of bool
-  | String_load_64 of bool
-  | Bigstring_load_16 of bool
-  | Bigstring_load_32 of bool
-  | Bigstring_load_64 of bool
+  | Block_load_computed_index
+  | Set_field of int * setfield_kind * init_or_assign
+  | Int_arith of K.Of_naked_number_not_float.t * binary_int_arith_op
+  | Int_shift of K.Of_naked_number_not_float.t * int_shift_op
+  | Int_comp of comparison
+  | Float_arith of binary_float_arith_op
+  | Float_comp of comparison
+  | Bit_test
+  | Array_load of array_kind * is_safe
+  | String_load of string_accessor_width * is_safe
+  | Bigstring_load of bigstring_accessor_width * is_safe
 
 let print_binary_primitive ppf p =
   let fprintf = Format.fprintf in
@@ -367,21 +452,30 @@ let result_kind_of_binary_primitive ppf p : result_kind =
   | Bigstring_load_32 _ -> 
   | Bigstring_load_64 _ -> ???
 
+let effects_and_coeffects_of_binary_primitive p =
+  match p with
+  | Block_load_computed_index -> No_effects, Has_coeffects
+  | Set_field _ -> Arbitrary_effects, No_coeffects
+  | Int_arith (Add | Sub | Mul | Div Unsafe | Mod Unsafe | And | Or | Xor) ->
+    No_effects, No_coeffects
+  | Int_arith (Div Safe | Mod Safe) -> Arbitrary_effects, No_coeffects
+  | Int_shift _ -> No_effects, No_coeffects
+  | Int_comp _ -> No_effects, No_coeffects
+  | Float_arith (Add | Sub | Mul | Div) -> No_effects, No_coeffects
+  | Float_comp _ -> No_effects, No_coeffects
+  | Bit_test -> No_effects, No_coeffects
+  | Array_load (_, is_safe)
+  | String_load (_, is_safe)
+  | Bigstring_load (_, is_safe) -> reading_from_an_array_like_thing is_safe
+
 type ternary_primitive =
-  | Setfield_computed of Lambda.immediate_or_pointer
-      * Lambda.initialization_or_assignment
-  | Bytesset of Lambda.is_safe
-  | Bigarrayset of bool * int * L.bigarray_kind * L.bigarray_layout
-  | String_set_16 of is_safe
-  | String_set_32 of is_safe
-  | String_set_64 of is_safe
-  | Bigstring_set_16 of is_safe
-  | Bigstring_set_32 of is_safe
-  | Bigstring_set_64 of is_safe
-  | Arrayset of Lambda.array_kind * Lambda.is_safe
+  | Set_field_computed_index of Flambda_kind.scanning * init_or_assign
+  | Bytes_set of string_accessor_width * is_safe
+  | Array_set of array_kind * is_safe
+  | Bigstring_set of bigstring_accessor_width * is_safe
 
 let print_ternary_primitive ppf p =
-  | Psetfield_computed (ptr, init) ->
+  | Set_field_computed_index (ptr, init) ->
     let instr =
       match ptr with
       | Pointer -> "ptr"
@@ -421,33 +515,25 @@ let print_ternary_primitive ppf p =
 
 let args_kind_of_ternary_primitive p =
   match p with
-  | Setfield_computed _
-  | Bytessetu
-  | Bytessets
-  | String_set_16 _
-  | String_set_32 _
-  | String_set_64 _
-  | Bigstring_set_16 _
-  | Bigstring_set_32 _
-  | Bigstring_set_64 _
-  | Bigarrayset _
-  | Arraysetu _
-  | Arraysets _ ->
+  | Set_field_computed_index _
+  | Bytes_set _
+  | Array_set _
+  | Bigstring_set _
 
 let result_kind_of_ternary_primitive p : result_kind =
   match p with
-  | Setfield_computed _
-  | Bytessetu
-  | Bytessets
-  | String_set_16 _
-  | String_set_32 _
-  | String_set_64 _
-  | Bigstring_set_16 _
-  | Bigstring_set_32 _
-  | Bigstring_set_64 _
-  | Bigarrayset _
-  | Arraysetu _
-  | Arraysets _ -> Unit
+  | Set_field_computed_index _
+  | Bytes_set _
+  | Array_set _
+  | Bigstring_set _
+
+let effects_and_coeffects_of_ternary_primitive p =
+  match p with
+  | Set_field_computed_index _ -> Arbitrary_effects, No_coeffects
+  | Bytes_set (_, is_safe)
+  | Array_set (_, is_safe)
+  | Bigstring_set (_, is_safe) ->
+    writing_to_an_array_like_thing is_safe
 
 type variadic_primitive =
   | Makeblock of int * Flambda.mutable_or_immutable * L.block_shape
@@ -482,6 +568,25 @@ let result_kind_of_variadic_primitive p : result_kind =
   | Makearray _
   | Ccall _
   | Ccall_unboxed _ -> K.value Must_scan
+
+let effects_and_coeffects_of_variadic_primitive p =
+  match p with
+  | Make_block _
+  | Make_array (_, Immutable)
+  | Make_array (_, Mutable) -> Only_generative_effects, No_coeffects
+  | Bigarray_set (is_safe, _, _, _) ->
+    writing_to_an_array_like_thing is_safe
+  | Bigarray_load (is_safe, _, _, _) ->
+    reading_from_an_array_like_thing is_safe
+  | Ccall of { name; native_name; args; result; alloc; } ->
+    begin match name with
+    | "caml_format_float" | "caml_format_int" | "caml_int32_format"
+    | "caml_nativeint_format" | "caml_int64_format" ->
+      (* CR mshinwell: xclerc thinks this is dubious.  Should there be some
+         kind of annotation on externals? *)
+      No_effects, No_coeffects
+    | _ -> Arbitrary_effects, Has_coeffects
+    end
 
 type t =
   | Unary of unary_primitive * Variable.t
@@ -538,3 +643,10 @@ let result_kind (t : t) =
   | Binary (prim, _, _) -> result_kind_of_binary_primitive prim
   | Ternary (prim, _, _, _) -> result_kind_of_ternary_primitive prim
   | Variadic (prim, _) -> result_kind_of_variadic_primitive prim
+
+let effects_and_coeffects (t : t) =
+  match t with
+  | Unary (prim, _) -> effects_and_coeffects_of_unary_primitive prim
+  | Binary (prim, _, _) -> effects_and_coeffects_of_binary_primitive prim
+  | Ternary (prim, _, _, _) -> effects_and_coeffects_of_ternary_primitive prim
+  | Variadic (prim, _) -> effects_and_coeffects_of_variadic_primitive prim
