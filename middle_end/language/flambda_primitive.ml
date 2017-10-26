@@ -75,7 +75,7 @@ type bigarray_layout = Unknown | C | Fortran
 
 type raise_kind = Regular | Reraise | No_trace
 
-type setfield_kind =
+type set_field_kind =
   | Immediate
   | Pointer
   | Float
@@ -257,7 +257,7 @@ type binary_float_arith_op = Add | Sub | Mul | Div
 
 type binary_primitive =
   | Block_load_computed_index
-  | Set_field of int * setfield_kind * init_or_assign
+  | Set_field of int * set_field_kind * init_or_assign
   | Int_arith of K.Of_naked_number_not_float.t * binary_int_arith_op
   | Int_shift of K.Of_naked_number_not_float.t * int_shift_op
   | Int_comp of comparison
@@ -350,81 +350,39 @@ let print_binary_primitive ppf p =
 
 let args_kind_of_binary_primitive p =
   match p with
-  | Setfield _
-  | Setfloatfield _ ->
-  | Field_computed _ ->
-  | Addint kind
-  | Subint kind
-  | Mulint kind
-  | Divint (_, kind)
-  | Modint (_, kind)
-  | Andint kind
-  | Orint kind
-  | Xorint kind
-  | Lslint kind
-  | Lsrint kind
-  | Asrint kind ->
-  | Intcomp | Floatcomp ->
-  | Absfloat
-  | Addfloat
-  | Subfloat
-  | Mulfloat
-  | Divfloat ->
-  | Arrayrefu (Pgenarray | Paddrarray)
-  | Arrayrefs (Pgenarray | Paddrarray) ->
-  | Arrayrefu Pintarray
-  | Arrayrefs Pintarray ->
-  | Arrayrefu Pfloatarray
-  | Arrayrefs Pfloatarray ->
-  | Stringrefu
-  | Stringrefs
-  | Bytesrefu
-  | Bytesrefs ->
-  | String_load_16 _
-  | String_load_32 _
-  | String_load_64 _
-  | Bigstring_load_16 _
-  | Bigstring_load_32 _
-  | Bigstring_load_64 _ ->
+  | Block_load_computed_index ->
+    K.value Must_scan, K.value Can_scan
+  | Set_field _ ->
+    K.value Must_scan, K.value Must_scan
+  | Int_arith (kind, _) | Int_shift (kind, _) ->
+    let kind = K.Of_naked_number_not_float.to_kind kind in
+    kind, kind
+  | Int_comp _ -> K.value Can_scan, K.value Can_scan
+  | Float_arith _
+  | Float_comp _ -> K.naked_float (), K.naked_float ()
+  | Bit_test -> K.value Can_scan  (* CR mshinwell: is this correct? *)
+  | Array_load _
+  | String_load _ ->
+  | Bigstring_load _ ->
+    K.value Must_scan, K.value Can_scan
+    K.value Must_scan, K.value Can_scan
 
 let result_kind_of_binary_primitive ppf p : result_kind =
   match p with
-  | Setfield _
-  | Setfloatfield _ -> Unit
-  | Field_computed _ -> Singleton (K.value Must_scan)
-  | Addint kind
-  | Subint kind
-  | Mulint kind
-  | Divint (_, kind)
-  | Modint (_, kind)
-  | Andint kind
-  | Orint kind
-  | Xorint kind
-  | Lslint kind
-  | Lsrint kind
-  | Asrint kind -> Singleton (K.Of_naked_number.to_kind kind)
-  | Intcomp | Floatcomp -> Singleton (K.naked_immediate ())
-  | Absfloat
-  | Addfloat
-  | Subfloat
-  | Mulfloat
-  | Divfloat -> Singleton (K.naked_float ())
-  | Arrayrefu (Pgenarray | Paddrarray)
-  | Arrayrefs (Pgenarray | Paddrarray) -> Singleton (K.value Must_scan)
-  | Arrayrefu Pintarray
-  | Arrayrefs Pintarray -> Singleton (K.value Can_scan)
-  | Arrayrefu Pfloatarray
-  | Arrayrefs Pfloatarray -> Singleton (K.naked_float ())
-  | Stringrefu
-  | Stringrefs
-  | Bytesrefu
-  | Bytesrefs -> Singleton (K.value Can_scan)
-  | String_load_16 _
-  | String_load_32 _
-  | String_load_64 _
-  | Bigstring_load_16 _ -> Singleton (K.value Can_scan)
-  | Bigstring_load_32 _ -> 
-  | Bigstring_load_64 _ -> ???
+  | Block_load_computed_index -> Singleton (K.value Must_scan)
+  | Set_field _ -> Unit
+  | Int_arith (kind, _)
+  | Int_shift (kind, _) -> Singleton (K.Of_naked_number_not_float.to_kind kind)
+  | Float_arith _ -> Singleton (K.naked_float ())
+  | Int_comp _ ->
+  | Float_comp _ -> Singleton (K.naked_immediate ())
+  | Bit_test -> Singleton (K.value Can_scan)
+  | Array_load (Dynamic_must_scan_or_naked_float | Must_scan) ->
+    Singleton (K.value Must_scan)
+  | Array_load Can_scan -> Singleton (K.value Can_scan)
+  | Array_load Naked_float -> Singleton (K.naked_float ())
+  | String_load _
+  | Bigstring_load _ -> Singleton (K.naked_immediate ())
 
 let effects_and_coeffects_of_binary_primitive p =
   match p with
