@@ -107,7 +107,7 @@ module rec Expr : sig
       }
   val build_let_cont_with_wrappers
      : body:t
-    -> recursive:Asttypes.rec_flag
+    -> recursive:Flambda.recursive
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
   module Iterators : sig
@@ -264,7 +264,7 @@ end = struct
         wrapper_handler : Continuation_handler.t;
       }
 
-  let build_let_cont_with_wrappers ~body ~(recursive : Asttypes.rec_flag)
+  let build_let_cont_with_wrappers ~body ~(recursive : Flambda.recursive)
         ~with_wrappers : Expr.t =
     match recursive with
     | Nonrecursive ->

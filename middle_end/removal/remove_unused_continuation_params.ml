@@ -152,14 +152,14 @@ let run program ~backend =
             Continuation.Map.add name handler Continuation.Map.empty
           in
           for_continuation ~body ~handlers ~unused ~original:expr
-            ~recursive:Asttypes.Nonrecursive
+            ~recursive:Flambda.Nonrecursive
         | Let_cont { body; handlers = Recursive handlers; } ->
           let unused =
             Invariant_params.Continuations.unused_arguments handlers ~backend
           in
           let unused = Parameter.Set.wrap unused in
           for_continuation ~body ~handlers ~unused ~original:expr
-            ~recursive:Asttypes.Recursive
+            ~recursive:Flambda.Recursive
         | Let _ | Let_mutable _ | Apply _ | Apply_cont _ | Switch _
         | Invalid _ -> expr)
       expr)

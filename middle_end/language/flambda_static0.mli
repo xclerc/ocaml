@@ -34,7 +34,7 @@ module Static_part : sig
       filled with values computed at runtime.  As might be expected, this is
       isomorphic to a subset of [Flambda_type.t]. *)
   type t = private
-    | Block of Tag.Scannable.t * Asttypes.mutable_flag * (Of_kind_value.t list)
+    | Block of Tag.Scannable.t * Flambda.mutable_or_immutable * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
     | Closure of Symbol.t * Closure_id.t
     | Boxed_float of float or_variable

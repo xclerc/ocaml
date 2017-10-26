@@ -357,7 +357,7 @@ let translate_definition_and_resolve_alias inconstants
     : CDV.t option =
   ignore backend;  (* XXX *)
   let resolve_float_array_involving_variables
-        ~(mutability : Asttypes.mutable_flag) ~vars
+        ~(mutability : Flambda.mutable_or_immutable) ~vars
         : CDV.t option =
     (* Resolve an [Allocated_const] of the form:
         [Array (Pfloatarray, _, _)]

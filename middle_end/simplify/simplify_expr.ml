@@ -208,7 +208,7 @@ let simplify_let_cont_handler ~env ~r ~cont
   r, handler
 
 let simplify_let_cont_handlers ~env ~r ~handlers ~args_types
-      ~(recursive : Asttypes.rec_flag) ~freshening
+      ~(recursive : Flambda.recursive) ~freshening
       : Flambda.Let_cont_handlers.t option * R.t =
   Continuation.Map.iter (fun cont _handler ->
       let cont = Freshening.apply_static_exception freshening cont in
@@ -462,7 +462,7 @@ let simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
       in
       let handlers, r =
         simplify_let_cont_handlers ~env ~r ~handlers ~args_types:None
-          ~recursive:Asttypes.Nonrecursive ~freshening
+          ~recursive:Flambda.Nonrecursive ~freshening
       in
       match handlers with
       | None -> body, r
@@ -510,7 +510,7 @@ let simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
     let original_handlers = handlers in
     let handlers, r =
       simplify_let_cont_handlers ~env ~r ~handlers
-        ~args_types:None ~recursive:Asttypes.Recursive ~freshening
+        ~args_types:None ~recursive:Flambda.Recursive ~freshening
     in
     begin match handlers with
     | None -> body, r
@@ -567,7 +567,7 @@ let simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
         (* CR mshinwell: check that [args_types] is at least as precise as
            last time *)
         simplify_let_cont_handlers ~env ~r ~handlers
-          ~args_types:(Some args_types) ~recursive:Asttypes.Recursive
+          ~args_types:(Some args_types) ~recursive:Flambda.Recursive
           ~freshening
       in
       let r =

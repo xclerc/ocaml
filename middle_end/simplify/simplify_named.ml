@@ -642,7 +642,7 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
       ~size_int ~big_endian : Flambda.Named.t * T.t * Inlining_cost.Benefit.t =
   let fpc = !Clflags.float_const_prop in
   match p with
-  | Pmakeblock(tag_int, Asttypes.Immutable, shape) ->
+  | Pmakeblock(tag_int, Flambda.Immutable, shape) ->
     let tag = Tag.create_exn tag_int in
     let shape = match shape with
       | None -> List.map (fun _ -> Lambda.Pgenval) args
@@ -650,7 +650,7 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
     in
     let approxs = List.map2 T.augment_with_kind approxs shape in
     let shape = List.map2 T.augment_kind_with_approx approxs shape in
-    Prim (Pmakeblock(tag_int, Asttypes.Immutable, Some shape), args, dbg),
+    Prim (Pmakeblock(tag_int, Flambda.Immutable, Some shape), args, dbg),
     T.value_block tag (Array.of_list approxs), C.Benefit.zero
   | Praise _ ->
     expr, T.value_bottom, C.Benefit.zero
@@ -665,7 +665,7 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
       | _ -> S.const_ptr_expr expr 0
     end
   | Pmakearray(_, _) when approxs = [] ->
-    Prim (Pmakeblock(0, Asttypes.Immutable, Some []), [], dbg),
+    Prim (Pmakeblock(0, Flambda.Immutable, Some []), [], dbg),
     T.value_block (Tag.create_exn 0) [||], C.Benefit.zero
   | Pmakearray (Pfloatarray, Mutable) ->
       let approx =

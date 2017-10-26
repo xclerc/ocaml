@@ -141,7 +141,7 @@ val define_continuation
    : t
   -> Continuation.t
   -> Env.t
-  -> Asttypes.rec_flag
+  -> Flambda.recursive
   -> Continuation_uses.t
   -> Continuation_approx.t
   -> t
@@ -169,7 +169,7 @@ val update_defined_continuation_approx
 val continuation_definitions_with_uses
    : t
   -> (Continuation_uses.t * Continuation_approx.t * Env.t
-    * Asttypes.rec_flag) Continuation.Map.t
+    * Flambda.recursive) Continuation.Map.t
 
 val forget_continuation_definition
    : t

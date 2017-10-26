@@ -30,7 +30,7 @@ type result_kind =
 type unary_primitive =
   | Field of int
   | Floatfield of int
-  | Duparray of L.array_kind * Asttypes.mutable_flag
+  | Duparray of L.array_kind * Flambda.mutable_or_immutable
   | Duprecord of Types.record_representation * int
   | Lazyforce
   | Isint
@@ -450,8 +450,8 @@ let result_kind_of_ternary_primitive p : result_kind =
   | Arraysets _ -> Unit
 
 type variadic_primitive =
-  | Makeblock of int * Asttypes.mutable_flag * L.block_shape
-  | Makearray of L.array_kind * Asttypes.mutable_flag
+  | Makeblock of int * Flambda.mutable_or_immutable * L.block_shape
+  | Makearray of L.array_kind * Flambda.mutable_or_immutable
   | Ccall of Primitive.description
   | Ccall_unboxed of Primitive.description
 

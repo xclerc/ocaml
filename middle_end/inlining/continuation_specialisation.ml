@@ -151,7 +151,7 @@ let usage_information_for_simplification ~env ~old_handlers ~new_handlers
 *)
 let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handlers.t)
       ~(newly_specialised_args : Flambda.specialised_args)
-      ~invariant_params_flow ~env ~(recursive : Asttypes.rec_flag)
+      ~invariant_params_flow ~env ~(recursive : Flambda.recursive)
       ~simplify_let_cont_handlers ~definitions_with_uses
       : specialising_result =
   let freshening, env = environment_for_simplification ~env ~old_handlers in
@@ -360,7 +360,7 @@ let find_candidate_specialisations r ~backend =
         in
         let application_points = U.application_points uses in
         let num_application_points = List.length application_points in
-        match (recursive : Asttypes.rec_flag), num_application_points, stub with
+        match (recursive : Flambda.recursive), num_application_points, stub with
         | Nonrecursive, n, _ when n <= 1 ->
           (* Non-recursive continuations that only have a single (inlinable)
              use point will be inlined out by [Continuation_inlining].
@@ -387,7 +387,7 @@ let beneficial_specialisations r ~specialisations ~simplify_let_cont_handlers =
   CSA.Map.fold (fun
           (cont, newly_specialised_args)
           (cont_application_points, env, invariant_params_flow, old_handlers,
-            (recursive : Asttypes.rec_flag))
+            (recursive : Flambda.recursive))
           ((new_conts, apply_cont_rewrites) as acc) ->
       match
         try_specialising ~cont ~old_handlers

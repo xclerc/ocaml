@@ -178,6 +178,14 @@ type specialise_attribute =
   | Never_specialise
   | Default_specialise
 
+type recursive =
+  | Non_recursive
+  | Recursive
+
+type mutable_or_immutable =
+  | Mutable
+  | Immutable
+
 module rec Expr : sig
   (** With the exception of applications of primitives ([Prim]), Flambda terms
       are in CPS.

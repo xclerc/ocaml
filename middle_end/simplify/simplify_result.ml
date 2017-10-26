@@ -23,7 +23,7 @@ type t =
     used_continuations : Continuation_uses.t Continuation.Map.t;
     defined_continuations :
       (Continuation_uses.t * Continuation_approx.t * Env.t
-          * Asttypes.rec_flag)
+          * Flambda.recursive)
         Continuation.Map.t;
     inlining_threshold : Inlining_cost.Threshold.t option;
     benefit : Inlining_cost.Benefit.t;
@@ -101,7 +101,7 @@ Format.eprintf "NRCUL: continuation %a number of uses %d\n%!"
 Continuation.print _cont
 (List.length uses.Continuation_uses.application_points);
 *)
-        match (recursive : Asttypes.rec_flag) with
+        match (recursive : Flambda.recursive) with
         | Nonrecursive ->
           Continuation_uses.linearly_used_in_inlinable_position uses
         | Recursive -> false)

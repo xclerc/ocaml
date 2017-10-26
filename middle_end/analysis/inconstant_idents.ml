@@ -317,11 +317,11 @@ module Inconstants (P:Param) (Importer : Flambda_type.Importer) = struct
        makeblock(Mutable) can be a 'constant' if it is allocated at
        toplevel: if this expression is evaluated only once.
     *)
-    | Prim (Lambda.Pmakeblock (_tag, Asttypes.Immutable, _value_kind), args,
+    | Prim (Lambda.Pmakeblock (_tag, Flambda.Immutable, _value_kind), args,
             _dbg) ->
       mark_vars args curr
 (*  (* CR-someday pchambart: If global mutables are allowed: *)
-    | Prim(Lambda.Pmakeblock(_tag, Asttypes.Mutable), args, _dbg, _)
+    | Prim(Lambda.Pmakeblock(_tag, Flambda.Mutable), args, _dbg, _)
       when toplevel ->
       List.iter (mark_loop ~toplevel curr) args
 *)

@@ -23,7 +23,7 @@ let rec join_continuation_stacks stack1 stack2 =
   | [], [] | _, [] | [], _ -> []
   | (cont1, rec1)::stack1, (cont2, _rec2)::stack2 ->
     if Continuation.equal cont1 cont2 then
-      match (rec1 : Asttypes.rec_flag) with
+      match (rec1 : Flambda.recursive) with
       | Nonrecursive ->
         (cont1, rec1) :: join_continuation_stacks stack1 stack2
       | Recursive -> []  (* Don't sink lets into recursive continuations. *)
@@ -43,13 +43,13 @@ module State : sig
 
   val add_candidates_to_sink
      : t
-    -> sink_into:(Continuation.t * Asttypes.rec_flag) list
+    -> sink_into:(Continuation.t * Flambda.recursive) list
     -> candidates_to_sink:Variable.Set.t
     -> t
 
   val add_candidates_to_sink_from_handler_state
      : t
-    -> current_continuation:(Continuation.t * Asttypes.rec_flag)
+    -> current_continuation:(Continuation.t * Flambda.recursive)
     -> handler_state:t
     -> except:Variable.Set.t
     -> t
@@ -57,12 +57,12 @@ module State : sig
   val is_candidate_to_sink
      : t
     -> Variable.t
-    -> (Continuation.t * Asttypes.rec_flag) list option
+    -> (Continuation.t * Flambda.recursive) list option
 
   val remove_candidate_to_sink
      : t
     -> Variable.t
-    -> (Continuation.t * Asttypes.rec_flag) list option * t
+    -> (Continuation.t * Flambda.recursive) list option * t
 
   val sink_let
      : t
@@ -78,7 +78,7 @@ end = struct
       (Variable.t * Flambda.Named.t W.t) list Continuation.Map.t;
     variables_to_sink : Variable.Set.t;
     candidates_to_sink :
-      (Continuation.t * Asttypes.rec_flag) list Variable.Map.t;
+      (Continuation.t * Flambda.recursive) list Variable.Map.t;
   }
 
   let create () =

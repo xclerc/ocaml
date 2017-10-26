@@ -169,7 +169,7 @@ let simplify_static_part env r (static_part : Flambda_static0.Static_part.t)
     | Wrong -> Wrong
     end
 
-let simplify_static_structure initial_env (recursive : Asttypes.rec_flag) str =
+let simplify_static_structure initial_env (recursive : Flambda.recursive) str =
   let unreachable, env, str =
     List.fold_left
       (fun ((now_unreachable, env, str) as acc) (sym, static_part) ->
@@ -200,7 +200,7 @@ let initial_environment_for_recursive_symbols env defn =
   let _unreachable, env, str = simplify_static_structure env defn in
   env
 
-let simplify_define_symbol env (recursive : Asttypes.rec_flag)
+let simplify_define_symbol env (recursive : Flambda.recursive)
       (defn : Program_body.definition)
       : Program_body.definition * E.t =
   let env, computation =

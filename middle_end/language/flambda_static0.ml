@@ -63,7 +63,7 @@ module Static_part = struct
     | Var of Variable.t
 
   type t = private
-    | Block of Tag.Scannable.t * Asttypes.mutable_flag * (Of_kind_value.t list)
+    | Block of Tag.Scannable.t * Flambda.mutable_or_immutable * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
     | Closure of Symbol.t * Closure_id.t
     | Boxed_float of float or_variable
@@ -253,7 +253,7 @@ module Program_body = struct
             Static_part.print static_part))
       defn.static_structure
 
-  let free_symbols_of_definition defn (recursive : Asttypes.rec_flag) =
+  let free_symbols_of_definition defn (recursive : Flambda.recursive) =
     let free_in_computation =
       match defn.computation with
       | None -> Symbol.Set.empty

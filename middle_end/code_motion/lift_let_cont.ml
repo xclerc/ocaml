@@ -165,7 +165,7 @@ module State = struct
 end
 
 let rec lift_let_cont ~importer ~body ~handlers ~state
-      ~(recursive : Asttypes.rec_flag) =
+      ~(recursive : Flambda.recursive) =
   let bound_recursively =
     match recursive with
     | Nonrecursive -> Continuation.Set.empty
@@ -343,9 +343,10 @@ and lift_expr ~importer (expr : Flambda.Expr.t) ~state =
     let body = lift ~importer body in
     Flambda.Expr.Let_cont { body; handlers; }, state
   | Let_cont { body; handlers; } ->
-    let recursive = match handlers with
-      | Nonrecursive _ -> Asttypes.Nonrecursive
-      | Recursive _ -> Asttypes.Recursive
+    let recursive : Flambda.recursive =
+      match handlers with
+      | Nonrecursive _ -> Nonrecursive
+      | Recursive _ -> Recursive
     in
     let handlers = Flambda.Let_cont_handlers.to_continuation_map handlers in
     lift_let_cont ~importer ~body ~handlers ~state ~recursive

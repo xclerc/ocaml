@@ -152,7 +152,7 @@ module rec Expr : sig
 
   val build_let_cont_with_wrappers
      : body:t
-    -> recursive:Asttypes.rec_flag
+    -> recursive:Flambda.recursive
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
 

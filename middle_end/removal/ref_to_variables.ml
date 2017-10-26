@@ -79,7 +79,7 @@ let variables_containing_ref (flam:Flambda.Expr.t) =
     | Let { var;
             kind;
             defining_expr =
-              Prim (Pmakeblock (0, Asttypes.Mutable, shape), l, _);
+              Prim (Pmakeblock (0, Flambda.Mutable, shape), l, _);
           } ->
       if not (Flambda_kind.is_value kind) then begin
         Misc.fatal_errorf "Variable %a bound to [Pmakeblock] but has kind \
@@ -174,7 +174,7 @@ let eliminate_ref_of_expr flam =
       | Let {
           var;
           kind;
-          defining_expr = Prim (Pmakeblock (0, Asttypes.Mutable, shape), l, _);
+          defining_expr = Prim (Pmakeblock (0, Flambda.Mutable, shape), l, _);
           body;
         }
           when convertible_variable var ->
