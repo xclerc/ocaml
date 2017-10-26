@@ -42,19 +42,24 @@ type init_or_assign = Initialization | Assignment
 
 type is_safe = Safe | Unsafe
 
-let effects_of_is_safe is_safe =
+type array_like_operation = Reading | Writing
+
+let effects_of_is_safe operation is_safe =
   match is_safe with
   | Safe -> Arbitrary_effects
-  | Unsafe -> No_effects
+  | Unsafe ->
+    match operation with
+    | Reading -> No_effects
+    | Writing -> Arbitrary_effects
 
 let reading_from_an_array_like_thing is_safe =
-  let effects = effects_of_is_safe is_safe in
+  let effects = effects_of_is_safe Reading is_safe in
   effects, Has_coeffects
 
 (* CR-someday mshinwell: Change this when [Obj.truncate] is removed (although
    beware, bigarrays will still be resizable). *)
 let writing_to_an_array_like_thing is_safe =
-  let effects = effects_of_is_safe is_safe in
+  let effects = effects_of_is_safe Writing is_safe in
   (* Care: the bounds check may read a mutable place---namely the size of
      the block (for [Bytes_set] and [Array_set]) or the dimension of the
      bigarray.  As such these primitives have coeffects. *)
@@ -215,7 +220,8 @@ let result_kind_of_unary_primitive p : result_kind =
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
-  | Block_load _ -> No_effects, Has_coeffects
+  | Block_load _ ->
+    reading_from_an_array_like_thing Unsafe
   | Duplicate_array (_, Immutable) ->
     (* Duplicate_array (_, Immutable) is allowed only on immutable arrays. *)
     Only_generative_effects, No_coeffects
@@ -224,7 +230,7 @@ let effects_and_coeffects_of_unary_primitive p =
     Only_generative_effects, Has_coeffects
   | Is_int -> No_effects, No_coeffects
   | Get_tag -> No_effects, Has_coeffects
-  | String_length _ -> No_effects, Has_coeffects
+  | String_length _ -> reading_from_an_array_like_thing Unsafe
   | Swap_byte_endianness
   | Int_as_pointer
   | Opaque -> No_effects, No_coeffects
@@ -234,9 +240,9 @@ let effects_and_coeffects_of_unary_primitive p =
   | Int_of_float
   | Float_of_int -> No_effects, No_coeffects
   | Array_length _ ->
-    No_effects, Has_coeffects  (* That old chestnut: [Obj.truncate]. *)
+    reading_from_an_array_like_thing Unsafe
   | Bigarray_length { dimension = _; } ->
-    No_effects, Has_coeffects  (* Some people resize bigarrays in place. *)
+    reading_from_an_array_like_thing Unsafe
   | Unbox_or_untag_number _ ->
     No_effects, No_coeffects
   | Box_or_tag_number Naked_immediate ->
@@ -423,13 +429,15 @@ let result_kind_of_binary_primitive ppf p : result_kind =
   | String_load_32 _
   | String_load_64 _
   | Bigstring_load_16 _ -> Singleton (K.value Can_scan)
-  | Bigstring_load_32 _ -> 
+  | Bigstring_load_32 _ ->
   | Bigstring_load_64 _ -> ???
 
 let effects_and_coeffects_of_binary_primitive p =
   match p with
-  | Block_load_computed_index -> No_effects, Has_coeffects
-  | Set_field _ -> Arbitrary_effects, No_coeffects
+  | Block_load_computed_index ->
+    reading_from_an_array_like_thing Unsafe
+  | Set_field _ ->
+    writing_to_an_array_like_thing Unsafe
   | Int_arith (Add | Sub | Mul | Div Unsafe | Mod Unsafe | And | Or | Xor) ->
     No_effects, No_coeffects
   | Int_arith (Div Safe | Mod Safe) -> Arbitrary_effects, No_coeffects
@@ -503,7 +511,8 @@ let result_kind_of_ternary_primitive p : result_kind =
 
 let effects_and_coeffects_of_ternary_primitive p =
   match p with
-  | Set_field_computed_index _ -> Arbitrary_effects, No_coeffects
+  | Set_field_computed_index _ ->
+    writing_to_an_array_like_thing Unsafe
   | Bytes_set (_, is_safe)
   | Array_set (_, is_safe)
   | Bigstring_set (_, is_safe) ->
