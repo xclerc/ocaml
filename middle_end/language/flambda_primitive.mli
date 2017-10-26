@@ -118,9 +118,9 @@ type unary_primitive =
       encoding a 16-bit quantity (described in the least significant 16 bits
       of the immediate) and exchanges the two halves of the 16-bit quantity. *)
   | Int_as_pointer
-  (** [Int_as_pointer] is semantically the same as [Opaque] except that the
-      result _cannot_ be scanned by the GC. *)
-  | Opaque
+  (** [Int_as_pointer] is semantically the same as [Opaque_identity] except
+      that the result _cannot_ be scanned by the GC. *)
+  | Opaque_identity
   | Raise of raise_kind
   | Int_arith of Flambda_kind.Of_naked_number_not_float.t * unary_int_arith_op
   | Float_arith of unary_float_arity_op

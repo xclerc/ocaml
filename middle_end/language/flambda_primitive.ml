@@ -146,7 +146,7 @@ type unary_primitive =
   | String_length of string_or_bytes
   | Swap_byte_endianness of K.Of_naked_number_not_float.t
   | Int_as_pointer
-  | Opaque
+  | Opaque_identity
   | Raise of raise_kind
   | Int_arith of K.Of_naked_number_not_float.t * unary_int_arith_op
   | Float_arith of unary_float_arity_op
