@@ -83,6 +83,25 @@ type bigstring_accessor_width =
   | Thirty_two
   | Sixty_four
 
+type num_dimensions = int
+
+type boxed_integer = Pnativeint | Pint32 | Pint64
+
+type native_repr =
+  | Same_as_ocaml_repr
+  | Unboxed_float
+  | Unboxed_integer of boxed_integer
+  | Untagged_int
+
+type description = private
+  { name : string;
+    arity : int;
+    alloc : bool
+    native_name : string;
+    native_repr_args : native_repr list;
+    native_repr_res : native_repr;
+  }
+
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
   | Field of int * field_kind
@@ -96,6 +115,8 @@ type unary_primitive =
       encoding a 16-bit quantity (described in the least significant 16 bits
       of the immediate) and exchanges the two halves of the 16-bit quantity. *)
   | Int_as_pointer
+  (** [Int_as_pointer] is semantically the same as [Opaque] except that the
+      result _cannot_ be scanned by the GC. *)
   | Opaque
   | Raise of raise_kind
   | Not of Flambda_kind.Of_naked_number_not_float.t
@@ -135,14 +156,14 @@ type float_arith_op =
 
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
-  | Set_field of int * setfield_kind * initialization_or_assignment
   | Field_computed
+  | Set_field of int * setfield_kind * initialization_or_assignment
   | Int_arith of Flambda_kind.Of_naked_number_not_float.t * int_arith_op
   | Int_shift of Flambda_kind.Of_naked_number_not_float.t * int_shift_op
   | Int_comp of comparison
   | Float_arith of float_arith_op
   | Float_comp of comparison
-  | Array_ref of array_kind * is_safe
+  | Array_load of array_kind * is_safe
   | String_load of string_accessor_width * is_safe
   (* CR-someday mshinwell: It seems as if [Cmmgen]'s handling of the
      bigstring accessors could be tidied up so as to integrate it with the
@@ -154,14 +175,14 @@ type ternary_primitive =
   | Set_field_computed of Flambda_kind.scanning * initialization_or_assignment
   | Bytes_set of string_accessor_width * is_safe
   | Array_set of array_kind * is_safe
-  | Bigarray_set of bool * int * bigarray_kind * bigarray_layout
+  | Bigarray_set of is_safe * num_dimensions * bigarray_kind * bigarray_layout
   | Bigstring_set of bigstring_accessor_width * is_safe
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
   | Make_block of int * mutable_or_immutable * Flambda_arity.t
   | Make_array of array_kind * mutable_or_immutable
-  | Bigarray_ref of is_safe * int * bigarray_kind * bigarray_layout
+  | Bigarray_load of is_safe * num_dimensions * bigarray_kind * bigarray_layout
   | Ccall of Primitive.description
   (* CR mshinwell: Should [Ccall_unboxed] take an [Flambda_arity.t]?  It seems
      like it should to avoid risking unnecessary boxings. *)
