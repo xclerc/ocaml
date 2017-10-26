@@ -23,6 +23,8 @@ val lambda: formatter -> lambda -> unit
 val program: formatter -> program -> unit
 val primitive: formatter -> primitive -> unit
 val name_of_primitive : primitive -> string
+val array_kind : array_kind -> string
+val record_rep : Format.formatter -> Types.record_representation -> unit
 val value_kind : value_kind -> string
 val meth_kind : formatter -> meth_kind -> unit
 val function_attribute : formatter -> function_attribute -> unit

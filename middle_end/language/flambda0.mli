@@ -290,7 +290,7 @@ end and Named : sig
   type t =
     | Var of Variable.t
     | Const of Const.t
-    | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
+    | Prim of Flambda_primitive.t * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
     | Symbol of Symbol.t

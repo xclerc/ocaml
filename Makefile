@@ -285,6 +285,7 @@ MIDDLE_END_INLINING=\
 MIDDLE_END_LANGUAGE=\
   middle_end/language/flambda_kind.cmo \
   middle_end/language/flambda_arity.cmo \
+  middle_end/language/flambda_primitive.cmo \
   middle_end/language/allocated_const.cmo \
   middle_end/language/flambda_type0_intf.cmo \
   middle_end/language/flambda_type0.cmo \

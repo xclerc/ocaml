@@ -119,4 +119,20 @@ module Of_naked_number : sig
     | Naked_int32 -> Naked_int32
     | Naked_int64 -> Naked_int64
     | Naked_nativeint -> Naked_nativeint
+
+  let print ppf t =
+    match t with
+    | Naked_immediate -> Format.pp_print_string ppf "Naked_immediate"
+    | Naked_float -> Format.pp_print_string ppf "Naked_float"
+    | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
+    | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
+    | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
+
+  let print_lowercase ppf t =
+    match t with
+    | Naked_immediate -> Format.pp_print_string ppf "immediate"
+    | Naked_float -> Format.pp_print_string ppf "float"
+    | Naked_int32 -> Format.pp_print_string ppf "int32"
+    | Naked_int64 -> Format.pp_print_string ppf "int64"
+    | Naked_nativeint -> Format.pp_print_string ppf "nativeint"
 end

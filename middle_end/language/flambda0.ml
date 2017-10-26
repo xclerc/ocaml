@@ -785,7 +785,7 @@ end and Named : sig
   type t =
     | Var of Variable.t
     | Const of Const.t
-    | Prim of Lambda.primitive * Variable.t list * Debuginfo.t
+    | Prim of Flambda_primitive.t * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
     | Symbol of Symbol.t
@@ -904,11 +904,10 @@ end = struct
         move_within_set_of_closures
     | Set_of_closures set_of_closures ->
       Set_of_closures.print ppf set_of_closures
-    | Prim (prim, args, dbg) ->
-      fprintf ppf "@[<2>(%a@ <%s>@ %a)@]"
-        Printlambda.primitive prim
+    | Prim (prim, dbg) ->
+      fprintf ppf "@[<2>(%a@ dbg=%a)@]"
+        Flambda_primitive.print prim
         (Debuginfo.to_string dbg)
-        Variable.print_list args
 
   let box_value var (kind : Flambda_kind.t) : Named.t * Flambda_kind.t =
     match kind with

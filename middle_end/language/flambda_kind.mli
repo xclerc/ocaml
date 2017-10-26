@@ -64,4 +64,8 @@ module Of_naked_number : sig
     | Naked_nativeint
 
   val to_kind : t -> kind
+
+  val print : Format.formatter -> t -> unit
+
+  val print_lowercase : Format.formatter -> t -> unit
 end

@@ -3,7 +3,7 @@
 (*                                 OCaml                                  *)
 (*                                                                        *)
 (*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
-(*                    Mark Shinwell, Jane Street Europe                   *)
+(*            Mark Shinwell and Xavier Clerc, Jane Street Europe          *)
 (*                                                                        *)
 (*   Copyright 1996 Institut National de Recherche en Informatique et     *)
 (*     en Automatique.                                                    *)
@@ -25,9 +25,12 @@
     accessors, work on unboxed or untagged representations.
 *)
 
+[@@@ocaml.warning "+a-4-30-40-41-42"]
+
 (* CR mshinwell: We need to be more precise about which ones are the
    unboxed/untagged ones *)
 
+(** Primitives taking exactly one argument. *)
 type unary_primitive =
   | Field of int
   | Floatfield of int
@@ -69,6 +72,7 @@ type unary_primitive =
   | Untag_immediate
   | Tag_immediate
 
+(** Primitives taking exactly two arguments. *)
 type binary_primitive =
   | Setfield of int * Lambda.immediate_or_pointer
       * Lambda.initialization_or_assignment
@@ -105,6 +109,7 @@ type binary_primitive =
   | Bigstring_load_32 of bool
   | Bigstring_load_64 of bool
 
+(** Primitives taking exactly three arguments. *)
 type ternary_primitive =
   | Setfield_computed of Lambda.immediate_or_pointer
       * Lambda.initialization_or_assignment
@@ -119,6 +124,7 @@ type ternary_primitive =
   | Arraysetu of Lambda.array_kind
   | Arraysets of Lambda.array_kind
 
+(** Primitives taking zero or more arguments. *)
 type variadic_primitive =
   | Makeblock of int * Asttypes.mutable_flag * Lambda.block_shape
   | Makearray of Lambda.array_kind * Asttypes.mutable_flag
@@ -137,6 +143,8 @@ type t =
 (** Print a primitive and its arguments to a formatter. *)
 val print : Format.formatter -> t -> unit
 
+(** A description of the kinds of values which a primitive expects as
+    its arguments. *)
 type arg_kinds =
   | Unary of Flambda_kind.t
   | Binary of Flambda_kind.t * Flambda_kind.t
@@ -146,6 +154,8 @@ type arg_kinds =
 (** Describe the argument kinds required for the given primitive. *)
 val arg_kinds : t -> arg_kinds
 
+(** A description of the kinds of values (or in the case of [Unit], the
+    actual value) which a primitive expects as its arguments. *)
 type result_kind =
   | Singleton of Flambda_kind.t
   (** The primitive returns a single value of the given kind. *)
@@ -155,6 +165,5 @@ type result_kind =
   (** The primitive does not terminate normally (e.g. by raising an
       exception). *)
 
-(** Describe the kind, or in the case of [Unit] the value, of the result of
-    the given primitive. *)
+(** Describe the kind of the result of the given primitive. *)
 val result_kind : t -> result_kind
