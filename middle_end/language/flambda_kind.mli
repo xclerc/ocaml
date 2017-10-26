@@ -67,3 +67,17 @@ module Of_naked_number : sig
 
   val print_lowercase : Format.formatter -> t -> unit
 end
+
+module Of_naked_number_not_float : sig
+  type t =
+    | Naked_immediate
+    | Naked_int32
+    | Naked_int64
+    | Naked_nativeint
+
+  val to_kind : t -> kind
+
+  val print : Format.formatter -> t -> unit
+
+  val print_lowercase : Format.formatter -> t -> unit
+end

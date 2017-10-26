@@ -46,6 +46,9 @@ type mutable_or_immutable = Immutable | Mutable
 
 type initialization_or_assignment = Initialization | Assignment
 
+(* CR-someday mshinwell: Can we have an explicit bounds-checking primitive in
+   Flambda, and then remove this flag?  It seems likely to be better for
+   optimization purposes. *)
 type is_safe = Safe | Unsafe
 
 type comparison =
@@ -64,22 +67,39 @@ type bigarray_layout = Unknown | C | Fortran
 
 type raise_kind = Regular | Reraise | Notrace
 
+type setfield_kind =
+  | Immediate
+  | Pointer
+  | Float
+
+type string_accessor_width =
+  | Eight
+  | Sixteen
+  | Thirty_two
+  | Sixty_four
+
+type bigstring_accessor_width =
+  | Sixteen
+  | Thirty_two
+  | Sixty_four
+
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
   | Field of int * field_kind
   | Dup_array of array_kind * mutable_or_immutable
   | Dup_record of Types.record_representation * int
-  | Lazy_force
   | Is_int
   | Get_tag
   | String_length of string_or_bytes
-  | Bswap16
-  | Bswap of Flambda_kind.Of_naked_number.t
+  | Swap_byte_endianness of Flambda_kind.Of_naked_number_not_float.t
+  (** [Swap_byte_endianness] on a [Naked_immediate] treats the immediate as
+      encoding a 16-bit quantity (described in the least significant 16 bits
+      of the immediate) and exchanges the two halves of the 16-bit quantity. *)
   | Int_as_pointer
   | Opaque
   | Raise of raise_kind
-  | Not of Flambda_kind.Of_naked_number.t
-  | Neg_int of Flambda_kind.Of_naked_number.t
+  | Not of Flambda_kind.Of_naked_number_not_float.t
+  | Neg_int of Flambda_kind.Of_naked_number_not_float.t
   | Abs_float
   | Neg_float
   | Int_of_float
@@ -113,44 +133,35 @@ type float_arith_op =
   | Mul
   | Div
 
-type setfield_kind =
-  | Immediate
-  | Pointer
-  | Float
-
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
   | Set_field of int * setfield_kind * initialization_or_assignment
   | Field_computed
-  | Int_arith of Flambda_kind.Of_naked_number.t * int_arith_op
-  | Int_shift of Flambda_kind.Of_naked_number.t * int_shift_op
+  | Int_arith of Flambda_kind.Of_naked_number_not_float.t * int_arith_op
+  | Int_shift of Flambda_kind.Of_naked_number_not_float.t * int_shift_op
   | Int_comp of comparison
   | Float_arith of float_arith_op
   | Float_comp of comparison
   | Array_ref of array_kind * is_safe
-  | Bigarray_ref of bool * int * bigarray_kind * bigarray_layout
-  | String_ref of string_or_bytes * is_safe
   | String_load of string_accessor_width * is_safe
-  | Bigstring_load of string_accessor_width * is_safe
-
-type string_accessor_width =
-  | Sixteen
-  | Thirty_two
-  | Sixty_four
+  (* CR-someday mshinwell: It seems as if [Cmmgen]'s handling of the
+     bigstring accessors could be tidied up so as to integrate it with the
+     (older) bigarray accessor (Pbigarrayref). *)
+  | Bigstring_load of bigstring_accessor_width * is_safe
 
 (** Primitives taking exactly three arguments. *)
 type ternary_primitive =
   | Set_field_computed of Flambda_kind.scanning * initialization_or_assignment
-  | Bytes_set of is_safe
-  | Bigarray_set of bool * int * bigarray_kind * bigarray_layout
-  | String_set of string_accessor_width * is_safe
-  | Bigstring_set of string_accessor_width * is_safe
+  | Bytes_set of string_accessor_width * is_safe
   | Array_set of array_kind * is_safe
+  | Bigarray_set of bool * int * bigarray_kind * bigarray_layout
+  | Bigstring_set of bigstring_accessor_width * is_safe
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
   | Make_block of int * mutable_or_immutable * Flambda_arity.t
   | Make_array of array_kind * mutable_or_immutable
+  | Bigarray_ref of is_safe * int * bigarray_kind * bigarray_layout
   | Ccall of Primitive.description
   (* CR mshinwell: Should [Ccall_unboxed] take an [Flambda_arity.t]?  It seems
      like it should to avoid risking unnecessary boxings. *)
