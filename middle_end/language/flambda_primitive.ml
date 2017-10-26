@@ -73,8 +73,26 @@ type bigarray_kind =
   | Sint8 | Uint8
   | Sint16 | Uint16
   | Int32 | Int64
-  | Caml_int | Native_int
+  | Int_width_int | Targetint_width_int
   | Complex32 | Complex64
+
+let element_kind_of_bigarray_kind k =
+  match k with
+  | Unknown -> K.value Must_scan
+  | Float32
+  | Float64 -> K.naked_float ()
+  | Sint8
+  | Uint8
+  | Sint16
+  | Uint16 -> K.naked_immediate ()
+  | Int32 -> K.naked_int32 ()
+  | Int64 -> K.naked_int64 ()
+  | Int_width_int -> K.naked_immediate ()
+  | Targetint_width_int -> K.naked_nativeint ()
+  | Complex32
+  | Complex64 ->
+    (* See [copy_two_doubles] in bigarray_stubs.c. *)
+    K.value Must_scan
 
 type bigarray_layout = Unknown | C | Fortran
 
@@ -458,14 +476,14 @@ let args_kind_of_ternary_primitive p =
   | Set_field_computed_index _
   | Bytes_set _
   | Array_set _
-  | Bigstring_set _
+  | Bigstring_set _ -> K.value Must_scan, K.value Can_scan, K.value Must_scan
 
 let result_kind_of_ternary_primitive p : result_kind =
   match p with
   | Set_field_computed_index _
   | Bytes_set _
   | Array_set _
-  | Bigstring_set _
+  | Bigstring_set _ -> Unit
 
 let effects_and_coeffects_of_ternary_primitive p =
   match p with
@@ -477,10 +495,17 @@ let effects_and_coeffects_of_ternary_primitive p =
     writing_to_an_array_like_thing is_safe
 
 type variadic_primitive =
-  | Makeblock of int * Flambda.mutable_or_immutable * L.block_shape
-  | Makearray of L.array_kind * Flambda.mutable_or_immutable
-  | Ccall of Primitive.description
-  | Ccall_unboxed of Primitive.description
+  | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
+  | Make_array of array_kind * mutable_or_immutable
+  | Bigarray_set of is_safe * num_dimensions * bigarray_kind * bigarray_layout
+  | Bigarray_load of is_safe * num_dimensions * bigarray_kind * bigarray_layout
+  | C_call of {
+      name : Linkage_name.t;
+      native_name : Linkage_name.t;
+      args : Flambda_arity.t;
+      result : Flambda_kind.t;
+      alloc : bool;
+    }
 
 let print_variadic_primitive ppf p =
   let fprintf = Format.fprintf in
@@ -498,17 +523,30 @@ let print_variadic_primitive ppf p =
 
 let args_kind_of_variadic_primitive p =
   match p with
-  | Makeblock _
-  | Makearray _
-  | Ccall _
-  | Ccall_unboxed _ ->
+  | Make_block (_tag, _mut, arity) -> arity
+  | Make_array (Dynamic_must_scan_or_naked_float | Must_scan) ->
+    K.value Must_scan
+  | Make_array Can_scan -> K.value Can_scan
+  | Make_array Naked_float -> K.naked_float ()
+  | Bigarray_set (_, num_dims, kind, _) ->
+    let array = K.value Must_scan in
+    let index = List.init num_dims (fun _ -> K.value Can_scan) in
+    let new_value = element_kind_of_bigarray_kind kind in
+    [array] @ index @ [new_value]
+  | Bigarray_load (_, _, kind, _) ->
+    let array = K.value Must_scan in
+    let index = List.init num_dims (fun _ -> K.value Can_scan) in
+    [array] @ index
+  | C_call { name = _; native_name = _; args; result = _; alloc = _; } -> args
 
 let result_kind_of_variadic_primitive p : result_kind =
   match p with
-  | Makeblock _
-  | Makearray _
-  | Ccall _
-  | Ccall_unboxed _ -> K.value Must_scan
+  | Make_block _
+  | Make_array _ -> [Flambda_kind.value Must_scan]
+  | Bigarray_set _ -> Unit
+  | Bigarray_load (_, _, kind, _) -> element_kind_of_bigarray_kind kind
+  | C_call { name = _; native_name = _; args = _; result; alloc = _; } ->
+    [result]
 
 let effects_and_coeffects_of_variadic_primitive p =
   match p with
@@ -519,7 +557,7 @@ let effects_and_coeffects_of_variadic_primitive p =
     writing_to_an_array_like_thing is_safe
   | Bigarray_load (is_safe, _, _, _) ->
     reading_from_an_array_like_thing is_safe
-  | Ccall of { name; native_name; args; result; alloc; } ->
+  | C_call of { name; native_name; args; result; alloc; } ->
     begin match name with
     | "caml_format_float" | "caml_format_int" | "caml_int32_format"
     | "caml_nativeint_format" | "caml_int64_format" ->

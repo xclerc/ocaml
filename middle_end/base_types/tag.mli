@@ -33,6 +33,8 @@ val double_tag : t
 val double_array_tag : t
 val custom_tag : t
 
+(* CR mshinwell: This name should be changed---all "value"s are scannable.
+   "Structured"? *)
 module Scannable : sig
   (** Tags that are strictly less than [No_scan_tag], corresponding to
       blocks with fields that can be scanned by the GC. *)

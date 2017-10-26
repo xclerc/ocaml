@@ -59,7 +59,7 @@ type bigarray_kind =
   | Sint8 | Uint8
   | Sint16 | Uint16
   | Int32 | Int64
-  | Caml_int | Native_int
+  | Int_width_int | Targetint_width_int
   | Complex32 | Complex64
 
 type bigarray_layout = Unknown | C | Fortran
@@ -174,11 +174,11 @@ type ternary_primitive =
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
-  | Make_block of int * mutable_or_immutable * Flambda_arity.t
+  | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
   | Make_array of array_kind * mutable_or_immutable
   | Bigarray_set of is_safe * num_dimensions * bigarray_kind * bigarray_layout
   | Bigarray_load of is_safe * num_dimensions * bigarray_kind * bigarray_layout
-  | Ccall of {
+  | C_call of {
       name : Linkage_name.t;
       native_name : Linkage_name.t;
       args : Flambda_arity.t;
@@ -202,7 +202,7 @@ type arg_kinds =
   | Unary of Flambda_kind.t
   | Binary of Flambda_kind.t * Flambda_kind.t
   | Ternary of Flambda_kind.t * Flambda_kind.t * Flambda_kind.t
-  | Variadic of Flambda_kind.t
+  | Variadic of Flambda_kind.t list
 
 (** Describe the argument kinds required for the given primitive. *)
 val arg_kinds : t -> arg_kinds
