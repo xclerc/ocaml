@@ -95,6 +95,13 @@ type num_dimensions = int
 
 type boxed_integer = Pnativeint | Pint32 | Pint64
 
+type record_representation =
+  | Regular
+  | Float
+  | Unboxed { inlined : bool; }
+  | Inlined of int
+  | Extension
+
 type unary_int_arith_op = Neg
 
 type unary_float_arith_op = Abs | Neg
@@ -108,7 +115,7 @@ type unary_primitive =
   | Block_load of int * field_kind
   | Duplicate_array of array_kind * mutable_or_immutable
   | Duplicate_record of {
-      repr : Types.record_representation;
+      repr : record_representation;
       num_fields : int;
     }
   | Is_int
@@ -130,44 +137,33 @@ type unary_primitive =
 let print_unary_primitive p =
   let fprintf = Format.fprintf in
   match p with
-  | Pfield n -> fprintf ppf "field %i" n
-  | Pfloatfield n -> fprintf ppf "floatfield %i" n
-  | Pduparray (k, Mutable) -> fprintf ppf "duparray[%s]" (array_kind k)
-  | Pduparray (k, Immutable) -> fprintf ppf "duparray_imm[%s]" (array_kind k)
-  | Pduprecord (rep, size) ->
-    fprintf ppf "duprecord %a %i" PL.record_rep rep size
-  | Plazyforce -> fprintf ppf "force"
-  | Pisint -> fprintf ppf "isint"
-  | Pgettag -> fprintf ppf "gettag"
-  | Pisout -> fprintf ppf "isout"
-  | Pbittest -> fprintf ppf "testbit"
-  | Poffsetint n -> fprintf ppf "%i+" n
-  | Poffsetref n -> fprintf ppf "+:=%i"n
-  | Pbytes_to_string -> fprintf ppf "bytes_to_string"
-  | Pbytes_of_string -> fprintf ppf "bytes_of_string"
-  | Pstringlength -> fprintf ppf "string.length"
-  | Pbyteslength -> fprintf ppf "bytes.length"
-  | Pbswap16 -> fprintf ppf "bswap16"
-  | Pbswap kind  -> "bswap_%a" ppf K.Of_naked_number.print kind
-  | Pint_as_pointer -> fprintf ppf "int_as_pointer"
-  | Popaque -> fprintf ppf "opaque"
-  | Praise k -> fprintf ppf "%s" (Lraise_kind k)
-  | Pnot -> fprintf ppf "not"
-  | Pnegint -> fprintf ppf "~"
-  | Pintoffloat -> fprintf ppf "int_of_float"
-  | Pfloatofint -> fprintf ppf "float_of_int"
-  | Pnegfloat -> fprintf ppf "~."
-  | Parraylength k -> fprintf ppf "array.length[%s]" (array_kind k)
-  | Pbigarrayref (unsafe, _n, kind, layout, boxed) ->
-    PL.print_bigarray "get" unsafe PL.kind
-      ppf PL.layout boxed
-  | Pbigarraydim n -> fprintf ppf "Bigarray.dim_%i" n
+  | Block_load (n, Not_a_float) -> fprintf ppf "field %i" n
+  | Block_load (n, Float) -> fprintf ppf "floatfield %i" n
+  | Duplicate_array (k, Mutable) ->
+    fprintf ppf "duparray[%s]" print_array_kind k
+  | Duplicate_array (k, Immutable) ->
+    fprintf ppf "duparray_imm[%s]" print_array_kind k
+  | Duplicate_record (rep, size) ->
+    fprintf ppf "duprecord %a %i" print_record_representation rep size
+  | Is_int -> fprintf ppf "isint"
+  | Get_tag -> fprintf ppf "gettag"
+  | String_length String -> fprintf ppf "string.length"
+  | String_length Bytes -> fprintf ppf "bytes.length"
+  | Swap_byte_endianness kind ->
+    fprint ppf "bswap_%a" ppf K.Of_naked_number.print kind
+  | Int_as_pointer -> fprintf ppf "int_as_pointer"
+  | Opaque -> fprintf ppf "opaque"
+  | Raise k -> fprintf ppf "%s" print_raise_kind k
+  | Int_arith of K.Of_naked_number_not_float.t * unary_int_arith_op
+  | Float_arith Neg -> fprintf ppf "~."
+  | Int_of_float -> fprintf ppf "int_of_float"
+  | Float_of_int -> fprintf ppf "float_of_int"
+  | Array_length k -> fprintf ppf "array.length[%a]" array_kind k
+  | Bigarray_length { dimension; } -> fprintf ppf "Bigarray.dim_%i" dimension
   | Punbox_number kind ->
     fprintf ppf "unbox_%a" K.Of_naked_number.print_lowercase kind
   | Pbox_number kind ->
     fprintf ppf "box_%a" K.Of_naked_number.print_lowercase kind
-  | Puntag_immediate -> fprintf ppf "untag"
-  | Ptag_immediate -> fprintf ppf "tag"
 
 let arg_kind_of_unary_primitive p =
   match p with

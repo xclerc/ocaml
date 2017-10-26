@@ -86,6 +86,13 @@ type num_dimensions = int
 
 type boxed_integer = Pnativeint | Pint32 | Pint64
 
+type record_representation =
+  | Regular
+  | Float
+  | Unboxed { inlined : bool; }
+  | Inlined of int  (* CR mshinwell: what's the "int"? *)
+  | Extension
+
 (** Untagged binary integer arithmetic operations. *)
 type unary_int_arith_op = Neg
 
@@ -100,7 +107,7 @@ type unary_primitive =
      judgement is correct. *)
   | Duplicate_array of array_kind * mutable_or_immutable
   | Duplicate_record of {
-      repr : Types.record_representation;
+      repr : record_representation;
       num_fields : int;
     }
   | Is_int
