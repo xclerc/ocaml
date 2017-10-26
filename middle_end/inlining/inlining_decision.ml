@@ -38,8 +38,8 @@ let inline ~importer env r ~lhs_of_application
     ~(set_of_closures : T.set_of_closures)
     ~only_use_of_function ~original ~recursive
     ~(args : Variable.t list) ~continuation ~size_from_approximation ~dbg
-    ~(inline_requested : Lambda.inline_attribute)
-    ~(specialise_requested : Lambda.specialise_attribute)
+    ~(inline_requested : Flambda.inline_attribute)
+    ~(specialise_requested : Flambda.specialise_attribute)
     ~self_call ~fun_cost ~inlining_threshold =
   let toplevel = E.at_toplevel env in
   let branch_depth = E.branch_depth env in
@@ -60,7 +60,7 @@ let inline ~importer env r ~lhs_of_application
         let inline_annotation =
           (* Merge call site annotation and function annotation.
              The call site annotation takes precedence *)
-          match (inline_requested : Lambda.inline_attribute) with
+          match (inline_requested : Flambda.inline_attribute) with
           | Always_inline | Never_inline | Unroll _ -> inline_requested
           | Default_inline -> function_decl.inline
         in
@@ -359,11 +359,11 @@ let specialise env r ~lhs_of_application
   let always_specialise, never_specialise =
     (* Merge call site annotation and function annotation.
        The call site annotation takes precedence *)
-    match (specialise_requested : Lambda.specialise_attribute) with
+    match (specialise_requested : Flambda.specialise_attribute) with
     | Always_specialise -> true, false
     | Never_specialise -> false, true
     | Default_specialise -> begin
-        match (function_decl.specialise : Lambda.specialise_attribute) with
+        match (function_decl.specialise : Flambda.specialise_attribute) with
         | Always_specialise -> true, false
         | Never_specialise -> false, true
         | Default_specialise -> false, false
@@ -537,8 +537,8 @@ let for_call_site ~env ~r
   end;
   (* Remove unroll attributes from functions we are already actively
      unrolling, otherwise they'll be unrolled again next round. *)
-  let inline_requested : Lambda.inline_attribute =
-    match (inline_requested : Lambda.inline_attribute) with
+  let inline_requested : Flambda.inline_attribute =
+    match (inline_requested : Flambda.inline_attribute) with
     | Unroll _ ->
       let unrolling =
         E.actively_unrolling env set_of_closures.set_of_closures_origin

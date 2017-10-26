@@ -16,7 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(* Imported from Lambda *)
 let raise_count = ref 0
 
 let next_raise_count () =
@@ -32,7 +31,6 @@ end;
 
 let reset () =
   raise_count := 0
-(* </> Imported from Lambda *)
 
 type t = {
   id : int;

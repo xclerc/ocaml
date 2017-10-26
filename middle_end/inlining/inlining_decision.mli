@@ -32,8 +32,8 @@ val for_call_site
   -> arg_tys:Flambda_type.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
-  -> inline_requested:Lambda.inline_attribute
-  -> specialise_requested:Lambda.specialise_attribute
+  -> inline_requested:Flambda.inline_attribute
+  -> specialise_requested:Flambda.specialise_attribute
   -> Flambda.Expr.t * Simplify_result.t
 
 (** When a function declaration is encountered by [for_call_site], the body

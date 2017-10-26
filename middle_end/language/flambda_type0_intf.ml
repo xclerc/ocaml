@@ -19,6 +19,17 @@
 module type S = sig
   type expr
 
+  type inline_attribute =
+    | Always_inline
+    | Never_inline
+    | Unroll of int
+    | Default_inline
+
+  type specialise_attribute =
+    | Always_specialise
+    | Never_specialise
+    | Default_specialise
+
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
@@ -151,8 +162,8 @@ module type S = sig
     result : t list;
     stub : bool;
     dbg : Debuginfo.t;
-    inline : Lambda.inline_attribute;
-    specialise : Lambda.specialise_attribute;
+    inline : inline_attribute;
+    specialise : specialise_attribute;
     is_a_functor : bool;
     (* CR mshinwell: try to change these to [Misc.Stdlib.Set_once.t]?
        (ask xclerc) *)
@@ -263,8 +274,8 @@ module type S = sig
     -> result:t list
     -> stub:bool
     -> dbg:Debuginfo.t
-    -> inline:Lambda.inline_attribute
-    -> specialise:Lambda.specialise_attribute
+    -> inline:inline_attribute
+    -> specialise:specialise_attribute
     -> is_a_functor:bool
     -> invariant_params:Variable.Set.t lazy_t
     -> size:int option lazy_t
@@ -317,11 +328,6 @@ module type S = sig
 
   (** Replace the variable at the toplevel of a given type. *)
   val replace_variable : t -> Variable.t option -> t
-
-(*
-    (** Attempt to use a value kind to refine a type. *)
-    val refine_using_value_kind : t -> Lambda.value_kind -> t
-*)
 
   (** Free variables in a type. *)
   val free_variables : t -> Variable.Set.t

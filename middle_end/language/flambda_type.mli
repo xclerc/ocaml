@@ -38,11 +38,6 @@ val unresolved_symbol : Symbol.t -> t
     reason [Other]. *)
 val unknown_types_from_arity : Flambda_arity.t -> t list
 
-(*
-(** Attempt to use a type to refine a value kind. *)
-val refine_value_kind : t -> Lambda.value_kind -> Lambda.value_kind
-*)
-
 (** Rename free variables in a type. *)
 val rename_variables
    : (t

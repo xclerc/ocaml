@@ -696,3 +696,69 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   { imported_symbols = t.imported_symbols;
     program_body;
   }
+
+(* CR mshinwell: Moved here from Flambda_kind
+
+
+val of_block_shape : Lambda.block_shape -> num_fields:int -> t
+
+let of_block_shape (shape : Lambda.block_shape) ~num_fields =
+  match shape with
+  | None ->
+    List.init num_fields (fun _field -> Flambda_kind.value Must_scan)
+  | Some shape ->
+    let shape_length = List.length shape in
+    if num_fields <> shape_length then begin
+      Misc.fatal_errorf "Flambda_arity.of_block_shape: num_fields is %d \
+          yet the shape has %d fields"
+        num_fields
+        shape_length
+    end;
+    List.map (fun (kind : Lambda.value_kind) ->
+        match kind with
+        | Pgenval | Pfloatval | Pboxedintval _ -> Flambda_kind.value Must_scan
+        | Pintval -> Flambda_kind.value Can_scan
+        | Pnaked_intval -> Flambda_kind.naked_immediate ())
+      shape
+
+*)
+
+(*
+  (* CR mshinwell: read carefully.  Moved here from Flambda_type
+
+  let refine_using_value_kind t (kind : Lambda.value_kind) =
+    match kind with
+    | Pgenval -> t
+    | Pfloatval ->
+      begin match t.descr with
+      | Boxed_or_encoded_number (Boxed Float,
+          { descr = Naked_number (Float _); _ }) ->
+        t
+      | Unknown ((Unboxed_float | Bottom), reason) ->
+        { t with
+          descr = Boxed_or_encoded_number (Boxed Float,
+            just_descr (Unknown (K.unboxed_float (), reason)));
+        }
+      | Unknown (
+          (Value | Tagged_int | Naked_int | Naked_int32 | Naked_int64
+            | Unboxed_nativeint), _) ->
+        Misc.fatal_errorf "Wrong type for Pfloatval kind: %a"
+          print t
+      | Union _
+      | Naked_number _
+      | Boxed_or_encoded_number _
+      | Set_of_closures _
+      | Closure _
+      | Immutable_string _
+      | Mutable_string _
+      | Float_array _
+      | Bottom ->
+        (* Invalid _ *)
+        { t with descr = Bottom }
+      | Load_lazily _ ->
+        (* We don't know yet *)
+        t
+      end
+    (* CR mshinwell: Do we need more cases here?  We could add Pintval *)
+    | _ -> t
+*)

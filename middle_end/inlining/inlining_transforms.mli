@@ -69,8 +69,8 @@ val inline_by_copying_function_body
   -> r:Simplify_result.t
   -> set_of_closures:Flambda_type.set_of_closures
   -> lhs_of_application:Variable.t
-  -> inline_requested:Lambda.inline_attribute
-  -> specialise_requested:Lambda.specialise_attribute
+  -> inline_requested:Flambda.inline_attribute
+  -> specialise_requested:Flambda.specialise_attribute
   -> closure_id_being_applied:Closure_id.t
   -> function_decl:Flambda_type.inlinable_function_declaration
   -> args:Variable.t list
@@ -91,7 +91,7 @@ val inline_by_copying_function_declaration
   -> r:Simplify_result.t
   -> function_decls:Flambda.Function_declarations.t
   -> lhs_of_application:Variable.t
-  -> inline_requested:Lambda.inline_attribute
+  -> inline_requested:Flambda.inline_attribute
   -> closure_id_being_applied:Closure_id.t
   -> function_decl:Flambda.Function_declaration.t
   -> args:Variable.t list

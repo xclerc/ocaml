@@ -21,8 +21,6 @@
 
 type t = Flambda_kind.t list
 
-val of_block_shape : Lambda.block_shape -> num_fields:int -> t
-
 val length : t -> int
 
 include Identifiable.S with type t := t

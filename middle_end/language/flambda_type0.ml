@@ -29,6 +29,17 @@ module Make (Expr : sig
 end) = struct
   type expr = Expr.t
 
+  type inline_attribute =
+    | Always_inline
+    | Never_inline
+    | Unroll of int
+    | Default_inline
+
+  type specialise_attribute =
+    | Always_specialise
+    | Never_specialise
+    | Default_specialise
+
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
@@ -232,8 +243,8 @@ end) = struct
     result : t list;
     stub : bool;
     dbg : Debuginfo.t;
-    inline : Lambda.inline_attribute;
-    specialise : Lambda.specialise_attribute;
+    inline : inline_attribute;
+    specialise : specialise_attribute;
     is_a_functor : bool;
     invariant_params : Variable.Set.t lazy_t;
     size : int option lazy_t;
@@ -1547,45 +1558,6 @@ end) = struct
     | Naked_int64 _ -> K.naked_int64 ()
     | Naked_nativeint _ -> K.naked_nativeint ()
     | Value ty -> kind_ty_value ~importer ty
-
-(*
-  (* CR mshinwell: read carefully *)
-  let refine_using_value_kind t (kind : Lambda.value_kind) =
-    match kind with
-    | Pgenval -> t
-    | Pfloatval ->
-      begin match t.descr with
-      | Boxed_or_encoded_number (Boxed Float,
-          { descr = Naked_number (Float _); _ }) ->
-        t
-      | Unknown ((Unboxed_float | Bottom), reason) ->
-        { t with
-          descr = Boxed_or_encoded_number (Boxed Float,
-            just_descr (Unknown (K.unboxed_float (), reason)));
-        }
-      | Unknown (
-          (Value | Tagged_int | Naked_int | Naked_int32 | Naked_int64
-            | Unboxed_nativeint), _) ->
-        Misc.fatal_errorf "Wrong type for Pfloatval kind: %a"
-          print t
-      | Union _
-      | Naked_number _
-      | Boxed_or_encoded_number _
-      | Set_of_closures _
-      | Closure _
-      | Immutable_string _
-      | Mutable_string _
-      | Float_array _
-      | Bottom ->
-        (* Invalid _ *)
-        { t with descr = Bottom }
-      | Load_lazily _ ->
-        (* We don't know yet *)
-        t
-      end
-    (* CR mshinwell: Do we need more cases here?  We could add Pintval *)
-    | _ -> t
-*)
 
   let create_inlinable_function_declaration ~is_classic_mode ~closure_origin
         ~continuation_param ~params ~body ~result ~stub ~dbg ~inline

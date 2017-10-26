@@ -1083,3 +1083,18 @@ let convert (program, exported) : result =
       ~constant_sets_of_closures:current_unit.constant_sets_of_closures
   in
   { expr; preallocated_blocks; structured_constants; exported; }
+
+(*
+
+let lambda_value_kind t =
+  let module L = Lambda in
+  match t with
+  | Value Must_scan -> Some L.Pgenval
+  | Value Can_scan -> Some L.Pintval
+  | Naked_immediate -> Some L.Pnaked_intval
+  | Naked_float -> Some L.Pfloatval
+  | Naked_int32 -> Some (L.Pboxedintval Pint32)
+  | Naked_int64 -> Some (L.Pboxedintval Pint64)
+  | Naked_nativeint -> Some (L.Pboxedintval Pnativeint)
+
+*)

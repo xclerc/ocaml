@@ -25,6 +25,8 @@
 
 (** Whether the callee in a function application is known at compile time. *)
 module Call_kind : sig
+  type method_kind = Self | Public | Cached
+
   type t =
     | Direct of {
         closure_id : Closure_id.t;
@@ -39,7 +41,7 @@ module Call_kind : sig
         param_arity : Flambda_arity.t;
         return_arity : Flambda_arity.t;
       }
-    | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
+    | Method of { kind : method_kind; obj : Variable.t; }
 
   val return_arity : t -> Flambda_arity.t
 end
@@ -68,10 +70,10 @@ type apply = {
   args : Variable.t list;
   call_kind : Call_kind.t;
   dbg : Debuginfo.t;
-  inline : Lambda.inline_attribute;
+  inline : inline_attribute;
   (** Instructions from the source code as to whether the callee should
       be inlined. *)
-  specialise : Lambda.specialise_attribute;
+  specialise : specialise_attribute;
   (** Instructions from the source code as to whether the callee should
       be specialised. *)
 }
@@ -164,6 +166,17 @@ type invalid_term_semantics =
   | Halt_and_catch_fire
   (** Invalid code should be replaced by an abort trap.  No back-propagation
       is performed. *)
+
+type inline_attribute =
+  | Always_inline
+  | Never_inline
+  | Unroll of int
+  | Default_inline
+
+type specialise_attribute =
+  | Always_specialise
+  | Never_specialise
+  | Default_specialise
 
 module rec Expr : sig
   (** With the exception of applications of primitives ([Prim]), Flambda terms
@@ -606,9 +619,9 @@ end and Function_declaration : sig
         must go through a stub.  Stubs will be unconditionally inlined. *)
     dbg : Debuginfo.t;
     (** Debug info for the function declaration. *)
-    inline : Lambda.inline_attribute;
+    inline : inline_attribute;
     (** Inlining requirements from the source code. *)
-    specialise : Lambda.specialise_attribute;
+    specialise : specialise_attribute;
     (** Specialising requirements from the source code. *)
     is_a_functor : bool;
     (** Whether the function is known definitively to be a functor. *)
@@ -639,8 +652,8 @@ end and Function_declaration : sig
     -> body:Expr.t
     -> stub:bool
     -> dbg:Debuginfo.t
-    -> inline:Lambda.inline_attribute
-    -> specialise:Lambda.specialise_attribute
+    -> inline:inline_attribute
+    -> specialise:specialise_attribute
     -> is_a_functor:bool
     (* CR mshinwell for pchambart: check Closure_origin stuff *)
     -> closure_origin:Closure_origin.t

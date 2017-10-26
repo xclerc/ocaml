@@ -133,8 +133,8 @@ let unbox_function_decl ~fun_var
           return_arity = function_decl.return_arity;
         };
         dbg;
-        inline = Lambda.Default_inline;
-        specialise = Lambda.Default_specialise;
+        inline = Default_inline;
+        specialise = Default_specialise;
       };
       handlers = Nonrecursive {
         name = receive_results;
@@ -154,8 +154,8 @@ let unbox_function_decl ~fun_var
       ~body:function_stub_body
       ~stub:true
       ~dbg:function_decl.dbg
-      ~inline:Lambda.Default_inline
-      ~specialise:Lambda.Default_specialise
+      ~inline:Default_inline
+      ~specialise:Default_specialise
       ~is_a_functor:function_decl.is_a_functor
       ~closure_origin:(Closure_origin.create (Closure_id.wrap fun_var))
   in

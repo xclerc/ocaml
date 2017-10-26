@@ -21,6 +21,8 @@ module Int = Numbers.Int
 let fprintf = Format.fprintf
 
 module Call_kind = struct
+  type method_kind = Self | Public | Cached
+
   type t =
     | Direct of {
         closure_id : Closure_id.t;
@@ -31,7 +33,7 @@ module Call_kind = struct
         param_arity : Flambda_arity.t;
         return_arity : Flambda_arity.t;
       }
-    | Method of { kind : Lambda.meth_kind; obj : Variable.t; }
+    | Method of { kind : method_kind; obj : Variable.t; }
 
   let return_arity t : Flambda_arity.t =
     match t with
@@ -105,8 +107,8 @@ type apply = {
   args : Variable.t list;
   call_kind : Call_kind.t;
   dbg : Debuginfo.t;
-  inline : Lambda.inline_attribute;
-  specialise : Lambda.specialise_attribute;
+  inline : inline_attribute;
+  specialise : specialise_attribute;
 }
 
 type assign = {
@@ -273,6 +275,17 @@ end
 type invalid_term_semantics =
   | Treat_as_unreachable
   | Halt_and_catch_fire
+
+type inline_attribute =
+  | Always_inline
+  | Never_inline
+  | Unroll of int
+  | Default_inline
+
+type specialise_attribute =
+  | Always_specialise
+  | Never_specialise
+  | Default_specialise
 
 module rec Expr : sig
   type t =
@@ -1292,8 +1305,8 @@ end and Function_declaration : sig
     free_symbols : Symbol.Set.t;
     stub : bool;
     dbg : Debuginfo.t;
-    inline : Lambda.inline_attribute;
-    specialise : Lambda.specialise_attribute;
+    inline : inline_attribute;
+    specialise : specialise_attribute;
     is_a_functor : bool;
     my_closure : Variable.t;
   }
@@ -1306,8 +1319,8 @@ end and Function_declaration : sig
     -> body:Expr.t
     -> stub:bool
     -> dbg:Debuginfo.t
-    -> inline:Lambda.inline_attribute
-    -> specialise:Lambda.specialise_attribute
+    -> inline:inline_attribute
+    -> specialise:specialise_attribute
     -> is_a_functor:bool
     -> closure_origin:Closure_origin.t
     -> t
@@ -1325,8 +1338,8 @@ end = struct
 
   let create ~params ~continuation_param ~return_arity ~my_closure
         ~body ~stub ~dbg
-        ~(inline : Lambda.inline_attribute)
-        ~(specialise : Lambda.specialise_attribute) ~is_a_functor
+        ~(inline : inline_attribute)
+        ~(specialise : specialise_attribute) ~is_a_functor
         ~closure_origin : t =
     begin match stub, inline with
     | true, (Never_inline | Default_inline)

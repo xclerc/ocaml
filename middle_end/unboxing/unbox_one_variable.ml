@@ -703,7 +703,7 @@ module Unboxable_or_untaggable : sig
   *)
 
   type how_to_create = private
-    | Allocate_and_fill of Lambda.primitive
+    | Allocate_and_fill of Flambda_primitive.t
     (** The boxed or encoded value is to be completely constructed using the
         given primitive.  The constituents of the value are specified as the
         usual [Variable.t]s in the [Prim] term (cf. [Flambda0.Named.t]). *)

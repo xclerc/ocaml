@@ -124,8 +124,8 @@ let copy_of_function's_body_with_freshened_params ~importer env
 let inline_by_copying_function_body ~env ~r
       ~(set_of_closures : Flambda_type.set_of_closures)
       ~lhs_of_application
-      ~(inline_requested : Lambda.inline_attribute)
-      ~(specialise_requested : Lambda.specialise_attribute)
+      ~(inline_requested : Flambda.inline_attribute)
+      ~(specialise_requested : Flambda.specialise_attribute)
       ~closure_id_being_applied
       ~(function_decl : Flambda_type.inlinable_function_declaration) ~args
       ~continuation ~dbg =
@@ -141,8 +141,8 @@ let inline_by_copying_function_body ~env ~r
   in
   let body =
     if function_decl.stub &&
-       ((inline_requested <> Lambda.Default_inline)
-        || (specialise_requested <> Lambda.Default_specialise))
+       ((inline_requested <> Flambda_type.Default_inline)
+        || (specialise_requested <> Flambda_type.Default_specialise))
     then
       (* When the function inlined function is a stub, the annotation
          is reported to the function applications inside the stub.
@@ -227,7 +227,7 @@ let inline_by_copying_function_body ~env ~r
 let inline_by_copying_function_declaration ~env ~r
     ~(function_decls : Flambda.Function_declarations.t)
     ~lhs_of_application
-    ~(inline_requested : Lambda.inline_attribute)
+    ~(inline_requested : Flambda.inline_attribute)
     ~closure_id_being_applied
     ~(function_decl : Flambda.Function_declaration.t)
     ~args ~args_tys ~continuation

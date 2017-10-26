@@ -18,25 +18,6 @@
 
 type t = Flambda_kind.t list
 
-let of_block_shape (shape : Lambda.block_shape) ~num_fields =
-  match shape with
-  | None ->
-    List.init num_fields (fun _field -> Flambda_kind.value Must_scan)
-  | Some shape ->
-    let shape_length = List.length shape in
-    if num_fields <> shape_length then begin
-      Misc.fatal_errorf "Flambda_arity.of_block_shape: num_fields is %d \
-          yet the shape has %d fields"
-        num_fields
-        shape_length
-    end;
-    List.map (fun (kind : Lambda.value_kind) ->
-        match kind with
-        | Pgenval | Pfloatval | Pboxedintval _ -> Flambda_kind.value Must_scan
-        | Pintval -> Flambda_kind.value Can_scan
-        | Pnaked_intval -> Flambda_kind.naked_immediate ())
-      shape
-
 let length t = List.length t
 
 include Identifiable.Make (struct

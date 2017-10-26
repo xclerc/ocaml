@@ -69,7 +69,7 @@ type t =
   | Project_var of Project_var.t
   | Project_closure of Project_closure.t
   | Move_within_set_of_closures of Move_within_set_of_closures.t
-  | Pure_primitive of Lambda.primitive * Variable.t list
+  | Pure_primitive of Flambda_primitive.t
   (** "Pure" means both no effects and no coeffects. *)
   | Field of int * Variable.t
   | Switch of Variable.t

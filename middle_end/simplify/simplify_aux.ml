@@ -154,18 +154,18 @@ let const_boxed_int_expr expr t i =
     new_expr, approx, C.Benefit.remove_code_named expr C.Benefit.zero
   else expr, T.value_boxed_int t i, C.Benefit.zero
 
-let const_comparison_expr expr (cmp : Lambda.comparison) x y =
+let const_comparison_expr expr (cmp : Flambda_primitive.comparison) x y =
   (* Using the [Pervasives] comparison functions here in the compiler
      coincides with the definitions of such functions in the code
      compiled by the user, and is thus correct. *)
   const_bool_expr expr
     (match cmp with
-     | Ceq -> x = y
-     | Cneq -> x <> y
-     | Clt -> x < y
-     | Cgt -> x > y
-     | Cle -> x <= y
-     | Cge -> x >= y)
+     | Eq -> x = y
+     | Neq -> x <> y
+     | Lt -> x < y
+     | Gt -> x > y
+     | Le -> x <= y
+     | Ge -> x >= y)
 
 let freshen_and_squash_aliases env var =
   let var = Freshening.apply_variable (E.freshening env) var in

@@ -21,8 +21,10 @@
     We obtain greater static safety over [Lambda] by explicitly annotating
     the correct arity of arguments.
 
-    All of the numerical primitives in Flambda, including [Bigarray]
-    accessors, work on unboxed or untagged representations.
+    The semantics of these primitives follows this rule: no (un)tagging or
+    (un)boxing is performed by the primitive either when accepting an input
+    or producing an output.  These operations must be performed by the caller
+    if required.
 *)
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
@@ -30,104 +32,125 @@
 (* CR mshinwell: We need to be more precise about which ones are the
    unboxed/untagged ones *)
 
+type array_kind =
+  | Dynamic_must_scan_or_naked_float
+  | Must_scan
+  | Can_scan
+  | Naked_float
+
+type field_kind = Not_a_float | Float
+
+type string_or_bytes = String | Bytes
+
+type mutable_or_immutable = Immutable | Mutable
+
+type initialization_or_assignment = Initialization | Assignment
+
+type is_safe = Safe | Unsafe
+
+type comparison =
+  | Eq | Neq | Lt | Gt | Le | Ge
+
+type bigarray_kind =
+  | Unknown
+  | Float32 | Float64
+  | Sint8 | Uint8
+  | Sint16 | Uint16
+  | Int32 | Int64
+  | Caml_int | Native_int
+  | Complex32 | Complex64
+
+type bigarray_layout = Unknown | C | Fortran
+
+type raise_kind = Regular | Reraise | Notrace
+
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
-  | Field of int
-  | Floatfield of int
-  | Duparray of Lambda.array_kind * Asttypes.mutable_flag
-  | Duprecord of Types.record_representation * int
-  | Lazyforce
-  | Isint
-  | Gettag
-  | Isout
-  | Bittest
-  | Offsetint of int
-  | Offsetref of int
-  | Bytes_to_string
-  | Bytes_of_string
-  | Stringlength
-  | Byteslength
+  | Field of int * field_kind
+  | Dup_array of array_kind * mutable_or_immutable
+  | Dup_record of Types.record_representation * int
+  | Lazy_force
+  | Is_int
+  | Get_tag
+  | String_length of string_or_bytes
   | Bswap16
   | Bswap of Flambda_kind.Of_naked_number.t
   | Int_as_pointer
   | Opaque
-  | Raise of Lambda.raise_kind
+  | Raise of raise_kind
   | Not of Flambda_kind.Of_naked_number.t
-  | Negint of Flambda_kind.Of_naked_number.t
-  | Intoffloat
-  | Floatofint
-  | Negfloat
-  | Arraylength of Lambda.array_kind
-  | Bigarrayref of bool * int * Lambda.bigarray_kind * Lambda.bigarray_layout
-  | Bigarrayset of bool * int * Lambda.bigarray_kind * Lambda.bigarray_layout
-  | Bigarraydim of int
-  | Unbox_float
-  | Box_float
-  | Unbox_int32
-  | Box_int32
-  | Unbox_int64
-  | Box_int64
-  | Unbox_nativeint
-  | Box_nativeint
-  | Untag_immediate
-  | Tag_immediate
+  | Neg_int of Flambda_kind.Of_naked_number.t
+  | Abs_float
+  | Neg_float
+  | Int_of_float
+  | Float_of_int
+  | Array_length of array_kind
+  | Bigarray_dimension of int
+  | Unbox_or_untag_number of K.Of_naked_number.t
+  | Box_or_tag_number of K.Of_naked_number.t
+
+(** Untagged integer arithmetic operations. *)
+type int_arith_op =
+  | Add
+  | Sub
+  | Mul
+  | Div of is_safe
+  | Mod of is_safe
+  | And
+  | Or
+  | Xor
+
+(** Untagged integer shift operations. *)
+type int_shift_op =
+  | Lsl
+  | Lsr
+  | Asr
+
+(** Naked float arithmetic operations. *)
+type float_arith_op =
+  | Add
+  | Sub
+  | Mul
+  | Div
+
+type setfield_kind =
+  | Immediate
+  | Pointer
+  | Float
 
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
-  | Setfield of int * Lambda.immediate_or_pointer
-      * Lambda.initialization_or_assignment
-  | Setfloatfield of int * Lambda.initialization_or_assignment
+  | Set_field of int * setfield_kind * initialization_or_assignment
   | Field_computed
-  | Addint of Flambda_kind.Of_naked_number.t
-  | Subint of Flambda_kind.Of_naked_number.t
-  | Mulint of Flambda_kind.Of_naked_number.t
-  | Divint of Lambda.is_safe * Flambda_kind.Of_naked_number.t
-  | Modint of Lambda.is_safe * Flambda_kind.Of_naked_number.t
-  | Andint of Flambda_kind.Of_naked_number.t
-  | Orint of Flambda_kind.Of_naked_number.t
-  | Xorint of Flambda_kind.Of_naked_number.t
-  | Lslint of Flambda_kind.Of_naked_number.t
-  | Lsrint of Flambda_kind.Of_naked_number.t
-  | Asrint of Flambda_kind.Of_naked_number.t
-  | Intcomp of Lambda.comparison
-  | Absfloat
-  | Addfloat
-  | Subfloat
-  | Mulfloat
-  | Divfloat
-  | Floatcomp of Lambda.comparison
-  | Arrayrefu of Lambda.array_kind
-  | Arrayrefs of Lambda.array_kind
-  | Stringrefu
-  | Stringrefs
-  | Bytesrefu
-  | Bytesrefs
-  | String_load_16 of bool
-  | String_load_32 of bool
-  | String_load_64 of bool
-  | Bigstring_load_16 of bool
-  | Bigstring_load_32 of bool
-  | Bigstring_load_64 of bool
+  | Int_arith of Flambda_kind.Of_naked_number.t * int_arith_op
+  | Int_shift of Flambda_kind.Of_naked_number.t * int_shift_op
+  | Int_comp of comparison
+  | Float_arith of float_arith_op
+  | Float_comp of comparison
+  | Array_ref of array_kind * is_safe
+  | Bigarray_ref of bool * int * bigarray_kind * bigarray_layout
+  | String_ref of string_or_bytes * is_safe
+  | String_load of string_accessor_width * is_safe
+  | Bigstring_load of string_accessor_width * is_safe
+
+type string_accessor_width =
+  | Sixteen
+  | Thirty_two
+  | Sixty_four
 
 (** Primitives taking exactly three arguments. *)
 type ternary_primitive =
-  | Setfield_computed of Lambda.immediate_or_pointer
-      * Lambda.initialization_or_assignment
-  | Bytessetu
-  | Bytessets
-  | String_set_16 of bool
-  | String_set_32 of bool
-  | String_set_64 of bool
-  | Bigstring_set_16 of bool
-  | Bigstring_set_32 of bool
-  | Bigstring_set_64 of bool
-  | Arraysetu of Lambda.array_kind
-  | Arraysets of Lambda.array_kind
+  | Set_field_computed of Flambda_kind.scanning * initialization_or_assignment
+  | Bytes_set of is_safe
+  | Bigarray_set of bool * int * bigarray_kind * bigarray_layout
+  | String_set of string_accessor_width * is_safe
+  | Bigstring_set of string_accessor_width * is_safe
+  | Array_set of array_kind * is_safe
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
-  | Makeblock of int * Asttypes.mutable_flag * Lambda.block_shape
-  | Makearray of Lambda.array_kind * Asttypes.mutable_flag
+  | Make_block of int * mutable_or_immutable * Flambda_arity.t
+  | Make_array of array_kind * mutable_or_immutable
   | Ccall of Primitive.description
   (* CR mshinwell: Should [Ccall_unboxed] take an [Flambda_arity.t]?  It seems
      like it should to avoid risking unnecessary boxings. *)

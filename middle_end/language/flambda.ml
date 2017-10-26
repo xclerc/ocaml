@@ -1074,7 +1074,7 @@ end = struct
             ignore (return_arity : Flambda_arity.t);
             false
           | Method { kind; obj; } ->
-            ignore (kind : Lambda.meth_kind);
+            ignore (kind : Call_kind.method_kind);
             check_variable_is_bound_and_of_kind_value env obj;
             true
         in
@@ -1107,8 +1107,8 @@ end = struct
           E.Continuation_stack.unify continuation stack cont_stack
         end;
         ignore (dbg : Debuginfo.t)
-        ignore (inline : Lambda_inline_attribute);
-        ignore (specialise : Lambda.specialise_attribute)
+        ignore (inline : inline_attribute);
+        ignore (specialise : specialise_attribute)
       | Switch (arg, { numconsts; consts; failaction; }) ->
         E.check_variable_is_bound_and_of_kind_value env arg;
         ignore (numconsts : Targetint.Set.t);

@@ -51,21 +51,6 @@ let ty_value_is_bottom (ty : ty_value) =
   match maybe_import_value_type ~import_type ty with
   | Ok Bottom -> true
   | Ok Unknown | Ok (Ok _) | Treat_as_unknown -> false
-
-(* CR mshinwell: Shouldn't this just use [Flambda_kind].lambda_value_kind? *)
-let refine_value_kind t (kind : Lambda.value_kind) : Lambda.value_kind =
-  match descr t with
-  | Boxed_number (Float, { descr = Unboxed_float _; _ }) -> Pfloatval
-  | Boxed_number (Int32, { descr = Unboxed_int32 _; _ }) -> Pboxedintval Pint32
-  | Boxed_number (Int64, { descr = Unboxed_int64 _; _ }) -> Pboxedintval Pint64
-  | Boxed_number (Nativeint, { descr = Unboxed_nativeint _; _ }) ->
-    Pboxedintval Pnativeint
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Int _) -> Pintval
-    | _ -> kind
-    end
-  | _ -> kind
 *)
 
 let rename_variables ~importer t ~f =

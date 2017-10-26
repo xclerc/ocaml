@@ -50,17 +50,6 @@ let naked_int64 () = Naked_int64
 
 let naked_nativeint () = Naked_nativeint
 
-let lambda_value_kind t =
-  let module L = Lambda in
-  match t with
-  | Value Must_scan -> Some L.Pgenval
-  | Value Can_scan -> Some L.Pintval
-  | Naked_immediate -> Some L.Pnaked_intval
-  | Naked_float -> Some L.Pfloatval
-  | Naked_int32 -> Some (L.Pboxedintval Pint32)
-  | Naked_int64 -> Some (L.Pboxedintval Pint64)
-  | Naked_nativeint -> Some (L.Pboxedintval Pnativeint)
-
 include Identifiable.Make (struct
   type nonrec t = t
 

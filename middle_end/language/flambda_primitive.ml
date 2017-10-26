@@ -363,24 +363,22 @@ let result_kind_of_binary_primitive ppf p : result_kind =
   | String_load_16 _
   | String_load_32 _
   | String_load_64 _
-  | Bigstring_load_16 _
-  | Bigstring_load_32 _
+  | Bigstring_load_16 _ -> Singleton (K.value Can_scan)
+  | Bigstring_load_32 _ -> 
   | Bigstring_load_64 _ -> ???
 
 type ternary_primitive =
-  | Setfield_computed of L.immediate_or_pointer
-      * L.initialization_or_assignment
-  | Bytessetu
-  | Bytessets
-  | Arraysetu of L.array_kind
-  | Arraysets of L.array_kind
+  | Setfield_computed of Lambda.immediate_or_pointer
+      * Lambda.initialization_or_assignment
+  | Bytesset of Lambda.is_safe
   | Bigarrayset of bool * int * L.bigarray_kind * L.bigarray_layout
-  | String_set_16 of bool
-  | String_set_32 of bool
-  | String_set_64 of bool
-  | Bigstring_set_16 of bool
-  | Bigstring_set_32 of bool
-  | Bigstring_set_64 of bool
+  | String_set_16 of is_safe
+  | String_set_32 of is_safe
+  | String_set_64 of is_safe
+  | Bigstring_set_16 of is_safe
+  | Bigstring_set_32 of is_safe
+  | Bigstring_set_64 of is_safe
+  | Arrayset of Lambda.array_kind * Lambda.is_safe
 
 let print_ternary_primitive ppf p =
   | Psetfield_computed (ptr, init) ->

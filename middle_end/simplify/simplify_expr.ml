@@ -627,7 +627,7 @@ let simplify_partial_application env r ~lhs_of_application
   (* CR-someday mshinwell: Pierre noted that we might like a function to be
      inlined when applied to its first set of arguments, e.g. for some kind
      of type class like thing. *)
-  begin match (inline_requested : Lambda.inline_attribute) with
+  begin match (inline_requested : Flambda.inline_attribute) with
   | Always_inline | Never_inline ->
     Location.prerr_warning (Debuginfo.to_location dbg)
       (Warnings.Inlining_impossible "[@inlined] attributes may not be used \
@@ -638,7 +638,7 @@ let simplify_partial_application env r ~lhs_of_application
         on partial applications")
   | Default_inline -> ()
   end;
-  begin match (specialise_requested : Lambda.specialise_attribute) with
+  begin match (specialise_requested : Flambda.specialise_attribute) with
   | Always_specialise | Never_specialise ->
     Location.prerr_warning (Debuginfo.to_location dbg)
       (Warnings.Inlining_impossible "[@specialised] attributes may not be used \

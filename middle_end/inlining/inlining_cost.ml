@@ -18,7 +18,7 @@
 
 (* Simple approximation of the space cost of a primitive. *)
 
-let prim_size (prim : Lambda.primitive) args =
+let prim_size (prim : Flambda_primitive.t) args =
   match prim with
   | Pidentity -> 0
   | Pgetglobal _ -> 1
