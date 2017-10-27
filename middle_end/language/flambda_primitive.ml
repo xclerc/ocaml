@@ -85,7 +85,6 @@ let writing_to_an_array_like_thing is_safe =
      bigarray.  As such these primitives have coeffects. *)
   effects, Has_coeffects
 
-(* CR xclerc: should an index be boxed or unboxed? *)
 let array_like_thing_index_kind = K.value Can_scan
 
 let array_kind = K.value Must_scan
@@ -267,7 +266,7 @@ type unary_primitive =
   | Int_of_float
   | Float_of_int
   | Array_length of array_kind
-  | Bigarray_length of { dimension : int; } (* CR? rename to [num_]dimensions? *)
+  | Bigarray_length of { dimension : int; }
   | Unbox_number of K.Boxable_number.t
   | Box_number of K.Boxable_number.t
 
