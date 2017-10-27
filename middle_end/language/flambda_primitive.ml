@@ -48,17 +48,17 @@ type mutable_or_immutable = Immutable | Mutable
 
 type init_or_assign = Initialization | Assignment
 
-let print_init_or_assign ppf x =
+let print_init_or_assign ppf init_or_assign =
   let fprintf = Format.fprintf in
-  match x with
-  | Initialization -> "init"
-  | Assignment -> ""
+  match init_or_assign with
+  | Initialization -> fprintf ppf "init"
+  | Assignment -> ()
 
 type is_safe = Safe | Unsafe
 
 let print_is_safe ppf s =
   let fprintf = Format.fprintf in
-  match x with
+  match s with
   | Safe -> fprintf ppf "safe"
   | Unsafe -> fprintf ppf "unsafe"
 
@@ -148,8 +148,8 @@ let print_bigarray_kind ppf k =
   | Uint16 -> fprintf ppf "uint16"
   | Int32 -> fprintf ppf "int32"
   | Int64 -> fprintf ppf "int64"
-  | Caml_int -> fprintf ppf "caml_int"
-  | Native_int -> fprintf ppf "native_int"
+  | Int_width_int -> fprintf ppf "int_width_int"
+  | Targetint_width_int -> fprintf ppf "targetint_width_int"
   | Complex32 -> fprintf ppf "complex32"
   | Complex64 -> fprintf ppf "complex64"
 
@@ -176,7 +176,7 @@ type block_set_kind =
   | Pointer
   | Float
 
-let print_setfield_kind ppf k =
+let print_block_set_kind ppf k =
   let fprintf = Format.fprintf in
   match k with
   | Immediate -> fprintf ppf "imm"
@@ -263,7 +263,7 @@ type unary_primitive =
   | Opaque_identity
   | Raise of raise_kind
   | Int_arith of K.Standard_int.t * unary_int_arith_op
-  | Float_arith of unary_float_arity_op
+  | Float_arith of unary_float_arith_op
   | Int_of_float
   | Float_of_int
   | Array_length of array_kind
@@ -271,10 +271,10 @@ type unary_primitive =
   | Unbox_number of K.Boxable_number.t
   | Box_number of K.Boxable_number.t
 
-let print_unary_primitive p =
+let print_unary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Block_load (i, _k) ->
+  | Block_load (n, _k) ->
     fprintf ppf "block_load %i" n
   | Duplicate_array (k, Mutable) ->
     fprintf ppf "duplicate_array[%a]" print_array_kind k
@@ -287,10 +287,10 @@ let print_unary_primitive p =
   | String_length _ -> fprintf ppf "string_length"
   | Swap_byte_endianness _ -> fprintf ppf "swap_byte_endianness"
   | Int_as_pointer -> fprintf ppf "int_as_pointer"
-  | Opaque -> fprintf ppf "opaque"
-  | Praise k -> fprintf ppf "raise %a" print_raise_kind k
-  | Int_arith (_k, o) -> print_unary_int_arith_op o
-  | Float_arith o -> print_unary_float_arith_op o
+  | Opaque_identity -> fprintf ppf "opaque_identity"
+  | Raise k -> fprintf ppf "raise %a" print_raise_kind k
+  | Int_arith (_k, o) -> print_unary_int_arith_op ppf o
+  | Float_arith o -> print_unary_float_arith_op ppf o
   | Int_of_float -> fprintf ppf "int_of_float"
   | Float_of_int -> fprintf ppf "float_of_int"
   | Array_length _ -> fprintf ppf "array_length"
@@ -321,7 +321,7 @@ let arg_kind_of_unary_primitive p =
   | Array_length _
   | Bigarray_length _ -> K.value Must_scan
   | Unbox_number _ -> K.value Must_scan
-  | Box_number kind -> K.Standard_int.to_kind kind
+  | Box_number kind -> K.Boxable_number.to_kind kind
 
 let result_kind_of_unary_primitive p : result_kind =
   match p with
@@ -337,12 +337,12 @@ let result_kind_of_unary_primitive p : result_kind =
   | Opaque_identity -> Singleton (K.value Must_scan)
   | Raise _ -> Never_returns
   | Int_arith (kind, _) -> Singleton (K.Standard_int.to_kind kind)
-  | Float_arith _ -> Singleton (K.naked_float)
+  | Float_arith _ -> Singleton (K.naked_float ())
   | Int_of_float -> Singleton (K.value Can_scan)
   | Float_of_int -> Singleton (K.naked_float ())
   | Array_length _
   | Bigarray_length _ -> Singleton (K.value Can_scan)
-  | Unbox_number kind -> Singleton (K.Standard_int.to_kind kind)
+  | Unbox_number kind -> Singleton (K.Boxable_number.to_kind kind)
   | Box_number _ -> Singleton (K.value Must_scan)
 
 let effects_and_coeffects_of_unary_primitive p =
@@ -358,11 +358,11 @@ let effects_and_coeffects_of_unary_primitive p =
   | Is_int -> No_effects, No_coeffects
   | Get_tag -> No_effects, Has_coeffects
   | String_length _ -> reading_from_an_array_like_thing Unsafe
-  | Swap_byte_endianness
+  | Swap_byte_endianness _ -> No_effects, No_coeffects
   | Int_as_pointer
-  | Opaque -> Arbitrary_effects, Has_coeffects
-  | Raise -> Arbitrary_effects, No_coeffects
-  | Int_arith Neg
+  | Opaque_identity -> Arbitrary_effects, Has_coeffects
+  | Raise _ -> Arbitrary_effects, No_coeffects
+  | Int_arith (_, Neg)
   | Float_arith (Abs | Neg)
   | Int_of_float
   | Float_of_int -> No_effects, No_coeffects
@@ -370,12 +370,9 @@ let effects_and_coeffects_of_unary_primitive p =
     reading_from_an_array_like_thing Unsafe
   | Bigarray_length { dimension = _; } ->
     reading_from_an_array_like_thing Unsafe
-  | Unbox_or_untag_number _ ->
+  | Unbox_number _ ->
     No_effects, No_coeffects
-  | Box_or_tag_number Naked_immediate ->
-    No_effects, No_coeffects
-  | Box_or_tag_number (
-      Naked_float | Naked_int32 | Naked_int64 | Naked_nativeint) ->
+  | Box_number _ ->
     Only_generative_effects, No_coeffects
 
 type binary_int_arith_op =
@@ -436,19 +433,14 @@ let print_binary_primitive ppf p =
   | Block_load_computed_index ->
     fprintf ppf "block_load_computed"
   | Block_set (n, k, init) ->
-    let init =
-      match init with
-      | Initialization -> "init"
-      | Assignment -> ""
-    in
-    fprintf ppf "set_field_%a%s i"
-      print_setfield_kind k
+    fprintf ppf "set_field_%a%a %i"
+      print_block_set_kind k
       print_init_or_assign init
       n
-  | Int_arith (_k, o) -> print_int_arith_op ppf o
-  | Int_shift (_k, o) -> print_int_shift_op ppf o
+  | Int_arith (_k, op) -> print_binary_int_arith_op ppf op
+  | Int_shift (_k, op) -> print_int_shift_op ppf op
   | Int_comp c -> print_comparison ppf c
-  | Float_arith o -> print_binary_float_arith_op o
+  | Float_arith op -> print_binary_float_arith_op ppf op
   | Float_comp c -> print_comparison ppf c; fprintf ppf "."
   | Bit_test -> fprintf ppf "bit_test"
   | Array_load (array_kind, is_safe) ->
@@ -470,7 +462,7 @@ let args_kind_of_binary_primitive p =
     block_kind, array_like_thing_index_kind
   | Block_set _ ->
     block_kind, K.value Must_scan
-  | Int_arith (kind, _)
+  | Int_arith (kind, _) ->
     let kind = K.Standard_int.to_kind kind in
     kind, kind
   | Int_shift (kind, _) ->
@@ -493,10 +485,10 @@ let result_kind_of_binary_primitive ppf p : result_kind =
   | Int_comp _
   | Float_comp _ -> Singleton (K.naked_immediate ())
   | Bit_test -> Singleton (K.naked_immediate ())
-  | Array_load (Dynamic_must_scan_or_naked_float | Must_scan) ->
+  | Array_load ((Dynamic_must_scan_or_naked_float | Must_scan), _) ->
     Singleton (K.value Must_scan)
-  | Array_load Can_scan -> Singleton (K.value Can_scan)
-  | Array_load Naked_float -> Singleton (K.naked_float ())
+  | Array_load (Can_scan, _) -> Singleton (K.value Can_scan)
+  | Array_load (Naked_float, _) -> Singleton (K.naked_float ())
   | String_load _ -> Singleton (string_or_bytes_element_kind)
   | Bigstring_load _ -> Singleton (bigstring_element_kind)
 
@@ -506,9 +498,10 @@ let effects_and_coeffects_of_binary_primitive p =
     reading_from_an_array_like_thing Unsafe
   | Block_set _ ->
     writing_to_an_array_like_thing Unsafe
-  | Int_arith (Add | Sub | Mul | Div Unsafe | Mod Unsafe | And | Or | Xor) ->
+  | Int_arith (_kind,
+      (Add | Sub | Mul | Div Unsafe | Mod Unsafe | And | Or | Xor)) ->
     No_effects, No_coeffects
-  | Int_arith (Div Safe | Mod Safe) -> Arbitrary_effects, No_coeffects
+  | Int_arith (_kind, (Div Safe | Mod Safe)) -> Arbitrary_effects, No_coeffects
   | Int_shift _ -> No_effects, No_coeffects
   | Int_comp _ -> No_effects, No_coeffects
   | Float_arith (Add | Sub | Mul | Div) -> No_effects, No_coeffects
@@ -585,25 +578,34 @@ type variadic_primitive =
 let print_variadic_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Pmakeblock (tag, Immutable, shape) ->
-    fprintf ppf "makeblock %a%a" Tag.print tag PL.block_shape shape
-  | Pmakeblock (tag, Mutable, shape) ->
-    fprintf ppf "makemutable %a%a" Tag.print tag PL.block_shape shape
-  | Pccall p -> fprintf ppf "%s" p.prim_name
-  | Pccall_unboxed p -> fprintf ppf "%s(unboxed)" p.prim_name
-  | Pmakearray (k, Mutable) ->
-    fprintf ppf "makearray[%s]" (PL.array_kind k)
-  | Pmakearray (k, Immutable) ->
-    fprintf ppf "makearray_imm[%s]" (PL.array_kind k)
+  | Make_block (tag, Immutable, arity) ->
+    fprintf ppf "makeblock %a%a"
+      Tag.Scannable.print tag
+      Flambda_arity.print arity
+  | Make_block (tag, Mutable, arity) ->
+    fprintf ppf "makemutable %a%a"
+      Tag.Scannable.print tag
+      Flambda_arity.print arity
+  | Make_array (k, Mutable) ->
+    fprintf ppf "makearray[%a]" print_array_kind k
+  | Make_array (k, Immutable) ->
+    fprintf ppf "makearray_imm[%a]" print_array_kind k
+  | Bigarray_set _ -> fprintf ppf "bigarray_set"
+  | Bigarray_load _ -> fprintf ppf "bigarray_load"
+  | C_call { name; native_name = _; args; result; alloc = _; } ->
+    fprintf ppf "%a : %a -> %a"
+      Linkage_name.print name
+      Flambda_arity.print args
+      Flambda_kind.print result
 
 let args_kind_of_variadic_primitive p : arg_kinds =
   match p with
   | Make_block (_tag, _mut, arity) -> Variadic arity
-  | Make_array (Dynamic_must_scan_or_naked_float | Must_scan) ->
+  | Make_array ((Dynamic_must_scan_or_naked_float | Must_scan), _) ->
     Variadic_all_of_kind (K.value Must_scan)
-  | Make_array Can_scan ->
+  | Make_array (Can_scan, _) ->
     Variadic_all_of_kind (K.value Can_scan)
-  | Make_array Naked_float ->
+  | Make_array (Naked_float, _) ->
     Variadic_all_of_kind (K.naked_float ())
   | Bigarray_set (_, num_dims, kind, _) ->
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
@@ -634,7 +636,7 @@ let effects_and_coeffects_of_variadic_primitive p =
     writing_to_an_array_like_thing is_safe
   | Bigarray_load (is_safe, _, _, _) ->
     reading_from_an_array_like_thing is_safe
-  | C_call of { name; native_name; args; result; alloc; } ->
+  | C_call { name; native_name; args; result; alloc; } ->
     (* CR-someday xclerc: we could add annotations to external declarations
        (akin to [@@noalloc]) in order to be able to refine the computation of
        effects/coeffects for such functions. *)
