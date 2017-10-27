@@ -85,6 +85,9 @@ let writing_to_an_array_like_thing is_safe =
      bigarray.  As such these primitives have coeffects. *)
   effects, Has_coeffects
 
+(* CR xclerc: should an index be boxed or unboxed? *)
+let array_like_thing_index_kind = K.value Can_scan
+
 type comparison = Eq | Neq | Lt | Gt | Le | Ge
 
 let print_comparison ppf c =
@@ -476,7 +479,7 @@ let print_binary_primitive ppf p =
 let args_kind_of_binary_primitive p =
   match p with
   | Block_load_computed_index ->
-    K.value Must_scan, K.value Can_scan
+    K.value Must_scan, array_like_thing_index_kind
   | Set_field _ ->
     K.value Must_scan, K.value Must_scan
   | Int_arith (kind, _) | Int_shift (kind, _) ->
@@ -489,8 +492,8 @@ let args_kind_of_binary_primitive p =
   | Array_load _
   | String_load _ ->
   | Bigstring_load _ ->
-    K.value Must_scan, K.value Can_scan
-    K.value Must_scan, K.value Can_scan
+    K.value Must_scan, array_like_thing_index_kind
+    K.value Must_scan, array_like_thing_index_kind
 
 let result_kind_of_binary_primitive ppf p : result_kind =
   match p with
@@ -556,7 +559,8 @@ let args_kind_of_ternary_primitive p =
   | Set_field_computed_index _
   | Bytes_set _
   | Array_set _
-  | Bigstring_set _ -> K.value Must_scan, K.value Can_scan, K.value Must_scan
+  | Bigstring_set _ ->
+    K.value Must_scan, array_like_thing_index_kind, K.value Must_scan
 
 let result_kind_of_ternary_primitive p : result_kind =
   match p with
@@ -610,12 +614,12 @@ let args_kind_of_variadic_primitive p =
   | Make_array Naked_float -> K.naked_float ()
   | Bigarray_set (_, num_dims, kind, _) ->
     let array = K.value Must_scan in
-    let index = List.init num_dims (fun _ -> K.value Can_scan) in
+    let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     let new_value = element_kind_of_bigarray_kind kind in
     [array] @ index @ [new_value]
   | Bigarray_load (_, _, kind, _) ->
     let array = K.value Must_scan in
-    let index = List.init num_dims (fun _ -> K.value Can_scan) in
+    let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     [array] @ index
   | C_call { name = _; native_name = _; args; result = _; alloc = _; } -> args
 
