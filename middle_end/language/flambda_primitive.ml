@@ -485,7 +485,7 @@ let args_kind_of_binary_primitive p =
     kind, kind
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
-  | Bit_test -> string_or_bytes_kind, string_or_bytes_element_kind
+  | Bit_test -> string_or_bytes_kind, array_like_thing_index_kind
   | Array_load _ -> array_kind, array_like_thing_index_kind
   | String_load _ -> string_or_bytes_kind, array_like_thing_index_kind
   | Bigstring_load _ -> bigstring_kind, array_like_thing_index_kind
