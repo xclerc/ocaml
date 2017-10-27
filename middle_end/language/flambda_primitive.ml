@@ -369,7 +369,7 @@ let effects_and_coeffects_of_unary_primitive p =
   | String_length _ -> reading_from_an_array_like_thing Unsafe
   | Swap_byte_endianness
   | Int_as_pointer
-  | Opaque -> No_effects, No_coeffects
+  | Opaque -> Arbitrary_effects, Has_coeffects
   | Raise -> Arbitrary_effects, No_coeffects
   | Int_arith Neg
   | Float_arith (Abs | Neg)
@@ -479,10 +479,12 @@ let args_kind_of_binary_primitive p =
     K.value Must_scan, K.value Can_scan
   | Set_field _ ->
     K.value Must_scan, K.value Must_scan
-  | Int_arith (kind, _) | Int_shift (kind, _) ->
+  | Int_arith (kind, _)
     let kind = K.Of_naked_number_not_float.to_kind kind in
     kind, kind
-  | Int_comp _ -> K.value Can_scan, K.value Can_scan
+  | Int_shift (kind, _) ->
+    K.Of_naked_number_not_float.to_kind kind, K.naked_immediate ()
+  | Int_comp _ -> K.naked_immediate (), K.naked_immediate ()
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
   | Bit_test -> K.value Can_scan  (* CR mshinwell: is this correct? *)
@@ -605,8 +607,8 @@ let args_kind_of_variadic_primitive p =
   match p with
   | Make_block (_tag, _mut, arity) -> arity
   | Make_array (Dynamic_must_scan_or_naked_float | Must_scan) ->
-    K.value Must_scan
-  | Make_array Can_scan -> K.value Can_scan
+    [K.value Must_scan]
+  | Make_array Can_scan -> [K.value Can_scan]
   | Make_array Naked_float -> K.naked_float ()
   | Bigarray_set (_, num_dims, kind, _) ->
     let array = K.value Must_scan in
