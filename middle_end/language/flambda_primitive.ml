@@ -485,7 +485,7 @@ let args_kind_of_binary_primitive p =
   | Int_comp _ -> K.value Can_scan, K.value Can_scan
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
-  | Bit_test -> K.value Can_scan  (* CR mshinwell: is this correct? *)
+  | Bit_test -> K.value Must_scan, K.naked_immediate ()
   | Array_load _
   | String_load _ ->
   | Bigstring_load _ ->
@@ -501,7 +501,7 @@ let result_kind_of_binary_primitive ppf p : result_kind =
   | Float_arith _ -> Singleton (K.naked_float ())
   | Int_comp _ ->
   | Float_comp _ -> Singleton (K.naked_immediate ())
-  | Bit_test -> Singleton (K.value Can_scan)
+  | Bit_test -> Singleton (K.naked_immediate ())
   | Array_load (Dynamic_must_scan_or_naked_float | Must_scan) ->
     Singleton (K.value Must_scan)
   | Array_load Can_scan -> Singleton (K.value Can_scan)
