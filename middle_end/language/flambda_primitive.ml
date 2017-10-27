@@ -638,14 +638,10 @@ let effects_and_coeffects_of_variadic_primitive p =
   | Bigarray_load (is_safe, _, _, _) ->
     reading_from_an_array_like_thing is_safe
   | C_call of { name; native_name; args; result; alloc; } ->
-    begin match name with
-    | "caml_format_float" | "caml_format_int" | "caml_int32_format"
-    | "caml_nativeint_format" | "caml_int64_format" ->
-      (* CR mshinwell: xclerc thinks this is dubious.  Should there be some
-         kind of annotation on externals? *)
-      No_effects, No_coeffects
-    | _ -> Arbitrary_effects, Has_coeffects
-    end
+    (* CR-someday xclerc: we could add annotations to external declarations
+       (akin to [@@noalloc]) in order to be able to refine the computation of
+       effects/coeffects for such functions. *)
+    Arbitrary_effects, Has_coeffects
 
 type t =
   | Unary of unary_primitive * Variable.t
