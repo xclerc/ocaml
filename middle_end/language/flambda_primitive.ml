@@ -88,6 +88,15 @@ let writing_to_an_array_like_thing is_safe =
 (* CR xclerc: should an index be boxed or unboxed? *)
 let array_like_thing_index_kind = K.value Can_scan
 
+let array_kind = K.value Must_scan
+let bigarray_kind = K.value Must_scan
+let bigstring_kind = K.value Must_scan
+let bigstring_element_kind = K.naked_immediate ()
+let block_kind = K.value Must_scan
+let block_element_kind = K.value Must_scan
+let string_or_bytes_kind = K.value Must_scan
+let string_or_bytes_element_kind = K.naked_immediate ()
+
 type comparison = Eq | Neq | Lt | Gt | Le | Ge
 
 let print_comparison ppf c =
@@ -477,9 +486,9 @@ let print_binary_primitive ppf p =
 let args_kind_of_binary_primitive p =
   match p with
   | Block_load_computed_index ->
-    K.value Must_scan, array_like_thing_index_kind
+    block_kind, array_like_thing_index_kind
   | Block_set _ ->
-    K.value Must_scan, K.value Must_scan
+    block_kind, K.value Must_scan
   | Int_arith (kind, _)
     let kind = K.Standard_int.to_kind kind in
     kind, kind
@@ -488,29 +497,27 @@ let args_kind_of_binary_primitive p =
   | Int_comp _ -> K.naked_immediate (), K.naked_immediate ()
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
-  | Bit_test -> K.value Must_scan, K.naked_immediate ()
-  | Array_load _
-  | String_load _ ->
-  | Bigstring_load _ ->
-    K.value Must_scan, array_like_thing_index_kind
-    K.value Must_scan, array_like_thing_index_kind
+  | Bit_test -> string_or_bytes_kind, string_or_bytes_element_kind
+  | Array_load _ -> array_kind, array_like_thing_index_kind
+  | String_load _ -> string_or_bytes_kind, array_like_thing_index_kind
+  | Bigstring_load _ -> bigstring_kind, array_like_thing_index_kind
 
 let result_kind_of_binary_primitive ppf p : result_kind =
   match p with
-  | Block_load_computed_index -> Singleton (K.value Must_scan)
+  | Block_load_computed_index -> Singleton (block_element_kind)
   | Block_set _ -> Unit
   | Int_arith (kind, _)
   | Int_shift (kind, _) -> Singleton (K.Standard_int.to_kind kind)
   | Float_arith _ -> Singleton (K.naked_float ())
-  | Int_comp _ ->
+  | Int_comp _
   | Float_comp _ -> Singleton (K.naked_immediate ())
   | Bit_test -> Singleton (K.naked_immediate ())
   | Array_load (Dynamic_must_scan_or_naked_float | Must_scan) ->
     Singleton (K.value Must_scan)
   | Array_load Can_scan -> Singleton (K.value Can_scan)
   | Array_load Naked_float -> Singleton (K.naked_float ())
-  | String_load _
-  | Bigstring_load _ -> Singleton (K.naked_immediate ())
+  | String_load _ -> Singleton (string_or_bytes_element_kind)
+  | Bigstring_load _ -> Singleton (bigstring_element_kind)
 
 let effects_and_coeffects_of_binary_primitive p =
   match p with
@@ -556,11 +563,14 @@ let print_ternary_primitive ppf p =
 
 let args_kind_of_ternary_primitive p =
   match p with
-  | Block_set_computed _
-  | Bytes_set _
-  | Array_set _
+  | Block_set_computed _ ->
+    block_kind, array_like_thing_index_kind, block_element_kind
+  | Bytes_set _ ->
+    string_or_bytes_kind, array_like_thing_index_kind, string_or_bytes_element_kind
+  | Array_set _ ->
+    array_kind, array_like_thing_index_kind, K.value Must_scan
   | Bigstring_set _ ->
-    K.value Must_scan, array_like_thing_index_kind, K.value Must_scan
+    bigstring_kind, array_like_thing_index_kind, bigstring_element_kind
 
 let result_kind_of_ternary_primitive p : result_kind =
   match p with
@@ -613,20 +623,18 @@ let args_kind_of_variadic_primitive p =
   | Make_array Can_scan -> [K.value Can_scan]
   | Make_array Naked_float -> K.naked_float ()
   | Bigarray_set (_, num_dims, kind, _) ->
-    let array = K.value Must_scan in
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     let new_value = element_kind_of_bigarray_kind kind in
-    [array] @ index @ [new_value]
+    [bigarray_kind] @ index @ [new_value]
   | Bigarray_load (_, _, kind, _) ->
-    let array = K.value Must_scan in
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
-    [array] @ index
+    [bigarray_kind] @ index
   | C_call { name = _; native_name = _; args; result = _; alloc = _; } -> args
 
 let result_kind_of_variadic_primitive p : result_kind =
   match p with
-  | Make_block _
-  | Make_array _ -> [Flambda_kind.value Must_scan]
+  | Make_block _ -> Singleton block_kind
+  | Make_array _ -> Singleton array_kind
   | Bigarray_set _ -> Unit
   | Bigarray_load (_, _, kind, _) -> element_kind_of_bigarray_kind kind
   | C_call { name = _; native_name = _; args = _; result; alloc = _; } ->
