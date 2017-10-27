@@ -383,10 +383,10 @@ let effects_and_coeffects_of_unary_primitive p =
   | Is_int -> No_effects, No_coeffects
   | Get_tag -> No_effects, Has_coeffects
   | String_length _ -> reading_from_an_array_like_thing Unsafe
-  | Swap_byte_endianness
   | Int_as_pointer
   | Opaque -> Arbitrary_effects, Has_coeffects
   | Raise -> Arbitrary_effects, No_coeffects
+  | Swap_byte_endianness
   | Int_arith Neg
   | Float_arith (Abs | Neg)
   | Int_of_float
@@ -494,7 +494,7 @@ let args_kind_of_binary_primitive p =
   | Block_load_computed_index ->
     block_kind, array_like_thing_index_kind
   | Block_set _ ->
-    block_kind, K.value Must_scan
+    block_kind, block_element_kind
   | Int_arith (kind, _)
     let kind = K.Standard_int.to_kind kind in
     kind, kind
