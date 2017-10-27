@@ -82,8 +82,8 @@ type num_dimensions = int
 type record_representation =
   | Regular
   | Float
-  | Unboxed { inlined : bool; }
-  | Inlined of { num_fields : int; }
+  | Unboxed of { inlined : bool; }
+  | Inlined of Tag.Scannable.t
   | Extension
 
 (** Untagged binary integer arithmetic operations. *)
@@ -117,7 +117,7 @@ type unary_primitive =
   | Opaque_identity
   | Raise of raise_kind
   | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
-  | Float_arith of unary_float_arity_op
+  | Float_arith of unary_float_arith_op
   (* CR-someday mshinwell: We should maybe change int32.ml and friends to
      use a %-primitive instead of directly calling C stubs for conversions;
      then we could have a single primitive here taking two

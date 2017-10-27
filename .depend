@@ -1869,7 +1869,11 @@ middle_end/language/flambda_primitive.cmo : \
     middle_end/language/flambda_primitive.cmi
 middle_end/language/flambda_primitive.cmx : \
     middle_end/language/flambda_primitive.cmi
-middle_end/language/flambda_primitive.cmi :
+middle_end/language/flambda_primitive.cmi : \
+    middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \
+    middle_end/base_types/linkage_name.cmi \
+    middle_end/language/flambda_kind.cmi \
+    middle_end/language/flambda_arity.cmi
 middle_end/language/flambda_static.cmo : middle_end/base_types/variable.cmi \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/symbol.cmi \
