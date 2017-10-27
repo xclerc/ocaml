@@ -93,9 +93,37 @@ let is_naked_float t =
   | Naked_int64
   | Naked_nativeint -> false
 
-module Of_naked_number : sig
+module Standard_int : sig
   type t =
-    | Naked_immediate
+    | Tagged_immediate
+    | Naked_int32
+    | Naked_int64
+    | Naked_nativeint
+
+  let to_kind t : kind =
+    match t with
+    | Tagged_immediate -> Value Can_scan
+    | Naked_int32 -> Naked_int32
+    | Naked_int64 -> Naked_int64
+    | Naked_nativeint -> Naked_nativeint
+
+  let print ppf t =
+    match t with
+    | Tagged_immediate -> Format.pp_print_string ppf "Tagged_immediate"
+    | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
+    | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
+    | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
+
+  let print_lowercase ppf t =
+    match t with
+    | Tagged_immediate -> Format.pp_print_string ppf "tagged_immediate"
+    | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
+    | Naked_int64 -> Format.pp_print_string ppf "naked_int64"
+    | Naked_nativeint -> Format.pp_print_string ppf "naked_nativeint"
+end
+
+module Boxable_number = struct
+  type t =
     | Naked_float
     | Naked_int32
     | Naked_int64
@@ -103,7 +131,6 @@ module Of_naked_number : sig
 
   let to_kind t : kind =
     match t with
-    | Naked_immediate -> Naked_immediate
     | Naked_float -> Naked_float
     | Naked_int32 -> Naked_int32
     | Naked_int64 -> Naked_int64
@@ -111,7 +138,6 @@ module Of_naked_number : sig
 
   let print ppf t =
     match t with
-    | Naked_immediate -> Format.pp_print_string ppf "Naked_immediate"
     | Naked_float -> Format.pp_print_string ppf "Naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
     | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
@@ -119,38 +145,8 @@ module Of_naked_number : sig
 
   let print_lowercase ppf t =
     match t with
-    | Naked_immediate -> Format.pp_print_string ppf "immediate"
-    | Naked_float -> Format.pp_print_string ppf "float"
-    | Naked_int32 -> Format.pp_print_string ppf "int32"
-    | Naked_int64 -> Format.pp_print_string ppf "int64"
-    | Naked_nativeint -> Format.pp_print_string ppf "nativeint"
-end
-
-module Of_naked_number_not_float : sig
-  type t =
-    | Naked_immediate
-    | Naked_int32
-    | Naked_int64
-    | Naked_nativeint
-
-  let to_kind t : kind =
-    match t with
-    | Naked_immediate -> Naked_immediate
-    | Naked_int32 -> Naked_int32
-    | Naked_int64 -> Naked_int64
-    | Naked_nativeint -> Naked_nativeint
-
-  let print ppf t =
-    match t with
-    | Naked_immediate -> Format.pp_print_string ppf "Naked_immediate"
-    | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
-    | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
-    | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
-
-  let print_lowercase ppf t =
-    match t with
-    | Naked_immediate -> Format.pp_print_string ppf "immediate"
-    | Naked_int32 -> Format.pp_print_string ppf "int32"
-    | Naked_int64 -> Format.pp_print_string ppf "int64"
-    | Naked_nativeint -> Format.pp_print_string ppf "nativeint"
+    | Naked_float -> Format.pp_print_string ppf "naked_float"
+    | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
+    | Naked_int64 -> Format.pp_print_string ppf "naked_int64"
+    | Naked_nativeint -> Format.pp_print_string ppf "naked_nativeint"
 end

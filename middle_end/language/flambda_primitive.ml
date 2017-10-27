@@ -162,7 +162,7 @@ let print_raise_kind ppf k =
   | Reraise -> fprintf ppf "reraise"
   | No_trace -> fprintf ppf "no_trace"
 
-type set_field_kind =
+type block_set_kind =
   | Immediate
   | Pointer
   | Float
@@ -205,14 +205,12 @@ type num_dimensions = int
 let print_num_dimesions ppf d =
   Format.fprintf ppf "%d" d
 
-type boxed_integer = Pnativeint | Pint32 | Pint64 (* CR? remove the leading 'P' *)
-
-let print_boxed_integer ppx b =
-  let fprintf = Format.fprintf in
-  match b with
-  | Pnativeint -> fprintf ppf "nativeint"
-  | Pint32 -> fprintf ppf "int32"
-  | Pint64 -> fprintf ppf "int64"
+type record_representation =
+  | Regular
+  | Float
+  | Unboxed { inlined : bool; }
+  | Inlined of { num_fields : int; }
+  | Extension
 
 type unary_int_arith_op = Neg
 
@@ -244,18 +242,18 @@ type unary_primitive =
   | Is_int
   | Get_tag
   | String_length of string_or_bytes
-  | Swap_byte_endianness of K.Of_naked_number_not_float.t
+  | Swap_byte_endianness of K.Standard_int.t
   | Int_as_pointer
   | Opaque_identity
   | Raise of raise_kind
-  | Int_arith of K.Of_naked_number_not_float.t * unary_int_arith_op
+  | Int_arith of K.Standard_int.t * unary_int_arith_op
   | Float_arith of unary_float_arity_op
   | Int_of_float
   | Float_of_int
   | Array_length of array_kind
   | Bigarray_length of { dimension : int; } (* CR? rename to [num_]dimensions? *)
-  | Unbox_or_untag_number of K.Of_naked_number.t
-  | Box_or_tag_number of K.Of_naked_number.t
+  | Unbox_number of K.Boxable_number.t
+  | Box_number of K.Boxable_number.t
 
 let print_unary_primitive p =
   let fprintf = Format.fprintf in
@@ -282,10 +280,10 @@ let print_unary_primitive p =
   | Array_length _ -> fprintf ppf "array_length"
   | Bigarray_length { dimension; } ->
     fprintf ppf "bigarray_length %a" print_num_dimesions dimension
-  | Unbox_or_untag_number k ->
-    fprintf ppf "unbox_%a" K.Of_naked_number.print_lowercase k
-  | Box_or_tag_number k ->
-    fprintf ppf "box_%a" K.Of_naked_number.print_lowercase k
+  | Unbox_number k ->
+    fprintf ppf "unbox_%a" K.Boxable_number.print_lowercase k
+  | Box_number k ->
+    fprintf ppf "box_%a" K.Boxable_number.print_lowercase k
 
 let arg_kind_of_unary_primitive p =
   match p with
@@ -390,13 +388,13 @@ let effects_and_coeffects_of_unary_primitive p =
       Naked_float | Naked_int32 | Naked_int64 | Naked_nativeint) ->
     Only_generative_effects, No_coeffects
 
-type int_arith_op = (* CR? prefix with "binary"? *)
+type binary_int_arith_op =
   | Add | Sub | Mul
   | Div of is_safe
   | Mod of is_safe
   | And | Or | Xor
 
-let print_int_arith_op ppf o =
+let print_binary_int_arith_op ppf o =
   let fprintf = Format.fprintf in
   match o with
   | Add -> fprintf ppf "+"
@@ -431,9 +429,9 @@ let print_binary_float_arith_op ppf o =
 
 type binary_primitive =
   | Block_load_computed_index
-  | Set_field of int * set_field_kind * init_or_assign (* CR? rename to Block_set? *)
-  | Int_arith of K.Of_naked_number_not_float.t * binary_int_arith_op
-  | Int_shift of K.Of_naked_number_not_float.t * int_shift_op
+  | Block_set of int * block_set_kind * init_or_assign
+  | Int_arith of K.Standard_int.t * binary_int_arith_op
+  | Int_shift of K.Standard_int.t * int_shift_op
   | Int_comp of comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
@@ -447,7 +445,7 @@ let print_binary_primitive ppf p =
   match p with
   | Block_load_computed_index ->
     fprintf ppf "block_load_computed"
-  | Set_field (n, k, init) ->
+  | Block_set (n, k, init) ->
     let init =
       match init with
       | Initialization -> "init"
@@ -480,13 +478,13 @@ let args_kind_of_binary_primitive p =
   match p with
   | Block_load_computed_index ->
     K.value Must_scan, array_like_thing_index_kind
-  | Set_field _ ->
+  | Block_set _ ->
     K.value Must_scan, K.value Must_scan
   | Int_arith (kind, _)
-    let kind = K.Of_naked_number_not_float.to_kind kind in
+    let kind = K.Standard_int.to_kind kind in
     kind, kind
   | Int_shift (kind, _) ->
-    K.Of_naked_number_not_float.to_kind kind, K.naked_immediate ()
+    K.Standard_int.to_kind kind, K.naked_immediate ()
   | Int_comp _ -> K.naked_immediate (), K.naked_immediate ()
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
@@ -500,9 +498,9 @@ let args_kind_of_binary_primitive p =
 let result_kind_of_binary_primitive ppf p : result_kind =
   match p with
   | Block_load_computed_index -> Singleton (K.value Must_scan)
-  | Set_field _ -> Unit
+  | Block_set _ -> Unit
   | Int_arith (kind, _)
-  | Int_shift (kind, _) -> Singleton (K.Of_naked_number_not_float.to_kind kind)
+  | Int_shift (kind, _) -> Singleton (K.Standard_int.to_kind kind)
   | Float_arith _ -> Singleton (K.naked_float ())
   | Int_comp _ ->
   | Float_comp _ -> Singleton (K.naked_immediate ())
@@ -518,7 +516,7 @@ let effects_and_coeffects_of_binary_primitive p =
   match p with
   | Block_load_computed_index ->
     reading_from_an_array_like_thing Unsafe
-  | Set_field _ ->
+  | Block_set _ ->
     writing_to_an_array_like_thing Unsafe
   | Int_arith (Add | Sub | Mul | Div Unsafe | Mod Unsafe | And | Or | Xor) ->
     No_effects, No_coeffects
@@ -533,7 +531,7 @@ let effects_and_coeffects_of_binary_primitive p =
   | Bigstring_load (_, is_safe) -> reading_from_an_array_like_thing is_safe
 
 type ternary_primitive =
-  | Set_field_computed_index of Flambda_kind.scanning * init_or_assign (* CR? rename to Block_set_computed? *)
+  | Block_set_computed of Flambda_kind.scanning * init_or_assign
   | Bytes_set of string_accessor_width * is_safe
   | Array_set of array_kind * is_safe
   | Bigstring_set of bigstring_accessor_width * is_safe
@@ -541,8 +539,8 @@ type ternary_primitive =
 let print_ternary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Set_field_computed_index (_, init) ->
-    fprintf ppf "setfield_computed_index%a" print_init_or_assign init
+  | Block_set_computed (_, init) ->
+    fprintf ppf "block_set_computed%a" print_init_or_assign init
   | Bytes_set (string_accessor_width, is_safe) ->
     fprintf ppf "bytes_set_%a_%a"
       print_is_safe is_safe
@@ -558,7 +556,7 @@ let print_ternary_primitive ppf p =
 
 let args_kind_of_ternary_primitive p =
   match p with
-  | Set_field_computed_index _
+  | Block_set_computed _
   | Bytes_set _
   | Array_set _
   | Bigstring_set _ ->
@@ -566,14 +564,14 @@ let args_kind_of_ternary_primitive p =
 
 let result_kind_of_ternary_primitive p : result_kind =
   match p with
-  | Set_field_computed_index _
+  | Block_set_computed _
   | Bytes_set _
   | Array_set _
   | Bigstring_set _ -> Unit
 
 let effects_and_coeffects_of_ternary_primitive p =
   match p with
-  | Set_field_computed_index _ ->
+  | Block_set_computed _ ->
     writing_to_an_array_like_thing Unsafe
   | Bytes_set (_, is_safe)
   | Array_set (_, is_safe)

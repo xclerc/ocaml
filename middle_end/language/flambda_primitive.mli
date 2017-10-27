@@ -21,16 +21,11 @@
     We obtain greater static safety over [Lambda] by explicitly annotating
     the correct arity of arguments.
 
-    The semantics of these primitives follows this rule: no (un)tagging or
-    (un)boxing is performed by the primitive either when accepting an input
-    or producing an output.  These operations must be performed by the caller
-    if required.
+    Primitives that accept int32, int64 or nativeint values always take (or
+    return) the unboxed versions.
 *)
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
-
-(* CR mshinwell: We need to be more precise about which ones are the
-   unboxed/untagged ones *)
 
 type array_kind =
   | Dynamic_must_scan_or_naked_float
@@ -84,13 +79,11 @@ type bigstring_accessor_width =
 
 type num_dimensions = int
 
-type boxed_integer = Pnativeint | Pint32 | Pint64
-
 type record_representation =
   | Regular
   | Float
   | Unboxed { inlined : bool; }
-  | Inlined of int  (* CR mshinwell: what's the "int"? *)
+  | Inlined of { num_fields : int; }
   | Extension
 
 (** Untagged binary integer arithmetic operations. *)
@@ -113,16 +106,17 @@ type unary_primitive =
   | Is_int
   | Get_tag
   | String_length of string_or_bytes
-  | Swap_byte_endianness of Flambda_kind.Of_naked_number_not_float.t
-  (** [Swap_byte_endianness] on a [Naked_immediate] treats the immediate as
+  | Swap_byte_endianness of Flambda_kind.Standard_int.t
+  (** [Swap_byte_endianness] on a [Tagged_immediate] treats the immediate as
       encoding a 16-bit quantity (described in the least significant 16 bits
-      of the immediate) and exchanges the two halves of the 16-bit quantity. *)
+      of the immediate after untagging) and exchanges the two halves of the
+      16-bit quantity. *)
   | Int_as_pointer
   (** [Int_as_pointer] is semantically the same as [Opaque_identity] except
       that the result _cannot_ be scanned by the GC. *)
   | Opaque_identity
   | Raise of raise_kind
-  | Int_arith of Flambda_kind.Of_naked_number_not_float.t * unary_int_arith_op
+  | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
   | Float_arith of unary_float_arity_op
   (* CR-someday mshinwell: We should maybe change int32.ml and friends to
      use a %-primitive instead of directly calling C stubs for conversions;
@@ -132,17 +126,17 @@ type unary_primitive =
   | Float_of_int
   | Array_length of array_kind
   | Bigarray_length of { dimension : int; }
-  | Unbox_or_untag_number of Flambda_kind.Of_naked_number.t
-  | Box_or_tag_number of Flambda_kind.Of_naked_number.t
+  | Unbox_number of Flambda_kind.Boxable_number.t
+  | Box_number of Flambda_kind.Boxable_number.t
 
-(** Untagged binary integer arithmetic operations. *)
-type int_arith_op =
+(** Binary arithmetic operations on integers. *)
+type binary_int_arith_op =
   | Add | Sub | Mul
   | Div of is_safe
   | Mod of is_safe
   | And | Or | Xor
 
-(** Untagged integer shift operations. *)
+(** Shift operations on integers. *)
 type int_shift_op = Lsl | Lsr | Asr
 
 (** Naked float binary arithmetic operations. *)
@@ -151,10 +145,10 @@ type binary_float_arith_op = Add | Sub | Mul | Div
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
   | Block_load_computed_index
-  | Set_field of int * setfield_kind * init_or_assign
-  | Int_arith of Flambda_kind.Of_naked_number_not_float.t * binary_int_arith_op
-  | Int_shift of Flambda_kind.Of_naked_number_not_float.t * int_shift_op
-  | Int_comp of comparison
+  | Block_set of int * setfield_kind * init_or_assign
+  | Int_arith of Flambda_kind.Standard_int.t * binary_int_arith_op
+  | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
+  | Int_comp of Flambda_kind.Standard_int.t * comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
   | Bit_test
@@ -167,7 +161,7 @@ type binary_primitive =
 
 (** Primitives taking exactly three arguments. *)
 type ternary_primitive =
-  | Set_field_computed_index of Flambda_kind.scanning * init_or_assign
+  | Block_set_computed of Flambda_kind.scanning * init_or_assign
   | Bytes_set of string_accessor_width * is_safe
   | Array_set of array_kind * is_safe
   | Bigstring_set of bigstring_accessor_width * is_safe
@@ -222,45 +216,47 @@ type result_kind =
 val result_kind : t -> result_kind
 
 (** Things that a primitive application does to the world. *)
-type effects = No_effects | Only_generative_effects | Arbitrary_effects
+type effects =
+  | No_effects
+  (** The primitive does not change the observable state of the world. For
+      example, it must not write to any mutable storage, call arbitrary external
+      functions or change control flow (e.g. by raising an exception). Note that
+      allocation is not "No effects" (see below).
+
+      It is assumed in Flambda that applications of primitives with no
+      effects, whose results are not used, may be eliminated.  It is further
+      assumed that applications of primitives with no effects may be
+      duplicated (and thus possibly executed more than once).
+
+      Exceptions arising from allocation points, for example "out of memory" or
+      exceptions propagated from finalizers or signal handlers, are treated as
+      "effects out of the ether" and thus ignored for our determination here
+      of effectfulness.  The same goes for floating point operations that may
+      cause hardware traps on some platforms. *)
+  | Only_generative_effects
+  (** The primitive does not change the observable state of the world save for
+      possibly affecting the state of the garbage collector by performing an
+      allocation. Applications of primitives that only have generative effects
+      and whose results are unused may be eliminated by the compiler. However,
+      unlike "No effects" primitives, such applications will never be eligible
+      for duplication. *)
+  | Arbitrary_effects
+  (** The primitive may have effects beyond those described by [No_effects]
+      and [Only_generative_effects]. *)
 
 (** Things that the world does to a primitive application. *)
-type coeffects = No_coeffects | Has_coeffects
+type coeffects =
+  | No_coeffects
+  (** "No coeffects" means that the primitive does not observe the effects (in
+      the sense described above) of other expressions. For example, it must not
+      read from any mutable storage or call arbitrary external functions.
 
-(** Description of the semantics of primitives, to be used for optimization
-    purposes.
+      It is assumed in Flambda that, subject to data dependencies,
+      expressions with neither effects nor coeffects may be reordered with
+      respect to other expressions. *)
+  | Has_coeffects
+  (** The primitive may be affected by effects from other expressions. *)
 
-    "No effects" means that the primitive does not change the observable state
-    of the world.  For example, it must not write to any mutable storage,
-    call arbitrary external functions or change control flow (e.g. by raising
-    an exception).  Note that allocation is not "No effects" (see below).
-
-    It is assumed in Flambda that applications of primitives with no
-    effects, whose results are not used, may be eliminated.  It is further
-    assumed that applications of primitives with no effects may be
-    duplicated (and thus possibly executed more than once).
-
-    (Exceptions arising from allocation points, for example "out of memory" or
-    exceptions propagated from finalizers or signal handlers, are treated as
-    "effects out of the ether" and thus ignored for our determination here
-    of effectfulness.  The same goes for floating point operations that may
-    cause hardware traps on some platforms.)
-
-    "Only generative effects" means that a primitive does not change the
-    observable state of the world save for possibly affecting the state of
-    the garbage collector by performing an allocation.  Applications of
-    primitives that only have generative effects and whose results are unused
-    may be eliminated by the compiler.  However, unlike "No effects"
-    primitives, such applications will never be eligible for duplication.
-
-    "Arbitrary effects" covers all other primitives.
-
-    "No coeffects" means that the primitive does not observe the effects (in
-    the sense described above) of other expressions.  For example, it must not
-    read from any mutable storage or call arbitrary external functions.
-
-    It is assumed in Flambda that, subject to data dependencies,
-    expressions with neither effects nor coeffects may be reordered with
-    respect to other expressions.
-*)
+(** Describe the effects and coeffects that the application of the given
+    primitive may have. *)
 val effects_and_coeffects : t -> effects * coeffects

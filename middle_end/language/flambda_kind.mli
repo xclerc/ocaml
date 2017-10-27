@@ -53,10 +53,15 @@ val is_naked_float : t -> bool
 
 include Identifiable.S with type t := t
 
-module Of_naked_number : sig
+module Standard_int : sig
+  (** These kinds are known as the "standard integer kinds".  They correspond
+      to the usual representations of tagged immediates, 32-bit, 64-bit and
+      native integers as expected by the operations in [Flambda_primitive].
+      (Boxing of the latter three kinds of integers is handled via explicit
+      boxing and unboxing primitives; as such, the boxed versions are not
+      known as "standard". *)
   type t =
-    | Naked_immediate
-    | Naked_float
+    | Tagged_immediate
     | Naked_int32
     | Naked_int64
     | Naked_nativeint
@@ -68,9 +73,12 @@ module Of_naked_number : sig
   val print_lowercase : Format.formatter -> t -> unit
 end
 
-module Of_naked_number_not_float : sig
+module Boxable_number : sig
+  (** These kinds are those of the numbers for which a tailored boxed
+      representation exists. *)
+
   type t =
-    | Naked_immediate
+    | Naked_float
     | Naked_int32
     | Naked_int64
     | Naked_nativeint
