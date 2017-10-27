@@ -657,6 +657,8 @@ let effects_and_coeffects_of_variadic_primitive p =
   | Make_array (_, Mutable) -> Only_generative_effects, No_coeffects
   | Bigarray_set (is_safe, _, _, _) ->
     writing_to_an_array_like_thing is_safe
+  | Bigarray_load (Unsafe, _, (Unknown | Complex32 | Complex64), _) ->
+    Only_generative_effects, Has_coeffects
   | Bigarray_load (is_safe, _, _, _) ->
     reading_from_an_array_like_thing is_safe
   | C_call of { name; native_name; args; result; alloc; } ->
