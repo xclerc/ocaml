@@ -117,6 +117,11 @@ type unary_primitive =
   | Opaque_identity
   | Raise of raise_kind
   | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
+  | Int_conv of {
+      src : Flambda_kind.Standard_int.t;
+      dst : Flambda_kind.Standard_int.t;
+    }
+  (* CR xclerc: to support Lambda.{Pbintofint,Pintofbint,Pcvtbint} *)
   | Float_arith of unary_float_arith_op
   (* CR-someday mshinwell: We should maybe change int32.ml and friends to
      use a %-primitive instead of directly calling C stubs for conversions;

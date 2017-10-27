@@ -274,6 +274,10 @@ type unary_primitive =
   | Opaque_identity
   | Raise of raise_kind
   | Int_arith of K.Standard_int.t * unary_int_arith_op
+  | Int_conv of {
+      src : Flambda_kind.Standard_int.t;
+      dst : Flambda_kind.Standard_int.t;
+    }
   | Float_arith of unary_float_arith_op
   | Int_of_float
   | Float_of_int
@@ -303,6 +307,10 @@ let print_unary_primitive ppf p =
   | Opaque_identity -> fprintf ppf "opaque_identity"
   | Raise k -> fprintf ppf "raise %a" print_raise_kind k
   | Int_arith (_k, o) -> print_unary_int_arith_op ppf o
+  | Int_conv { src; dst; } ->
+    fprintf ppf "conv_%a_to_%a"
+      Flambda_kind.Standard_int.print src
+      Flambda_kind.Standard_int.print dst
   | Float_arith o -> print_unary_float_arith_op ppf o
   | Int_of_float -> fprintf ppf "int_of_float"
   | Float_of_int -> fprintf ppf "float_of_int"
@@ -328,6 +336,7 @@ let arg_kind_of_unary_primitive p =
   | Opaque_identity -> K.value Must_scan
   | Raise _ -> K.value Must_scan
   | Int_arith (kind, _) -> K.Standard_int.to_kind kind
+  | Int_conv { src; dst = _; } -> K.Standard_int.to_kind src
   | Float_arith _ -> K.naked_float ()
   | Int_of_float -> K.value Can_scan
   | Float_of_int -> K.naked_float ()
@@ -350,6 +359,7 @@ let result_kind_of_unary_primitive p : result_kind =
   | Opaque_identity -> Singleton (K.value Must_scan)
   | Raise _ -> Never_returns
   | Int_arith (kind, _) -> Singleton (K.Standard_int.to_kind kind)
+  | Int_conv { src = _; dst; } -> Singleton (K.Standard_int.to_kind dst)
   | Float_arith _ -> Singleton (K.naked_float ())
   | Int_of_float -> Singleton (K.value Can_scan)
   | Float_of_int -> Singleton (K.naked_float ())
@@ -376,6 +386,7 @@ let effects_and_coeffects_of_unary_primitive p =
   | Raise _ -> Arbitrary_effects, No_coeffects
   | Swap_byte_endianness _
   | Int_arith (_, Neg)
+  | Int_conv _
   | Float_arith (Abs | Neg)
   | Int_of_float
   | Float_of_int -> No_effects, No_coeffects
