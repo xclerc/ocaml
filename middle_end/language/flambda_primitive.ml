@@ -19,8 +19,6 @@
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
 module K = Flambda_kind
-module L = Lambda
-module PL = Printlambda
 
 type effects = No_effects | Only_generative_effects | Arbitrary_effects
 
@@ -85,7 +83,6 @@ let writing_to_an_array_like_thing is_safe =
      bigarray.  As such these primitives have coeffects. *)
   effects, Has_coeffects
 
-(* CR xclerc: should an index be boxed or unboxed? *)
 let array_like_thing_index_kind = K.value Can_scan
 
 let array_kind = K.value Must_scan
@@ -136,6 +133,7 @@ let element_kind_of_bigarray_kind k =
     (* See [copy_two_doubles] in bigarray_stubs.c. *)
     K.value Must_scan
 
+(*
 let print_bigarray_kind ppf k =
   let fprintf = Format.fprintf in
   match k with
@@ -152,15 +150,18 @@ let print_bigarray_kind ppf k =
   | Targetint_width_int -> fprintf ppf "targetint_width_int"
   | Complex32 -> fprintf ppf "complex32"
   | Complex64 -> fprintf ppf "complex64"
+*)
 
 type bigarray_layout = Unknown | C | Fortran
 
+(*
 let print_bigarray_layout ppf l =
   let fprintf = Format.fprintf in
   match l with
   | Unknown -> fprintf ppf "unknown"
   | C -> fprintf ppf "C"
   | Fortran -> fprintf ppf "fortran"
+*)
 
 type raise_kind = Regular | Reraise | No_trace
 
@@ -221,6 +222,16 @@ type record_representation =
   | Inlined of Tag.Scannable.t
   | Extension
 
+let print_record_representation ppf repr =
+  let fprintf = Format.fprintf in
+  match repr with
+  | Regular -> fprintf ppf "regular"
+  | Inlined tag -> fprintf ppf "inlined(%a)" Tag.Scannable.print tag
+  | Unboxed { inlined = false; } -> fprintf ppf "unboxed"
+  | Unboxed { inlined = true; } -> fprintf ppf "inlined(unboxed)"
+  | Float -> fprintf ppf "float"
+  | Extension -> fprintf ppf "ext"
+
 type unary_int_arith_op = Neg
 
 let print_unary_int_arith_op ppf o =
@@ -240,7 +251,7 @@ type arg_kinds =
   | Unary of K.t
   | Binary of K.t * K.t
   | Ternary of K.t * K.t * K.t
-  | Variadic of K.t
+  | Variadic of K.t list
   | Variadic_all_of_kind of Flambda_kind.t
 
 type result_kind =
@@ -252,7 +263,7 @@ type unary_primitive =
   | Block_load of int * field_kind
   | Duplicate_array of array_kind * mutable_or_immutable
   | Duplicate_record of {
-      repr : Types.record_representation;
+      repr : record_representation;
       num_fields : int;
     }
   | Is_int
@@ -281,7 +292,9 @@ let print_unary_primitive ppf p =
   | Duplicate_array (k, Immutable) ->
     fprintf ppf "duplicate_array_imm[%a]" print_array_kind k
   | Duplicate_record { repr; num_fields; } ->
-    fprintf ppf "duplicate_record %a %i" PL.record_rep repr num_fields
+    fprintf ppf "duplicate_record %a %i"
+      print_record_representation repr
+      num_fields
   | Is_int -> fprintf ppf "is_int"
   | Get_tag -> fprintf ppf "get_tag"
   | String_length _ -> fprintf ppf "string_length"
@@ -358,10 +371,10 @@ let effects_and_coeffects_of_unary_primitive p =
   | Is_int -> No_effects, No_coeffects
   | Get_tag -> No_effects, Has_coeffects
   | String_length _ -> reading_from_an_array_like_thing Unsafe
-  | Swap_byte_endianness _ -> No_effects, No_coeffects
   | Int_as_pointer
   | Opaque_identity -> Arbitrary_effects, Has_coeffects
   | Raise _ -> Arbitrary_effects, No_coeffects
+  | Swap_byte_endianness _
   | Int_arith (_, Neg)
   | Float_arith (Abs | Neg)
   | Int_of_float
@@ -419,7 +432,7 @@ type binary_primitive =
   | Block_set of int * block_set_kind * init_or_assign
   | Int_arith of K.Standard_int.t * binary_int_arith_op
   | Int_shift of K.Standard_int.t * int_shift_op
-  | Int_comp of comparison
+  | Int_comp of K.Standard_int.t * comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
   | Bit_test
@@ -439,7 +452,7 @@ let print_binary_primitive ppf p =
       n
   | Int_arith (_k, op) -> print_binary_int_arith_op ppf op
   | Int_shift (_k, op) -> print_int_shift_op ppf op
-  | Int_comp c -> print_comparison ppf c
+  | Int_comp (_, c) -> print_comparison ppf c
   | Float_arith op -> print_binary_float_arith_op ppf op
   | Float_comp c -> print_comparison ppf c; fprintf ppf "."
   | Bit_test -> fprintf ppf "bit_test"
@@ -461,13 +474,15 @@ let args_kind_of_binary_primitive p =
   | Block_load_computed_index ->
     block_kind, array_like_thing_index_kind
   | Block_set _ ->
-    block_kind, K.value Must_scan
+    block_kind, block_element_kind
   | Int_arith (kind, _) ->
     let kind = K.Standard_int.to_kind kind in
     kind, kind
   | Int_shift (kind, _) ->
     K.Standard_int.to_kind kind, K.naked_immediate ()
-  | Int_comp _ -> K.naked_immediate (), K.naked_immediate ()
+  | Int_comp (kind, _) ->
+    let kind = K.Standard_int.to_kind kind in
+    kind, kind
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
   | Bit_test -> string_or_bytes_kind, string_or_bytes_element_kind
@@ -475,7 +490,7 @@ let args_kind_of_binary_primitive p =
   | String_load _ -> string_or_bytes_kind, array_like_thing_index_kind
   | Bigstring_load _ -> bigstring_kind, array_like_thing_index_kind
 
-let result_kind_of_binary_primitive ppf p : result_kind =
+let result_kind_of_binary_primitive p : result_kind =
   match p with
   | Block_load_computed_index -> Singleton (block_element_kind)
   | Block_set _ -> Unit
@@ -611,7 +626,7 @@ let args_kind_of_variadic_primitive p : arg_kinds =
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     let new_value = element_kind_of_bigarray_kind kind in
     Variadic ([bigarray_kind] @ index @ [new_value])
-  | Bigarray_load (_, _, kind, _) ->
+  | Bigarray_load (_, num_dims, _, _) ->
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     Variadic ([bigarray_kind] @ index)
   | C_call { name = _; native_name = _; args; result = _; alloc = _; } ->
@@ -634,9 +649,11 @@ let effects_and_coeffects_of_variadic_primitive p =
   | Make_array (_, Mutable) -> Only_generative_effects, No_coeffects
   | Bigarray_set (is_safe, _, _, _) ->
     writing_to_an_array_like_thing is_safe
+  | Bigarray_load (Unsafe, _, (Unknown | Complex32 | Complex64), _) ->
+    Only_generative_effects, Has_coeffects
   | Bigarray_load (is_safe, _, _, _) ->
     reading_from_an_array_like_thing is_safe
-  | C_call { name; native_name; args; result; alloc; } ->
+  | C_call { name = _; native_name = _; args = _; result = _; alloc = _; } ->
     (* CR-someday xclerc: we could add annotations to external declarations
        (akin to [@@noalloc]) in order to be able to refine the computation of
        effects/coeffects for such functions. *)
@@ -656,31 +673,31 @@ let print ppf t =
       Variable.print v0
   | Binary (prim, v0, v1) ->
     Format.fprintf ppf "@[(Prim %a %a %a)@]"
-      print_unary_primitive prim
+      print_binary_primitive prim
       Variable.print v0
       Variable.print v1
   | Ternary (prim, v0, v1, v2) ->
     Format.fprintf ppf "@[(Prim %a %a %a %a)@]"
-      print_unary_primitive prim
+      print_ternary_primitive prim
       Variable.print v0
       Variable.print v1
       Variable.print v2
   | Variadic (prim, vs) ->
     Format.fprintf ppf "@[(Prim %a %a)@]"
       print_variadic_primitive prim
-      (Format.pp_print_list ~pp_sep:pp_print_space Variable.print) vs
+      (Format.pp_print_list ~pp_sep:Format.pp_print_space Variable.print) vs
 
 let arg_kinds (t : t) : arg_kinds =
   match t with
   | Unary (prim, _) ->
     let kind = arg_kind_of_unary_primitive prim in
     Unary kind
-  | Binary (prim, _) ->
+  | Binary (prim, _, _) ->
     let kind0, kind1 = args_kind_of_binary_primitive prim in
     Binary (kind0, kind1)
-  | Ternary (prim, _) ->
+  | Ternary (prim, _, _, _) ->
     let kind0, kind1, kind2 = args_kind_of_ternary_primitive prim in
-    Ternary (kind0, kind1, kind3)
+    Ternary (kind0, kind1, kind2)
   | Variadic (prim, _) ->
     args_kind_of_variadic_primitive prim
 

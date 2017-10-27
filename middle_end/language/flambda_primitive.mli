@@ -61,7 +61,7 @@ type bigarray_layout = Unknown | C | Fortran
 
 type raise_kind = Regular | Reraise | No_trace
 
-type setfield_kind =
+type block_set_kind =
   | Immediate
   | Pointer
   | Float
@@ -145,7 +145,7 @@ type binary_float_arith_op = Add | Sub | Mul | Div
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
   | Block_load_computed_index
-  | Block_set of int * setfield_kind * init_or_assign
+  | Block_set of int * block_set_kind * init_or_assign
   | Int_arith of Flambda_kind.Standard_int.t * binary_int_arith_op
   | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
   | Int_comp of Flambda_kind.Standard_int.t * comparison
