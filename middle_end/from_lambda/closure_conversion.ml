@@ -723,8 +723,7 @@ let of_block_shape (shape : Lambda.block_shape) ~num_fields =
 
 *)
 
-(*
-  (* CR mshinwell: read carefully.  Moved here from Flambda_type
+(* CR mshinwell: read carefully.  Moved here from Flambda_type
 
   let refine_using_value_kind t (kind : Lambda.value_kind) =
     match kind with

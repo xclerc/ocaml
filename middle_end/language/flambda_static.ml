@@ -50,13 +50,13 @@ module Static_part = struct
       E.check_symbol_is_bound env sym
     | Boxed_float (Var v) ->
       E.check_variable_is_bound_and_of_kind_naked_float env v
-    | Boxed_int32 (Var v)
+    | Boxed_int32 (Var v) ->
       E.check_variable_is_bound_and_of_kind_naked_int32 env v
-    | Boxed_int64 (Var v)
+    | Boxed_int64 (Var v) ->
       E.check_variable_is_bound_and_of_kind_naked_int64 env v
-    | Boxed_nativeint (Var v)
+    | Boxed_nativeint (Var v) ->
       E.check_variable_is_bound_and_of_kind_naked_nativeint env v
-    | Mutable_string { initial_value = Var v; } ->
+    | Mutable_string { initial_value = Var v; }
     | Immutable_string (Var v) ->
       E.check_variable_is_bound_and_of_kind_value env v
       E.check_variable_is_bound_and_of_kind_value env v
@@ -88,7 +88,8 @@ module Program_body = struct
         in
         f ~continuation_arity computation.return_cont computation.expr
       end;
-      List.iter (fun (_sym, (static_part : Static_part.t) ->
+      List.iter (fun (_sym, (static_part : Static_part.t)) ->
+          match static_part with
           | Set_of_closures set ->
             Flambda.Set_of_closures.Iterators.iter_function_bodies set ~f
           | Block _
@@ -199,7 +200,7 @@ module Program_body = struct
   let rec invariant ~importer env t =
     let module E = Invariant_env in
     match t with
-    | Define_symbol (defn, t)
+    | Define_symbol (defn, t) ->
       let env = invariant_define_symbol ~importer env defn Nonrecursive in
       invariant ~importer env t
     | Define_symbol_rec (defn, t) ->

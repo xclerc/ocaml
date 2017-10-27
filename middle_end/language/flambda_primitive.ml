@@ -236,6 +236,13 @@ let print_unary_float_arith_op ppf o =
   | Abs -> fprintf ppf "abs"
   | Neg -> fprintf ppf "~"
 
+type arg_kinds =
+  | Unary of K.t
+  | Binary of K.t * K.t
+  | Ternary of K.t * K.t * K.t
+  | Variadic of K.t
+  | Variadic_all_of_kind of Flambda_kind.t
+
 type result_kind =
   | Singleton of K.t
   | Unit
@@ -615,30 +622,34 @@ let print_variadic_primitive ppf p =
   | Pmakearray (k, Immutable) ->
     fprintf ppf "makearray_imm[%s]" (PL.array_kind k)
 
-let args_kind_of_variadic_primitive p =
+let args_kind_of_variadic_primitive p : arg_kinds =
   match p with
-  | Make_block (_tag, _mut, arity) -> arity
+  | Make_block (_tag, _mut, arity) -> Variadic arity
   | Make_array (Dynamic_must_scan_or_naked_float | Must_scan) ->
-    [K.value Must_scan]
-  | Make_array Can_scan -> [K.value Can_scan]
-  | Make_array Naked_float -> K.naked_float ()
+    Variadic_all_of_kind (K.value Must_scan)
+  | Make_array Can_scan ->
+    Variadic_all_of_kind (K.value Can_scan)
+  | Make_array Naked_float ->
+    Variadic_all_of_kind (K.naked_float ())
   | Bigarray_set (_, num_dims, kind, _) ->
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     let new_value = element_kind_of_bigarray_kind kind in
-    [bigarray_kind] @ index @ [new_value]
+    Variadic ([bigarray_kind] @ index @ [new_value])
   | Bigarray_load (_, _, kind, _) ->
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
-    [bigarray_kind] @ index
-  | C_call { name = _; native_name = _; args; result = _; alloc = _; } -> args
+    Variadic ([bigarray_kind] @ index)
+  | C_call { name = _; native_name = _; args; result = _; alloc = _; } ->
+    Variadic args
 
 let result_kind_of_variadic_primitive p : result_kind =
   match p with
   | Make_block _ -> Singleton block_kind
   | Make_array _ -> Singleton array_kind
   | Bigarray_set _ -> Unit
-  | Bigarray_load (_, _, kind, _) -> element_kind_of_bigarray_kind kind
+  | Bigarray_load (_, _, kind, _) ->
+    Singleton (element_kind_of_bigarray_kind kind)
   | C_call { name = _; native_name = _; args = _; result; alloc = _; } ->
-    [result]
+    Singleton result
 
 let effects_and_coeffects_of_variadic_primitive p =
   match p with
@@ -683,12 +694,6 @@ let print ppf t =
       print_variadic_primitive prim
       (Format.pp_print_list ~pp_sep:pp_print_space Variable.print) vs
 
-type arg_kinds =
-  | Unary of K.t
-  | Binary of K.t * K.t
-  | Ternary of K.t * K.t * K.t
-  | Variadic of K.t
-
 let arg_kinds (t : t) : arg_kinds =
   match t with
   | Unary (prim, _) ->
@@ -701,8 +706,7 @@ let arg_kinds (t : t) : arg_kinds =
     let kind0, kind1, kind2 = args_kind_of_ternary_primitive prim in
     Ternary (kind0, kind1, kind3)
   | Variadic (prim, _) ->
-    let kind = args_kind_of_variadic_primitive prim in
-    Variadic kind
+    args_kind_of_variadic_primitive prim
 
 let result_kind (t : t) =
   match t with

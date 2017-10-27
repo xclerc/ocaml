@@ -197,6 +197,7 @@ type arg_kinds =
   | Binary of Flambda_kind.t * Flambda_kind.t
   | Ternary of Flambda_kind.t * Flambda_kind.t * Flambda_kind.t
   | Variadic of Flambda_kind.t list
+  | Variadic_all_of_kind of Flambda_kind.t
 
 (** Describe the argument kinds required for the given primitive. *)
 val arg_kinds : t -> arg_kinds

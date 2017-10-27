@@ -93,7 +93,7 @@ let is_naked_float t =
   | Naked_int64
   | Naked_nativeint -> false
 
-module Standard_int : sig
+module Standard_int = struct
   type t =
     | Tagged_immediate
     | Naked_int32

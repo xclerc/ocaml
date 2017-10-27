@@ -70,7 +70,7 @@ val add_closure_id : t -> Closure_id.t -> unit
 val add_use_of_closure_id : t -> Closure_id.t -> unit
 
 (* XXX this one needs to error upon rebinding *)
-val add_set_of_closures_id : t -> Set_of_closures.id.t -> unit
+val add_set_of_closures_id : t -> Set_of_closures_id.t -> unit
 
 val check_variable_is_bound : t -> Variable.t -> unit
 

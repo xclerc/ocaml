@@ -134,7 +134,7 @@ let add_variable t var kind =
       Variable.print var
   end;
   let compilation_unit = Compilation_unit.get_current_exn () in
-  if not (Variable.in_compilation_unit var compilation_unit) then
+  if not (Variable.in_compilation_unit var compilation_unit) then begin
     Misc.fatal_errorf "Binding occurrence of variable %a cannot occur in \
         this compilation unit since the variable is from another compilation \
         unit"
@@ -168,7 +168,7 @@ let add_mutable_variable t var kind =
       Mutable_variable.print var
   end;
   let compilation_unit = Compilation_unit.get_current_exn () in
-  if not (Mutable_variable.in_compilation_unit var compilation_unit) then
+  if not (Mutable_variable.in_compilation_unit var compilation_unit) then begin
     Misc.fatal_errorf "Binding occurrence of mutable variable %a cannot occur \
         in this compilation unit since the variable is from another \
         compilation unit"
@@ -192,7 +192,7 @@ let add_symbol t sym =
       Symbol.print sym
   end;
   let compilation_unit = Compilation_unit.get_current_exn () in
-  if not (Variable.in_compilation_unit var compilation_unit) then
+  if not (Variable.in_compilation_unit var compilation_unit) then begin
     Misc.fatal_errorf "Binding occurrence of variable %a cannot occur in \
         this compilation unit since the variable is from another compilation \
         unit"

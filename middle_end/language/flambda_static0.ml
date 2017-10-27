@@ -48,6 +48,7 @@ module Of_kind_value = struct
     | Dynamically_computed _ -> true
 
   let free_variables t =
+    match t with
     | Dynamically_computed var -> Variable.Set.singleton var
     | Symbol _ | Tagged_immediate _ -> Variable.Set.empty
 
@@ -131,7 +132,7 @@ module Static_part = struct
           Symbol.Set.union syms (Of_kind_value.free_symbols field))
         Symbol.Set.empty
         fields
-    | Closure (sym, ) -> Symbol.Set.singleton sym
+    | Closure (sym, _) -> Symbol.Set.singleton sym
     | Set_of_closures set -> Flambda.Set_of_closures.free_symbols set
     | Boxed_float _
     | Boxed_int32 _
@@ -230,7 +231,7 @@ module Program_body = struct
         (fun ppf (var, kind) ->
           Format.fprintf "@[(%a :: %a)@]"
             Variable.print var
-            Flambda_kind.print kind)
+            Flambda_kind.print kind))
       comp.computed_values
 
   let free_symbols_of_computation comp = Flambda.Expr.free_symbols comp.expr
