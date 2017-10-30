@@ -1250,6 +1250,7 @@ end and Set_of_closures : sig
     -> free_vars:Free_vars.t
     -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> t
+  val free_symbols : t -> Symbol.Set.t
   val has_empty_environment : t -> bool
   val print : Format.formatter -> t -> unit
 end = struct
@@ -1324,6 +1325,9 @@ end = struct
         Free_vars.print free_vars
         (Closure_id.Map.print Closure_id.print) t.direct_call_surrogates
         Set_of_closures_origin.print function_decls.set_of_closures_origin
+
+  let free_symbols t =
+    Function_declarations.free_symbols t.function_decls
 end and Function_declarations : sig
   type t = {
     set_of_closures_id : Set_of_closures_id.t;
@@ -1340,6 +1344,7 @@ end and Function_declarations : sig
     -> (Set_of_closures_origin.t -> Set_of_closures_origin.t)
     -> t
   val print : Format.formatter -> t -> unit
+  val free_symbols : t -> Symbol.Set.t
 end = struct
   include Function_declarations
 
@@ -1383,6 +1388,13 @@ end = struct
     in
     fprintf ppf "@[<2>(%a)(origin = %a)@]" funs t.funs
       Set_of_closures_origin.print t.set_of_closures_origin
+
+  let free_symbols t =
+    Closure_id.Map.fold
+      (fun _closure_id (func_decl : Function_declaration.t) syms ->
+        Symbol.Set.union syms func_decl.free_symbols)
+      t.funs
+      Symbol.Set.empty
 end and Function_declaration : sig
   type t = {
     closure_origin : Closure_origin.t;

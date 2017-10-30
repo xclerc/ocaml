@@ -22,6 +22,7 @@ type assign = F0.assign
 type mutable_or_immutable = Flambda0.mutable_or_immutable
 type inline_attribute = F0.inline_attribute
 type specialise_attribute = F0.specialise_attribute
+type recursive = F0.recursive
 
 module Const = F0.Const
 module Free_var = F0.Free_var

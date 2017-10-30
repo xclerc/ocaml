@@ -550,6 +550,10 @@ end and Set_of_closures : sig
   val has_empty_environment : t -> bool
 
   val print : Format.formatter -> t -> unit
+
+  (** All symbols free in the bodies of the functions in the given set of
+      closures. *)
+  val free_symbols : t -> Symbol.Set.t
 end and Function_declarations : sig
   (** The representation of a set of function declarations (possibly mutually
       recursive).  Such a set encapsulates the declarations themselves,

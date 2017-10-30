@@ -103,7 +103,7 @@ module Program : sig
         [Apply] nodes to the given [f]. *)
     val iter_apply
        : t
-      -> f:(Flambda.apply -> unit)
+      -> f:(Flambda.Apply.t -> unit)
       -> unit
 
 (*

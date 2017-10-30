@@ -63,8 +63,9 @@ module Static_part = struct
     | Const of 'a
     | Var of Variable.t
 
-  type t = private
-    | Block of Tag.Scannable.t * Flambda.mutable_or_immutable * (Of_kind_value.t list)
+  type t =
+    | Block of Tag.Scannable.t * Flambda.mutable_or_immutable
+        * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
     | Closure of Symbol.t * Closure_id.t
     | Boxed_float of float or_variable
@@ -78,7 +79,7 @@ module Static_part = struct
 
   let needs_gc_root t =
     match t with
-    | Block (tag, mut, fields) ->
+    | Block (_tag, mut, fields) ->
       begin match mut with
       | Mutable -> true
       | Immutable -> List.exists Of_kind_value.needs_gc_root fields
@@ -172,11 +173,11 @@ module Static_part = struct
     | Boxed_int32 (Var v) ->
       fprintf ppf "@[(Boxed_int32 %a)@]" Variable.print v
     | Boxed_int64 (Const n) ->
-      fprintf ppf "@[(Boxed_int64 %ld)@]" n
+      fprintf ppf "@[(Boxed_int64 %Ld)@]" n
     | Boxed_int64 (Var v) ->
       fprintf ppf "@[(Boxed_int64 %a)@]" Variable.print v
     | Boxed_nativeint (Const n) ->
-      fprintf ppf "@[(Boxed_nativeint %ld)@]" n
+      fprintf ppf "@[(Boxed_nativeint %a)@]" Targetint.print n
     | Boxed_nativeint (Var v) ->
       fprintf ppf "@[(Boxed_nativeint %a)@]" Variable.print v
     | Mutable_float_array { initial_value; } ->
@@ -190,11 +191,15 @@ module Static_part = struct
         (Format.pp_print_list
            ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "@[; ")
            print_float_array_field)
-        initial_value
-    | Mutable_string { initial_value; } ->
-      fprintf ppf "@[(Mutable_string@ \"%s\")@]" initial_value
-    | Immutable_string s ->
+        fields
+    | Mutable_string { initial_value = Const s; } ->
+      fprintf ppf "@[(Mutable_string@ \"%s\")@]" s
+    | Mutable_string { initial_value = Var v; } ->
+      fprintf ppf "@[(Mutable_string@ %a)@]" Variable.print v
+    | Immutable_string (Const s) ->
       fprintf ppf "@[(Immutable_string@ \"%s\")@]" s
+    | Immutable_string (Var v) ->
+      fprintf ppf "@[(Immutable_string@ %a)@]" Variable.print v
 
   module Mappers = struct
     let map_set_of_closures t ~f =
@@ -215,13 +220,13 @@ end
 
 module Program_body = struct
   type computation = {
-    expr : Expr.t;
+    expr : Flambda.Expr.t;
     return_cont : Continuation.t;
     computed_values : (Variable.t * Flambda_kind.t) list;
   }
 
   let print_computation ppf comp =
-    Format.fprintf "@[(\
+    Format.fprintf ppf "@[(\
         @[(expr@ %a)@]@ \
         @[(return_cont@ %a)@]@ \
         @[(computed_values@ @[(%a)@])@])@]"
@@ -229,7 +234,7 @@ module Program_body = struct
       Continuation.print comp.return_cont
       (Format.pp_print_list ~pp_sep:Format.pp_print_space
         (fun ppf (var, kind) ->
-          Format.fprintf "@[(%a :: %a)@]"
+          Format.fprintf ppf "@[(%a :: %a)@]"
             Variable.print var
             Flambda_kind.print kind))
       comp.computed_values
@@ -242,13 +247,13 @@ module Program_body = struct
   }
 
   let print_definition ppf defn =
-    Format.fprintf "@[(\
+    Format.fprintf ppf "@[(\
         @[(computation@ %a)@]@ \
         @[(static_structure@ @[(%a)@])@])@]"
       (Misc.Stdlib.Option.print print_computation)
       defn.computation
       (Format.pp_print_list ~pp_sep:Format.pp_print_space
-        (fun (sym, static_part) ->
+        (fun ppf (sym, static_part) ->
           Format.fprintf ppf "@[(%a@ %a)@]"
             Symbol.print sym
             Static_part.print static_part))
@@ -265,7 +270,7 @@ module Program_body = struct
     in
     let bound_recursively =
       match recursive with
-      | Nonrecursive -> Symbol.Set.empty
+      | Non_recursive -> Symbol.Set.empty
       | Recursive -> being_defined
     in
     let free_in_static_parts =
@@ -295,27 +300,34 @@ module Program_body = struct
         print_definition defn;
       print ppf t
     | Root sym ->
-      Format.fprint ppf "@[(Root %a)@]" Symbol.print sym
+      Format.fprintf ppf "@[(Root %a)@]" Symbol.print sym
 
   let gc_roots t =
     let rec gc_roots t roots =
       match t with
       | Root _ -> roots
       | Define_symbol (defn, t) | Define_symbol_rec (defn, t) ->
-        List.fold (fun roots (sym, static_part) ->
-            if Static_part.needs_gc_root static_part then
-              Symbol.Set.add sym roots
-            else
-              roots)
-          roots
-          defn
+        let roots =
+          List.fold_left (fun roots (sym, static_part) ->
+              if Static_part.needs_gc_root static_part then
+                Symbol.Set.add sym roots
+              else
+                roots)
+            roots
+            defn.static_structure
+        in
+        gc_roots t roots
     in
     gc_roots t Symbol.Set.empty
 
   let rec free_symbols t =
     match t with
-    | Define_symbol (defn, t) | Define_symbol_rec (defn, t) ->
-      Symbol.Set.union (free_symbols_of_definition defn) (free_symbols t)
+    | Define_symbol (defn, t) ->
+      Symbol.Set.union (free_symbols_of_definition defn Non_recursive)
+        (free_symbols t)
+    | Define_symbol_rec (defn, t) ->
+      Symbol.Set.union (free_symbols_of_definition defn Recursive)
+        (free_symbols t)
     | Root sym -> Symbol.Set.singleton sym
 end
 
@@ -347,5 +359,5 @@ module Program = struct
 
   let free_symbols t =
     (* N.B. [imported_symbols] are not treated as free. *)
-    Program_body.free_symbols t.program_body
+    Program_body.free_symbols t.body
 end

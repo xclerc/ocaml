@@ -25,6 +25,7 @@ type assign = F0.assign
 type inline_attribute = F0.inline_attribute
 type specialise_attribute = F0.specialise_attribute
 type mutable_or_immutable = F0.mutable_or_immutable
+type recursive = F0.recursive
 
 (* CR-someday mshinwell: Here and everywhere else, once "module type of"
    has been fixed, we will be able to replace "module type of struct include

@@ -22,6 +22,8 @@ module Of_kind_value : sig
     | Tagged_immediate of Immediate.t
     | Dynamically_computed of Variable.t
 
+  val compare : t -> t -> int
+
   val print : Format.formatter -> t -> unit
 end
 
@@ -33,8 +35,9 @@ module Static_part : sig
   (** The static structure of a symbol, possibly with holes, ready to be
       filled with values computed at runtime.  As might be expected, this is
       isomorphic to a subset of [Flambda_type.t]. *)
-  type t = private
-    | Block of Tag.Scannable.t * Flambda.mutable_or_immutable * (Of_kind_value.t list)
+  type t =
+    | Block of Tag.Scannable.t * Flambda.mutable_or_immutable
+        * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
     | Closure of Symbol.t * Closure_id.t
     | Boxed_float of float or_variable
