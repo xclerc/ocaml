@@ -698,6 +698,13 @@ let print ppf t =
       print_variadic_primitive prim
       (Format.pp_print_list ~pp_sep:Format.pp_print_space Variable.print) vs
 
+let rename_variables t ~f =
+  match t with
+  | Unary (prim, x0) -> Unary (prim, f x0)
+  | Binary (prim, x0, x1) -> Binary (prim, f x0, f x1)
+  | Ternary (prim, x0, x1, x2) -> Ternary (prim, f x0, f x1, f x2)
+  | Variadic (prim, xs) -> Variadic (prim, List.map f xs)
+
 let arg_kinds (t : t) : arg_kinds =
   match t with
   | Unary (prim, _) ->

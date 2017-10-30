@@ -19,12 +19,13 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type apply = Flambda0.apply
 type assign = Flambda0.assign
 
 (* CR-someday mshinwell: Here and everywhere else, once "module type of"
    has been fixed, we will be able to replace "module type of struct include
    X end" with just "module type of X". *)
+module Apply :
+  module type of struct include Flambda0.Apply end
 module Call_kind :
   module type of struct include Flambda0.Call_kind end
 module Const :
@@ -119,6 +120,7 @@ module rec Expr : sig
     -> stub:bool
     -> continuation:Continuation.t
     -> return_arity:Flambda_arity.t
+    -> dbg:Debuginfo.t
     -> t) Flambda_type.with_importer
 
   val toplevel_substitution
@@ -231,7 +233,7 @@ module rec Expr : sig
       -> f:(Set_of_closures.t -> Set_of_closures.t)
       -> t
   
-    val map_apply : t -> f:(apply -> apply) -> t
+    val map_apply : t -> f:(Apply.t -> Apply.t) -> t
 
     val map_project_var_to_named_opt
        : t

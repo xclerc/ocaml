@@ -18,10 +18,10 @@
 
 module F0 = Flambda0
 
-type apply = F0.apply
 type assign = F0.assign
+type inline_attribute = F0.inline_attribute
+type specialise_attribute = F0.specialise_attribute
 
-module Call_kind = F0.Call_kind
 module Const = F0.Const
 module Free_var = F0.Free_var
 module Let = F0.Let
@@ -30,6 +30,31 @@ module Let_mutable = F0.Let_mutable
 module Switch = F0.Switch
 module Trap_action = F0.Trap_action
 module With_free_variables = F0.With_free_variables
+
+module Call_kind = struct
+  include F0.Call_kind
+
+  let rename_variables t ~f =
+    match t with
+    | Direct _
+    | Indirect_unknown_arity
+    | Indirect_known_arity _ -> t
+    | Method { kind; obj; } -> Method { kind; obj = f obj; }
+end
+
+module Apply = struct
+  include F0.Apply
+
+  let rename_variables t ~f =
+    { func = f t.func;
+      continuation = t.continuation;
+      args = List.map f t.args;
+      call_kind = Call_kind.rename_variables t.call_kind ~f;
+      dbg = t.dbg;
+      inline = t.inline;
+      specialise = t.specialise;
+    }
+end
 
 module Free_vars = struct
   include F0.Free_vars
@@ -85,6 +110,7 @@ module rec Expr : sig
     -> stub:bool
     -> continuation:Continuation.t
     -> return_arity:Flambda_arity.t
+    -> dbg:Debuginfo.t
     -> t) Flambda_type.with_importer
   val toplevel_substitution
      : (Variable.t Variable.Map.t
@@ -106,7 +132,7 @@ module rec Expr : sig
       }
   val build_let_cont_with_wrappers
      : body:t
-    -> recursive:Flambda.recursive
+    -> recursive:Flambda0.recursive
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
   module Iterators : sig
@@ -154,7 +180,7 @@ module rec Expr : sig
        : t
       -> f:(Set_of_closures.t -> Set_of_closures.t)
       -> t
-    val map_apply : t -> f:(apply -> apply) -> t
+    val map_apply : t -> f:(Apply.t -> Apply.t) -> t
     val map_project_var_to_named_opt
        : t
       -> f:(Projection.Project_var.t -> Named.t option)
@@ -206,10 +232,7 @@ end = struct
     t1 == t2 || (* it is ok for the string case: if they are physically the same,
                    it is the same original branch *)
     match t1, t2 with
-    | Apply a1 , Apply a2  ->
-      a1.kind = a2.kind
-        && Variable.equal a1.func a2.func
-        && Misc.Stdlib.List.equal Variable.equal a1.args a2.args
+    | Apply a1 , Apply a2 -> Apply.equal a1 a2
     | Apply _, _ | _, Apply _ -> false
     | Let { var = var1; defining_expr = defining_expr1; body = body1; _ },
         Let { var = var2; defining_expr = defining_expr2; body = body2; _ } ->
@@ -263,10 +286,10 @@ end = struct
         wrapper_handler : Continuation_handler.t;
       }
 
-  let build_let_cont_with_wrappers ~body ~(recursive : Flambda.recursive)
+  let build_let_cont_with_wrappers ~body ~(recursive : F0.recursive)
         ~with_wrappers : Expr.t =
     match recursive with
-    | Nonrecursive ->
+    | Non_recursive ->
       begin match Continuation.Map.bindings with_wrappers with
       | [cont, Unchanged { handler; }] ->
         Let_cont {
@@ -676,17 +699,8 @@ end = struct
       | Let_mutable mutable_let ->
         let initial_value = sb mutable_let.initial_value in
         Let_mutable { mutable_let with initial_value }
-      | Apply { kind; func; args; continuation; call_kind; dbg; inline;
-          specialise; } ->
-        let kind : apply_kind =
-          match kind with
-          | Function -> Function
-          | Method { kind; obj; } -> Method { kind; obj = sb obj; }
-        in
-        let func = sb func in
-        let args = substitute_args_list args in
-        Apply { kind; func; args; continuation; call_kind; dbg; inline;
-          specialise; }
+      | Apply apply ->
+        Apply (Apply.rename_variables apply ~f:sb)
       | Switch (cond, sw) ->
         let cond = sb cond in
         Switch (cond, sw)
@@ -751,15 +765,15 @@ end = struct
           project_var with
           closure = sb project_var.closure;
         }
-      | Prim (prim, args, dbg) ->
-        Prim (prim, List.map sb args, dbg)
+      | Prim (prim, dbg) ->
+        Prim (Flambda_primitive.rename_variables prim ~f:sb, dbg)
     in
     if Variable.Map.is_empty sb' then tree
     else Mappers.Toplevel_only.map aux aux_named tree
 
   let make_closure_declaration ~importer ~id
         ~free_variable_kind ~body ~params ~continuation_param
-        ~stub ~continuation ~return_arity : Expr.t =
+        ~stub ~continuation ~return_arity ~dbg : Expr.t =
     let my_closure = Variable.rename id in
     let closure_id = Closure_id.wrap id in
     let free_variables = Expr.free_variables body in
@@ -794,7 +808,9 @@ end = struct
             Expr.create_let new_var kind projection body
           | _ ->
             let boxed_var = Variable.rename new_var in
-            let unbox, boxed_kind = Flambda0.Named.unbox_value boxed_var kind in
+            let unbox, boxed_kind =
+              Flambda0.Named.unbox_value boxed_var kind dbg
+            in
             Expr.create_let boxed_var boxed_kind projection
               (Expr.create_let new_var kind unbox body))
         vars_within_closure body
@@ -818,7 +834,7 @@ end = struct
               id, boxed_vars
             | kind ->
               let boxed_var = Variable.rename id in
-              let box, boxed_kind = Flambda0.Named.box_value id kind in
+              let box, boxed_kind = Flambda0.Named.box_value id kind dbg in
               boxed_var,
                 (boxed_var, box, boxed_kind) :: boxed_vars
           in
@@ -908,41 +924,50 @@ end = struct
 
   let invariant ~importer ~return_cont ~return_cont_arity expr =
     let module E = Invariant_env in
-    let rec loop env (t : t) =
+    let unbound_continuation cont reason =
+      Misc.fatal_errorf "Unbound continuation %a in %s: %a"
+        Continuation.print cont
+        reason
+        print expr
+    in
+    let rec loop env (t : t) : unit =
       match t with
-      | Let { var; defining_expr; body; _ } ->
-        loop_named env defining_expr;
+      | Let { var; kind; defining_expr; body; _ } ->
+        Named.invariant env defining_expr;
         let env = E.add_variable env var kind in
         loop env body
       | Let_mutable { var; initial_value; body; contents_type; } ->
         let initial_value_kind = E.kind_of_variable env initial_value in
-        if not (Flambda_kind.equal initial_value_kind contents_type) then begin
+        let contents_kind = Flambda_type.kind ~importer contents_type in
+        if not (Flambda_kind.equal initial_value_kind contents_kind) then begin
           Misc.fatal_errorf "Initial value of [Let_mutable] term has kind %a \
               whereas %a was expected: %a"
             Flambda_kind.print initial_value_kind
-            Flambda_kind.print contents_type
+            Flambda_type.print contents_type
             print t
         end;
-        let env = E.add_mutable_variable env mut_var in
+        let env = E.add_mutable_variable env var contents_kind in
         loop env body
       | Let_cont { body; handlers; } ->
         let handler_stack = E.Continuation_stack.var () in
         let env =
           match handlers with
           | Nonrecursive { name; handler; } ->
-            let kind = if handler.is_exn_handler then Exn_handler else Normal in
+            let kind : E.continuation_kind =
+              if handler.is_exn_handler then Exn_handler else Normal
+            in
             let params = handler.params in
-            let arity = Flambda.Typed_parameter.List.arity ~importer params in
+            let arity = Typed_parameter.List.arity ~importer params in
             let env = E.add_typed_parameters ~importer env params in
             let env = E.set_current_continuation_stack env handler_stack in
-            loop ~importer env handler.handler;
-            add_continuation env name arity kind handler_stack
+            loop env handler.handler;
+            E.add_continuation env name arity kind handler_stack
           | Recursive handlers ->
             let recursive_env =
               Continuation.Map.fold
                 (fun cont (handler : Continuation_handler.t) env ->
                   let arity =
-                    Flambda.Typed_parameter.List.arity ~importer handler.params
+                    Typed_parameter.List.arity ~importer handler.params
                   in
                   let kind : Invariant_env.continuation_kind =
                     if handler.is_exn_handler then Exn_handler else Normal
@@ -953,7 +978,7 @@ end = struct
             in
             Continuation.Map.iter
               (fun name ({ params; stub; is_exn_handler; handler; }
-                    : Flambda.Continuation_handler.t) ->
+                    : Continuation_handler.t) ->
                 if is_exn_handler then begin
                   Misc.fatal_errorf "Continuation %a is declared [Recursive] \
                       but is an exception handler"
@@ -963,42 +988,37 @@ end = struct
                   E.add_typed_parameters ~importer recursive_env params
                 in
                 let env = E.set_current_continuation_stack env handler_stack in
-                loop ~importer env handler;
+                loop env handler;
                 ignore (stub : bool))
               handlers;
             Continuation.Map.fold
               (fun cont (handler : Continuation_handler.t) env ->
                 let arity =
-                  Flambda.Typed_parameter.List.arity ~importer handler.params
+                  Typed_parameter.List.arity ~importer handler.params
                 in
-                let kind =
+                let kind : E.continuation_kind =
                   if handler.is_exn_handler then Exn_handler else Normal
                 in
                 E.add_continuation env cont arity kind handler_stack)
               handlers
               env
         in
-        loop ~importer env body
+        loop env body
       | Apply_cont (cont, trap_action, args) ->
         let args_arity =
           List.map (fun arg -> E.kind_of_variable env arg) args
         in
-        let unbound_continuation cont reason =
-          Misc.fatal_errorf "Unbound continuation %a in %s: %a"
-            Continuation.print cont
-            reason
-            print expr
-        in
         let arity, kind, cont_stack =
-          match E.find_continuation_opt cont env with
+          match E.find_continuation_opt env cont with
           | Some result -> result
           | None -> unbound_continuation cont "[Apply_cont] term"
         in
+        let stack = E.current_continuation_stack env in
         E.Continuation_stack.unify cont stack cont_stack;
         if not (Flambda_arity.equal args_arity arity) then begin
           Misc.fatal_errorf "Continuation %a called with wrong arity in \
               this [Apply_cont] term: expected %a but found %a: %a"
-            Continuation.print continuation
+            Continuation.print cont
             Flambda_arity.print args_arity
             Flambda_arity.print arity
             print expr
@@ -1028,11 +1048,11 @@ end = struct
             end;
             assert (not (Continuation.equal cont exn_handler));
             let expected_arity = [Flambda_kind.value Must_scan] in
-            if not (Flambda_arity.equal arity expected) then begin
+            if not (Flambda_arity.equal arity expected_arity) then begin
               Misc.fatal_errorf "Exception handler continuation %a has \
                   the wrong arity for the trap handler action of this \
                   [Apply] term: expected %a but found %a: %a"
-                Continuation.print continuation
+                Continuation.print cont
                 Flambda_arity.print expected_arity
                 Flambda_arity.print arity
                 print expr
@@ -1041,20 +1061,21 @@ end = struct
         in
         let current_stack = E.current_continuation_stack env in
         let stack, cont_stack =
-          match exn with
+          match trap_action with
           | None -> current_stack, cont_stack
-          | Some (Push { id = _; exn_handler }) ->
-            let cont_stack = check exn_handler in
+          | Some (Push { id; exn_handler }) ->
+            let cont_stack = check_trap_action exn_handler in
             E.Continuation_stack.push id exn_handler current_stack, cont_stack
-          | Some (Pop { id = _; exn_handler }) ->
-            let cont_stack = check exn_handler in
+          | Some (Pop { id; exn_handler }) ->
+            let cont_stack = check_trap_action exn_handler in
             current_stack, E.Continuation_stack.push id exn_handler cont_stack
         in
         E.Continuation_stack.unify cont stack cont_stack
       | Apply { func; continuation; args; call_kind; dbg; inline;
                 specialise; } ->
         let stack = E.current_continuation_stack env in
-        check_variable_is_bound_and_of_kind_value env func;
+        E.check_variable_is_bound_and_of_kind env func
+          (Flambda_kind.value Must_scan);
         let args_must_be_of_kind_value =
           match call_kind with
           | Direct { closure_id; return_arity; } ->
@@ -1075,13 +1096,15 @@ end = struct
             false
           | Method { kind; obj; } ->
             ignore (kind : Call_kind.method_kind);
-            check_variable_is_bound_and_of_kind_value env obj;
+            E.check_variable_is_bound_and_of_kind env obj
+              (Flambda_kind.value Must_scan);
             true
         in
         if args_must_be_of_kind_value then begin
-          check_variables_are_bound_and_of_kind_value env args
+          E.check_variables_are_bound_and_of_kind env args
+            (Flambda_kind.value Must_scan)
         end else begin
-          check_variables_are_bound env args
+          E.check_variables_are_bound env args
         end;
         begin match E.find_continuation_opt env continuation with
         | None ->
@@ -1092,10 +1115,10 @@ end = struct
           | Exn_handler ->
             Misc.fatal_errorf "Continuation %a is an exception handler \
                 but is used in this [Apply] term as a return continuation: %a"
-              Continuation.print cont
+              Continuation.print continuation
               print expr
           end;
-          let expected_arity = Flambda.Call_kind.return_arity call_kind in
+          let expected_arity = Call_kind.return_arity call_kind in
           if not (Flambda_arity.equal arity expected_arity) then begin
             Misc.fatal_errorf "Continuation %a called with wrong arity in \
                 this [Apply] term: expected %a but found %a: %a"
@@ -1106,21 +1129,23 @@ end = struct
           end;
           E.Continuation_stack.unify continuation stack cont_stack
         end;
-        ignore (dbg : Debuginfo.t)
+        ignore (dbg : Debuginfo.t);
         ignore (inline : inline_attribute);
         ignore (specialise : specialise_attribute)
       | Switch (arg, { numconsts; consts; failaction; }) ->
-        E.check_variable_is_bound_and_of_kind_value env arg;
+        E.check_variable_is_bound_and_of_kind env arg
+          (Flambda_kind.value Must_scan);
         ignore (numconsts : Targetint.Set.t);
         if List.length consts < 1 then begin
           Misc.fatal_errorf "Empty switch: %a" print t
         end;
         let check (i, cont) =
           ignore (i : Targetint.t);
-          match Continuation.Map.find cont env.continuations with
-          | exception Not_found ->
+          match E.find_continuation_opt env cont with
+          | None ->
             unbound_continuation cont "[Switch] term"
-          | arity, kind, cont_stack ->
+          | Some (arity, kind, cont_stack) ->
+            let current_stack = E.current_continuation_stack env in
             E.Continuation_stack.unify cont cont_stack current_stack;
             begin match kind with
             | Normal -> ()
@@ -1143,21 +1168,20 @@ end = struct
         | Some cont ->
           check (Targetint.zero, cont);
           let cont_stack =
-            match Continuation.Map.find cont env with
-            | exception Not_found ->
-              Misc.fatal_errorf "Unbound continuation %a in switch %a"
-                Continuation.print cont
-                Flambda.Expr.print expr
-            | cont_stack -> cont_stack
+            match E.find_continuation_opt env cont with
+            | None -> unbound_continuation cont "[Switch] term"
+            | Some (_arity, _kind, cont_stack) -> cont_stack
           in
+          let current_stack = E.current_continuation_stack env in
           E.Continuation_stack.unify cont cont_stack current_stack
         end
       | Invalid _ -> ()
     in
     let env =
       E.add_continuation (E.create ()) return_cont return_cont_arity Normal
+        (E.Continuation_stack.var ())
     in
-    let result = loop ~importer env expr in
+    let result = loop env expr in
     let current_compilation_unit = Compilation_unit.get_current_exn () in
     Iterators.iter_sets_of_closures
       (fun ({ Set_of_closures. function_decls; _ } as set) ->
@@ -1170,9 +1194,9 @@ end = struct
         then begin
           Misc.fatal_errorf "Term declares closure from another compilation \
               unit: %a"
-            Set_of_closures.print t
+            Set_of_closures.print set
         end)
-      t
+      expr
 end and Named : sig
   include module type of F0.Named
 

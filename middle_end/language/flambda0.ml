@@ -43,6 +43,38 @@ module Call_kind = struct
       }
     | Method of { kind : method_kind; obj : Variable.t; }
 
+
+  let equal t1 t2 =
+    match t1, t2 with
+    | Direct { closure_id = closure_id1; return_arity = return_arity1; },
+        Direct { closure_id = closure_id2; return_arity = return_arity2; } ->
+      Closure_id.equal closure_id1 closure_id2
+        && Flambda_arity.equal return_arity1 return_arity2
+    | Indirect_unknown_arity, Indirect_unknown_arity -> true
+    | Indirect_known_arity {
+        param_arity = param_arity1; return_arity = return_arity1;
+      },
+        Indirect_known_arity {
+          param_arity = param_arity2; return_arity = return_arity2;
+        } ->
+      Flambda_arity.equal param_arity1 param_arity2
+        && Flambda_arity.equal return_arity1 return_arity2
+    | Method { kind = kind1; obj = obj1; },
+        Method { kind = kind2; obj = obj2; } ->
+      Variable.equal obj1 obj2
+        && begin match kind1, kind2 with
+           | Self, Self
+           | Public, Public
+           | Cached, Cached -> true
+           | Self, _
+           | Public, _
+           | Cached, _ -> false
+           end
+    | Direct _, _
+    | Indirect_unknown_arity, _
+    | Indirect_known_arity _, _
+    | Method _, _ -> false
+
   let print ppf t =
     let fprintf = Format.fprintf in
     match t with
@@ -154,15 +186,26 @@ let _print_specialise_attribute ppf attr =
   | Never_specialise -> fprintf ppf "Never_specialise"
   | Default_specialise -> fprintf ppf "Default_specialise"
 
-type apply = {
-  func : Variable.t;
-  continuation : Continuation.t;
-  args : Variable.t list;
-  call_kind : Call_kind.t;
-  dbg : Debuginfo.t;
-  inline : inline_attribute;
-  specialise : specialise_attribute;
-}
+module Apply = struct
+  type t = {
+    func : Variable.t;
+    continuation : Continuation.t;
+    args : Variable.t list;
+    call_kind : Call_kind.t;
+    dbg : Debuginfo.t;
+    inline : inline_attribute;
+    specialise : specialise_attribute;
+  }
+
+  let equal t1 t2 =
+    Variable.equal t1.func t2.func
+      && Continuation.equal t1.continuation t2.continuation
+      && Misc.Stdlib.List.equal Variable.equal t1.args t2.args
+      && Call_kind.equal t1.call_kind t2.call_kind
+      && Debuginfo.equal t1.dbg t2.dbg
+      && t1.inline = t2.inline
+      && t1.specialise = t2.specialise
+end
 
 type assign = {
   being_assigned : Mutable_variable.t;
@@ -348,7 +391,7 @@ module rec Expr : sig
     | Let of Let.t
     | Let_mutable of Let_mutable.t
     | Let_cont of Let_cont.t
-    | Apply of apply
+    | Apply of Apply.t
     | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
     | Switch of Variable.t * Switch.t
     | Invalid of invalid_term_semantics

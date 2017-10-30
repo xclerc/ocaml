@@ -27,8 +27,6 @@ module Continuation_stack : sig
   val root : unit -> t
   val push : Trap_id.t -> Continuation.t -> t -> t
 
-  val repr : t -> t
-
   val unify : Continuation.t -> t -> t -> unit
 end
 
@@ -74,23 +72,19 @@ val add_set_of_closures_id : t -> Set_of_closures_id.t -> unit
 
 val check_variable_is_bound : t -> Variable.t -> unit
 
-val check_variable_is_bound_and_of_kind_value : t -> Variable.t -> unit
+val check_variables_are_bound : t -> Variable.t list -> unit
 
-val check_variable_is_bound_and_of_kind_value_must_scan
+val check_variable_is_bound_and_of_kind
    : t
   -> Variable.t
+  -> Flambda_kind.t
   -> unit
 
-val check_variable_is_bound_and_of_kind_naked_int32 : t -> Variable.t -> unit
-
-val check_variable_is_bound_and_of_kind_naked_int64 : t -> Variable.t -> unit
-
-val check_variable_is_bound_and_of_kind_naked_nativeint
+val check_variables_are_bound_and_of_kind
    : t
-  -> Variable.t
+  -> Variable.t list
+  -> Flambda_kind.t
   -> unit
-
-val check_variable_is_bound_and_of_kind_naked_float : t -> Variable.t -> unit
 
 val check_mutable_variable_is_bound : t -> Mutable_variable.t -> unit
 
@@ -100,6 +94,8 @@ val find_continuation_opt
    : t
   -> Continuation.t
   -> (Flambda_arity.t * continuation_kind * Continuation_stack.t) option
+
+val continuation_arity : t -> Continuation.t -> Flambda_arity.t
 
 val kind_of_variable : t -> Variable.t -> Flambda_kind.t
 

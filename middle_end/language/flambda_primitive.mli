@@ -195,6 +195,9 @@ type t =
 (** Print a primitive and its arguments to a formatter. *)
 val print : Format.formatter -> t -> unit
 
+(** Rename variables in a primitive application. *)
+val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
+
 (** A description of the kinds of values which a primitive expects as
     its arguments. *)
 type arg_kinds =

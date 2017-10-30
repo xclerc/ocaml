@@ -44,6 +44,8 @@ module Call_kind : sig
     | Method of { kind : method_kind; obj : Variable.t; }
 
   val return_arity : t -> Flambda_arity.t
+
+  val equal : t -> t -> bool
 end
 
 (** Simple constants which can be held entirely in registers. *)
@@ -72,22 +74,26 @@ type specialise_attribute =
 
 (** The application of a function (or method on a given object) to a list of
     arguments. *)
-type apply = {
-  (* CR-soon mshinwell: rename func -> callee, and
-     lhs_of_application -> callee *)
-  func : Variable.t;
-  continuation : Continuation.t;
-  (** Where to send the result of the application. *)
-  args : Variable.t list;
-  call_kind : Call_kind.t;
-  dbg : Debuginfo.t;
-  inline : inline_attribute;
-  (** Instructions from the source code as to whether the callee should
-      be inlined. *)
-  specialise : specialise_attribute;
-  (** Instructions from the source code as to whether the callee should
-      be specialised. *)
-}
+module Apply : sig
+  type t = {
+    (* CR-soon mshinwell: rename func -> callee, and
+      lhs_of_application -> callee *)
+    func : Variable.t;
+    continuation : Continuation.t;
+    (** Where to send the result of the application. *)
+    args : Variable.t list;
+    call_kind : Call_kind.t;
+    dbg : Debuginfo.t;
+    inline : inline_attribute;
+    (** Instructions from the source code as to whether the callee should
+        be inlined. *)
+    specialise : specialise_attribute;
+    (** Instructions from the source code as to whether the callee should
+        be specialised. *)
+  }
+
+  val equal : t -> t -> bool
+end
 
 (** The update of a mutable variable.  Mutable variables are distinct from
     immutable variables in Flambda. *)
@@ -216,7 +222,7 @@ module rec Expr : sig
     | Let of Let.t
     | Let_mutable of Let_mutable.t
     | Let_cont of Let_cont.t
-    | Apply of apply
+    | Apply of Apply.t
     | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
     | Switch of Variable.t * Switch.t
     | Invalid of invalid_term_semantics

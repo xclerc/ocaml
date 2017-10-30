@@ -38,6 +38,8 @@ val inline: Location.t -> t -> t
 
 val compare : t -> t -> int
 
+val equal : t -> t -> bool
+
 val hash : t -> int
 
 val print_or_elide : Format.formatter -> t -> unit
