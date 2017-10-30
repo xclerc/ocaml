@@ -53,11 +53,23 @@ external div : int64 -> int64 -> int64 = "%int64_div"
    argument is zero.  This division rounds the real quotient of
    its arguments towards zero, as specified for {!Pervasives.(/)}. *)
 
+val div_unsigned : int64 -> int64 -> int64
+(** Same as [div], except that arguments and result are interpreted as {e
+    unsigned} 64-bit integers.
+
+    @since 4.07.0 *)
+
 external rem : int64 -> int64 -> int64 = "%int64_mod"
 (** Integer remainder.  If [y] is not zero, the result
    of [Int64.rem x y] satisfies the following property:
    [x = Int64.add (Int64.mul (Int64.div x y) y) (Int64.rem x y)].
    If [y = 0], [Int64.rem x y] raises [Division_by_zero]. *)
+
+val rem_unsigned : int64 -> int64 -> int64
+(** Same as [rem], except that arguments and result are interpreted as {e
+    unsigned} 64-bit integers.
+
+    @since 4.07.0 *)
 
 val succ : int64 -> int64
 (** Successor.  [Int64.succ x] is [Int64.add x Int64.one]. *)
@@ -150,7 +162,7 @@ external to_nativeint : int64 -> nativeint = "%int64_to_nativeint"
 
 external of_string : string -> int64 = "caml_int64_of_string"
 (** Convert the given string to a 64-bit integer.
-   The string is read in decimal (by default, or if the string 
+   The string is read in decimal (by default, or if the string
    begins with [0u]) or in hexadecimal, octal or binary if the
    string begins with [0x], [0o] or [0b] respectively.
 
@@ -196,6 +208,12 @@ val compare: t -> t -> int
     {!Pervasives.compare}.  Along with the type [t], this function [compare]
     allows the module [Int64] to be passed as argument to the functors
     {!Set.Make} and {!Map.Make}. *)
+
+val compare_unsigned: t -> t -> int
+(** Same as [compare], except that arguments are interpreted as {e unsigned}
+    64-bit integers.
+
+    @since 4.07.0 *)
 
 val equal: t -> t -> bool
 (** The equal function for int64s.

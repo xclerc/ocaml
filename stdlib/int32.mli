@@ -52,11 +52,23 @@ external div : int32 -> int32 -> int32 = "%int32_div"
    argument is zero.  This division rounds the real quotient of
    its arguments towards zero, as specified for {!Pervasives.(/)}. *)
 
+val div_unsigned : int32 -> int32 -> int32
+(** Same as [div], except that arguments and result are interpreted as {e
+    unsigned} 32-bit integers.
+
+    @since 4.07.0 *)
+
 external rem : int32 -> int32 -> int32 = "%int32_mod"
 (** Integer remainder.  If [y] is not zero, the result
    of [Int32.rem x y] satisfies the following property:
    [x = Int32.add (Int32.mul (Int32.div x y) y) (Int32.rem x y)].
    If [y = 0], [Int32.rem x y] raises [Division_by_zero]. *)
+
+val rem_unsigned : int32 -> int32 -> int32
+(** Same as [rem], except that arguments and result are interpreted as {e
+    unsigned} 32-bit integers.
+
+    @since 4.07.0 *)
 
 val succ : int32 -> int32
 (** Successor.  [Int32.succ x] is [Int32.add x Int32.one]. *)
@@ -128,7 +140,7 @@ external to_float : int32 -> float
 
 external of_string : string -> int32 = "caml_int32_of_string"
 (** Convert the given string to a 32-bit integer.
-   The string is read in decimal (by default, or if the string 
+   The string is read in decimal (by default, or if the string
    begins with [0u]) or in hexadecimal, octal or binary if the
    string begins with [0x], [0o] or [0b] respectively.
 
@@ -175,6 +187,12 @@ val compare: t -> t -> int
     {!Pervasives.compare}.  Along with the type [t], this function [compare]
     allows the module [Int32] to be passed as argument to the functors
     {!Set.Make} and {!Map.Make}. *)
+
+val compare_unsigned: t -> t -> int
+(** Same as [compare], except that arguments are interpreted as {e unsigned}
+    32-bit integers.
+
+    @since 4.07.0 *)
 
 val equal: t -> t -> bool
 (** The equal function for int32s.
