@@ -1762,7 +1762,9 @@ middle_end/language/flambda.cmo : middle_end/base_types/variable.cmi \
     middle_end/language/projection.cmi \
     middle_end/base_types/mutable_variable.cmi utils/misc.cmi \
     middle_end/language/invariant_env.cmi \
-    middle_end/language/flambda_type.cmi middle_end/language/flambda_kind.cmi \
+    middle_end/language/flambda_type.cmi \
+    middle_end/language/flambda_primitive.cmi \
+    middle_end/language/flambda_kind.cmi \
     middle_end/language/flambda_arity.cmi middle_end/language/flambda0.cmi \
     middle_end/language/flambda.cmi middle_end/base_types/debuginfo.cmi \
     middle_end/base_types/continuation.cmi \
@@ -1778,7 +1780,9 @@ middle_end/language/flambda.cmx : middle_end/base_types/variable.cmx \
     middle_end/language/projection.cmx \
     middle_end/base_types/mutable_variable.cmx utils/misc.cmx \
     middle_end/language/invariant_env.cmx \
-    middle_end/language/flambda_type.cmx middle_end/language/flambda_kind.cmx \
+    middle_end/language/flambda_type.cmx \
+    middle_end/language/flambda_primitive.cmx \
+    middle_end/language/flambda_kind.cmx \
     middle_end/language/flambda_arity.cmx middle_end/language/flambda0.cmx \
     middle_end/language/flambda.cmx middle_end/base_types/debuginfo.cmx \
     middle_end/base_types/continuation.cmx \
@@ -1866,18 +1870,21 @@ middle_end/language/flambda_kind.cmi : utils/identifiable.cmi
 middle_end/language/flambda_primitive.cmo : \
     middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \
     middle_end/base_types/linkage_name.cmi \
+    middle_end/language/invariant_env.cmi \
     middle_end/language/flambda_kind.cmi \
     middle_end/language/flambda_arity.cmi \
     middle_end/language/flambda_primitive.cmi
 middle_end/language/flambda_primitive.cmx : \
     middle_end/base_types/variable.cmx middle_end/base_types/tag.cmx \
     middle_end/base_types/linkage_name.cmx \
+    middle_end/language/invariant_env.cmx \
     middle_end/language/flambda_kind.cmx \
     middle_end/language/flambda_arity.cmx \
     middle_end/language/flambda_primitive.cmi
 middle_end/language/flambda_primitive.cmi : \
     middle_end/base_types/variable.cmi middle_end/base_types/tag.cmi \
     middle_end/base_types/linkage_name.cmi \
+    middle_end/language/invariant_env.cmi \
     middle_end/language/flambda_kind.cmi \
     middle_end/language/flambda_arity.cmi
 middle_end/language/flambda_static.cmo : middle_end/base_types/variable.cmi \
@@ -2044,28 +2051,34 @@ middle_end/language/freshening.cmi : middle_end/base_types/variable.cmi \
     middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi
 middle_end/language/invariant_env.cmo : middle_end/base_types/variable.cmi \
+    middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/trap_id.cmi middle_end/base_types/symbol.cmi \
+    middle_end/base_types/set_of_closures_id.cmi \
     middle_end/base_types/mutable_variable.cmi utils/misc.cmi \
     middle_end/language/flambda_kind.cmi \
-    middle_end/language/flambda_arity.cmi middle_end/language/flambda.cmi \
+    middle_end/language/flambda_arity.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/base_types/compilation_unit.cmi \
+    middle_end/base_types/closure_id.cmi \
     middle_end/language/invariant_env.cmi
 middle_end/language/invariant_env.cmx : middle_end/base_types/variable.cmx \
+    middle_end/base_types/var_within_closure.cmx \
     middle_end/base_types/trap_id.cmx middle_end/base_types/symbol.cmx \
+    middle_end/base_types/set_of_closures_id.cmx \
     middle_end/base_types/mutable_variable.cmx utils/misc.cmx \
     middle_end/language/flambda_kind.cmx \
-    middle_end/language/flambda_arity.cmx middle_end/language/flambda.cmx \
+    middle_end/language/flambda_arity.cmx \
     middle_end/base_types/continuation.cmx \
     middle_end/base_types/compilation_unit.cmx \
+    middle_end/base_types/closure_id.cmx \
     middle_end/language/invariant_env.cmi
 middle_end/language/invariant_env.cmi : middle_end/base_types/variable.cmi \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/trap_id.cmi middle_end/base_types/symbol.cmi \
     middle_end/base_types/set_of_closures_id.cmi \
     middle_end/base_types/mutable_variable.cmi \
-    middle_end/language/flambda_type.cmi middle_end/language/flambda_kind.cmi \
-    middle_end/language/flambda_arity.cmi middle_end/language/flambda0.cmi \
+    middle_end/language/flambda_kind.cmi \
+    middle_end/language/flambda_arity.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi
 middle_end/language/projection.cmo : middle_end/base_types/variable.cmi \

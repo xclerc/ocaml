@@ -41,11 +41,6 @@ val add_variable : t -> Variable.t -> Flambda_kind.t -> t
 
 val add_variables : t -> (Variable.t * Flambda_kind.t) list -> t
 
-val add_typed_parameters
-   : (t
-  -> Flambda0.Typed_parameter.t list
-  -> t) Flambda_type.with_importer
-
 val add_mutable_variable : t -> Mutable_variable.t -> Flambda_kind.t -> t
 
 val add_symbol : t -> Symbol.t -> t

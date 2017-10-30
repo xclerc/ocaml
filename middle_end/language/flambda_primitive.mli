@@ -33,6 +33,7 @@ type array_kind =
   | Can_scan
   | Naked_float
 
+(* CR mshinwell: "Float" -> "Naked_float"? *)
 type field_kind = Not_a_float | Float
 
 type string_or_bytes = String | Bytes
@@ -192,12 +193,16 @@ type t =
   | Ternary of ternary_primitive * Variable.t * Variable.t * Variable.t
   | Variadic of variadic_primitive * (Variable.t list)
 
+(** Check the well-formedness of a primitive application. *)
+val invariant : Invariant_env.t -> t -> unit
+
 (** Print a primitive and its arguments to a formatter. *)
 val print : Format.formatter -> t -> unit
 
 (** Rename variables in a primitive application. *)
 val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
 
+(* Probably not required
 (** A description of the kinds of values which a primitive expects as
     its arguments. *)
 type arg_kinds =
@@ -209,6 +214,7 @@ type arg_kinds =
 
 (** Describe the argument kinds required for the given primitive. *)
 val arg_kinds : t -> arg_kinds
+*)
 
 (** A description of the kinds of values (or in the case of [Unit], the
     actual value) which a primitive expects as its arguments. *)

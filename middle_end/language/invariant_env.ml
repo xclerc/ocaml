@@ -157,14 +157,6 @@ let add_variable t var kind =
 let add_variables t vars_and_kinds =
   List.fold_left (fun t (var, kind) -> add_variable t var kind) t vars_and_kinds
 
-let add_typed_parameters ~importer t params =
-  List.fold_left (fun t param ->
-      let var = Flambda.Typed_parameter.var param in
-      let kind = Flambda.Typed_parameter.kind ~importer param in
-      add_variable t var kind)
-    t
-    params
-
 let add_mutable_variable t var kind =
   if Mutable_variable.Map.mem var t.mutable_variables then begin
     Misc.fatal_errorf "Duplicate binding of mutable variable %a which is \

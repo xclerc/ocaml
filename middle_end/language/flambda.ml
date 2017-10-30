@@ -930,10 +930,34 @@ end = struct
         reason
         print expr
     in
+    let add_typed_parameters ~importer t params =
+      List.fold_left (fun t param ->
+          let var = Typed_parameter.var param in
+          let kind = Typed_parameter.kind ~importer param in
+          E.add_variable t var kind)
+        t
+        params
+    in
     let rec loop env (t : t) : unit =
       match t with
       | Let { var; kind; defining_expr; body; _ } ->
-        Named.invariant env defining_expr;
+        let named_kind =
+          match Named.invariant env defining_expr with
+          | Singleton kind -> Some kind
+          | Unit -> Some (Flambda_kind.value Can_scan)
+          | Never_returns -> None
+        in
+        begin match named_kind with
+        | None -> ()
+        | Some named_kind ->
+          if not (Flambda_kind.equal kind named_kind) then begin
+            Misc.fatal_errorf "[Let] expression kind annotation (%a) does not \
+                match the inferred kind (%a) of the defining expression: %a"
+              Flambda_kind.print kind
+              Flambda_kind.print named_kind
+              print t
+          end
+        end;
         let env = E.add_variable env var kind in
         loop env body
       | Let_mutable { var; initial_value; body; contents_type; } ->
@@ -958,7 +982,7 @@ end = struct
             in
             let params = handler.params in
             let arity = Typed_parameter.List.arity ~importer params in
-            let env = E.add_typed_parameters ~importer env params in
+            let env = add_typed_parameters ~importer env params in
             let env = E.set_current_continuation_stack env handler_stack in
             loop env handler.handler;
             E.add_continuation env name arity kind handler_stack
@@ -985,7 +1009,7 @@ end = struct
                     Continuation.print name
                 end;
                 let env =
-                  E.add_typed_parameters ~importer recursive_env params
+                  add_typed_parameters ~importer recursive_env params
                 in
                 let env = E.set_current_continuation_stack env handler_stack in
                 loop env handler;
@@ -1200,7 +1224,7 @@ end = struct
 end and Named : sig
   include module type of F0.Named
 
-  val invariant : Invariant_env.t -> t -> unit
+  val invariant : Invariant_env.t -> t -> Flambda_primitive.result_kind
   val equal : t -> t -> bool
   val toplevel_substitution
      : (Variable.t Variable.Map.t
@@ -1235,8 +1259,10 @@ end = struct
     | Project_var project_var -> Project_var project_var
     | Project_closure project_closure -> Project_closure project_closure
     | Move_within_set_of_closures move -> Move_within_set_of_closures move
-    | Pure_primitive (prim, vars) -> Prim (prim, vars, dbg)
-    | Field (field, block) -> Prim (Pfield field, [block], dbg)
+    | Pure_primitive prim -> Prim (prim, dbg)
+    | Field (field, block) ->
+      (* CR mshinwell: Is this definitely always "not a naked float"? *)
+      Prim (Unary (Block_load (field, Not_a_float), block), dbg)
     | Switch _ ->
       (* CR mshinwell: This is dubious -- check usage *)
       Misc.fatal_error "Unsupported"
@@ -1297,32 +1323,42 @@ end = struct
     end
   end
 
-  let invariant ~importer env t : Flambda_kind.t =
+  (* CR mshinwell: It seems that the type [Flambda_primitive.result_kind]
+     should move into [Flambda_kind], now it's used here. *)
+  let invariant ~importer env t : Flambda_primitive.result_kind =
     let module E = Invariant_env in
     match t with
-    | Var var -> E.kind_of_variable env var
+    | Var var ->
+      Singleton (E.kind_of_variable env var)
     | Symbol symbol ->
       E.check_symbol_is_bound env symbol;
-      Flambda_kind.value Can_scan
-    | Const (Untagged_immediate _) -> Flambda_kind.naked_immediate ()
-    | Const (Tagged_immediate _) -> Flambda_kind.value Can_scan
-    | Const (Naked_float _) -> Flambda_kind.naked_float ()
-    | Const (Naked_int32 _) -> Flambda_kind.naked_int32 ()
-    | Const (Naked_int64 _) -> Flambda_kind.naked_int64 ()
-    | Const (Naked_nativeint _) -> Flambda_kind.naked_nativeint ()
-    | Read_mutable mut_var -> E.kind_of_mutable_variable env mut_var
+      Singleton (Flambda_kind.value Can_scan)
+    | Const (Untagged_immediate _) ->
+      Singleton (Flambda_kind.naked_immediate ())
+    | Const (Tagged_immediate _) ->
+      Singleton (Flambda_kind.value Can_scan)
+    | Const (Naked_float _) ->
+      Singleton (Flambda_kind.naked_float ())
+    | Const (Naked_int32 _) ->
+      Singleton (Flambda_kind.naked_int32 ())
+    | Const (Naked_int64 _) ->
+      Singleton (Flambda_kind.naked_int64 ())
+    | Const (Naked_nativeint _) ->
+      Singleton (Flambda_kind.naked_nativeint ())
+    | Read_mutable mut_var ->
+      Singleton (E.kind_of_mutable_variable env mut_var)
     | Assign { being_assigned; new_value; } ->
       let being_assigned_kind = E.kind_of_mutable_variable env being_assigned in
       let new_value_kind = E.kind_of_variable env new_value in
       if not (Flambda_kind.equal new_value_kind being_assigned_kind) then begin
         Misc.fatal_errorf "Cannot put value %a of kind %a into mutable \
             variable %a with contents kind %a"
-          Variable.print new_value;
+          Variable.print new_value
           Flambda_kind.print new_value_kind
-          Mutable_variable.print new_value
+          Mutable_variable.print being_assigned
           Flambda_kind.print being_assigned_kind
       end;
-      Flambda_kind.value Can_scan
+      Singleton (Flambda_kind.value Can_scan)
     | Read_symbol_field (symbol, field) ->
       E.check_symbol_is_bound env symbol;
       if field < 0 then begin
@@ -1330,59 +1366,38 @@ end = struct
           field
           print t
       end;
-      assert false (* XXX how are we going to track the contents kind? *)
+      (* This must be [Must_scan] as the field might be mutable. *)
+      Singleton (Flambda_kind.value Must_scan)
     | Set_of_closures set_of_closures ->
       Set_of_closures.invariant ~importer env set_of_closures;
-      Flambda_kind.value Must_scan
+      Singleton (Flambda_kind.value Must_scan)
     | Project_closure { set_of_closures; closure_id; } ->
-      E.check_variable_is_bound_and_of_kind_scannable_value env set_of_closures;
+      E.check_variable_is_bound_and_of_kind env set_of_closures
+        (Flambda_kind.value Must_scan);
       Closure_id.Set.iter (fun closure_id ->
           E.add_use_of_closure_id env closure_id)
-        env;
-      Flambda_kind.value Must_scan
+        closure_id;
+      Singleton (Flambda_kind.value Must_scan)
     | Move_within_set_of_closures { closure; move } ->
-      E.check_variable_is_bound_and_of_kind_scannable_value env closure;
+      E.check_variable_is_bound_and_of_kind env closure
+        (Flambda_kind.value Must_scan);
       Closure_id.Map.iter (fun closure_id move_to ->
           E.add_use_of_closure_id env closure_id;
           E.add_use_of_closure_id env move_to)
         move;
-      Flambda_kind.value Must_scan
+      Singleton (Flambda_kind.value Must_scan)
     | Project_var { closure; var; } ->
-      E.check_variable_is_bound_and_of_kind_scannable_value env closure;
+      E.check_variable_is_bound_and_of_kind env closure
+        (Flambda_kind.value Must_scan);
       Closure_id.Map.iter (fun closure_id var_within_closure ->
           E.add_use_of_closure_id env closure_id;
           E.add_use_of_var_within_closure env var_within_closure)
         var;
-      Flambda_kind.value Must_scan
-    | Prim (prim, args, dbg) ->
-      E.check_variables_are_bound env args;
-      ignore_debuginfo dbg
-(*
-      let must_scan = Flambda_kind.value Must_scan in
-      let can_scan = Flambda_kind.value Can_scan in
-      let args_kind, result_kind =
-        let args_kind =
-          match args_kind with
-          | Exactly args_kind ->
-            if List.length args <> List.length args_kind then begin
-              Misc.fatal_errorf "Primitive application has the wrong number of \
-                  arguments: %a"
-                print t
-            end;
-            args_kind
-          | All_of_kind kind -> List.init (List.length args) kind
-        in
-        List.for_all2 (fun arg kind ->
-            let arg_kind = E.kind_of_variable env arg in
-            if not (Flambda_kind.compatible arg arg_kind) then begin
-              Misc.fatal_errorf "Wrong kind for primitive argument %a: %a"
-                Variable.print arg
-                print t
-            end)
-          args args_kind
-        result_kind
-      end
-*)
+      Singleton (Flambda_kind.value Must_scan)
+    | Prim (prim, dbg) ->
+      Flambda_primitive.invariant env prim;
+      ignore (dbg : Debuginfo.t);
+      Flambda_primitive.result_kind prim
 end and Let_cont_handlers : sig
   include module type of F0.Let_cont_handlers
 
@@ -1427,6 +1442,8 @@ end = struct
 end and Set_of_closures : sig
   include module type of F0.Set_of_closures
 
+  val invariant : (Invariant_env.t -> t -> unit) Flambda_type.with_importer
+
   val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
 
   (* CR mshinwell: swap parameters and add "_exn" suffix or similar *)
@@ -1465,7 +1482,7 @@ end = struct
   let variables_bound_by_the_closure t =
     Var_within_closure.Map.keys t.free_vars
 
-  let find_free_variable cv ({ free_vars } : t) =
+  let find_free_variable cv ({ free_vars; _ } : t) =
     let free_var : Free_var.t =
       Var_within_closure.Map.find cv free_vars
     in
@@ -1544,11 +1561,11 @@ end = struct
 
   let invariant ~importer env
         ({ function_decls; free_vars; direct_call_surrogates = _; } as t) =
-    let module I = Invariant_env in
+    let module E = Invariant_env in
     let ignore_set_of_closures_id (_ : Set_of_closures_id.t) = () in
     let ignore_set_of_closures_origin (_ : Set_of_closures_origin.t) = () in
     (* CR-soon mshinwell: check [direct_call_surrogates] *)
-    let { Flambda.Function_declarations. set_of_closures_id;
+    let { Function_declarations. set_of_closures_id;
           set_of_closures_origin; funs; } =
       function_decls
     in
@@ -1556,29 +1573,28 @@ end = struct
     ignore (set_of_closures_origin : Set_of_closures_origin.t);
     let functions_in_closure = Closure_id.Map.keys funs in
     Var_within_closure.Map.iter
-      (fun var (var_in_closure : Flambda.Free_var.t) ->
+      (fun var (var_in_closure : Free_var.t) ->
         ignore (var : Var_within_closure.t);
-        check_variable_is_bound env var_in_closure.var)
+        E.check_variable_is_bound env var_in_closure.var)
       free_vars;
     let _all_params, _all_free_vars =
       (* CR mshinwell: change to [iter] *)
       Closure_id.Map.fold (fun fun_var function_decl acc ->
           let all_params, all_free_vars = acc in
           (* CR-soon mshinwell: check function_decl.all_symbols *)
-          let { Flambda.Function_declaration.params; body; stub; dbg;
-                my_closure; _ } =
+          let { Function_declaration.params; body; stub; dbg; my_closure; _ } =
             function_decl
           in
           assert (Closure_id.Set.mem fun_var functions_in_closure);
-          ignore_bool stub;
-          ignore_debuginfo dbg;
-          let free_variables = Flambda.Expr.free_variables body in
+          ignore (stub : bool);
+          ignore (dbg : Debuginfo.t);
+          let free_variables = Expr.free_variables body in
           (* Check that every variable free in the body of the function is
              either the distinguished "own closure" variable or one of the
              function's parameters. *)
           let acceptable_free_variables =
             Variable.Set.add my_closure
-              (Flambda.Typed_parameter.List.var_set params)
+              (Typed_parameter.List.var_set params)
           in
           let bad =
             Variable.Set.diff free_variables acceptable_free_variables
@@ -1589,24 +1605,28 @@ end = struct
                 the body of a function are the distinguished [my_closure] \
                 variable and the function's parameters: %a"
               Closure_id.print fun_var
-              Function_declaration.print function_decl
+              (Function_declaration.print fun_var) function_decl
           end;
           (* Check that free variables in parameters' types are bound. *)
           List.iter (fun param ->
-              let ty = Flambda.Typed_parameter.ty param in
+              let ty = Typed_parameter.ty param in
               let fvs = Flambda_type.free_variables ty in
-              Variable.Set.iter (fun fv -> check_variable_is_bound env fv) fvs)
+              Variable.Set.iter (fun fv -> E.check_variable_is_bound env fv)
+                fvs)
             params;
           (* Check that projections on parameters only describe projections
              from other parameters of the same function. *)
-          let params' = Flambda.Typed_parameter.List.var_set params in
+          let params' = Typed_parameter.List.var_set params in
           List.iter (fun param ->
-              match Flambda.Typed_parameter.projection param with
+              match Typed_parameter.projection param with
               | None -> ()
               | Some projection ->
                 let projecting_from = Projection.projecting_from projection in
-                if not (Variable.Set.mem projecting_from params') then begin 
-                  raise (Projection_must_be_a_parameter projection)
+                if not (Variable.Set.mem projecting_from params') then begin
+                  Misc.fatal_errorf "Projection %a does not describe a \
+                      projection from a parameter of the function %a"
+                    Projection.print projection
+                    print t
                 end)
             params;
           (* Check that parameters are unique across all functions in the
@@ -1621,7 +1641,7 @@ end = struct
                 parameters: %a"
               print t
           end;
-          (* Check that the body of the functions is correctly structured *)
+          (* Check that the body of the function is correctly structured. *)
           let body_env =
             let (var_env, _, sym_env) = env in
             let var_env =
