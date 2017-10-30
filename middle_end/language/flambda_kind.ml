@@ -69,11 +69,12 @@ include Identifiable.Make (struct
     | Naked_nativeint -> Format.pp_print_string ppf "naked_nativeint"
 end)
 
-let compatible t1 t2 =
-  match t1, t2 with
-  | Value Must_scan, Value Can_scan
+let compatible t ~if_used_at =
+  match t, if_used_at with
+  (* The two important cases: *)
   | Value Can_scan, Value Must_scan -> true
-  | _, _ -> equal t1 t2
+  | Value Must_scan, Value Can_scan -> false
+  | _, _ -> equal t if_used_at
 
 let is_value t =
   match t with

@@ -44,12 +44,13 @@ val naked_int32 : unit -> t
 val naked_int64 : unit -> t
 val naked_nativeint : unit -> t
 
-(** Two value kinds are "compatible" iff they are both the same kind, or one
-    of them is [Bottom]. *)
-val compatible : t -> t -> bool
-
 val is_value : t -> bool
 val is_naked_float : t -> bool
+
+(** [compatible t ~if_used_at] returns [true] iff a value of the kind [t] may
+    be used in any context with a hole expecting a value of kind [if_used_at].
+*)
+val compatible : t -> if_used_at:t -> bool
 
 include Identifiable.S with type t := t
 

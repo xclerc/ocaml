@@ -22,11 +22,13 @@ module Of_kind_value = struct
   include Flambda_static0.Of_kind_value
 
   let invariant env t =
+    let module E = Invariant_env in
     match t with
-    | Symbol sym -> Invariant_env.check_symbol_is_bound env sym
+    | Symbol sym -> E.check_symbol_is_bound env sym
     | Tagged_immediate _ -> ()
     | Dynamically_computed var ->
-      Invariant.check_variable_is_bound_and_of_kind_value env var
+      E.check_variable_is_bound_and_of_kind env var
+        (Flambda_kind.value Must_scan)
 end
 
 module Static_part = struct
@@ -40,7 +42,8 @@ module Static_part = struct
     | Set_of_closures set ->
       let outer_vars = Flambda.Free_vars.all_outer_variables set.free_vars in
       Variable.Set.iter (fun var ->
-          E.check_variable_is_bound_and_of_kind_value env var)
+          E.check_variable_is_bound_and_of_kind env var
+            (Flambda_kind.value Must_scan))
         outer_vars;
       let free_symbols = Flambda.Set_of_closures.free_symbols set in
       Symbol.Set.iter (fun sym ->
@@ -49,17 +52,21 @@ module Static_part = struct
     | Closure (sym, _closure_id) ->
       E.check_symbol_is_bound env sym
     | Boxed_float (Var v) ->
-      E.check_variable_is_bound_and_of_kind_naked_float env v
+      E.check_variable_is_bound_and_of_kind env v
+        (Flambda_kind.naked_float ())
     | Boxed_int32 (Var v) ->
-      E.check_variable_is_bound_and_of_kind_naked_int32 env v
+      E.check_variable_is_bound_and_of_kind env v
+        (Flambda_kind.naked_int32 ())
     | Boxed_int64 (Var v) ->
-      E.check_variable_is_bound_and_of_kind_naked_int64 env v
+      E.check_variable_is_bound_and_of_kind env v
+        (Flambda_kind.naked_int64 ())
     | Boxed_nativeint (Var v) ->
-      E.check_variable_is_bound_and_of_kind_naked_nativeint env v
+      E.check_variable_is_bound_and_of_kind env v
+        (Flambda_kind.naked_nativeint ())
     | Mutable_string { initial_value = Var v; }
     | Immutable_string (Var v) ->
-      E.check_variable_is_bound_and_of_kind_value env v
-      E.check_variable_is_bound_and_of_kind_value env v
+      E.check_variable_is_bound_and_of_kind env v
+        (Flambda_kind.value Must_scan)
     | Boxed_float (Const _)
     | Boxed_int32 (Const _)
     | Boxed_int64 (Const _)
@@ -70,7 +77,9 @@ module Static_part = struct
     | Immutable_float_array fields ->
       List.iter (fun (field : float or_variable) ->
           match field with
-          | Var v -> E.check_variable_is_bound_and_of_kind_naked_float env v
+          | Var v ->
+            E.check_variable_is_bound_and_of_kind env v
+              (Flambda_kind.naked_float ())
           | Const _ -> ())
         fields
 end
@@ -104,7 +113,7 @@ module Program_body = struct
           | Immutable_string _ -> ())
         defn.static_structure
 
-    let iter_toplevel_exprs (t : t) ~f =
+    let rec iter_toplevel_exprs (t : t) ~f =
       match t with
       | Define_symbol (defn, t)
       | Define_symbol_rec (defn, t) ->
@@ -114,7 +123,8 @@ module Program_body = struct
   end
 
   let invariant_define_symbol ~importer env defn
-        (recursive : Astflags.rec_flag) =
+        (recursive : Flambda.recursive) =
+    let module E = Invariant_env in
     begin match defn.computation with
     | None -> ()
     | Some computation ->
@@ -128,26 +138,28 @@ module Program_body = struct
           Flambda.Expr.print computation.expr
       end;
       let free_conts = Flambda.Expr.free_continuations computation.expr in
-      begin match Continuation.Set.get_singleton free_conts with
-      | cont when Continuation.equal cont defn.return_cont -> ()
-      | _ ->
-        Misc.fatal_errorf "Toplevel computation has illegal free \
-            continuations (%a); the only permitted free continuation is the \
-            return continuation, %a"
-          Continuation.Set.print free_conts
-          defn.return_cont
+      if not (Continuation.Set.is_empty free_conts) then begin
+        begin match Continuation.Set.get_singleton free_conts with
+        | Some cont when Continuation.equal cont computation.return_cont -> ()
+        | _ ->
+          Misc.fatal_errorf "Toplevel computation has illegal free \
+              continuations (%a); the only permitted free continuation is the \
+              return continuation, %a"
+            Continuation.Set.print free_conts
+            Continuation.print computation.return_cont
+        end
       end;
       let computation_env =
         let return_arity =
           List.map (fun (_var, kind) -> kind) computation.computed_values
         in
-        Invariant_env.add_continuation env
+        E.add_continuation env
           computation.return_cont
           return_arity
           Normal
-          (Invariant_env.Continuation_stack.var ())
+          (E.Continuation_stack.var ())
       in
-      Flambda.Expr.invariant computation_env computation.expr;
+      Flambda.Expr.invariant ~importer computation_env computation.expr;
       List.iter (fun (var, _kind) ->
           if Invariant_env.variable_is_bound env var then begin
             Misc.fatal_errorf "[computed_values] of a toplevel computation \
@@ -160,19 +172,19 @@ module Program_body = struct
     end;
     let env =
       match recursive with
-      | Nonrecursive -> env
+      | Non_recursive -> env
       | Recursive ->
         List.fold_left (fun env (sym, _static_part) ->
             E.add_symbol env sym)
           env
-          computation.static_structure
+          defn.static_structure
     in
     let allowed_fvs =
       match defn.computation with
       | None -> Variable.Set.empty
       | Some computation ->
         Variable.Set.of_list (
-          List.map (fun (var, _kind) -> var) defn.computed_values)
+          List.map (fun (var, _kind) -> var) computation.computed_values)
     in
     List.iter (fun (sym, static_part) ->
         let free_variables = Static_part.free_variables static_part in
@@ -188,25 +200,28 @@ module Program_body = struct
             Symbol.print sym
             Static_part.print static_part
         end;
-        invariant_static_part env static_part)
-      computation.static_structure;
+        Static_part.invariant env static_part)
+      defn.static_structure;
     List.fold_left (fun env (sym, _static_part) ->
         match recursive with
-        | Nonrecursive -> E.add_symbol env sym
-        | Recursive -> E.redefine_symbol env sym)
+        | Non_recursive -> E.add_symbol env sym
+        | Recursive ->
+          (* If we ever store data about symbols, this place needs updating
+             to do a "redefine_symbol" operation on [env]. *)
+          env)
       env
-      computation.static_structure
+      defn.static_structure
 
   let rec invariant ~importer env t =
     let module E = Invariant_env in
     match t with
     | Define_symbol (defn, t) ->
-      let env = invariant_define_symbol ~importer env defn Nonrecursive in
+      let env = invariant_define_symbol ~importer env defn Non_recursive in
       invariant ~importer env t
     | Define_symbol_rec (defn, t) ->
       let env = invariant_define_symbol ~importer env defn Recursive in
       invariant ~importer env t
-    | Root sym -> E.check_symbol_is_bound_and_of_kind_value_must_scan env sym
+    | Root sym -> E.check_symbol_is_bound env sym
 end
 
 module Program = struct
@@ -218,7 +233,7 @@ module Program = struct
     let rec loop (body : Program_body.t) =
       match body with
       | Define_symbol (_, body)
-      | Define_symbol_rec (_, body)
+      | Define_symbol_rec (_, body) -> loop body
       | Root root -> root
     in
     loop t.body

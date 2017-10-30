@@ -1438,7 +1438,10 @@ end and Set_of_closures : sig
   module Iterators : sig
     val iter_function_bodies
        : t
-      -> f:(Expr.t -> unit)
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> Expr.t
+        -> unit)
       -> unit
   end
 
@@ -1482,7 +1485,8 @@ end = struct
   module Iterators = struct
     let iter_function_bodies t ~f =
       Closure_id.Map.iter (fun _ (function_decl : Function_declaration.t) ->
-          f function_decl.body)
+          f ~continuation_arity:function_decl.return_arity
+            function_decl.continuation_param function_decl.body)
         t.function_decls.funs
   end
 

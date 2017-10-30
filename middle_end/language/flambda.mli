@@ -88,6 +88,11 @@ end
 module rec Expr : sig
   include module type of struct include F0.Expr end
 
+  val invariant
+     : (Invariant_env.t
+    -> t
+    -> unit) Flambda_type.with_importer
+
   (* CR mshinwell: Check that apply_cont is well-formed when there is a
      trap installation or removal. *)
   (* CR-someday pchambart: for sum types, we should probably add an exhaustive
@@ -320,7 +325,10 @@ and Set_of_closures : sig
   module Iterators : sig
     val iter_function_bodies
        : t
-      -> f:(Expr.t -> unit)
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> Expr.t
+        -> unit)
       -> unit
   end
 

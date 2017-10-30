@@ -241,8 +241,10 @@ let add_continuation t cont arity kind stack =
       Continuation.Map.add cont (arity, kind, stack) t.continuations;
   }
 
+let variable_is_bound t var = Variable.Map.mem var t.variables
+
 let check_variable_is_bound t var =
-  if not (Variable.Map.mem var t.variables) then begin
+  if not (variable_is_bound t var) then begin
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
   end
 
@@ -254,7 +256,7 @@ let check_variable_is_bound_and_of_kind t var desired_kind =
   | exception Not_found ->
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
   | kind ->
-    if not (Flambda_kind.equal kind desired_kind) then begin
+    if not (Flambda_kind.compatible kind ~if_used_at:desired_kind) then begin
       Misc.fatal_errorf "Variable %a is expected to have kind [%a] but is \
           of kind %a"
         Variable.print var

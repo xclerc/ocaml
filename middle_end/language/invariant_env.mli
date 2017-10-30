@@ -72,10 +72,14 @@ val add_use_of_closure_id : t -> Closure_id.t -> unit
 (* XXX this one needs to error upon rebinding *)
 val add_set_of_closures_id : t -> Set_of_closures_id.t -> unit
 
+val variable_is_bound : t -> Variable.t -> bool
+
 val check_variable_is_bound : t -> Variable.t -> unit
 
 val check_variables_are_bound : t -> Variable.t list -> unit
 
+(* CR mshinwell: Change the names of these functions to be "and is compatible
+   with kind", or similar -- see new naming in Flambda_kind. *)
 val check_variable_is_bound_and_of_kind
    : t
   -> Variable.t
