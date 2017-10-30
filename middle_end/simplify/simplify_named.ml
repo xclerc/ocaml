@@ -1111,12 +1111,12 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
   | Symbol sym ->
     let symbol_ty = E.find_symbol env sym in
     Reachable tree, symbol_ty, r
-  | Read_symbol_field { symbol; logical_field; } ->
+  | Read_symbol_field (symbol, field) ->
     let symbol_ty = E.find_symbol env sym in
-    begin match T.Of_symbol.get_field symbol_ty ~logical_field with
+    begin match T.get_field symbol_ty field with
     | None -> [], invalid, r
     | Some flambda_type ->
-      let flambda_type = T.augment_with_symbol_field ty symbol ~logical_field in
+      let flambda_type = T.augment_with_symbol_field ty symbol field in
       simpler_equivalent_term env r tree ty
     end
   | Set_of_closures set_of_closures -> begin
@@ -1134,11 +1134,6 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
          in tail position).
          We also need to be careful not to double-count (or worse) uses of
          continuations. *)
-      (* CR-someday mshinwell: It was mooted that maybe we could try
-         structurally-typed closures (i.e. where we would never rename the
-         closure elements), or something else, to try to remove
-         the "closure freshening" thing in the Flambda type which is hard
-         to deal with. *)
       let r = R.roll_back_continuation_uses r cont_usage_snapshot in
       let bindings, set_of_closures, r =
         let env = E.set_never_inline env in

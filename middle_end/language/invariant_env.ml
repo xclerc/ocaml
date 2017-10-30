@@ -26,8 +26,6 @@ module Continuation_stack : sig
   val root : unit -> t
   val push : Trap_id.t -> Continuation.t -> t -> t
 
-  val repr : t -> t
-
   val unify : Continuation.t -> t -> t -> unit
 end = struct
   type t0 =
@@ -90,7 +88,7 @@ end = struct
             Continuation.print c2
             Continuation.print cont
         end;
-        unify_stack cont s1 s2
+        unify cont s1 s2
       | Root, Push _ | Push _, Root ->
         Misc.fatal_errorf "Malformed exception continuation \
             (root stack is not empty) for %a"
@@ -103,16 +101,17 @@ type t = {
   mutable all_continuations_seen : Continuation.Set.t;
   mutable all_symbols_seen : Symbol.Set.t;
   variables : Flambda_kind.t Variable.Map.t;
-  mutable_variables : Flambda_kind.t Mutable_variable.Set.t;
+  mutable_variables : Flambda_kind.t Mutable_variable.Map.t;
   continuations :
-    (Flambda_arity.t * continuation_kind * stack_type) Continuation.Map.t;
+    (Flambda_arity.t * continuation_kind * Continuation_stack.t)
+      Continuation.Map.t;
   symbols : Symbol.Set.t;
   continuation_stack : Continuation_stack.t;
 }
 
 let create () =
   { all_variables_seen = Variable.Set.empty;
-    all_mutable_variables_seen = Mutable_variable.Map.empty;
+    all_mutable_variables_seen = Mutable_variable.Set.empty;
     all_continuations_seen = Continuation.Set.empty;
     all_symbols_seen = Symbol.Set.empty;
     variables = Variable.Map.empty;
@@ -175,13 +174,13 @@ let add_mutable_variable t var kind =
       Mutable_variable.print var
   end;
   { t with
-    mutable_variables_seen =
-      Mutable_variable.Set.add var t.mutable_variables_seen;
+    all_mutable_variables_seen =
+      Mutable_variable.Set.add var t.all_mutable_variables_seen;
     mutable_variables = Mutable_variable.Map.add var kind t.mutable_variables;
   }
 
 let add_symbol t sym =
-  if Symbol.Map.mem sym t.symbols then begin
+  if Symbol.Set.mem sym t.symbols then begin
     Misc.fatal_errorf "Duplicate binding of symbol %a which is already \
         bound in the current scope"
       Symbol.print sym
@@ -192,11 +191,11 @@ let add_symbol t sym =
       Symbol.print sym
   end;
   let compilation_unit = Compilation_unit.get_current_exn () in
-  if not (Variable.in_compilation_unit var compilation_unit) then begin
-    Misc.fatal_errorf "Binding occurrence of variable %a cannot occur in \
-        this compilation unit since the variable is from another compilation \
+  if not (Symbol.in_compilation_unit sym compilation_unit) then begin
+    Misc.fatal_errorf "Binding occurrence of symbol %a cannot occur in \
+        this compilation unit since the symbol is from another compilation \
         unit"
-      Variable.print var
+      Symbol.print sym
   end;
   { t with
     symbols = Symbol.Set.add sym t.symbols;
@@ -213,18 +212,19 @@ let add_continuation t cont arity kind =
         in some other scope"
       Continuation.print cont
   end;
+  let stack = Continuation_stack.var () in 
   { t with
     continuations =
-      Continuation.Map.add cont (arity, kind) t.continuations;
+      Continuation.Map.add cont (arity, kind, stack) t.continuations;
   }
 
 let check_variable_is_bound t var =
-  if not (Variable.Set.mem var t.variables) then begin
+  if not (Variable.Map.mem var t.variables) then begin
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
   end
 
 let check_variable_is_bound_and_of_kind_value t var =
-  match Variable.Set.find var t.variables with
+  match Variable.Map.find var t.variables with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
   | kind ->
@@ -236,19 +236,19 @@ let check_variable_is_bound_and_of_kind_value t var =
     end
 
 let check_variable_is_bound_and_of_kind_value_must_scan t var =
-  match Variable.Set.find var t.variables with
+  match Variable.Map.find var t.variables with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
   | Value Must_scan -> ()
-  | _ ->
+  | kind ->
     Misc.fatal_errorf "Variable %a is expected to have kind [Value Must_scan] \
         but is of kind %a"
       Variable.print var
       Flambda_kind.print kind
 
 let check_mutable_variable_is_bound t var =
-  if not (Mutable_Variable.Set.mem var t.mutable_variables) then begin
-    Misc.fatal_errorf "Unbound mutable variable %a" Mutable_Variable.print var
+  if not (Mutable_variable.Set.mem var t.mutable_variables) then begin
+    Misc.fatal_errorf "Unbound mutable variable %a" Mutable_variable.print var
   end
 
 let check_symbol_is_bound t var =

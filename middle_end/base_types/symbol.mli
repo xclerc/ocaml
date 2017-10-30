@@ -53,3 +53,5 @@ val label : t -> Linkage_name.t
 val print_opt : Format.formatter -> t option -> unit
 
 val compare_lists : t list -> t list -> int
+
+val in_compilation_unit : t -> Compilation_unit.t -> bool

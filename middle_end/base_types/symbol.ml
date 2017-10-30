@@ -81,3 +81,6 @@ let print_opt ppf = function
 
 let compare_lists l1 l2 =
   Misc.Stdlib.List.compare compare l1 l2
+
+let in_compilation_unit t cu =
+  Compilation_unit.equal t.compilation_unit cu
