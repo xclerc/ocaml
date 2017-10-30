@@ -33,6 +33,7 @@ module type TESTSIG = sig
     val sub: t -> t -> t
     val mul: t -> t -> t
     val div: t -> t -> t
+    val div_unsigned: t -> t -> t
     val rem: t -> t -> t
     val logand: t -> t -> t
     val logor: t -> t -> t
@@ -53,7 +54,7 @@ module type TESTSIG = sig
     val to_string: t -> string
     val of_string: string -> t
   end
-  val testcomp: t -> t -> bool*bool*bool*bool*bool*bool*int
+  val testcomp: t -> t -> bool*bool*bool*bool*bool*bool*int*int
   val skip_float_tests: bool
 end
 
@@ -168,6 +169,21 @@ struct
        11, 1234567, -12345678];
     test 12 (div min_int (of_int (-1))) min_int;
 
+    testing_function "div_unsigned";
+    List.iter
+      (fun (n, a, b, c) -> test n (div_unsigned a b) c)
+      [1, of_int 0, of_int 2, of_int 0;
+       2, of_int 123, of_int 1, of_int 123;
+       3, of_int (-123), of_int 1, of_int (-123);
+       4, of_int (123), of_int (-1), of_int 0;
+       5, of_int (-123), of_int (-1), of_int 0;
+       6, of_int 127531236, of_int 365, of_int (127531236/365);
+       7, of_int 16384, of_int 256, of_int (16384/256);
+       8, of_int (-1), of_int 2, max_int;
+       9, of_int (-1), max_int, of_int 2;
+       10, min_int, of_int 2, shift_left (of_int 1) 30;
+       11, of_int (-1), of_int 8, shift_right_logical (of_int (-1)) 3];
+
     testing_function "mod";
     List.iter
       (fun (n, a, b) -> test n (rem (of_int a) (of_int b)) (of_int (a mod b)))
@@ -269,19 +285,19 @@ struct
 
     testing_function "Comparisons";
     test 1 (testcomp (of_int 0) (of_int 0))
-           (true,false,false,false,true,true,0);
+           (true,false,false,false,true,true,0,0);
     test 2 (testcomp (of_int 1234567) (of_int 1234567))
-           (true,false,false,false,true,true,0);
+           (true,false,false,false,true,true,0, 0);
     test 3 (testcomp (of_int 0) (of_int 1))
-           (false,true,true,false,true,false,-1);
+           (false,true,true,false,true,false,-1,-1);
     test 4 (testcomp (of_int (-1)) (of_int 0))
-           (false,true,true,false,true,false,-1);
+           (false,true,true,false,true,false,-1,1);
     test 5 (testcomp (of_int 1) (of_int 0))
-           (false,true,false,true,false,true,1);
+           (false,true,false,true,false,true,1,1);
     test 6 (testcomp (of_int 0) (of_int (-1)))
-           (false,true,false,true,false,true,1);
+           (false,true,false,true,false,true,1,-1);
     test 7 (testcomp max_int min_int)
-           (false,true,false,true,false,true,1);
+           (false,true,false,true,false,true,1,-1);
 
     ()
 end
@@ -404,6 +420,21 @@ struct
        11, 1234567, -12345678];
     test 12 (div min_int (of_int (-1))) min_int;
 
+    testing_function "div_unsigned";
+    List.iter
+      (fun (n, a, b, c) -> test n (div_unsigned a b) c)
+      [1, of_int 0, of_int 2, of_int 0;
+       2, of_int 123, of_int 1, of_int 123;
+       3, of_int (-123), of_int 1, of_int (-123);
+       4, of_int (123), of_int (-1), of_int 0;
+       5, of_int (-123), of_int (-1), of_int 0;
+       6, of_int 127531236, of_int 365, of_int (127531236/365);
+       7, of_int 16384, of_int 256, of_int (16384/256);
+       8, of_int (-1), of_int 2, max_int;
+       9, of_int (-1), max_int, of_int 2;
+       10, min_int, of_int 2, shift_left (of_int 1) 62;
+       11, of_int (-1), of_int 8, shift_right_logical (of_int (-1)) 3];
+
     testing_function "mod";
     List.iter
       (fun (n, a, b) -> test n (rem (of_int a) (of_int b)) (of_int (a mod b)))
@@ -487,19 +518,19 @@ struct
 
     testing_function "Comparisons";
     test 1 (testcomp (of_int 0) (of_int 0))
-           (true,false,false,false,true,true,0);
+           (true,false,false,false,true,true,0,0);
     test 2 (testcomp (of_int 1234567) (of_int 1234567))
-           (true,false,false,false,true,true,0);
+           (true,false,false,false,true,true,0,0);
     test 3 (testcomp (of_int 0) (of_int 1))
-           (false,true,true,false,true,false,-1);
+           (false,true,true,false,true,false,-1,-1);
     test 4 (testcomp (of_int (-1)) (of_int 0))
-           (false,true,true,false,true,false,-1);
+           (false,true,true,false,true,false,-1,1);
     test 5 (testcomp (of_int 1) (of_int 0))
-           (false,true,false,true,false,true,1);
+           (false,true,false,true,false,true,1,1);
     test 6 (testcomp (of_int 0) (of_int (-1)))
-           (false,true,false,true,false,true,1);
+           (false,true,false,true,false,true,1,-1);
     test 7 (testcomp max_int min_int)
-           (false,true,false,true,false,true,1);
+           (false,true,false,true,false,true,1,-1);
 
     ()
 end
@@ -507,11 +538,11 @@ end
 (******** The test proper **********)
 
 let testcomp_int32 (a : int32) (b : int32) =
-  (a = b, a <> b, a < b, a > b, a <= b, a >= b, compare a b)
+  (a = b, a <> b, a < b, a > b, a <= b, a >= b, compare a b, Int32.compare_unsigned a b)
 let testcomp_int64 (a : int64) (b : int64) =
-  (a = b, a <> b, a < b, a > b, a <= b, a >= b, compare a b)
+  (a = b, a <> b, a < b, a > b, a <= b, a >= b, compare a b, Int64.compare_unsigned a b)
 let testcomp_nativeint (a : nativeint) (b : nativeint) =
-  (a = b, a <> b, a < b, a > b, a <= b, a >= b, compare a b)
+  (a = b, a <> b, a < b, a > b, a <= b, a >= b, compare a b, Nativeint.compare_unsigned a b)
 
 let _ =
   testing_function "-------- Int32 --------";
