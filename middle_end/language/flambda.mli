@@ -19,7 +19,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type apply_kind = Flambda0.apply_kind
 type apply = Flambda0.apply
 type assign = Flambda0.assign
 
@@ -152,7 +151,7 @@ module rec Expr : sig
 
   val build_let_cont_with_wrappers
      : body:t
-    -> recursive:Flambda.recursive
+    -> recursive:Flambda0.recursive
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
 

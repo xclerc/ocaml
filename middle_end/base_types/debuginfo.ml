@@ -119,3 +119,8 @@ let rec print_compact ppf t =
     print_item item;
     Format.fprintf ppf ";";
     print_compact ppf t
+
+let print_or_elide ppf t =
+  if not (is_none t) then begin
+    Format.fprintf ppf "@ <%a>" print_compact t
+  end

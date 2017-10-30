@@ -35,10 +35,25 @@ end) = struct
     | Unroll of int
     | Default_inline
 
+  let print_inline_attribute ppf attr =
+    let fprintf = Format.fprintf in
+    match attr with
+    | Always_inline -> fprintf ppf "Always_inline"
+    | Never_inline -> fprintf ppf "Never_inline"
+    | Unroll n -> fprintf ppf "@[(Unroll %d)@]" n
+    | Default_inline -> fprintf ppf "Default_inline"
+
   type specialise_attribute =
     | Always_specialise
     | Never_specialise
     | Default_specialise
+
+  let print_specialise_attribute ppf attr =
+    let fprintf = Format.fprintf in
+    match attr with
+    | Always_specialise -> fprintf ppf "Always_specialise"
+    | Never_specialise -> fprintf ppf "Never_specialise"
+    | Default_specialise -> fprintf ppf "Default_specialise"
 
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
@@ -396,13 +411,11 @@ end) = struct
         in
         Format.fprintf ppf "string %i %S" size s
       end
-    | Float_array float_array ->
-      begin match float_array.contents with
-      | Unknown_or_mutable ->
-        Format.fprintf ppf "float_array %i" float_array.size
-      | Contents _ ->
-        Format.fprintf ppf "float_array_imm %i" float_array.size
-      end
+    | Float_array fields ->
+      Format.fprintf ppf "@[(float_array %a)@]"
+        (Format.pp_print_list ~pp_sep:Format.pp_print_space
+          print_ty_naked_float)
+        (Array.to_list fields)
 
   and print_ty_value ppf (ty : ty_value) =
     let print_scanning ppf (scanning : K.scanning) =
@@ -448,8 +461,8 @@ end) = struct
             print ty)) decl.result
       decl.stub
       Debuginfo.print_compact decl.dbg
-      Printlambda.apply_inlined_attribute decl.inline
-      Printlambda.apply_specialised_attribute decl.specialise
+      print_inline_attribute decl.inline
+      print_specialise_attribute decl.specialise
       decl.is_a_functor
       Variable.Set.print (Lazy.force decl.invariant_params)
       (Misc.Stdlib.Option.print Format.pp_print_int) (Lazy.force decl.size)
@@ -895,13 +908,8 @@ end) = struct
       }
     in
     let fields = Array.map make_field fields in
-    let float_array : float_array_ty =
-      { contents = Contents fields;
-        size = Array.length fields;
-      }
-    in
     Value {
-      descr = Ok (Ok (Singleton (Float_array float_array)));
+      descr = Ok (Ok (Singleton (Float_array fields)));
       var = None;
       symbol = None;
     }
@@ -918,25 +926,22 @@ end) = struct
               print field)
         fields
     in
-    let float_array : float_array_ty =
-      { contents = Contents fields;
-        size = Array.length fields;
-      }
-    in
     Value {
-      descr = Ok (Ok (Singleton (Float_array float_array)));
+      descr = Ok (Ok (Singleton (Float_array fields)));
       var = None;
       symbol = None;
     }
 
   let mutable_float_array ~size : t =
-    let float_array : float_array_ty =
-      { contents = Unknown_or_mutable;
-        size;
+    let make_field () : ty_naked_float =
+      { descr = Ok (Unknown (Other, ()));
+        var = None;
+        symbol = None;
       }
     in
+    let fields = Array.init size (fun _ -> make_field ()) in
     Value {
-      descr = Ok (Ok (Singleton (Float_array float_array)));
+      descr = Ok (Ok (Singleton (Float_array fields)));
       var = None;
       symbol = None;
     }
@@ -1126,13 +1131,13 @@ end) = struct
   let resolved_ty_value_for_predefined_exception ~name ~symbol
         : resolved_ty_value =
     let fields =
-      [| immutable_string_as_ty_value name;
+      [| this_immutable_string_as_ty_value name;
          unknown_as_ty_value Other Must_scan;
       |]
     in
     { descr = Ok (Singleton (Block (Tag.Scannable.object_tag, fields)));
       var = None;
-      symbol = Some (Symbol.to_symbol symbol, None);
+      symbol = Some (symbol, None);
     }
 
   module type Importer = sig
@@ -1601,7 +1606,7 @@ end) = struct
         match set_of_closures_symbol with
         | None -> None
         | Some symbol ->
-          Some (Symbol.to_symbol symbol, None)
+          Some (symbol, None)
       in
       { descr = Ok set_of_closures;
         var = set_of_closures_var;
@@ -1620,7 +1625,7 @@ end) = struct
       match set_of_closures_symbol with
       | None -> None
       | Some symbol ->
-        Some (Symbol.to_symbol symbol, None)
+        Some (symbol, None)
     in
     Value {
       descr = Ok (Ok (Singleton (Set_of_closures set_of_closures)));
@@ -1738,13 +1743,10 @@ end) = struct
       | Closure { set_of_closures; closure_id = _; } ->
         free_variables_resolved_ty_set_of_closures set_of_closures acc
       | String _ -> acc
-      | Float_array { contents; size = _; } ->
-        begin match contents with
-        | Contents ts ->
-          Array.fold_left (fun acc t -> free_variables_ty_naked_float t acc)
-            acc ts
-        | Unknown_or_mutable -> acc
-        end
+      | Float_array fields ->
+        Array.fold_left (fun acc field ->
+            free_variables_ty_naked_float field acc)
+          acc fields
       end
     | Union (w1, w2) ->
       let acc =
@@ -1966,17 +1968,13 @@ end) = struct
           in
           Closure { set_of_closures; closure_id; }
         | String _ -> singleton
-        | Float_array { contents; size; } ->
-          begin match contents with
-          | Contents ts ->
-            let ts =
-              Array.map (fun t ->
-                  clean_ty_naked_float ~importer t clean_var_opt)
-                ts
-            in
-            Float_array { contents = Contents ts; size; }
-          | Unknown_or_mutable -> singleton
-          end
+        | Float_array fields ->
+          let fields =
+            Array.map (fun field ->
+                clean_ty_naked_float ~importer field clean_var_opt)
+              fields
+          in
+          Float_array fields
       in
       Singleton singleton
     | Union (w1, w2) ->
@@ -2096,19 +2094,12 @@ end) = struct
         String { contents = Contents str2; _ } ->
       if String.equal str1 str2 then singleton t1
       else unknown_must_scan
-    | Float_array { contents = Contents ts1; _ },
-        Float_array { contents = Contents ts2; _ } ->
-      if Array.length ts1 <> Array.length ts2 then
-        unknown_must_scan
-      else
-        let ts =
-          Array.map2 (fun ty1 ty2 -> join_ty_naked_float ~importer ty1 ty2)
-            ts1 ts2
-        in
-        singleton (Float_array {
-          contents = Contents ts;
-          size = Array.length ts;
-        })
+    | Float_array fields1, Float_array fields2 ->
+      let fields =
+        Array.map2 (fun ty1 ty2 -> join_ty_naked_float ~importer ty1 ty2)
+          fields1 fields2
+      in
+      singleton (Float_array fields)
     | _, _ ->
       (* The only case which would not require scanning is
          [Tagged_immediate] versus itself, which is covered above. *)

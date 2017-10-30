@@ -77,17 +77,19 @@ let this_tagged_bool_named b : Named.t * t =
   in
   Const (Tagged_immediate imm), this_tagged_immediate imm
 
-let this_boxed_float_named f : Named.t * t =
-  Allocated_const (Boxed_float f), this_boxed_float f
+(*
+let this_boxed_float_named f dbg : Named.t * t =
+  Prim (Unary (Box_number Naked_float), this_boxed_float f
 
-let this_boxed_int32_named n : Named.t * t =
+let this_boxed_int32_named n dbg : Named.t * t =
   Allocated_const (Boxed_int32 n), this_boxed_int32 n
 
-let this_boxed_int64_named n : Named.t * t =
+let this_boxed_int64_named n dbg : Named.t * t =
   Allocated_const (Boxed_int64 n), this_boxed_int64 n
 
-let this_boxed_nativeint_named n : Named.t * t =
+let this_boxed_nativeint_named n dbg : Named.t * t =
   Allocated_const (Boxed_nativeint n), this_boxed_nativeint n
+*)
 
 let this_untagged_immediate_named n : Named.t * t =
   Const (Untagged_immediate n), this_naked_immediate n
@@ -542,6 +544,7 @@ module Set_of_closures : sig
     -> set_of_closures
     -> t
 
+  (* CR mshinwell: Should this have the [set_of_closures_symbol] too? *)
   val set_of_closures_var : t -> Variable.t option
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
@@ -582,10 +585,13 @@ end = struct
     match t.set_of_closures_id_and_origin with
     | Not_all_values_known -> any_value Must_scan Other
     | Exactly (set_of_closures_id, set_of_closures_origin) ->
-      create_set_of_closures ~set_of_closures_id
-        ~set_of_closures_origin
-        ~function_decls:t.function_decls
-        ~closure_elements:t.closure_elements
+      let set =
+        create_set_of_closures ~set_of_closures_id
+          ~set_of_closures_origin
+          ~function_decls:t.function_decls
+          ~closure_elements:t.closure_elements
+      in
+      set_of_closures ?set_of_closures_var:t.set_of_closures_var set
 
   let make_non_inlinable_function_declaration (f : function_declaration)
         : function_declaration =
@@ -928,16 +934,8 @@ let summarize ~importer (t : t) : Summary.t =
 let reify ~importer t : Named.t option =
   let try_symbol () =
     match symbol t with
-    | Some (sym, None) ->
-      begin match Symbol.of_symbol sym with
-      | None -> None
-      | Some sym -> Some (Named.Symbol sym)
-      end
-    | Some (sym, Some field) ->
-      Some (Named.Read_symbol_field {
-        symbol = sym;
-        logical_field = field;
-      })
+    | Some (sym, None) -> Some (Named.Symbol sym)
+    | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
     | None -> None
   in
   match summarize ~importer t with

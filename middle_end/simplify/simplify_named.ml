@@ -161,7 +161,7 @@ let simplify_project_closure env r
       Flambda.Reachable.reachable (Project_closure {
         set_of_closures;
         closure_id;
-      }
+      })
     in
     [], ty, term
   | Known set ->
@@ -1100,10 +1100,8 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
   match tree with
   | Var var ->
     let var, var_ty = freshen_and_squash_aliases env var in
-
-  | Const cst -> [], Reachable tree, ret r (type_for_const cst)
-  | Allocated_const cst ->
-    [], Reachable tree, ret r (type_for_allocated_const cst)
+    var, var_ty, r
+  | Const cst -> [], Reachable tree, type_for_const cst, r
   | Read_mutable mut_var ->
     (* See comment on the [Assign] case. *)
     let mut_var =
@@ -1112,10 +1110,7 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
     [], Reachable (Read_mutable mut_var), T.unknown Value Other
   | Symbol sym ->
     let symbol_ty = E.find_symbol env sym in
-    begin match T.Of_symbol.value_type symbol_ty with
-    | None -> [], Reachable tree, T.any_value Can_scan Other
-    | Some 
-    end
+    Reachable tree, symbol_ty, r
   | Read_symbol_field { symbol; logical_field; } ->
     let symbol_ty = E.find_symbol env sym in
     begin match T.Of_symbol.get_field symbol_ty ~logical_field with

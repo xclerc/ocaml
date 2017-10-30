@@ -48,10 +48,12 @@ val rename_variables
     specified constants. *)
 val this_tagged_bool_named : bool -> Flambda0.Named.t * t
 val this_tagged_immediate_named : Immediate.t -> Flambda0.Named.t * t
+(* XXX These now require the insertion of additional bindings
 val this_boxed_float_named : float -> Flambda0.Named.t * t
 val this_boxed_int32_named : Int32.t -> Flambda0.Named.t * t
 val this_boxed_int64_named : Int64.t -> Flambda0.Named.t * t
 val this_boxed_nativeint_named : Targetint.t -> Flambda0.Named.t * t
+*)
 
 (** Building of types and terms representing untagged / unboxed values from
     specified constants. *)

@@ -59,6 +59,17 @@ module Const : sig
   include Identifiable.S with type t := t
 end
 
+type inline_attribute =
+  | Always_inline
+  | Never_inline
+  | Unroll of int
+  | Default_inline
+
+type specialise_attribute =
+  | Always_specialise
+  | Never_specialise
+  | Default_specialise
+
 (** The application of a function (or method on a given object) to a list of
     arguments. *)
 type apply = {
@@ -166,17 +177,6 @@ type invalid_term_semantics =
   | Halt_and_catch_fire
   (** Invalid code should be replaced by an abort trap.  No back-propagation
       is performed. *)
-
-type inline_attribute =
-  | Always_inline
-  | Never_inline
-  | Unroll of int
-  | Default_inline
-
-type specialise_attribute =
-  | Always_specialise
-  | Never_specialise
-  | Default_specialise
 
 type recursive =
   | Non_recursive
@@ -367,6 +367,7 @@ end and Named : sig
   val box_value
       : Variable.t
      -> Flambda_kind.t
+     -> Debuginfo.t
      -> Named.t * Flambda_kind.t
 
   (** Build an expression unboxing the variable. The returned kind is the
@@ -374,6 +375,7 @@ end and Named : sig
   val unbox_value
       : Variable.t
      -> Flambda_kind.t
+     -> Debuginfo.t
      -> Named.t * Flambda_kind.t
 
   val print : Format.formatter -> t -> unit

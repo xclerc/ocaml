@@ -23,17 +23,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type inline_attribute =
-  | Always_inline
-  | Never_inline
-  | Unroll of int
-  | Default_inline
-
-type specialise_attribute =
-  | Always_specialise
-  | Never_specialise
-  | Default_specialise
-
 (** The type system is parameterised over the expression language. *)
 module Make (Expr : sig
   type t

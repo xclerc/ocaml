@@ -19,7 +19,6 @@
 module F0 = Flambda0
 
 type apply = F0.apply
-type apply_kind = F0.apply_kind
 type assign = F0.assign
 
 module Call_kind = F0.Call_kind

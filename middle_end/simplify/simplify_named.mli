@@ -16,8 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type named_simplifier =
-
 val simplify_named
    : Simplify_env.t
   -> Simplify_result.t

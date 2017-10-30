@@ -17,11 +17,19 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Int = Numbers.Int
+module K = Flambda_kind
 
 let fprintf = Format.fprintf
 
 module Call_kind = struct
   type method_kind = Self | Public | Cached
+
+  let print_method_kind ppf kind =
+    let fprintf = Format.fprintf in
+    match kind with
+    | Self -> fprintf ppf "Self"
+    | Public -> fprintf ppf "Public"
+    | Cached -> fprintf ppf "Cached"
 
   type t =
     | Direct of {
@@ -35,11 +43,30 @@ module Call_kind = struct
       }
     | Method of { kind : method_kind; obj : Variable.t; }
 
+  let print ppf t =
+    let fprintf = Format.fprintf in
+    match t with
+    | Direct { closure_id; return_arity; } ->
+      fprintf ppf "@[(Direct %a %a)@]"
+        Closure_id.print closure_id
+        Flambda_arity.print return_arity
+    | Indirect_unknown_arity ->
+      fprintf ppf "Indirect_unknown_arity"
+    | Indirect_known_arity { param_arity; return_arity; } ->
+      fprintf ppf "@[(Indirect_known_arity %a -> %a)@]"
+        Flambda_arity.print param_arity
+        Flambda_arity.print return_arity
+    | Method { kind; obj; } ->
+      fprintf ppf "@[(Method %a : %a)@]"
+        Variable.print obj
+        print_method_kind kind
+
   let return_arity t : Flambda_arity.t =
     match t with
     | Direct { return_arity; _ }
     | Indirect_known_arity { return_arity; _ } -> return_arity
-    | Indirect_unknown_arity -> [Flambda_kind.value Must_scan]
+    | Indirect_unknown_arity
+    | Method _ -> [Flambda_kind.value Must_scan]
 end
 
 module Const = struct
@@ -101,6 +128,32 @@ module Const = struct
   end)
 end
 
+type inline_attribute =
+  | Always_inline
+  | Never_inline
+  | Unroll of int
+  | Default_inline
+
+let print_inline_attribute ppf attr =
+  let fprintf = Format.fprintf in
+  match attr with
+  | Always_inline -> fprintf ppf "Always_inline"
+  | Never_inline -> fprintf ppf "Never_inline"
+  | Unroll n -> fprintf ppf "@[(Unroll %d)@]" n
+  | Default_inline -> fprintf ppf "Default_inline"
+
+type specialise_attribute =
+  | Always_specialise
+  | Never_specialise
+  | Default_specialise
+
+let _print_specialise_attribute ppf attr =
+  let fprintf = Format.fprintf in
+  match attr with
+  | Always_specialise -> fprintf ppf "Always_specialise"
+  | Never_specialise -> fprintf ppf "Never_specialise"
+  | Default_specialise -> fprintf ppf "Default_specialise"
+
 type apply = {
   func : Variable.t;
   continuation : Continuation.t;
@@ -121,6 +174,8 @@ module Free_var = struct
     var : Variable.t;
     projection : Projection.t option;
   }
+
+  let var t = t.var
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -171,6 +226,10 @@ module Free_vars = struct
           Var_within_closure.print inner_var
           Free_var.print outer_var)
       free_vars
+
+  let all_outer_variables t =
+    let outer_vars = Var_within_closure.Map.data t in
+    Variable.Set.of_list (List.map Free_var.var outer_vars)
 end
 
 module Trap_action = struct
@@ -276,17 +335,6 @@ type invalid_term_semantics =
   | Treat_as_unreachable
   | Halt_and_catch_fire
 
-type inline_attribute =
-  | Always_inline
-  | Never_inline
-  | Unroll of int
-  | Default_inline
-
-type specialise_attribute =
-  | Always_specialise
-  | Never_specialise
-  | Default_specialise
-
 type recursive =
   | Non_recursive
   | Recursive
@@ -373,14 +421,16 @@ end = struct
     (* N.B. This function assumes that all bound identifiers are distinct. *)
     let rec aux (flam : t) : unit =
       match flam with
-      | Apply { func; args; kind; _ } ->
+      | Apply { func; args; call_kind; _ } ->
         begin match ignore_uses_as_callee with
         | None -> free_variable func
         | Some () -> ()
         end;
-        begin match kind with
-        | Function -> ()
-        | Method { obj; _ } -> free_variable obj
+        begin match call_kind with
+        | Direct { closure_id = _; return_arity = _; }
+        | Indirect_unknown_arity
+        | Indirect_known_arity { param_arity = _; return_arity = _; } -> ()
+        | Method { kind = _; obj; } -> free_variable obj
         end;
         begin match ignore_uses_as_argument with
         | None -> List.iter free_variable args
@@ -704,38 +754,13 @@ end = struct
 
   let rec print ppf (t : t) =
     match t with
-    | Apply ({ kind; func; continuation; args; call_kind; inline; dbg; }) ->
-      let print_func_and_kind ppf func =
-        match kind with
-        | Function -> Variable.print ppf func
-        | Method { kind; obj; } ->
-          Format.fprintf ppf "send%a %a#%a"
-            Printlambda.meth_kind kind
-            Variable.print obj
-            Variable.print func
-      in
-      let direct ppf () =
-        match call_kind with
-        | Indirect_unknown_arity -> ()
-        | Indirect_known_arity _ ->
-          fprintf ppf "#"
-        | Direct { closure_id; _ } ->
-          fprintf ppf "*[%a]" Closure_id.print closure_id
-      in
-      let inline ppf () =
-        match inline with
-        | Always_inline -> fprintf ppf "<always>"
-        | Never_inline -> fprintf ppf "<never>"
-        | Unroll i -> fprintf ppf "<unroll %i>" i
-        | Default_inline -> ()
-      in
-      fprintf ppf "@[<2>(apply%a%a<%s>%a@ <%a> %a %a)@]"
-        direct ()
-        inline ()
-        (Debuginfo.to_string dbg)
-        Flambda_arity.print (Call_kind.return_arity call_kind)
+    | Apply ({ func; continuation; args; call_kind; inline; dbg; }) ->
+      fprintf ppf "@[<2>(apply %a %a%a@ <%a> %a %a)@]"
+        Call_kind.print call_kind
+        print_inline_attribute inline
+        Debuginfo.print_or_elide dbg
         Continuation.print continuation
-        print_func_and_kind func
+        Variable.print func
         Variable.print_list args
     | Let { var = id; defining_expr = arg; body; _ } ->
         let rec letbody (ul : t) =
@@ -834,10 +859,12 @@ end and Named : sig
   val box_value
       : Variable.t
      -> Flambda_kind.t
+     -> Debuginfo.t
      -> Named.t * Flambda_kind.t
   val unbox_value
       : Variable.t
      -> Flambda_kind.t
+     -> Debuginfo.t
      -> Named.t * Flambda_kind.t
 end = struct
   include Named
@@ -893,7 +920,17 @@ end = struct
         end
       | Move_within_set_of_closures { closure; move = _ } ->
         free_variable closure
-      | Prim (_, args, _) -> List.iter free_variable args
+      | Prim (Unary (_prim, x0), _dbg) ->
+        free_variable x0
+      | Prim (Binary (_prim, x0, x1), _dbg) ->
+        free_variable x0;
+        free_variable x1
+      | Prim (Ternary (_prim, x0, x1, x2), _dbg) ->
+        free_variable x0;
+        free_variable x1;
+        free_variable x2
+      | Prim (Variadic (_prim, xs), _dbg) ->
+        List.iter free_variable xs
       end;
       !free
 
@@ -926,38 +963,38 @@ end = struct
     | Set_of_closures set_of_closures ->
       Set_of_closures.print ppf set_of_closures
     | Prim (prim, dbg) ->
-      fprintf ppf "@[<2>(%a@ dbg=%a)@]"
+      fprintf ppf "@[<2>(%a@ %a)@]"
         Flambda_primitive.print prim
-        (Debuginfo.to_string dbg)
+        Debuginfo.print_or_elide dbg
 
-  let box_value var (kind : Flambda_kind.t) : Named.t * Flambda_kind.t =
+  let box_value var (kind : Flambda_kind.t) dbg : Named.t * Flambda_kind.t =
     match kind with
     | Value _ -> Var var, kind
     | Naked_immediate ->
-      Prim (Ptag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Misc.fatal_error "Not yet supported"
     | Naked_float ->
-      Prim (Pbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Prim (Unary (Box_number Naked_float, var), dbg), K.value Must_scan
     | Naked_int32 ->
-      Prim (Pbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Prim (Unary (Box_number Naked_int32, var), dbg), K.value Must_scan
     | Naked_int64 ->
-      Prim (Pbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Prim (Unary (Box_number Naked_int64, var), dbg), K.value Must_scan
     | Naked_nativeint ->
-      Prim (Pbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Prim (Unary (Box_number Naked_nativeint, var), dbg), K.value Must_scan
 
-  let unbox_value var (kind : Flambda_kind.t) : Named.t * Flambda_kind.t =
+  let unbox_value var (kind : Flambda_kind.t) dbg : Named.t * Flambda_kind.t =
     match kind with
     | Value _ -> Var var, kind
     | Naked_immediate ->
-      Prim (Puntag_immediate, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Misc.fatal_error "Not yet supported"
     | Naked_float ->
-      Prim (Punbox_float, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Prim (Unary (Unbox_number Naked_float, var), dbg), K.naked_float ()
     | Naked_int32 ->
-      Prim (Punbox_int32, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Prim (Unary (Unbox_number Naked_int32, var), dbg), K.naked_int32 ()
     | Naked_int64 ->
-      Prim (Punbox_int64, [var], Debuginfo.none), Flambda_kind.value Can_scan
+      Prim (Unary (Unbox_number Naked_int64, var), dbg), K.naked_int64 ()
     | Naked_nativeint ->
-      Prim (Punbox_nativeint, [var], Debuginfo.none), Flambda_kind.value Can_scan
-
+      Prim (Unary (Unbox_number Naked_nativeint, var), dbg),
+        K.naked_nativeint ()
 end and Let : sig
   type t = {
     var : Variable.t;
