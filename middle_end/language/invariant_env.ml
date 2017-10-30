@@ -131,6 +131,23 @@ let create () =
     continuation_stack = Continuation_stack.var ();
   }
 
+let clean t ~return_cont ~return_cont_arity ~allowed_free_variables =
+  let variables =
+    Variable.Map.filter (fun var -> Variable.Map.mem var allowed_free_variables)
+      t.variables
+  in
+  let continuation_stack = Continuation_stack.var () in
+  let continuations =
+    Continuation.Map.singleton
+      (return_cont_arity, return_cont, continuation_stack)
+  in
+  { t with
+    variables;
+    mutable_variables = Mutable_variable.Map.empty;
+    continuations;
+    continuation_stack;
+  }
+
 let add_variable t var kind =
   if Variable.Map.mem var t.variables then begin
     Misc.fatal_errorf "Duplicate binding of variable %a which is already \

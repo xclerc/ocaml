@@ -922,7 +922,7 @@ end = struct
       expr;
     Continuation.Tbl.to_map counts
 
-  let invariant ~importer ~return_cont ~return_cont_arity expr =
+  let invariant ~importer env ~return_cont ~return_cont_arity expr =
     let module E = Invariant_env in
     let unbound_continuation cont reason =
       Misc.fatal_errorf "Unbound continuation %a in %s: %a"
@@ -1201,26 +1201,7 @@ end = struct
         end
       | Invalid _ -> ()
     in
-    let env =
-      E.add_continuation (E.create ()) return_cont return_cont_arity Normal
-        (E.Continuation_stack.var ())
-    in
-    let result = loop env expr in
-    let current_compilation_unit = Compilation_unit.get_current_exn () in
-    Iterators.iter_sets_of_closures
-      (fun ({ Set_of_closures. function_decls; _ } as set) ->
-        let compilation_unit =
-          Set_of_closures_id.get_compilation_unit
-            function_decls.set_of_closures_id
-        in
-        if not (Compilation_unit.equal compilation_unit
-          current_compilation_unit)
-        then begin
-          Misc.fatal_errorf "Term declares closure from another compilation \
-              unit: %a"
-            Set_of_closures.print set
-        end)
-      expr
+    loop env expr
 end and Named : sig
   include module type of F0.Named
 
@@ -1608,12 +1589,16 @@ end = struct
               (Function_declaration.print fun_var) function_decl
           end;
           (* Check that free variables in parameters' types are bound. *)
-          List.iter (fun param ->
-              let ty = Typed_parameter.ty param in
-              let fvs = Flambda_type.free_variables ty in
-              Variable.Set.iter (fun fv -> E.check_variable_is_bound env fv)
-                fvs)
-            params;
+          let fvs_in_parameters'_types =
+            List.fold_left (fun fvs_in_types param ->
+                let ty = Typed_parameter.ty param in
+                let fvs = Flambda_type.free_variables ty in
+                Variable.Set.iter (fun fv -> E.check_variable_is_bound env fv)
+                  fvs;
+                Variable.Set.union fvs fvs_in_types)
+              Variable.Set.empty
+              params
+          in
           (* Check that projections on parameters only describe projections
              from other parameters of the same function. *)
           let params' = Typed_parameter.List.var_set params in
@@ -1641,16 +1626,23 @@ end = struct
                 parameters: %a"
               print t
           end;
-          (* Check that the body of the function is correctly structured. *)
+          (* Check the body of the function.  The allowed free variables are:
+             1. [my_closure];
+             2. the function's parameters;
+             3. free variables in the function's parameters' types.
+             We know from above that 1. and 2. are already in the environment.
+          *)
+(* XXX So, if there is a fv in one of the parameters' types, how is that used? *)
           let body_env =
-            let (var_env, _, sym_env) = env in
-            let var_env =
-              Variable.Set.fold (fun var -> Variable.Set.add var)
-                free_variables var_env
+            let env =
+              E.add_variable env my_closure (Flambda_kind.value Must_scan)
             in
-            (* Mutable variables cannot be captured by closures *)
-            let mut_env = Mutable_variable.Set.empty in
-            (var_env, mut_env, sym_env)
+            let allowed_free_variables =
+              Variable.Set.add my_closure
+                (Variable.Set.union free_variables fvs_in_parameters'_types)
+            in
+            E.prepare_for_function_body env ~return_cont ~return_cont_arity
+              ~allowed_free_variables
           in
           loop body_env body;
           all_params, Variable.Set.union free_variables all_free_vars)

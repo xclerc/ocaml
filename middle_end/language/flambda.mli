@@ -91,14 +91,6 @@ module rec Expr : sig
      only true after [Simplify] has split overapplications. *)
   (* CR-someday mshinwell: What about checks for shadowed variables and
      symbols? *)
-  (** Perform well-formedness checks on the expression. *)
-  val invariant
-     : (Invariant_env.t
-    -> return_cont:Continuation.t
-    -> return_cont_arity:Flambda_arity.t
-    -> t
-    -> unit) Flambda_type.with_importer
-
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool
 

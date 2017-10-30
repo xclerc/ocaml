@@ -715,6 +715,27 @@ module Program = struct
         program.imported_symbols
         E
     in
+(*
+
+
+    let current_compilation_unit = Compilation_unit.get_current_exn () in
+
+
+    Iterators.iter_sets_of_closures
+      (fun ({ Set_of_closures. function_decls; _ } as set) ->
+        let compilation_unit =
+          Set_of_closures_id.get_compilation_unit
+            function_decls.set_of_closures_id
+        in
+        if not (Compilation_unit.equal compilation_unit
+          current_compilation_unit)
+        then begin
+          Misc.fatal_errorf "Term declares closure from another compilation \
+              unit: %a"
+            Set_of_closures.print set
+        end)
+      expr
+*)
     loop_program_body env program.program_body
 
     let check program =

@@ -37,6 +37,13 @@ type t
 
 val create : unit -> t
 
+val prepare_for_function_body
+   : t
+  -> return_cont:Continuation.t
+  -> return_cont_arity:Flambda_arity.t
+  -> allowed_free_variables:Variable.Set.t
+  -> t
+
 val add_variable : t -> Variable.t -> Flambda_kind.t -> t
 
 val add_variables : t -> (Variable.t * Flambda_kind.t) list -> t
