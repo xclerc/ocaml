@@ -131,15 +131,17 @@ let create () =
     continuation_stack = Continuation_stack.var ();
   }
 
-let clean t ~return_cont ~return_cont_arity ~allowed_free_variables =
+let prepare_for_function_body t ~return_cont ~return_cont_arity
+      ~allowed_free_variables =
   let variables =
-    Variable.Map.filter (fun var -> Variable.Map.mem var allowed_free_variables)
+    Variable.Map.filter (fun var _ ->
+        Variable.Set.mem var allowed_free_variables)
       t.variables
   in
   let continuation_stack = Continuation_stack.var () in
   let continuations =
-    Continuation.Map.singleton
-      (return_cont_arity, return_cont, continuation_stack)
+    Continuation.Map.singleton return_cont
+      (return_cont_arity, Normal, continuation_stack)
   in
   { t with
     variables;

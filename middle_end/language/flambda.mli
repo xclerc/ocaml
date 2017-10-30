@@ -19,40 +19,45 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-type assign = Flambda0.assign
+module F0 = Flambda0
+
+type assign = F0.assign
+type inline_attribute = F0.inline_attribute
+type specialise_attribute = F0.specialise_attribute
+type mutable_or_immutable = F0.mutable_or_immutable
 
 (* CR-someday mshinwell: Here and everywhere else, once "module type of"
    has been fixed, we will be able to replace "module type of struct include
    X end" with just "module type of X". *)
 module Apply :
-  module type of struct include Flambda0.Apply end
+  module type of struct include F0.Apply end
 module Call_kind :
-  module type of struct include Flambda0.Call_kind end
+  module type of struct include F0.Call_kind end
 module Const :
-  module type of struct include Flambda0.Const end
+  module type of struct include F0.Const end
 module Continuation_handler :
-  module type of struct include Flambda0.Continuation_handler end
+  module type of struct include F0.Continuation_handler end
 module Continuation_handlers :
-  module type of struct include Flambda0.Continuation_handlers end
+  module type of struct include F0.Continuation_handlers end
 module Free_var :
-  module type of struct include Flambda0.Free_var end
+  module type of struct include F0.Free_var end
 module Let :
-  module type of struct include Flambda0.Let end
+  module type of struct include F0.Let end
 module Let_cont :
-  module type of struct include Flambda0.Let_cont end
+  module type of struct include F0.Let_cont end
 module Let_cont_handlers :
-  module type of struct include Flambda0.Let_cont_handlers end
+  module type of struct include F0.Let_cont_handlers end
 module Let_mutable :
-  module type of struct include Flambda0.Let_mutable end
+  module type of struct include F0.Let_mutable end
 module Switch :
-  module type of struct include Flambda0.Switch end
+  module type of struct include F0.Switch end
 module Trap_action :
-  module type of struct include Flambda0.Trap_action end
+  module type of struct include F0.Trap_action end
 module With_free_variables :
-  module type of struct include Flambda0.With_free_variables end
+  module type of struct include F0.With_free_variables end
 
 module Free_vars : sig
-  include module type of struct include Flambda0.Free_vars end
+  include module type of struct include F0.Free_vars end
 
   (* This is probably not needed anymore: closure elements are part of
      the set of closures not of the closure themselves anymore. This
@@ -66,21 +71,21 @@ end
 
 module Reachable : sig
   type t = private
-    | Reachable of Flambda0.Named.t
-    | Invalid of Flambda0.invalid_term_semantics
+    | Reachable of F0.Named.t
+    | Invalid of F0.invalid_term_semantics
 
-  val reachable : Flambda0.Named.t -> t
+  val reachable : F0.Named.t -> t
   val invalid : unit -> t
 end
 
 module Typed_parameter : sig
-  include module type of struct include Flambda0.Typed_parameter end
+  include module type of struct include F0.Typed_parameter end
 
   val kind : (t -> Flambda_kind.t) Flambda_type.with_importer
 end
 
 module rec Expr : sig
-  include module type of struct include Flambda0.Expr end
+  include module type of struct include F0.Expr end
 
   (* CR mshinwell: Check that apply_cont is well-formed when there is a
      trap installation or removal. *)
@@ -145,7 +150,7 @@ module rec Expr : sig
 
   val build_let_cont_with_wrappers
      : body:t
-    -> recursive:Flambda0.recursive
+    -> recursive:F0.recursive
     -> with_wrappers:with_wrapper Continuation.Map.t
     -> t
 
@@ -281,7 +286,7 @@ module rec Expr : sig
       -> t * 'b
   end
 end and Named : sig
-  include module type of struct include Flambda0.Named end
+  include module type of struct include F0.Named end
 
   val toplevel_substitution
      : (Variable.t Variable.Map.t
@@ -301,7 +306,7 @@ end and Named : sig
   end
 end
 and Set_of_closures : sig
-  include module type of struct include Flambda0.Set_of_closures end
+  include module type of struct include F0.Set_of_closures end
 
   val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
 
@@ -342,7 +347,7 @@ and Set_of_closures : sig
       -> 'a
   end
 end and Function_declarations : sig
-  include module type of struct include Flambda0.Function_declarations end
+  include module type of struct include F0.Function_declarations end
 
   val find_declaration_variable : Closure_id.t -> t -> Variable.t
 
@@ -381,7 +386,7 @@ end and Function_declarations : sig
 
   val contains_stub : t -> bool
 end and Function_declaration : sig
-  include module type of struct include Flambda0.Function_declaration end
+  include module type of struct include F0.Function_declaration end
 
   val function_arity : t -> int
 

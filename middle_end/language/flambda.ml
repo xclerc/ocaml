@@ -19,6 +19,7 @@
 module F0 = Flambda0
 
 type assign = F0.assign
+type mutable_or_immutable = Flambda0.mutable_or_immutable
 type inline_attribute = F0.inline_attribute
 type specialise_attribute = F0.specialise_attribute
 
@@ -95,8 +96,6 @@ module rec Expr : sig
 
   val invariant
      : (Invariant_env.t
-    -> return_cont:Continuation.t
-    -> return_cont_arity:Flambda_arity.t
     -> t
     -> unit) Flambda_type.with_importer
   val equal : t -> t -> bool
@@ -922,7 +921,7 @@ end = struct
       expr;
     Continuation.Tbl.to_map counts
 
-  let invariant ~importer env ~return_cont ~return_cont_arity expr =
+  let invariant ~importer env expr =
     let module E = Invariant_env in
     let unbound_continuation cont reason =
       Misc.fatal_errorf "Unbound continuation %a in %s: %a"
@@ -942,7 +941,7 @@ end = struct
       match t with
       | Let { var; kind; defining_expr; body; _ } ->
         let named_kind =
-          match Named.invariant env defining_expr with
+          match Named.invariant ~importer env defining_expr with
           | Singleton kind -> Some kind
           | Unit -> Some (Flambda_kind.value Can_scan)
           | Never_returns -> None
@@ -1102,7 +1101,7 @@ end = struct
           (Flambda_kind.value Must_scan);
         let args_must_be_of_kind_value =
           match call_kind with
-          | Direct { closure_id; return_arity; } ->
+          | Direct { closure_id = _; return_arity; } ->
             let arity = E.continuation_arity env continuation in
             if not (Flambda_arity.equal return_arity arity) then begin
               Misc.fatal_errorf "Return arity specified in direct-call \
@@ -1205,7 +1204,10 @@ end = struct
 end and Named : sig
   include module type of F0.Named
 
-  val invariant : Invariant_env.t -> t -> Flambda_primitive.result_kind
+  val invariant
+     : (Invariant_env.t
+    -> t
+    -> Flambda_primitive.result_kind) Flambda_type.with_importer
   val equal : t -> t -> bool
   val toplevel_substitution
      : (Variable.t Variable.Map.t
@@ -1543,8 +1545,6 @@ end = struct
   let invariant ~importer env
         ({ function_decls; free_vars; direct_call_surrogates = _; } as t) =
     let module E = Invariant_env in
-    let ignore_set_of_closures_id (_ : Set_of_closures_id.t) = () in
-    let ignore_set_of_closures_origin (_ : Set_of_closures_origin.t) = () in
     (* CR-soon mshinwell: check [direct_call_surrogates] *)
     let { Function_declarations. set_of_closures_id;
           set_of_closures_origin; funs; } =
@@ -1563,7 +1563,8 @@ end = struct
       Closure_id.Map.fold (fun fun_var function_decl acc ->
           let all_params, all_free_vars = acc in
           (* CR-soon mshinwell: check function_decl.all_symbols *)
-          let { Function_declaration.params; body; stub; dbg; my_closure; _ } =
+          let { Function_declaration.params; body; stub; dbg; my_closure;
+                continuation_param = return_cont; return_arity; _ } =
             function_decl
           in
           assert (Closure_id.Set.mem fun_var functions_in_closure);
@@ -1589,7 +1590,7 @@ end = struct
               (Function_declaration.print fun_var) function_decl
           end;
           (* Check that free variables in parameters' types are bound. *)
-          let fvs_in_parameters'_types =
+          let _fvs_in_parameters'_types =
             List.fold_left (fun fvs_in_types param ->
                 let ty = Typed_parameter.ty param in
                 let fvs = Flambda_type.free_variables ty in
@@ -1626,37 +1627,25 @@ end = struct
                 parameters: %a"
               print t
           end;
-          (* Check the body of the function.  The allowed free variables are:
-             1. [my_closure];
-             2. the function's parameters;
-             3. free variables in the function's parameters' types.
-             We know from above that 1. and 2. are already in the environment.
-          *)
-(* XXX So, if there is a fv in one of the parameters' types, how is that used? *)
+          (* Check the body of the function. *)
           let body_env =
-            let env =
-              E.add_variable env my_closure (Flambda_kind.value Must_scan)
-            in
-            let allowed_free_variables =
-              Variable.Set.add my_closure
-                (Variable.Set.union free_variables fvs_in_parameters'_types)
-            in
-            E.prepare_for_function_body env ~return_cont ~return_cont_arity
-              ~allowed_free_variables
+            E.prepare_for_function_body env ~return_cont
+              ~return_cont_arity:return_arity
+              ~allowed_free_variables:free_variables
           in
-          loop body_env body;
+          Expr.invariant ~importer body_env body;
           all_params, Variable.Set.union free_variables all_free_vars)
         funs (Variable.Set.empty, Variable.Set.empty)
     in
     Var_within_closure.Map.iter
-      (fun in_closure0 (outer_var : Flambda.Free_var.t) ->
-        check_variable_is_bound env outer_var.var;
+      (fun in_closure0 (outer_var : Free_var.t) ->
+        E.check_variable_is_bound env outer_var.var;
         match outer_var.projection with
         | None -> ()
         | Some projection ->
           let projecting_from = Projection.projecting_from projection in
           let in_closure =
-            Flambda.Free_vars.find_by_variable free_vars projecting_from
+            Free_vars.find_by_variable free_vars projecting_from
           in
           match in_closure with
           | None ->
@@ -1664,7 +1653,7 @@ end = struct
                 is deemed equal to a projection from %a; but %a does not \
                 correspond to any closure variable"
               Var_within_closure.print in_closure0
-              Variable.print outer_var
+              Free_var.print outer_var
               Variable.print projecting_from
               Variable.print projecting_from
           | Some _in_closure -> ())
@@ -1754,7 +1743,7 @@ end = struct
 
   let all_functions_parameters (function_decls : t) =
     Closure_id.Map.fold
-      (fun _ ({ params } : Function_declaration.t) set ->
+      (fun _ ({ params; _ } : Function_declaration.t) set ->
         Variable.Set.union set (Typed_parameter.List.var_set params))
       function_decls.funs Variable.Set.empty
 
@@ -1766,7 +1755,8 @@ end = struct
   let contains_stub (fun_decls : t) =
     let number_of_stub_functions =
       Closure_id.Map.cardinal
-        (Closure_id.Map.filter (fun _ ({ stub } : Function_declaration.t) -> stub)
+        (Closure_id.Map.filter
+          (fun _ ({ stub; _ } : Function_declaration.t) -> stub)
           fun_decls.funs)
     in
     number_of_stub_functions > 0
