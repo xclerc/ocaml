@@ -16,8 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module F = Flambda
-
 module Of_kind_value = struct
   include Flambda_static0.Of_kind_value
 
@@ -34,21 +32,13 @@ end
 module Static_part = struct
   include Flambda_static0.Static_part
 
-  let invariant env t =
+  let invariant ~importer env t =
     let module E = Invariant_env in
     match t with
     | Block (_tag, _mut, fields) ->
       List.iter (fun field -> Of_kind_value.invariant env field) fields
     | Set_of_closures set ->
-      let outer_vars = Flambda.Free_vars.all_outer_variables set.free_vars in
-      Variable.Set.iter (fun var ->
-          E.check_variable_is_bound_and_of_kind env var
-            (Flambda_kind.value Must_scan))
-        outer_vars;
-      let free_symbols = Flambda.Set_of_closures.free_symbols set in
-      Symbol.Set.iter (fun sym ->
-          E.check_symbol_is_bound env sym)
-        free_symbols
+      Flambda.Set_of_closures.invariant ~importer env set
     | Closure (sym, _closure_id) ->
       E.check_symbol_is_bound env sym
     | Boxed_float (Var v) ->
@@ -82,6 +72,37 @@ module Static_part = struct
               (Flambda_kind.naked_float ())
           | Const _ -> ())
         fields
+
+  module Iterators = struct
+    let iter_toplevel_exprs t ~f =
+      match t with
+      | Set_of_closures set ->
+        Flambda.Set_of_closures.Iterators.iter_function_bodies set ~f
+      | Block _
+      | Closure _
+      | Boxed_float _
+      | Boxed_int32 _
+      | Boxed_int64 _
+      | Boxed_nativeint _
+      | Mutable_float_array _
+      | Immutable_float_array _
+      | Mutable_string _
+      | Immutable_string _ -> ()
+
+    let iter_sets_of_closures t ~f =
+      match t with
+      | Set_of_closures set -> f set
+      | Block _
+      | Closure _
+      | Boxed_float _
+      | Boxed_int32 _
+      | Boxed_int64 _
+      | Boxed_nativeint _
+      | Mutable_float_array _
+      | Immutable_float_array _
+      | Mutable_string _
+      | Immutable_string _ -> ()
+  end
 end
 
 module Program_body = struct
@@ -97,20 +118,8 @@ module Program_body = struct
         in
         f ~continuation_arity computation.return_cont computation.expr
       end;
-      List.iter (fun (_sym, (static_part : Static_part.t)) ->
-          match static_part with
-          | Set_of_closures set ->
-            Flambda.Set_of_closures.Iterators.iter_function_bodies set ~f
-          | Block _
-          | Closure _
-          | Boxed_float _
-          | Boxed_int32 _
-          | Boxed_int64 _
-          | Boxed_nativeint _
-          | Mutable_float_array _
-          | Immutable_float_array _
-          | Mutable_string _
-          | Immutable_string _ -> ())
+      List.iter (fun (_sym, static_part) ->
+          Static_part.Iterators.iter_toplevel_exprs static_part ~f)
         defn.static_structure
 
     let rec iter_toplevel_exprs (t : t) ~f =
@@ -119,6 +128,24 @@ module Program_body = struct
       | Define_symbol_rec (defn, t) ->
         iter_toplevel_exprs_in_definition defn ~f;
         iter_toplevel_exprs t ~f
+      | Root _ -> ()
+
+    let iter_sets_of_closures_in_definition defn ~f =
+      begin match defn.computation with
+      | None -> ()
+      | Some computation ->
+        Flambda.Expr.Iterators.iter_sets_of_closures f computation.expr
+      end;
+      List.iter (fun (_sym, static_part) ->
+          Static_part.Iterators.iter_sets_of_closures static_part ~f)
+        defn.static_structure
+
+    let rec iter_sets_of_closures t ~f =
+      match t with
+      | Define_symbol (defn, t)
+      | Define_symbol_rec (defn, t) ->
+        iter_sets_of_closures_in_definition defn ~f;
+        iter_sets_of_closures t ~f
       | Root _ -> ()
   end
 
@@ -200,7 +227,7 @@ module Program_body = struct
             Symbol.print sym
             Static_part.print static_part
         end;
-        Static_part.invariant env static_part)
+        Static_part.invariant ~importer env static_part)
       defn.static_structure;
     List.fold_left (fun env (sym, _static_part) ->
         match recursive with
@@ -239,42 +266,10 @@ module Program = struct
     loop t.body
 
   module Iterators = struct
-(*
-    let iter_set_of_closures (program : t) ~f =
-      let rec loop (program : Program_body.t) =
-        match program with
-        | Let_symbol (_, Set_of_closures set_of_closures, program) ->
-          f ~constant:true set_of_closures;
-          Closure_id.Map.iter
-            (fun _ (function_decl : F.Function_declaration.t) ->
-              F.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-                function_decl.body)
-            set_of_closures.function_decls.funs;
-          loop program
-        | Let_rec_symbol (defs, program) ->
-          List.iter (function
-              | (_, CDV.Set_of_closures set_of_closures) ->
-                f ~constant:true set_of_closures;
-                Closure_id.Map.iter
-                  (fun _ (function_decl : F.Function_declaration.t) ->
-                    F.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-                      function_decl.body)
-                  set_of_closures.function_decls.funs
-              | _ -> ()) defs;
-          loop program
-        | Let_symbol (_, _, program) ->
-          loop program
-        | Initialize_symbol (_, descr, program) ->
-          Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false)
-            descr.expr;
-          loop program
-        | Effect (expr, _cont, program) ->
-          Flambda.Expr.Iterators.iter_sets_of_closures (f ~constant:false) expr;
-          loop program
-        | End _ -> ()
-      in
-      loop program.program_body
+    let iter_sets_of_closures t ~f =
+      Program_body.Iterators.iter_sets_of_closures t.body ~f
 
+(*
     let iter_constant_defining_values (program : t) ~f =
       let rec loop (program : Program_body.t) =
         match program with
@@ -558,15 +553,15 @@ module Program = struct
 
   let all_sets_of_closures program =
     let list = ref [] in
-    Iterators.iter_set_of_closures program
-      ~f:(fun ~constant:_ set_of_closures ->
+    Iterators.iter_sets_of_closures program
+      ~f:(fun set_of_closures ->
           list := set_of_closures :: !list);
     !list
 
   let all_sets_of_closures_map program =
     let r = ref Set_of_closures_id.Map.empty in
-    Iterators.iter_set_of_closures program
-      ~f:(fun ~constant:_ set_of_closures ->
+    Iterators.iter_sets_of_closures program
+      ~f:(fun set_of_closures ->
         r := Set_of_closures_id.Map.add
             set_of_closures.function_decls.set_of_closures_id
             set_of_closures !r);
@@ -612,154 +607,45 @@ module Program = struct
 
   let invariant ~importer t =
     let module E = Invariant_env in
-    let declared_var_within_closure (flam : t) =
-      let bound = ref Var_within_closure.Set.empty in
-      Iterators.iter_set_of_closures flam
-        ~f:(fun ~constant:_ { Flambda.Set_of_closures. free_vars; _ } ->
-          Var_within_closure.Map.iter (fun in_closure _ ->
-              bound := Var_within_closure.Set.add in_closure !bound)
-            free_vars);
-      !bound
-    in
-    let declared_closure_ids program =
-      let bound = ref Closure_id.Set.empty in
-      Iterators.iter_set_of_closures program
-        ~f:(fun ~constant:_ { Flambda.Set_of_closures. function_decls; _; } ->
-          Closure_id.Map.iter (fun closure_id _ ->
-              bound := Closure_id.Set.add closure_id !bound)
-            function_decls.funs);
-      !bound
-    in
-    let declared_set_of_closures_ids program =
-      let bound = ref Set_of_closures_id.Set.empty in
-      let bound_multiple_times = ref None in
-      let add_and_check var =
-        if Set_of_closures_id.Set.mem var !bound
-        then bound_multiple_times := Some var;
-        bound := Set_of_closures_id.Set.add var !bound
-      in
-      Iterators.iter_set_of_closures program
-        ~f:(fun ~constant:_ { Flambda.Set_of_closures. function_decls; _; } ->
-            add_and_check function_decls.set_of_closures_id);
-      !bound, !bound_multiple_times
-    in
-    let no_set_of_closures_id_is_bound_multiple_times program =
-      match declared_set_of_closures_ids program with
-      | _, Some set_of_closures_id ->
-        raise (Set_of_closures_id_is_bound_multiple_times set_of_closures_id)
-      | _, None -> ()
-    in
-    let used_closure_ids (program:t) =
-      let used = ref Closure_id.Set.empty in
-      let f (flam : Flambda.Named.t) =
-        match flam with
-        | Project_closure { closure_id; _} ->
-          used := Closure_id.Set.union closure_id !used;
-        | Move_within_set_of_closures { closure = _; move; } ->
-          Closure_id.Map.iter (fun start_from move_to ->
-            used := Closure_id.Set.add start_from !used;
-            used := Closure_id.Set.add move_to !used)
-            move
-        | Project_var { closure = _; var } ->
-          used := Closure_id.Set.union (Closure_id.Map.keys var) !used
-        | Set_of_closures _ | Var _ | Symbol _ | Const _ | Allocated_const _
-        | Prim _ | Assign _ | Read_mutable _ | Read_symbol_field _ -> ()
-      in
-      (* CR-someday pchambart: check closure_ids of constant_defining_values'
-         project_closures *)
-      Iterators.iter_named ~f program;
-      !used
-    in
-    let used_vars_within_closures (flam:t) =
-      let used = ref Var_within_closure.Set.empty in
-      let f (flam : Flambda.Named.t) =
-        match flam with
-        | Project_var { closure = _; var; } ->
-          Closure_id.Map.iter (fun _ var ->
-            used := Var_within_closure.Set.add var !used)
-            var
-        | _ -> ()
-      in
-      Iterators.iter_named ~f flam;
-      !used
-    in
-    let every_used_function_from_current_compilation_unit_is_declared
-          (program : Flambda_static.Program.t) =
+    let every_used_function_from_current_unit_is_declared env t =
       let current_compilation_unit = Compilation_unit.get_current_exn () in
-      let declared = declared_closure_ids program in
-      let used = used_closure_ids program in
-      let used_from_current_unit =
+      let not_declared = E.closure_ids_not_declared env in
+      let not_declared_from_current_unit =
         Closure_id.Set.filter (fun cu ->
             Closure_id.in_compilation_unit cu current_compilation_unit)
-          used
+          not_declared
       in
-      let counter_examples =
-        Closure_id.Set.diff used_from_current_unit declared
-      in
-      if Closure_id.Set.is_empty counter_examples
-      then ()
-      else raise (Unbound_closure_ids counter_examples)
+      if not (Closure_id.Set.is_empty not_declared_from_current_unit) then begin
+        Misc.fatal_errorf "Closure ID(s) { %a } from the current compilation \
+            unit is/are referenced but not declared: %a"
+          Closure_id.Set.print not_declared
+          print t
+      end
     in
-    let every_used_var_within_closure_from_current_compilation_unit_is_declared
-          t =
+    let every_used_var_within_closure_from_current_unit_is_declared env t =
       let current_compilation_unit = Compilation_unit.get_current_exn () in
-      let declared = declared_var_within_closure flam in
-      let used = used_vars_within_closures flam in
-      let used_from_current_unit =
+      let not_declared = E.var_within_closures_not_declared env in
+      let not_declared_from_current_unit =
         Var_within_closure.Set.filter (fun cu ->
             Var_within_closure.in_compilation_unit cu current_compilation_unit)
-          used
+          not_declared
       in
-      let counter_examples =
-        Var_within_closure.Set.diff used_from_current_unit declared in
-      if Var_within_closure.Set.is_empty counter_examples
-      then ()
-      else raise (Unbound_vars_within_closures counter_examples)
+      if not (Var_within_closure.Set.is_empty not_declared_from_current_unit)
+      then begin
+        Misc.fatal_errorf "Closure ID(s) { %a } from the current compilation \
+            unit is/are referenced but not declared: %a"
+          Var_within_closure.Set.print not_declared
+          print t
+      end
     in
-    variable_and_symbol_invariants flam;
-    no_set_of_closures_id_is_bound_multiple_times flam;
-    every_used_function_from_current_compilation_unit_is_declared flam;
-    every_used_var_within_closure_from_current_compilation_unit_is_declared
-      flam;
-    Flambda_static.Program.Iterators.iter_toplevel_exprs flam
-      ~f:(fun ~continuation_arity:_ _cont flam ->
-        every_declared_closure_is_from_current_compilation_unit flam);
     let env =
-      Symbol.Set.fold (fun symbol env ->
-          add_binding_occurrence_of_symbol env symbol)
-        program.imported_symbols
-        E
+      Symbol.Set.fold (fun symbol env -> E.add_symbol env symbol)
+        t.imported_symbols
+        (E.create ())
     in
-(*
-
-
-    let current_compilation_unit = Compilation_unit.get_current_exn () in
-
-
-    Iterators.iter_sets_of_closures
-      (fun ({ Set_of_closures. function_decls; _ } as set) ->
-        let compilation_unit =
-          Set_of_closures_id.get_compilation_unit
-            function_decls.set_of_closures_id
-        in
-        if not (Compilation_unit.equal compilation_unit
-          current_compilation_unit)
-        then begin
-          Misc.fatal_errorf "Term declares closure from another compilation \
-              unit: %a"
-            Set_of_closures.print set
-        end)
-      expr
-*)
-    loop_program_body env program.program_body
-
-    let check program =
-      Flambda_static.Program.Iterators.iter_toplevel_exprs program
-        ~f:well_formed_trap
-
-    let check ~importer program =
-      Flambda_static.Program.Iterators.iter_toplevel_exprs program
-        ~f:(check_expr ~importer)
+    Program_body.invariant ~importer env t.body;
+    every_used_function_from_current_unit_is_declared env t;
+    every_used_var_within_closure_from_current_unit_is_declared env t
 end
 
 

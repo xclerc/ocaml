@@ -313,24 +313,55 @@ let add_set_of_closures_id t id =
         program"
       Set_of_closures_id.print id
   end;
+  let compilation_unit = Compilation_unit.get_current_exn () in
+  if not (Set_of_closures_id.in_compilation_unit id compilation_unit) then begin
+    Misc.fatal_errorf "Binding occurrence of set-of-closures ID %a cannot \
+        occur in this compilation unit since the set-of-closures ID is from \
+        another compilation unit"
+      Set_of_closures_id.print id
+  end;
   t.all_set_of_closures_ids_seen :=
     Set_of_closures_id.Set.add id !(t.all_set_of_closures_ids_seen)
 
 let add_closure_id t id =
   (* The same closure ID may be bound multiple times in the same program, so
      there is no membership check here. *)
+  let compilation_unit = Compilation_unit.get_current_exn () in
+  if not (Closure_id.in_compilation_unit id compilation_unit) then begin
+    Misc.fatal_errorf "Binding occurrence of closure ID %a cannot occur in \
+        this compilation unit since the closure ID is from another compilation \
+        unit"
+      Closure_id.print id
+  end;
   t.all_closure_ids_seen := Closure_id.Set.add id !(t.all_closure_ids_seen)
 
 let add_use_of_closure_id t id =
+  (* The closure binding may be out of scope, so there is no check that [id]
+     is in scope. *)
   t.uses_of_closure_ids_seen :=
     Closure_id.Set.add id !(t.uses_of_closure_ids_seen)
 
 let add_var_within_closure t id =
-  (* The same closure ID may be bound multiple times in the same program, so
-     there is no membership check here. *)
+  (* The same var-within-closure may be bound multiple times in the same
+     program, so there is no membership check here. *)
+  let compilation_unit = Compilation_unit.get_current_exn () in
+  if not (Var_within_closure.in_compilation_unit id compilation_unit) then begin
+    Misc.fatal_errorf "Binding occurrence of var-within-closure %a cannot \
+        occur in this compilation unit since the closure ID is from another \
+        compilation unit"
+      Var_within_closure.print id
+  end;
   t.all_var_within_closures_seen :=
     Var_within_closure.Set.add id !(t.all_var_within_closures_seen)
 
 let add_use_of_var_within_closure t id =
   t.uses_of_var_within_closures_seen :=
     Var_within_closure.Set.add id !(t.uses_of_var_within_closures_seen)
+
+let closure_ids_not_declared t =
+  Closure_id.Set.diff !(t.all_closure_ids_seen)
+    !(t.uses_of_closure_ids_seen)
+
+let var_within_closures_not_declared t =
+  Var_within_closure.Set.diff !(t.all_var_within_closures_seen)
+    !(t.uses_of_var_within_closures_seen)

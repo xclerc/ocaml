@@ -314,6 +314,11 @@ end
 and Set_of_closures : sig
   include module type of struct include F0.Set_of_closures end
 
+  val invariant
+     : (Invariant_env.t
+    -> t
+    -> unit) Flambda_type.with_importer
+
   val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
 
   (** [find_free_variable v clos] raises [Not_found] if [c] is not in [clos]. *)

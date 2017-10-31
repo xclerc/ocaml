@@ -28,7 +28,7 @@ module Program : sig
 
   (** Perform well-formedness checks on the expression.  This is basically a
       simple type / kind checking algorithm. *)
-  val invariant : t -> unit
+  val invariant : (t -> unit) Flambda_type.with_importer
 
   (** All symbols imported from other compilation units by the given program. *)
   val imported_symbols : t -> Symbol.Set.t
@@ -71,14 +71,11 @@ module Program : sig
     -> Flambda.Function_declarations.t Closure_id.Map.t
 *)
   module Iterators : sig
-(*
-    (* CR mshinwell: give comment defining semantics.  Also rename to
-       [iter_sets_of_closures] to match [Flambda.Expr.Iterators]. *)
-    val iter_set_of_closures
+    (* CR mshinwell: give comment defining semantics. *)
+    val iter_sets_of_closures
        : t
-      -> f:(constant:bool -> Flambda.Set_of_closures.t -> unit)
+      -> f:(Flambda.Set_of_closures.t -> unit)
       -> unit
-*)
       
     (** Iterate over all toplevel expressions in the program, including
         subfunctions.

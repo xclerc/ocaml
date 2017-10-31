@@ -110,3 +110,7 @@ val kind_of_mutable_variable : t -> Mutable_variable.t -> Flambda_kind.t
 val current_continuation_stack : t -> Continuation_stack.t
 
 val set_current_continuation_stack : t -> Continuation_stack.t -> t
+
+val closure_ids_not_declared : t -> Closure_id.Set.t
+
+val var_within_closures_not_declared : t -> Var_within_closure.Set.t

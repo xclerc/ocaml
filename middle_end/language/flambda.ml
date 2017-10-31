@@ -1549,18 +1549,20 @@ end = struct
 
   let invariant ~importer env
         ({ function_decls; free_vars; direct_call_surrogates = _; } as t) =
+    (* CR mshinwell: Some of this should move into
+       [Function_declarations.invariant] *)
     let module E = Invariant_env in
     (* CR-soon mshinwell: check [direct_call_surrogates] *)
     let { Function_declarations. set_of_closures_id;
           set_of_closures_origin; funs; } =
       function_decls
     in
-    ignore (set_of_closures_id : Set_of_closures_id.t);
+    E.add_set_of_closures_id env set_of_closures_id;
     ignore (set_of_closures_origin : Set_of_closures_origin.t);
     let functions_in_closure = Closure_id.Map.keys funs in
     Var_within_closure.Map.iter
       (fun var (var_in_closure : Free_var.t) ->
-        ignore (var : Var_within_closure.t);
+        E.add_var_within_closure env var;
         E.check_variable_is_bound env var_in_closure.var)
       free_vars;
     let _all_params, _all_free_vars =
@@ -1573,6 +1575,7 @@ end = struct
             function_decl
           in
           assert (Closure_id.Set.mem fun_var functions_in_closure);
+          E.add_closure_id env fun_var;
           ignore (stub : bool);
           ignore (dbg : Debuginfo.t);
           let free_variables = Expr.free_variables body in
