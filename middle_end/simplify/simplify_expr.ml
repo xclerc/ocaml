@@ -1066,6 +1066,7 @@ let simplify_switch env r arg sw : Flambda.Expr.t * R.t =
       let env = E.inside_branch env in
       let f (acc, r) (i, cont) =
         let cont, r =
+          (* CR mshinwell: instead of "don't_record_use", snapshot [r] *)
           simplify_apply_cont_to_cont env r cont ~args_types:[]
             ~don't_record_use:()
         in

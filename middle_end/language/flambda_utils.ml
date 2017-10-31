@@ -26,19 +26,17 @@ let make_closure_map' input =
   Set_of_closures_id.Map.iter add_set_of_closures input;
   !map
 
-let make_variable_symbol var ~kind =
+let make_variable_symbol var =
   Symbol.create (Compilation_unit.get_current_exn ())
     (Linkage_name.create
        (Variable.unique_name (Variable.rename var)))
-    ~kind
 
-let make_variables_symbol vars ~kind =
+let make_variables_symbol vars =
   let name =
     String.concat "_and_"
       (List.map (fun var -> Variable.unique_name (Variable.rename var)) vars)
   in
   Symbol.create (Compilation_unit.get_current_exn ()) (Linkage_name.create name)
-    ~kind
 
 type sharing_key = Continuation.t
 let make_key cont = Some cont

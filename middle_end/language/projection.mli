@@ -32,7 +32,7 @@ module Project_closure : sig
         set defining a given closure_id. *)
   }
 
-  include Identifiable.S with type t := t
+  val print : Format.formatter -> t -> unit
 end
 
 (** The selection of one closure given another closure in the same set of
@@ -47,7 +47,7 @@ module Move_within_set_of_closures : sig
         from the set. *)
   }
 
-  include Identifiable.S with type t := t
+  val print : Format.formatter -> t -> unit
 end
 
 (** The selection from a closure of a variable bound by said closure.
@@ -62,16 +62,15 @@ module Project_var : sig
         closure. *)
   }
 
-  include Identifiable.S with type t := t
+  val print : Format.formatter -> t -> unit
 end
 
 type t =
+  | Symbol of Symbol.t * (int option)
   | Project_var of Project_var.t
   | Project_closure of Project_closure.t
   | Move_within_set_of_closures of Move_within_set_of_closures.t
-  | Pure_primitive of Flambda_primitive.t
-  (** "Pure" means both no effects and no coeffects. *)
-  | Field of int * Variable.t
+  | Primitive_with_fixed_value of Flambda_primitive.With_fixed_value.t
   | Switch of Variable.t
 
 include Identifiable.S with type t := t

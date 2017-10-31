@@ -52,11 +52,18 @@ module type S = sig
     size : int;
   }
 
+  type 'a with_var = private
+    | Normal of 'a
+    | Var of Variable.t
+    | Symbol of Symbol.t * (int option)
+
+(*
   type 'a with_var_and_symbol = private {
     descr : 'a;
     var : Variable.t option;
     symbol : (Symbol.t * int option) option;
   }
+*)
 
   (** Values of type [t] are known as "Flambda types".  Each Flambda type
       has a unique kind.

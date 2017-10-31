@@ -95,7 +95,7 @@ type unary_float_arith_op = Abs | Neg
 
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
-  | Block_load of int * field_kind
+  | Block_load of int * field_kind * mutable_or_immutable
   (* CR mshinwell: Clarify whether [array_kind] is the kind of the array
      being duplicated or the new array, and check that the effect/coeffect
      judgement is correct. *)
@@ -193,6 +193,8 @@ type t =
   | Ternary of ternary_primitive * Variable.t * Variable.t * Variable.t
   | Variadic of variadic_primitive * (Variable.t list)
 
+type primitive_application = t
+
 (** Check the well-formedness of a primitive application. *)
 val invariant : Invariant_env.t -> t -> unit
 
@@ -248,13 +250,15 @@ type effects =
       "effects out of the ether" and thus ignored for our determination here
       of effectfulness.  The same goes for floating point operations that may
       cause hardware traps on some platforms. *)
-  | Only_generative_effects
+  | Only_generative_effects of Flambda.mutable_or_immutable
   (** The primitive does not change the observable state of the world save for
       possibly affecting the state of the garbage collector by performing an
       allocation. Applications of primitives that only have generative effects
       and whose results are unused may be eliminated by the compiler. However,
       unlike "No effects" primitives, such applications will never be eligible
-      for duplication. *)
+      for duplication.
+      The argument to [Only_generative_effects] states whether the returned
+      value from the primitive is mutable. *)
   | Arbitrary_effects
   (** The primitive may have effects beyond those described by [No_effects]
       and [Only_generative_effects]. *)
@@ -275,3 +279,13 @@ type coeffects =
 (** Describe the effects and coeffects that the application of the given
     primitive may have. *)
 val effects_and_coeffects : t -> effects * coeffects
+
+module With_fixed_value : sig
+  (** Primitive applications that may be replaced by a variable which is let
+      bound to a single instance of such application. *)
+  type t
+
+  val create : primitive_application -> t option
+
+  val to_primitive : t -> primitive_application
+end

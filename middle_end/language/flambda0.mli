@@ -711,8 +711,8 @@ end and Typed_parameter : sig
   (** The type of a parameter. *)
   val ty : t -> Flambda_type.t
 
-  (** The projection information. *)
-  val projection : t -> Projection.t option
+  (** Equations that hold about this parameter. *)
+  val equation : t -> Equation.t option
 
   (** Replace the type of a parameter. *)
   val with_type : t -> Flambda_type.t -> t

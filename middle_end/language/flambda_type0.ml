@@ -178,6 +178,8 @@ end) = struct
   type 'a with_var_and_symbol = {
     descr : 'a;
     var : Variable.t option;
+
+
     symbol : (Symbol.t * int option) option;
   }
 

@@ -150,7 +150,6 @@ val redefine_symbol
 val find_symbol : t -> Symbol.t -> Flambda_type.Of_symbol.t
 
 (** Note that the given [bound_to] holds the given [projection]. *)
-(* CR mshinwell: Shouldn't need this any more? *)
 val add_projection
    : t
   -> projection:Projection.t

@@ -20,7 +20,10 @@
 
 module K = Flambda_kind
 
-type effects = No_effects | Only_generative_effects | Arbitrary_effects
+type effects =
+  | No_effects
+  | Only_generative_effects of Flambda.mutable_or_immutable
+  | Arbitrary_effects
 
 type coeffects = No_coeffects | Has_coeffects
 
@@ -257,7 +260,7 @@ type result_kind =
   | Never_returns
 
 type unary_primitive =
-  | Block_load of int * field_kind
+  | Block_load of int * field_kind * mutable_or_immutable
   | Duplicate_array of array_kind * mutable_or_immutable
   | Duplicate_record of {
       repr : record_representation;
@@ -286,7 +289,7 @@ type unary_primitive =
 let print_unary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Block_load (n, _k) ->
+  | Block_load (n, _k, _mut) ->
     fprintf ppf "block_load %i" n
   | Duplicate_array (k, Mutable) ->
     fprintf ppf "duplicate_array[%a]" print_array_kind k
@@ -321,8 +324,8 @@ let print_unary_primitive ppf p =
 
 let arg_kind_of_unary_primitive p =
   match p with
-  | Block_load (_, Not_a_float) -> K.value Must_scan
-  | Block_load (_, Float) -> K.naked_float ()
+  | Block_load (_, Not_a_float, _) -> K.value Must_scan
+  | Block_load (_, Float, _) -> K.naked_float ()
   | Duplicate_array _
   | Duplicate_record _
   | Is_int
@@ -344,8 +347,8 @@ let arg_kind_of_unary_primitive p =
 
 let result_kind_of_unary_primitive p : result_kind =
   match p with
-  | Block_load (_, Not_a_float) -> Singleton (K.value Must_scan)
-  | Block_load (_, Float) -> Singleton (K.naked_float ())
+  | Block_load (_, Not_a_float, _) -> Singleton (K.value Must_scan)
+  | Block_load (_, Float, _) -> Singleton (K.naked_float ())
   | Duplicate_array _
   | Duplicate_record _ -> Singleton (K.value Must_scan)
   | Is_int
@@ -367,14 +370,15 @@ let result_kind_of_unary_primitive p : result_kind =
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
-  | Block_load _ ->
+  | Block_load (_, _, Immutable) -> No_effects, No_coeffects
+  | Block_load (_, _, Mutable) ->
     reading_from_an_array_like_thing Unsafe
   | Duplicate_array (_, Immutable) ->
     (* Duplicate_array (_, Immutable) is allowed only on immutable arrays. *)
-    Only_generative_effects, No_coeffects
+    Only_generative_effects Immutable, No_coeffects
   | Duplicate_array (_, Mutable)
   | Duplicate_record { repr = _; num_fields = _; } ->
-    Only_generative_effects, Has_coeffects
+    Only_generative_effects Mutable, Has_coeffects
   | Is_int -> No_effects, No_coeffects
   | Get_tag -> No_effects, Has_coeffects
   | String_length _ -> reading_from_an_array_like_thing Unsafe
@@ -394,7 +398,7 @@ let effects_and_coeffects_of_unary_primitive p =
   | Unbox_number _ ->
     No_effects, No_coeffects
   | Box_number _ ->
-    Only_generative_effects, No_coeffects
+    Only_generative_effects Immutable, No_coeffects
 
 type binary_int_arith_op =
   | Add | Sub | Mul
@@ -653,12 +657,13 @@ let result_kind_of_variadic_primitive p : result_kind =
 let effects_and_coeffects_of_variadic_primitive p =
   match p with
   | Make_block _
-  | Make_array (_, Immutable)
-  | Make_array (_, Mutable) -> Only_generative_effects, No_coeffects
+  (* CR mshinwell: Arrays of size zero? *)
+  | Make_array (_, Immutable) -> Only_generative_effects Immutable, no_coeffects
+  | Make_array (_, Mutable) -> Only_generative_effects Mutable, No_coeffects
   | Bigarray_set (is_safe, _, _, _) ->
     writing_to_an_array_like_thing is_safe
   | Bigarray_load (Unsafe, _, (Unknown | Complex32 | Complex64), _) ->
-    Only_generative_effects, Has_coeffects
+    Only_generative_effects Immutable, Has_coeffects
   | Bigarray_load (is_safe, _, _, _) ->
     reading_from_an_array_like_thing is_safe
   | C_call { name = _; native_name = _; args = _; result = _; alloc = _; } ->
@@ -672,6 +677,8 @@ type t =
   | Binary of binary_primitive * Variable.t * Variable.t
   | Ternary of ternary_primitive * Variable.t * Variable.t * Variable.t
   | Variadic of variadic_primitive * (Variable.t list)
+
+type primitive_application = t
 
 let invariant env t =
   let module E = Invariant_env in
@@ -757,3 +764,17 @@ let effects_and_coeffects (t : t) =
   | Binary (prim, _, _) -> effects_and_coeffects_of_binary_primitive prim
   | Ternary (prim, _, _, _) -> effects_and_coeffects_of_ternary_primitive prim
   | Variadic (prim, _) -> effects_and_coeffects_of_variadic_primitive prim
+
+module With_fixed_value = struct
+  type t = primitive_application
+
+  let create t =
+    match effects_and_coeffects with
+    | No_effects, No_coeffects -> Some t
+    | Only_generative_effects Immutable, No_coeffects ->
+      (* Allow constructions of immutable blocks to be shared. *)
+      Some t
+    | _, _ -> None
+
+  let to_primitive t = t
+end
