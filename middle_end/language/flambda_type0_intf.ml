@@ -412,11 +412,19 @@ module type S = sig
 
   (** Each type has a unique kind.  This is mostly syntactic save for the
       "Value" cases. *)
-  val kind : (t -> Flambda_kind.t) with_importer
+  val kind
+     : (env:'a
+       -> type_of_var:('a -> Variable.t -> t option)
+       -> t
+       -> Flambda_kind.t) with_importer
 
   (** Given a type of kind [Value] determine whether values of that type
       have to be scanned by the GC. *)
-  val scanning_ty_value : (ty_value -> Flambda_kind.scanning) with_importer
+  val scanning_ty_value
+     : (env:'a
+       -> type_of_var:('a -> Variable.t -> t option)
+       -> ty_value
+       -> Flambda_kind.scanning) with_importer
 
   (** Least upper bound of two types. *)
   val join

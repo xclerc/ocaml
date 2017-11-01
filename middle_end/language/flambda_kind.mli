@@ -26,6 +26,7 @@ type scanning =
   | Can_scan
 
 val join_scanning : scanning -> scanning -> scanning
+val meet_scanning : scanning -> scanning -> scanning
 
 type t = private
   | Value of scanning

@@ -27,6 +27,13 @@ let join_scanning s1 s2 =
   | Can_scan, Must_scan -> Must_scan
   | Can_scan, Can_scan -> Can_scan
 
+let meet_scanning s1 s2 =
+  match s1, s2 with
+  | Must_scan, Must_scan -> Must_scan
+  | Must_scan, Can_scan
+  | Can_scan, Must_scan
+  | Can_scan, Can_scan -> Can_scan
+
 type t =
   | Value of scanning
   | Naked_immediate

@@ -604,6 +604,30 @@ end = struct
       Non_inlinable decl
     | Non_inlinable _ -> f
 
+  (* CR pchambart:  (This was written for the "join" case)
+     merging the closure value might loose information in the
+     case of one branch having the approximation and the other
+     having 'Unknown'. We could imagine such as
+
+     {[if ... then M1.f else M2.f]}
+
+     where M1 is where the function is defined and M2 is
+
+     {[let f = M3.f]}
+
+     and M3 is
+
+     {[let f = M1.f]}
+
+     with the cmx for M3 missing
+
+     Since we know that the approximation comes from the same
+     value, we know that both version provide additional
+     information on the value. Hence what we really want is an
+     approximation intersection, not an union (that this join
+     is).
+     mshinwell: changed to meet *)
+
   let join_and_make_all_functions_non_inlinable ~importer
         (t1 : t) (t2 : t) : t =
     let join_results_and_make_non_inlinable (f1 : function_declaration)

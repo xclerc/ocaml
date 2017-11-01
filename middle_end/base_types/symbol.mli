@@ -55,3 +55,9 @@ val print_opt : Format.formatter -> t option -> unit
 val compare_lists : t list -> t list -> int
 
 val in_compilation_unit : t -> Compilation_unit.t -> bool
+
+module And_optional_field : sig
+  type t = symbol * (int option)
+
+  include Identifiable.S with type t := t
+end

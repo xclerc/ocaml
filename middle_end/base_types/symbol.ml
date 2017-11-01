@@ -84,3 +84,24 @@ let compare_lists l1 l2 =
 
 let in_compilation_unit t cu =
   Compilation_unit.equal t.compilation_unit cu
+
+module And_optional_field = struct
+  type t = symbol * (int option)
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let compare (sym1, field1) (sym2, field2) =
+      let c = Symbol.compare sym1 sym2 in
+      if c <> 0 then c
+      else Misc.Stdlib.Option.compare Pervasives.compare field1 field2
+
+    let hash (sym, field) =
+      Hashtbl.hash (hash sym, field)
+
+    let print ppf (sym, field) =
+      match field with
+      | None -> print ppf sym
+      | Some field -> Format.fprintf ppf "%a.(%d)" print sym field
+  end)
+end

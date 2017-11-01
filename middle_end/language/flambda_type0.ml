@@ -1011,26 +1011,21 @@ end) = struct
 
     let import_naked_immediate_type_as_resolved_ty_naked_immediate
           (ty : ty_naked_immediate) : resolved_ty_naked_immediate =
-      match ty.descr with
-      | Ok descr ->
-        { descr;
-          var = ty.var;
-          symbol = ty.symbol;
-        }
-      | Load_lazily load_lazily ->
+      match ty with
+      | Var var -> Var var
+      | Symbol (sym, field) -> Symbol (sym, field)
+      | Normal (Resolved ty) -> Normal ty
+      | Normal (Load_lazily load_lazily) ->
         let resolve_predefined_exception _sym = None in
         let create_resolved_t t
               : resolved_ty_naked_immediate create_resolved_t_result =
           match t with
           | Naked_immediate ty ->
-            begin match ty.descr with
-            | Ok descr ->
-              Ok {
-                descr;
-                var = ty.var;
-                symbol = ty.symbol;
-              }
-            | Load_lazily ll -> Load_lazily_again ll
+            begin match ty with
+            | Var var -> Resolved (Var var)
+            | Symbol (sym, field) -> Resolved (Symbol (sym, field))
+            | Normal (Resolved descr) -> Resolved (Normal descr)
+            | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
           | Value _
           | Naked_float _
@@ -1041,13 +1036,16 @@ end) = struct
                 [Naked_immediate]"
               print_load_lazily load_lazily
         in
+        let create_symbol sym =
+          Misc.fatal_errorf "Symbols cannot be imported at kinds other than \
+              [Value]: %a"
+            Symbol.print sym
+        in
         let result =
-          import_type load_lazily ~create_resolved_t
-            ~resolve_predefined_exception
+          import_type load_lazily ~create_symbol ~create_resolved_t
         in
         match result with
-        | Ok result -> result
-        | Ok_symbol sym -> Symbol sym
+        | Resolved result -> result
         | Treat_as_unknown_must_scan reason ->
           unknown_as_resolved_ty_naked_immediate reason ()
 
@@ -1057,26 +1055,21 @@ end) = struct
 
     let import_naked_float_type_as_resolved_ty_naked_float
           (ty : ty_naked_float) : resolved_ty_naked_float =
-      match ty.descr with
-      | Ok descr ->
-        { descr;
-          var = ty.var;
-          symbol = ty.symbol;
-        }
-      | Load_lazily load_lazily ->
+      match ty with
+      | Var var -> Var var
+      | Symbol (sym, field) -> Symbol (sym, field)
+      | Normal (Resolved ty) -> Normal ty
+      | Normal (Load_lazily load_lazily) ->
         let resolve_predefined_exception _sym = None in
         let create_resolved_t t
               : resolved_ty_naked_float create_resolved_t_result =
           match t with
           | Naked_float ty ->
-            begin match ty.descr with
-            | Ok descr ->
-              Ok {
-                descr;
-                var = ty.var;
-                symbol = ty.symbol;
-              }
-            | Load_lazily ll -> Load_lazily_again ll
+            begin match ty with
+            | Var var -> Resolved (Var var)
+            | Symbol (sym, field) -> Resolved (Symbol (sym, field))
+            | Normal (Resolved descr) -> Resolved (Normal descr)
+            | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -1087,12 +1080,16 @@ end) = struct
                 [Naked_float]"
               print_load_lazily load_lazily
         in
+        let create_symbol sym =
+          Misc.fatal_errorf "Symbols cannot be imported at kinds other than \
+              [Value]: %a"
+            Symbol.print sym
+        in
         let result =
-          import_type load_lazily ~create_resolved_t
-            ~resolve_predefined_exception
+          import_type load_lazily ~create_symbol ~create_resolved_t
         in
         match result with
-        | Ok result -> result
+        | Resolved result -> result
         | Treat_as_unknown_must_scan reason ->
           unknown_as_resolved_ty_naked_float reason ()
 
@@ -1101,26 +1098,21 @@ end) = struct
 
     let import_naked_int32_type_as_resolved_ty_naked_int32
           (ty : ty_naked_int32) : resolved_ty_naked_int32 =
-      match ty.descr with
-      | Ok descr ->
-        { descr;
-          var = ty.var;
-          symbol = ty.symbol;
-        }
-      | Load_lazily load_lazily ->
+      match ty with
+      | Var var -> Var var
+      | Symbol (sym, field) -> Symbol (sym, field)
+      | Normal (Resolved ty) -> Normal ty
+      | Normal (Load_lazily load_lazily) ->
         let resolve_predefined_exception _sym = None in
         let create_resolved_t t
               : resolved_ty_naked_int32 create_resolved_t_result =
           match t with
           | Naked_int32 ty ->
-            begin match ty.descr with
-            | Ok descr ->
-              Ok {
-                descr;
-                var = ty.var;
-                symbol = ty.symbol;
-              }
-            | Load_lazily ll -> Load_lazily_again ll
+            begin match ty with
+            | Var var -> Resolved (Var var)
+            | Symbol (sym, field) -> Resolved (Symbol (sym, field))
+            | Normal (Resolved descr) -> Resolved (Normal descr)
+            | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -1131,12 +1123,16 @@ end) = struct
                 [Naked_int32]"
               print_load_lazily load_lazily
         in
+        let create_symbol sym =
+          Misc.fatal_errorf "Symbols cannot be imported at kinds other than \
+              [Value]: %a"
+            Symbol.print sym
+        in
         let result =
-          import_type load_lazily ~create_resolved_t
-            ~resolve_predefined_exception
+          import_type load_lazily ~create_symbol ~create_resolved_t
         in
         match result with
-        | Ok result -> result
+        | Resolved result -> result
         | Treat_as_unknown_must_scan reason ->
           unknown_as_resolved_ty_naked_int32 reason ()
 
@@ -1145,26 +1141,21 @@ end) = struct
 
     let import_naked_int64_type_as_resolved_ty_naked_int64
           (ty : ty_naked_int64) : resolved_ty_naked_int64 =
-      match ty.descr with
-      | Ok descr ->
-        { descr;
-          var = ty.var;
-          symbol = ty.symbol;
-        }
-      | Load_lazily load_lazily ->
+      match ty with
+      | Var var -> Var var
+      | Symbol (sym, field) -> Symbol (sym, field)
+      | Normal (Resolved ty) -> Normal ty
+      | Normal (Load_lazily load_lazily) ->
         let resolve_predefined_exception _sym = None in
         let create_resolved_t t
               : resolved_ty_naked_int64 create_resolved_t_result =
           match t with
           | Naked_int64 ty ->
-            begin match ty.descr with
-            | Ok descr ->
-              Ok {
-                descr;
-                var = ty.var;
-                symbol = ty.symbol;
-              }
-            | Load_lazily ll -> Load_lazily_again ll
+            begin match ty with
+            | Var var -> Resolved (Var var)
+            | Symbol (sym, field) -> Resolved (Symbol (sym, field))
+            | Normal (Resolved descr) -> Resolved (Normal descr)
+            | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -1175,12 +1166,16 @@ end) = struct
                 [Naked_int64]"
               print_load_lazily load_lazily
         in
+        let create_symbol sym =
+          Misc.fatal_errorf "Symbols cannot be imported at kinds other than \
+              [Value]: %a"
+            Symbol.print sym
+        in
         let result =
-          import_type load_lazily ~create_resolved_t
-            ~resolve_predefined_exception
+          import_type load_lazily ~create_symbol ~create_resolved_t
         in
         match result with
-        | Ok result -> result
+        | Resolved result -> result
         | Treat_as_unknown_must_scan reason ->
           unknown_as_resolved_ty_naked_int64 reason ()
 
@@ -1189,26 +1184,21 @@ end) = struct
 
     let import_naked_nativeint_type_as_resolved_ty_naked_nativeint
           (ty : ty_naked_nativeint) : resolved_ty_naked_nativeint =
-      match ty.descr with
-      | Ok descr ->
-        { descr;
-          var = ty.var;
-          symbol = ty.symbol;
-        }
-      | Load_lazily load_lazily ->
+      match ty with
+      | Var var -> Var var
+      | Symbol (sym, field) -> Symbol (sym, field)
+      | Normal (Resolved ty) -> Normal ty
+      | Normal (Load_lazily load_lazily) ->
         let resolve_predefined_exception _sym = None in
         let create_resolved_t t
               : resolved_ty_naked_nativeint create_resolved_t_result =
           match t with
           | Naked_nativeint ty ->
-            begin match ty.descr with
-            | Ok descr ->
-              Ok {
-                descr;
-                var = ty.var;
-                symbol = ty.symbol;
-              }
-            | Load_lazily ll -> Load_lazily_again ll
+            begin match ty with
+            | Var var -> Resolved (Var var)
+            | Symbol (sym, field) -> Resolved (Symbol (sym, field))
+            | Normal (Resolved descr) -> Resolved (Normal descr)
+            | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
           | Value _
           | Naked_immediate _
@@ -1219,12 +1209,16 @@ end) = struct
                 [Naked_nativeint]"
               print_load_lazily load_lazily
         in
+        let create_symbol sym =
+          Misc.fatal_errorf "Symbols cannot be imported at kinds other than \
+              [Value]: %a"
+            Symbol.print sym
+        in
         let result =
-          import_type load_lazily ~create_resolved_t
-            ~resolve_predefined_exception
+          import_type load_lazily ~create_symbol ~create_resolved_t
         in
         match result with
-        | Ok result -> result
+        | Resolved result -> result
         | Treat_as_unknown_must_scan reason ->
           unknown_as_resolved_ty_naked_nativeint reason ()
 
@@ -1233,63 +1227,97 @@ end) = struct
         import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty)
   end
 
-  (* CR pchambart:  (This was written for the "join" case)
-     merging the closure value might loose information in the
-     case of one branch having the approximation and the other
-     having 'Unknown'. We could imagine such as
+  let resolve_aliases ~importer_this_kind ~env ~type_of_var ~type_of_symbol
+        (ty : _ ty) : _ resolved_ty =
+    let rec resolve_aliases vars_seen syms_seen (ty : _ resolved_ty) =
+      match ty with
+      | Normal _ -> ty
+      | Var var ->
+        if Variable.Set.mem var vars_seen then begin
+          (* CR-soon mshinwell: Improve message -- but this means passing the
+             printing functions to this function. *)
+          Misc.fatal_errorf "Loop on %a whilst resolving aliases"
+            Variable.print var
+        end;
+        begin match type_of_var env var with
+        | None -> ty
+        | Some ty ->
+          let vars_seen = Variable.Set.add var vars_seen in
+          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
+        end
+      | Symbol (sym, field) ->
+        if Symbol.And_optional_field.Set.mem (sym, field) syms_seen then begin
+          Misc.fatal_errorf "Loop on %a whilst resolving aliases"
+            Symbol.print sym
+        end;
+        begin match type_of_symbol env sym with
+        | None -> ty
+        | Some ty ->
+          let syms_seen =
+            Symbol.And_optional_field.Set.add (sym, field) syms_seen
+          in
+          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
+        end
+    in
+    resolve_aliases Variable.Set.empty Symbol.And_optional_field.Set.empty
+      (importer_this_kind ty)
 
-     {[if ... then M1.f else M2.f]}
+  let resolve_aliases_and_squash_unresolved_names ~importer_this_kind
+        ~env ~type_of_var ~type_of_symbol ~make_unknown ty =
+    let ty =
+      resolve_aliases ~importer_this_kind ~env ~type_of_var ~type_of_symbol ty
+    in
+    match ty with
+    | Normal ty -> ty
+    | Var _ | Symbol _ -> make_unknown ()
 
-     where M1 is where the function is defined and M2 is
+  let ty_of_resolved_ty (ty : _ resolved_ty) : _ ty =
+    match ty with
+    | Normal ty -> Normal ((Resolved ty) : _ maybe_unresolved)
+    | Var var -> Var var
+    | Symbol (sym, field) -> Symbol (sym, field)
 
-     {[let f = M3.f]}
-
-     and M3 is
-
-     {[let f = M1.f]}
-
-     with the cmx for M3 missing
-
-     Since we know that the approximation comes from the same
-     value, we know that both version provide additional
-     information on the value. Hence what we really want is an
-     approximation intersection, not an union (that this join
-     is).
-     mshinwell: changed to meet *)
-
-  let must_scan_of_kind_value_or_unknown_or_bottom
-        (o : (of_kind_value, _) or_unknown_or_bottom) : K.scanning =
-    match o with
-    | Unknown _ -> Must_scan
-    | Bottom -> Can_scan
-    | Ok of_kind_value ->
-      let rec must_scan_of_kind_value (o : of_kind_value) : K.scanning =
-        match o with
-        | Singleton (Tagged_immediate _) -> Can_scan
-        | Singleton _ -> Must_scan
-        | Union (w1, w2) ->
-          K.join_scanning (must_scan_of_kind_value w1.descr)
-            (must_scan_of_kind_value w2.descr)
-      in
-      must_scan_of_kind_value of_kind_value
-
-  let scanning_ty_value ~importer (ty : ty_value) =
+  let rec scanning_ty_value ~importer ~env ~type_of_var ~type_of_symbol
+        (ty : ty_value) : K.scanning =
     let module I = (val importer : Importer) in
-    let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
-    must_scan_of_kind_value_or_unknown_or_bottom resolved_ty_value.descr
+    let importer_this_kind = I.import_value_type_as_resolved_ty_value in
+    let ty : _ or_unknown_or_bottom =
+      resolve_aliases_and_squash_unresolved_names ~importer_this_kind
+        ~env ~type_of_var ~type_of_symbol
+        ~make_unknown:(fun () -> Unknown (Other, K.Must_scan))
+        ty
+    in
+    match ty with
+    | Unknown (_, scanning) -> scanning
+    | Ok (Singleton (Tagged_immediate _)) -> Can_scan
+    | Ok (Singleton _) -> Must_scan
+    | Ok (Combination (Union, ty1, ty2)) ->
+      let ty1 = ty_of_resolved_ty ty1 in
+      let ty2 = ty_of_resolved_ty ty2 in
+      K.join_scanning (scanning_ty_value ty1)
+        (scanning_ty_value ty2)
+    | Ok (Combination (Intersection, ty1, ty2)) ->
+      let ty1 = ty_of_resolved_ty ty1 in
+      let ty2 = ty_of_resolved_ty ty2 in
+      K.meet_scanning (scanning_ty_value ty1)
+        (scanning_ty_value ty2)
+    | Bottom -> Can_scan
 
-  let kind_ty_value ~importer (ty : ty_value) =
-    let scanning = scanning_ty_value ~importer (ty : ty_value) in
+  let kind_ty_value ~importer ~env ~type_of_var ~type_of_symbol
+        (ty : ty_value) =
+    let scanning =
+      scanning_ty_value ~importer ~env ~type_of_var ~type_of_symbol ty
+    in
     K.value scanning
 
-  let kind ~importer (t : t) =
+  let kind ~importer ~env ~type_of_var ~type_of_symbol (t : t) =
     match t with
     | Naked_immediate _ -> K.naked_immediate ()
     | Naked_float _ -> K.naked_float ()
     | Naked_int32 _ -> K.naked_int32 ()
     | Naked_int64 _ -> K.naked_int64 ()
     | Naked_nativeint _ -> K.naked_nativeint ()
-    | Value ty -> kind_ty_value ~importer ty
+    | Value ty -> kind_ty_value ~importer ~env ~type_of_var ~type_of_symbol ty
 
   let create_inlinable_function_declaration ~is_classic_mode ~closure_origin
         ~continuation_param ~params ~body ~result ~stub ~dbg ~inline
@@ -1718,48 +1746,6 @@ end) = struct
         }
       in
       Union (w1, w2)
-
-  let resolve_aliases ~importer_this_kind ~type_of_var ~type_of_symbol ty =
-    let rec resolve_aliases vars_seen syms_seen ty =
-      match ty with
-      | Normal ty -> ty
-      | Var var ->
-        if Variable.Set.mem var vars_seen then begin
-          Misc.fatal_errorf "Loop on %a whilst resolving aliases: %a %s %a"
-            Variable.print var
-            print_resolved_ty ty1
-            description
-            print_resolved_ty ty2
-        end;
-        begin match type_of_var env var with
-        | None -> ty
-        | Some ty ->
-          let vars_seen = Variable.Set.add var vars_seen in
-          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
-        end
-      | Symbol sym ->
-        if Symbol.Set.mem sym syms_seen then begin
-          Misc.fatal_errorf "Loop on %a whilst resolving aliases: %a %s %a"
-            Symbol.print sym
-            print_resolved_ty ty1
-            description
-            print_resolved_ty ty2
-        end;
-        begin match type_of_symbol env sym with
-        | None -> ty
-        | Some ty ->
-          let syms_seen = Symbol.Set.add sym syms_seen in
-          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
-        end
-    in
-    resolve_aliases Variable.Set.empty Symbol.Set.empty (importer_this_kind ty)
-
-  let resolve_aliases_and_squash_unresolved_names ~importer_this_kind
-        ~type_of_var ~type_of_symbol kind ty =
-    let ty = resolve_aliases ~importer_this_kind ty in
-    match ty with
-    | Normal ty -> ty
-    | Var _ | Symbol _ -> unknown kind Other
 
   module Join_or_meet (P : sig
     val description : string
