@@ -103,7 +103,6 @@ module type S = sig
   and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
   and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
   and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
-  and resolved_ty_set_of_closures = (set_of_closures, unit) resolved_ty
 
   and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_var_or_symbol
 
@@ -141,7 +140,7 @@ module type S = sig
     | Set_of_closures of set_of_closures
     | Closure of {
         (* CR pchambart: should Unknown or Bottom really be allowed here ? *)
-        set_of_closures : resolved_ty_set_of_closures;
+        set_of_closures : ty_value;
         closure_id : Closure_id.t;
       }
     | String of string_ty
@@ -301,6 +300,7 @@ module type S = sig
       augment the type with variables that may be used to access the closure
       value itself, so long as they are in scope at the proposed point of
       use. *)
+(*
   val closure
      : ?closure_var:Variable.t
     -> ?set_of_closures_var:Variable.t
@@ -315,6 +315,7 @@ module type S = sig
     -> ?set_of_closures_symbol:Symbol.t
     -> set_of_closures
     -> t
+*)
 
   (** Construct a type equal to the type of the given variable.  (The variable
       must be present in the given environment when calling e.g. [join].) *)
@@ -325,23 +326,6 @@ module type S = sig
 
   (** Construct a type equal to the type of the given symbol's field. *)
   val symbol_field_alias : Flambda_kind.t -> Symbol.t -> field:int -> t
-
-(*
-  (** Augment the toplevel of the given type with the given variable.  If the
-      type was already augmented with a variable, this function does nothing. *)
-  val augment_with_variable : t -> Variable.t -> t
-
-  (** Like [augment_with_variable], but for symbol information.  The
-      field index is set to [None]. *)
-  val augment_with_symbol : t -> Symbol.t -> t
-
-  (** Like [augment_with_symbol], but with a user-supplied field index. *)
-  val augment_with_symbol_field : t -> Symbol.t -> field:int -> t
-
-  (** Replace the variable at the toplevel of a given type. *)
-  val replace_variable : t -> Variable.t option -> t
-
-*)
 
   (** Free variables in a type. *)
   val free_variables : t -> Variable.Set.t
@@ -407,43 +391,33 @@ module type S = sig
   module Make_importer (S : Importer_intf) : Importer
 
   (** Annotation for functions that may require the importing of types from
-      .cmx files. *)
-  type 'a with_importer = importer:(module Importer) -> 'a
+      .cmx files or the examination of the current simplification
+      environment. *)
+  type ('a, 'env) type_accessor =
+       importer:(module Importer)
+    -> env:'env
+    -> type_of_var:('env -> Variable.t -> t option)
+    -> type_of_symbol:('env -> Symbol.t -> t option)
+    -> 'a
 
-  (** Each type has a unique kind.  This is mostly syntactic save for the
-      "Value" cases. *)
-  val kind
-     : (env:'a
-       -> type_of_var:('a -> Variable.t -> t option)
-       -> t
-       -> Flambda_kind.t) with_importer
+  (** Each type has a unique kind.  (This is mostly syntactic save for the
+      "Value" cases.) *)
+  val kind : (t -> Flambda_kind.t, 'a) type_accessor
 
   (** Given a type of kind [Value] determine whether values of that type
       have to be scanned by the GC. *)
-  val scanning_ty_value
-     : (env:'a
-       -> type_of_var:('a -> Variable.t -> t option)
-       -> ty_value
-       -> Flambda_kind.scanning) with_importer
+  val scanning_ty_value : (ty_value -> Flambda_kind.scanning, 'a) type_accessor
 
   (** Least upper bound of two types. *)
-  val join
-     : (env:'a
-    -> type_of_var:('a -> Variable.t -> t option)
-    -> type_of_symbol:('a -> Symbol.t -> t option)
-    -> t
-    -> t
-    -> t) with_importer
+  val join : (t -> t -> t, 'a) type_accessor
 
   (** Like [join], but starts with a [ty_value], not a [t]. *)
-  val join_ty_value
-     : (env:'a
-    -> type_of_var:('a -> Variable.t -> t option)
-    -> type_of_symbol:('a -> Symbol.t -> t option)
-    -> ty_value
-    -> ty_value
-    -> ty_value) with_importer
+  val join_ty_value : (ty_value -> ty_value -> ty_value, 'a) type_accessor
 
+  (** Greatest lower bound of two types. *)
+  val meet : (t -> t -> t, 'a) type_accessor
+
+(*
   type cleaning_spec =
     | Available
     | Available_different_name of Variable.t
@@ -453,5 +427,6 @@ module type S = sig
       scope in some context. The context is expressed by a function that says
       whether the variable is available under its existing name, available
       under another name, or unavailable. *)
-  val clean : (t -> (Variable.t -> cleaning_spec) -> t) with_importer
+  val clean : (t -> (Variable.t -> cleaning_spec) -> t, 'a) type_accessor
+*)
 end
