@@ -52,7 +52,7 @@ module type S = sig
     size : int;
   }
 
-  type 'a with_var = private
+  type 'a or_var_or_symbol = private
     | Normal of 'a
     | Var of Variable.t
     | Symbol of Symbol.t * (int option)
@@ -64,6 +64,11 @@ module type S = sig
     symbol : (Symbol.t * int option) option;
   }
 *)
+
+  (* CR-someday mshinwell / lwhite: Types in ANF form? *)
+  (* CR-someday mshinwell / lwhite: "Phantom" (for debugging work) as a kind? *)
+
+  type combining_op = Union | Intersection
 
   (** Values of type [t] are known as "Flambda types".  Each Flambda type
       has a unique kind.
@@ -90,7 +95,7 @@ module type S = sig
   and ty_naked_int64 = (of_kind_naked_int64, unit) ty
   and ty_naked_nativeint = (of_kind_naked_nativeint, unit) ty
 
-  and ('a, 'u) ty = ('a, 'u) maybe_unresolved with_var_and_symbol
+  and ('a, 'u) ty = ('a, 'u) maybe_unresolved or_var_or_symbol
 
   and resolved_t = private
     | Value of resolved_ty_value
@@ -108,7 +113,7 @@ module type S = sig
   and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
   and resolved_ty_set_of_closures = (set_of_closures, unit) resolved_ty
 
-  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom with_var_and_symbol
+  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_var_or_symbol
 
   and ('a, 'u) maybe_unresolved = private
     | Ok of ('a, 'u) or_unknown_or_bottom
@@ -121,23 +126,20 @@ module type S = sig
   and ('a, 'u) or_unknown_or_bottom = private
     | Unknown of unknown_because_of * 'u
     (** "Any value can flow to this point": the top element. *)
-    | Ok of 'a
+    | Ok of 'a singleton_or_combination
     | Bottom
     (** "No value can flow to this point": the bottom element. *)
 
-  (** "Singleton" and "Union" refer to the syntactic structure of the type.
-      A [Singleton] type may still describe more than one particular runtime
-      value (for example, it may describe a boxed float whose contents is
-      unknown). *)
-  and of_kind_value = private
-    | Singleton of of_kind_value_singleton
-    | Union of of_kind_value with_var_and_symbol
-        * of_kind_value with_var_and_symbol
-    (** Note that [Union]s are statically prohibited from containing
-        [Unknown]s or [Bottom]s at the top level.  This simplifies code
-        that traverses union types. *)
+  (** Note: [Singleton] refers to the structure of the type.  A [Singleton]
+      type may still describe more than one particular runtime value (for
+      example, it may describe a boxed float whose contents is unknown). *)
+  and 'a singleton_or_combination = private
+    | Singleton of 'a
+    | Combination of combining_op
+        * 'a singleton_or_combination or_var_or_symbol
+        * 'a singleton_or_combination or_var_or_symbol
 
-  and of_kind_value_singleton = private
+  and of_kind_value = private
     | Tagged_immediate of ty_naked_immediate
     | Boxed_float of ty_naked_float
     | Boxed_int32 of ty_naked_int32
@@ -412,10 +414,22 @@ module type S = sig
   val scanning_ty_value : (ty_value -> Flambda_kind.scanning) with_importer
 
   (** Least upper bound of two types. *)
-  val join : (t -> t -> t) with_importer
+  val join
+     : (env:'a
+    -> type_of_var:('a -> Variable.t -> t option)
+    -> type_of_symbol:('a -> Symbol.t -> t option)
+    -> t
+    -> t
+    -> t) with_importer
 
   (** Like [join], but starts with a [ty_value], not a [t]. *)
-  val join_ty_value : (ty_value -> ty_value -> ty_value) with_importer
+  val join_ty_value
+     : (env:'a
+    -> type_of_var:('a -> Variable.t -> t option)
+    -> type_of_symbol:('a -> Symbol.t -> t option)
+    -> ty_value
+    -> ty_value
+    -> ty_value) with_importer
 
   type cleaning_spec =
     | Available
