@@ -175,13 +175,12 @@ end) = struct
     size : int;
   }
 
-  type 'a with_var_and_symbol = {
-    descr : 'a;
-    var : Variable.t option;
+  type 'a or_var_or_symbol =
+    | Normal of 'a
+    | Var of Variable.t
+    | Symbol of Symbol.t * (int option)
 
-
-    symbol : (Symbol.t * int option) option;
-  }
+  type combining_op = Union | Intersection
 
   type t =
     | Value of ty_value
@@ -200,7 +199,7 @@ end) = struct
   and ty_naked_int64 = (of_kind_naked_int64, unit) ty
   and ty_naked_nativeint = (of_kind_naked_nativeint, unit) ty
 
-  and ('a, 'u) ty = ('a, 'u) maybe_unresolved with_var_and_symbol
+  and ('a, 'u) ty = ('a, 'u) maybe_unresolved or_var_or_symbol
 
   and resolved_t =
     | Value of resolved_ty_value
@@ -218,23 +217,24 @@ end) = struct
   and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
   and resolved_ty_set_of_closures = (set_of_closures, unit) resolved_ty
 
-  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom with_var_and_symbol
+  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_var_or_symbol
 
   and ('a, 'u) maybe_unresolved =
-    | Ok of ('a, 'u) or_unknown_or_bottom
+    | Resolved of ('a, 'u) or_unknown_or_bottom
     | Load_lazily of load_lazily
 
   and ('a, 'u) or_unknown_or_bottom =
     | Unknown of unknown_because_of * 'u
-    | Ok of 'a
+    | Ok of 'a singleton_or_combination
     | Bottom
 
-  and of_kind_value =
-    | Singleton of of_kind_value_singleton
-    | Union of of_kind_value with_var_and_symbol
-        * of_kind_value with_var_and_symbol
+  and 'a singleton_or_combination =
+    | Singleton of 'a
+    | Combination of combining_op
+        * 'a singleton_or_combination or_var_or_symbol
+        * 'a singleton_or_combination or_var_or_symbol
 
-  and of_kind_value_singleton =
+  and of_kind_value =
     | Tagged_immediate of ty_naked_immediate
     | Boxed_float of ty_naked_float
     | Boxed_int32 of ty_naked_int32
@@ -308,21 +308,20 @@ end) = struct
     | Export_id id ->
       Format.fprintf ppf "Export_id %a" Export_id.print id
 
-  let print_with_var_and_symbol print_descr ppf { descr; var; symbol; } =
-    let print_symbol ppf = function
-      | None -> Symbol.print_opt ppf None
-      | Some (sym, None) -> Symbol.print ppf sym
-      | Some (sym, Some field) ->
-        Format.fprintf ppf "%a.(%i)" Symbol.print sym field
+  let print_or_var_or_symbol print_descr ppf var_or_symbol =
+    let print_symbol ppf sym field =
+      match sym, field with
+      | sym, None -> Symbol.print ppf sym
+      | sym, Some field -> Format.fprintf ppf "%a.(%i)" Symbol.print sym field
     in
-    Format.fprintf ppf "{ descr=%a var=%a symbol=%a }"
-      print_descr descr
-      Variable.print_opt var
-      print_symbol symbol
+    match var_or_symbol with
+    | Normal descr -> print_descr ppf descr
+    | Var var -> Variable.print ppf var
+    | Symbol (sym, field) -> print_symbol ppf sym field
 
   let print_maybe_unresolved print_contents ppf (m : _ maybe_unresolved) =
     match m with
-    | Ok contents -> print_contents ppf contents
+    | Resolved contents -> print_contents ppf contents
     | Load_lazily ll -> Format.fprintf ppf "lazy(%a)" print_load_lazily ll
 
   let print_of_kind_naked_immediate ppf (o : of_kind_naked_immediate) =
@@ -359,29 +358,36 @@ end) = struct
     | Ok contents -> print_contents ppf contents
     | Bottom -> Format.fprintf ppf "bottom"
 
+  let rec print_singleton_or_combination print_contents ppf soc =
+    match soc with
+    | Singleton contents -> print_contents ppf contents
+    | Combination (op, or_var_or_symbol1, or_var_or_symbol2) ->
+      let print_part ppf w =
+        print_or_var_or_symbol (print_singleton_or_combination print_contents)
+          ppf w
+      in
+      Format.fprintf ppf "@[(%s@ @[(%a)@]@ @[(%a)@])@]"
+        (match op with Union -> "Union" | Intersection -> "Intersection")
+        print_part or_var_or_symbol1
+        print_part or_var_or_symbol2
+
   let print_ty_generic print_contents print_unknown_payload ppf ty =
-    (print_with_var_and_symbol
+    (print_or_var_or_symbol
       (print_maybe_unresolved
-        (print_or_unknown_or_bottom print_contents print_unknown_payload)))
+        (print_or_unknown_or_bottom
+          (print_singleton_or_combination print_contents)
+          print_unknown_payload)))
       ppf ty
 
   let print_resolved_ty_generic print_contents print_unknown_payload ppf ty =
-    (print_with_var_and_symbol
-       (print_or_unknown_or_bottom print_contents print_unknown_payload))
+    (print_or_var_or_symbol
+      (print_or_unknown_or_bottom
+        (print_singleton_or_combination print_contents)
+        print_unknown_payload))
       ppf ty
 
-  let rec print_of_kind_value ppf (o : of_kind_value) =
-    match o with
-    | Singleton singleton -> print_of_kind_value_singleton ppf singleton
-    | Union (w1, w2) ->
-      let print_part ppf w =
-        print_with_var_and_symbol print_of_kind_value ppf w
-      in
-      Format.fprintf ppf "@[(Union (%a)(%a))@]"
-        print_part w1 print_part w2
-
-  and print_of_kind_value_singleton ppf (singleton : of_kind_value_singleton) =
-    match singleton with
+  let rec print_of_kind_value ppf (of_kind_value : of_kind_value) =
+    match of_kind_value with
     | Tagged_immediate t ->
       Format.fprintf ppf "(tagged_imm %a)" print_ty_naked_immediate t
     | Boxed_float f ->
@@ -537,198 +543,93 @@ end) = struct
     | Naked_nativeint ty ->
       Format.fprintf ppf "(Naked_nativeint (%a))" print_ty_naked_nativeint ty
 
-  let augment_with_variable (t : t) var : t =
-    match t with
-    | Value ty ->
-      begin match ty.var with
-      | None -> Value { ty with var = Some var; }
-      | Some _ -> t
-      end
-    | Naked_immediate ty ->
-      begin match ty.var with
-      | None -> Naked_immediate { ty with var = Some var; }
-      | Some _ -> t
-      end
-    | Naked_float ty ->
-      begin match ty.var with
-      | None -> Naked_float { ty with var = Some var; }
-      | Some _ -> t
-      end
-    | Naked_int32 ty ->
-      begin match ty.var with
-      | None -> Naked_int32 { ty with var = Some var; }
-      | Some _ -> t
-      end
-    | Naked_int64 ty ->
-      begin match ty.var with
-      | None -> Naked_int64 { ty with var = Some var; }
-      | Some _ -> t
-      end
-    | Naked_nativeint ty ->
-      begin match ty.var with
-      | None -> Naked_nativeint { ty with var = Some var; }
-      | Some _ -> t
-      end
+  let var_alias (kind : Flambda_kind.t) var : t =
+    match kind with
+    | Value _ -> Value (Var var)
+    | Naked_immediate -> Naked_immediate (Var var)
+    | Naked_float -> Naked_float (Var var)
+    | Naked_int32 -> Naked_int32 (Var var)
+    | Naked_int64 -> Naked_int64 (Var var)
+    | Naked_nativeint -> Naked_nativeint (Var var)
 
-  let augment_with_symbol_internal (t : t) symbol field : t =
-    let symbol = Some (symbol, field) in
-    match t with
-    | Value ty -> Value { ty with symbol; }
-    | Naked_immediate ty -> Naked_immediate { ty with symbol; }
-    | Naked_float ty -> Naked_float { ty with symbol; }
-    | Naked_int32 ty -> Naked_int32 { ty with symbol; }
-    | Naked_int64 ty -> Naked_int64 { ty with symbol; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with symbol; }
+  let symbol_alias (kind : Flambda_kind.t) sym : t =
+    match kind with
+    | Value _ -> Value (Symbol (sym, None))
+    | Naked_immediate -> Naked_immediate (Symbol (sym, None))
+    | Naked_float -> Naked_float (Symbol (sym, None))
+    | Naked_int32 -> Naked_int32 (Symbol (sym, None))
+    | Naked_int64 -> Naked_int64 (Symbol (sym, None))
+    | Naked_nativeint -> Naked_nativeint (Symbol (sym, None))
 
-  let augment_with_symbol t symbol =
-    augment_with_symbol_internal t symbol None
-
-  let augment_with_symbol_field t symbol ~field =
-    augment_with_symbol_internal t symbol (Some field)
-
-  let replace_variable (t : t) var : t =
-    match t with
-    | Value ty -> Value { ty with var; }
-    | Naked_immediate ty -> Naked_immediate { ty with var; }
-    | Naked_float ty -> Naked_float { ty with var; }
-    | Naked_int32 ty -> Naked_int32 { ty with var; }
-    | Naked_int64 ty -> Naked_int64 { ty with var; }
-    | Naked_nativeint ty -> Naked_nativeint { ty with var; }
+  let symbol_field_alias (kind : Flambda_kind.t) sym ~field : t =
+    match kind with
+    | Value _ -> Value (Symbol (sym, Some field))
+    | Naked_immediate -> Naked_immediate (Symbol (sym, Some field))
+    | Naked_float -> Naked_float (Symbol (sym, Some field))
+    | Naked_int32 -> Naked_int32 (Symbol (sym, Some field))
+    | Naked_int64 -> Naked_int64 (Symbol (sym, Some field))
+    | Naked_nativeint -> Naked_nativeint (Symbol (sym, Some field))
 
   let unknown_as_ty_value reason scanning : ty_value =
-    { descr = Ok (Unknown (reason, scanning));
-      var = None;
-      symbol = None;
-    }
+    Normal (Resolved (Unknown (reason, scanning)))
 
   let unknown_as_resolved_ty_value reason scanning : resolved_ty_value =
-    { descr = Unknown (reason, scanning);
-      var = None;
-      symbol = None;
-    }
+    Normal (Unknown (reason, scanning))
 
   let unknown_as_resolved_ty_naked_immediate reason scanning
         : resolved_ty_naked_immediate =
-    { descr = Unknown (reason, scanning);
-      var = None;
-      symbol = None;
-    }
+    Normal (Unknown (reason, scanning))
 
   let unknown_as_resolved_ty_naked_float reason scanning
         : resolved_ty_naked_float =
-    { descr = Unknown (reason, scanning);
-      var = None;
-      symbol = None;
-    }
+    Normal (Unknown (reason, scanning))
 
   let unknown_as_resolved_ty_naked_int32 reason scanning
         : resolved_ty_naked_int32 =
-    { descr = Unknown (reason, scanning);
-      var = None;
-      symbol = None;
-    }
+    Normal (Unknown (reason, scanning))
 
   let unknown_as_resolved_ty_naked_int64 reason scanning
         : resolved_ty_naked_int64 =
-    { descr = Unknown (reason, scanning);
-      var = None;
-      symbol = None;
-    }
+    Normal (Unknown (reason, scanning))
 
   let unknown_as_resolved_ty_naked_nativeint reason scanning
         : resolved_ty_naked_nativeint =
-    { descr = Unknown (reason, scanning);
-      var = None;
-      symbol = None;
-    }
+    Normal (Unknown (reason, scanning))
 
   let bottom (kind : K.t) : t =
     match kind with
-    | Value _ ->
-      Value {
-        descr = Ok Bottom;
-        var = None;
-        symbol = None;
-      }
-    | Naked_immediate ->
-      Naked_immediate {
-        descr = Ok Bottom;
-        var = None;
-        symbol = None;
-      }
-    | Naked_float ->
-      Naked_float {
-        descr = Ok Bottom;
-        var = None;
-        symbol = None;
-      }
-    | Naked_int32 ->
-      Naked_int32 {
-        descr = Ok Bottom;
-        var = None;
-        symbol = None;
-      }
-    | Naked_int64 ->
-      Naked_int64 {
-        descr = Ok Bottom;
-        var = None;
-        symbol = None;
-      }
-    | Naked_nativeint ->
-      Naked_nativeint {
-        descr = Ok Bottom;
-        var = None;
-        symbol = None;
-      }
+    | Value _ -> Value (Normal (Resolved Bottom))
+    | Naked_immediate -> Naked_immediate (Normal (Resolved Bottom))
+    | Naked_float -> Naked_float (Normal (Resolved Bottom))
+    | Naked_int32 -> Naked_int32 (Normal (Resolved Bottom))
+    | Naked_int64 -> Naked_int64 (Normal (Resolved Bottom))
+    | Naked_nativeint -> Naked_nativeint (Normal (Resolved Bottom))
 
   let this_naked_immediate (i : Immediate.t) : t =
     let i : of_kind_naked_immediate = Naked_immediate i in
-    Naked_immediate {
-      descr = Ok (Ok i);
-      var = None;
-      symbol = None;
-    }
+    Naked_immediate (Normal (Resolved (Ok (Singleton i))))
 
   let this_naked_float f : t =
     let f : of_kind_naked_float = Naked_float f in
-    Naked_float {
-      descr = Ok (Ok f);
-      var = None;
-      symbol = None;
-    }
+    Naked_float (Normal (Resolved (Ok (Singleton f))))
 
   let this_naked_int32 n : t =
     let n : of_kind_naked_int32 = Naked_int32 n in
-    Naked_int32 {
-      descr = Ok (Ok n);
-      var = None;
-      symbol = None;
-    }
+    Naked_int32 (Normal (Resolved (Ok (Singleton n))))
 
-  let this_naked_int64 n =
+  let this_naked_int64 n : t =
     let n : of_kind_naked_int64 = Naked_int64 n in
-    Naked_int64 {
-      descr = Ok (Ok n);
-      var = None;
-      symbol = None;
-    }
+    Naked_int64 (Normal (Resolved (Ok (Singleton n))))
 
   let this_naked_nativeint n : t =
     let n : of_kind_naked_nativeint = Naked_nativeint n in
-    Naked_nativeint {
-      descr = Ok (Ok n);
-      var = None;
-      symbol = None;
-    }
+    Naked_nativeint (Normal (Resolved (Ok (Singleton n))))
 
   let tag_immediate (t : t) : t =
     match t with
     | Naked_immediate ty_naked_immediate ->
-      Value {
-        descr = Ok (Ok (Singleton (Tagged_immediate ty_naked_immediate)));
-        var = None;
-        symbol = None;
-      }
+      Value (Normal (Resolved (Ok (Singleton (
+        Tagged_immediate ty_naked_immediate)))))
     | Value _
     | Naked_float _
     | Naked_int32 _
@@ -740,11 +641,8 @@ end) = struct
   let box_float (t : t) : t =
     match t with
     | Naked_float ty_naked_float ->
-      Value {
-        descr = Ok (Ok (Singleton (Boxed_float ty_naked_float)));
-        var = None;
-        symbol = None;
-      }
+      Value (Normal (Resolved (Ok (Singleton (
+        Boxed_float ty_naked_float)))))
     | Value _
     | Naked_immediate _
     | Naked_int32 _
@@ -756,11 +654,8 @@ end) = struct
   let box_int32 (t : t) : t =
     match t with
     | Naked_int32 ty_naked_int32 ->
-      Value {
-        descr = Ok (Ok (Singleton (Boxed_int32 ty_naked_int32)));
-        var = None;
-        symbol = None;
-      }
+      Value (Normal (Resolved (Ok (Singleton (
+        Boxed_int32 ty_naked_int32)))))
     | Value _
     | Naked_immediate _
     | Naked_float _
@@ -772,11 +667,8 @@ end) = struct
   let box_int64 (t : t) : t =
     match t with
     | Naked_int64 ty_naked_int64 ->
-      Value {
-        descr = Ok (Ok (Singleton (Boxed_int64 ty_naked_int64)));
-        var = None;
-        symbol = None;
-      }
+      Value (Normal (Resolved (Ok (Singleton (
+        Boxed_int64 ty_naked_int64)))))
     | Value _
     | Naked_immediate _
     | Naked_float _
@@ -788,11 +680,8 @@ end) = struct
   let box_nativeint (t : t) : t =
     match t with
     | Naked_nativeint ty_naked_nativeint ->
-      Value {
-        descr = Ok (Ok (Singleton (Boxed_nativeint ty_naked_nativeint)));
-        var = None;
-        symbol = None;
-      }
+      Value (Normal (Resolved (Ok (Singleton (
+        Boxed_nativeint ty_naked_nativeint)))))
     | Value _
     | Naked_immediate _
     | Naked_float _
@@ -804,72 +693,37 @@ end) = struct
   let this_tagged_immediate i : t =
     let i : ty_naked_immediate =
       let i : of_kind_naked_immediate = Naked_immediate i in
-      { descr = Ok (Ok i);
-        var = None;
-        symbol = None;
-      }
+      Normal (Resolved (Ok (Singleton i)))
     in
-    Value {
-      descr = Ok (Ok (Singleton (Tagged_immediate i)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Tagged_immediate i)))))
 
   let this_boxed_float f =
     let f : ty_naked_float =
       let f : of_kind_naked_float = Naked_float f in
-      { descr = Ok (Ok f);
-        var = None;
-        symbol = None;
-      }
+      Normal (Resolved (Ok (Singleton f)))
     in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_float f)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Boxed_float f)))))
 
   let this_boxed_int32 n =
     let n : ty_naked_int32 =
       let n : of_kind_naked_int32 = Naked_int32 n in
-      { descr = Ok (Ok n);
-        var = None;
-        symbol = None;
-      }
+      Normal (Resolved (Ok (Singleton n)))
     in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_int32 n)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Boxed_int32 n)))))
 
   let this_boxed_int64 n =
     let n : ty_naked_int64 =
       let n : of_kind_naked_int64 = Naked_int64 n in
-      { descr = Ok (Ok n);
-        var = None;
-        symbol = None;
-      }
+      Normal (Resolved (Ok (Singleton n)))
     in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_int64 n)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Boxed_int64 n)))))
 
   let this_boxed_nativeint n =
     let n : ty_naked_nativeint =
       let n : of_kind_naked_nativeint = Naked_nativeint n in
-      { descr = Ok (Ok n);
-        var = None;
-        symbol = None;
-      }
+      Normal (Resolved (Ok (Singleton n)))
     in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_nativeint n)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Boxed_nativeint n)))))
 
   let this_immutable_string_as_ty_value str : ty_value =
     let string_ty : string_ty =
@@ -877,10 +731,7 @@ end) = struct
         size = String.length str;
       }
     in
-    { descr = Ok (Ok (Singleton (String string_ty)));
-      var = None;
-      symbol = None;
-    }
+    Normal (Resolved (Ok (Singleton (String string_ty))))
 
   let this_immutable_string str : t =
     Value (this_immutable_string_as_ty_value str)
@@ -891,11 +742,7 @@ end) = struct
         size;
       }
     in
-    Value {
-      descr = Ok (Ok (Singleton (String string_ty)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (String string_ty)))))
 
   (* CR mshinwell: We need to think about these float array functions in
      conjunction with the 4.06 feature for disabling the float array
@@ -904,17 +751,10 @@ end) = struct
   let this_immutable_float_array fields : t =
     let make_field f : ty_naked_float =
       let f : of_kind_naked_float = Naked_float f in
-      { descr = Ok (Ok f);
-        var = None;
-        symbol = None;
-      }
+      Normal (Resolved (Ok (Singleton f)))
     in
     let fields = Array.map make_field fields in
-    Value {
-      descr = Ok (Ok (Singleton (Float_array fields)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Float_array fields)))))
 
   let immutable_float_array fields : t =
     let fields =
@@ -928,25 +768,14 @@ end) = struct
               print field)
         fields
     in
-    Value {
-      descr = Ok (Ok (Singleton (Float_array fields)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Float_array fields)))))
 
   let mutable_float_array ~size : t =
     let make_field () : ty_naked_float =
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
+      Normal (Resolved (Unknown (Other, ())))
     in
     let fields = Array.init size (fun _ -> make_field ()) in
-    Value {
-      descr = Ok (Ok (Singleton (Float_array fields)));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Float_array fields)))))
 
   let block tag fields : t =
     let fields =
@@ -960,98 +789,43 @@ end) = struct
               print field)
         fields
     in
-    Value {
-      descr = Ok (Ok (Singleton (Block (tag, fields))));
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Resolved (Ok (Singleton (Block (tag, fields))))))
 
   let export_id_loaded_lazily (kind : K.t) export_id : t =
     match kind with
     | Value _ ->
-      Value {
-        descr = Load_lazily (Export_id export_id);
-        var = None;
-        symbol = None;
-      }
+      Value (Normal (Load_lazily (Export_id export_id)))
     | Naked_immediate ->
-      Naked_immediate {
-        descr = Load_lazily (Export_id export_id);
-        var = None;
-        symbol = None;
-      }
+      Naked_immediate (Normal (Load_lazily (Export_id export_id)))
     | Naked_float ->
-      Naked_float {
-        descr = Load_lazily (Export_id export_id);
-        var = None;
-        symbol = None;
-      }
+      Naked_float (Normal (Load_lazily (Export_id export_id)))
     | Naked_int32 ->
-      Naked_int32 {
-        descr = Load_lazily (Export_id export_id);
-        var = None;
-        symbol = None;
-      }
+      Naked_int32 (Normal (Load_lazily (Export_id export_id)))
     | Naked_int64 ->
-      Naked_int64 {
-        descr = Load_lazily (Export_id export_id);
-        var = None;
-        symbol = None;
-      }
+      Naked_int64 (Normal (Load_lazily (Export_id export_id)))
     | Naked_nativeint ->
-      Naked_nativeint {
-        descr = Load_lazily (Export_id export_id);
-        var = None;
-        symbol = None;
-      }
+      Naked_nativeint (Normal (Load_lazily (Export_id export_id)))
 
   let symbol_loaded_lazily sym : t =
-    Value {
-      descr = Load_lazily (Symbol sym);
-      var = None;
-      symbol = None;
-    }
+    Value (Normal (Load_lazily (Symbol sym)))
 
   let any_naked_immediate () : t =
-    Naked_immediate
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
+    Naked_immediate (Normal (Resolved (Unknown (Other, ()))))
 
   let any_naked_float () : t =
-    Naked_float
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
+    Naked_float (Normal (Resolved (Unknown (Other, ()))))
 
   let any_naked_int32 () : t =
-    Naked_int32
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
+    Naked_int32 (Normal (Resolved (Unknown (Other, ()))))
 
   let any_naked_int64 () : t =
-    Naked_int64
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
+    Naked_int64 (Normal (Resolved (Unknown (Other, ()))))
 
   let any_naked_nativeint () : t =
-    Naked_nativeint
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
+    Naked_nativeint (Normal (Resolved (Unknown (Other, ()))))
 
   let any_value_as_ty_value scanning unknown_because_of : ty_value =
-    { descr = Ok (Unknown (unknown_because_of, scanning));
-      var = None;
-      symbol = None;
-    }
+    Normal (Resolved (Unknown (unknown_because_of, scanning)))
 
   let any_value scanning unknown_because_of : t =
     Value (any_value_as_ty_value scanning unknown_because_of)
@@ -1066,81 +840,33 @@ end) = struct
     | Naked_nativeint -> any_naked_nativeint ()
 
   let any_tagged_immediate () : t =
-    let i : ty_naked_immediate =
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
-    in
-    Value {
-      descr = Ok (Ok (Singleton (Tagged_immediate i)));
-      var = None;
-      symbol = None;
-    }
+    let i : ty_naked_immediate = Normal (Resolved (Unknown (Other, ()))) in
+    Value (Normal (Resolved (Ok (Singleton (Tagged_immediate i)))))
 
   let any_boxed_float () =
-    let f : ty_naked_float =
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
-    in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_float f)));
-      var = None;
-      symbol = None;
-    }
+    let f : ty_naked_float = Normal (Resolved (Unknown (Other, ()))) in
+    Value (Normal (Resolved (Ok (Singleton (Boxed_float f)))))
 
   let any_boxed_int32 () =
-    let n : ty_naked_int32 =
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
-    in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_int32 n)));
-      var = None;
-      symbol = None;
-    }
+    let n : ty_naked_int32 = Normal (Resolved (Unknown (Other, ()))) in
+    Value (Normal (Resolved (Ok (Singleton (Boxed_int32 n)))))
 
   let any_boxed_int64 () =
-    let n : ty_naked_int64 =
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
-    in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_int64 n)));
-      var = None;
-      symbol = None;
-    }
+    let n : ty_naked_int64 = Normal (Resolved (Unknown (Other, ()))) in
+    Value (Normal (Resolved (Ok (Singleton (Boxed_int64 n)))))
 
   let any_boxed_nativeint () =
-    let n : ty_naked_nativeint =
-      { descr = Ok (Unknown (Other, ()));
-        var = None;
-        symbol = None;
-      }
-    in
-    Value {
-      descr = Ok (Ok (Singleton (Boxed_nativeint n)));
-      var = None;
-      symbol = None;
-    }
+    let n : ty_naked_nativeint = Normal (Resolved (Unknown (Other, ()))) in
+    Value (Normal (Resolved (Ok (Singleton (Boxed_nativeint n)))))
 
-  let resolved_ty_value_for_predefined_exception ~name ~symbol
-        : resolved_ty_value =
+  (* CR mshinwell: Check this is being used correctly *)
+  let resolved_ty_value_for_predefined_exception ~name : resolved_ty_value =
     let fields =
       [| this_immutable_string_as_ty_value name;
          unknown_as_ty_value Other Must_scan;
       |]
     in
-    { descr = Ok (Singleton (Block (Tag.Scannable.object_tag, fields)));
-      var = None;
-      symbol = Some (symbol, None);
-    }
+    Normal (Ok (Singleton (Block (Tag.Scannable.object_tag, fields))))
 
   module type Importer = sig
     val import_value_type_as_resolved_ty_value
@@ -1994,12 +1720,51 @@ end) = struct
       in
       Union (w1, w2)
 
+  let resolve_aliases ~importer_this_kind ~type_of_var ~type_of_symbol ty =
+    let rec resolve_aliases vars_seen syms_seen ty =
+      match ty with
+      | Normal ty -> ty
+      | Var var ->
+        if Variable.Set.mem var vars_seen then begin
+          Misc.fatal_errorf "Loop on %a whilst resolving aliases: %a %s %a"
+            Variable.print var
+            print_resolved_ty ty1
+            description
+            print_resolved_ty ty2
+        end;
+        begin match type_of_var env var with
+        | None -> ty
+        | Some ty ->
+          let vars_seen = Variable.Set.add var vars_seen in
+          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
+        end
+      | Symbol sym ->
+        if Symbol.Set.mem sym syms_seen then begin
+          Misc.fatal_errorf "Loop on %a whilst resolving aliases: %a %s %a"
+            Symbol.print sym
+            print_resolved_ty ty1
+            description
+            print_resolved_ty ty2
+        end;
+        begin match type_of_symbol env sym with
+        | None -> ty
+        | Some ty ->
+          let syms_seen = Symbol.Set.add sym syms_seen in
+          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
+        end
+    in
+    resolve_aliases Variable.Set.empty Symbol.Set.empty (importer_this_kind ty)
+
+  let resolve_aliases_and_squash_unresolved_names ~importer_this_kind
+        ~type_of_var ~type_of_symbol kind ty =
+    let ty = resolve_aliases ~importer_this_kind ty in
+    match ty with
+    | Normal ty -> ty
+    | Var _ | Symbol _ -> unknown kind Other
+
   module Join_or_meet (P : sig
     val description : string
-    val is_join : bool
-    val absorbing_element : ... -> ...
-    val identity_element : ... -> ...
-    val operation : ... -> ... -> ...
+    val combining_op : combining_op
   end) = struct
     let join_unknown_payload_for_value _descr1 scanning1 descr2 scanning2_opt =
       let scanning2 : K.scanning =
@@ -2015,49 +1780,31 @@ end) = struct
       | Ok of 'a
       | Combine
 
+    let combine_singleton_or_combination (type k) ~importer ty1 (t1 : k) ty2 t2
+          ~combine_of_kind : (k, _) or_unknown_or_bottom =
+      let combine () : (k, _) or_unknown_or_bottom =
+        Ok (Combination (P.combining_op, Normal ty1, Normal ty2))
+      in
+      match t1, t2 with
+      | Singleton s1, Singleton s2 ->
+        begin match combine_of_kind ~importer s1 s2 with
+        | Ok result -> result
+        | Combine -> combine ()
+        end
+      | Singleton _, Combination _
+      | Combination _, Singleton _
+      | Combination _, Combination _ -> combine ()
+
     let combine_ty (type a) (type u) ~importer ~importer_this_kind
           ~type_of_var ~type_of_symbol env kind
           combine_contents combine_unknown_payload
           (ty1 : (a, u) ty) (ty2 : (a, u) ty) : (a, u) ty =
-      let ty1 : (a, u) resolved_ty = importer_this_kind ty1 in
-      let ty2 : (a, u) resolved_ty = importer_this_kind ty2 in
-      let resolve_aliases (ty : (a, u) resolved_ty) =
-        let rec resolve_aliases vars_seen syms_seen ty =
-          match ty with
-          | Normal ty -> ty
-          | Var var ->
-            if Variable.Set.mem var vars_seen then begin
-              Misc.fatal_errorf "Loop on %a whilst resolving aliases: %a %s %a"
-                Variable.print var
-                print_resolved_ty ty1
-                description
-                print_resolved_ty ty2
-            end;
-            begin type_of_var env var with
-            | None -> ty
-            | Some ty ->
-              let vars_seen = Variable.Set.add var vars_seen in
-              resolve_aliases vars_seen syms_seen (importer_this_kind ty)
-            end
-          | Symbol sym ->
-            if Symbol.Set.mem sym syms_seen then begin
-              Misc.fatal_errorf "Loop on %a whilst resolving aliases: %a %s %a"
-                Symbol.print sym
-                print_resolved_ty ty1
-                description
-                print_resolved_ty ty2
-            end;
-            begin type_of_symbol env sym with
-            | None -> ty
-            | Some ty ->
-              let syms_seen = Symbol.Set.add sym syms_seen in
-              resolve_aliases vars_seen syms_seen (importer_this_kind ty)
-            end
-        in
-        resolve_aliases Variable.Set.empty Symbol.Set.empty ty
+      let ty1 =
+        resolve_aliases ~importer_this_kind ~type_of_var type_of_symbol ty1
       in
-      let ty1 = resolve_aliases ty1 in
-      let ty2 = resolve_aliases ty2 in
+      let ty2 =
+        resolve_aliases ~importer_this_kind ~type_of_var type_of_symbol ty2
+      in
       match ty1, ty2 with
       | Var var1, Var var2 when Variable.equal var1 var2 -> Var var1
       | Symbol sym1, Symbol sym2 when Symbol.equal sym1 sym2 -> Symbol sym1
@@ -2065,7 +1812,7 @@ end) = struct
         let unresolved_var_or_symbol_to_unknown ty =
           match ty with
           | Normal ty -> ty
-          | Var _ | Symbol _ -> P.absorbing_element_of_kind kind
+          | Var _ | Symbol _ -> unknown kind Other
         in
         let ty1 = unresolved_var_or_symbol_to_unknown ty1 in
         let ty2 = unresolved_var_or_symbol_to_unknown ty2 in
@@ -2077,19 +1824,31 @@ end) = struct
               combine_unknown_payload ty1 payload1
                 ty2 (Some payload2))
           | Ok contents1, Ok contents2 ->
-            combine_contents ~importer ty1 contents1 ty2 contents2
+            combine_singleton_or_combination ~importer
+              ~combine_of_kind:combine_contents
+              ty1 contents1 ty2 contents2
           | Unknown (reason, payload), _ ->
-            if P.is_join then
+            begin match combining_op with
+            | Join ->
               Unknown (reason, combine_unknown_payload ty1 payload ty2 None)
-            else
-              ty2
+            | Meet -> ty2
+            end
           | _, Unknown (reason, payload) ->
-            if P.is_join then
+            begin match combining_op with
+            | Join ->
               Unknown (reason, combine_unknown_payload ty2 payload ty1 None)
-            else
-              ty1
-          | Bottom, _ -> if P.is_join then ty2 else Bottom
-          | _, Bottom -> if P.is_join then ty1 else Bottom
+            | Meet -> ty1
+            end
+          | Bottom, _ ->
+            begin match combining_op with
+            | Join -> ty2
+            | Meet -> Bottom
+            end
+          | _, Bottom ->
+            begin match combining_op with
+            | Join -> ty1
+            | Meet -> Bottom
+            end
         in
         Normal (Ok ty)
 
@@ -2101,64 +1860,39 @@ end) = struct
       in
       match t1, t2 with
       | Tagged_immediate ty1, Tagged_immediate ty2 ->
-        singleton (Tagged_immediate (join_ty_naked_immediate ~importer ty1 ty2))
+        singleton (Tagged_immediate (
+          combine_ty_naked_immediate ~importer ty1 ty2))
       | Boxed_float ty1, Boxed_float ty2 ->
-        singleton (Boxed_float (join_ty_naked_float ~importer ty1 ty2))
+        singleton (Boxed_float (combine_ty_naked_float ~importer ty1 ty2))
       | Boxed_int32 ty1, Boxed_int32 ty2 ->
-        singleton (Boxed_int32 (join_ty_naked_int32 ~importer ty1 ty2))
+        singleton (Boxed_int32 (combine_ty_naked_int32 ~importer ty1 ty2))
       | Boxed_int64 ty1, Boxed_int64 ty2 ->
-        singleton (Boxed_int64 (join_ty_naked_int64 ~importer ty1 ty2))
+        singleton (Boxed_int64 (combine_ty_naked_int64 ~importer ty1 ty2))
       | Boxed_nativeint ty1, Boxed_nativeint ty2 ->
-        singleton (Boxed_nativeint (join_ty_naked_nativeint ~importer ty1 ty2))
-      | Block (tag1, fields1), Block (tag2, fields2) ->
+        singleton (Boxed_nativeint (
+          combine_ty_naked_nativeint ~importer ty1 ty2))
+      | Block (tag1, fields1), Block (tag2, fields2)
           when Tag.Scannable.equal tag1 tag2
             && Array.length fields1 = Array.length fields2 ->
         let fields =
-          Array.map2 (fun ty1 ty2 -> join_ty_value ~importer ty1 ty2)
+          Array.map2 (fun ty1 ty2 -> combine_ty_value ~importer ty1 ty2)
             fields1 fields2
         in
         singleton (Block (tag1, fields))
       | String { contents = Contents str1; _ },
-          String { contents = Contents str2; _ } ->
+          String { contents = Contents str2; _ }
           when String.equal str1 str2 ->
         singleton t1
       | Float_array fields1, Float_array fields2
           when Array.length fields1 = Array.length fields2 ->
         let fields =
-          Array.map2 (fun ty1 ty2 -> join_ty_naked_float ~importer ty1 ty2)
+          Array.map2 (fun ty1 ty2 -> combine_ty_naked_float ~importer ty1 ty2)
             fields1 fields2
         in
         singleton (Float_array fields)
       | _, _ -> Combine
 
-    and join_singleton_or_combination (type k) ~importer ty1 (t1 : k) ty2 t2
-          : (k, _) or_unknown_or_bottom =
-      let combine () : (k, _) or_unknown_or_bottom =
-        let w1 : k or_var_or_symbol =
-          { descr = t1;
-            var = ty1.var;
-            symbol = ty1.symbol;
-          }
-        in
-        let w2 : k or_var_or_symbol =
-          { descr = t2;
-            var = ty2.var;
-            symbol = ty2.symbol;
-          }
-        in
-        Ok (P.combining_op w1 w2)
-      in
-      match t1, t2 with
-      | Singleton s1, Singleton s2 ->
-        begin match combine_of_kind_value_singleton ~importer s1 s2 with
-        | Ok result -> result
-        | Combine -> combine ()
-        end
-      | Singleton _, Combination _
-      | Combination _, Singleton _
-      | Combination _, Combination _ -> combine ()
-
-    and join_of_kind_naked_immediate ~importer:_
+    and combine_of_kind_naked_immediate ~importer:_
           ty1 (t1 : of_kind_naked_immediate)
           ty2 (t2 : of_kind_naked_immediate)
           : (of_kind_naked_immediate, _) or_unknown_or_bottom =
@@ -2169,7 +1903,7 @@ end) = struct
         else
           Ok (Singleton ((Naked_immediate i1) : of_kind_naked_immediate))
 
-    and join_of_kind_naked_float ~importer:_
+    and combine_of_kind_naked_float ~importer:_
           _ty1 (t1 : of_kind_naked_float) _ty2 (t2 : of_kind_naked_float)
           : (of_kind_naked_float, _) or_unknown_or_bottom =
       match t1, t2 with
@@ -2179,7 +1913,7 @@ end) = struct
         else
           Ok (Singleton ((Naked_float i1) : of_kind_naked_float))
 
-    and join_of_kind_naked_int32 ~importer:_
+    and combine_of_kind_naked_int32 ~importer:_
           _ty1 (t1 : of_kind_naked_int32) _ty2 (t2 : of_kind_naked_int32)
           : (of_kind_naked_int32, _) or_unknown_or_bottom =
       match t1, t2 with
@@ -2187,9 +1921,9 @@ end) = struct
         if not (Int32.equal i1 i2) then
           Combine (P.combining_op, ty1, ty2)
         else
-          Ok (Singleton (Naked_int32 i1) : of_kind_naked_int32))
+          Ok (Singleton ((Naked_int32 i1) : of_kind_naked_int32))
 
-    and join_of_kind_naked_int64 ~importer:_
+    and combine_of_kind_naked_int64 ~importer:_
           _ty1 (t1 : of_kind_naked_int64) _ty2 (t2 : of_kind_naked_int64)
           : (of_kind_naked_int64, _) or_unknown_or_bottom =
       match t1, t2 with
@@ -2197,9 +1931,9 @@ end) = struct
         if not (Int64.equal i1 i2) then
           Combine (P.combining_op, ty1, ty2)
         else
-          Ok (Singleton (Naked_int64 i1) : of_kind_naked_int64))
+          Ok (Singleton ((Naked_int64 i1) : of_kind_naked_int64))
 
-    and join_of_kind_naked_nativeint ~importer:_
+    and combine_of_kind_naked_nativeint ~importer:_
           _ty1 (t1 : of_kind_naked_nativeint)
           _ty2 (t2 : of_kind_naked_nativeint)
           : (of_kind_naked_nativeint, _) or_unknown_or_bottom =
@@ -2210,64 +1944,92 @@ end) = struct
         else
           Ok (Singleton ((Naked_nativeint i1) : of_kind_naked_nativeint))
 
-    and join_ty_value ~importer ty1 ty2 =
-      let module I = (val importer : Importer) in
-      join_ty ~importer
+    and combine_ty_value ~importer ~type_of_var ~type_of_symbol ty1 ty2 =
+      let module I = (val importer ~type_of_var ~type_of_symbol : Importer) in
+      combine_ty ~importer ~type_of_var ~type_of_symbol 
         ~importer_this_kind:I.import_value_type_as_resolved_ty_value
-        join_of_kind_value join_unknown_payload_for_value ty1 ty2
+        combine_of_kind_value combine_unknown_payload_for_value ty1 ty2
 
-    and join_ty_naked_immediate ~importer ty1 ty2 =
-      let module I = (val importer : Importer) in
-      join_ty ~importer
+    and combine_ty_naked_immediate ~importer ~type_of_var ~type_of_symbol =
+          ty1 ty2 =
+      let module I = (val importer ~type_of_var ~type_of_symbol : Importer) in
+      combine_ty ~importer ~type_of_var ~type_of_symbol 
         ~importer_this_kind:
           I.import_naked_immediate_type_as_resolved_ty_naked_immediate
-        join_of_kind_naked_immediate join_unknown_payload_for_non_value ty1 ty2
+        combine_of_kind_naked_immediate combine_unknown_payload_for_non_value
+          ty1 ty2
 
-    and join_ty_naked_float ~importer ty1 ty2 =
-      let module I = (val importer : Importer) in
-      join_ty ~importer
+    and combine_ty_naked_float ~importer ~type_of_var ~type_of_symbol ty1 ty2 =
+      let module I = (val importer ~type_of_var ~type_of_symbol : Importer) in
+      combine_ty ~importer ~type_of_var ~type_of_symbol 
         ~importer_this_kind:I.import_naked_float_type_as_resolved_ty_naked_float
-        join_of_kind_naked_float join_unknown_payload_for_non_value ty1 ty2
+        combine_of_kind_naked_float combine_unknown_payload_for_non_value
+          ty1 ty2
 
-    and join_ty_naked_int32 ~importer ty1 ty2 =
-      let module I = (val importer : Importer) in
-      join_ty ~importer
+    and combine_ty_naked_int32 ~importer ~type_of_var ~type_of_symbol ty1 ty2 =
+      let module I = (val importer ~type_of_var ~type_of_symbol : Importer) in
+      combine_ty ~importer ~type_of_var ~type_of_symbol 
         ~importer_this_kind:I.import_naked_int32_type_as_resolved_ty_naked_int32
-        join_of_kind_naked_int32 join_unknown_payload_for_non_value ty1 ty2
+        combine_of_kind_naked_int32 combine_unknown_payload_for_non_value
+          ty1 ty2
 
-    and join_ty_naked_int64 ~importer ty1 ty2 =
-      let module I = (val importer : Importer) in
-      join_ty ~importer
+    and combine_ty_naked_int64 ~importer ~type_of_var ~type_of_symbol
+          ty1 ty2 =
+      let module I = (val importer ~type_of_var ~type_of_symbol : Importer) in
+      combine_ty ~importer ~type_of_var ~type_of_symbol 
         ~importer_this_kind:I.import_naked_int64_type_as_resolved_ty_naked_int64
-        join_of_kind_naked_int64 join_unknown_payload_for_non_value ty1 ty2
+        combine_of_kind_naked_int64 combine_unknown_payload_for_non_value
+          ty1 ty2
 
-    and join_ty_naked_nativeint ~importer ty1 ty2 =
-      let module I = (val importer : Importer) in
-      join_ty ~importer
+    and combine_ty_naked_nativeint ~importer ~type_of_var ~type_of_symbol
+          ty1 ty2 =
+      let module I = (val importer ~type_of_var ~type_of_symbol : Importer) in
+      combine_ty ~importer ~type_of_var ~type_of_symbol 
         ~importer_this_kind:
           I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
-        join_of_kind_naked_nativeint join_unknown_payload_for_non_value ty1 ty2
+        combine_of_kind_naked_nativeint combine_unknown_payload_for_non_value
+          ty1 ty2
 
-    let join ~importer (t1 : t) (t2 : t) : t =
+    let combine ~importer env ~type_of_var ~type_of_symbol
+          (t1 : t) (t2 : t) : t =
       if t1 == t2 then t1
       else
         match t1, t2 with
         | Value ty1, Value ty2 ->
-          Value (join_ty_value ~importer ty1 ty2)
+          Value (join_ty_value ~importer
+            ~type_of_var ~type_of_symbol ty1 ty2)
         | Naked_immediate ty1, Naked_immediate ty2 ->
-          Naked_immediate (join_ty_naked_immediate ~importer ty1 ty2)
+          Naked_immediate (join_ty_naked_immediate ~importer
+            ~type_of_var ~type_of_symbol ty1 ty2)
         | Naked_float ty1, Naked_float ty2 ->
-          Naked_float (join_ty_naked_float ~importer ty1 ty2)
+          Naked_float (join_ty_naked_float ~importer
+            ~type_of_var ~type_of_symbol ty1 ty2)
         | Naked_int32 ty1, Naked_int32 ty2 ->
-          Naked_int32 (join_ty_naked_int32 ~importer ty1 ty2)
+          Naked_int32 (join_ty_naked_int32 ~importer
+            ~type_of_var ~type_of_symbol ty1 ty2)
         | Naked_int64 ty1, Naked_int64 ty2 ->
-          Naked_int64 (join_ty_naked_int64 ~importer ty1 ty2)
+          Naked_int64 (join_ty_naked_int64 ~importer
+            ~type_of_var ~type_of_symbol ty1 ty2)
         | Naked_nativeint ty1, Naked_nativeint ty2 ->
-          Naked_nativeint (join_ty_naked_nativeint ~importer ty1 ty2)
+          Naked_nativeint (join_ty_naked_nativeint ~importer
+            ~type_of_var ~type_of_symbol ty1 ty2)
         | _, _ ->
           Misc.fatal_errorf "Cannot take the join of two types with different \
               kinds: %a and %a"
             print t1
             print t2
   end
+
+  module Join = Join_or_meet (struct
+    let description = "join"
+    let combining_op = Join
+  end)
+
+  module Meet = Join_or_meet (struct
+    let description = "meet"
+    let combining_op = Meet
+  end)
+
+  let join = Join.combine
+  let meet = Meet.combine
 end

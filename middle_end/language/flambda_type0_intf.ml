@@ -57,14 +57,6 @@ module type S = sig
     | Var of Variable.t
     | Symbol of Symbol.t * (int option)
 
-(*
-  type 'a with_var_and_symbol = private {
-    descr : 'a;
-    var : Variable.t option;
-    symbol : (Symbol.t * int option) option;
-  }
-*)
-
   (* CR-someday mshinwell / lwhite: Types in ANF form? *)
   (* CR-someday mshinwell / lwhite: "Phantom" (for debugging work) as a kind? *)
 
@@ -116,7 +108,7 @@ module type S = sig
   and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_var_or_symbol
 
   and ('a, 'u) maybe_unresolved = private
-    | Ok of ('a, 'u) or_unknown_or_bottom
+    | Resolved of ('a, 'u) or_unknown_or_bottom
     (** The head constructor is available in memory. *)
     | Load_lazily of load_lazily
     (** The head constructor requires loading from a .cmx file. *)
@@ -324,6 +316,17 @@ module type S = sig
     -> set_of_closures
     -> t
 
+  (** Construct a type equal to the type of the given variable.  (The variable
+      must be present in the given environment when calling e.g. [join].) *)
+  val var_alias : Flambda_kind.t -> Variable.t -> t
+
+  (** Construct a type equal to the type of the given symbol. *)
+  val symbol_alias : Flambda_kind.t -> Symbol.t -> t
+
+  (** Construct a type equal to the type of the given symbol's field. *)
+  val symbol_field_alias : Flambda_kind.t -> Symbol.t -> field:int -> t
+
+(*
   (** Augment the toplevel of the given type with the given variable.  If the
       type was already augmented with a variable, this function does nothing. *)
   val augment_with_variable : t -> Variable.t -> t
@@ -337,6 +340,8 @@ module type S = sig
 
   (** Replace the variable at the toplevel of a given type. *)
   val replace_variable : t -> Variable.t option -> t
+
+*)
 
   (** Free variables in a type. *)
   val free_variables : t -> Variable.Set.t
