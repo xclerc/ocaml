@@ -910,17 +910,21 @@ end) = struct
   type 'a with_importer = importer:(module Importer) -> 'a
 
   type 'a create_resolved_t_result =
-    | Ok of 'a
+    | Resolved of 'a
     | Load_lazily_again of load_lazily
 
   module Make_importer (S : Importer_intf) : Importer = struct
     type 'a import_result =
-      | Ok of 'a
+      | Resolved of 'a
       | Treat_as_unknown_must_scan of unknown_because_of
 
-    let import_type (type a) ll
-          ~(create_resolved_t : t -> a create_resolved_t_result)
-          ~(resolve_predefined_exception : Symbol.t -> a option) =
+    let symbol_is_predefined_exception sym =
+      match S.symbol_is_predefined_exception sym with
+      | None -> false
+      | Some _ -> true
+
+    let import_type (type a) ll ~create_symbol
+          ~(create_resolved_t : t -> a create_resolved_t_result) =
       let rec import_type (ll : load_lazily) ~export_ids_seen ~symbols_seen
             : a import_result =
         match ll with
@@ -933,62 +937,56 @@ end) = struct
           | None -> Treat_as_unknown_must_scan (Unresolved_value (Export_id id))
           | Some t ->
             match create_resolved_t t with
-            | Ok resolved_t -> Ok resolved_t
+            | Resolved resolved_t -> Resolved resolved_t
             | Load_lazily_again ll ->
               let export_ids_seen = Export_id.Set.add id export_ids_seen in
               import_type ll ~export_ids_seen ~symbols_seen
           end
         | Symbol sym ->
-          match resolve_predefined_exception sym with
-          | Some resolved_t -> Ok resolved_t
-          | None ->
-            if Symbol.Set.mem sym symbols_seen then begin
-              Misc.fatal_errorf "Circularity whilst resolving symbol %a"
-                Symbol.print sym
-            end;
-            begin match S.import_symbol sym with
-            | None -> Treat_as_unknown_must_scan (Unresolved_value (Symbol sym))
-            | Some t ->
-              match create_resolved_t t with
-              (* CR mshinwell: We used to [augment_with_symbol] here but maybe
-                 we don't need it any more? *)
-              | Ok resolved_t -> Ok resolved_t
-              | Load_lazily_again ll ->
-                let symbols_seen =
-                  Symbol.Set.add sym symbols_seen
-                in
-                import_type ll ~export_ids_seen ~symbols_seen
+          let t =
+            let current_unit = Compilation_unit.get_current_exn () in
+            if Symbol.in_compilation_unit sym current_unit
+              || symbol_is_predefined_exception sym
+            then begin
+              Some (create_symbol sym)
+            end else begin
+              if Symbol.Set.mem sym symbols_seen then begin
+                Misc.fatal_errorf "Circularity whilst resolving symbol %a"
+                  Symbol.print sym
+              end;
+              S.import_symbol sym
             end
+          in
+          match t with
+          | None ->
+            Treat_as_unknown_must_scan (Unresolved_value (Symbol sym))
+          | Some t ->
+            match create_resolved_t t with
+            (* CR mshinwell: We used to [augment_with_symbol] here but maybe
+               we don't need it any more? *)
+            | Resolved resolved_t -> Resolved resolved_t
+            | Load_lazily_again ll ->
+              let symbols_seen = Symbol.Set.add sym symbols_seen in
+              import_type ll ~export_ids_seen ~symbols_seen
       in
       import_type ll ~export_ids_seen:Export_id.Set.empty
         ~symbols_seen:Symbol.Set.empty
 
     let import_value_type_as_resolved_ty_value (ty : ty_value)
           : resolved_ty_value =
-      match ty.descr with
-      | Ok descr ->
-        { descr;
-          var = ty.var;
-          symbol = ty.symbol;
-        }
-      | Load_lazily load_lazily ->
-        let resolve_predefined_exception sym =
-          match S.symbol_is_predefined_exception sym with
-          | None -> None
-          | Some name ->
-            Some (resolved_ty_value_for_predefined_exception ~name ~symbol:sym)
-        in
+      match ty with
+      | Var var -> Var var
+      | Symbol (sym, field) -> Symbol (sym, field)
+      | Normal (Resolved ty) -> Normal ty
+      | Normal (Load_lazily load_lazily) ->
         let create_resolved_t t : resolved_ty_value create_resolved_t_result =
           match t with
           | Value ty ->
-            begin match ty.descr with
-            | Ok descr ->
-              Ok {
-                descr;
-                var = ty.var;
-                symbol = ty.symbol;
-              }
-            | Load_lazily ll -> Load_lazily_again ll
+            begin match ty with
+            | Var var -> Resolved (Var var)
+            | Symbol (sym, field) -> Resolved (Symbol (sym, field))
+            | Normal (Resolved descr) -> Resolved (Normal descr)
+            | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
           | Naked_immediate _
           | Naked_float _
@@ -999,12 +997,12 @@ end) = struct
                 [Value]"
               print_load_lazily load_lazily
         in
+        let create_symbol sym : t = Value (Symbol (sym, None)) in
         let result =
-          import_type load_lazily ~create_resolved_t
-            ~resolve_predefined_exception
+          import_type load_lazily ~create_symbol ~create_resolved_t
         in
         match result with
-        | Ok result -> result
+        | Resolved result -> result
         | Treat_as_unknown_must_scan reason ->
           unknown_as_resolved_ty_value reason Must_scan
 
@@ -1049,6 +1047,7 @@ end) = struct
         in
         match result with
         | Ok result -> result
+        | Ok_symbol sym -> Symbol sym
         | Treat_as_unknown_must_scan reason ->
           unknown_as_resolved_ty_naked_immediate reason ()
 
