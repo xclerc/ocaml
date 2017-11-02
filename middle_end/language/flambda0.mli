@@ -315,12 +315,11 @@ module rec Expr : sig
 end and Named : sig
   (** Values of type [t] will always be [let]-bound to a [Variable.t]. *)
   type t =
-    | Var of Variable.t
+    | Name of Name.t
     | Const of Const.t
     | Prim of Flambda_primitive.t * Debuginfo.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
-    | Symbol of Symbol.t
     | Read_symbol_field of Symbol.t * int
     (** During the lifting of [let] bindings to [program] constructions after
         closure conversion, we generate symbols and their corresponding

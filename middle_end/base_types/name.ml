@@ -22,3 +22,32 @@ type t =
 
 let var v = Var v
 let symbol s = Symbol s
+
+let map_var t ~f =
+  match t with
+  | Var var ->
+    let var' = f var in
+    if var == var' then t
+    else Var var'
+  | Symbol _ -> t
+
+include Identifiable.Make (struct
+  type nonrec t = t
+
+  let print ppf t =
+    match t with
+    | Var var -> Variable.print ppf var
+    | Symbol sym -> Symbol.print ppf sym
+
+  let hash t =
+    match t with
+    | Var var -> Hashtbl.hash (0, Variable.hash var)
+    | Symbol sym -> Hashtbl.hash (1, Symbol.hash sym)
+
+  let compare t1 t2 =
+    match t1, t2 with
+    | Var var1, Var var2 -> Variable.compare var1 var2
+    | Symbol sym1, Symbol sym2 -> Symbol.compare sym1 sym2
+    | Var _, Symbol _ -> -1
+    | Symbol _, Var _ -> 1
+end)

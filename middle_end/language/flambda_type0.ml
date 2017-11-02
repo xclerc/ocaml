@@ -176,10 +176,9 @@ end) = struct
     size : int;
   }
 
-  type 'a or_var_or_symbol =
+  type 'a or_alias =
     | Normal of 'a
-    | Var of Variable.t
-    | Symbol of Symbol.t * (int option)
+    | Alias of Name.t
 
   type combining_op = Union | Intersection
 
@@ -200,7 +199,7 @@ end) = struct
   and ty_naked_int64 = (of_kind_naked_int64, unit) ty
   and ty_naked_nativeint = (of_kind_naked_nativeint, unit) ty
 
-  and ('a, 'u) ty = ('a, 'u) maybe_unresolved or_var_or_symbol
+  and ('a, 'u) ty = ('a, 'u) maybe_unresolved or_alias
 
   and resolved_t =
     | Value of resolved_ty_value
@@ -217,7 +216,7 @@ end) = struct
   and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
   and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
 
-  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_var_or_symbol
+  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_alias
 
   and ('a, 'u) maybe_unresolved =
     | Resolved of ('a, 'u) or_unknown_or_bottom
@@ -231,8 +230,8 @@ end) = struct
   and 'a singleton_or_combination =
     | Singleton of 'a
     | Combination of combining_op
-        * 'a singleton_or_combination or_var_or_symbol
-        * 'a singleton_or_combination or_var_or_symbol
+        * 'a singleton_or_combination or_alias
+        * 'a singleton_or_combination or_alias
 
   and of_kind_value =
     | Tagged_immediate of ty_naked_immediate
@@ -245,7 +244,7 @@ end) = struct
     | Set_of_closures of set_of_closures
     | Closure of {
         set_of_closures : ty_value;
-        closure_id : Closure_id.t
+        closure_id : Closure_id.t;
       }
     | String of string_ty
     | Float_array of ty_naked_float array
@@ -308,16 +307,10 @@ end) = struct
     | Export_id id ->
       Format.fprintf ppf "Export_id %a" Export_id.print id
 
-  let print_or_var_or_symbol print_descr ppf var_or_symbol =
-    let print_symbol ppf sym field =
-      match sym, field with
-      | sym, None -> Symbol.print ppf sym
-      | sym, Some field -> Format.fprintf ppf "%a.(%i)" Symbol.print sym field
-    in
+  let print_or_alias print_descr ppf var_or_symbol =
     match var_or_symbol with
     | Normal descr -> print_descr ppf descr
-    | Var var -> Variable.print ppf var
-    | Symbol (sym, field) -> print_symbol ppf sym field
+    | Alias name -> Name.print ppf name
 
   let print_maybe_unresolved print_contents ppf (m : _ maybe_unresolved) =
     match m with
@@ -361,18 +354,18 @@ end) = struct
   let rec print_singleton_or_combination print_contents ppf soc =
     match soc with
     | Singleton contents -> print_contents ppf contents
-    | Combination (op, or_var_or_symbol1, or_var_or_symbol2) ->
+    | Combination (op, or_alias1, or_alias2) ->
       let print_part ppf w =
-        print_or_var_or_symbol (print_singleton_or_combination print_contents)
+        print_or_alias (print_singleton_or_combination print_contents)
           ppf w
       in
       Format.fprintf ppf "@[(%s@ @[(%a)@]@ @[(%a)@])@]"
         (match op with Union -> "Union" | Intersection -> "Intersection")
-        print_part or_var_or_symbol1
-        print_part or_var_or_symbol2
+        print_part or_alias1
+        print_part or_alias2
 
   let print_ty_generic print_contents print_unknown_payload ppf ty =
-    (print_or_var_or_symbol
+    (print_or_alias
       (print_maybe_unresolved
         (print_or_unknown_or_bottom
           (print_singleton_or_combination print_contents)
@@ -381,7 +374,7 @@ end) = struct
 
 (*
   let print_resolved_ty_generic print_contents print_unknown_payload ppf ty =
-    (print_or_var_or_symbol
+    (print_or_alias
       (print_or_unknown_or_bottom
         (print_singleton_or_combination print_contents)
         print_unknown_payload))
@@ -541,32 +534,14 @@ end) = struct
     | Naked_nativeint ty ->
       Format.fprintf ppf "(Naked_nativeint (%a))" print_ty_naked_nativeint ty
 
-  let var_alias (kind : Flambda_kind.t) var : t =
+  let alias (kind : Flambda_kind.t) name : t =
     match kind with
-    | Value _ -> Value (Var var)
-    | Naked_immediate -> Naked_immediate (Var var)
-    | Naked_float -> Naked_float (Var var)
-    | Naked_int32 -> Naked_int32 (Var var)
-    | Naked_int64 -> Naked_int64 (Var var)
-    | Naked_nativeint -> Naked_nativeint (Var var)
-
-  let symbol_alias (kind : Flambda_kind.t) sym : t =
-    match kind with
-    | Value _ -> Value (Symbol (sym, None))
-    | Naked_immediate -> Naked_immediate (Symbol (sym, None))
-    | Naked_float -> Naked_float (Symbol (sym, None))
-    | Naked_int32 -> Naked_int32 (Symbol (sym, None))
-    | Naked_int64 -> Naked_int64 (Symbol (sym, None))
-    | Naked_nativeint -> Naked_nativeint (Symbol (sym, None))
-
-  let symbol_field_alias (kind : Flambda_kind.t) sym ~field : t =
-    match kind with
-    | Value _ -> Value (Symbol (sym, Some field))
-    | Naked_immediate -> Naked_immediate (Symbol (sym, Some field))
-    | Naked_float -> Naked_float (Symbol (sym, Some field))
-    | Naked_int32 -> Naked_int32 (Symbol (sym, Some field))
-    | Naked_int64 -> Naked_int64 (Symbol (sym, Some field))
-    | Naked_nativeint -> Naked_nativeint (Symbol (sym, Some field))
+    | Value _ -> Value (Alias name)
+    | Naked_immediate -> Naked_immediate (Alias name)
+    | Naked_float -> Naked_float (Alias name)
+    | Naked_int32 -> Naked_int32 (Alias name)
+    | Naked_int64 -> Naked_int64 (Alias name)
+    | Naked_nativeint -> Naked_nativeint (Alias name)
 
 (*
   let unknown_as_ty_value reason scanning : ty_value =
@@ -979,16 +954,14 @@ end) = struct
     let import_value_type_as_resolved_ty_value (ty : ty_value)
           : resolved_ty_value =
       match ty with
-      | Var var -> Var var
-      | Symbol (sym, field) -> Symbol (sym, field)
+      | Alias name -> Alias name
       | Normal (Resolved ty) -> Normal ty
       | Normal (Load_lazily load_lazily) ->
         let create_resolved_t t : resolved_ty_value create_resolved_t_result =
           match t with
           | Value ty ->
             begin match ty with
-            | Var var -> Have_resolved (Var var)
-            | Symbol (sym, field) -> Have_resolved (Symbol (sym, field))
+            | Alias name -> Have_resolved (Alias name)
             | Normal (Resolved descr) -> Have_resolved (Normal descr)
             | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
@@ -1001,7 +974,7 @@ end) = struct
                 [Value]"
               print_load_lazily load_lazily
         in
-        let create_symbol sym : t = Value (Symbol (sym, None)) in
+        let create_symbol sym : t = Value (Alias (Name.symbol sym)) in
         let result =
           import_type load_lazily ~create_symbol ~create_resolved_t
         in
@@ -1016,8 +989,7 @@ end) = struct
     let import_naked_immediate_type_as_resolved_ty_naked_immediate
           (ty : ty_naked_immediate) : resolved_ty_naked_immediate =
       match ty with
-      | Var var -> Var var
-      | Symbol (sym, field) -> Symbol (sym, field)
+      | Alias name -> Alias name
       | Normal (Resolved ty) -> Normal ty
       | Normal (Load_lazily load_lazily) ->
         let create_resolved_t t
@@ -1025,8 +997,7 @@ end) = struct
           match t with
           | Naked_immediate ty ->
             begin match ty with
-            | Var var -> Have_resolved (Var var)
-            | Symbol (sym, field) -> Have_resolved (Symbol (sym, field))
+            | Alias name -> Have_resolved (Alias name)
             | Normal (Resolved descr) -> Have_resolved (Normal descr)
             | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
@@ -1059,8 +1030,7 @@ end) = struct
     let import_naked_float_type_as_resolved_ty_naked_float
           (ty : ty_naked_float) : resolved_ty_naked_float =
       match ty with
-      | Var var -> Var var
-      | Symbol (sym, field) -> Symbol (sym, field)
+      | Alias name -> Alias name
       | Normal (Resolved ty) -> Normal ty
       | Normal (Load_lazily load_lazily) ->
         let create_resolved_t t
@@ -1068,8 +1038,7 @@ end) = struct
           match t with
           | Naked_float ty ->
             begin match ty with
-            | Var var -> Have_resolved (Var var)
-            | Symbol (sym, field) -> Have_resolved (Symbol (sym, field))
+            | Alias name -> Have_resolved (Alias name)
             | Normal (Resolved descr) -> Have_resolved (Normal descr)
             | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
@@ -1101,8 +1070,7 @@ end) = struct
     let import_naked_int32_type_as_resolved_ty_naked_int32
           (ty : ty_naked_int32) : resolved_ty_naked_int32 =
       match ty with
-      | Var var -> Var var
-      | Symbol (sym, field) -> Symbol (sym, field)
+      | Alias name -> Alias name
       | Normal (Resolved ty) -> Normal ty
       | Normal (Load_lazily load_lazily) ->
         let create_resolved_t t
@@ -1110,8 +1078,7 @@ end) = struct
           match t with
           | Naked_int32 ty ->
             begin match ty with
-            | Var var -> Have_resolved (Var var)
-            | Symbol (sym, field) -> Have_resolved (Symbol (sym, field))
+            | Alias name -> Have_resolved (Alias name)
             | Normal (Resolved descr) -> Have_resolved (Normal descr)
             | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
@@ -1143,8 +1110,7 @@ end) = struct
     let import_naked_int64_type_as_resolved_ty_naked_int64
           (ty : ty_naked_int64) : resolved_ty_naked_int64 =
       match ty with
-      | Var var -> Var var
-      | Symbol (sym, field) -> Symbol (sym, field)
+      | Alias name -> Alias name
       | Normal (Resolved ty) -> Normal ty
       | Normal (Load_lazily load_lazily) ->
         let create_resolved_t t
@@ -1152,8 +1118,7 @@ end) = struct
           match t with
           | Naked_int64 ty ->
             begin match ty with
-            | Var var -> Have_resolved (Var var)
-            | Symbol (sym, field) -> Have_resolved (Symbol (sym, field))
+            | Alias name -> Have_resolved (Alias name)
             | Normal (Resolved descr) -> Have_resolved (Normal descr)
             | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
@@ -1185,8 +1150,7 @@ end) = struct
     let import_naked_nativeint_type_as_resolved_ty_naked_nativeint
           (ty : ty_naked_nativeint) : resolved_ty_naked_nativeint =
       match ty with
-      | Var var -> Var var
-      | Symbol (sym, field) -> Symbol (sym, field)
+      | Alias name -> Alias name
       | Normal (Resolved ty) -> Normal ty
       | Normal (Load_lazily load_lazily) ->
         let create_resolved_t t
@@ -1194,8 +1158,7 @@ end) = struct
           match t with
           | Naked_nativeint ty ->
             begin match ty with
-            | Var var -> Have_resolved (Var var)
-            | Symbol (sym, field) -> Have_resolved (Symbol (sym, field))
+            | Alias name -> Have_resolved (Alias name)
             | Normal (Resolved descr) -> Have_resolved (Normal descr)
             | Normal (Load_lazily ll) -> Load_lazily_again ll
             end
@@ -1231,40 +1194,25 @@ end) = struct
         ~(type_of_name : Name.t -> t option)
         (ty : (a, _) ty)
         : (a, _) resolved_ty =
-    let rec resolve_aliases vars_seen syms_seen (ty : _ resolved_ty) =
+    let rec resolve_aliases names_seen (ty : _ resolved_ty) =
       match ty with
       | Normal _ -> ty
-      | Var var ->
-        if Variable.Set.mem var vars_seen then begin
+      | Alias name ->
+        if Name.Set.mem name names_seen then begin
           (* CR-soon mshinwell: Improve message -- but this means passing the
              printing functions to this function. *)
           Misc.fatal_errorf "Loop on %a whilst resolving aliases"
-            Variable.print var
+            Name.print name
         end;
-        begin match type_of_name (Name.var var) with
+        begin match type_of_name name with
         | None -> ty
         | Some t ->
-          let vars_seen = Variable.Set.add var vars_seen in
+          let names_seen = Name.Set.add name names_seen in
           let ty = force_to_kind t in
-          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
-        end
-      | Symbol (sym, field) ->
-        if Symbol.And_optional_field.Set.mem (sym, field) syms_seen then begin
-          Misc.fatal_errorf "Loop on %a whilst resolving aliases"
-            Symbol.print sym
-        end;
-        begin match type_of_name (Name.symbol sym) with
-        | None -> ty
-        | Some t ->
-          let syms_seen =
-            Symbol.And_optional_field.Set.add (sym, field) syms_seen
-          in
-          let ty = force_to_kind t in
-          resolve_aliases vars_seen syms_seen (importer_this_kind ty)
+          resolve_aliases names_seen (importer_this_kind ty)
         end
     in
-    resolve_aliases Variable.Set.empty Symbol.And_optional_field.Set.empty
-      (importer_this_kind ty)
+    resolve_aliases Name.Set.empty (importer_this_kind ty)
 
   let resolve_aliases_and_squash_unresolved_names ~importer_this_kind
         ~force_to_kind ~type_of_name ~make_unknown ty =
@@ -1273,7 +1221,7 @@ end) = struct
     in
     match ty with
     | Normal ty -> ty
-    | Var _ | Symbol _ -> make_unknown ()
+    | Alias _ -> make_unknown ()
 
   let force_to_kind_value t =
     match t with
@@ -1341,12 +1289,11 @@ end) = struct
       Misc.fatal_errorf "Type has wrong kind (expected [Naked_nativeint]): %a"
         print t
 
-  let ty_of_resolved_ok_ty (ty : _ singleton_or_combination or_var_or_symbol)
+  let ty_of_resolved_ok_ty (ty : _ singleton_or_combination or_alias)
         : _ ty =
     match ty with
     | Normal ty -> Normal ((Resolved (Ok ty)) : _ maybe_unresolved)
-    | Var var -> Var var
-    | Symbol (sym, field) -> Symbol (sym, field)
+    | Alias name -> Alias name
 
   let scanning_ty_value ~importer ~type_of_name ty =
     let rec scanning_ty_value (ty : ty_value) : K.scanning =
@@ -1437,55 +1384,54 @@ end) = struct
     Value (Normal (Resolved (Ok (
       Singleton (Set_of_closures set_of_closures)))))
 
-  let rec free_variables t acc =
+  let rec free_names t acc =
     match t with
-    | Value ty -> free_variables_ty_value ty acc
-    | Naked_immediate ty -> free_variables_ty_naked_immediate ty acc
-    | Naked_float ty -> free_variables_ty_naked_float ty acc
-    | Naked_int32 ty -> free_variables_ty_naked_int32 ty acc
-    | Naked_int64 ty -> free_variables_ty_naked_int64 ty acc
-    | Naked_nativeint ty -> free_variables_ty_naked_nativeint ty acc
+    | Value ty -> free_names_ty_value ty acc
+    | Naked_immediate ty -> free_names_ty_naked_immediate ty acc
+    | Naked_float ty -> free_names_ty_naked_float ty acc
+    | Naked_int32 ty -> free_names_ty_naked_int32 ty acc
+    | Naked_int64 ty -> free_names_ty_naked_int64 ty acc
+    | Naked_nativeint ty -> free_names_ty_naked_nativeint ty acc
 
-  and free_variables_ty_value (ty : ty_value) acc =
+  and free_names_ty_value (ty : ty_value) acc =
     match ty with
-    | Var var -> Variable.Set.add var acc
-    | Symbol _ -> acc
+    | Alias name -> Name.Set.add name acc
     | Normal (Resolved ((Unknown _) | Bottom)) -> acc
     | Normal (Resolved (Ok of_kind_value)) ->
-      free_variables_of_kind_value of_kind_value acc
+      free_names_of_kind_value of_kind_value acc
     | Normal (Load_lazily _load_lazily) ->
-      (* Types saved in .cmx files cannot contain free variables. *)
+      (* Types saved in .cmx files cannot contain free names. *)
       acc
 
-  and free_variables_ty_naked_immediate (ty : ty_naked_immediate) acc =
+  and free_names_ty_naked_immediate (ty : ty_naked_immediate) acc =
     match ty with
-    | Var var -> Variable.Set.add var acc
-    | Symbol _ | Normal _ -> acc
+    | Alias name -> Name.Set.add name acc
+    | Normal _ -> acc
 
-  and free_variables_ty_naked_float (ty : ty_naked_float) acc =
+  and free_names_ty_naked_float (ty : ty_naked_float) acc =
     match ty with
-    | Var var -> Variable.Set.add var acc
-    | Symbol _ | Normal _ -> acc
+    | Alias name -> Name.Set.add name acc
+    | Normal _ -> acc
 
-  and free_variables_ty_naked_int32 (ty : ty_naked_int32) acc =
+  and free_names_ty_naked_int32 (ty : ty_naked_int32) acc =
     match ty with
-    | Var var -> Variable.Set.add var acc
-    | Symbol _ | Normal _ -> acc
+    | Alias name -> Name.Set.add name acc
+    | Normal _ -> acc
 
-  and free_variables_ty_naked_int64 (ty : ty_naked_int64) acc =
+  and free_names_ty_naked_int64 (ty : ty_naked_int64) acc =
     match ty with
-    | Var var -> Variable.Set.add var acc
-    | Symbol _ | Normal _ -> acc
+    | Alias name -> Name.Set.add name acc
+    | Normal _ -> acc
 
-  and free_variables_ty_naked_nativeint (ty : ty_naked_nativeint) acc =
+  and free_names_ty_naked_nativeint (ty : ty_naked_nativeint) acc =
     match ty with
-    | Var var -> Variable.Set.add var acc
-    | Symbol _ | Normal _ -> acc
+    | Alias name -> Name.Set.add name acc
+    | Normal _ -> acc
 
-  and free_variables_set_of_closures (set_of_closures : set_of_closures) acc =
+  and free_names_set_of_closures (set_of_closures : set_of_closures) acc =
     let acc =
       Var_within_closure.Map.fold (fun _var ty_value acc ->
-          free_variables_ty_value ty_value acc)
+          free_names_ty_value ty_value acc)
         set_of_closures.closure_elements acc
     in
     Closure_id.Map.fold
@@ -1494,56 +1440,56 @@ end) = struct
         | Inlinable decl ->
           let acc =
             List.fold_left (fun acc ty ->
-              free_variables ty acc)
+              free_names ty acc)
               acc
               decl.result
           in
           List.fold_left (fun acc (_param, ty) ->
-              free_variables ty acc)
+              free_names ty acc)
             acc
             decl.params
         | Non_inlinable decl ->
           List.fold_left (fun acc ty ->
-            free_variables ty acc)
+            free_names ty acc)
             acc
             decl.result)
       set_of_closures.function_decls
       acc
 
-  and free_variables_of_kind_value
+  and free_names_of_kind_value
         (o : of_kind_value singleton_or_combination) acc =
     match o with
     | Singleton singleton ->
       begin match singleton with
       | Tagged_immediate i ->
-        free_variables_ty_naked_immediate i acc
+        free_names_ty_naked_immediate i acc
       | Boxed_float f ->
-        free_variables_ty_naked_float f acc
+        free_names_ty_naked_float f acc
       | Boxed_int32 n ->
-        free_variables_ty_naked_int32 n acc
+        free_names_ty_naked_int32 n acc
       | Boxed_int64 n ->
-        free_variables_ty_naked_int64 n acc
+        free_names_ty_naked_int64 n acc
       | Boxed_nativeint n ->
-        free_variables_ty_naked_nativeint n acc
+        free_names_ty_naked_nativeint n acc
       | Block (_tag, fields) ->
-        Array.fold_left (fun acc t -> free_variables_ty_value t acc)
+        Array.fold_left (fun acc t -> free_names_ty_value t acc)
           acc fields
       | Set_of_closures set_of_closures ->
-        free_variables_set_of_closures set_of_closures acc
+        free_names_set_of_closures set_of_closures acc
       | Closure { set_of_closures; closure_id = _; } ->
-        free_variables_ty_value set_of_closures acc
+        free_names_ty_value set_of_closures acc
       | String _ -> acc
       | Float_array fields ->
         Array.fold_left (fun acc field ->
-            free_variables_ty_naked_float field acc)
+            free_names_ty_naked_float field acc)
           acc fields
       end
     | Combination (_op, ty1, ty2) ->
       let ty1 = ty_of_resolved_ok_ty ty1 in
       let ty2 = ty_of_resolved_ok_ty ty2 in
-      free_variables_ty_value ty2 (free_variables_ty_value ty1 acc)
+      free_names_ty_value ty2 (free_names_ty_value ty1 acc)
 
-  let free_variables t = free_variables t Variable.Set.empty
+  let free_names t = free_names t Name.Set.empty
 
   (* CR mshinwell: We need tests to check that [clean] matches up with
      [free_variables]. *)
@@ -1827,17 +1773,13 @@ end) = struct
           ~type_of_name ty2
       in
       match ty1, ty2 with
-      | Var var1, Var var2 when Variable.equal var1 var2 -> Var var1
-      | Symbol (sym1, field1), Symbol (sym2, field2)
-          when Symbol.equal sym1 sym2
-            && Misc.Stdlib.Option.equal Pervasives.(=) field1 field2 ->
-        Symbol (sym1, field1)
+      | Alias name1, Alias name2 when Name.equal name1 name2 -> Alias name1
       | _, _ ->
         let unresolved_var_or_symbol_to_unknown (ty : _ resolved_ty)
               : _ or_unknown_or_bottom =
           match ty with
           | Normal ty -> ty
-          | Var _ | Symbol _ -> Unknown (Other, unknown_payload_top)
+          | Alias _ -> Unknown (Other, unknown_payload_top)
         in
         let ty1 = unresolved_var_or_symbol_to_unknown ty1 in
         let ty2 = unresolved_var_or_symbol_to_unknown ty2 in

@@ -22,3 +22,7 @@ type t = private
 
 val var : Variable.t -> t
 val symbol : Symbol.t -> t
+
+val map_var : t -> f:(Variable.t -> Variable.t) -> t
+
+include Identifiable.S with type t := t

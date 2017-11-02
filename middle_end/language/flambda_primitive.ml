@@ -673,10 +673,10 @@ let effects_and_coeffects_of_variadic_primitive p =
     Arbitrary_effects, Has_coeffects
 
 type t =
-  | Unary of unary_primitive * Variable.t
-  | Binary of binary_primitive * Variable.t * Variable.t
-  | Ternary of ternary_primitive * Variable.t * Variable.t * Variable.t
-  | Variadic of variadic_primitive * (Variable.t list)
+  | Unary of unary_primitive * Name.t
+  | Binary of binary_primitive * Name.t * Name.t
+  | Ternary of ternary_primitive * Name.t * Name.t * Name.t
+  | Variadic of variadic_primitive * (Name.t list)
 
 type primitive_application = t
 
@@ -711,29 +711,32 @@ let print ppf t =
   | Unary (prim, v0) ->
     Format.fprintf ppf "@[(Prim %a %a)@]"
       print_unary_primitive prim
-      Variable.print v0
+      Name.print v0
   | Binary (prim, v0, v1) ->
     Format.fprintf ppf "@[(Prim %a %a %a)@]"
       print_binary_primitive prim
-      Variable.print v0
-      Variable.print v1
+      Name.print v0
+      Name.print v1
   | Ternary (prim, v0, v1, v2) ->
     Format.fprintf ppf "@[(Prim %a %a %a %a)@]"
       print_ternary_primitive prim
-      Variable.print v0
-      Variable.print v1
-      Variable.print v2
+      Name.print v0
+      Name.print v1
+      Name.print v2
   | Variadic (prim, vs) ->
     Format.fprintf ppf "@[(Prim %a %a)@]"
       print_variadic_primitive prim
-      (Format.pp_print_list ~pp_sep:Format.pp_print_space Variable.print) vs
+      (Format.pp_print_list ~pp_sep:Format.pp_print_space Name.print) vs
 
 let rename_variables t ~f =
   match t with
-  | Unary (prim, x0) -> Unary (prim, f x0)
-  | Binary (prim, x0, x1) -> Binary (prim, f x0, f x1)
-  | Ternary (prim, x0, x1, x2) -> Ternary (prim, f x0, f x1, f x2)
-  | Variadic (prim, xs) -> Variadic (prim, List.map f xs)
+  | Unary (prim, x0) -> Unary (prim, Name.map_var x0 ~f)
+  | Binary (prim, x0, x1) ->
+    Binary (prim, Name.map_var x0 ~f, Name.map_var x1 ~f)
+  | Ternary (prim, x0, x1, x2) ->
+    Ternary (prim, Name.map_var x0 ~f, Name.map_var x1 ~f, Name.map_var x2 ~f)
+  | Variadic (prim, xs) ->
+    Variadic (prim, List.map (fun x -> Name.map_var x ~f) xs)
 
 (* Probably not required
 let arg_kinds (t : t) : arg_kinds =

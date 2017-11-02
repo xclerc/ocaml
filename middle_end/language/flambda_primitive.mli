@@ -188,10 +188,10 @@ type variadic_primitive =
 
 (** The application of a primitive to its arguments. *)
 type t =
-  | Unary of unary_primitive * Variable.t
-  | Binary of binary_primitive * Variable.t * Variable.t
-  | Ternary of ternary_primitive * Variable.t * Variable.t * Variable.t
-  | Variadic of variadic_primitive * (Variable.t list)
+  | Unary of unary_primitive * Name.t
+  | Binary of binary_primitive * Name.t * Name.t
+  | Ternary of ternary_primitive * Name.t * Name.t * Name.t
+  | Variadic of variadic_primitive * (Name.t list)
 
 type primitive_application = t
 

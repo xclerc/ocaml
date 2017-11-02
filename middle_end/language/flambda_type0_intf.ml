@@ -52,10 +52,9 @@ module type S = sig
     size : int;
   }
 
-  type 'a or_var_or_symbol = private
+  type 'a or_alias = private
     | Normal of 'a
-    | Var of Variable.t
-    | Symbol of Symbol.t * (int option)
+    | Alias of Name.t
 
   (* CR-someday mshinwell / lwhite: Types in ANF form? *)
   (* CR-someday mshinwell / lwhite: "Phantom" (for debugging work) as a kind? *)
@@ -87,7 +86,7 @@ module type S = sig
   and ty_naked_int64 = (of_kind_naked_int64, unit) ty
   and ty_naked_nativeint = (of_kind_naked_nativeint, unit) ty
 
-  and ('a, 'u) ty = ('a, 'u) maybe_unresolved or_var_or_symbol
+  and ('a, 'u) ty = ('a, 'u) maybe_unresolved or_alias
 
   and resolved_t = private
     | Value of resolved_ty_value
@@ -104,7 +103,7 @@ module type S = sig
   and resolved_ty_naked_int64 = (of_kind_naked_int64, unit) resolved_ty
   and resolved_ty_naked_nativeint = (of_kind_naked_nativeint, unit) resolved_ty
 
-  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_var_or_symbol
+  and ('a, 'u) resolved_ty = ('a, 'u) or_unknown_or_bottom or_alias
 
   and ('a, 'u) maybe_unresolved = private
     | Resolved of ('a, 'u) or_unknown_or_bottom
@@ -127,8 +126,8 @@ module type S = sig
   and 'a singleton_or_combination = private
     | Singleton of 'a
     | Combination of combining_op
-        * 'a singleton_or_combination or_var_or_symbol
-        * 'a singleton_or_combination or_var_or_symbol
+        * 'a singleton_or_combination or_alias
+        * 'a singleton_or_combination or_alias
 
   and of_kind_value = private
     | Tagged_immediate of ty_naked_immediate
@@ -296,18 +295,12 @@ module type S = sig
     -> closure_elements:ty_value Var_within_closure.Map.t
     -> t
 
-  (** Construct a type equal to the type of the given variable.  (The variable
+  (** Construct a type equal to the type of the given name.  (The name
       must be present in the given environment when calling e.g. [join].) *)
-  val var_alias : Flambda_kind.t -> Variable.t -> t
+  val alias : Flambda_kind.t -> Name.t -> t
 
-  (** Construct a type equal to the type of the given symbol. *)
-  val symbol_alias : Flambda_kind.t -> Symbol.t -> t
-
-  (** Construct a type equal to the type of the given symbol's field. *)
-  val symbol_field_alias : Flambda_kind.t -> Symbol.t -> field:int -> t
-
-  (** Free variables in a type. *)
-  val free_variables : t -> Variable.Set.t
+  (** Free names in a type. *)
+  val free_names : t -> Name.Set.t
 
   (** A module type comprising operations for importing types from .cmx files.
       These operations are derived from the functions supplied to the
