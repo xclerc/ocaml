@@ -580,10 +580,8 @@ end and Function_declaration : sig
     (* CR mshinwell: check non-regression property with xclerc's code *)
     body : Expr.t;
     (** The code of the function's body. *)
-    free_symbols : Symbol.Set.t;
-    (** All symbols that occur in the function's body.  (Symbols can never be
-        bound in a function's body; the only thing that binds symbols is the
-        [program] constructions below.) *)
+    free_names : Name.Set.t;
+    (** All names that occur free in the function's body. *)
     stub : bool;
     (** A stub function is a generated function used to prepare arguments or
         return values to allow indirect calls to functions with a special
@@ -647,6 +645,11 @@ end and Function_declaration : sig
   (** Given a function declaration, find which of its parameters (if any)
       are used in the body. *)
   val used_params : t -> Variable.Set.t
+
+  (** All names free in the function declaration.  (Note that this may be
+      different from the names free in the function _body_, as per [free_names]
+      in the type [t], above.) *)
+  val free_names : t -> Name.Set.t
 
   val print : Closure_id.t -> Format.formatter -> t -> unit
 end and Typed_parameter : sig

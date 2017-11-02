@@ -839,26 +839,6 @@ end and Named : sig
 end = struct
   include Named
 
-  let free_symbols_helper symbols (t : t) =
-    match t with
-    | Symbol symbol ->
-      symbols := Symbol.Set.add symbol !symbols
-    | Read_symbol_field (symbol, _) ->
-      symbols := Symbol.Set.add symbol !symbols
-    | Set_of_closures set_of_closures ->
-      Closure_id.Map.iter (fun _ (function_decl : Function_declaration.t) ->
-          symbols := Symbol.Set.union function_decl.free_symbols !symbols)
-        set_of_closures.function_decls.funs
-    | _ -> ()
-
-  let free_symbols t =
-    let symbols = ref Symbol.Set.empty in
-    Expr.iter_general ~toplevel:true
-      (fun (_ : Expr.t) -> ())
-      (fun (t : Named.t) -> free_symbols_helper symbols t)
-      (Is_named t);
-    !symbols
-
   let name_usage ?ignore_uses_in_project_var (t : t) =
     match t with
     | Var var -> Name.Set.singleton var
@@ -866,11 +846,12 @@ end = struct
       let free = ref Name.Set.empty in
       let free_name fv = free := Name.Set.add fv !free in
       begin match t with
-      | Name name -> free_name name
-      | Const _ | Read_mutable _ | Read_symbol_field _ -> ()
-      | Assign { being_assigned = _; new_value; } ->
-        free_name new_value
+      | Name (Var _ | Symbol _) -> free_name name
+      | Name (Const _) | Read_mutable _ -> ()
+      | Assign { being_assigned = _; new_value; } -> free_name new_value
       | Set_of_closures { free_vars; _ } ->
+(* XXX we need to traverse the body now!  However we only need to collect
+   symbols. *)
         (* Sets of closures are, well, closed---except for the free name and
            specialised argument lists, which may identify names currently in
            scope outside of the closure. *)
@@ -880,15 +861,6 @@ end = struct
                in the same set of closures. *)
             free_name renamed_to.var)
           free_vars
-      | Project_closure { set_of_closures; closure_id = _ } ->
-        free_name set_of_closures
-      | Project_var { closure; var = _ } ->
-        begin match ignore_uses_in_project_var with
-        | None -> free_name closure
-        | Some () -> ()
-        end
-      | Move_within_set_of_closures { closure; move = _ } ->
-        free_name closure
       | Prim (Unary (_prim, x0), _dbg) ->
         free_name x0
       | Prim (Binary (_prim, x0, x1), _dbg) ->
@@ -919,15 +891,6 @@ end = struct
       fprintf ppf "@[<2>(assign@ %a@ %a)@]"
         Mutable_variable.print being_assigned
         Name.print new_value
-    | Read_symbol_field (symbol, field) ->
-      fprintf ppf "%a.(%d)" Symbol.print symbol field
-    | Project_closure project_closure ->
-      Projection.Project_closure.print ppf project_closure
-    | Project_var project_var ->
-      Projection.Project_var.print ppf project_var
-    | Move_within_set_of_closures move_within_set_of_closures ->
-      Projection.Move_within_set_of_closures.print ppf
-        move_within_set_of_closures
     | Set_of_closures set_of_closures ->
       Set_of_closures.print ppf set_of_closures
     | Prim (prim, dbg) ->
@@ -1327,7 +1290,7 @@ end and Function_declaration : sig
     return_arity : Flambda_arity.t;
     params : Typed_parameter.t list;
     body : Expr.t;
-    free_symbols : Symbol.Set.t;
+    free_names : Name.Set.t;
     stub : bool;
     dbg : Debuginfo.t;
     inline : inline_attribute;
@@ -1357,6 +1320,7 @@ end and Function_declaration : sig
     -> body:Expr.t
     -> t
   val used_params : t -> Name.Set.t
+  val free_names : t -> Name.Set.t
   val print : Closure_id.t -> Format.formatter -> t -> unit
 end = struct
   include Function_declaration
@@ -1396,7 +1360,7 @@ end = struct
       my_closure;
     }
 
-  let update_body (t : t) ~body : t =
+  let update_body t ~body : t =
     { closure_origin = t.closure_origin;
       params = t.params;
       continuation_param = t.continuation_param;
@@ -1411,7 +1375,7 @@ end = struct
       my_closure = t.my_closure
     }
 
-  let update_params_and_body (t : t) ~params ~body : t =
+  let update_params_and_body t ~params ~body : t =
     { closure_origin = t.closure_origin;
       params;
       continuation_param = t.continuation_param;
@@ -1429,10 +1393,16 @@ end = struct
   let update_params t ~params =
     update_params_and_body t ~params ~body:t.body
 
-  let used_params (function_decl : Function_declaration.t) =
+  let used_params t =
     Variable.Set.filter (fun param ->
-        Variable.Set.mem param (Expr.free_variables function_decl.body))
-      (Typed_parameter.List.var_set function_decl.params)
+        Variable.Set.mem param (Expr.free_variables t.body))
+      (Typed_parameter.List.var_set t.params)
+
+  let free_names t =
+    let my_closure = Name.var t.my_closure in
+    let params = Typed_parameter.List.name_set t.params in
+    let bound = Name.Set.add my_closure params in
+    Name.Set.diff t.free_names bound
 
   let print closure_id ppf (f : t) =
     let stub =
