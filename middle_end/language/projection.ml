@@ -18,45 +18,45 @@
 
 module Project_closure = struct
   type t = {
-    set_of_closures : Variable.t;
+    set_of_closures : Name.t;
     closure_id : Closure_id.Set.t;
   }
 
-  let free_variables t = Variable.Set.singleton t.set_of_closures
+  let free_names t = Name.Set.singleton t.set_of_closures
 
   let print ppf (t : t) =
     Format.fprintf ppf "@[<2>(project_closure@ %a@ from@ %a)@]"
       Closure_id.Set.print t.closure_id
-      Variable.print t.set_of_closures
+      Name.print t.set_of_closures
 end
 
 module Move_within_set_of_closures = struct
   type t = {
-    closure : Variable.t;
+    closure : Name.t;
     move : Closure_id.t Closure_id.Map.t;
   }
 
-  let free_variables t = Variable.Set.singleton t.closure
+  let free_names t = Name.Set.singleton t.closure
 
   let print ppf (t : t) =
     Format.fprintf ppf
       "@[<2>(move_within_set_of_closures@ %a@ (closure = %a))@]"
       (Closure_id.Map.print Closure_id.print) t.move
-      Variable.print t.closure
+      Name.print t.closure
 end
 
 module Project_var = struct
   type t = {
-    closure : Variable.t;
+    closure : Name.t;
     var : Var_within_closure.t Closure_id.Map.t;
   }
 
-  let free_variables t = Variable.Set.singleton t.closure
+  let free_names t = Name.Set.singleton t.closure
 
   let print ppf (t : t) =
     Format.fprintf ppf "@[<2>(project_var@ %a@ from %a)@]"
       (Closure_id.Map.print Var_within_closure.print) t.var
-      Variable.print t.closure
+      Name.print t.closure
 end
 
 type t =
@@ -64,8 +64,7 @@ type t =
   | Project_closure of Project_closure.t
   | Move_within_set_of_closures of Move_within_set_of_closures.t
   | Primitive_with_fixed_value of Flambda_primitive.With_fixed_value.t
-  | Box_number of Flambda_kind.Boxable_number.t * Variable.t
-  | Switch of Variable.t
+  | Switch of Name.t
 
 let print ppf t =
   match t with
@@ -74,14 +73,12 @@ let print ppf t =
   | Project_var (project_var) -> Project_var.print ppf project_var
   | Move_within_set_of_closures (move_within_set_of_closures) ->
     Move_within_set_of_closures.print ppf move_within_set_of_closures
-  | Primitive_with_fixed_value (prim, args) ->
-    Format.fprintf ppf "Primitive_with_fixed_value (%a, %a)"
-      Printlambda.primitive prim
-      Variable.print_list args
-  | Block_load (field, block) ->
-    Format.fprintf ppf "Block_load (%d, %a)" field Variable.print block
-  | Switch arg -> Format.fprintf ppf "Switch %a" Variable.print arg
+  | Primitive_with_fixed_value prim ->
+    Format.fprintf ppf "Primitive_with_fixed_value (%a)"
+      Flambda_primitive.print prim
+  | Switch arg -> Format.fprintf ppf "Switch %a" Name.print arg
 
+(*
 let projecting_from t =
   match t with
   | Project_var { closure; _ } -> closure
@@ -101,7 +98,7 @@ let projecting_from t =
     Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
         arguments for pure primitive CSE: %a (%a)"
       Printlambda.primitive prim
-      Variable.print_list vars
+      Name.print_list vars
   | Box_number (_kind, var) -> var
   | Switch var -> var
 
@@ -142,16 +139,17 @@ let map_projecting_from t ~f : t =
     Misc.fatal_errorf "Unsupported pure primitive, or wrong number of \
         arguments for pure primitive CSE: %a (%a)"
       Printlambda.primitive prim
-      Variable.print_list vars
+      Name.print_list vars
   | Block_load (field, block) -> Block_load (field, f block)
   | Switch var -> Switch (f var)
 
-let free_variables t =
+let free_names t =
   match t with
-  | Project_var proj -> Project_var.free_variables proj
-  | Project_closure proj -> Project_closure.free_variables proj
+  | Project_var proj -> Project_var.free_names proj
+  | Project_closure proj -> Project_closure.free_names proj
   | Move_within_set_of_closures move ->
-    Move_within_set_of_closures.free_variables move
-  | Primitive_with_fixed_value (_prim, vars) -> Variable.Set.of_list vars
-  | Block_load (_field, block) -> Variable.Set.singleton block
-  | Switch var -> Variable.Set.singleton var
+    Move_within_set_of_closures.free_names move
+  | Primitive_with_fixed_value (_prim, vars) -> Name.Set.of_list vars
+  | Block_load (_field, block) -> Name.Set.singleton block
+  | Switch var -> Name.Set.singleton var
+*)

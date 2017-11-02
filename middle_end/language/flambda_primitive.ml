@@ -285,6 +285,9 @@ type unary_primitive =
   | Bigarray_length of { dimension : int; }
   | Unbox_number of K.Boxable_number.t
   | Box_number of K.Boxable_number.t
+  | Project_closure of Closure_id.Set.t
+  | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
+  | Project_var of Var_within_closure.t Closure_id.Map.t
 
 let print_unary_primitive ppf p =
   let fprintf = Format.fprintf in
@@ -321,6 +324,15 @@ let print_unary_primitive ppf p =
     fprintf ppf "unbox_%a" K.Boxable_number.print_lowercase k
   | Box_number k ->
     fprintf ppf "box_%a" K.Boxable_number.print_lowercase k
+  | Project_closure set ->
+    Format.fprintf ppf "(project_closure@ %a)"
+      Closure_id.Set.print set
+  | Move_within_set_of_closures moves ->
+    Format.fprintf ppf "(move_within_set_of_closures@ %a)"
+      (Closure_id.Map.print Closure_id.print) moves
+  | Project_var by_closure ->
+    Format.fprintf ppf "(project_var@ %a)"
+      (Closure_id.Map.print Var_within_closure.print) by_closure
 
 let arg_kind_of_unary_primitive p =
   match p with
@@ -344,6 +356,9 @@ let arg_kind_of_unary_primitive p =
   | Bigarray_length _ -> K.value Must_scan
   | Unbox_number _ -> K.value Must_scan
   | Box_number kind -> K.Boxable_number.to_kind kind
+  | Project_closure _
+  | Move_within_set_of_closures _
+  | Project_var _ -> K.value Must_scan
 
 let result_kind_of_unary_primitive p : result_kind =
   match p with
@@ -367,6 +382,9 @@ let result_kind_of_unary_primitive p : result_kind =
   | Bigarray_length _ -> Singleton (K.value Can_scan)
   | Unbox_number kind -> Singleton (K.Boxable_number.to_kind kind)
   | Box_number _ -> Singleton (K.value Must_scan)
+  | Project_closure _
+  | Move_within_set_of_closures _
+  | Project_var _ -> Singleton (K.value Must_scan)
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
@@ -399,6 +417,9 @@ let effects_and_coeffects_of_unary_primitive p =
     No_effects, No_coeffects
   | Box_number _ ->
     Only_generative_effects Immutable, No_coeffects
+  | Project_closure _
+  | Move_within_set_of_closures _
+  | Project_var _ -> No_effects, No_coeffects
 
 type binary_int_arith_op =
   | Add | Sub | Mul

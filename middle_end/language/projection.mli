@@ -23,28 +23,19 @@
     detailed documentation below on [set_of_closures]. *)
 module Project_closure : sig
   type t = {
-    set_of_closures : Variable.t; (** must yield a set of closures *)
+    set_of_closures : Name.t; (** must yield a set of closures *)
     closure_id : Closure_id.Set.t;
-    (** Every closure_id from the set must come from a different set.
-        A projection with multiple potential closures represents a
-        conditional projection depending on the given set of closures.
-        The set of closures is implicit as there can also be only one
-        set defining a given closure_id. *)
   }
 
   val print : Format.formatter -> t -> unit
 end
 
-(** The selection of one closure given another closure in the same set of
-    closures.  See more detailed documentation below on [set_of_closures].
     The [move_to] closure must be part of the free variables of
     [start_from]. *)
 module Move_within_set_of_closures : sig
   type t = {
-    closure : Variable.t;  (** must yield a closure *)
+    closure : Name.t;  (** must yield a closure *)
     move : Closure_id.t Closure_id.Map.t;
-    (** For each possible value of closures, get a different closure
-        from the set. *)
   }
 
   val print : Format.formatter -> t -> unit
@@ -55,7 +46,7 @@ end
     detailed documentation below on [set_of_closures]. *)
 module Project_var : sig
   type t = {
-    closure : Variable.t;  (** must yield a closure *)
+    closure : Name.t;  (** must yield a closure *)
     (* CR mshinwell: Change the name of [var]. *)
     var : Var_within_closure.t Closure_id.Map.t;
     (** For each possible value of closure, get a different field of the
@@ -66,16 +57,16 @@ module Project_var : sig
 end
 
 type t =
-  | Symbol of Symbol.t * (int option)
   | Project_var of Project_var.t
   | Project_closure of Project_closure.t
   | Move_within_set_of_closures of Move_within_set_of_closures.t
   | Primitive_with_fixed_value of Flambda_primitive.With_fixed_value.t
-  | Switch of Variable.t
+  | Switch of Name.t (* XXX *)
 
 include Identifiable.S with type t := t
 
-(** Return which variable the given projection projects from. *)
+(*
+(** Return which name the given projection projects from. *)
 val projecting_from : t -> Variable.t
 
 (** Change the variable that the given projection projects from. *)
@@ -83,3 +74,5 @@ val map_projecting_from : t -> f:(Variable.t -> Variable.t) -> t
 
 (** Free variables of the given projection. *)
 val free_variables : t -> Variable.Set.t
+
+*)

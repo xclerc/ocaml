@@ -41,24 +41,11 @@ module Call_kind : sig
         param_arity : Flambda_arity.t;
         return_arity : Flambda_arity.t;
       }
-    | Method of { kind : method_kind; obj : Variable.t; }
+    | Method of { kind : method_kind; obj : Name.t; }
 
   val return_arity : t -> Flambda_arity.t
 
   val equal : t -> t -> bool
-end
-
-(** Simple constants which can be held entirely in registers. *)
-module Const : sig
-  type t =
-    | Untagged_immediate of Immediate.t
-    | Tagged_immediate of Immediate.t
-    | Naked_float of float
-    | Naked_int32 of Int32.t
-    | Naked_int64 of Int64.t
-    | Naked_nativeint of Targetint.t
-
-  include Identifiable.S with type t := t
 end
 
 type inline_attribute =
@@ -77,11 +64,11 @@ type specialise_attribute =
 module Apply : sig
   type t = {
     (* CR-soon mshinwell: rename func -> callee, and
-      lhs_of_application -> callee *)
-    func : Variable.t;
+       lhs_of_application -> callee *)
+    func : Name.t;
     continuation : Continuation.t;
     (** Where to send the result of the application. *)
-    args : Variable.t list;
+    args : Name.t list;
     call_kind : Call_kind.t;
     dbg : Debuginfo.t;
     inline : inline_attribute;
@@ -99,7 +86,7 @@ end
     immutable variables in Flambda. *)
 type assign = {
   being_assigned : Mutable_variable.t;
-  new_value : Variable.t;
+  new_value : Name.t;
 }
 
 module Free_var : sig
@@ -223,8 +210,8 @@ module rec Expr : sig
     | Let_mutable of Let_mutable.t
     | Let_cont of Let_cont.t
     | Apply of Apply.t
-    | Apply_cont of Continuation.t * Trap_action.t option * Variable.t list
-    | Switch of Variable.t * Switch.t
+    | Apply_cont of Continuation.t * Trap_action.t option * Name.t list
+    | Switch of Name.t * Switch.t
     | Invalid of invalid_term_semantics
 
   (** Creates a [Let] expression.  (This computes the free variables of the
@@ -234,7 +221,7 @@ module rec Expr : sig
   (** Create a suitable [expr] to represent the given switch.  (The result may
       not actually be a [Switch].) *)
   val create_switch
-     : scrutinee:Variable.t
+     : scrutinee:Name.t
     -> all_possible_values:Targetint.Set.t
     -> arms:(Targetint.t * Continuation.t) list
     -> default:Continuation.t option
@@ -244,36 +231,34 @@ module rec Expr : sig
       that occur within the returned expression, and how many uses of each there
       are therein. *)
   val create_switch'
-     : scrutinee:Variable.t
+     : scrutinee:Name.t
     -> all_possible_values:Targetint.Set.t
     -> arms:(Targetint.t * Continuation.t) list
     -> default:Continuation.t option
     -> Expr.t * (int Continuation.Map.t)
 
-  (** Compute the free variables of a term.  (This is O(1) for [Let]s).
-      If [ignore_uses_as_callee], all free variables inside [Apply] expressions
+  (** Compute the free names of a term.  (This is O(1) for [Let]s).
+      If [ignore_uses_as_callee], all free names inside [Apply] expressions
       are ignored.  Likewise [ignore_uses_in_project_var] for [Project_var]
       expressions.
   *)
-  val free_variables
+  val free_names
      : ?ignore_uses_as_callee:unit
     -> ?ignore_uses_as_argument:unit
     -> ?ignore_uses_as_continuation_argument:unit
     -> ?ignore_uses_in_project_var:unit
     -> ?ignore_uses_in_apply_cont:unit
     -> t
-    -> Variable.Set.t
+    -> Name.Set.t
 
-  val free_symbols : t -> Symbol.Set.t
-
-  (** Compute _all_ variables occurring inside an expression. *)
-  val used_variables
+  (** Compute _all_ names occurring inside an expression. *)
+  val used_names
      : ?ignore_uses_as_callee:unit
     -> ?ignore_uses_as_argument:unit
     -> ?ignore_uses_as_continuation_argument:unit
     -> ?ignore_uses_in_project_var:unit
     -> t
-    -> Variable.Set.t
+    -> Name.Set.t
 
   (* CR mshinwell: Consider if we want to cache these. *)
   val free_continuations : t -> Continuation.Set.t
@@ -316,42 +301,10 @@ end and Named : sig
   (** Values of type [t] will always be [let]-bound to a [Variable.t]. *)
   type t =
     | Name of Name.t
-    | Const of Const.t
     | Prim of Flambda_primitive.t * Debuginfo.t
+    | Set_of_closures of Set_of_closures.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
-    | Read_symbol_field of Symbol.t * int
-    (** During the lifting of [let] bindings to [program] constructions after
-        closure conversion, we generate symbols and their corresponding
-        definitions (which may or may not be constant), together with field
-        accesses to such symbols. We would like it to be the case that such
-        field accesses are simplified to the relevant component of the symbol
-        concerned. (The rationale is to generate efficient code and share
-        constants as expected: see e.g. tests/asmcomp/staticalloc.ml.) The
-        components of the symbol would be identified by other symbols. This sort
-        of access pattern is feasible because the top-level structure of symbols
-        is statically allocated and fixed at compile time. It may seem that
-        [Prim (Pfield, ...)] expressions could be used to perform the field
-        accesses. However for simplicity, to avoid having to keep track of
-        properties of individual fields of blocks, [Inconstant_idents] never
-        deems a [Prim (Pfield, ...)] expression to be constant. This would in
-        general prevent field accesses to symbols from being simplified in the
-        way we would like, since [Lift_constants] would not assign new symbols
-        (i.e. the things we would like to simplify to) to the various
-        projections from the symbols in question. To circumvent this problem we
-        use [Read_symbol_field] when generating projections from the top level
-        of symbols. Owing to the properties of symbols described above, such
-        expressions may be eligible for declaration as constant by
-        [Inconstant_idents] (and thus themselves lifted to another symbol),
-        without any further complication. [Read_symbol_field] may only be used
-        when the definition of the symbol is in scope in the [program]. For
-        external unresolved symbols, [Pfield] may still be used; it will be
-        changed to [Read_symbol_field] by [Simplify] when (and if) the symbol is
-        imported. *)
-    | Set_of_closures of Set_of_closures.t
-    | Project_closure of Projection.Project_closure.t
-    | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
-    | Project_var of Projection.Project_var.t
 
   (** Compute the free variables of the given term. *)
   val free_variables
@@ -367,18 +320,18 @@ end and Named : sig
     -> t
     -> Variable.Set.t
 
-  (** Build an expression boxing the variable. The returned kind is the
-      one of the unboxed version *)
+  (** Build an expression boxing the name. The returned kind is the
+      one of the unboxed version. *)
   val box_value
-      : Variable.t
+      : Name.t
      -> Flambda_kind.t
      -> Debuginfo.t
      -> Named.t * Flambda_kind.t
 
-  (** Build an expression unboxing the variable. The returned kind is the
-      one of the unboxed version *)
+  (** Build an expression unboxing the name. The returned kind is the
+      one of the unboxed version. *)
   val unbox_value
-      : Variable.t
+      : Name.t
      -> Flambda_kind.t
      -> Debuginfo.t
      -> Named.t * Flambda_kind.t
@@ -710,8 +663,8 @@ end and Typed_parameter : sig
   (** The type of a parameter. *)
   val ty : t -> Flambda_type.t
 
-  (** Equations that hold about this parameter. *)
-  val equation : t -> Equation.t option
+  (** Equalities to primitive applications that hold about this parameter. *)
+  val equalities : t -> Flambda_primitive.With_fixed_value.t list
 
   (** Replace the type of a parameter. *)
   val with_type : t -> Flambda_type.t -> t
@@ -725,20 +678,23 @@ end and Typed_parameter : sig
   (** Map the type of a parameter. *)
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 
-  (** Free variables in the parameter's type.  (The variable corresponding
+  (** Free names in the parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)
-  val free_variables : t -> Variable.Set.t
+  val free_names : t -> Name.Set.t
 
   module List : sig
     type nonrec t = t list
 
-    val free_variables : t -> Variable.Set.t
+    val free_names : t -> Name.Set.t
 
     (** As for [Parameter.List.vars]. *)
     val vars : t -> Variable.t list
 
     (** As for [vars] but returns a set. *)
     val var_set : t -> Variable.Set.t
+
+    (** As for [var_set] but returns a set of [Name]s. *)
+    val name_set : t -> Name.Set.t
 
     val equal_vars : t -> Variable.t list -> bool
 
@@ -749,7 +705,7 @@ end and Typed_parameter : sig
     val print : Format.formatter -> t -> unit
   end
 
-(* try to remove this
+(* XXX try to remove this
   (** N.B. Sets, maps and hash tables keyed on values of type [t] do not
       take into account the parameter's type in the comparison relation. *)
   include Identifiable.S with type t := t
@@ -760,8 +716,8 @@ end and Flambda_type : sig
 end
 
 (** A module for the manipulation of terms where the recomputation of free
-    variable sets is to be kept to a minimum. *)
-module With_free_variables : sig
+    name sets is to be kept to a minimum. *)
+module With_free_names : sig
   type 'a t
 
   val print : Format.formatter -> _ t -> unit
@@ -772,7 +728,7 @@ module With_free_variables : sig
   (** O(1) time. *)
   val of_body_of_let : Let.t -> Expr.t t
 
-  (** Takes the time required to calculate the free variables of the given
+  (** Takes the time required to calculate the free names of the given
       term (proportional to the size of the term, except that the calculation
       for [Let] is O(1)). *)
   val of_expr : Expr.t -> Expr.t t
@@ -785,19 +741,19 @@ module With_free_variables : sig
       for [Effect_analysis]. *)
   val to_named : Named.t t -> Named.t
 
-  (** Takes the time required to calculate the free variables of the given
+  (** Takes the time required to calculate the free names of the given
       [expr]. *)
   val create_let_reusing_defining_expr
-     : Variable.t
+     : Name.t
     -> Named.t t
     -> Expr.t
     -> Expr.t
 
-  (** Takes the time required to calculate the free variables of the given
+  (** Takes the time required to calculate the free names of the given
       [named].  The specified Flambda type must be fully resolved (i.e. no
       occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
-     : Variable.t
+     : Name.t
     -> Flambda_kind.t
     -> Named.t
     -> Expr.t t
@@ -805,7 +761,7 @@ module With_free_variables : sig
 
   (** O(1) time. *)
   val create_let_reusing_both
-     : Variable.t
+     : Name.t
     -> Named.t t
     -> Expr.t t
     -> Expr.t
@@ -813,5 +769,5 @@ module With_free_variables : sig
   val contents : 'a t -> 'a
 
   (** O(1) time. *)
-  val free_variables : _ t -> Variable.Set.t
+  val free_names : _ t -> Name.Set.t
 end

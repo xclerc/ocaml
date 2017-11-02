@@ -134,6 +134,19 @@ type unary_primitive =
   | Bigarray_length of { dimension : int; }
   | Unbox_number of Flambda_kind.Boxable_number.t
   | Box_number of Flambda_kind.Boxable_number.t
+  | Project_closure of Closure_id.Set.t
+    (* CR mshinwell for pchambart: Why is this a set? *)
+    (** Every closure_id from the set must come from a different set.
+        A projection with multiple potential closures represents a
+        conditional projection depending on the given set of closures.
+        The set of closures is implicit as there can also be only one
+        set defining a given closure_id. *)
+  | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
+    (** For each possible value of closures, get a different closure
+        from the set. *)
+  | Project_var of Var_within_closure.t Closure_id.Map.t
+    (** For each possible value of closure, get a different field of the
+        closure. *)
 
 (** Binary arithmetic operations on integers. *)
 type binary_int_arith_op =
