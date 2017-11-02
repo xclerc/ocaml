@@ -23,13 +23,6 @@
 (** Basic definitions, constructors and accessors. *)
 include module type of struct include Flambda0.Flambda_type end
 
-(** The variable to which the given type states equality, if such exists. *)
-val var : t -> Variable.t option
-
-(** The symbol, or field of a symbol, to which the given type states
-    equality, if such exists. *)
-val symbol : t -> (Symbol.t * (int option)) option
-
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file).
     It is assumed that the symbol's value may need scanning by the GC. *)
 val unresolved_symbol : Symbol.t -> t

@@ -61,7 +61,7 @@ module Call_kind = struct
         && Flambda_arity.equal return_arity1 return_arity2
     | Method { kind = kind1; obj = obj1; },
         Method { kind = kind2; obj = obj2; } ->
-      Variable.equal obj1 obj2
+      Name.equal obj1 obj2
         && begin match kind1, kind2 with
            | Self, Self
            | Public, Public
@@ -90,7 +90,7 @@ module Call_kind = struct
         Flambda_arity.print return_arity
     | Method { kind; obj; } ->
       fprintf ppf "@[(Method %a : %a)@]"
-        Variable.print obj
+        Name.print obj
         print_method_kind kind
 
   let return_arity t : Flambda_arity.t =
@@ -156,38 +156,19 @@ type assign = {
 module Free_var = struct
   type t = {
     var : Variable.t;
-    projection : Projection.t option;
+    equality : Flambda_primitive.With_fixed_value.t option;
   }
 
   let var t = t.var
 
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare (t1 : t) (t2 : t) =
-      let c = Variable.compare t1.var t2.var in
-      if c <> 0 then c
-      else
-        match t1.projection, t2.projection with
-        | None, None -> 0
-        | Some _, None -> 1
-        | None, Some _ -> -1
-        | Some proj1, Some proj2 -> Projection.compare proj1 proj2
-
-    let equal (t1 : t) (t2 : t) =
-      compare t1 t2 = 0
-
-    let hash = Hashtbl.hash
-
-    let print ppf (t : t) =
-      match t.projection with
-      | None ->
-        fprintf ppf "%a" Variable.print t.var
-      | Some projection ->
-        fprintf ppf "%a(= %a)"
-          Variable.print t.var
-          Projection.print projection
-  end)
+  let print ppf (t : t) =
+    match t.equality with
+    | None ->
+      fprintf ppf "%a" Variable.print t.var
+    | Some equality ->
+      fprintf ppf "%a(= %a)"
+        Variable.print t.var
+        Flambda_primitive.With_fixed_value.print equality
 
   let free_names t = Name.Set.singleton (Name.var t.var)
 end
@@ -220,7 +201,7 @@ module Free_vars = struct
   let free_names t =
     Var_within_closure.Map.fold (fun _ free_var free_names ->
         Name.Set.union free_names (Free_var.free_names free_var))
-      t.free_vars
+      t
       Name.Set.empty
 end
 
@@ -341,7 +322,7 @@ module rec Expr : sig
     | Let_mutable of Let_mutable.t
     | Let_cont of Let_cont.t
     | Apply of Apply.t
-    | Apply_cont of Continuation.t * Trap_action.t option * Name.t list
+    | Apply_cont of Continuation.t * Trap_action.t option * Simple.t list
     | Switch of Name.t * Switch.t
     | Invalid of invalid_term_semantics
 
@@ -358,22 +339,22 @@ module rec Expr : sig
     -> arms:(Targetint.t * Continuation.t) list
     -> default:Continuation.t option
     -> Expr.t * (int Continuation.Map.t)
-  val free_variables
+  val free_names_advanced
      : ?ignore_uses_as_callee:unit
     -> ?ignore_uses_as_argument:unit
     -> ?ignore_uses_as_continuation_argument:unit
     -> ?ignore_uses_in_project_var:unit
     -> ?ignore_uses_in_apply_cont:unit
     -> t
-    -> Variable.Set.t
-  val free_symbols : t -> Symbol.Set.t
-  val used_variables
+    -> Name.Set.t
+  val free_names : t -> Name.Set.t
+  val used_names
      : ?ignore_uses_as_callee:unit
     -> ?ignore_uses_as_argument:unit
     -> ?ignore_uses_as_continuation_argument:unit
     -> ?ignore_uses_in_project_var:unit
     -> t
-    -> Variable.Set.t
+    -> Name.Set.t
   val free_continuations : t -> Continuation.Set.t
   val invalid : unit -> t
   val iter_lets
@@ -409,7 +390,7 @@ end = struct
     let bound = ref Name.Set.empty in
     let free_names ids = free := Name.Set.union ids !free in
     let free_name fv = free := Name.Set.add fv !free in
-    let bound_name id = bound := Name.Set.add id !bound in
+    let bound_name var = bound := Name.Set.add (Name.var var) !bound in
     (* N.B. This function assumes that all bound identifiers are distinct. *)
     let rec aux (flam : t) : unit =
       match flam with
@@ -425,10 +406,10 @@ end = struct
         | Method { kind = _; obj; } -> free_name obj
         end;
         begin match ignore_uses_as_argument with
-        | None -> List.iter free_name args
+        | None -> free_names (Simple.List.free_names args)
         | Some () -> ()
         end
-      | Let { var; free_vars_of_defining_expr; free_vars_of_body;
+      | Let { var; free_names_of_defining_expr; free_names_of_body;
               defining_expr; body; _ } ->
         bound_name var;
         if all_used_names
@@ -444,19 +425,19 @@ end = struct
             (Named.name_usage ?ignore_uses_in_project_var defining_expr);
           aux body
         end else begin
-          free_names free_vars_of_defining_expr;
-          free_names free_vars_of_body
+          free_names free_names_of_defining_expr;
+          free_names free_names_of_body
         end
       | Let_mutable { initial_value = var; body; _ } ->
         free_name var;
         aux body
-      | Apply_cont (_, _, es) ->
+      | Apply_cont (_, _, args) ->
         (* CR mshinwell: why two names? *)
         begin match ignore_uses_in_apply_cont with
         | Some () -> ()
         | None ->
           match ignore_uses_as_continuation_argument with
-          | None -> List.iter free_name es
+          | None -> free_names (Simple.List.free_names args)
           | Some () -> ()
         end
       | Let_cont { handlers; body; } ->
@@ -489,16 +470,18 @@ end = struct
 
   let free_names ?ignore_uses_as_callee ?ignore_uses_as_argument
       ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var
-      ?ignore_uses_in_apply_cont tree =
+      ?ignore_uses_in_apply_cont t =
     name_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var
-      ?ignore_uses_in_apply_cont ~all_used_names:false tree
+      ?ignore_uses_in_apply_cont ~all_used_names:false t
+
+  let free_names t : Name.Set.t = free_names t
 
   let used_names ?ignore_uses_as_callee ?ignore_uses_as_argument
-      ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var tree =
+      ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var t =
     name_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
       ?ignore_uses_as_continuation_argument ?ignore_uses_in_project_var
-      ~all_used_names:true tree
+      ~all_used_names:true t
 
   let invalid () =
     if !Clflags.treat_invalid_code_as_unreachable then
@@ -722,9 +705,7 @@ end = struct
     and aux_named (named : Named.t) =
       f_named named;
       match named with
-      | Var _ | Symbol _ | Const _ | Read_mutable _
-      | Read_symbol_field _ | Project_closure _ | Project_var _
-      | Move_within_set_of_closures _ | Prim _ | Assign _ -> ()
+      | Simple _ | Read_mutable _ | Prim _ | Assign _ -> ()
       | Set_of_closures { function_decls = funcs; _; } ->
         if not toplevel then begin
           Closure_id.Map.iter (fun _ (decl : Function_declaration.t) ->
@@ -745,7 +726,7 @@ end = struct
         Debuginfo.print_or_elide dbg
         Continuation.print continuation
         Name.print func
-        Name.print_list args
+        Simple.List.print args
     | Let { var = id; defining_expr = arg; body; _ } ->
         let rec letbody (ul : t) =
           match ul with
@@ -776,7 +757,7 @@ end = struct
       fprintf ppf "@[<2>(%aapply_cont@ %a@ %a)@]"
         Trap_action.Option.print trap_action
         Continuation.print i
-        Name.print_list ls
+        Simple.List.print ls
     | Let_cont { body; handlers; } ->
       (* Printing the same way as for [Let] is easier when debugging lifting
          passes. *)
@@ -852,7 +833,6 @@ end = struct
     | Simple simple -> Simple.free_names simple
     | _ ->
       let free = ref Name.Set.empty in
-      let free_name fv = free := Name.Set.add fv !free in
       let free_names fvs = free := Name.Set.union fvs !free in
       begin match t with
       | Simple simple -> free_names (Simple.free_names simple)
@@ -861,6 +841,11 @@ end = struct
         free_names (Simple.free_names new_value)
       | Set_of_closures set ->
         free_names (Set_of_closures.free_names set)
+      | Prim (Unary (Project_var _, x0), _dbg) ->
+        begin match ignore_uses_in_project_var with
+        | None -> free_names (Simple.free_names x0)
+        | Some () -> ()
+        end
       | Prim (Unary (_prim, x0), _dbg) ->
         free_names (Simple.free_names x0)
       | Prim (Binary (_prim, x0, x1), _dbg) ->
@@ -895,35 +880,37 @@ end = struct
     | Assign { being_assigned; new_value; } ->
       fprintf ppf "@[<2>(assign@ %a@ %a)@]"
         Mutable_variable.print being_assigned
-        Name.print new_value
+        Simple.print new_value
 
-  let box_value var (kind : Flambda_kind.t) dbg : Named.t * Flambda_kind.t =
+  let box_value name (kind : Flambda_kind.t) dbg : Named.t * Flambda_kind.t =
+    let simple = Simple.name name in
     match kind with
-    | Value _ -> Var var, kind
+    | Value _ -> Simple simple, kind
     | Naked_immediate ->
       Misc.fatal_error "Not yet supported"
     | Naked_float ->
-      Prim (Unary (Box_number Naked_float, var), dbg), K.value Must_scan
+      Prim (Unary (Box_number Naked_float, simple), dbg), K.value Must_scan
     | Naked_int32 ->
-      Prim (Unary (Box_number Naked_int32, var), dbg), K.value Must_scan
+      Prim (Unary (Box_number Naked_int32, simple), dbg), K.value Must_scan
     | Naked_int64 ->
-      Prim (Unary (Box_number Naked_int64, var), dbg), K.value Must_scan
+      Prim (Unary (Box_number Naked_int64, simple), dbg), K.value Must_scan
     | Naked_nativeint ->
-      Prim (Unary (Box_number Naked_nativeint, var), dbg), K.value Must_scan
+      Prim (Unary (Box_number Naked_nativeint, simple), dbg), K.value Must_scan
 
-  let unbox_value var (kind : Flambda_kind.t) dbg : Named.t * Flambda_kind.t =
+  let unbox_value name (kind : Flambda_kind.t) dbg : Named.t * Flambda_kind.t =
+    let simple = Simple.name name in
     match kind with
-    | Value _ -> Var var, kind
+    | Value _ -> Simple simple, kind
     | Naked_immediate ->
       Misc.fatal_error "Not yet supported"
     | Naked_float ->
-      Prim (Unary (Unbox_number Naked_float, var), dbg), K.naked_float ()
+      Prim (Unary (Unbox_number Naked_float, simple), dbg), K.naked_float ()
     | Naked_int32 ->
-      Prim (Unary (Unbox_number Naked_int32, var), dbg), K.naked_int32 ()
+      Prim (Unary (Unbox_number Naked_int32, simple), dbg), K.naked_int32 ()
     | Naked_int64 ->
-      Prim (Unary (Unbox_number Naked_int64, var), dbg), K.naked_int64 ()
+      Prim (Unary (Unbox_number Naked_int64, simple), dbg), K.naked_int64 ()
     | Naked_nativeint ->
-      Prim (Unary (Unbox_number Naked_nativeint, var), dbg),
+      Prim (Unary (Unbox_number Naked_nativeint, simple), dbg),
         K.naked_nativeint ()
 end and Let : sig
   type t = {
@@ -1281,7 +1268,7 @@ end = struct
   let free_names t =
     Closure_id.Map.fold
       (fun _closure_id (func_decl : Function_declaration.t) syms ->
-        Name.Set.union syms func_decl.free_names)
+        Name.Set.union syms (Function_declaration.free_names func_decl))
       t.funs
       Name.Set.empty
 end and Function_declaration : sig
@@ -1320,7 +1307,7 @@ end and Function_declaration : sig
     -> params:Typed_parameter.t list
     -> body:Expr.t
     -> t
-  val used_params : t -> Name.Set.t
+  val used_params : t -> Variable.Set.t
   val free_names : t -> Name.Set.t
   val print : Closure_id.t -> Format.formatter -> t -> unit
 end = struct
@@ -1396,14 +1383,14 @@ end = struct
 
   let used_params t =
     Variable.Set.filter (fun param ->
-        Variable.Set.mem param (Expr.free_variables t.body))
+        Name.Set.mem (Name.var param) (Expr.free_names t.body))
       (Typed_parameter.List.var_set t.params)
 
   let free_names t =
     let my_closure = Name.var t.my_closure in
     let params = Typed_parameter.List.free_names t.params in
     let bound = Name.Set.add my_closure params in
-    Name.Set.diff t.free_names bound
+    Name.Set.diff t.free_names_in_body bound
 
   let print closure_id ppf (f : t) =
     let stub =
@@ -1446,10 +1433,9 @@ end and Typed_parameter : sig
   type t
   val create : Parameter.t -> Flambda_type.t -> t
   val var : t -> Variable.t
-  val projection : t -> Projection.t option
   val ty : t -> Flambda_type.t
+  val equalities : t -> Flambda_primitive.With_fixed_value.t list
   val with_type : t -> Flambda_type.t -> t
-  val with_projection : t -> Projection.t option -> t
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
   val free_names : t -> Name.Set.t
@@ -1460,7 +1446,7 @@ end and Typed_parameter : sig
     val name_set : t -> Name.Set.t
     val equal_vars : t -> Variable.t list -> bool
     val rename : t -> t
-    val arity : (t -> Flambda_kind.t list) Flambda_type.with_importer
+    val arity : (t -> Flambda_kind.t list) Flambda_type.type_accessor
     val free_names : t -> Name.Set.t
     val print : Format.formatter -> t -> unit
   end
@@ -1469,22 +1455,21 @@ end and Typed_parameter : sig
 end = struct
   type t = {
     param : Parameter.t;
-    projection : Projection.t option;
+    equalities : Flambda_primitive.With_fixed_value.t list;
     ty : Flambda_type.t;
   }
 
   let create param ty =
     { param;
-      projection = None;
+      equalities = [];
       ty;
     }
 
   let var t = Parameter.var t.param
-  let projection t = t.projection
+  let equalities t = t.equalities
   let ty t = t.ty
 
   let with_type t ty = { t with ty; }
-  let with_projection t projection = { t with projection; } 
 
   let rename t = { t with param = Parameter.rename t.param; }
 
@@ -1495,13 +1480,12 @@ end = struct
   let free_names t =
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the
-       projection (if such exists) and the type. *)
-    let from_proj =
-      match t.projection with
-      | None -> Name.Set.empty
-      | Some projection -> Projection.free_names projection
-    in
-    Name.Set.union (Flambda_type.free_names t.ty) from_proj
+       equality (if such exists) and the type. *)
+    List.fold_left (fun from_equalities prim ->
+        Name.Set.union from_equalities
+          (Flambda_primitive.With_fixed_value.free_names prim))
+      (Flambda_type.free_names t.ty)
+      t.equalities
 
 (*
   include Identifiable.Make (struct
@@ -1524,16 +1508,21 @@ end = struct
   end)
 *)
 
-  let print ppf { param; projection; ty; } =
-    let print_projection ppf proj =
-      match proj with
-      | None -> ()
-      | Some proj -> Format.fprintf ppf " = %a" Projection.print proj
+  let print ppf { param; equalities; ty; } =
+    let print_equalities ppf equalities =
+      match equalities with
+      | [] -> ()
+      | _ ->
+        Format.fprintf ppf "@ =@ %a"
+          (Format.pp_print_list ~pp_sep:(fun ppf () ->
+              Format.pp_print_string ppf " /\ ")
+            Flambda_primitive.With_fixed_value.print)
+        equalities
     in
     Format.fprintf ppf "@[(%a : %a%a)@]"
       Parameter.print param
       Flambda_type.print ty
-      print_projection projection
+      print_equalities equalities
 
   module List = struct
     type nonrec t = t list
@@ -1554,8 +1543,10 @@ end = struct
 
     let rename t = List.map (fun t -> rename t) t
 
-    let arity ~importer t =
-      List.map (fun t -> Flambda_type.kind ~importer (ty t)) t
+    let arity ~importer ~type_of_name t =
+      List.map (fun t ->
+          Flambda_type.kind ~importer ~type_of_name (ty t))
+        t
 
     let print ppf t =
       Format.pp_print_list ~pp_sep:Format.pp_print_space print ppf t
@@ -1605,7 +1596,7 @@ module With_free_names = struct
 
   let create_let_reusing_body var kind defining_expr (t : Expr.t t) : Expr.t =
     match t with
-    | Expr (body, free_vars_of_body) ->
+    | Expr (body, free_names_of_body) ->
       Let {
         var;
         kind;

@@ -269,6 +269,11 @@ let check_name_is_bound_and_of_kind t name desired_kind =
         Flambda_kind.print kind
       end
 
+let check_simple_is_bound_and_of_kind t (simple : Simple.t) desired_kind =
+  match simple with
+  | Name name -> check_name_is_bound_and_of_kind t name desired_kind
+  | Const _ -> ()
+
 let check_variable_is_bound_and_of_kind t var desired_kind =
   check_name_is_bound_and_of_kind t (Name.var var) desired_kind
 

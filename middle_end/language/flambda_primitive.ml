@@ -20,9 +20,11 @@
 
 module K = Flambda_kind
 
+type mutable_or_immutable = Immutable | Mutable
+
 type effects =
   | No_effects
-  | Only_generative_effects of Flambda.mutable_or_immutable
+  | Only_generative_effects of mutable_or_immutable
   | Arbitrary_effects
 
 type coeffects = No_coeffects | Has_coeffects
@@ -44,8 +46,6 @@ let print_array_kind ppf k =
 type field_kind = Not_a_float | Float
 
 type string_or_bytes = String | Bytes
-
-type mutable_or_immutable = Immutable | Mutable
 
 type init_or_assign = Initialization | Assignment
 
@@ -694,10 +694,10 @@ let effects_and_coeffects_of_variadic_primitive p =
     Arbitrary_effects, Has_coeffects
 
 type t =
-  | Unary of unary_primitive * Name.t
-  | Binary of binary_primitive * Name.t * Name.t
-  | Ternary of ternary_primitive * Name.t * Name.t * Name.t
-  | Variadic of variadic_primitive * (Name.t list)
+  | Unary of unary_primitive * Simple.t
+  | Binary of binary_primitive * Simple.t * Simple.t
+  | Ternary of ternary_primitive * Simple.t * Simple.t * Simple.t
+  | Variadic of variadic_primitive * (Simple.t list)
 
 type primitive_application = t
 
@@ -706,16 +706,16 @@ let invariant env t =
   match t with
   | Unary (prim, x0) ->
     let kind0 = arg_kind_of_unary_primitive prim in
-    E.check_name_is_bound_and_of_kind env x0 kind0
+    E.check_simple_is_bound_and_of_kind env x0 kind0
   | Binary (prim, x0, x1) ->
     let kind0, kind1 = args_kind_of_binary_primitive prim in
-    E.check_name_is_bound_and_of_kind env x0 kind0;
-    E.check_name_is_bound_and_of_kind env x1 kind1
+    E.check_simple_is_bound_and_of_kind env x0 kind0;
+    E.check_simple_is_bound_and_of_kind env x1 kind1
   | Ternary (prim, x0, x1, x2) ->
     let kind0, kind1, kind2 = args_kind_of_ternary_primitive prim in
-    E.check_name_is_bound_and_of_kind env x0 kind0;
-    E.check_name_is_bound_and_of_kind env x1 kind1;
-    E.check_name_is_bound_and_of_kind env x2 kind2
+    E.check_simple_is_bound_and_of_kind env x0 kind0;
+    E.check_simple_is_bound_and_of_kind env x1 kind1;
+    E.check_simple_is_bound_and_of_kind env x2 kind2
   | Variadic (prim, xs) ->
     let kinds =
       match args_kind_of_variadic_primitive prim with
@@ -724,7 +724,7 @@ let invariant env t =
         List.init (List.length xs) (fun _index -> kind)
     in
     List.iter2 (fun var kind ->
-        E.check_name_is_bound_and_of_kind env var kind)
+        E.check_simple_is_bound_and_of_kind env var kind)
       xs kinds
 
 let print ppf t =
@@ -732,32 +732,43 @@ let print ppf t =
   | Unary (prim, v0) ->
     Format.fprintf ppf "@[(Prim %a %a)@]"
       print_unary_primitive prim
-      Name.print v0
+      Simple.print v0
   | Binary (prim, v0, v1) ->
     Format.fprintf ppf "@[(Prim %a %a %a)@]"
       print_binary_primitive prim
-      Name.print v0
-      Name.print v1
+      Simple.print v0
+      Simple.print v1
   | Ternary (prim, v0, v1, v2) ->
     Format.fprintf ppf "@[(Prim %a %a %a %a)@]"
       print_ternary_primitive prim
-      Name.print v0
-      Name.print v1
-      Name.print v2
+      Simple.print v0
+      Simple.print v1
+      Simple.print v2
   | Variadic (prim, vs) ->
     Format.fprintf ppf "@[(Prim %a %a)@]"
       print_variadic_primitive prim
-      (Format.pp_print_list ~pp_sep:Format.pp_print_space Name.print) vs
+      (Format.pp_print_list ~pp_sep:Format.pp_print_space Simple.print) vs
+
+let free_names t =
+  match t with
+  | Unary (_prim, x0) -> Simple.free_names x0
+  | Binary (_prim, x0, x1) ->
+    Name.Set.union (Simple.free_names x0) (Simple.free_names x1)
+  | Ternary (_prim, x0, x1, x2) ->
+    Name.Set.union (Simple.free_names x0)
+      (Name.Set.union (Simple.free_names x1) (Simple.free_names x2))
+  | Variadic (_prim, xs) -> Simple.List.free_names xs
 
 let rename_variables t ~f =
   match t with
-  | Unary (prim, x0) -> Unary (prim, Name.map_var x0 ~f)
+  | Unary (prim, x0) -> Unary (prim, Simple.map_var x0 ~f)
   | Binary (prim, x0, x1) ->
-    Binary (prim, Name.map_var x0 ~f, Name.map_var x1 ~f)
+    Binary (prim, Simple.map_var x0 ~f, Simple.map_var x1 ~f)
   | Ternary (prim, x0, x1, x2) ->
-    Ternary (prim, Name.map_var x0 ~f, Name.map_var x1 ~f, Name.map_var x2 ~f)
+    Ternary (prim, Simple.map_var x0 ~f, Simple.map_var x1 ~f,
+      Simple.map_var x2 ~f)
   | Variadic (prim, xs) ->
-    Variadic (prim, List.map (fun x -> Name.map_var x ~f) xs)
+    Variadic (prim, List.map (fun x -> Simple.map_var x ~f) xs)
 
 (* Probably not required
 let arg_kinds (t : t) : arg_kinds =
@@ -793,7 +804,7 @@ module With_fixed_value = struct
   type t = primitive_application
 
   let create t =
-    match effects_and_coeffects with
+    match effects_and_coeffects t with
     | No_effects, No_coeffects -> Some t
     | Only_generative_effects Immutable, No_coeffects ->
       (* Allow constructions of immutable blocks to be shared. *)
@@ -801,4 +812,7 @@ module With_fixed_value = struct
     | _, _ -> None
 
   let to_primitive t = t
+
+  let free_names = free_names
+  let print = print
 end

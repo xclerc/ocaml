@@ -25,7 +25,7 @@ module K = Flambda_kind
 module Make (Expr : sig
   type t
   val print : Format.formatter -> t -> unit
-  val free_symbols : t -> Symbol.Set.t
+  val free_names : t -> Name.Set.t
 end) = struct
   type expr = Expr.t
 
@@ -255,7 +255,7 @@ end) = struct
     is_classic_mode : bool;
     params : (Parameter.t * t) list;
     body : expr;
-    free_symbols : Symbol.Set.t;
+    free_names_in_body : Name.Set.t;
     result : t list;
     stub : bool;
     dbg : Debuginfo.t;
@@ -439,7 +439,7 @@ end) = struct
         @[(is_classic_mode %b)@]@,\
         @[(params (%a))@]@,\
         @[(body <elided>)@]@,\
-        @[(free_symbols %a)@]@,\
+        @[(free_names_in_body %a)@]@,\
         @[(result (%a))@]@,\
         @[(stub %b)@]@,\
         @[(dbg %a)@]@,\
@@ -457,7 +457,7 @@ end) = struct
           Format.fprintf ppf "@[(%a@ :@ %a)@]"
             Parameter.print param
             print ty)) decl.params
-      Symbol.Set.print decl.free_symbols
+      Name.Set.print decl.free_names_in_body
       (Format.pp_print_list ~pp_sep:(fun ppf () -> Format.fprintf ppf ", ")
         (fun ppf ty ->
           Format.fprintf ppf "%a"
@@ -1348,7 +1348,7 @@ end) = struct
       is_classic_mode;
       params;
       body;
-      free_symbols = Expr.free_symbols body;
+      free_names_in_body = Expr.free_names body;
       result;
       stub;
       dbg;

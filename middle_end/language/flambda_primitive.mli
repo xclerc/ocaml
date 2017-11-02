@@ -201,10 +201,10 @@ type variadic_primitive =
 
 (** The application of a primitive to its arguments. *)
 type t =
-  | Unary of unary_primitive * Name.t
-  | Binary of binary_primitive * Name.t * Name.t
-  | Ternary of ternary_primitive * Name.t * Name.t * Name.t
-  | Variadic of variadic_primitive * (Name.t list)
+  | Unary of unary_primitive * Simple.t
+  | Binary of binary_primitive * Simple.t * Simple.t
+  | Ternary of ternary_primitive * Simple.t * Simple.t * Simple.t
+  | Variadic of variadic_primitive * (Simple.t list)
 
 type primitive_application = t
 
@@ -213,6 +213,9 @@ val invariant : Invariant_env.t -> t -> unit
 
 (** Print a primitive and its arguments to a formatter. *)
 val print : Format.formatter -> t -> unit
+
+(** All free names in a primitive application. *)
+val free_names : t -> Name.Set.t
 
 (** Rename variables in a primitive application. *)
 val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
@@ -301,4 +304,8 @@ module With_fixed_value : sig
   val create : primitive_application -> t option
 
   val to_primitive : t -> primitive_application
+
+  val free_names : t -> Name.Set.t
+
+  val print : Format.formatter -> t -> unit
 end

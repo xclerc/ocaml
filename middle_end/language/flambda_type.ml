@@ -25,24 +25,6 @@ module Int64 = Numbers.Int64
 
 include F0.Flambda_type
 
-let var (t : t) =
-  match t with
-  | Value ty -> ty.var
-  | Naked_immediate ty -> ty.var
-  | Naked_float ty -> ty.var
-  | Naked_int32 ty -> ty.var
-  | Naked_int64 ty -> ty.var
-  | Naked_nativeint ty -> ty.var
-
-let symbol (t : t) =
-  match t with
-  | Value ty -> ty.symbol
-  | Naked_immediate ty -> ty.symbol
-  | Naked_float ty -> ty.symbol
-  | Naked_int32 ty -> ty.symbol
-  | Naked_int64 ty -> ty.symbol
-  | Naked_nativeint ty -> ty.symbol
-
 let unknown_types_from_arity t =
   List.map (fun kind -> unknown kind Other) t
 

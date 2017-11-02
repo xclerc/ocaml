@@ -16,6 +16,9 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* CR mshinwell: Add invariant checks, including e.g. on the bodies of
+   functions in types. *)
+
 module type S = sig
   type expr
 
@@ -156,8 +159,7 @@ module type S = sig
         compiled in classic mode. *)
     params : (Parameter.t * t) list;
     body : expr;
-    free_symbols : Symbol.Set.t;
-    (** All free symbols in [body]. *)
+    free_names_in_body : Name.Set.t;
     result : t list;
     stub : bool;
     dbg : Debuginfo.t;

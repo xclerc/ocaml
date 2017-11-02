@@ -95,7 +95,7 @@ module Free_var : sig
     equality : Flambda_primitive.With_fixed_value.t option;
   }
 
-  include Identifiable.S with type t := t
+  val print : Format.formatter -> t -> unit
 end
 
 module Free_vars : sig
@@ -211,7 +211,7 @@ module rec Expr : sig
     | Let_cont of Let_cont.t
     | Apply of Apply.t
     | Apply_cont of Continuation.t * Trap_action.t option * Simple.t list
-    | Switch of Simple.t * Switch.t
+    | Switch of Name.t * Switch.t
     | Invalid of invalid_term_semantics
 
   (** Creates a [Let] expression.  (This computes the free variables of the
@@ -242,7 +242,7 @@ module rec Expr : sig
       are ignored.  Likewise [ignore_uses_in_project_var] for [Project_var]
       expressions.
   *)
-  val free_names
+  val free_names_advanced
      : ?ignore_uses_as_callee:unit
     -> ?ignore_uses_as_argument:unit
     -> ?ignore_uses_as_continuation_argument:unit
@@ -250,6 +250,8 @@ module rec Expr : sig
     -> ?ignore_uses_in_apply_cont:unit
     -> t
     -> Name.Set.t
+
+  val free_names : t -> Name.Set.t
 
   (** Compute _all_ names occurring inside an expression. *)
   val used_names
@@ -312,13 +314,13 @@ end and Named : sig
   val free_names
      : ?ignore_uses_in_project_var:unit
     -> t
-    -> Variable.Set.t
+    -> Name.Set.t
 
-  (** Compute _all_ variables occurring inside the given term. *)
-  val used_variables
+  (** Compute _all_ names occurring inside the given term. *)
+  val used_names
      : ?ignore_uses_in_project_var:unit
     -> t
-    -> Variable.Set.t
+    -> Name.Set.t
 
   (** Build an expression boxing the name. The returned kind is the
       one of the unboxed version. *)
@@ -350,10 +352,10 @@ end and Let : sig
     body : Expr.t;
     (* CR-someday mshinwell: we could consider having these be keys into some
       kind of global cache, to reduce memory usage. *)
-    free_vars_of_defining_expr : Variable.Set.t;
-    (** A cache of the free variables in the defining expression of the
+    free_names_of_defining_expr : Name.Set.t;
+    (** A cache of the free names in the defining expression of the
         [Let]. *)
-    free_vars_of_body : Variable.Set.t;
+    free_names_of_body : Name.Set.t;
     (** A cache of the free variables of the body of the [let].  This is an
         important optimization. *)
   }
@@ -364,7 +366,7 @@ end and Let : sig
 end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
-    initial_value : Variable.t;
+    initial_value : Name.t;
     contents_type : Flambda_type.t;
     body : Expr.t;
   }
@@ -415,7 +417,7 @@ end and Let_cont_handlers : sig
       }
     | Recursive of Continuation_handlers.t
 
-  val free_variables : t -> Variable.Set.t
+  val free_names : t -> Name.Set.t
 
   (** Return all continuations bound in the given handlers (traversing all
       the way down through the handlers, not just the immediately outermost
@@ -503,9 +505,8 @@ end and Set_of_closures : sig
 
   val print : Format.formatter -> t -> unit
 
-  (** All symbols free in the bodies of the functions in the given set of
-      closures. *)
-  val free_symbols : t -> Symbol.Set.t
+  (** All names free in the given set of closures. *)
+  val free_names : t -> Name.Set.t
 end and Function_declarations : sig
   (** The representation of a set of function declarations (possibly mutually
       recursive).  Such a set encapsulates the declarations themselves,
@@ -580,8 +581,9 @@ end and Function_declaration : sig
     (* CR mshinwell: check non-regression property with xclerc's code *)
     body : Expr.t;
     (** The code of the function's body. *)
-    free_names : Name.Set.t;
-    (** All names that occur free in the function's body. *)
+    free_names_in_body : Name.Set.t;
+    (** All names that occur free in the function's body.  (See note on the
+        [free_names] function, below.) *)
     stub : bool;
     (** A stub function is a generated function used to prepare arguments or
         return values to allow indirect calls to functions with a special
@@ -744,7 +746,7 @@ module With_free_names : sig
   (** Takes the time required to calculate the free names of the given
       [expr]. *)
   val create_let_reusing_defining_expr
-     : Name.t
+     : Variable.t
     -> Named.t t
     -> Expr.t
     -> Expr.t
@@ -753,7 +755,7 @@ module With_free_names : sig
       [named].  The specified Flambda type must be fully resolved (i.e. no
       occurrences of [Load_lazily]) or a fatal error will result. *)
   val create_let_reusing_body
-     : Name.t
+     : Variable.t
     -> Flambda_kind.t
     -> Named.t
     -> Expr.t t
@@ -761,7 +763,7 @@ module With_free_names : sig
 
   (** O(1) time. *)
   val create_let_reusing_both
-     : Name.t
+     : Variable.t
     -> Named.t t
     -> Expr.t t
     -> Expr.t
