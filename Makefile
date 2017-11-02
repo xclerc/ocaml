@@ -296,8 +296,7 @@ MIDDLE_END_LANGUAGE=\
   middle_end/language/flambda.cmo \
   middle_end/language/flambda_static0.cmo \
   middle_end/language/flambda_static.cmo \
-  middle_end/language/flambda_utils.cmo \
-  middle_end/language/projection.cmo
+  middle_end/language/flambda_utils.cmo
 
 MIDDLE_END_REMOVAL=\
   middle_end/removal/initialize_symbol_to_let_symbol.cmo \

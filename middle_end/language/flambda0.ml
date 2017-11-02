@@ -806,15 +806,10 @@ end = struct
 end and Named : sig
   type t =
     | Name of Name.t
-    | Const of Const.t
     | Prim of Flambda_primitive.t * Debuginfo.t
+    | Set_of_closures of Set_of_closures.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
-    | Read_symbol_field of Symbol.t * int
-    | Set_of_closures of Set_of_closures.t
-    | Project_closure of Projection.Project_closure.t
-    | Move_within_set_of_closures of Projection.Move_within_set_of_closures.t
-    | Project_var of Projection.Project_var.t
 
   val free_names
      : ?ignore_uses_in_project_var:unit
