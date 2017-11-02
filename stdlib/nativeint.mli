@@ -143,7 +143,7 @@ external to_int : nativeint -> int = "%nativeint_to_int"
    integer (type [int]).  The high-order bit is lost during
    the conversion. *)
 
-val to_int_unsigned : nativeint -> int
+val unsigned_to_int : nativeint -> int
 (** Same as [to_int], but interpret argument and result as {e unsigned}
     integers.
 

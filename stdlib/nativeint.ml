@@ -49,7 +49,7 @@ let min_int = shift_left 1n (size - 1)
 let max_int = sub min_int 1n
 let lognot n = logxor n (-1n)
 
-let to_int_unsigned =
+let unsigned_to_int =
   let max_int = of_int Pervasives.max_int in
   fun n -> to_int (logand n max_int)
 

@@ -125,7 +125,7 @@ external to_int : int32 -> int = "%int32_to_int"
    during the conversion.  On 64-bit platforms, the conversion
    is exact. *)
 
-val to_int_unsigned : int32 -> int
+val unsigned_to_int : int32 -> int
 (** Same as [to_int], but interpret argument and result as {e unsigned}
     integers.
 

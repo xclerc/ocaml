@@ -52,7 +52,7 @@ let min_int = 0x80000000l
 let max_int = 0x7FFFFFFFl
 let lognot n = logxor n (-1l)
 
-let to_int_unsigned =
+let unsigned_to_int =
   match Sys.word_size with
   | 32 ->
       let max_int = of_int Pervasives.max_int in
