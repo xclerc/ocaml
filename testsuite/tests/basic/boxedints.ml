@@ -43,6 +43,7 @@ module type TESTSIG = sig
     val shift_right_logical: t -> int -> t
     val of_int: int -> t
     val to_int: t -> int
+    val to_int_unsigned: t -> int
     val of_float: float -> t
     val to_float: t -> float
     val zero: t
@@ -70,6 +71,16 @@ struct
     test 3 (to_int (of_int (-456))) (-456);
     test 4 (to_int (of_int 0x3FFFFFFF)) 0x3FFFFFFF;
     test 5 (to_int (of_int (-0x40000000))) (-0x40000000);
+
+    testing_function "to_int_unsigned";
+    test 1 (to_int_unsigned (of_int 0)) 0;
+    test 2 (to_int_unsigned (of_int 123)) 123;
+    test 3 (to_int_unsigned minus_one)
+      (match Sys.word_size with 32 -> Pervasives.max_int | 64 -> Int64.to_int 0xFFFFFFFFL | _ -> assert false);
+    test 4 (to_int_unsigned max_int)
+      (match Sys.word_size with 32 -> Pervasives.max_int | 64 -> to_int max_int | _ -> assert false);
+    test 5 (to_int_unsigned min_int) (Int64.to_int 0x80000000L);
+    test 6 (to_int_unsigned (add min_int one)) (Int64.to_int 0x80000001L);
 
     testing_function "of_string";
     test 1 (of_string "0") (of_int 0);
@@ -316,6 +327,14 @@ struct
     test 3 (to_int (of_int (-456))) (-456);
     test 4 (to_int (of_int 0x3FFFFFFF)) 0x3FFFFFFF;
     test 5 (to_int (of_int (-0x40000000))) (-0x40000000);
+
+    testing_function "to_int_unsigned";
+    test 1 (to_int_unsigned (of_int 0)) 0;
+    test 2 (to_int_unsigned (of_int 123)) 123;
+    test 3 (to_int_unsigned minus_one) Pervasives.max_int;
+    test 4 (to_int_unsigned max_int) Pervasives.max_int;
+    test 5 (to_int_unsigned min_int) 0;
+    test 6 (to_int_unsigned (add min_int one)) 1;
 
     testing_function "of_string";
     test 1 (of_string "0") (of_int 0);

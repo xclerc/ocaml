@@ -143,6 +143,12 @@ external to_int : nativeint -> int = "%nativeint_to_int"
    integer (type [int]).  The high-order bit is lost during
    the conversion. *)
 
+val to_int_unsigned : nativeint -> int
+(** Same as [to_int], but interpret argument and result as {e unsigned}
+    integers.
+
+    @since 4.07.0 *)
+
 external of_float : float -> nativeint
   = "caml_nativeint_of_float" "caml_nativeint_of_float_unboxed"
   [@@unboxed] [@@noalloc]

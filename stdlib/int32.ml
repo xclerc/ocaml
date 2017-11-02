@@ -52,6 +52,17 @@ let min_int = 0x80000000l
 let max_int = 0x7FFFFFFFl
 let lognot n = logxor n (-1l)
 
+let to_int_unsigned =
+  match Sys.word_size with
+  | 32 ->
+      let max_int = of_int Pervasives.max_int in
+      fun n -> to_int (logand n max_int)
+  | 64 ->
+      let move = int_of_string "0x1_0000_0000" in (* So that it compiles in 32-bit *)
+      fun n -> let i = to_int n in if i < 0 then i + move else i
+  | _ ->
+      assert false
+
 external format : string -> int32 -> string = "caml_int32_format"
 let to_string n = format "%d" n
 

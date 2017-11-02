@@ -126,6 +126,12 @@ external to_int : int64 -> int = "%int64_to_int"
    is taken modulo 2{^31}, i.e. the top 33 bits are lost
    during the conversion. *)
 
+val to_int_unsigned : int64 -> int
+(** Same as [to_int], but interpret argument and result as {e unsigned}
+    integers.
+
+    @since 4.07.0 *)
+
 external of_float : float -> int64
   = "caml_int64_of_float" "caml_int64_of_float_unboxed"
   [@@unboxed] [@@noalloc]
