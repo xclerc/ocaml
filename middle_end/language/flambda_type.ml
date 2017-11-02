@@ -88,134 +88,6 @@ let this_naked_int64_named n : Named.t * t =
 let this_naked_nativeint_named n : Named.t * t =
   Const (Naked_nativeint n), this_naked_nativeint n
 
-(* CR mshinwell: We need to think about tests such as [is_unknown] which maybe
-   should return [true] e.g. if a union turns out to be inconsistent.  Or else
-   we should rule out all such unions from the beginning. *)
-
-let is_bottom ~importer (t : t) =
-  let module I = (val importer : Importer) in
-  match t with
-  | Value ty ->
-    let ty = I.import_value_type_as_resolved_ty_value ty in
-    begin match ty.descr with
-    | Bottom -> true
-    | Unknown _ | Ok _ -> false
-    end
-  | Naked_immediate ty ->
-    let ty = I.import_naked_immediate_type_as_resolved_ty_naked_immediate ty in
-    begin match ty.descr with
-    | Bottom -> true
-    | Unknown _ | Ok _ -> false
-    end
-  | Naked_float ty ->
-    let ty = I.import_naked_float_type_as_resolved_ty_naked_float ty in
-    begin match ty.descr with
-    | Bottom -> true
-    | Unknown _ | Ok _ -> false
-    end
-  | Naked_int32 ty ->
-    let ty = I.import_naked_int32_type_as_resolved_ty_naked_int32 ty in
-    begin match ty.descr with
-    | Bottom -> true
-    | Unknown _ | Ok _ -> false
-    end
-  | Naked_int64 ty ->
-    let ty = I.import_naked_int64_type_as_resolved_ty_naked_int64 ty in
-    begin match ty.descr with
-    | Bottom -> true
-    | Unknown _ | Ok _ -> false
-    end
-  | Naked_nativeint ty ->
-    let ty = I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty in
-    begin match ty.descr with
-    | Bottom -> true
-    | Unknown _ | Ok _ -> false
-    end
-
-let known ~importer (t : t) =
-  let module I = (val importer : Importer) in
-  match t with
-  | Value ty ->
-    let ty = I.import_value_type_as_resolved_ty_value ty in
-    begin match ty.descr with
-    | Bottom | Ok _ -> true
-    | Unknown _ -> false
-    end
-  | Naked_immediate ty ->
-    let ty = I.import_naked_immediate_type_as_resolved_ty_naked_immediate ty in
-    begin match ty.descr with
-    | Bottom | Ok _ -> true
-    | Unknown _ -> false
-    end
-  | Naked_float ty ->
-    let ty = I.import_naked_float_type_as_resolved_ty_naked_float ty in
-    begin match ty.descr with
-    | Bottom | Ok _ -> true
-    | Unknown _ -> false
-    end
-  | Naked_int32 ty ->
-    let ty = I.import_naked_int32_type_as_resolved_ty_naked_int32 ty in
-    begin match ty.descr with
-    | Bottom | Ok _ -> true
-    | Unknown _ -> false
-    end
-  | Naked_int64 ty ->
-    let ty = I.import_naked_int64_type_as_resolved_ty_naked_int64 ty in
-    begin match ty.descr with
-    | Bottom | Ok _ -> true
-    | Unknown _ -> false
-    end
-  | Naked_nativeint ty ->
-    let ty = I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty in
-    begin match ty.descr with
-    | Bottom | Ok _ -> true
-    | Unknown _ -> false
-    end
-
-let useful ~importer (t : t) =
-  let module I = (val importer : Importer) in
-  match t with
-  | Value ty ->
-    let ty = I.import_value_type_as_resolved_ty_value ty in
-    begin match ty.descr with
-    | Ok _ -> true
-    | Bottom | Unknown _ -> false
-    end
-  | Naked_immediate ty ->
-    let ty = I.import_naked_immediate_type_as_resolved_ty_naked_immediate ty in
-    begin match ty.descr with
-    | Ok _ -> true
-    | Bottom | Unknown _ -> false
-    end
-  | Naked_float ty ->
-    let ty = I.import_naked_float_type_as_resolved_ty_naked_float ty in
-    begin match ty.descr with
-    | Ok _ -> true
-    | Bottom | Unknown _ -> false
-    end
-  | Naked_int32 ty ->
-    let ty = I.import_naked_int32_type_as_resolved_ty_naked_int32 ty in
-    begin match ty.descr with
-    | Ok _ -> true
-    | Bottom | Unknown _ -> false
-    end
-  | Naked_int64 ty ->
-    let ty = I.import_naked_int64_type_as_resolved_ty_naked_int64 ty in
-    begin match ty.descr with
-    | Ok _ -> true
-    | Bottom | Unknown _ -> false
-    end
-  | Naked_nativeint ty ->
-    let ty = I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty in
-    begin match ty.descr with
-    | Ok _ -> true
-    | Bottom | Unknown _ -> false
-    end
-
-let all_not_useful ~importer ts =
-  List.for_all (fun t -> not (useful ~importer t)) ts
-
-
 (*
 let is_boxed_float t =
   match descr t with
@@ -703,7 +575,7 @@ end = struct
       join_and_make_all_functions_non_inlinable ~importer t1 t2
 end
 
-module Summary = struct
+module Evaluated = struct
   type t =
     | Unknown
     | Bottom
@@ -851,7 +723,7 @@ let prove_naked_nativeint_from_ty_naked_nativeint ~importer
   | Ok (Naked_nativeint i) -> Known i
   | Bottom -> Wrong
 
-let summarize ~importer (t : t) : Summary.t =
+let eval ~importer (t : t) : Evaluated.t =
   let module I = (val importer : Importer) in
   match t with
   | Value ty ->
@@ -860,7 +732,7 @@ let summarize ~importer (t : t) : Summary.t =
     | Unknown _ -> Unknown
     | Bottom -> Bottom
     | Ok of_kind_value ->
-      let for_singleton (s : of_kind_value_singleton) : Summary.t =
+      let for_singleton (s : of_kind_value_singleton) : Evaluated.t =
         match s with
         | Tagged_immediate ty ->
           begin match
@@ -927,7 +799,7 @@ let summarize ~importer (t : t) : Summary.t =
         | Union (w1, w2) ->
           let summary1 = for_of_kind_value w1.descr in
           let summary2 = for_of_kind_value w2.descr in
-          Summary.join ~importer summary1 summary2
+          Evaluated.join ~importer summary1 summary2
       in
       for_of_kind_value of_kind_value
     end
@@ -937,6 +809,24 @@ let summarize ~importer (t : t) : Summary.t =
   | Naked_int64 _
   | Naked_nativeint _ -> Unknown
 
+let bottom ~importer ~type_of_name t =
+  match eval ~importer ~type_of_name t with
+  | Bottom -> true
+  | _ -> false
+
+let known ~importer ~type_of_name t =
+  match eval ~importer ~type_of_name t with
+  | Unknown -> false
+  | _ -> true
+
+let useful ~importer ~type_of_name t =
+  match eval ~importer ~type_of_name t with
+  | Bottom | Unknown -> false
+  | _ -> true
+
+let all_not_useful ~importer ts =
+  List.for_all (fun t -> not (useful ~importer t)) ts
+
 let reify ~importer t : Named.t option =
   let try_symbol () =
     match symbol t with
@@ -944,7 +834,7 @@ let reify ~importer t : Named.t option =
     | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
     | None -> None
   in
-  match summarize ~importer t with
+  match eval ~importer t with
   | Blocks_and_tagged_immediates (blocks, imms) ->
     begin match imms with
     | Exactly imms ->
@@ -982,7 +872,7 @@ let reify_using_env ~importer t ~is_present_in_env =
   | Some named -> Some named
 
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
-  match summarize ~importer t with
+  match eval ~importer t with
   | Set_of_closures (Exactly set) -> Known set
   | Set_of_closures Not_all_values_known
   | Unknown -> Unknown

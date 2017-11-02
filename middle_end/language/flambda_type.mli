@@ -99,7 +99,7 @@ module Set_of_closures : sig
   val to_type : t -> flambda_type
 end
 
-module Summary : sig
+module Evaluated : sig
   type t = private
     | Unknown
     | Bottom
@@ -113,8 +113,9 @@ module Summary : sig
     | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
 end
 
-(** Create a summary of a type, flattening unions as required. *)
-val summarize : (t -> Summary.t) type_accessor
+(** Evaluate the given type to a straightforward canonical form which can be
+    used easily for the determination of properties of the type. *)
+val eval : (t -> Evaluated.t) type_accessor
 
 (*
 (** Whether the given type describes a float array. *)
