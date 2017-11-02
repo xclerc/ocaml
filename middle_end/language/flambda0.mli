@@ -672,9 +672,6 @@ end and Typed_parameter : sig
   (** Replace the type of a parameter. *)
   val with_type : t -> Flambda_type.t -> t
 
-  (** Replace the projection information in a parameter. *)
-  val with_projection : t -> Projection.t option -> t
-
   (** Map the underlying variable of a parameter. *)
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
 
@@ -703,7 +700,7 @@ end and Typed_parameter : sig
 
     val rename : t -> t
 
-    val arity : (t -> Flambda_arity.t) Flambda_type.with_importer
+    val arity : (t -> Flambda_arity.t) Flambda_type.type_accessor
 
     val print : Format.formatter -> t -> unit
   end

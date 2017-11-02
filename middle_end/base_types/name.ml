@@ -49,6 +49,8 @@ include Identifiable.Make (struct
     | Var var1, Var var2 -> Variable.compare var1 var2
     | Symbol sym1, Symbol sym2 -> Symbol.compare sym1 sym2
     | Var _, Symbol _ -> -1
-    | Var _, Const _ -> -1
     | Symbol _, Var _ -> 1
+
+  let equal t1 t2 =
+    compare t1 t2 = 0
 end)

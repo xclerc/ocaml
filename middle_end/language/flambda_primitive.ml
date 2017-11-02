@@ -679,7 +679,7 @@ let effects_and_coeffects_of_variadic_primitive p =
   match p with
   | Make_block _
   (* CR mshinwell: Arrays of size zero? *)
-  | Make_array (_, Immutable) -> Only_generative_effects Immutable, no_coeffects
+  | Make_array (_, Immutable) -> Only_generative_effects Immutable, No_coeffects
   | Make_array (_, Mutable) -> Only_generative_effects Mutable, No_coeffects
   | Bigarray_set (is_safe, _, _, _) ->
     writing_to_an_array_like_thing is_safe
@@ -706,16 +706,16 @@ let invariant env t =
   match t with
   | Unary (prim, x0) ->
     let kind0 = arg_kind_of_unary_primitive prim in
-    E.check_variable_is_bound_and_of_kind env x0 kind0
+    E.check_name_is_bound_and_of_kind env x0 kind0
   | Binary (prim, x0, x1) ->
     let kind0, kind1 = args_kind_of_binary_primitive prim in
-    E.check_variable_is_bound_and_of_kind env x0 kind0;
-    E.check_variable_is_bound_and_of_kind env x1 kind1
+    E.check_name_is_bound_and_of_kind env x0 kind0;
+    E.check_name_is_bound_and_of_kind env x1 kind1
   | Ternary (prim, x0, x1, x2) ->
     let kind0, kind1, kind2 = args_kind_of_ternary_primitive prim in
-    E.check_variable_is_bound_and_of_kind env x0 kind0;
-    E.check_variable_is_bound_and_of_kind env x1 kind1;
-    E.check_variable_is_bound_and_of_kind env x2 kind2
+    E.check_name_is_bound_and_of_kind env x0 kind0;
+    E.check_name_is_bound_and_of_kind env x1 kind1;
+    E.check_name_is_bound_and_of_kind env x2 kind2
   | Variadic (prim, xs) ->
     let kinds =
       match args_kind_of_variadic_primitive prim with
@@ -724,7 +724,7 @@ let invariant env t =
         List.init (List.length xs) (fun _index -> kind)
     in
     List.iter2 (fun var kind ->
-        E.check_variable_is_bound_and_of_kind env var kind)
+        E.check_name_is_bound_and_of_kind env var kind)
       xs kinds
 
 let print ppf t =

@@ -96,47 +96,45 @@ end = struct
 end
 
 type t = {
-  all_variables_seen : Variable.Set.t ref;
+  all_names_seen : Name.Set.t ref;
   all_mutable_variables_seen : Mutable_variable.Set.t ref;
   all_continuations_seen : Continuation.Set.t ref;
-  all_symbols_seen : Symbol.Set.t ref;
   all_set_of_closures_ids_seen : Set_of_closures_id.Set.t ref;
   all_closure_ids_seen : Closure_id.Set.t ref;
   uses_of_closure_ids_seen : Closure_id.Set.t ref;
   all_var_within_closures_seen : Var_within_closure.Set.t ref;
   uses_of_var_within_closures_seen : Var_within_closure.Set.t ref;
-  variables : Flambda_kind.t Variable.Map.t;
+  names : Flambda_kind.t Name.Map.t;
   mutable_variables : Flambda_kind.t Mutable_variable.Map.t;
   continuations :
     (Flambda_arity.t * continuation_kind * Continuation_stack.t)
       Continuation.Map.t;
-  symbols : Symbol.Set.t;
   continuation_stack : Continuation_stack.t;
 }
 
 let create () =
-  { all_variables_seen = ref Variable.Set.empty;
+  { all_names_seen = ref Name.Set.empty;
     all_mutable_variables_seen = ref Mutable_variable.Set.empty;
     all_continuations_seen = ref Continuation.Set.empty;
-    all_symbols_seen = ref Symbol.Set.empty;
     all_set_of_closures_ids_seen = ref Set_of_closures_id.Set.empty;
     all_closure_ids_seen = ref Closure_id.Set.empty;
     uses_of_closure_ids_seen = ref Closure_id.Set.empty;
     all_var_within_closures_seen = ref Var_within_closure.Set.empty;
     uses_of_var_within_closures_seen = ref Var_within_closure.Set.empty;
-    variables = Variable.Map.empty;
+    names = Name.Map.empty;
     mutable_variables = Mutable_variable.Map.empty;
     continuations = Continuation.Map.empty;
-    symbols = Symbol.Set.empty;
     continuation_stack = Continuation_stack.var ();
   }
 
 let prepare_for_function_body t ~return_cont ~return_cont_arity
       ~allowed_free_variables =
-  let variables =
-    Variable.Map.filter (fun var _ ->
-        Variable.Set.mem var allowed_free_variables)
-      t.variables
+  let names =
+    Name.Map.filter (fun (name : Name.t) _ ->
+        match name with
+        | Var var -> Variable.Set.mem var allowed_free_variables
+        | Symbol _ -> true)
+      t.names
   in
   let continuation_stack = Continuation_stack.var () in
   let continuations =
@@ -144,19 +142,20 @@ let prepare_for_function_body t ~return_cont ~return_cont_arity
       (return_cont_arity, Normal, continuation_stack)
   in
   { t with
-    variables;
+    names;
     mutable_variables = Mutable_variable.Map.empty;
     continuations;
     continuation_stack;
   }
 
 let add_variable t var kind =
-  if Variable.Map.mem var t.variables then begin
+  let name = Name.var var in
+  if Name.Map.mem name t.names then begin
     Misc.fatal_errorf "Duplicate binding of variable %a which is already \
         bound in the current scope"
       Variable.print var
   end;
-  if Variable.Set.mem var !(t.all_variables_seen) then begin
+  if Name.Set.mem name !(t.all_names_seen) then begin
     Misc.fatal_errorf "Duplicate binding of variable %a which is bound \
         in some other scope"
       Variable.print var
@@ -168,9 +167,9 @@ let add_variable t var kind =
         unit"
       Variable.print var
   end;
-  t.all_variables_seen := Variable.Set.add var !(t.all_variables_seen);
+  t.all_names_seen := Name.Set.add name !(t.all_names_seen);
   { t with
-    variables = Variable.Map.add var kind t.variables;
+    names = Name.Map.add name kind t.names;
   }
 
 let add_variables t vars_and_kinds =
@@ -201,12 +200,13 @@ let add_mutable_variable t var kind =
   }
 
 let add_symbol t sym =
-  if Symbol.Set.mem sym t.symbols then begin
+  let name = Name.symbol sym in
+  if Name.Map.mem name t.names then begin
     Misc.fatal_errorf "Duplicate binding of symbol %a which is already \
         bound in the current scope"
       Symbol.print sym
   end;
-  if Symbol.Set.mem sym !(t.all_symbols_seen) then begin
+  if Name.Set.mem name !(t.all_names_seen) then begin
     Misc.fatal_errorf "Duplicate binding of symbol %a which is bound \
         in some other scope"
       Symbol.print sym
@@ -218,9 +218,9 @@ let add_symbol t sym =
         unit"
       Symbol.print sym
   end;
-  t.all_symbols_seen := Symbol.Set.add sym !(t.all_symbols_seen);
+  t.all_names_seen := Name.Set.add name !(t.all_names_seen);
   { t with
-    symbols = Symbol.Set.add sym t.symbols;
+    names = Name.Map.add name (Flambda_kind.value Can_scan) t.names;
   }
 
 let add_continuation t cont arity kind stack =
@@ -241,28 +241,36 @@ let add_continuation t cont arity kind stack =
       Continuation.Map.add cont (arity, kind, stack) t.continuations;
   }
 
-let variable_is_bound t var = Variable.Map.mem var t.variables
+let name_is_bound t name = Name.Map.mem name t.names
+
+let variable_is_bound t var = Name.Map.mem (Name.var var) t.names
+
+let check_name_is_bound t name =
+  if not (name_is_bound t name) then begin
+    Misc.fatal_errorf "Unbound name %a" Name.print name
+  end
 
 let check_variable_is_bound t var =
-  if not (variable_is_bound t var) then begin
-    Misc.fatal_errorf "Unbound variable %a" Variable.print var
-  end
+  check_name_is_bound t (Name.var var)
 
 let check_variables_are_bound t vars =
   List.iter (fun var -> check_variable_is_bound t var) vars
 
-let check_variable_is_bound_and_of_kind t var desired_kind =
-  match Variable.Map.find var t.variables with
+let check_name_is_bound_and_of_kind t name desired_kind =
+  match Name.Map.find name t.names with
   | exception Not_found ->
-    Misc.fatal_errorf "Unbound variable %a" Variable.print var
+    Misc.fatal_errorf "Unbound name %a" Name.print name
   | kind ->
     if not (Flambda_kind.compatible kind ~if_used_at:desired_kind) then begin
-      Misc.fatal_errorf "Variable %a is expected to have kind [%a] but is \
+      Misc.fatal_errorf "Name %a is expected to have kind [%a] but is \
           of kind %a"
-        Variable.print var
+        Name.print name
         Flambda_kind.print desired_kind
         Flambda_kind.print kind
       end
+
+let check_variable_is_bound_and_of_kind t var desired_kind =
+  check_name_is_bound_and_of_kind t (Name.var var) desired_kind
 
 let check_variables_are_bound_and_of_kind t vars desired_kind =
   List.iter (fun var ->
@@ -274,10 +282,8 @@ let check_mutable_variable_is_bound t var =
     Misc.fatal_errorf "Unbound mutable variable %a" Mutable_variable.print var
   end
 
-let check_symbol_is_bound t var =
-  if not (Symbol.Set.mem var t.symbols) then begin
-    Misc.fatal_errorf "Unbound symbol %a" Symbol.print var
-  end
+let check_symbol_is_bound t sym =
+  check_name_is_bound t (Name.symbol sym)
 
 let find_continuation_opt t cont =
   match Continuation.Map.find cont t.continuations with
@@ -291,7 +297,7 @@ let continuation_arity t cont =
     Misc.fatal_errorf "Unbound continuation %a" Continuation.print cont
 
 let kind_of_variable t var =
-  match Variable.Map.find var t.variables with
+  match Name.Map.find (Name.var var) t.names with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
   | kind -> kind

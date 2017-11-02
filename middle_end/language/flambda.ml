@@ -24,7 +24,6 @@ type inline_attribute = F0.inline_attribute
 type specialise_attribute = F0.specialise_attribute
 type recursive = F0.recursive
 
-module Const = F0.Const
 module Free_var = F0.Free_var
 module Let = F0.Let
 module Let_cont = F0.Let_cont
@@ -181,10 +180,6 @@ module rec Expr : sig
       -> f:(Set_of_closures.t -> Set_of_closures.t)
       -> t
     val map_apply : t -> f:(Apply.t -> Apply.t) -> t
-    val map_project_var_to_named_opt
-       : t
-      -> f:(Projection.Project_var.t -> Named.t option)
-      -> t
     val map_all_immutable_let_and_let_rec_bindings
        : t
       -> f:(Variable.t -> Named.t -> Named.t)
@@ -587,18 +582,6 @@ end = struct
           | (Var _ | Symbol _ | Const _ | Project_closure _
           | Move_within_set_of_closures _ | Project_var _ | Assign _
           | Prim _ | Read_mutable _ | Read_symbol_field _) as named -> named)
-        tree
-
-    let map_project_var_to_named_opt tree ~f =
-      map_named (function
-          | (Project_var project_var) as named ->
-            begin match f project_var with
-            | None -> named
-            | Some named -> named
-            end
-          | (Var _ | Symbol _ | Const _ | Set_of_closures _
-          | Project_closure _ | Move_within_set_of_closures _ | Prim _
-          | Read_mutable _ | Read_symbol_field _ | Assign _) as named -> named)
         tree
 
     (* CR mshinwell: duplicate function *)
@@ -1214,7 +1197,6 @@ end and Named : sig
      : (Variable.t Variable.Map.t
     -> t
     -> t) Flambda_type.with_importer
-  val of_projection : Projection.t -> Debuginfo.t -> t
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
     val iter_named : (t -> unit) -> t -> unit
@@ -1237,19 +1219,6 @@ end = struct
     match Expr.toplevel_substitution ~importer sb expr with
     | Let let_expr -> let_expr.defining_expr
     | _ -> assert false
-
-  let of_projection (projection : Projection.t) dbg : t =
-    match projection with
-    | Project_var project_var -> Project_var project_var
-    | Project_closure project_closure -> Project_closure project_closure
-    | Move_within_set_of_closures move -> Move_within_set_of_closures move
-    | Pure_primitive prim -> Prim (prim, dbg)
-    | Field (field, block) ->
-      (* CR mshinwell: Is this definitely always "not a naked float"? *)
-      Prim (Unary (Block_load (field, Not_a_float), block), dbg)
-    | Switch _ ->
-      (* CR mshinwell: This is dubious -- check usage *)
-      Misc.fatal_error "Unsupported"
 
   let equal _t1 _t2 = false
     (* CR mshinwell: Sort this out.  The latest problem is lack of

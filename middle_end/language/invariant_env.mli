@@ -86,6 +86,12 @@ val check_variable_is_bound_and_of_kind
   -> Flambda_kind.t
   -> unit
 
+val check_name_is_bound_and_of_kind
+   : t
+  -> Name.t
+  -> Flambda_kind.t
+  -> unit
+
 val check_variables_are_bound_and_of_kind
    : t
   -> Variable.t list

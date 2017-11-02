@@ -42,7 +42,7 @@ val unknown_types_from_arity : Flambda_arity.t -> t list
 val rename_variables
    : (t
   -> f:(Variable.t -> Variable.t)
-  -> t) with_importer
+  -> t) type_accessor
 
 (** Building of types and terms representing tagged / boxed values from
     specified constants. *)
@@ -64,7 +64,7 @@ val this_naked_int64_named : Int64.t -> Flambda0.Named.t * t
 val this_naked_nativeint_named : Targetint.t -> Flambda0.Named.t * t
 
 (** Whether the given type says that a term of that type is unreachable. *)
-val is_bottom : (t -> bool) with_importer
+val is_bottom : (t -> bool) type_accessor
 
 (* CR mshinwell: The problem with these next two is that there may be
    union types which yield "Unknown" (at the level of the join functions in
@@ -72,15 +72,15 @@ val is_bottom : (t -> bool) with_importer
 (** Determine whether the given type provides any information about an
     Flambda term of that type.  (This holds just when the type is not
     one of the [Unknown]s.) *)
-val known : (t -> bool) with_importer
+val known : (t -> bool) type_accessor
 
 (** Determine whether the given type provides useful information about an
     Flambda term of that type.  To be "useful" the type must satisfy
     [known] and not correspond to an unreachable term ([Bottom]). *)
-val useful : (t -> bool) with_importer
+val useful : (t -> bool) type_accessor
 
 (** Whether all types in the given list do *not* satisfy [useful]. *)
-val all_not_useful : (t list -> bool) with_importer
+val all_not_useful : (t list -> bool) type_accessor
 
 type 'a or_wrong = private
   | Ok of 'a
@@ -121,7 +121,7 @@ module Summary : sig
 end
 
 (** Create a summary of a type, flattening unions as required. *)
-val summarize : (t -> Summary.t) with_importer
+val summarize : (t -> Summary.t) type_accessor
 
 (*
 (** Whether the given type describes a float array. *)
@@ -186,7 +186,7 @@ val follow_variable_equality
 
 (** Try to produce a canonical Flambda term, with no free variables, that has
     the given Flambda type. *)
-val reify : (t -> Flambda0.Named.t option) with_importer
+val reify : (t -> Flambda0.Named.t option) type_accessor
 
 (** As for [reify], but in the event where a type cannot be reified, may
     return a [Var] (if [is_present_in_env] says that the particular variable
@@ -194,7 +194,7 @@ val reify : (t -> Flambda0.Named.t option) with_importer
 val reify_using_env
    : (t
   -> is_present_in_env:(Variable.t -> bool)
-  -> Flambda0.Named.t option) with_importer
+  -> Flambda0.Named.t option) type_accessor
 
 
 (*
@@ -244,7 +244,7 @@ type 'a known_unknown_or_wrong =
     set of closures. *)
 val prove_set_of_closures
    : (t
-  -> Set_of_closures.t known_unknown_or_wrong) with_importer
+  -> Set_of_closures.t known_unknown_or_wrong) type_accessor
 
 (*
 

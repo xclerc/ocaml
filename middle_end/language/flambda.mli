@@ -34,8 +34,6 @@ module Apply :
   module type of struct include F0.Apply end
 module Call_kind :
   module type of struct include F0.Call_kind end
-module Const :
-  module type of struct include F0.Const end
 module Continuation_handler :
   module type of struct include F0.Continuation_handler end
 module Continuation_handlers :
@@ -54,8 +52,8 @@ module Switch :
   module type of struct include F0.Switch end
 module Trap_action :
   module type of struct include F0.Trap_action end
-module With_free_variables :
-  module type of struct include F0.With_free_variables end
+module With_free_names :
+  module type of struct include F0.With_free_names end
 
 module Free_vars : sig
   include module type of struct include F0.Free_vars end
@@ -82,7 +80,7 @@ end
 module Typed_parameter : sig
   include module type of struct include F0.Typed_parameter end
 
-  val kind : (t -> Flambda_kind.t) Flambda_type.with_importer
+  val kind : (t -> Flambda_kind.t) Flambda_type.type_accessor
 end
 
 module rec Expr : sig
@@ -91,7 +89,7 @@ module rec Expr : sig
   val invariant
      : (Invariant_env.t
     -> t
-    -> unit) Flambda_type.with_importer
+    -> unit) Flambda_type.type_accessor
 
   (* CR mshinwell: Check that apply_cont is well-formed when there is a
      trap installation or removal. *)
@@ -124,12 +122,12 @@ module rec Expr : sig
     -> continuation:Continuation.t
     -> return_arity:Flambda_arity.t
     -> dbg:Debuginfo.t
-    -> t) Flambda_type.with_importer
+    -> t) Flambda_type.type_accessor
 
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.with_importer
+    -> t) Flambda_type.type_accessor
 
   val description_of_toplevel_node : t -> string
 
@@ -238,11 +236,6 @@ module rec Expr : sig
   
     val map_apply : t -> f:(Apply.t -> Apply.t) -> t
 
-    val map_project_var_to_named_opt
-       : t
-      -> f:(Projection.Project_var.t -> Named.t option)
-      -> t
-
     val map_all_immutable_let_and_let_rec_bindings
        : t
       -> f:(Variable.t -> Named.t -> Named.t)
@@ -297,9 +290,7 @@ end and Named : sig
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.with_importer
-
-  val of_projection : Projection.t -> Debuginfo.t -> t
+    -> t) Flambda_type.type_accessor
 
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
@@ -317,7 +308,7 @@ and Set_of_closures : sig
   val invariant
      : (Invariant_env.t
     -> t
-    -> unit) Flambda_type.with_importer
+    -> unit) Flambda_type.type_accessor
 
   val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
 
