@@ -287,35 +287,14 @@ module type S = sig
     -> direct_call_surrogate:Closure_id.t option
     -> non_inlinable_function_declaration
 
-  val create_set_of_closures
+  val closure : set_of_closures:t -> Closure_id.t -> t
+
+  val set_of_closures
      : set_of_closures_id:Set_of_closures_id.t
     -> set_of_closures_origin:Set_of_closures_origin.t
     -> function_decls:function_declaration Closure_id.Map.t
     -> closure_elements:ty_value Var_within_closure.Map.t
-    -> set_of_closures
-
-  (** Construct a closure type given the type of the corresponding set of
-      closures and the closure ID of the closure to be projected from such
-      set. [closure_var] and/or [set_of_closures_var] may be specified to
-      augment the type with variables that may be used to access the closure
-      value itself, so long as they are in scope at the proposed point of
-      use. *)
-(*
-  val closure
-     : ?closure_var:Variable.t
-    -> ?set_of_closures_var:Variable.t
-    -> ?set_of_closures_symbol:Symbol.t
-    -> set_of_closures
-    -> Closure_id.t
     -> t
-
-  (** Construct a set of closures type. *)
-  val set_of_closures
-     : ?set_of_closures_var:Variable.t
-    -> ?set_of_closures_symbol:Symbol.t
-    -> set_of_closures
-    -> t
-*)
 
   (** Construct a type equal to the type of the given variable.  (The variable
       must be present in the given environment when calling e.g. [join].) *)
@@ -393,29 +372,27 @@ module type S = sig
   (** Annotation for functions that may require the importing of types from
       .cmx files or the examination of the current simplification
       environment. *)
-  type ('a, 'env) type_accessor =
+  type 'a type_accessor =
        importer:(module Importer)
-    -> env:'env
-    -> type_of_var:('env -> Variable.t -> t option)
-    -> type_of_symbol:('env -> Symbol.t -> t option)
+    -> type_of_name:(Name.t -> t option)
     -> 'a
 
   (** Each type has a unique kind.  (This is mostly syntactic save for the
       "Value" cases.) *)
-  val kind : (t -> Flambda_kind.t, 'a) type_accessor
+  val kind : (t -> Flambda_kind.t) type_accessor
 
   (** Given a type of kind [Value] determine whether values of that type
       have to be scanned by the GC. *)
-  val scanning_ty_value : (ty_value -> Flambda_kind.scanning, 'a) type_accessor
+  val scanning_ty_value : (ty_value -> Flambda_kind.scanning) type_accessor
 
   (** Least upper bound of two types. *)
-  val join : (t -> t -> t, 'a) type_accessor
+  val join : (t -> t -> t) type_accessor
 
   (** Like [join], but starts with a [ty_value], not a [t]. *)
-  val join_ty_value : (ty_value -> ty_value -> ty_value, 'a) type_accessor
+  val join_ty_value : (ty_value -> ty_value -> ty_value) type_accessor
 
   (** Greatest lower bound of two types. *)
-  val meet : (t -> t -> t, 'a) type_accessor
+  val meet : (t -> t -> t) type_accessor
 
 (*
   type cleaning_spec =
@@ -427,6 +404,6 @@ module type S = sig
       scope in some context. The context is expressed by a function that says
       whether the variable is available under its existing name, available
       under another name, or unavailable. *)
-  val clean : (t -> (Variable.t -> cleaning_spec) -> t, 'a) type_accessor
+  val clean : (t -> (Variable.t -> cleaning_spec) -> t) type_accessor
 *)
 end

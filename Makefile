@@ -255,7 +255,8 @@ MIDDLE_END_BASE_TYPES=\
   middle_end/base_types/set_of_closures_id.cmo \
   middle_end/base_types/set_of_closures_origin.cmo \
   middle_end/base_types/symbol.cmo \
-  middle_end/base_types/var_within_closure.cmo
+  middle_end/base_types/var_within_closure.cmo \
+  middle_end/base_types/name.cmo
 
 MIDDLE_END_CODE_MOTION=\
   middle_end/code_motion/lift_constants.cmo \
