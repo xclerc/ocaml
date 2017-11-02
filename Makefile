@@ -284,6 +284,7 @@ MIDDLE_END_INLINING=\
   middle_end/inlining/inlining_transforms.cmo
 
 MIDDLE_END_LANGUAGE=\
+  middle_end/language/simple.cmo \
   middle_end/language/flambda_kind.cmo \
   middle_end/language/flambda_arity.cmo \
   middle_end/language/invariant_env.cmo \
@@ -309,7 +310,7 @@ MIDDLE_END_REMOVAL=\
   middle_end/removal/unrecursify.cmo
 
 MIDDLE_END_SIMPLIFY=\
-  middle_end/language/freshening.cmo \
+  middle_end/simplify/freshening.cmo \
   middle_end/simplify/simplify_env.cmo \
   middle_end/simplify/simplify_result.cmo \
   middle_end/simplify/simplify_aux.cmo \

@@ -131,7 +131,7 @@ module Apply = struct
   type t = {
     func : Name.t;
     continuation : Continuation.t;
-    args : Name.t list;
+    args : Simple.t list;
     call_kind : Call_kind.t;
     dbg : Debuginfo.t;
     inline : inline_attribute;
@@ -141,7 +141,7 @@ module Apply = struct
   let equal t1 t2 =
     Name.equal t1.func t2.func
       && Continuation.equal t1.continuation t2.continuation
-      && Misc.Stdlib.List.equal Name.equal t1.args t2.args
+      && Misc.Stdlib.List.equal Simple.equal t1.args t2.args
       && Call_kind.equal t1.call_kind t2.call_kind
       && Debuginfo.equal t1.dbg t2.dbg
       && t1.inline = t2.inline
@@ -150,7 +150,7 @@ end
 
 type assign = {
   being_assigned : Mutable_variable.t;
-  new_value : Name.t;
+  new_value : Simple.t;
 }
 
 module Free_var = struct
@@ -188,6 +188,8 @@ module Free_var = struct
           Variable.print t.var
           Projection.print projection
   end)
+
+  let free_names t = Name.Set.singleton (Name.var t.var)
 end
 
 module Free_vars = struct
@@ -214,6 +216,12 @@ module Free_vars = struct
   let all_outer_variables t =
     let outer_vars = Var_within_closure.Map.data t in
     Variable.Set.of_list (List.map Free_var.var outer_vars)
+
+  let free_names t =
+    Var_within_closure.Map.fold (fun _ free_var free_names ->
+        Name.Set.union free_names (Free_var.free_names free_var))
+      t.free_vars
+      Name.Set.empty
 end
 
 module Trap_action = struct
@@ -805,7 +813,7 @@ end = struct
     fprintf ppf "%a@." print t
 end and Named : sig
   type t =
-    | Name of Name.t
+    | Simple of Simple.t
     | Prim of Flambda_primitive.t * Debuginfo.t
     | Set_of_closures of Set_of_closures.t
     | Assign of assign
@@ -841,37 +849,29 @@ end = struct
 
   let name_usage ?ignore_uses_in_project_var (t : t) =
     match t with
-    | Var var -> Name.Set.singleton var
+    | Simple simple -> Simple.free_names simple
     | _ ->
       let free = ref Name.Set.empty in
       let free_name fv = free := Name.Set.add fv !free in
+      let free_names fvs = free := Name.Set.union fvs !free in
       begin match t with
-      | Name (Var _ | Symbol _) -> free_name name
-      | Name (Const _) | Read_mutable _ -> ()
-      | Assign { being_assigned = _; new_value; } -> free_name new_value
-      | Set_of_closures { free_vars; _ } ->
-(* XXX we need to traverse the body now!  However we only need to collect
-   symbols. *)
-        (* Sets of closures are, well, closed---except for the free name and
-           specialised argument lists, which may identify names currently in
-           scope outside of the closure. *)
-        Var_within_closure.Map.iter (fun _ (renamed_to : Free_var.t) ->
-            (* We don't need to do anything with [renamed_to.projectee.var], if
-               it is present, since it would only be another free name
-               in the same set of closures. *)
-            free_name renamed_to.var)
-          free_vars
+      | Simple simple -> free_names (Simple.free_names simple)
+      | Read_mutable _ -> ()
+      | Assign { being_assigned = _; new_value; } ->
+        free_names (Simple.free_names new_value)
+      | Set_of_closures set ->
+        free_names (Set_of_closures.free_names set)
       | Prim (Unary (_prim, x0), _dbg) ->
-        free_name x0
+        free_names (Simple.free_names x0)
       | Prim (Binary (_prim, x0, x1), _dbg) ->
-        free_name x0;
-        free_name x1
+        free_names (Simple.free_names x0);
+        free_names (Simple.free_names x1)
       | Prim (Ternary (_prim, x0, x1, x2), _dbg) ->
-        free_name x0;
-        free_name x1;
-        free_name x2
+        free_names (Simple.free_names x0);
+        free_names (Simple.free_names x1);
+        free_names (Simple.free_names x2)
       | Prim (Variadic (_prim, xs), _dbg) ->
-        List.iter free_name xs
+        List.iter (fun x -> free_names (Simple.free_names x)) xs
       end;
       !free
 
@@ -883,20 +883,19 @@ end = struct
 
   let print ppf (t : t) =
     match t with
-    | Name name -> Name.print ppf name
-    | Const cst -> fprintf ppf "Const(%a)" Const.print cst
-    | Read_mutable mut_var ->
-      fprintf ppf "Read_mut(%a)" Mutable_variable.print mut_var
-    | Assign { being_assigned; new_value; } ->
-      fprintf ppf "@[<2>(assign@ %a@ %a)@]"
-        Mutable_variable.print being_assigned
-        Name.print new_value
+    | Simple simple -> Simple.print ppf simple
     | Set_of_closures set_of_closures ->
       Set_of_closures.print ppf set_of_closures
     | Prim (prim, dbg) ->
       fprintf ppf "@[<2>(%a@ %a)@]"
         Flambda_primitive.print prim
         Debuginfo.print_or_elide dbg
+    | Read_mutable mut_var ->
+      fprintf ppf "Read_mut(%a)" Mutable_variable.print mut_var
+    | Assign { being_assigned; new_value; } ->
+      fprintf ppf "@[<2>(assign@ %a@ %a)@]"
+        Mutable_variable.print being_assigned
+        Name.print new_value
 
   let box_value var (kind : Flambda_kind.t) dbg : Named.t * Flambda_kind.t =
     match kind with
@@ -1215,7 +1214,9 @@ end = struct
         Set_of_closures_origin.print function_decls.set_of_closures_origin
 
   let free_names t =
-    Function_declarations.free_names t.function_decls
+    let in_decls = Function_declarations.free_names t.function_decls in
+    let in_free_vars = Free_vars.free_names t.free_vars in
+    Name.Set.union in_decls in_free_vars
 end and Function_declarations : sig
   type t = {
     set_of_closures_id : Set_of_closures_id.t;
@@ -1290,7 +1291,7 @@ end and Function_declaration : sig
     return_arity : Flambda_arity.t;
     params : Typed_parameter.t list;
     body : Expr.t;
-    free_names : Name.Set.t;
+    free_names_in_body : Name.Set.t;
     stub : bool;
     dbg : Debuginfo.t;
     inline : inline_attribute;
@@ -1351,7 +1352,7 @@ end = struct
       continuation_param;
       return_arity;
       body;
-      free_symbols = Expr.free_symbols body;
+      free_names_in_body = Expr.free_names body;
       stub;
       dbg;
       inline;
@@ -1366,7 +1367,7 @@ end = struct
       continuation_param = t.continuation_param;
       return_arity = t.return_arity;
       body;
-      free_symbols = Expr.free_symbols body;
+      free_names_in_body = Expr.free_names body;
       stub = t.stub;
       dbg = t.dbg;
       inline = t.inline;
@@ -1381,13 +1382,13 @@ end = struct
       continuation_param = t.continuation_param;
       return_arity = t.return_arity;
       body;
-      free_symbols = Expr.free_symbols body;
+      free_names_in_body = Expr.free_names body;
       stub = t.stub;
       dbg = t.dbg;
       inline = t.inline;
       specialise = t.specialise;
       is_a_functor = t.is_a_functor;
-      my_closure = t.my_closure; (* Updating that field is probably needed also *)
+      my_closure = t.my_closure; (* XXX Updating that field is probably needed also *)
     }
 
   let update_params t ~params =
@@ -1400,7 +1401,7 @@ end = struct
 
   let free_names t =
     let my_closure = Name.var t.my_closure in
-    let params = Typed_parameter.List.name_set t.params in
+    let params = Typed_parameter.List.free_names t.params in
     let bound = Name.Set.add my_closure params in
     Name.Set.diff t.free_names bound
 

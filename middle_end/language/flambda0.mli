@@ -68,7 +68,7 @@ module Apply : sig
     func : Name.t;
     continuation : Continuation.t;
     (** Where to send the result of the application. *)
-    args : Name.t list;
+    args : Simple.t list;
     call_kind : Call_kind.t;
     dbg : Debuginfo.t;
     inline : inline_attribute;
@@ -86,13 +86,13 @@ end
     immutable variables in Flambda. *)
 type assign = {
   being_assigned : Mutable_variable.t;
-  new_value : Name.t;
+  new_value : Simple.t;
 }
 
 module Free_var : sig
   type t = {
     var : Variable.t;
-    projection : Projection.t option;
+    equality : Flambda_primitive.With_fixed_value.t option;
   }
 
   include Identifiable.S with type t := t
@@ -210,8 +210,8 @@ module rec Expr : sig
     | Let_mutable of Let_mutable.t
     | Let_cont of Let_cont.t
     | Apply of Apply.t
-    | Apply_cont of Continuation.t * Trap_action.t option * Name.t list
-    | Switch of Name.t * Switch.t
+    | Apply_cont of Continuation.t * Trap_action.t option * Simple.t list
+    | Switch of Simple.t * Switch.t
     | Invalid of invalid_term_semantics
 
   (** Creates a [Let] expression.  (This computes the free variables of the
@@ -298,21 +298,21 @@ module rec Expr : sig
 
   val print : Format.formatter -> t -> unit
 end and Named : sig
-  (** Values of type [t] will always be [let]-bound to a [Variable.t]. *)
+  (** Values of type [t] will always be [Let]-bound to a [Variable.t].
+      (Note that [Simple.t] values do not need to be [Let]-bound; but they are
+      allowed here for convenience.) *)
   type t =
-    | Name of Name.t
+    | Simple of Simple.t
     | Prim of Flambda_primitive.t * Debuginfo.t
     | Set_of_closures of Set_of_closures.t
     | Assign of assign
     | Read_mutable of Mutable_variable.t
 
-  (** Compute the free variables of the given term. *)
-  val free_variables
+  (** Compute the free names of the given term. *)
+  val free_names
      : ?ignore_uses_in_project_var:unit
     -> t
     -> Variable.Set.t
-
-  val free_symbols : t -> Symbol.Set.t
 
   (** Compute _all_ variables occurring inside the given term. *)
   val used_variables
