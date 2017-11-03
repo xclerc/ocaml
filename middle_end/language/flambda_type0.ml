@@ -242,10 +242,7 @@ end) = struct
     (* CR mshinwell: Add an [Immutable_array] module *)
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
-    | Closure of {
-        set_of_closures : ty_value;
-        closure_id : Closure_id.t;
-      }
+    | Closure of closure
     | String of string_ty
     | Float_array of ty_naked_float array
 
@@ -275,6 +272,11 @@ end) = struct
   and function_declaration =
     | Non_inlinable of non_inlinable_function_declaration
     | Inlinable of inlinable_function_declaration
+
+  and closure = {
+    set_of_closures : ty_value;
+    closure_id : Closure_id.t;
+  }
 
   and set_of_closures = {
     set_of_closures_id : Set_of_closures_id.t;
@@ -1193,10 +1195,10 @@ end) = struct
         ~(force_to_kind : t -> (a, _) ty)
         ~(type_of_name : Name.t -> t option)
         (ty : (a, _) ty)
-        : (a, _) resolved_ty =
-    let rec resolve_aliases names_seen (ty : _ resolved_ty) =
+        : (a, _) resolved_ty * (Name.t option) =
+    let rec resolve_aliases names_seen ~canonical_name (ty : _ resolved_ty) =
       match ty with
-      | Normal _ -> ty
+      | Normal _ -> ty, canonical_name
       | Alias name ->
         if Name.Set.mem name names_seen then begin
           (* CR-soon mshinwell: Improve message -- but this means passing the
@@ -1204,24 +1206,29 @@ end) = struct
           Misc.fatal_errorf "Loop on %a whilst resolving aliases"
             Name.print name
         end;
+        let canonical_name = Some name in
         begin match type_of_name name with
-        | None -> ty
+        | None -> ty, canonical_name
         | Some t ->
           let names_seen = Name.Set.add name names_seen in
           let ty = force_to_kind t in
-          resolve_aliases names_seen (importer_this_kind ty)
+          resolve_aliases names_seen ~canonical_name (importer_this_kind ty)
         end
     in
-    resolve_aliases Name.Set.empty (importer_this_kind ty)
+    resolve_aliases Name.Set.empty ~canonical_name:None
+      (importer_this_kind ty)
 
   let resolve_aliases_and_squash_unresolved_names ~importer_this_kind
         ~force_to_kind ~type_of_name ~make_unknown ty =
-    let ty =
+    let ty, canonical_name =
       resolve_aliases ~importer_this_kind ~force_to_kind ~type_of_name ty
     in
-    match ty with
-    | Normal ty -> ty
-    | Alias _ -> make_unknown ()
+    let ty =
+      match ty with
+      | Normal ty -> ty
+      | Alias _ -> make_unknown ()
+    in
+    ty, canonical_name
 
   let force_to_kind_value t =
     match t with

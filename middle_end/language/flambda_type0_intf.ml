@@ -206,6 +206,12 @@ module type S = sig
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
 
+  module Set_of_closures : sig
+    type t = set_of_closures
+
+    include Identifiable.S with type t := t
+  end
+
   val print : Format.formatter -> t -> unit
 
   (** Construction of top types. *)

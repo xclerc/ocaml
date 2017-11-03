@@ -370,6 +370,8 @@ end
 module Blocks = struct
   type t = ty_value array Tag.Scannable.Map.t
 
+  let is_bottom t = Tag.Scannable.Map.is_empty t
+
   let join ~importer t1 t2 : t or_wrong =
     let exception Same_tag_different_arities in
     try
@@ -390,16 +392,11 @@ module Blocks = struct
     with Same_tag_different_arities -> Wrong
 end
 
-module Set_of_closures : sig
+module Joined_set_of_closures : sig
   type t
 
-  val create
-     : set_of_closures_var:Variable.t option
-    -> set_of_closures
-    -> t
+  val create : Set_of_closures.Set.t -> t
 
-  (* CR mshinwell: Should this have the [set_of_closures_symbol] too? *)
-  val set_of_closures_var : t -> Variable.t option
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 
@@ -408,7 +405,6 @@ module Set_of_closures : sig
   val join : (t -> t -> t) with_importer
 end = struct
   type t = {
-    set_of_closures_var : Variable.t option;
     set_of_closures_id_and_origin :
       (Set_of_closures_id.t * Set_of_closures_origin.t)
         Or_not_all_values_known.t;
@@ -416,7 +412,6 @@ end = struct
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
-  let set_of_closures_var t = t.set_of_closures_var
   let function_decls t = t.function_decls
   let closure_elements t = t.closure_elements
 
@@ -427,9 +422,9 @@ end = struct
       Var_within_closure.Set.print
       (Var_within_closure.Map.keys t.closure_elements)
 
-  let create ~set_of_closures_var (set : set_of_closures) : t =
-    { set_of_closures_var;
-      set_of_closures_id_and_origin =
+  let create sets : t =
+    ...
+    { set_of_closures_id_and_origin =
         Exactly (set.set_of_closures_id, set.set_of_closures_origin);
       function_decls = set.function_decls;
       closure_elements = set.closure_elements;
@@ -457,30 +452,6 @@ end = struct
       in
       Non_inlinable decl
     | Non_inlinable _ -> f
-
-  (* CR pchambart:  (This was written for the "join" case)
-     merging the closure value might loose information in the
-     case of one branch having the approximation and the other
-     having 'Unknown'. We could imagine such as
-
-     {[if ... then M1.f else M2.f]}
-
-     where M1 is where the function is defined and M2 is
-
-     {[let f = M3.f]}
-
-     and M3 is
-
-     {[let f = M1.f]}
-
-     with the cmx for M3 missing
-
-     Since we know that the approximation comes from the same
-     value, we know that both version provide additional
-     information on the value. Hence what we really want is an
-     approximation intersection, not an union (that this join
-     is).
-     mshinwell: changed to meet *)
 
   let join_and_make_all_functions_non_inlinable ~importer
         (t1 : t) (t2 : t) : t =
@@ -573,22 +544,139 @@ end = struct
       }
     | Ok Not_all_values_known | Wrong ->
       join_and_make_all_functions_non_inlinable ~importer t1 t2
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let print = print
+
+    let compare t1 t2 =
+      (* CR mshinwell for pchambart: Is this correct? *)
+      Set_of_closures
+  end)
 end
 
+module Make_with_name (T : Identifiable.S) = struct
+  include Identifiable.Make (struct
+    type t = T.t * Name.t
+
+    let compare (t1, name1) (t2, name2) =
+      let c = T.compare t1 t2 in
+      if c <> 0 then c
+      else Misc.Stdlib.Option.compare Name.compare name1 name2
+
+    let equal t1 t2 =
+      compare t1 t2 = 0
+
+    let hash (t, name) =
+      Hashtbl.hash (T.hash t, Misc.Stdlib.Option.hash Name.hash name)
+
+    let print ppf (t, name) =
+      match name with
+      | None -> T.print ppf t
+      | Some name -> Format.fprintf ppf "%a = %a" T.print t Name.print name
+  end)
+end
+
+module Float_with_name = Make_with_name (Float)
+module Int32_with_name = Make_with_name (Int32)
+module Int64_with_name = Make_with_name (Int64)
+module Targetint_with_name = Make_with_name (Targetint)
+module Closure_with_name = Make_with_name (Closure)
+module Set_of_closures_with_name = Make_with_name (Set_of_closures)
+
 module Evaluated = struct
+  type t0 =
+    | Unknown
+    | Bottom
+    | Blocks_and_tagged_immediates of
+        (Blocks.With_names.t * Immediate.With_name.Set.t)
+          Or_not_all_values_known.t
+    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Closures of Closure_with_name.Set.t Or_not_all_values_known.t
+    | Set_of_closures of
+        Set_of_closures_with_name.Set.t Or_not_all_values_known.t
+
   type t =
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
-    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
-    | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
-    | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
+        (Blocks.With_names.t * Immediate.With_name.Set.t)
+          Or_not_all_values_known.t
+    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Closures of
+        Joined_set_of_closures.t Closure_id.t Or_not_all_values_known.t
+    | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
 
-  let join ~importer t1 t2 =
+  let t_of_t0 (t0 : t0) : t =
+    match t0 with
+    | Unknown -> Unknown
+    | Bottom -> Bottom
+    | Blocks_and_tagged_immediates blocks -> Blocks_and_tagged_immediates blocks
+    | Boxed_floats fs -> Boxed_floats fs
+    | Boxed_int32s is -> Boxed_int32s is
+    | Boxed_int64s is -> Boxed_int64s is
+    | Boxed_nativeints is -> Boxed_nativeints is
+    | Closures Not_all_values_known -> Closures Not_all_values_known
+    | Closures (Exactly map) ->
+      let map = Closure_id.Map.map Joined_set_of_closures.create map in
+      Closures (Exactly map)
+    | Set_of_closures Not_all_values_known ->
+      Set_of_closures Not_all_values_known
+    | Set_of_closures (Exactly sets) ->
+      Set_of_closures (Exactly (Joined_set_of_closures.create sets))
+
+  let is_unknown (t : t) =
+    match t with
+    | Unknown
+    | Blocks_and_tagged_immediates Not_all_values_known
+    | Boxed_floats Not_all_values_known
+    | Boxed_int32s Not_all_values_known
+    | Boxed_int64s Not_all_values_known
+    | Boxed_nativeints Not_all_values_known
+    | Closures Not_all_values_known
+    | Set_of_closures Not_all_values_known -> true
+    | Bottom
+    | Blocks_and_tagged_immediates _
+    | Boxed_floats (Exactly _)
+    | Boxed_int32s (Exactly _)
+    | Boxed_int64s (Exactly _)
+    | Boxed_nativeints (Exactly _)
+    | Closures (Exactly _)
+    | Set_of_closures (Exactly _) -> false
+
+  let is_known t = not (is_unknown t)
+
+  let is_bottom (t : t) =
+    match t with
+    | Bottom
+    | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
+      Blocks.is_bottom blocks && Immediate.Set.empty imms
+    | Boxed_floats (Exactly fs) -> Float.Set.is_empty fs
+    | Boxed_int32s (Exactly is) -> Int32.Set.is_empty is
+    | Boxed_int64s (Exactly is) -> Int64.Set.is_empty is
+    | Boxed_nativeints (Exactly is) -> Nativeint.Set.is_empty is
+    | Closures (Exactly map) -> Closure_id.Map.is_empty map
+    | Unknown
+    | Blocks_and_tagged_immediates Not_all_values_known
+    | Boxed_floats Not_all_values_known
+    | Boxed_int32s Not_all_values_known
+    | Boxed_int64s Not_all_values_known
+    | Boxed_nativeints Not_all_values_known
+    | Closures Not_all_values_known
+    | Set_of_closures _ -> false
+
+  let is_non_bottom t = not (is_bottom t)
+
+  let useful t = is_known t && is_non_bottom t
+
+  let join ~importer ~type_of_name t1 t2 =
     let join_immediates =
       Or_not_all_values_known.join (fun imms1 imms2 : _ or_wrong ->
         Ok (Immediate.join_set imms1  imms2))
@@ -671,6 +759,9 @@ module Evaluated = struct
       | Boxed_nativeints _
       | Closures _
       | Set_of_closures _), _ -> Unknown
+
+  let meet ~importer ~type_of_name t1 t2 =
+
 end
 
 type 'a known_unknown_or_wrong =
@@ -723,17 +814,42 @@ let prove_naked_nativeint_from_ty_naked_nativeint ~importer
   | Ok (Naked_nativeint i) -> Known i
   | Bottom -> Wrong
 
-let eval ~importer (t : t) : Evaluated.t =
+let eval ~importer ~type_of_name (t : t) : Evaluated.t =
   let module I = (val importer : Importer) in
-  match t with
-  | Value ty ->
-    let resolved_ty_value = I.import_value_type_as_resolved_ty_value ty in
-    begin match resolved_ty_value.descr with
+  let eval ~importer_this_kind ~force_to_kind
+        ~(eval_singleton : _ -> Evaluated.t0) ty =
+    let resolved_ty_value, canonical_name =
+      resolve_aliases_and_squash_unresolved_names
+        ~importer_this_kind:I.import_value_type_as_resolved_ty_value
+        ~force_to_kind:force_to_kind_value
+        ~type_of_name
+        ty
+    in
+    begin match resolved_ty_value with
     | Unknown _ -> Unknown
     | Bottom -> Bottom
-    | Ok of_kind_value ->
-      let for_singleton (s : of_kind_value_singleton) : Evaluated.t =
-        match s with
+    | Ok or_combination ->
+      begin match or_combination with
+      | Singleton singleton -> eval_singleton singleton
+      | Combination (Union, ty1, ty2) ->
+        let t1 : t = Normal ty1 in
+        let t2 : t = Normal ty2 in
+        let eval1 = eval ~importer ~type_of_name t1 in
+        let eval2 = eval ~importer ~type_of_name t2 in
+        Evaluated.join eval1 eval2
+      | Combination (Intersection, ty1, ty2) ->
+        let t1 : t = Normal ty1 in
+        let t2 : t = Normal ty2 in
+        let eval1 = eval ~importer ~type_of_name t1 in
+        let eval2 = eval ~importer ~type_of_name t2 in
+        Evaluated.meet eval1 eval2
+      end
+  in
+  let t0 : Evaluated.t0 =
+    match t with
+    | Value ty ->
+      let eval_singleton (o : of_kind_value) =
+        match o with
         | Tagged_immediate ty ->
           begin match
             prove_naked_immediate_from_ty_naked_immediate ~importer ty
@@ -793,36 +909,71 @@ let eval ~importer (t : t) : Evaluated.t =
         | String _
         | Float_array _ -> Unknown
       in
-      let rec for_of_kind_value (o : of_kind_value) =
+      eval ~importer_this_kind:I.import_value_type_as_resolved_ty_value
+        ~force_to_kind:force_to_kind_value
+        ~eval_singleton
+        ty
+    | Naked_immediate ty ->
+      let eval_singleton (o : of_kind_naked_immediate) =
         match o with
-        | Singleton s -> for_singleton s
-        | Union (w1, w2) ->
-          let summary1 = for_of_kind_value w1.descr in
-          let summary2 = for_of_kind_value w2.descr in
-          Evaluated.join ~importer summary1 summary2
+
       in
-      for_of_kind_value of_kind_value
-    end
-  | Naked_immediate _
-  | Naked_float _
-  | Naked_int32 _
-  | Naked_int64 _
-  | Naked_nativeint _ -> Unknown
+      eval ~importer_this_kind:
+          I.import_naked_immediate_type_as_resolved_ty_naked_immediate
+        ~force_to_kind:force_to_kind_naked_immediate
+        ~eval_singleton
+        ty
+    | Naked_float ty ->
+      let eval_singleton (o : of_kind_naked_float) =
+        match o with
 
-let bottom ~importer ~type_of_name t =
-  match eval ~importer ~type_of_name t with
-  | Bottom -> true
-  | _ -> false
+      in
+      eval ~importer_this_kind:
+          I.import_naked_float_type_as_resolved_ty_naked_float
+        ~force_to_kind:force_to_kind_naked_float
+        ~eval_singleton
+        ty
+    | Naked_int32 ty ->
+      let eval_singleton (o : of_kind_naked_int32) =
+        match o with
 
-let known ~importer ~type_of_name t =
-  match eval ~importer ~type_of_name t with
-  | Unknown -> false
-  | _ -> true
+      in
+      eval ~importer_this_kind:
+          I.import_naked_int32_type_as_resolved_ty_naked_int32
+        ~force_to_kind:force_to_kind_naked_int32
+        ~eval_singleton
+        ty
+    | Naked_int64 ty ->
+      let eval_singleton (o : of_kind_naked_int64) =
+        match o with
 
-let useful ~importer ~type_of_name t =
-  match eval ~importer ~type_of_name t with
-  | Bottom | Unknown -> false
-  | _ -> true
+      in
+      eval ~importer_this_kind:
+          I.import_naked_int64_type_as_resolved_ty_naked_int64
+        ~force_to_kind:force_to_kind_naked_int64
+        ~eval_singleton
+        ty
+    | Naked_nativeint ty ->
+      let eval_singleton (o : of_kind_naked_nativeint) =
+        match o with
+
+      in
+      eval ~importer_this_kind:
+          I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
+        ~force_to_kind:force_to_kind_naked_nativeint
+        ~eval_singleton
+        ty
+  in
+  Evaluated.t0_to_t t0
+
+let is_bottom ~importer ~type_of_name t =
+  Evaluated.is_bottom (eval ~importer ~type_of_name t)
+
+let is_known ~importer ~type_of_name t =
+  Evaluated.is_known (eval ~importer ~type_of_name t)
+
+let is_useful ~importer ~type_of_name t =
+  Evaluated.is_useful (eval ~importer ~type_of_name t)
 
 let all_not_useful ~importer ts =
   List.for_all (fun t -> not (useful ~importer t)) ts
@@ -830,8 +981,7 @@ let all_not_useful ~importer ts =
 let reify ~importer t : Named.t option =
   let try_symbol () =
     match symbol t with
-    | Some (sym, None) -> Some (Named.Symbol sym)
-    | Some (sym, Some field) -> Some (Named.Read_symbol_field (sym, field))
+    | Some sym -> Some (Named.Symbol sym)
     | None -> None
   in
   match eval ~importer t with
@@ -855,12 +1005,7 @@ let reify ~importer t : Named.t option =
   | Boxed_int64s _
   | Boxed_nativeints _
   | Closures _
-  | Set_of_closures _ ->
-    (* CR mshinwell: This doesn't do anything for boxed integers at the moment
-       unless there is a symbol assigned, to ensure that we don't introduce
-       an allocation.  I think this behaviour is different from the previous
-       version. *)
-    try_symbol ()
+  | Set_of_closures _ -> try_symbol ()
 
 let reify_using_env ~importer t ~is_present_in_env =
   match reify ~importer t with

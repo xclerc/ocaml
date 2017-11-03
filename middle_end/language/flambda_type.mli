@@ -59,18 +59,15 @@ val this_naked_nativeint_named : Targetint.t -> Flambda0.Named.t * t
 (** Whether the given type says that a term of that type is unreachable. *)
 val is_bottom : (t -> bool) type_accessor
 
-(* CR mshinwell: The problem with these next two is that there may be
-   union types which yield "Unknown" (at the level of the join functions in
-   this module) even though they are not directly represented as such. *)
 (** Determine whether the given type provides any information about an
     Flambda term of that type.  (This holds just when the type is not
     one of the [Unknown]s.) *)
-val known : (t -> bool) type_accessor
+val is_known : (t -> bool) type_accessor
 
 (** Determine whether the given type provides useful information about an
     Flambda term of that type.  To be "useful" the type must satisfy
     [known] and not correspond to an unreachable term ([Bottom]). *)
-val useful : (t -> bool) type_accessor
+val is_useful : (t -> bool) type_accessor
 
 (** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : (t list -> bool) type_accessor
