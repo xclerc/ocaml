@@ -401,8 +401,6 @@ module Joined_set_of_closures : sig
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 
   val to_type : t -> flambda_type
-
-  val join : (t -> t -> t) with_importer
 end = struct
   type t = {
     set_of_closures_id_and_origin :
@@ -421,6 +419,53 @@ end = struct
       (Closure_id.Map.keys t.function_decls)
       Var_within_closure.Set.print
       (Var_within_closure.Map.keys t.closure_elements)
+
+  let join ~importer (t1 : t) (t2 : t) : t =
+    let set_of_closures_id_and_origin =
+      Or_not_all_values_known.join (fun (id1, origin1) (id2, origin2) ->
+          if Set_of_closures_id.equal id1 id2 then begin
+            (* CR mshinwell: We should think more about [Set_of_closures_id]
+               particularly in the context of recursive cases vs. the previous
+               version of a set of closures *)
+            assert (Set_of_closures_origin.equal origin1 origin2);
+            Ok (id1, origin1)
+          end else begin
+            Wrong
+          end)
+        t1.set_of_closures_id_and_origin
+        t2.set_of_closures_id_and_origin
+    in
+    match set_of_closures_id_and_origin with
+    | Ok ((Exactly _) as set_of_closures_id_and_origin) ->
+      (* If the [set_of_closures_id]s are the same, the result is eligible for
+         inlining, when the input function declarations are.
+
+         The real constraint is that the union of two functions is inlinable
+         if either of the two functions can be replaced by the other.  As such
+         our behaviour here is conservative but hopefully not too restrictive in
+         practice. *)
+      (* CR pchambart: this is too strong, but should hold in general.
+         It can be kept for now to help debugging *)
+      assert (t1.function_decls == t2.function_decls);
+      let closure_elements =
+        Var_within_closure.Map.union_merge (join_ty_value ~importer)
+          t1.closure_elements t2.closure_elements
+      in
+      let set_of_closures_var =
+        match t1.set_of_closures_var with
+        | Some var -> Some var
+        | None ->
+          match t2.set_of_closures_var with
+          | Some var -> Some var
+          | None -> None
+      in
+      { set_of_closures_var;
+        set_of_closures_id_and_origin;
+        function_decls = t1.function_decls;
+        closure_elements;
+      }
+    | Ok Not_all_values_known | Wrong ->
+      join_and_make_all_functions_non_inlinable ~importer t1 t2
 
   let create sets : t =
     ...
@@ -497,53 +542,6 @@ end = struct
       function_decls;
       closure_elements;
     }
-
-  let join ~importer (t1 : t) (t2 : t) : t =
-    let set_of_closures_id_and_origin =
-      Or_not_all_values_known.join (fun (id1, origin1) (id2, origin2) ->
-          if Set_of_closures_id.equal id1 id2 then begin
-            (* CR mshinwell: We should think more about [Set_of_closures_id]
-               particularly in the context of recursive cases vs. the previous
-               version of a set of closures *)
-            assert (Set_of_closures_origin.equal origin1 origin2);
-            Ok (id1, origin1)
-          end else begin
-            Wrong
-          end)
-        t1.set_of_closures_id_and_origin
-        t2.set_of_closures_id_and_origin
-    in
-    match set_of_closures_id_and_origin with
-    | Ok ((Exactly _) as set_of_closures_id_and_origin) ->
-      (* If the [set_of_closures_id]s are the same, the result is eligible for
-         inlining, when the input function declarations are.
-
-         The real constraint is that the union of two functions is inlinable
-         if either of the two functions can be replaced by the other.  As such
-         our behaviour here is conservative but hopefully not too restrictive in
-         practice. *)
-      (* CR pchambart: this is too strong, but should hold in general.
-         It can be kept for now to help debugging *)
-      assert (t1.function_decls == t2.function_decls);
-      let closure_elements =
-        Var_within_closure.Map.union_merge (join_ty_value ~importer)
-          t1.closure_elements t2.closure_elements
-      in
-      let set_of_closures_var =
-        match t1.set_of_closures_var with
-        | Some var -> Some var
-        | None ->
-          match t2.set_of_closures_var with
-          | Some var -> Some var
-          | None -> None
-      in
-      { set_of_closures_var;
-        set_of_closures_id_and_origin;
-        function_decls = t1.function_decls;
-        closure_elements;
-      }
-    | Ok Not_all_values_known | Wrong ->
-      join_and_make_all_functions_non_inlinable ~importer t1 t2
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -761,7 +759,88 @@ module Evaluated = struct
       | Set_of_closures _), _ -> Unknown
 
   let meet ~importer ~type_of_name t1 t2 =
-
+    let meet_immediates =
+      Or_not_all_values_known.meet (fun imms1 imms2 : _ or_wrong ->
+        Ok (Immediate.meet_set imms1  imms2))
+    in
+    match t1, t2 with
+    | Bottom, _ | _, Bottom -> Bottom
+    | Unknown, _ -> t2
+    | _, Unknown -> t1
+    | Blocks_and_tagged_immediates (b1, imms1),
+        Blocks_and_tagged_immediates (b2, imms2) ->
+      let blocks_meet = Blocks.meet ~importer b1 b2 in
+      let imms_meet = meet_immediates imms1 imms2 in
+      begin match blocks_meet, imms_meet with
+      | Ok blocks, Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
+      | Wrong, _ | _, Wrong -> Unknown
+      end
+    | Boxed_floats fs1, Boxed_floats fs2 ->
+      begin match
+        Or_not_all_values_known.meet (fun fs1 fs2 : Float.Set.t or_wrong ->
+           Ok (Float.Set.union fs1 fs2))
+          fs1 fs2
+      with
+      | Ok fs -> Boxed_floats fs
+      | Wrong -> Unknown
+      end
+    | Boxed_int32s is1, Boxed_int32s is2 ->
+      begin match
+        Or_not_all_values_known.meet (fun is1 is2 : Int32.Set.t or_wrong ->
+            Ok (Int32.Set.union is1 is2))
+          is1 is2
+      with
+      | Ok is -> Boxed_int32s is
+      | Wrong -> Unknown
+      end
+    | Boxed_int64s is1, Boxed_int64s is2 ->
+      begin match
+        Or_not_all_values_known.meet (fun is1 is2 : Int64.Set.t or_wrong ->
+            Ok (Int64.Set.union is1 is2))
+          is1 is2
+      with
+      | Ok is -> Boxed_int64s is
+      | Wrong -> Unknown
+      end
+    | Boxed_nativeints is1, Boxed_nativeints is2 ->
+      begin match
+        Or_not_all_values_known.meet (fun is1 is2 : Targetint.Set.t or_wrong ->
+            Ok (Targetint.Set.union is1 is2))
+          is1 is2
+      with
+      | Ok is -> Boxed_nativeints is
+      | Wrong -> Unknown
+      end
+    | Closures closures1, Closures closures2 ->
+      begin match
+        Or_not_all_values_known.meet (fun map1 map2 : _ or_wrong ->
+          let map =
+            Closure_id.Map.union_merge (Set_of_closures.meet ~importer)
+              map1 map2
+          in
+          (* CR pchambart: Could this fail and not be a real error *)
+          Ok map)
+          closures1 closures2
+      with
+      | Ok closures -> Closures closures
+      | Wrong -> Unknown
+      end
+    | Set_of_closures set1, Set_of_closures set2 ->
+      begin match
+        Or_not_all_values_known.meet (fun set1 set2 : _ or_wrong ->
+          Ok (Set_of_closures.meet ~importer set1 set2))
+          set1 set2
+      with
+      | Ok set_of_closures -> Set_of_closures set_of_closures
+      | Wrong -> Unknown
+      end
+    | (Blocks_and_tagged_immediates _
+      | Boxed_floats _
+      | Boxed_int32s _
+      | Boxed_int64s _
+      | Boxed_nativeints _
+      | Closures _
+      | Set_of_closures _), _ -> Bottom
 end
 
 type 'a known_unknown_or_wrong =
