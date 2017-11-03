@@ -576,6 +576,7 @@ module Make_with_name (T : Identifiable.S) = struct
   end)
 end
 
+module Naked_immediate_with_name = Make_with_name (Naked_immediate)
 module Float_with_name = Make_with_name (Float)
 module Int32_with_name = Make_with_name (Int32)
 module Int64_with_name = Make_with_name (Int64)
@@ -594,6 +595,12 @@ module Evaluated = struct
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of
+        Naked_immediate_with_name.Set.t Or_not_all_values_known.t
+    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Closure_with_name.Set.t Or_not_all_values_known.t
     | Set_of_closures of
         Set_of_closures_with_name.Set.t Or_not_all_values_known.t
@@ -608,6 +615,12 @@ module Evaluated = struct
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of
+        Naked_immediate_with_name.Set.t Or_not_all_values_known.t
+    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of
         Joined_set_of_closures.t Closure_id.t Or_not_all_values_known.t
     | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
@@ -616,11 +629,16 @@ module Evaluated = struct
     match t0 with
     | Unknown -> Unknown
     | Bottom -> Bottom
-    | Blocks_and_tagged_immediates blocks -> Blocks_and_tagged_immediates blocks
+    | Blocks_and_tagged_immediates blocks ->
+      Blocks_and_tagged_immediates blocks
     | Boxed_floats fs -> Boxed_floats fs
     | Boxed_int32s is -> Boxed_int32s is
     | Boxed_int64s is -> Boxed_int64s is
     | Boxed_nativeints is -> Boxed_nativeints is
+    | Naked_floats fs -> Boxed_floats fs
+    | Naked_int32s is -> Boxed_int32s is
+    | Naked_int64s is -> Boxed_int64s is
+    | Naked_nativeints is -> Boxed_nativeints is
     | Closures Not_all_values_known -> Closures Not_all_values_known
     | Closures (Exactly map) ->
       let map = Closure_id.Map.map Joined_set_of_closures.create map in
@@ -778,7 +796,7 @@ module Evaluated = struct
     | Boxed_floats fs1, Boxed_floats fs2 ->
       begin match
         Or_not_all_values_known.meet (fun fs1 fs2 : Float.Set.t or_wrong ->
-           Ok (Float.Set.union fs1 fs2))
+           Ok (Float.Set.inter fs1 fs2))
           fs1 fs2
       with
       | Ok fs -> Boxed_floats fs
@@ -787,7 +805,7 @@ module Evaluated = struct
     | Boxed_int32s is1, Boxed_int32s is2 ->
       begin match
         Or_not_all_values_known.meet (fun is1 is2 : Int32.Set.t or_wrong ->
-            Ok (Int32.Set.union is1 is2))
+            Ok (Int32.Set.inter is1 is2))
           is1 is2
       with
       | Ok is -> Boxed_int32s is
@@ -796,7 +814,7 @@ module Evaluated = struct
     | Boxed_int64s is1, Boxed_int64s is2 ->
       begin match
         Or_not_all_values_known.meet (fun is1 is2 : Int64.Set.t or_wrong ->
-            Ok (Int64.Set.union is1 is2))
+            Ok (Int64.Set.inter is1 is2))
           is1 is2
       with
       | Ok is -> Boxed_int64s is
@@ -805,7 +823,7 @@ module Evaluated = struct
     | Boxed_nativeints is1, Boxed_nativeints is2 ->
       begin match
         Or_not_all_values_known.meet (fun is1 is2 : Targetint.Set.t or_wrong ->
-            Ok (Targetint.Set.union is1 is2))
+            Ok (Targetint.Set.inter is1 is2))
           is1 is2
       with
       | Ok is -> Boxed_nativeints is
@@ -909,12 +927,13 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
     | Bottom -> Bottom
     | Ok or_combination ->
       begin match or_combination with
-      | Singleton singleton -> eval_singleton singleton
+      | Singleton singleton -> eval_singleton singleton ~canonical_name
       | Combination (Union, ty1, ty2) ->
         let t1 : t = Normal ty1 in
         let t2 : t = Normal ty2 in
         let eval1 = eval ~importer ~type_of_name t1 in
         let eval2 = eval ~importer ~type_of_name t2 in
+        (* XXX does anything need to happen with [canonical_name]? *)
         Evaluated.join eval1 eval2
       | Combination (Intersection, ty1, ty2) ->
         let t1 : t = Normal ty1 in
@@ -927,7 +946,7 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
   let t0 : Evaluated.t0 =
     match t with
     | Value ty ->
-      let eval_singleton (o : of_kind_value) =
+      let eval_singleton (o : of_kind_value) ~canonical_name : Evaluated.t0 =
         match o with
         | Tagged_immediate ty ->
           begin match
@@ -938,8 +957,10 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
             Blocks_and_tagged_immediates (
               Tag.Scannable.Map.empty, Not_all_values_known)
           | Known i ->
+            let i = Immediate_with_name.create i canonical_name in
             Blocks_and_tagged_immediates (
-              Tag.Scannable.Map.empty, Exactly (Immediate.Set.singleton i))
+              Tag.Scannable.Map.empty,
+              Exactly (Immediate_with_name.Set.singleton i))
           end
         | Boxed_float ty ->
           begin match
@@ -947,7 +968,9 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           with
           | Wrong -> Unknown
           | Unknown -> Boxed_floats Not_all_values_known
-          | Known f -> Boxed_floats (Exactly (Float.Set.singleton f))
+          | Known f ->
+            let f = Float_with_name.create f canonical_name in
+            Boxed_floats (Exactly (Float_with_name.Set.singleton f))
           end
         | Boxed_int32 ty ->
           begin match
@@ -955,7 +978,9 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           with
           | Wrong -> Unknown
           | Unknown -> Boxed_int32s Not_all_values_known
-          | Known i -> Boxed_int32s (Exactly (Int32.Set.singleton i))
+          | Known i ->
+            let i = Int32_with_name.create i canonical_name in
+            Boxed_int32s (Exactly (Int32_with_name.Set.singleton i))
           end
         | Boxed_int64 ty ->
           begin match
@@ -963,7 +988,9 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           with
           | Wrong -> Unknown
           | Unknown -> Boxed_int64s Not_all_values_known
-          | Known i -> Boxed_int64s (Exactly (Int64.Set.singleton i))
+          | Known i ->
+            let i = Int64_with_name.create i canonical_name in
+            Boxed_int64s (Exactly (Int64_with_name.Set.singleton i))
           end
         | Boxed_nativeint ty ->
           begin match
@@ -971,13 +998,16 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           with
           | Wrong -> Unknown
           | Unknown -> Boxed_nativeints Not_all_values_known
-          | Known i -> Boxed_nativeints (Exactly (Targetint.Set.singleton i))
+          | Known i ->
+            let i = Targetint_with_name.create i canonical_name in
+            Boxed_nativeints (Exactly (Targetint_with_name.Set.singleton i))
           end
         | Block (tag, fields) ->
           let blocks =
             Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
           in
-          Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
+          Blocks_and_tagged_immediates (blocks,
+            Exactly Immediate_with_name.Set.empty)
         | Closure _ ->
           Unknown
             (* [@ppwarning "TODO"] *)
@@ -993,9 +1023,13 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_immediate ty ->
-      let eval_singleton (o : of_kind_naked_immediate) =
+      let eval_singleton (o : of_kind_naked_immediate) ~canonical_name
+            : Evaluated.t0 =
         match o with
-
+        | Naked_immediate imm ->
+          let imm = Naked_immediate_with_name.create imm canonical_name in
+          Naked_immediates (Exactly (
+            Naked_immediate_with_name.Set.singleton imm))
       in
       eval ~importer_this_kind:
           I.import_naked_immediate_type_as_resolved_ty_naked_immediate
@@ -1003,9 +1037,13 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_float ty ->
-      let eval_singleton (o : of_kind_naked_float) =
+      let eval_singleton (o : of_kind_naked_float) ~canonical_name
+            : Evaluated.t0 =
         match o with
-
+        | Naked_float f ->
+          let f = Naked_float_with_name.create f canonical_name in
+          Naked_floats (Exactly (
+            Naked_float_with_name.Set.singleton f))
       in
       eval ~importer_this_kind:
           I.import_naked_float_type_as_resolved_ty_naked_float
@@ -1013,9 +1051,13 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_int32 ty ->
-      let eval_singleton (o : of_kind_naked_int32) =
+      let eval_singleton (o : of_kind_naked_int32) ~canonical_name
+            : Evaluated.t0 =
         match o with
-
+        | Naked_int32 i ->
+          let i = Naked_int32_with_name.create i canonical_name in
+          Naked_int32s (Exactly (
+            Naked_int32_with_name.Set.singleton i))
       in
       eval ~importer_this_kind:
           I.import_naked_int32_type_as_resolved_ty_naked_int32
@@ -1023,9 +1065,13 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_int64 ty ->
-      let eval_singleton (o : of_kind_naked_int64) =
+      let eval_singleton (o : of_kind_naked_int64) ~canonical_name
+            : Evaluated.t0 =
         match o with
-
+        | Naked_int64 i ->
+          let i = Naked_int64_with_name.create i canonical_name in
+          Naked_int64s (Exactly (
+            Naked_int64_with_name.Set.singleton i))
       in
       eval ~importer_this_kind:
           I.import_naked_int64_type_as_resolved_ty_naked_int64
@@ -1033,9 +1079,13 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_nativeint ty ->
-      let eval_singleton (o : of_kind_naked_nativeint) =
+      let eval_singleton (o : of_kind_naked_nativeint) ~canonical_name
+            : Evaluated.t0 =
         match o with
-
+        | Naked_nativeint i ->
+          let i = Naked_nativeint_with_name.create i canonical_name in
+          Naked_nativeints (Exactly (
+            Naked_nativeint_with_name.Set.singleton i))
       in
       eval ~importer_this_kind:
           I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
