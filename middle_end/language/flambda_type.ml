@@ -589,14 +589,13 @@ module Evaluated = struct
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks.With_names.t * Immediate.With_name.Set.t)
+        (Blocks.With_names.t * Immediate_with_name.Set.t)
           Or_not_all_values_known.t
     | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Naked_immediates of
-        Naked_immediate_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
     | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
@@ -609,28 +608,32 @@ module Evaluated = struct
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks.With_names.t * Immediate.With_name.Set.t)
+        (Blocks.With_names.t * Immediate_with_name.Set.t)
           Or_not_all_values_known.t
+    | Tagged_immediates_only of
+        Immediate_with_name.Set.t Or_not_all_values_known.t
     | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Naked_immediates of
-        Naked_immediate_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
     | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of
-        Joined_set_of_closures.t Closure_id.t Or_not_all_values_known.t
+        Joined_set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
     | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
 
   let t_of_t0 (t0 : t0) : t =
     match t0 with
     | Unknown -> Unknown
     | Bottom -> Bottom
-    | Blocks_and_tagged_immediates blocks ->
-      Blocks_and_tagged_immediates blocks
+    | Blocks_and_tagged_immediates (blocks, imms) ->
+      if Blocks.With_names.Map.is_empty blocks then
+        Tagged_immediates_only imms
+      else
+        Blocks_and_tagged_immediates blocks
     | Boxed_floats fs -> Boxed_floats fs
     | Boxed_int32s is -> Boxed_int32s is
     | Boxed_int64s is -> Boxed_int64s is
@@ -1290,41 +1293,40 @@ let strict_reify_as_closure t : strict_reified_as_closure =
   | Ok (closures, set_of_closures_var, set_of_closures_symbol) ->
     Ok (closures, set_of_closures_var, set_of_closures_symbol)
   | Wrong | Unknown | Unresolved _ -> Wrong
+*)
 
 type switch_branch_classification =
   | Cannot_be_taken
   | Can_be_taken
   | Must_be_taken
 
-let classify_switch_branch t branch ~import_type
+let classify_switch_branch ~importer ~type_of_name t branch
       : switch_branch_classification =
-  match join_boxed_immediates t ~import_type with
-  | Unknown Value -> Can_be_taken
-  | Unknown _ | Bottom -> Cannot_be_taken
-  | Ok all_possible_values ->
+  match eval ~importer ~type_of_name t with
+  | Unknown
+  | Tagged_immediates_only Not_all_values_known -> Can_be_taken
+  | Tagged_immediates_only (Exactly all_possible_values) ->
+    let all_possible_values =
+      Immediate.set_to_targetint_set all_possible_values
+    in
     if Targetint.Set.mem branch all_possible_values then Must_be_taken
     else Cannot_be_taken
+  | Bottom
+  | Blocks_and_tagged_immediates _
+  | Boxed_floats _
+  | Boxed_int32s _
+  | Boxed_int64s _
+  | Boxed_nativeints _
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _
+  | Closures _
+  | Set_of_closures _ -> Cannot_be_taken
 
 let as_or_more_precise _t ~than:_ =
   Misc.fatal_error "not yet implemented"
 
 let strictly_more_precise _t ~than:_ =
   Misc.fatal_error "not yet implemented"
-
-
-
-let join_boxed_immediates t ~import_type : Immediate.Set.t fold_result =
-  match join_unboxable t ~import_type with
-  | Ok (Blocks_and_immediates { blocks; immediates; }) ->
-    if Targetint.Set.is_empty blocks then Ok immediates
-    else Bottom
-  | Ok (Boxed_floats _ | Boxed_int32s _ | Boxed_int64s _
-      | Boxed_nativeints _) ->
-    Bottom
-  | (Unknown _ | Bottom) as result -> result
-
-let unique_boxed_immediate_in_join t ~import_type =
-  match join_boxed_immediates t ~import_type with
-  | Ok all_possible_values -> Immediate.Set.get_singleton all_possible_values
-  | Unknown _ | Bottom -> None
-*)

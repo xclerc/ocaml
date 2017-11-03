@@ -56,6 +56,80 @@ val this_naked_int32_named : Int32.t -> Flambda0.Named.t * t
 val this_naked_int64_named : Int64.t -> Flambda0.Named.t * t
 val this_naked_nativeint_named : Targetint.t -> Flambda0.Named.t * t
 
+type 'a or_wrong = private
+  | Ok of 'a
+  | Wrong
+
+module Or_not_all_values_known : sig
+  type 'a t = private
+    | Exactly of 'a
+    | Not_all_values_known
+end
+
+module Blocks : sig
+  type t = private ty_value array Tag.Scannable.Map.t
+end
+
+module Joined_set_of_closures : sig
+  type t
+
+  (** The canonical name bound to the set of closures, if such exists. *)
+  val name : t -> Name.t option
+
+  val function_decls : t -> function_declaration Closure_id.Map.t
+  val closure_elements : t -> ty_value Var_within_closure.Map.t
+
+  val to_type : t -> flambda_type
+end
+
+module Immediate_with_name : Identifiable.S
+  with type t = Immediate.t * Name.t option
+module Float_with_name : Identifiable.S
+  with type t = float * Name.t option
+module Int32_with_name : Identifiable.S
+  with type t = Int32.t * Name.t option
+module Int64_with_name : Identifiable.S
+  with type t = Int64.t * Name.t option
+module Targetint_with_name : Identifiable.S
+  with type t = Targetint.t * Name.t option
+
+module Evaluated : sig
+  (** A straightforward canonical form which can be used easily for the
+      determination of properties of a type.
+
+      There are some subtleties concerning "unknown" and "bottom" types here.
+      For reliable determination of these two properties the [is_unknown]
+      and [is_bottom] functions should be used in preference to matching on
+      values of type [t].
+  *)
+  type t = private
+    | Unknown
+    | Bottom
+    | Blocks_and_tagged_immediates of
+        (Blocks.With_names.t * Immediate_with_name.Set.t)
+          Or_not_all_values_known.t
+    (** For [Blocks_and_tagged_immediates] it is guaranteed that the
+        "blocks" portion is non-empty.  (Otherwise [Tagged_immediates_only]
+        will be produced.) *)
+    | Tagged_immediates_only of
+        Immediate_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
+    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Closures of
+        Joined_set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
+    | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
+end
+
+(** Evaluate the given type to a canonical form. *)
+val eval : (t -> Evaluated.t) type_accessor
+
 (** Whether the given type says that a term of that type is unreachable. *)
 val is_bottom : (t -> bool) type_accessor
 
@@ -71,48 +145,6 @@ val is_useful : (t -> bool) type_accessor
 
 (** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : (t list -> bool) type_accessor
-
-type 'a or_wrong = private
-  | Ok of 'a
-  | Wrong
-
-module Or_not_all_values_known : sig
-  type 'a t = private
-    | Exactly of 'a
-    | Not_all_values_known
-end
-
-module Blocks : sig
-  type t = private ty_value array Tag.Scannable.Map.t
-end
-
-module Set_of_closures : sig
-  type t
-
-  val set_of_closures_var : t -> Variable.t option
-  val function_decls : t -> function_declaration Closure_id.Map.t
-  val closure_elements : t -> ty_value Var_within_closure.Map.t
-
-  val to_type : t -> flambda_type
-end
-
-module Evaluated : sig
-  type t = private
-    | Unknown
-    | Bottom
-    | Blocks_and_tagged_immediates of
-        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
-    | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
-    | Closures of Set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
-    | Set_of_closures of Set_of_closures.t Or_not_all_values_known.t
-end
-
-(** Evaluate the given type to a straightforward canonical form which can be
-    used easily for the determination of properties of the type. *)
-val eval : (t -> Evaluated.t) type_accessor
 
 (*
 (** Whether the given type describes a float array. *)
@@ -130,15 +162,6 @@ val invalid_to_mutate : t -> bool
     type.  A fatal error is produced if the variable is not bound in
     the given type. *)
 val type_for_bound_var : set_of_closures -> Var_within_closure.t -> t
-
-(** Given a set-of-closures type and a closure ID, apply any
-    freshening specified by the type to the closure ID, and return
-    the resulting ID.  Causes a fatal error if the resulting closure ID does
-    not correspond to any function declaration in the type. *)
-val freshen_and_check_closure_id
-   : set_of_closures
-  -> Closure_id.Set.t
-  -> Closure_id.Set.t
 
 (** Returns [true] when it can be proved that the provided types identify a
     unique value (with respect to physical equality) at runtime.  The input
@@ -175,16 +198,16 @@ val follow_variable_equality
   -> is_present_in_env:(Variable.t -> bool)
   -> Variable.t option
 
-(** Try to produce a canonical Flambda term, with no free variables, that has
-    the given Flambda type. *)
+(** Try to produce a canonical Flambda term, with neither free variables nor
+    allocation, that has the given Flambda type. *)
 val reify : (t -> Flambda0.Named.t option) type_accessor
 
 (** As for [reify], but in the event where a type cannot be reified, may
-    return a [Var] (if [is_present_in_env] says that the particular variable
+    return a [Simple] (if [is_present_in_env] says that the relevant name
     is in scope). *)
 val reify_using_env
    : (t
-  -> is_present_in_env:(Variable.t -> bool)
+  -> is_present_in_env:(Name.t -> bool)
   -> Flambda0.Named.t option) type_accessor
 
 
@@ -279,7 +302,7 @@ type reified_as_closure_allowing_unresolved =
 val reify_as_closure_allowing_unresolved
    : t
   -> reified_as_closure_allowing_unresolved
-
+*)
 type switch_branch_classification =
   | Cannot_be_taken
   | Can_be_taken
@@ -288,10 +311,7 @@ type switch_branch_classification =
 (** Given the type of a [Switch] scrutinee, determine whether the case of
     the corresponding switch with the given integer label either cannot be
     taken, can be taken or will always be taken. *)
-val classify_switch_branch
-   : t
-  -> int
-  -> switch_branch_classification
+val classify_switch_branch : t -> Targetint.t -> switch_branch_classification
 
 (** Returns [true] iff the given type provides strictly more information
     about the corresponding value than the supplied type [than]. *)
@@ -300,5 +320,3 @@ val strictly_more_precise : t -> than:t -> bool
 (** Returns [true] iff the given type provides the same or strictly more
     information about the corresponding value than the supplied type [than]. *)
 val as_or_more_precise : t -> than:t -> bool
-
-*)
