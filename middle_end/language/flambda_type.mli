@@ -198,18 +198,23 @@ val follow_variable_equality
   -> is_present_in_env:(Variable.t -> bool)
   -> Variable.t option
 
-(** Try to produce a canonical Flambda term, with neither free variables nor
-    allocation, that has the given Flambda type. *)
-val reify : (t -> Flambda0.Named.t option) type_accessor
+type reification_result =
+  | Term of Flambda.Named.t * t
+  | Cannot_reify
+  | Invalid
 
-(** As for [reify], but in the event where a type cannot be reified, may
-    return a [Simple] (if [is_present_in_env] says that the relevant name
-    is in scope). *)
-val reify_using_env
+(** Try to produce a canonical Flambda term that has the given Flambda type.
+    The resulting term will never cause an allocation.  The term will also
+    not contain any free variables unless [allow_free_variables] has been set
+    to [true].
+
+    This function may be used to turn the types of [Simple] terms into their
+    canonical representative terms (as it follows aliases in the environment).
+*)
+val reify :
    : (t
-  -> is_present_in_env:(Name.t -> bool)
-  -> Flambda0.Named.t option) type_accessor
-
+  -> allow_free_variables:bool
+  -> reification_result) type_accessor
 
 (*
 (** As for [reify] but only produces terms when the type describes a

@@ -132,29 +132,6 @@ let type_for_bound_var (set_of_closures : set_of_closures) var =
       Var_within_closure.print var
       (Printexc.raw_backtrace_to_string (Printexc.get_callstack max_int))
 
-(* Given a set-of-closures type and a closure ID, apply any
-   freshening specified in the type to the closure ID, and return
-   that new closure ID.  A fatal error is produced if the new closure ID
-   does not correspond to a function declaration in the given type. *)
-let freshen_and_check_closure_id (set_of_closures : set_of_closures)
-      (closure_id : Closure_id.Set.t) =
-  let closure_id =
-    Freshening.Project_var.apply_closure_ids
-      set_of_closures.freshening closure_id
-  in
-  Closure_id.Set.iter (fun closure_id ->
-    try
-      ignore (F0.Function_declarations.find closure_id
-        set_of_closures.function_decls)
-    with Not_found ->
-      Misc.fatal_error (Format.asprintf
-        "Function %a not found in the set of closures@ %a@.%a@."
-        Closure_id.print closure_id
-        print_set_of_closures set_of_closures
-        F0.Function_declarations.print set_of_closures.function_decls))
-    closure_id;
-  closure_id
-
 let physically_same_values (types : t list) =
   match types with
   | [] | [_] | _ :: _ :: _ :: _ ->
@@ -1110,44 +1087,40 @@ let is_useful ~importer ~type_of_name t =
 let all_not_useful ~importer ts =
   List.for_all (fun t -> not (useful ~importer t)) ts
 
-let reify ~importer t : Named.t option =
-  let try_symbol () =
-    match symbol t with
-    | Some sym -> Some (Named.Symbol sym)
-    | None -> None
+type reification_result =
+  | Term of Flambda.Named.t * t
+  | Cannot_reify
+  | Invalid
+
+(* XXX needs to return the type *)
+let reify ~importer ~type_of_name ~allow_free_variables t : reification_result =
+  let e, canonical_name = eval ~importer ~type_of_name t in
+  let try_name () : reification_result =
+    match canonical_name with
+    | None -> Cannot_reify
+    | Some name ->
+      match name with
+      | Var _ when not allow_free_variables -> Cannot_reify
+      | Var _ | Symbol _ -> Term (Simple (Simple.name name))
   in
-  match eval ~importer t with
-  | Blocks_and_tagged_immediates (blocks, imms) ->
-    begin match imms with
-    | Exactly imms ->
-      begin match Immediate.Set.get_singleton imms with
-      | Some imm ->
-        if Tag.Scannable.Map.is_empty blocks then
-          Some (Flambda.Named.Const (Tagged_immediate imm))
-        else
-          None
-      | None -> None
-      end
-    | Not_all_values_known -> None
+  match eval ~importer ~type_of_name t with
+  | Bottom -> Invalid
+  | Tagged_immediates_only imms ->
+    begin match Immediate.Set.get_singleton imms with
+    | Some imm -> Term (Simple (Simple.immediate imm))
+    | None -> try_name ()
     end
-  | Bottom -> None
   | Unknown
+  | Blocks_and_tagged_immediates _
+  | Tagged_immediates_only _
   | Boxed_floats _
   | Boxed_int32s _
   | Boxed_int64s _
   | Boxed_nativeints _
   | Closures _
-  | Set_of_closures _ -> try_symbol ()
+  | Set_of_closures _ -> try_name ()
 
-let reify_using_env ~importer t ~is_present_in_env =
-  match reify ~importer t with
-  | None ->
-    begin match var t with
-    | Some var when is_present_in_env var -> Some (Flambda.Named.Var var)
-    | _ -> None
-    end
-  | Some named -> Some named
-
+(*
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
   match eval ~importer t with
   | Set_of_closures (Exactly set) -> Known set
@@ -1160,8 +1133,6 @@ let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
   | Boxed_int64s _
   | Boxed_nativeints _
   | Closures _ -> Wrong
-
-(*
 
 type proved_scannable_block =
   | Ok of Tag.Scannable.t * ty_value array

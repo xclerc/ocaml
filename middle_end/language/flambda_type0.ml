@@ -1208,7 +1208,10 @@ end) = struct
         end;
         let canonical_name = Some name in
         begin match type_of_name name with
-        | None -> ty, canonical_name
+        | None ->
+          (* CR mshinwell: What should happen here?  Isn't this an unbound
+             name? *)
+          ty, None
         | Some t ->
           let names_seen = Name.Set.add name names_seen in
           let ty = force_to_kind t in
