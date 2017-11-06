@@ -139,17 +139,16 @@ end
 (** Evaluate the given type to a canonical form. *)
 val eval : (t -> Evaluated.t) type_accessor
 
-(** Whether the given type says that a term of that type is unreachable. *)
+(** Whether the given type says that a term of that type can never be
+    constructed (in other words, it is [Invalid]). *)
 val is_bottom : (t -> bool) type_accessor
 
 (** Determine whether the given type provides any information about an
-    Flambda term of that type.  (This holds just when the type is not
-    one of the [Unknown]s.) *)
+    Flambda term of that type. *)
 val is_known : (t -> bool) type_accessor
 
 (** Determine whether the given type provides useful information about an
-    Flambda term of that type.  To be "useful" the type must satisfy
-    [known] and not correspond to an unreachable term ([Bottom]). *)
+    Flambda term of that type. *)
 val is_useful : (t -> bool) type_accessor
 
 (** Whether all types in the given list do *not* satisfy [useful]. *)
@@ -255,6 +254,13 @@ type boxed_nativeint_proof = private
 (** As for [prove_boxed_float] but for [Nativeint]. *)
 val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
 
+type set_of_closures_proof = private
+  | Proved of Joined_set_of_closures.t Not_all_values_known.t
+  | Invalid
+
+(** As for [proved_boxed_float] but for sets of closures. *)
+val prove_set_of_closures : (t -> set_of_closures_proof) type_accessor
+
 type lengths_of_array_or_block_proof = private
   | Proved of Int.Set.t Or_not_all_values_known.t
   | Invalid
@@ -273,9 +279,6 @@ val lengths_of_arrays_or_blocks
 (** As for [reify] but only produces terms when the type describes a
     unique tagged immediate. *)
 val reify_as_tagged_immediate : t -> Immediate.t option
-
-(** As for [reify_as_tagged_immediate], but for boxed floats. *)
-val reify_as_boxed_float : t -> float option
 
 (** As for [reify_as_int], but for arrays of unboxed floats (corresponding
     to values with tag [Double_array_tag]. *)
@@ -319,16 +322,6 @@ val prove_set_of_closures
   -> Set_of_closures.t known_unknown_or_wrong) type_accessor
 
 (*
-
-type strict_reified_as_set_of_closures =
-  | Wrong
-  | Ok of Variable.t option * set_of_closures
-
-(** As for [reify_as_set_of_closures], but disallows unresolved or
-    unknown types. *)
-val strict_reify_as_set_of_closures
-   : t
-  -> strict_reified_as_set_of_closures
 
 type strict_reified_as_closure =
   | Wrong

@@ -195,12 +195,6 @@ let physically_different_values (types : t list) =
   | [] | [_] | _ :: _ :: _ :: _ ->
     Misc.fatal_error "Wrong number of arguments for physical inequality"
   | [a1; a2] -> definitely_different a1 a2
-
-let length_of_array t =
-  match descr t with
-  | Union union -> Unionable.size_of_block union
-  | Float_array { contents = Contents floats; _ } -> Some (Array.length floats)
-  | _ -> None  (* Could be improved later if required. *)
 *)
 
 (*
@@ -1251,6 +1245,9 @@ let get_field ~importer ~type_of_name t ~field_index
           ~expected_result_kind
     | Float_array { lengths; } ->
       let if_used_at = Flambda_kind.naked_float () in
+      (* CR mshinwell: If this check fails, maybe it's always a compiler bug?
+         We need to check how the kind for [Block_load] is set in the frontend
+         (i.e. Pfield / Pfloatfield). *)
       if not (Flambda_kind.compatible expected_result_kind ~if_used_at) then
         Invalid
       else
@@ -1367,24 +1364,39 @@ let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
 (* XXX Lengths of strings: for this, I think we can assume that Obj.truncate
    is always illegal here *)
 
-(*
-let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
-  match eval ~importer t with
-  | Set_of_closures (Exactly set) -> Known set
-  | Set_of_closures Not_all_values_known
-  | Unknown -> Unknown
-  | Bottom
-  | Blocks_and_tagged_immediates _
-  | Boxed_floats _
-  | Boxed_int32s _
-  | Boxed_int64s _
-  | Boxed_nativeints _
+type set_of_closures_proof =
+  | Proved of Joined_set_of_closures.t Not_all_values_known.t
+  | Invalid
+
+let prove_set_of_closures ~importer ~type_of_name t : set_of_closures_proof =
+  let t_evaluated = eval ~importer ~type_of_name t in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Set_of_closures Not_all_values_known -> Proved Not_all_values_known
+    | Set_of_closures (Exactly set) -> Proved (Exactly set)
+    | Bottom
+    | Boxed_floats _
+    | Blocks_and_tagged_immediates _
+    | Tagged_immediates_only _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Float_array _ -> Invalid
+    end
+  | Naked_immediates _
   | Naked_floats _
   | Naked_int32s _
   | Naked_int64s _
-  | Naked_nativeints _
-  | Closures _ -> Wrong
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a set of \
+        closures: %a"
+      print t
 
+
+(*
 type proved_scannable_block =
   | Ok of Tag.Scannable.t * ty_value array
   | Can't_prove
@@ -1419,26 +1431,6 @@ let reify_as_tagged_immediate t =
   | Boxed_int64s _
   | Boxed_nativeints _
   | Wrong -> None
-
-let reify_as_boxed_float t =
-  match prove_unboxable_or_untaggable t with
-  | Boxed_floats fs -> Float.Set.get_singleton fs
-  | Boxed_floats Not_all_values_known
-  | Blocks_and_tagged_immediates _
-  | Boxed_int32s _
-  | Boxed_int64s _
-  | Boxed_nativeints _
-  | Wrong -> None
-
-type strict_reified_as_set_of_closures =
-  | Wrong
-  | Ok of Variable.t option * set_of_closures
-
-let strict_reify_as_set_of_closures t
-      : strict_reified_as_set_of_closures =
-  match reify_as_set_of_closures t with
-  | Ok (var, value_set_of_closures) -> Ok (var, value_set_of_closures)
-  | Wrong | Unresolved _ | Unknown -> Wrong
 
 type reified_as_closure_allowing_unresolved =
   | Wrong
