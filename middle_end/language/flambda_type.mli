@@ -41,12 +41,6 @@ val rename_variables
     specified constants. *)
 val this_tagged_bool_named : bool -> Flambda0.Named.t * t
 val this_tagged_immediate_named : Immediate.t -> Flambda0.Named.t * t
-(* XXX These now require the insertion of additional bindings
-val this_boxed_float_named : float -> Flambda0.Named.t * t
-val this_boxed_int32_named : Int32.t -> Flambda0.Named.t * t
-val this_boxed_int64_named : Int64.t -> Flambda0.Named.t * t
-val this_boxed_nativeint_named : Targetint.t -> Flambda0.Named.t * t
-*)
 
 (** Building of types and terms representing untagged / unboxed values from
     specified constants. *)
@@ -128,6 +122,7 @@ module Evaluated : sig
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
+    | Float_array of { lengths : Int.Set.t; }
 
   type t = private
     | Values of t0_values
@@ -164,9 +159,6 @@ val all_not_useful : (t list -> bool) type_accessor
 (** Whether the given type describes a float array. *)
 val is_float_array : t -> bool
 
-(** Whether the given type describes one or more boxed floats. *)
-val is_boxed_float : t -> bool
-
 (** Whether code that mutates a value with the given type is to be
     treated as invalid.  Cannot be called with an [Extern] or [Symbol]
     type; these need to be resolved first. *)
@@ -189,36 +181,6 @@ val physically_different_values : t list -> bool
 
 *)
 
-type get_field_result =
-  | Ok of t
-  | Invalid
-
-(** Given the type [t] of a value (expected to correspond to a block of kind
-    [Value]) and a field index then return an appropriate type for that field
-    of the block (or [Invalid]).  The expected kind of the field, as per
-    [Flambda_primitive.Block_load], must be provided.
-    N.B. Not _all_ cases of invalid code are returned as [Invalid]. *)
-val get_field
-   : (t
-  -> field_index:int
-  -> field_kind:Flambda_primitive.field_kind
-  -> get_field_result) type_accessor
-
-(*
-(** If the given Flambda type corresponds to an array, return the length
-    of that array; in all other cases return [None]. *)
-val length_of_array : t -> int option
-
-*)
-
-(** If the given type identifies another variable and [is_present_in_env]
-    deems it to be in scope, return that variable (wrapped in a [Some]),
-    otherwise return [None]. *)
-val follow_variable_equality
-   : t
-  -> is_present_in_env:(Variable.t -> bool)
-  -> Variable.t option
-
 type reification_result =
   | Term of Simple.t * t
   | Cannot_reify
@@ -240,6 +202,61 @@ val reify :
   -> allow_free_variables:bool
   -> expected_kind:Flambda_kind.t
   -> reification_result) type_accessor
+
+type get_field_result = private
+  | Ok of t
+  | Invalid
+
+(** Given the type [t] of a value (expected to correspond to a block of kind
+    [Value]) and a field index then return an appropriate type for that field
+    of the block (or [Invalid]).  The expected kind of the field, as per
+    [Flambda_primitive.Block_load], must be provided. *)
+val get_field
+   : (t
+  -> field_index:int
+  -> field_kind:Flambda_primitive.field_kind
+  -> get_field_result) type_accessor
+
+type boxed_float_proof = private
+  | Proved of Float_with_name.Set.t Or_not_all_values_known.t
+  | Invalid
+
+(** Prove that the given type represents:
+    - one or more known boxed floats ([Proved (Ok ...)]);
+    - one or more unknown boxed floats ([Proved Not_all_values_known]);
+    - value(s) that are not boxed floats (meaning that code computing a value
+      of such type, in a context where a boxed float is required, is invalid).
+    The set returned in an [Proved (Ok ...)] result is guaranteed non-empty.
+*)
+val prove_boxed_float : (t -> boxed_float_proof) type_accessor
+
+type boxed_int32_proof = private
+  | Proved of Int32_with_name.Set.t Or_not_all_values_known.t
+  | Invalid
+
+(** As for [prove_boxed_float] but for [Int32]. *)
+val prove_boxed_int32 : (t -> boxed_int32_proof) type_accessor
+
+type boxed_int64_proof = private
+  | Proved of Int64_with_name.Set.t Or_not_all_values_known.t
+  | Invalid
+
+(** As for [prove_boxed_float] but for [Int64]. *)
+val prove_boxed_int64 : (t -> boxed_int64_proof) type_accessor
+
+type boxed_nativeint_proof = private
+  | Proved of Nativeint_with_name.Set.t Or_not_all_values_known.t
+  | Invalid
+
+(** As for [prove_boxed_float] but for [Nativeint]. *)
+val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
+
+(*
+(** If the given Flambda type corresponds to an array, return the length
+    of that array; in all other cases return [None]. *)
+val length_of_array : t -> int option
+
+*)
 
 (*
 (** As for [reify] but only produces terms when the type describes a

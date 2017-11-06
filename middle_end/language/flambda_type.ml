@@ -61,19 +61,6 @@ let this_naked_nativeint_named n : Named.t * t =
   Const (Naked_nativeint n), this_naked_nativeint n
 
 (*
-let is_boxed_float t =
-  match descr t with
-  | Boxed_number (Float, t) ->
-    begin match descr t with
-    | Unboxed_float _ -> true
-    | _ -> false
-    end
-  | Float_array _ | Unknown _ | Bottom | Union _
-  | Immutable_string _ | Mutable_string _
-  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ -> false
-
 let is_float_array t =
   match descr t with
   | Float_array _ -> true
@@ -209,22 +196,12 @@ let physically_different_values (types : t list) =
     Misc.fatal_error "Wrong number of arguments for physical inequality"
   | [a1; a2] -> definitely_different a1 a2
 
-type get_field_result =
-  | Ok of t
-  | Invalid _
-
-
 let length_of_array t =
   match descr t with
   | Union union -> Unionable.size_of_block union
   | Float_array { contents = Contents floats; _ } -> Some (Array.length floats)
   | _ -> None  (* Could be improved later if required. *)
 *)
-
-let follow_variable_equality t ~is_present_in_env =
-  match var t with
-  | Some var when is_present_in_env var -> Some var
-  | _ -> None
 
 (*
 
@@ -362,12 +339,14 @@ end = struct
         t_of_ty_value ty
 end
 
-module Closures : sig
+module Joined_closures : sig
   type t
 
   val create : Closure.Set.t -> t Or_not_all_values_known.t
 end = struct
+  type t = {
 
+  }
 end
 
 module Joined_set_of_closures : sig
@@ -574,30 +553,6 @@ module Targetint_with_name = Make_with_name (Targetint)
 module Closure_with_name = Make_with_name (Closure)
 module Set_of_closures_with_name = Make_with_name (Set_of_closures)
 
-module Float_array_with_name = struct
-  include Identifiable.Make (struct
-    type t = {
-      array : float array;
-      name : Name.t option;
-    }
-
-    let compare t1 t2 =
-      let c = Pervasives.compare t1.array t2.array in
-      if c <> 0 then c
-      else Name.compare t1.name t2.name
-
-    let equal t1 t2 = (compare t1 t2 = 0)
-
-    let hash t =
-      let array = Hashtbl.hash t.array in
-      let name = Name.hash t.name in
-      Hashtbl.hash (array, name)
-
-    (* CR mshinwell: implement this *)
-    let print _ _ = Misc.fatal_error "Not yet implemented"
-  end)
-end
-
 module Evaluated = struct
   (* We use a set-theoretic model that enables us to keep track of joins
      right until the end (unlike meets, joins cannot be "evaluated early":
@@ -615,7 +570,9 @@ module Evaluated = struct
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Closure_with_name.Set.t
     | Set_of_closures of Set_of_closures_with_name.Set.t
-    | Float_array of Float_array_with_name.Set.t Or_not_all_values_known.t
+    (* CR-someday mshinwell: Improve the [Float_array] case when we end up with
+       immutable float arrays at the user level. *)
+    | Float_array of { lengths : Int.Set.t; }
 
   type t0 =
     | Values of t0_values
@@ -639,7 +596,7 @@ module Evaluated = struct
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
-    | Float_array of Float_array_with_name.Set.t
+    | Float_array of { lengths : Int.Set.t; }
 
   type t =
     | Values of t0_values
@@ -1270,6 +1227,8 @@ let get_field ~importer ~type_of_name t ~field_index
       ~(field_kind : Flambda_primitive.field_kind) : get_field_result =
   let t_evaluated = eval ~importer ~type_of_name t in
   let expected_result_kind =
+    (* CR mshinwell: This should move to a new module called
+       [Flambda_primitive.Field_kind] *)
     match field_kind with
     | Not_a_float -> K.value Must_scan
     | Float -> K.naked_float ()
@@ -1284,6 +1243,20 @@ let get_field ~importer ~type_of_name t ~field_index
       else
         Blocks.get_field ~importer ~type_of_name blocks ~field_index
           ~expected_result_kind
+    | Float_array { lengths; } ->
+      let if_used_at = Flambda_kind.naked_float () in
+      if not (Flambda_kind.compatible expected_result_kind ~if_used_at) then
+        Invalid
+      else
+        let index_is_out_of_range_for_all_lengths =
+          Int.Set.for_all (fun length ->
+              field_index < 0 || field_index >= length)
+            lengths
+        in
+        if index_is_out_of_range_for_all_lengths then
+          Invalid
+        else
+          Ok (unknown (Flambda_kind.naked_float ()) Other)
     | Bottom
     | Tagged_immediates_only _
     | Boxed_floats _
@@ -1302,6 +1275,41 @@ let get_field ~importer ~type_of_name t ~field_index
         type (invalid kind): %a"
       field_index
       print t
+
+type boxed_float_proof =
+  | Proved of Float_with_name.Set.t Or_not_all_values_known.t
+  | Invalid
+
+let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
+  let t_evaluated = eval ~importer ~type_of_name t in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Boxed_floats Not_all_values_known -> Not_all_values_known
+    | Boxed_floats (Exactly fs) ->
+      if Float_with_name.Set.is_empty fs then Invalid
+      else Proved fs
+    | Blocks_and_tagged_immediates _
+    | Bottom
+    | Tagged_immediates_only _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Set_of_closures _
+    | Float_array _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a boxed \
+        float: %a"
+      print t
+
+(* XXX and for the other boxed numbers *)
 
 (*
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
