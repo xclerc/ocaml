@@ -574,6 +574,30 @@ module Targetint_with_name = Make_with_name (Targetint)
 module Closure_with_name = Make_with_name (Closure)
 module Set_of_closures_with_name = Make_with_name (Set_of_closures)
 
+module Float_array_with_name = struct
+  include Identifiable.Make (struct
+    type t = {
+      array : float array;
+      name : Name.t option;
+    }
+
+    let compare t1 t2 =
+      let c = Pervasives.compare t1.array t2.array in
+      if c <> 0 then c
+      else Name.compare t1.name t2.name
+
+    let equal t1 t2 = (compare t1 t2 = 0)
+
+    let hash t =
+      let array = Hashtbl.hash t.array in
+      let name = Name.hash t.name in
+      Hashtbl.hash (array, name)
+
+    (* CR mshinwell: implement this *)
+    let print _ _ = Misc.fatal_error "Not yet implemented"
+  end)
+end
+
 module Evaluated = struct
   (* We use a set-theoretic model that enables us to keep track of joins
      right until the end (unlike meets, joins cannot be "evaluated early":
@@ -591,6 +615,7 @@ module Evaluated = struct
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Closure_with_name.Set.t
     | Set_of_closures of Set_of_closures_with_name.Set.t
+    | Float_array of Float_array_with_name.Set.t Or_not_all_values_known.t
 
   type t0 =
     | Values of t0_values
@@ -614,6 +639,7 @@ module Evaluated = struct
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
+    | Float_array of Float_array_with_name.Set.t
 
   type t =
     | Values of t0_values
@@ -1276,52 +1302,6 @@ let get_field ~importer ~type_of_name t ~field_index
         type (invalid kind): %a"
       field_index
       print t
-
-(* old code:
-let get_field t ~field_index:i : get_field_result =
-  match descr t with
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Block (_tag, fields)) ->
-      if i >= 0 && i < Array.length fields then begin
-        Ok fields.(i)
-      end else begin
-        (* This (unfortunately) cannot be a fatal error; it can happen if a
-           .cmx file is missing or with GADT code.  However for debugging the
-           compiler this can be a useful point to put a [Misc.fatal_errorf]. *)
-        Invalid _
-      end
-    | Ok (Int _ | Char _ | Constptr _) ->
-      (* Something seriously wrong is happening: either the user is doing
-         something exceptionally unsafe, or it is an unreachable branch.
-         We consider this as unreachable and mark the result accordingly. *)
-      Invalid _
-    | Bottom -> Invalid _
-    | Unknown -> Ok (unknown (Flambda_kind.value ()) Other)
-    end
-  (* CR-someday mshinwell: This should probably return Invalid _ in more
-     cases.  I added a couple more. *)
-  | Bottom -> Invalid _
-  | Float_array _ ->
-    (* For the moment we return "unknown" even for immutable arrays, since
-       it isn't possible for user code to project from an immutable array. *)
-    (* CR-someday mshinwell: If Leo's array's patch lands, then we can
-       change this, although it's probably not Pfield that is used to
-       do the projection. *)
-    Ok (unknown (Flambda_kind.value ()) Other)
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
-  | Immutable_string _ | Mutable_string _ | Boxed_number _ ->
-    (* The user is doing something unsafe. *)
-    Invalid _
-  | Set_of_closures _ | Closure _
-    (* These are used by [CamlinternalMod]. *)
-  | Load_lazily _ ->
-    (* These should have been resolved.
-       Note that the contents of blocks must always be of kind [Value]. *)
-    Ok (unknown (Flambda_kind.value ()) Other)
-  | Unknown (_block_kind, reason) ->
-    Ok (unknown (Flambda_kind.value ()) reason)
-*)
 
 (*
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
