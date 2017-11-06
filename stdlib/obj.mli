@@ -61,6 +61,10 @@ val [@inline always] set_double_field : t -> int -> float -> unit
   (* @since 3.11.2 *)
 external new_block : int -> int -> t = "caml_obj_block"
 external dup : t -> t = "caml_obj_dup"
+(* CR mshinwell: Add a comment for [truncate]
+   1. Not allowed if the compiler is configured as such
+   2. Never allowed on Strings or Bytes.
+   The implementation needs updating accordingly. *)
 external truncate : t -> int -> unit = "caml_obj_truncate"
 external add_offset : t -> Int32.t -> t = "caml_obj_add_offset"
          (* @since 3.12.0 *)

@@ -210,7 +210,11 @@ type get_field_result = private
 (** Given the type [t] of a value (expected to correspond to a block of kind
     [Value]) and a field index then return an appropriate type for that field
     of the block (or [Invalid]).  The expected kind of the field, as per
-    [Flambda_primitive.Block_load], must be provided. *)
+    [Flambda_primitive.Block_load], must be provided.
+
+    Note that this will return [Invalid] if a use is detected of a variant-like
+    type (union of blocks and immediates).
+*)
 val get_field
    : (t
   -> field_index:int
@@ -251,12 +255,19 @@ type boxed_nativeint_proof = private
 (** As for [prove_boxed_float] but for [Nativeint]. *)
 val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
 
-(*
-(** If the given Flambda type corresponds to an array, return the length
-    of that array; in all other cases return [None]. *)
-val length_of_array : t -> int option
+type lengths_of_array_or_block_proof = private
+  | Proved of Int.Set.t Or_not_all_values_known.t
+  | Invalid
 
+(** Determine the known length(s) of the array(s) or structured block(s)
+    (i.e. blocks with tag less than [No_scan_tag]) described by the given
+    type.
+    Note that this will return [Invalid] if a use is detected of a variant-like
+    type (union of blocks and immediates).
 *)
+val lengths_of_arrays_or_blocks
+   : (t
+  -> lengths_of_array_or_block_proof) type_accessor
 
 (*
 (** As for [reify] but only produces terms when the type describes a

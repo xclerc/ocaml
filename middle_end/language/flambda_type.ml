@@ -273,6 +273,8 @@ module Blocks_with_names : sig
     -> field_index:int
     -> expected_result_kind:K.t
     -> get_field_result) type_accessor
+
+  val unique_tag_and_size : t -> (Tag.Scannable.t * int) option
 end = struct
   (* XXX keep track of the names *)
   type t = ty_value array Tag.Scannable.Map.t
@@ -317,9 +319,12 @@ end = struct
       Ok map
     with Same_tag_different_arities -> Wrong
 
+  let unique_tag_and_size t =
+    Tag.Scannable.Map.get_singleton t
+
   let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
         : get_field_result =
-    match Tag.Scannable.Map.get_singleton t with
+    match unique_tag_and_size t with
     | None -> Invalid
     | Some (tag, fields) ->
       if field_index < 0 || field_index >= Array.length fields then
@@ -573,6 +578,7 @@ module Evaluated = struct
     (* CR-someday mshinwell: Improve the [Float_array] case when we end up with
        immutable float arrays at the user level. *)
     | Float_array of { lengths : Int.Set.t; }
+    | Strings of ...
 
   type t0 =
     | Values of t0_values
@@ -1309,7 +1315,57 @@ let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
         float: %a"
       print t
 
-(* XXX and for the other boxed numbers *)
+(* XXX and for the other boxed numbers, once the above compiles *)
+
+type lengths_of_arrays_or_blocks_proof =
+  | Proved of Int.Set.t Or_not_all_values_known.t
+  | Invalid
+
+let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
+  let result =
+    let t_evaluated = eval ~importer ~type_of_name t in
+    match t_evaluated with
+    | Values values ->
+      begin match values with
+      | Unknown
+      | Float_array Not_all_values_known -> Not_all_values_known
+      | Float_array { lengths; } -> Proved lengths
+      | Blocks_and_tagged_immediates (blocks, imms) ->
+        if not (Immediate.Set.is_empty imms) then
+          Invalid
+        else
+          begin match Blocks_with_names.unique_tag_and_size blocks with
+          | None -> Invalid
+          | Some (_tag, size) -> Proved (Int.Set.singleton size)
+          end
+      | Boxed_floats _
+      | Bottom
+      | Tagged_immediates_only _
+      | Boxed_int32s _
+      | Boxed_int64s _
+      | Boxed_nativeints _
+      | Closures _
+      | Set_of_closures _ -> Invalid
+      end
+    | Naked_immediates _
+    | Naked_floats _
+    | Naked_int32s _
+    | Naked_int64s _
+    | Naked_nativeints _ ->
+      Misc.fatal_errorf "Wrong kind for something claimed to be an array \
+          or structured block: %a"
+        print t
+  in
+  match result with
+  | Invalid -> Invalid
+  | Proved _ ->
+    if Config.ban_obj_dot_truncate then result
+    else Proved Not_all_values_known
+
+
+
+(* XXX Lengths of strings: for this, I think we can assume that Obj.truncate
+   is always illegal here *)
 
 (*
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =

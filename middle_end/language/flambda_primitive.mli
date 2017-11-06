@@ -44,9 +44,14 @@ type mutable_or_immutable = Immutable | Mutable
 
 type init_or_assign = Initialization | Assignment
 
-(* CR-someday mshinwell: Can we have an explicit bounds-checking primitive in
+(* CR mshinwell: Can we have an explicit bounds-checking primitive in
    Flambda, and then remove this flag?  It seems likely to be better for
-   optimization purposes. *)
+   optimization purposes.
+
+   mshinwell: Let's do this straight away.  We've got a lot of information in
+   our types which we can use to eliminate these accesses (e.g. sizes of
+   mutable strings and mutable arrays).
+*)
 type is_safe = Safe | Unsafe
 
 type comparison = Eq | Neq | Lt | Gt | Le | Ge
@@ -124,7 +129,6 @@ type unary_primitive =
       src : Flambda_kind.Standard_int.t;
       dst : Flambda_kind.Standard_int.t;
     }
-  (* CR xclerc: to support Lambda.{Pbintofint,Pintofbint,Pcvtbint} *)
   | Float_arith of unary_float_arith_op
   (* CR-someday mshinwell: We should maybe change int32.ml and friends to
      use a %-primitive instead of directly calling C stubs for conversions;
