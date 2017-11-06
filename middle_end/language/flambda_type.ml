@@ -17,6 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module F0 = Flambda0
+module K = Flambda_kind
 module Named = F0.Named
 
 module Float = Numbers.Float
@@ -27,13 +28,6 @@ include F0.Flambda_type
 
 let unknown_types_from_arity t =
   List.map (fun kind -> unknown kind Other) t
-
-(*
-let ty_value_is_bottom (ty : ty_value) =
-  match maybe_import_value_type ~import_type ty with
-  | Ok Bottom -> true
-  | Ok Unknown | Ok (Ok _) | Treat_as_unknown -> false
-*)
 
 let rename_variables ~importer t ~f =
   clean ~importer t (fun var -> Available_different_name (f var))
@@ -50,20 +44,6 @@ let this_tagged_bool_named b : Named.t * t =
     else Immediate.bool_false
   in
   Const (Tagged_immediate imm), this_tagged_immediate imm
-
-(*
-let this_boxed_float_named f dbg : Named.t * t =
-  Prim (Unary (Box_number Naked_float), this_boxed_float f
-
-let this_boxed_int32_named n dbg : Named.t * t =
-  Allocated_const (Boxed_int32 n), this_boxed_int32 n
-
-let this_boxed_int64_named n dbg : Named.t * t =
-  Allocated_const (Boxed_int64 n), this_boxed_int64 n
-
-let this_boxed_nativeint_named n dbg : Named.t * t =
-  Allocated_const (Boxed_nativeint n), this_boxed_nativeint n
-*)
 
 let this_untagged_immediate_named n : Named.t * t =
   Const (Untagged_immediate n), this_naked_immediate n
@@ -391,10 +371,18 @@ module Blocks = struct
     with Same_tag_different_arities -> Wrong
 end
 
+module Closures : sig
+  type t
+
+  val create : Closure.Set.t -> t Or_not_all_values_known.t
+end = struct
+
+end
+
 module Joined_set_of_closures : sig
   type t
 
-  val create : Set_of_closures.Set.t -> t
+  val create : Set_of_closures.Set.t -> t Or_not_all_values_known.t
 
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
@@ -627,12 +615,13 @@ module Evaluated = struct
     | Blocks_and_tagged_immediates of
         (Blocks.With_names.t * Immediate_with_name.Set.t)
           Or_not_all_values_known.t
+    | Tagged_immediates_only of
+        Immediate_with_name.Set.t Or_not_all_values_known.t
     | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Closures of
-        Joined_set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
+    | Closures of Joined_closures.t Or_not_all_values_known.t
     | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
 
   type t =
@@ -645,85 +634,123 @@ module Evaluated = struct
 
   let t_of_t0 (t0 : t0) : t =
     match t0 with
-    | Unknown -> Unknown
-    | Bottom -> Bottom
-    | Blocks_and_tagged_immediates (blocks, imms) ->
-      if Blocks.With_names.Map.is_empty blocks then
-        Tagged_immediates_only imms
-      else
-        Blocks_and_tagged_immediates blocks
-    | Boxed_floats fs -> Boxed_floats fs
-    | Boxed_int32s is -> Boxed_int32s is
-    | Boxed_int64s is -> Boxed_int64s is
-    | Boxed_nativeints is -> Boxed_nativeints is
-    | Naked_floats fs -> Boxed_floats fs
-    | Naked_int32s is -> Boxed_int32s is
-    | Naked_int64s is -> Boxed_int64s is
-    | Naked_nativeints is -> Boxed_nativeints is
-    | Closures Not_all_values_known -> Closures Not_all_values_known
-    | Closures (Exactly map) ->
-      let map = Closure_id.Map.map Joined_set_of_closures.create map in
-      Closures (Exactly map)
-    | Set_of_closures Not_all_values_known ->
-      Set_of_closures Not_all_values_known
-    | Set_of_closures (Exactly sets) ->
-      Set_of_closures (Exactly (Joined_set_of_closures.create sets))
+    | Values values ->
+      let values : t_values =
+        match values with
+        | Unknown -> Unknown
+        | Bottom -> Bottom
+        | Blocks_and_tagged_immediates (blocks, imms) ->
+          if Blocks.With_names.Map.is_empty blocks then
+            Tagged_immediates_only imms
+          else
+            Blocks_and_tagged_immediates blocks
+        | Boxed_floats fs -> Boxed_floats fs
+        | Boxed_int32s is -> Boxed_int32s is
+        | Boxed_int64s is -> Boxed_int64s is
+        | Boxed_nativeints is -> Boxed_nativeints is
+        | Closures Not_all_values_known -> Closures Not_all_values_known
+        | Closures (Exactly map) ->
+          Closures (Joined_set_of_closures.create map
+        | Set_of_closures Not_all_values_known ->
+          Set_of_closures Not_all_values_known
+        | Set_of_closures (Exactly sets) ->
+          Set_of_closures (Joined_set_of_closures.create sets)
+      in
+      Values values
+    | Naked_immediates is -> Naked_immediates is
+    | Naked_floats fs -> Naked_floats fs
+    | Naked_int32s is -> Naked_int32s is
+    | Naked_int64s is -> Naked_int64s is
+    | Naked_nativeints is -> Naked_nativeints is
+
+  let kind (t : t) =
+    match t with
+    | Values values ->
+      begin match values with
+      | Bottom
+      | Tagged_immediates_only _ -> K.value Can_scan
+      | Unknown
+      | Blocks_and_tagged_immediates _
+      | Boxed_floats _
+      | Boxed_int32s _
+      | Boxed_int64s _
+      | Boxed_nativeints _
+      | Naked_nativeints _
+      | Closures _
+      | Set_of_closures _ ->
+        (* CR mshinwell: For something like a statically-allocated set of
+           closures we may not need to scan it, and maybe in some cases it
+           might only be marked [Can_scan].  Are we at risk of this lub
+           check failing in that case? *)
+        K.value Must_scan
+      end
+    | Naked_immediates _ -> K.naked_immediate ()
+    | Naked_floats _ -> K.naked_float ()
+    | Naked_int32s _ -> K.naked_int32 ()
+    | Naked_int64s _ -> K.naked_int64 ()
+    | Naked_nativeints _ -> K.naked_nativeint ()
 
   let is_unknown (t : t) =
     match t with
-    | Unknown
-    | Blocks_and_tagged_immediates Not_all_values_known
-    | Boxed_floats Not_all_values_known
-    | Boxed_int32s Not_all_values_known
-    | Boxed_int64s Not_all_values_known
-    | Boxed_nativeints Not_all_values_known
+    | Values values ->
+      begin match values with
+      | Unknown
+      | Blocks_and_tagged_immediates Not_all_values_known
+      | Boxed_floats Not_all_values_known
+      | Boxed_int32s Not_all_values_known
+      | Boxed_int64s Not_all_values_known
+      | Boxed_nativeints Not_all_values_known
+      | Closures Not_all_values_known
+      | Set_of_closures Not_all_values_known -> true
+      | Bottom
+      | Blocks_and_tagged_immediates _
+      | Boxed_floats (Exactly _)
+      | Boxed_int32s (Exactly _)
+      | Boxed_int64s (Exactly _)
+      | Boxed_nativeints (Exactly _)
+      | Naked_nativeints (Exactly _)
+      | Closures (Exactly _)
+      | Set_of_closures (Exactly _) -> false
+      end
     | Naked_floats Not_all_values_known
     | Naked_int32s Not_all_values_known
     | Naked_int64s Not_all_values_known
-    | Naked_nativeints Not_all_values_known
-    | Closures Not_all_values_known
-    | Set_of_closures Not_all_values_known -> true
-    | Bottom
-    | Blocks_and_tagged_immediates _
-    | Boxed_floats (Exactly _)
-    | Boxed_int32s (Exactly _)
-    | Boxed_int64s (Exactly _)
-    | Boxed_nativeints (Exactly _)
+    | Naked_nativeints Not_all_values_known -> true
     | Naked_floats (Exactly _)
     | Naked_int32s (Exactly _)
-    | Naked_int64s (Exactly _)
-    | Naked_nativeints (Exactly _)
-    | Closures (Exactly _)
-    | Set_of_closures (Exactly _) -> false
+    | Naked_int64s (Exactly _) -> false
 
   let is_known t = not (is_unknown t)
 
   let is_bottom (t : t) =
     match t with
-    | Bottom
-    | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
-      Blocks.is_bottom blocks && Immediate.Set.empty imms
-    | Boxed_floats (Exactly fs) -> Float.Set.is_empty fs
-    | Boxed_int32s (Exactly is) -> Int32.Set.is_empty is
-    | Boxed_int64s (Exactly is) -> Int64.Set.is_empty is
-    | Boxed_nativeints (Exactly is) -> Nativeint.Set.is_empty is
+    | Values values ->
+      begin match values with
+      | Bottom
+      | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
+        Blocks.is_bottom blocks && Immediate.Set.empty imms
+      | Boxed_floats (Exactly fs) -> Float.Set.is_empty fs
+      | Boxed_int32s (Exactly is) -> Int32.Set.is_empty is
+      | Boxed_int64s (Exactly is) -> Int64.Set.is_empty is
+      | Boxed_nativeints (Exactly is) -> Nativeint.Set.is_empty is
+      | Closures (Exactly map) -> Closure_id.Map.is_empty map
+      | Unknown
+      | Blocks_and_tagged_immediates Not_all_values_known
+      | Boxed_floats Not_all_values_known
+      | Boxed_int32s Not_all_values_known
+      | Boxed_int64s Not_all_values_known
+      | Boxed_nativeints Not_all_values_known
+      | Closures Not_all_values_known
+      | Set_of_closures _ -> false
+      end
     | Naked_floats (Exactly fs) -> Float.Set.is_empty fs
     | Naked_int32s (Exactly is) -> Int32.Set.is_empty is
     | Naked_int64s (Exactly is) -> Int64.Set.is_empty is
     | Naked_nativeints (Exactly is) -> Nativeint.Set.is_empty is
-    | Closures (Exactly map) -> Closure_id.Map.is_empty map
-    | Unknown
-    | Blocks_and_tagged_immediates Not_all_values_known
-    | Boxed_floats Not_all_values_known
-    | Boxed_int32s Not_all_values_known
-    | Boxed_int64s Not_all_values_known
-    | Boxed_nativeints Not_all_values_known
     | Naked_floats Not_all_values_known
     | Naked_int32s Not_all_values_known
     | Naked_int64s Not_all_values_known
-    | Naked_nativeints Not_all_values_known
-    | Closures Not_all_values_known
-    | Set_of_closures _ -> false
+    | Naked_nativeints Not_all_values_known -> false
 
   let is_non_bottom t = not (is_bottom t)
 
@@ -1121,6 +1148,7 @@ type reification_result =
 
 let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       : reification_result =
+  let original_t = t in
   let t, canonical_name = resolve_aliases ~importer ~type_of_name t in
   let t_evaluated = eval ~importer ~type_of_name t in
   let try_name () : reification_result =
@@ -1173,10 +1201,13 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
     | Closures _
     | Set_of_closures _ -> try_name ()
   in
-  let kind =
-    ...
-  in
-  ...
+  let kind = Evaluated.kind t_evaluated in
+  if not (Flambda_kind.compatible kind ~if_used_at:expected_kind) then begin
+    Misc.fatal_errorf "Type %a, resolved to %a, cannot be used at kind %a"
+      print original_t
+      print t
+      K.print expected_kind
+  end;
   result, t
 
 (*

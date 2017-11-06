@@ -70,6 +70,15 @@ module Blocks : sig
   type t = private ty_value array Tag.Scannable.Map.t
 end
 
+module Joined_closures : sig
+  type t
+
+  (** The canonical name bound to the closures, if such exists. *)
+  val name : t -> Name.t option
+
+
+end
+
 module Joined_set_of_closures : sig
   type t
 
@@ -102,7 +111,7 @@ module Evaluated : sig
       and [is_bottom] functions should be used in preference to matching on
       values of type [t].
   *)
-  type t = private
+  type t_values = private
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
@@ -117,14 +126,16 @@ module Evaluated : sig
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Closures of Joined_closures.t Or_not_all_values_known.t
+    | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
+
+  type t = private
+    | Values of t0_values
     | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
     | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Closures of
-        Joined_set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
-    | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
 end
 
 (** Evaluate the given type to a canonical form. *)
