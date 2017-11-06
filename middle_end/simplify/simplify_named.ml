@@ -35,6 +35,22 @@ let type_for_const (const : Flambda.Const.t) =
   | Naked_int64 n -> T.this_naked_int64 n
   | Naked_nativeint n -> T.this_naked_nativeint n
 
+let type_for_simple env (simple : Simple.t)
+      : (Flambda.Named.t * Flambda_type.t) Flambda.Or_invalid.t
+  match simple with
+  | Const c -> Ok (Simple (Const c), type_for_const c)
+  | Name name ->
+    let ty = E.type_for_name env name in
+    let reified =
+      T.reify ~importer
+        ~type_for_name:(fun name -> E.type_for_name env name)
+        ty
+    in
+    match reified with
+    | Term (named, ty) -> Ok (named, ty)
+    | Cannot_reify -> Ok (Simple simple, ty)
+    | Invalid -> Invalid
+
 let type_for_allocated_const (const : Allocated_const.t) =
   match const with
   | Mutable_string { initial_value; } ->
