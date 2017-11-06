@@ -140,11 +140,7 @@ module type S = sig
     | Boxed_nativeint of ty_naked_nativeint
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
-    | Closure of {
-        (* CR pchambart: should Unknown or Bottom really be allowed here ? *)
-        set_of_closures : ty_value;
-        closure_id : Closure_id.t;
-      }
+    | Closure of closure
     | String of string_ty
     | Float_array of ty_naked_float array
 
@@ -191,6 +187,12 @@ module type S = sig
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
+  and closure = private {
+    (* CR pchambart: should Unknown or Bottom really be allowed here ? *)
+    set_of_closures : ty_value;
+    closure_id : Closure_id.t;
+  }
+
   and of_kind_naked_immediate =
     | Naked_immediate of Immediate.t
 
@@ -206,10 +208,20 @@ module type S = sig
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
 
+  module Closure : sig
+    type t = closure
+
+    include Identifiable.S with type t := t
+
+    val meet_sets : Set.t -> Set.t -> Set.t
+  end
+
   module Set_of_closures : sig
     type t = set_of_closures
 
     include Identifiable.S with type t := t
+
+    val meet_sets : Set.t -> Set.t -> Set.t
   end
 
   val print : Format.formatter -> t -> unit
@@ -394,6 +406,24 @@ module type S = sig
 
   (** Greatest lower bound of two types. *)
   val meet : (t -> t -> t) type_accessor
+
+  (** Follow chains of [Alias]es, loading .cmx files as necessary, until
+      either a [Normal] type is reached or a name cannot be resolved.
+
+      This function also returns the "canonical name" for the given type.
+      Canonical names are stated with reference to the input type [t] given
+      to this function.  There are three cases:
+
+      1. The returned type is [Normal]; following aliases from [t] it is
+         pointed at by an [Alias].  The canonical name is the name given in
+         that [Alias].
+
+      2. The returned type is [Normal]; following aliases from [t] it is not
+         pointed at by an [Alias].  There is no canonical name.
+
+      3. The returned type is [Alias] due to an unresolved name.  That name is
+         the canonical name. *)
+  val resolve_aliases : (t -> t * (Name.t option)) type_accessor
 
 (*
   type cleaning_spec =

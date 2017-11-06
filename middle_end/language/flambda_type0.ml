@@ -1191,49 +1191,6 @@ end) = struct
         import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty)
   end
 
-  let resolve_aliases (type a) ~importer_this_kind
-        ~(force_to_kind : t -> (a, _) ty)
-        ~(type_of_name : Name.t -> t option)
-        (ty : (a, _) ty)
-        : (a, _) resolved_ty * (Name.t option) =
-    let rec resolve_aliases names_seen ~canonical_name (ty : _ resolved_ty) =
-      match ty with
-      | Normal _ -> ty, canonical_name
-      | Alias name ->
-        if Name.Set.mem name names_seen then begin
-          (* CR-soon mshinwell: Improve message -- but this means passing the
-             printing functions to this function. *)
-          Misc.fatal_errorf "Loop on %a whilst resolving aliases"
-            Name.print name
-        end;
-        let canonical_name = Some name in
-        begin match type_of_name name with
-        | None ->
-          (* CR mshinwell: What should happen here?  Isn't this an unbound
-             name?
-             ... it might be due to a missing .cmx *)
-          ty, None
-        | Some t ->
-          let names_seen = Name.Set.add name names_seen in
-          let ty = force_to_kind t in
-          resolve_aliases names_seen ~canonical_name (importer_this_kind ty)
-        end
-    in
-    resolve_aliases Name.Set.empty ~canonical_name:None
-      (importer_this_kind ty)
-
-  let resolve_aliases_and_squash_unresolved_names ~importer_this_kind
-        ~force_to_kind ~type_of_name ~make_unknown ty =
-    let ty, canonical_name =
-      resolve_aliases ~importer_this_kind ~force_to_kind ~type_of_name ty
-    in
-    let ty =
-      match ty with
-      | Normal ty -> ty
-      | Alias _ -> make_unknown ()
-    in
-    ty, canonical_name
-
   let force_to_kind_value t =
     match t with
     | Value ty_value -> ty_value
@@ -1300,18 +1257,128 @@ end) = struct
       Misc.fatal_errorf "Type has wrong kind (expected [Naked_nativeint]): %a"
         print t
 
+  let ty_of_resolved_ty (ty : _ resolved_ty) : _ ty =
+    match ty with
+    | Normal ty -> Normal ((Resolved ty) : _ maybe_unresolved)
+    | Alias name -> Alias name
+
   let ty_of_resolved_ok_ty (ty : _ singleton_or_combination or_alias)
         : _ ty =
     match ty with
     | Normal ty -> Normal ((Resolved (Ok ty)) : _ maybe_unresolved)
     | Alias name -> Alias name
 
+  let resolve_aliases_on_ty (type a) ~importer_this_kind
+        ~(force_to_kind : t -> (a, _) ty)
+        ~(type_of_name : Name.t -> t option)
+        (ty : (a, _) ty)
+        : (a, _) resolved_ty * (Name.t option) =
+    let rec resolve_aliases names_seen ~canonical_name (ty : _ resolved_ty) =
+      match ty with
+      | Normal _ -> ty, canonical_name
+      | Alias name ->
+        if Name.Set.mem name names_seen then begin
+          (* CR-soon mshinwell: Improve message -- but this means passing the
+             printing functions to this function. *)
+          Misc.fatal_errorf "Loop on %a whilst resolving aliases"
+            Name.print name
+        end;
+        let canonical_name = Some name in
+        begin match type_of_name name with
+        | None ->
+          (* The type could not be obtained but we still wish to keep the
+             name (in case for example a .cmx file subsequently becomes
+             available). *)
+          ty, canonical_name
+        | Some t ->
+          let names_seen = Name.Set.add name names_seen in
+          let ty = force_to_kind t in
+          resolve_aliases names_seen ~canonical_name (importer_this_kind ty)
+        end
+    in
+    resolve_aliases Name.Set.empty ~canonical_name:None
+      (importer_this_kind ty)
+
+  let resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
+        ~force_to_kind ~type_of_name ~make_unknown ty =
+    let ty, canonical_name =
+      resolve_aliases ~importer_this_kind ~force_to_kind ~type_of_name ty
+    in
+    let ty =
+      match ty with
+      | Normal ty -> ty
+      | Alias _ -> make_unknown ()
+    in
+    ty, canonical_name
+
+  let resolve_aliases ~importer ~type_of_name t : t * (Name.t option) =
+    let module I = (val importer : Importer) in
+    match t with
+    | Value ty ->
+      let importer_this_kind = I.import_value_type_as_resolved_ty_value in
+      let force_to_kind = force_to_kind_value in
+      let resolved_ty, canonical_name =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
+          ~type_of_name ty
+      in
+      Value (ty_of_resolved_ty resolved_ty), canonical_name
+    | Naked_immediate ty ->
+      let importer_this_kind =
+        I.import_naked_immediate_type_as_resolved_ty_naked_immediate
+      in
+      let force_to_kind = force_to_kind_naked_immediate in
+      let resolved_ty, canonical_name =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
+          ~type_of_name ty
+      in
+      Naked_immediate (ty_of_resolved_ty resolved_ty), canonical_name
+    | Naked_float ty ->
+      let importer_this_kind =
+        I.import_naked_float_type_as_resolved_ty_naked_float
+      in
+      let force_to_kind = force_to_kind_naked_float in
+      let resolved_ty, canonical_name =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
+          ~type_of_name ty
+      in
+      Naked_float (ty_of_resolved_ty resolved_ty), canonical_name
+    | Naked_int32 ty ->
+      let importer_this_kind =
+        I.import_naked_int32_type_as_resolved_ty_naked_int32
+      in
+      let force_to_kind = force_to_kind_naked_int32 in
+      let resolved_ty, canonical_name =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
+          ~type_of_name ty
+      in
+      Naked_int32 (ty_of_resolved_ty resolved_ty), canonical_name
+    | Naked_int64 ty ->
+      let importer_this_kind =
+        I.import_naked_int64_type_as_resolved_ty_naked_int64
+      in
+      let force_to_kind = force_to_kind_naked_int64 in
+      let resolved_ty, canonical_name =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
+          ~type_of_name ty
+      in
+      Naked_int64 (ty_of_resolved_ty resolved_ty), canonical_name
+    | Naked_nativeint ty ->
+      let importer_this_kind =
+        I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
+      in
+      let force_to_kind = force_to_kind_naked_nativeint in
+      let resolved_ty, canonical_name =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
+          ~type_of_name ty
+      in
+      Naked_nativeint (ty_of_resolved_ty resolved_ty), canonical_name
+
   let scanning_ty_value ~importer ~type_of_name ty =
     let rec scanning_ty_value (ty : ty_value) : K.scanning =
       let module I = (val importer : Importer) in
       let importer_this_kind = I.import_value_type_as_resolved_ty_value in
       let ty : _ or_unknown_or_bottom =
-        resolve_aliases_and_squash_unresolved_names ~importer_this_kind
+        resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
           ~force_to_kind:force_to_kind_value
           ~type_of_name
           ~make_unknown:(fun () -> Unknown (Other, K.Must_scan))

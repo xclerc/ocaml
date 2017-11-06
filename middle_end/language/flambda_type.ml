@@ -596,6 +596,9 @@ module Closure_with_name = Make_with_name (Closure)
 module Set_of_closures_with_name = Make_with_name (Set_of_closures)
 
 module Evaluated = struct
+  (* We use a set-theoretic model that enables us to keep track of joins
+     right until the end (unlike meets, joins cannot be "evaluated early":
+     consider "({ 4 } join { 6 }) meet ({ 4 } join { 5 })"). *)
   type t0 =
     | Unknown
     | Bottom
@@ -611,9 +614,8 @@ module Evaluated = struct
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Closures of Closure_with_name.Set.t Or_not_all_values_known.t
-    | Set_of_closures of
-        Set_of_closures_with_name.Set.t Or_not_all_values_known.t
+    | Closures of Closure_with_name.Set.t
+    | Set_of_closures of Set_of_closures_with_name.Set.t
 
   type t =
     | Unknown
@@ -776,28 +778,9 @@ module Evaluated = struct
       | Wrong -> Unknown
       end
     | Closures closures1, Closures closures2 ->
-      begin match
-        Or_not_all_values_known.join (fun map1 map2 : _ or_wrong ->
-          let map =
-            Closure_id.Map.union_merge (Set_of_closures.join ~importer)
-              map1 map2
-          in
-          (* CR pchambart: Could this fail and not be a real error *)
-          Ok map)
-          closures1 closures2
-      with
-      | Ok closures -> Closures closures
-      | Wrong -> Unknown
-      end
+      Closures (Closure_with_name.Set.union closures1 closures2)
     | Set_of_closures set1, Set_of_closures set2 ->
-      begin match
-        Or_not_all_values_known.join (fun set1 set2 : _ or_wrong ->
-          Ok (Set_of_closures.join ~importer set1 set2))
-          set1 set2
-      with
-      | Ok set_of_closures -> Set_of_closures set_of_closures
-      | Wrong -> Unknown
-      end
+      Set_of_closures (Set_of_closures_with_name.union set1 set2)
     | (Blocks_and_tagged_immediates _
       | Boxed_floats _
       | Boxed_int32s _
@@ -864,28 +847,9 @@ module Evaluated = struct
       | Wrong -> Unknown
       end
     | Closures closures1, Closures closures2 ->
-      begin match
-        Or_not_all_values_known.meet (fun map1 map2 : _ or_wrong ->
-          let map =
-            Closure_id.Map.union_merge (Set_of_closures.meet ~importer)
-              map1 map2
-          in
-          (* CR pchambart: Could this fail and not be a real error *)
-          Ok map)
-          closures1 closures2
-      with
-      | Ok closures -> Closures closures
-      | Wrong -> Unknown
-      end
+      Closures (Closure_with_name.meet_sets closures1 closures2)
     | Set_of_closures set1, Set_of_closures set2 ->
-      begin match
-        Or_not_all_values_known.meet (fun set1 set2 : _ or_wrong ->
-          Ok (Set_of_closures.meet ~importer set1 set2))
-          set1 set2
-      with
-      | Ok set_of_closures -> Set_of_closures set_of_closures
-      | Wrong -> Unknown
-      end
+      Set_of_closures (Set_of_closures_with_name.meet_sets set1 set2)
     | (Blocks_and_tagged_immediates _
       | Boxed_floats _
       | Boxed_int32s _
@@ -1151,7 +1115,8 @@ type reification_result =
   | Invalid
 
 let reify ~importer ~type_of_name ~allow_free_variables t : reification_result =
-  let e, canonical_name = eval ~importer ~type_of_name t in
+  let t, canonical_name = resolve_aliases ~importer ~type_of_name t in
+  let t_evaluated = eval ~importer ~type_of_name t in
   let try_name () : reification_result =
     match canonical_name with
     | None -> Cannot_reify
@@ -1160,26 +1125,49 @@ let reify ~importer ~type_of_name ~allow_free_variables t : reification_result =
       | Var _ when not allow_free_variables -> Cannot_reify
       | Var _ | Symbol _ -> Term (Simple.name name)
   in
-  match eval ~importer ~type_of_name t with
-  | Bottom -> Invalid
-  | Tagged_immediates_only imms ->
-    begin match Immediate.Set.get_singleton imms with
-    | Some imm -> Term (Simple.immediate imm)
-    | None -> try_name ()
-    end
-  | Unknown
-  | Blocks_and_tagged_immediates _
-  | Tagged_immediates_only _
-  | Boxed_floats _
-  | Boxed_int32s _
-  | Boxed_int64s _
-  | Boxed_nativeints _
-  | Naked_floats Not_all_values_known
-  | Naked_int32s Not_all_values_known
-  | Naked_int64s Not_all_values_known
-  | Naked_nativeints Not_all_values_known
-  | Closures _
-  | Set_of_closures _ -> try_name ()
+  let result =
+    match t_evaluated with
+    | Bottom -> Invalid
+    | Tagged_immediates_only imms ->
+      begin match Immediate.Set.get_singleton imms with
+      | Some imm -> Term (Simple.immediate imm)
+      | None -> try_name ()
+      end
+    | Naked_floats (Exactly fs) ->
+      begin match Float.Set.get_singleton fs with
+      | Some f -> Term (Simple.const (Naked_float f))
+      | None -> try_name ()
+      end
+    | Naked_int32s (Exactly is) ->
+      begin match Int32.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Naked_int32 i))
+      | None -> try_name ()
+      end
+    | Naked_int64s (Exactly is) ->
+      begin match Int64.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Naked_int64 i))
+      | None -> try_name ()
+      end
+    | Naked_nativeints (Exactly is) ->
+      begin match Targetint.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Naked_nativeint i))
+      | None -> try_name ()
+      end
+    | Unknown
+    | Blocks_and_tagged_immediates _
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Naked_floats Not_all_values_known
+    | Naked_int32s Not_all_values_known
+    | Naked_int64s Not_all_values_known
+    | Naked_nativeints Not_all_values_known
+    | Closures _
+    | Set_of_closures _ -> try_name ()
+  in
+  result, t
 
 (*
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
