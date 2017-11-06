@@ -599,7 +599,8 @@ module Evaluated = struct
   (* We use a set-theoretic model that enables us to keep track of joins
      right until the end (unlike meets, joins cannot be "evaluated early":
      consider "({ 4 } join { 6 }) meet ({ 4 } join { 5 })"). *)
-  type t0 =
+
+  type t0_values =
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
@@ -609,34 +610,38 @@ module Evaluated = struct
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
-    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Closure_with_name.Set.t
     | Set_of_closures of Set_of_closures_with_name.Set.t
 
-  type t =
-    | Unknown
-    | Bottom
-    | Blocks_and_tagged_immediates of
-        (Blocks.With_names.t * Immediate_with_name.Set.t)
-          Or_not_all_values_known.t
-    | Tagged_immediates_only of
-        Immediate_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+  type t0 =
+    | Values of t0_values
     | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
     | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+
+  type t_values =
+    | Unknown
+    | Bottom
+    | Blocks_and_tagged_immediates of
+        (Blocks.With_names.t * Immediate_with_name.Set.t)
+          Or_not_all_values_known.t
+    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of
         Joined_set_of_closures.t Closure_id.Map.t Or_not_all_values_known.t
     | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
+
+  type t =
+    | Values of t0_values
+    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
+    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
+    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
+    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
 
   let t_of_t0 (t0 : t0) : t =
     match t0 with
@@ -1114,7 +1119,8 @@ type reification_result =
   | Cannot_reify
   | Invalid
 
-let reify ~importer ~type_of_name ~allow_free_variables t : reification_result =
+let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
+      : reification_result =
   let t, canonical_name = resolve_aliases ~importer ~type_of_name t in
   let t_evaluated = eval ~importer ~type_of_name t in
   let try_name () : reification_result =
@@ -1167,6 +1173,10 @@ let reify ~importer ~type_of_name ~allow_free_variables t : reification_result =
     | Closures _
     | Set_of_closures _ -> try_name ()
   in
+  let kind =
+    ...
+  in
+  ...
   result, t
 
 (*
@@ -1324,30 +1334,36 @@ type switch_branch_classification =
   | Can_be_taken
   | Must_be_taken
 
-let classify_switch_branch ~importer ~type_of_name t branch
+let classify_switch_branch ~importer ~type_of_name t ~scrutinee branch
       : switch_branch_classification =
   match eval ~importer ~type_of_name t with
-  | Unknown
-  | Tagged_immediates_only Not_all_values_known -> Can_be_taken
-  | Tagged_immediates_only (Exactly all_possible_values) ->
-    let all_possible_values =
-      Immediate.set_to_targetint_set all_possible_values
-    in
-    if Targetint.Set.mem branch all_possible_values then Must_be_taken
-    else Cannot_be_taken
-  | Bottom
-  | Blocks_and_tagged_immediates _
-  | Boxed_floats _
-  | Boxed_int32s _
-  | Boxed_int64s _
-  | Boxed_nativeints _
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Tagged_immediates_only Not_all_values_known -> Can_be_taken
+    | Tagged_immediates_only (Exactly all_possible_values) ->
+      let all_possible_values =
+        Immediate.set_to_targetint_set all_possible_values
+      in
+      if Targetint.Set.mem branch all_possible_values then Must_be_taken
+      else Cannot_be_taken
+    | Bottom
+    | Blocks_and_tagged_immediates _
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Set_of_closures _ -> Cannot_be_taken
+    end
   | Naked_immediates _
   | Naked_floats _
   | Naked_int32s _
   | Naked_int64s _
-  | Naked_nativeints _
-  | Closures _
-  | Set_of_closures _ -> Cannot_be_taken
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Switch on %a has wrong kind: the name must have kind \
+        [Value]"
+      Name.print scrutinee
 
 let as_or_more_precise _t ~than:_ =
   Misc.fatal_error "not yet implemented"

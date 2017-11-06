@@ -210,10 +210,14 @@ type reification_result =
 
     This function may be used to turn the types of [Simple] terms into their
     canonical representative terms (as it follows aliases in the environment).
+
+    If [expected_kind] does not match the kind of the term / type being
+    returned then a fatal error will be produced.
 *)
 val reify :
    : (t
   -> allow_free_variables:bool
+  -> expected_kind:Flambda_kind.t
   -> reification_result) type_accessor
 
 (*
@@ -316,7 +320,11 @@ type switch_branch_classification =
 (** Given the type of a [Switch] scrutinee, determine whether the case of
     the corresponding switch with the given integer label either cannot be
     taken, can be taken or will always be taken. *)
-val classify_switch_branch : t -> Targetint.t -> switch_branch_classification
+val classify_switch_branch
+   : (t
+  -> scrutinee:Name.t
+  -> Targetint.t
+  -> switch_branch_classification)
 
 (** Returns [true] iff the given type provides strictly more information
     about the corresponding value than the supplied type [than]. *)

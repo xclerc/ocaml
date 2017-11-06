@@ -2109,4 +2109,16 @@ end) = struct
   let join_ty_value = Join.combine_ty_value
 
   let meet = Meet.combine
+
+  module Closure = struct
+    type t = closure
+
+    let meet_list _list1 _list2 = assert false
+  end
+
+  module Set_of_closures = struct
+    type t = set_of_closures
+
+    let meet_list _list1 _list2 = assert false
+  end
 end

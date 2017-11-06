@@ -19,6 +19,10 @@
 (* CR mshinwell: Add invariant checks, including e.g. on the bodies of
    functions in types. *)
 
+(* CR-someday mshinwell: When disambiguation on GADT constructors works we
+   can probably use an existential to combine the "Naked_" kind constructors
+   into just one. *)
+
 module type S = sig
   type expr
 
@@ -91,6 +95,8 @@ module type S = sig
 
   and ('a, 'u) ty = ('a, 'u) maybe_unresolved or_alias
 
+  (* CR mshinwell: It's not quite clear to me that the extra complexity
+     introduced by having this static "resolved" distinction is worth it. *)
   and resolved_t = private
     | Value of resolved_ty_value
     | Naked_immediate of resolved_ty_naked_immediate
@@ -211,17 +217,13 @@ module type S = sig
   module Closure : sig
     type t = closure
 
-    include Identifiable.S with type t := t
-
-    val meet_sets : Set.t -> Set.t -> Set.t
+    val meet_lists : t list -> t list -> t list
   end
 
   module Set_of_closures : sig
     type t = set_of_closures
 
-    include Identifiable.S with type t := t
-
-    val meet_sets : Set.t -> Set.t -> Set.t
+    val meet_sets : t list -> t list -> t list
   end
 
   val print : Format.formatter -> t -> unit
