@@ -39,14 +39,6 @@ let rename_variables ~importer t ~f =
   clean ~importer t (fun var -> Available_different_name (f var))
 
 let unresolved_symbol sym =
-  (* CR mshinwell: check with Pierre about this comment.  I suspect
-     this is irrelevant now closure freshening has been removed *)
-  (* CR pchambart: This won't be strictly needed, but I remembered
-     using that to track some problems. This might helps generate more
-     precise inlining report: "couldn't inline because this cmx file
-     was missing" *)
-  (* We don't know anything, but we must remember that it comes
-     from another compilation unit in case it contains a closure. *)
   any_value Must_scan (Unresolved_value (Symbol sym))
 
 let this_tagged_immediate_named n : Named.t * t =
@@ -365,6 +357,17 @@ module Or_not_all_values_known = struct
     | Exactly _, Not_all_values_known
     | Not_all_values_known, Exactly _
     | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
+
+  let meet meet_contents t1 t2 : _ t or_wrong =
+    match t1, t2 with
+    | Exactly e1, Exactly e2 ->
+      begin match meet_contents e1 e2 with
+      | Ok e -> Ok (Exactly e)
+      | Wrong -> Wrong
+      end
+    | Exactly _, Not_all_values_known -> Ok t1
+    | Not_all_values_known, Exactly _ -> Ok t2
+    | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
 end
 
 module Blocks = struct
@@ -383,6 +386,25 @@ module Blocks = struct
               let fields =
                 Array.map2 (fun ty_value1 ty_value2 ->
                     join_ty_value ~importer ty_value1 ty_value2)
+                  fields1 fields2
+              in
+              Some fields)
+          t1 t2
+      in
+      Ok map
+    with Same_tag_different_arities -> Wrong
+
+  let meet ~importer t1 t2 : t or_wrong =
+    let exception Same_tag_different_arities in
+    try
+      let map =
+        Tag.Scannable.Map.union (fun _tag fields1 fields2 ->
+            if Array.length fields1 <> Array.length fields2 then
+              raise Same_tag_different_arities
+            else
+              let fields =
+                Array.map2 (fun ty_value1 ty_value2 ->
+                    meet_ty_value ~importer ty_value1 ty_value2)
                   fields1 fields2
               in
               Some fields)
@@ -420,55 +442,7 @@ end = struct
       Var_within_closure.Set.print
       (Var_within_closure.Map.keys t.closure_elements)
 
-  let join ~importer (t1 : t) (t2 : t) : t =
-    let set_of_closures_id_and_origin =
-      Or_not_all_values_known.join (fun (id1, origin1) (id2, origin2) ->
-          if Set_of_closures_id.equal id1 id2 then begin
-            (* CR mshinwell: We should think more about [Set_of_closures_id]
-               particularly in the context of recursive cases vs. the previous
-               version of a set of closures *)
-            assert (Set_of_closures_origin.equal origin1 origin2);
-            Ok (id1, origin1)
-          end else begin
-            Wrong
-          end)
-        t1.set_of_closures_id_and_origin
-        t2.set_of_closures_id_and_origin
-    in
-    match set_of_closures_id_and_origin with
-    | Ok ((Exactly _) as set_of_closures_id_and_origin) ->
-      (* If the [set_of_closures_id]s are the same, the result is eligible for
-         inlining, when the input function declarations are.
-
-         The real constraint is that the union of two functions is inlinable
-         if either of the two functions can be replaced by the other.  As such
-         our behaviour here is conservative but hopefully not too restrictive in
-         practice. *)
-      (* CR pchambart: this is too strong, but should hold in general.
-         It can be kept for now to help debugging *)
-      assert (t1.function_decls == t2.function_decls);
-      let closure_elements =
-        Var_within_closure.Map.union_merge (join_ty_value ~importer)
-          t1.closure_elements t2.closure_elements
-      in
-      let set_of_closures_var =
-        match t1.set_of_closures_var with
-        | Some var -> Some var
-        | None ->
-          match t2.set_of_closures_var with
-          | Some var -> Some var
-          | None -> None
-      in
-      { set_of_closures_var;
-        set_of_closures_id_and_origin;
-        function_decls = t1.function_decls;
-        closure_elements;
-      }
-    | Ok Not_all_values_known | Wrong ->
-      join_and_make_all_functions_non_inlinable ~importer t1 t2
-
-  let create sets : t =
-    ...
+  let of_set_of_closures (set : set_of_closures) : t =
     { set_of_closures_id_and_origin =
         Exactly (set.set_of_closures_id, set.set_of_closures_origin);
       function_decls = set.function_decls;
@@ -485,7 +459,7 @@ end = struct
           ~function_decls:t.function_decls
           ~closure_elements:t.closure_elements
       in
-      set_of_closures ?set_of_closures_var:t.set_of_closures_var set
+      set_of_closures set
 
   let make_non_inlinable_function_declaration (f : function_declaration)
         : function_declaration =
@@ -542,6 +516,66 @@ end = struct
       function_decls;
       closure_elements;
     }
+
+  let join ~importer (t1 : t) (t2 : t) : t =
+    let set_of_closures_id_and_origin =
+      Or_not_all_values_known.join (fun (id1, origin1) (id2, origin2) ->
+          if Set_of_closures_id.equal id1 id2 then begin
+            (* CR mshinwell: We should think more about [Set_of_closures_id]
+               particularly in the context of recursive cases vs. the previous
+               version of a set of closures *)
+            assert (Set_of_closures_origin.equal origin1 origin2);
+            Ok (id1, origin1)
+          end else begin
+            Wrong
+          end)
+        t1.set_of_closures_id_and_origin
+        t2.set_of_closures_id_and_origin
+    in
+    match set_of_closures_id_and_origin with
+    | Ok ((Exactly _) as set_of_closures_id_and_origin) ->
+      (* If the [set_of_closures_id]s are the same, the result is eligible for
+         inlining, when the input function declarations are.
+
+         The real constraint is that the union of two functions is inlinable
+         if either of the two functions can be replaced by the other.  As such
+         our behaviour here is conservative but hopefully not too restrictive in
+         practice. *)
+      (* CR pchambart: this is too strong, but should hold in general.
+         It can be kept for now to help debugging *)
+      assert (t1.function_decls == t2.function_decls);
+      let closure_elements =
+        Var_within_closure.Map.union_merge (join_ty_value ~importer)
+          t1.closure_elements t2.closure_elements
+      in
+      let set_of_closures_var =
+        match t1.set_of_closures_var with
+        | Some var -> Some var
+        | None ->
+          match t2.set_of_closures_var with
+          | Some var -> Some var
+          | None -> None
+      in
+      { set_of_closures_var;
+        set_of_closures_id_and_origin;
+        function_decls = t1.function_decls;
+        closure_elements;
+      }
+    | Ok Not_all_values_known | Wrong ->
+      join_and_make_all_functions_non_inlinable ~importer t1 t2
+
+  let create ~importer (sets : set_of_closures list) : t =
+    let sets = List.map of_set_of_closures sets in
+    match sets with
+    | [] ->
+      (* CR mshinwell: This is a bit strange: should there be a proper
+         constructor for "bottom" here? *)
+      { set_of_closures_id_and_origin = None;
+        function_decls = Closure_id.Map.empty;
+        closure_elements = Var_within_closure.Map.empty;
+      }
+    | set::sets ->
+      List.fold_left (fun result t -> join ~importer result t) set sets
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -656,6 +690,10 @@ module Evaluated = struct
     | Boxed_int32s Not_all_values_known
     | Boxed_int64s Not_all_values_known
     | Boxed_nativeints Not_all_values_known
+    | Naked_floats Not_all_values_known
+    | Naked_int32s Not_all_values_known
+    | Naked_int64s Not_all_values_known
+    | Naked_nativeints Not_all_values_known
     | Closures Not_all_values_known
     | Set_of_closures Not_all_values_known -> true
     | Bottom
@@ -664,6 +702,10 @@ module Evaluated = struct
     | Boxed_int32s (Exactly _)
     | Boxed_int64s (Exactly _)
     | Boxed_nativeints (Exactly _)
+    | Naked_floats (Exactly _)
+    | Naked_int32s (Exactly _)
+    | Naked_int64s (Exactly _)
+    | Naked_nativeints (Exactly _)
     | Closures (Exactly _)
     | Set_of_closures (Exactly _) -> false
 
@@ -678,6 +720,10 @@ module Evaluated = struct
     | Boxed_int32s (Exactly is) -> Int32.Set.is_empty is
     | Boxed_int64s (Exactly is) -> Int64.Set.is_empty is
     | Boxed_nativeints (Exactly is) -> Nativeint.Set.is_empty is
+    | Naked_floats (Exactly fs) -> Float.Set.is_empty fs
+    | Naked_int32s (Exactly is) -> Int32.Set.is_empty is
+    | Naked_int64s (Exactly is) -> Int64.Set.is_empty is
+    | Naked_nativeints (Exactly is) -> Nativeint.Set.is_empty is
     | Closures (Exactly map) -> Closure_id.Map.is_empty map
     | Unknown
     | Blocks_and_tagged_immediates Not_all_values_known
@@ -685,6 +731,10 @@ module Evaluated = struct
     | Boxed_int32s Not_all_values_known
     | Boxed_int64s Not_all_values_known
     | Boxed_nativeints Not_all_values_known
+    | Naked_floats Not_all_values_known
+    | Naked_int32s Not_all_values_known
+    | Naked_int64s Not_all_values_known
+    | Naked_nativeints Not_all_values_known
     | Closures Not_all_values_known
     | Set_of_closures _ -> false
 
@@ -773,6 +823,10 @@ module Evaluated = struct
       | Boxed_int32s _
       | Boxed_int64s _
       | Boxed_nativeints _
+      | Naked_floats _
+      | Naked_int32s _
+      | Naked_int64s _
+      | Naked_nativeints _
       | Closures _
       | Set_of_closures _), _ -> Unknown
 
@@ -857,6 +911,10 @@ module Evaluated = struct
       | Boxed_int32s _
       | Boxed_int64s _
       | Boxed_nativeints _
+      | Naked_floats _
+      | Naked_int32s _
+      | Naked_int64s _
+      | Naked_nativeints _
       | Closures _
       | Set_of_closures _), _ -> Bottom
 end
@@ -1120,19 +1178,30 @@ let reify ~importer t : Named.t option =
       begin match Immediate.Set.get_singleton imms with
       | Some imm ->
         if Tag.Scannable.Map.is_empty blocks then
-          Some (Flambda.Named.Const (Tagged_immediate imm))
+          Some (Named. (Tagged_immediate imm))
         else
           None
       | None -> None
       end
     | Not_all_values_known -> None
     end
+  | Naked_floats (Exactly fs) ->
+    begin match Float.Set.singleton fs with
+    | Some f -> Some (Flambda.Named.Const (Naked_float f))
+    | 
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _
   | Bottom -> None
   | Unknown
   | Boxed_floats _
   | Boxed_int32s _
   | Boxed_int64s _
   | Boxed_nativeints _
+  | Naked_floats Not_all_values_known
+  | Naked_int32s Not_all_values_known
+  | Naked_int64s Not_all_values_known
+  | Naked_nativeints Not_all_values_known
   | Closures _
   | Set_of_closures _ -> try_symbol ()
 
@@ -1156,6 +1225,10 @@ let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =
   | Boxed_int32s _
   | Boxed_int64s _
   | Boxed_nativeints _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _
   | Closures _ -> Wrong
 
 (*
