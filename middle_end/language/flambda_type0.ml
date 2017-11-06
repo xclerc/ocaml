@@ -1257,6 +1257,8 @@ end) = struct
       Misc.fatal_errorf "Type has wrong kind (expected [Naked_nativeint]): %a"
         print t
 
+  let t_of_ty_value (ty : ty_value) : t = Value ty_value
+
   let ty_of_resolved_ty (ty : _ resolved_ty) : _ ty =
     match ty with
     | Normal ty -> Normal ((Resolved ty) : _ maybe_unresolved)

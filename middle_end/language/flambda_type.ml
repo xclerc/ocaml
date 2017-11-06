@@ -213,49 +213,6 @@ type get_field_result =
   | Ok of t
   | Invalid _
 
-let get_field t ~field_index:i : get_field_result =
-  match descr t with
-  | Union union ->
-    begin match Unionable.flatten union with
-    | Ok (Block (_tag, fields)) ->
-      if i >= 0 && i < Array.length fields then begin
-        Ok fields.(i)
-      end else begin
-        (* This (unfortunately) cannot be a fatal error; it can happen if a
-           .cmx file is missing or with GADT code.  However for debugging the
-           compiler this can be a useful point to put a [Misc.fatal_errorf]. *)
-        Invalid _
-      end
-    | Ok (Int _ | Char _ | Constptr _) ->
-      (* Something seriously wrong is happening: either the user is doing
-         something exceptionally unsafe, or it is an unreachable branch.
-         We consider this as unreachable and mark the result accordingly. *)
-      Invalid _
-    | Bottom -> Invalid _
-    | Unknown -> Ok (unknown (Flambda_kind.value ()) Other)
-    end
-  (* CR-someday mshinwell: This should probably return Invalid _ in more
-     cases.  I added a couple more. *)
-  | Bottom -> Invalid _
-  | Float_array _ ->
-    (* For the moment we return "unknown" even for immutable arrays, since
-       it isn't possible for user code to project from an immutable array. *)
-    (* CR-someday mshinwell: If Leo's array's patch lands, then we can
-       change this, although it's probably not Pfield that is used to
-       do the projection. *)
-    Ok (unknown (Flambda_kind.value ()) Other)
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
-  | Immutable_string _ | Mutable_string _ | Boxed_number _ ->
-    (* The user is doing something unsafe. *)
-    Invalid _
-  | Set_of_closures _ | Closure _
-    (* These are used by [CamlinternalMod]. *)
-  | Load_lazily _ ->
-    (* These should have been resolved.
-       Note that the contents of blocks must always be of kind [Value]. *)
-    Ok (unknown (Flambda_kind.value ()) Other)
-  | Unknown (_block_kind, reason) ->
-    Ok (unknown (Flambda_kind.value ()) reason)
 
 let length_of_array t =
   match descr t with
@@ -327,12 +284,25 @@ module Or_not_all_values_known = struct
     | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
 end
 
-module Blocks = struct
+type get_field_result =
+  | Ok of t
+  | Invalid
+
+module Blocks_with_names : sig
+  type t = ty_value array Tag.Scannable.Map.t
+
+  val get_field
+     : (t
+    -> field_index:int
+    -> expected_result_kind:K.t
+    -> get_field_result) type_accessor
+end = struct
+  (* XXX keep track of the names *)
   type t = ty_value array Tag.Scannable.Map.t
 
   let is_bottom t = Tag.Scannable.Map.is_empty t
 
-  let join ~importer t1 t2 : t or_wrong =
+  let join ~importer ~type_of_name t1 t2 : t or_wrong =
     let exception Same_tag_different_arities in
     try
       let map =
@@ -342,7 +312,7 @@ module Blocks = struct
             else
               let fields =
                 Array.map2 (fun ty_value1 ty_value2 ->
-                    join_ty_value ~importer ty_value1 ty_value2)
+                    join_ty_value ~importer ~type_of_name ty_value1 ty_value2)
                   fields1 fields2
               in
               Some fields)
@@ -351,7 +321,7 @@ module Blocks = struct
       Ok map
     with Same_tag_different_arities -> Wrong
 
-  let meet ~importer t1 t2 : t or_wrong =
+  let meet ~importer ~type_of_name t1 t2 : t or_wrong =
     let exception Same_tag_different_arities in
     try
       let map =
@@ -361,7 +331,7 @@ module Blocks = struct
             else
               let fields =
                 Array.map2 (fun ty_value1 ty_value2 ->
-                    meet_ty_value ~importer ty_value1 ty_value2)
+                    meet_ty_value ~importer ~type_of_name ty_value1 ty_value2)
                   fields1 fields2
               in
               Some fields)
@@ -369,6 +339,27 @@ module Blocks = struct
       in
       Ok map
     with Same_tag_different_arities -> Wrong
+
+  let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
+        : get_field_result =
+    match Tag.Scannable.Map.get_singleton t with
+    | None -> Invalid
+    | Some (tag, fields) ->
+      if field_index < 0 || field_index >= Array.length fields then
+        Invalid
+      else
+        let ty = fields.(field_index) in
+        let scanning = scanning_ty_value ~importer ~type_of_name ty in
+        let actual_kind = K.value scanning in
+        if not (K.compatible actual_kind ~if_used_at:expected_result_kind)
+        then begin
+          Misc.fatal_errorf "Expected field %d of block with the following \
+              type to have kind %a, but it has kind %a: %a"
+            field_index
+            K.print expected_result_kind
+            K.print actual_kind
+        end;
+        t_of_ty_value ty
 end
 
 module Closures : sig
@@ -592,7 +583,7 @@ module Evaluated = struct
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks.With_names.t * Immediate_with_name.Set.t)
+        (Blocks_with_names.t * Immediate_with_name.Set.t)
           Or_not_all_values_known.t
     | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
@@ -613,7 +604,7 @@ module Evaluated = struct
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks.With_names.t * Immediate_with_name.Set.t)
+        (Blocks_with_names.t * Immediate_with_name.Set.t)
           Or_not_all_values_known.t
     | Tagged_immediates_only of
         Immediate_with_name.Set.t Or_not_all_values_known.t
@@ -632,36 +623,67 @@ module Evaluated = struct
     | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
 
-  let t_of_t0 (t0 : t0) : t =
-    match t0 with
-    | Values values ->
-      let values : t_values =
-        match values with
-        | Unknown -> Unknown
-        | Bottom -> Bottom
-        | Blocks_and_tagged_immediates (blocks, imms) ->
-          if Blocks.With_names.Map.is_empty blocks then
-            Tagged_immediates_only imms
-          else
-            Blocks_and_tagged_immediates blocks
-        | Boxed_floats fs -> Boxed_floats fs
-        | Boxed_int32s is -> Boxed_int32s is
-        | Boxed_int64s is -> Boxed_int64s is
-        | Boxed_nativeints is -> Boxed_nativeints is
-        | Closures Not_all_values_known -> Closures Not_all_values_known
-        | Closures (Exactly map) ->
-          Closures (Joined_set_of_closures.create map
-        | Set_of_closures Not_all_values_known ->
-          Set_of_closures Not_all_values_known
-        | Set_of_closures (Exactly sets) ->
-          Set_of_closures (Joined_set_of_closures.create sets)
-      in
-      Values values
-    | Naked_immediates is -> Naked_immediates is
-    | Naked_floats fs -> Naked_floats fs
-    | Naked_int32s is -> Naked_int32s is
-    | Naked_int64s is -> Naked_int64s is
-    | Naked_nativeints is -> Naked_nativeints is
+  let invariant t =
+    if !Clflags.flambda_invariant_checks then begin
+      match t with
+      | Values values ->
+        begin match values with
+        | Blocks_and_tagged_immediates (blocks, _imms) ->
+          if Blocks_with_names.is_empty blocks then begin
+            Misc.fatal_error "Use [Tagged_immediates_only] instead of \
+                [Blocks_and_tagged_immediates] when there are no blocks"
+          end
+        | Unknown
+        | Bottom
+        | Tagged_immediates_only _
+        | Boxed_floats _
+        | Boxed_int32s _
+        | Boxed_int64s _
+        | Boxed_nativeints _
+        | Closures _
+        | Set_of_closures _ -> ()
+        end
+      | Naked_immediates _
+      | Naked_floats _
+      | Naked_int32s _
+      | Naked_int64s _
+      | Naked_nativeints _ -> ()
+    end
+
+  let t_of_t0 (t0 : t0) =
+    let t : t =
+      match t0 with
+      | Values values ->
+        let values : t_values =
+          match values with
+          | Unknown -> Unknown
+          | Bottom -> Bottom
+          | Blocks_and_tagged_immediates (blocks, imms) ->
+            if Blocks.With_names.Map.is_empty blocks then
+              Tagged_immediates_only imms
+            else
+              Blocks_and_tagged_immediates blocks
+          | Boxed_floats fs -> Boxed_floats fs
+          | Boxed_int32s is -> Boxed_int32s is
+          | Boxed_int64s is -> Boxed_int64s is
+          | Boxed_nativeints is -> Boxed_nativeints is
+          | Closures Not_all_values_known -> Closures Not_all_values_known
+          | Closures (Exactly map) ->
+            Closures (Joined_set_of_closures.create map
+          | Set_of_closures Not_all_values_known ->
+            Set_of_closures Not_all_values_known
+          | Set_of_closures (Exactly sets) ->
+            Set_of_closures (Joined_set_of_closures.create sets)
+        in
+        Values values
+      | Naked_immediates is -> Naked_immediates is
+      | Naked_floats fs -> Naked_floats fs
+      | Naked_int32s is -> Naked_int32s is
+      | Naked_int64s is -> Naked_int64s is
+      | Naked_nativeints is -> Naked_nativeints is
+    in
+    invariant t;
+    t
 
   let kind (t : t) =
     match t with
@@ -1161,10 +1183,27 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
   in
   let result =
     match t_evaluated with
-    | Bottom -> Invalid
-    | Tagged_immediates_only imms ->
-      begin match Immediate.Set.get_singleton imms with
-      | Some imm -> Term (Simple.immediate imm)
+    | Values values ->
+      begin match values with
+      | Bottom -> Invalid
+      | Tagged_immediates_only imms ->
+        begin match Immediate.Set.get_singleton imms with
+        | Some imm -> Term (Simple.immediate imm)
+        | None -> try_name ()
+        end
+      | Unknown
+      | Blocks_and_tagged_immediates _
+      | Tagged_immediates_only _
+      | Boxed_floats _
+      | Boxed_int32s _
+      | Boxed_int64s _
+      | Boxed_nativeints _
+      | Closures _
+      | Set_of_closures _ -> try_name ()
+      end
+    | Naked_immediates (Exactly is) ->
+      begin match Immediate.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Naked_immediate i))
       | None -> try_name ()
       end
     | Naked_floats (Exactly fs) ->
@@ -1187,19 +1226,10 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       | Some i -> Term (Simple.const (Naked_nativeint i))
       | None -> try_name ()
       end
-    | Unknown
-    | Blocks_and_tagged_immediates _
-    | Tagged_immediates_only _
-    | Boxed_floats _
-    | Boxed_int32s _
-    | Boxed_int64s _
-    | Boxed_nativeints _
     | Naked_floats Not_all_values_known
     | Naked_int32s Not_all_values_known
     | Naked_int64s Not_all_values_known
-    | Naked_nativeints Not_all_values_known
-    | Closures _
-    | Set_of_closures _ -> try_name ()
+    | Naked_nativeints Not_all_values_known -> try_name ()
   in
   let kind = Evaluated.kind t_evaluated in
   if not (Flambda_kind.compatible kind ~if_used_at:expected_kind) then begin
@@ -1209,6 +1239,89 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       K.print expected_kind
   end;
   result, t
+
+let get_field ~importer ~type_of_name t ~field_index
+      ~(field_kind : Flambda_primitive.field_kind) : get_field_result =
+  let t_evaluated = eval ~importer ~type_of_name t in
+  let expected_result_kind =
+    match field_kind with
+    | Not_a_float -> K.value Must_scan
+    | Float -> K.naked_float ()
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown -> unknown expected_result_kind Other
+    | Blocks_and_tagged_immediates (blocks, imms) ->
+      if not (Immediate.Set.is_empty imms) then
+        Invalid
+      else
+        Blocks.get_field ~importer ~type_of_name blocks ~field_index
+          ~expected_result_kind
+    | Bottom
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Set_of_closures _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Cannot extract field %d from block with the following \
+        type (invalid kind): %a"
+      field_index
+      print t
+
+(* old code:
+let get_field t ~field_index:i : get_field_result =
+  match descr t with
+  | Union union ->
+    begin match Unionable.flatten union with
+    | Ok (Block (_tag, fields)) ->
+      if i >= 0 && i < Array.length fields then begin
+        Ok fields.(i)
+      end else begin
+        (* This (unfortunately) cannot be a fatal error; it can happen if a
+           .cmx file is missing or with GADT code.  However for debugging the
+           compiler this can be a useful point to put a [Misc.fatal_errorf]. *)
+        Invalid _
+      end
+    | Ok (Int _ | Char _ | Constptr _) ->
+      (* Something seriously wrong is happening: either the user is doing
+         something exceptionally unsafe, or it is an unreachable branch.
+         We consider this as unreachable and mark the result accordingly. *)
+      Invalid _
+    | Bottom -> Invalid _
+    | Unknown -> Ok (unknown (Flambda_kind.value ()) Other)
+    end
+  (* CR-someday mshinwell: This should probably return Invalid _ in more
+     cases.  I added a couple more. *)
+  | Bottom -> Invalid _
+  | Float_array _ ->
+    (* For the moment we return "unknown" even for immutable arrays, since
+       it isn't possible for user code to project from an immutable array. *)
+    (* CR-someday mshinwell: If Leo's array's patch lands, then we can
+       change this, although it's probably not Pfield that is used to
+       do the projection. *)
+    Ok (unknown (Flambda_kind.value ()) Other)
+  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
+  | Immutable_string _ | Mutable_string _ | Boxed_number _ ->
+    (* The user is doing something unsafe. *)
+    Invalid _
+  | Set_of_closures _ | Closure _
+    (* These are used by [CamlinternalMod]. *)
+  | Load_lazily _ ->
+    (* These should have been resolved.
+       Note that the contents of blocks must always be of kind [Value]. *)
+    Ok (unknown (Flambda_kind.value ()) Other)
+  | Unknown (_block_kind, reason) ->
+    Ok (unknown (Flambda_kind.value ()) reason)
+*)
 
 (*
 let prove_set_of_closures ~importer t : _ known_unknown_or_wrong =

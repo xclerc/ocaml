@@ -427,6 +427,8 @@ module type S = sig
          the canonical name. *)
   val resolve_aliases : (t -> t * (Name.t option)) type_accessor
 
+  val t_of_ty_value : ty_value -> t
+
 (*
   type cleaning_spec =
     | Available

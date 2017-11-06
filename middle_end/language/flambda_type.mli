@@ -66,7 +66,7 @@ module Or_not_all_values_known : sig
     | Not_all_values_known
 end
 
-module Blocks : sig
+module Blocks_with_names : sig
   type t = private ty_value array Tag.Scannable.Map.t
 end
 
@@ -76,7 +76,7 @@ module Joined_closures : sig
   (** The canonical name bound to the closures, if such exists. *)
   val name : t -> Name.t option
 
-
+  val to_type : t -> flambda_type
 end
 
 module Joined_set_of_closures : sig
@@ -115,7 +115,7 @@ module Evaluated : sig
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks.With_names.t * Immediate_with_name.Set.t)
+        (Blocks_with_names.t * Immediate_with_name.Set.t)
           Or_not_all_values_known.t
     (** For [Blocks_and_tagged_immediates] it is guaranteed that the
         "blocks" portion is non-empty.  (Otherwise [Tagged_immediates_only]
@@ -136,6 +136,9 @@ module Evaluated : sig
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+
+  (** The kind of the given evaluated type. *)
+  val kind : t -> Flambda_kind.t
 end
 
 (** Evaluate the given type to a canonical form. *)
@@ -184,17 +187,24 @@ val physically_same_values : t list -> bool
     input list must have length two. *)
 val physically_different_values : t list -> bool
 
+*)
+
 type get_field_result =
   | Ok of t
-  | Unreachable
+  | Invalid
 
-(** Given the type [t] of a value, expected to correspond to a block
-    (in the [Pmakeblock] sense of the word), and a field index then return
-    an appropriate type for that field of the block (or
-    [Unreachable] if the code with the type [t] is unreachable).
-    N.B. Not _all_ cases of unreachable code are returned as [Unreachable]. *)
-val get_field : t -> field_index:int -> get_field_result
+(** Given the type [t] of a value (expected to correspond to a block of kind
+    [Value]) and a field index then return an appropriate type for that field
+    of the block (or [Invalid]).  The expected kind of the field, as per
+    [Flambda_primitive.Block_load], must be provided.
+    N.B. Not _all_ cases of invalid code are returned as [Invalid]. *)
+val get_field
+   : (t
+  -> field_index:int
+  -> field_kind:Flambda_primitive.field_kind
+  -> get_field_result) type_accessor
 
+(*
 (** If the given Flambda type corresponds to an array, return the length
     of that array; in all other cases return [None]. *)
 val length_of_array : t -> int option
