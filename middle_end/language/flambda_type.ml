@@ -704,13 +704,9 @@ module Evaluated_first_stage = struct
         | Combination (Union, ty1, ty2) ->
           let t1 : t = Normal ty1 in
           let t2 : t = Normal ty2 in
-          let eval1, canonical_name1 =
-            eval_first_stage ~importer ~type_of_name t1
-          in
-          let eval2, canonical_name2 =
-            eval_first_stage ~importer ~type_of_name t2
-          in
-          let eval = Evaluated.join_first_stage eval1 eval2 in
+          let eval1, canonical_name1 = create ~importer ~type_of_name t1 in
+          let eval2, canonical_name2 = create ~importer ~type_of_name t2 in
+          let eval = join eval1 eval2 in
           let canonical_name =
             match canonical_name1, canonical_name2 with
             | Some name1, Some name2 when Name.equal name1 name2 ->
@@ -721,9 +717,9 @@ module Evaluated_first_stage = struct
         | Combination (Intersection, ty1, ty2) ->
           let t1 : t = Normal ty1 in
           let t2 : t = Normal ty2 in
-          let eval1, canonical_name1 = eval ~importer ~type_of_name t1 in
-          let eval2, canonical_name2 = eval ~importer ~type_of_name t2 in
-          let eval = Evaluated.meet eval1 eval2 in
+          let eval1, canonical_name1 = create ~importer ~type_of_name t1 in
+          let eval2, canonical_name2 = create ~importer ~type_of_name t2 in
+          let eval = meet eval1 eval2 in
           let canonical_name =
             match canonical_name1, canonical_name2 with
             | Some name1, Some name2 when Name.equal name1 name2 ->
@@ -739,9 +735,10 @@ module Evaluated_first_stage = struct
         match o with
         | Tagged_immediate ty ->
           begin match
-            prove_naked_immediate_from_ty_naked_immediate ~importer ty
+            prove_naked_immediate_from_ty_naked_immediate ~importer
+              ~type_of_name ty
           with
-          | Wrong -> Unknown
+          | Wrong -> Bottom
           | Unknown ->
             Blocks_and_tagged_immediates (
               Tag.Scannable.Map.empty, Not_all_values_known)
@@ -753,9 +750,9 @@ module Evaluated_first_stage = struct
           end
         | Boxed_float ty ->
           begin match
-            prove_naked_float_from_ty_naked_float ~importer ty
+            prove_naked_float_from_ty_naked_float ~importer ~type_of_name ty
           with
-          | Wrong -> Unknown
+          | Wrong -> Bottom
           | Unknown -> Boxed_floats Not_all_values_known
           | Known f ->
             let f = Float.create f canonical_name in
@@ -763,9 +760,9 @@ module Evaluated_first_stage = struct
           end
         | Boxed_int32 ty ->
           begin match
-            prove_naked_int32_from_ty_naked_int32 ~importer ty
+            prove_naked_int32_from_ty_naked_int32 ~importer ~type_of_name ty
           with
-          | Wrong -> Unknown
+          | Wrong -> Bottom
           | Unknown -> Boxed_int32s Not_all_values_known
           | Known i ->
             let i = Int32.create i canonical_name in
@@ -773,9 +770,9 @@ module Evaluated_first_stage = struct
           end
         | Boxed_int64 ty ->
           begin match
-            prove_naked_int64_from_ty_naked_int64 ~importer ty
+            prove_naked_int64_from_ty_naked_int64 ~importer ~type_of_name ty
           with
-          | Wrong -> Unknown
+          | Wrong -> Bottom
           | Unknown -> Boxed_int64s Not_all_values_known
           | Known i ->
             let i = Int64.create i canonical_name in
@@ -783,9 +780,10 @@ module Evaluated_first_stage = struct
           end
         | Boxed_nativeint ty ->
           begin match
-            prove_naked_nativeint_from_ty_naked_nativeint ~importer ty
+            prove_naked_nativeint_from_ty_naked_nativeint ~importer
+              ~type_of_name ty
           with
-          | Wrong -> Unknown
+          | Wrong -> Bottom
           | Unknown -> Boxed_nativeints Not_all_values_known
           | Known i ->
             let i = Targetint.create i canonical_name in
@@ -807,10 +805,13 @@ module Evaluated_first_stage = struct
           let length = Array.length fields in
           Float_arrays { lengths = Exactly (Int.Set.singleton length); }
       in
-      eval ~importer_this_kind:I.import_value_type_as_resolved_ty_value
-        ~force_to_kind:force_to_kind_value
-        ~eval_singleton
-        ty
+      let values =
+        eval ~importer_this_kind:I.import_value_type_as_resolved_ty_value
+          ~force_to_kind:force_to_kind_value
+          ~eval_singleton
+          ty
+      in
+      Values values
     | Naked_immediate ty ->
       let eval_singleton (o : of_kind_naked_immediate) : Evaluated.t0 =
         match o with
