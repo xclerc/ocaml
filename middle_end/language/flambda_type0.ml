@@ -171,10 +171,34 @@ end) = struct
     | Contents of string
     | Unknown_or_mutable
 
-  type string_ty = {
-    contents : string_contents;
-    size : int;
-  }
+  module String_info : sig
+    type t = {
+      contents : string_contents;
+      size : int;
+    }
+
+    include Identifiable.Make (struct
+      type nonrec t = t
+
+      let compare t1 t2 =
+        let c =
+          match t1.contents, t2.contents with
+          | Contents s1, Contents s2 -> String.compare s1 s2
+          | Unknown_or_mutable, Unknown_or_mutable -> 0
+          | Contents _, Unknown_or_mutable -> -1
+          | Unknown_or_mutable, Contents _ -> 1
+        in
+        if c <> 0 then c
+        else Pervasives.compare t1.size t2.size
+
+      let equal t1 t2 =
+        compare t1 t2 = 0
+
+      let hash t = Hashtbl.hash t
+
+      let print _ppf _t = Misc.fatal_error "Not yet implemented"
+    end)
+  end
 
   type 'a or_alias =
     | Normal of 'a
@@ -243,7 +267,7 @@ end) = struct
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
     | Closure of closure
-    | String of string_ty
+    | String of String_info.t
     | Float_array of ty_naked_float array
 
   and inlinable_function_declaration = {
@@ -703,23 +727,23 @@ end) = struct
     Value (Normal (Resolved (Ok (Singleton (Boxed_nativeint n)))))
 
   let this_immutable_string_as_ty_value str : ty_value =
-    let string_ty : string_ty =
+    let String_info.t : String_info.t =
       { contents = Contents str;
         size = String.length str;
       }
     in
-    Normal (Resolved (Ok (Singleton (String string_ty))))
+    Normal (Resolved (Ok (Singleton (String String_info.t))))
 
   let this_immutable_string str : t =
     Value (this_immutable_string_as_ty_value str)
 
   let mutable_string ~size : t =
-    let string_ty : string_ty =
+    let String_info.t : String_info.t =
       { contents = Unknown_or_mutable;
         size;
       }
     in
-    Value (Normal (Resolved (Ok (Singleton (String string_ty)))))
+    Value (Normal (Resolved (Ok (Singleton (String String_info.t)))))
 
   (* CR mshinwell: We need to think about these float array functions in
      conjunction with the 4.06 feature for disabling the float array

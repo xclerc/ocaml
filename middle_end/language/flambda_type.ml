@@ -14,13 +14,14 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+[@@@ocaml.warning "+a-4-30-40-41-42"]
 
 module F0 = Flambda0
 module K = Flambda_kind
 module Named = F0.Named
 
 module Float = Numbers.Float
+module Int = Numbers.Int
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 
@@ -69,18 +70,6 @@ let is_float_array t =
   | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
   | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
   | Unboxed_nativeint _ -> false
-
-let invalid_to_mutate t =
-  match descr t with
-  | Union unionable -> Unionable.invalid_to_mutate unionable
-  | Mutable_string _
-  (* CR mshinwell: Split Float_array into Immutable and Mutable? *)
-  | Float_array { contents = Contents _; size = _; } -> false
-  | Unknown _ | Bottom | Immutable_string _
-  | Float_array { contents = Unknown_or_mutable; size = _; }
-  | Set_of_closures _ | Closure _ | Load_lazily _ | Boxed_number _
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _
-  | Unboxed_nativeint _ -> true
 
 let type_for_bound_var (set_of_closures : set_of_closures) var =
   try Var_within_closure.Map.find var set_of_closures.bound_vars
@@ -255,6 +244,50 @@ module Or_not_all_values_known = struct
     | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
 end
 
+module Make_with_name (T : Identifiable.S) : sig
+  type t
+
+  val create : T.t -> Name.t option -> t
+
+  val thing : t -> T.t
+  val name : t -> Name.t option
+
+  include Identifiable.S with type t := t
+end = struct
+  include Identifiable.Make (struct
+    type t = T.t * Name.t option
+
+    let compare (t1, name1) (t2, name2) =
+      let c = T.compare t1 t2 in
+      if c <> 0 then c
+      else Misc.Stdlib.Option.compare Name.compare name1 name2
+
+    let equal t1 t2 =
+      compare t1 t2 = 0
+
+    let hash (t, name) =
+      Hashtbl.hash (T.hash t, Misc.Stdlib.Option.hash Name.hash name)
+
+    let print ppf (t, name) =
+      match name with
+      | None -> T.print ppf t
+      | Some name -> Format.fprintf ppf "%a = %a" T.print t Name.print name
+  end)
+
+  let create thing name = thing, name
+
+  let thing (thing, _name) = thing
+  let name (_thing, name) = name
+end
+
+module Naked_immediate_with_name = Make_with_name (Naked_immediate)
+module Float_with_name = Make_with_name (Float)
+module Int32_with_name = Make_with_name (Int32)
+module Int64_with_name = Make_with_name (Int64)
+module Targetint_with_name = Make_with_name (Targetint)
+module Closure_with_name = Make_with_name (Closure)
+module Set_of_closures_with_name = Make_with_name (Set_of_closures)
+
 type get_field_result =
   | Ok of t
   | Invalid
@@ -341,17 +374,63 @@ end
 module Joined_closures : sig
   type t
 
-  val create : Closure.Set.t -> t Or_not_all_values_known.t
+  val create : (Closure_with_name.t list -> t) type_accessor
+
+  val name : t -> Name.t option
+
+  val to_type : t -> flambda_type
 end = struct
   type t = {
-
+    (* CR mshinwell: I'm unsure whether we should be storing a name for
+       each possible [Closure_id.t]. *)
+    name : Name.t option;
+    sets_of_closures : ty_value Closure_id.Map.t;
   }
+
+  let of_closure (closure : Closure_with_name.t) : t =
+    let closure = Closure_with_name.thing closure in
+    let name = Closure_with_name.name closure in
+    let sets_of_closures =
+      Closure_id.Map.add closure.closure_id closure.sets_of_closures
+        Closure_id.Map.empty
+    in
+    { name;
+      sets_of_closures;
+    }
+
+  let join ~importer ~type_of_name t1 t2 =
+    let name =
+      match t1.name, t2.name with
+      | Some name1, Some name2 when Name.equal name1 name2 -> t1.name
+      | _, _ -> None
+    in
+    let sets_of_closures =
+      Closure_id.Map.union (fun closure_id ty_value1 ty_value2 ->
+          Some (join_ty_value ~importer ~type_of_name ty_value1 ty_value2))
+        t1.sets_of_closures
+        t2.sets_of_closures
+    in
+    { name;
+      sets_of_closures;
+    }
+
+  let create ~importer ~type_of_name (closures : closure list) =
+    let sets = List.map of_closure closures in
+    match sets with
+    | [] ->
+      { sets_of_closures = Closure_id.Map.empty; }
+    | set::sets ->
+      List.fold_left (fun result t ->
+          join ~importer ~type_of_name result t)
+        set sets
 end
 
-module Joined_set_of_closures : sig
+module Joined_sets_of_closures : sig
   type t
 
-  val create : Set_of_closures.Set.t -> t Or_not_all_values_known.t
+  val create : (Set_of_closures_with_name.t list -> t) type_accessor
+
+  val name : t -> Name.t option
 
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
@@ -359,6 +438,7 @@ module Joined_set_of_closures : sig
   val to_type : t -> flambda_type
 end = struct
   type t = {
+    name : Name.t option;
     set_of_closures_id_and_origin :
       (Set_of_closures_id.t * Set_of_closures_origin.t)
         Or_not_all_values_known.t;
@@ -376,8 +456,11 @@ end = struct
       Var_within_closure.Set.print
       (Var_within_closure.Map.keys t.closure_elements)
 
-  let of_set_of_closures (set : set_of_closures) : t =
-    { set_of_closures_id_and_origin =
+  let of_set_of_closures (set : Set_of_closures_with_name.t) : t =
+    let set = Set_of_closures_with_name.thing set in
+    let name = Set_of_closures_with_name.name set in
+    { name;
+      set_of_closures_id_and_origin =
         Exactly (set.set_of_closures_id, set.set_of_closures_origin);
       function_decls = set.function_decls;
       closure_elements = set.closure_elements;
@@ -426,7 +509,9 @@ end = struct
           print t1
           print t2
       end;
-      let result = List.map2 (join ~importer) f1_result f2_result in
+      let result =
+        List.map2 (join ~importer ~type_of_name) f1_result f2_result
+      in
       let decl =
         create_non_inlinable_function_declaration ~result
           ~direct_call_surrogate:None
@@ -441,12 +526,13 @@ end = struct
     in
     let closure_elements =
       Var_within_closure.Map.union_both
-        (fun ty -> any_value_as_ty_value (scanning_ty_value ~importer ty) Other)
-        (fun ty1 ty2 -> join_ty_value ~importer ty1 ty2)
+        (fun ty ->
+          let scanning = scanning_ty_value ~importer ~type_of_name ty in
+          any_value_as_ty_value scanning Other)
+        (fun ty1 ty2 -> join_ty_value ~importer ~type_of_name ty1 ty2)
         t1.closure_elements t2.closure_elements
     in
-    { set_of_closures_var = None;
-      set_of_closures_id_and_origin = Not_all_values_known;
+    { set_of_closures_id_and_origin = Not_all_values_known;
       function_decls;
       closure_elements;
     }
@@ -498,7 +584,7 @@ end = struct
     | Ok Not_all_values_known | Wrong ->
       join_and_make_all_functions_non_inlinable ~importer t1 t2
 
-  let create ~importer (sets : set_of_closures list) : t =
+  let create ~importer ~type_of_name (sets : set_of_closures list) : t =
     let sets = List.map of_set_of_closures sets in
     match sets with
     | [] ->
@@ -509,7 +595,9 @@ end = struct
         closure_elements = Var_within_closure.Map.empty;
       }
     | set::sets ->
-      List.fold_left (fun result t -> join ~importer result t) set sets
+      List.fold_left (fun result t ->
+          join ~importer ~type_of_name result t)
+        set sets
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -521,36 +609,6 @@ end = struct
       Set_of_closures
   end)
 end
-
-module Make_with_name (T : Identifiable.S) = struct
-  include Identifiable.Make (struct
-    type t = T.t * Name.t
-
-    let compare (t1, name1) (t2, name2) =
-      let c = T.compare t1 t2 in
-      if c <> 0 then c
-      else Misc.Stdlib.Option.compare Name.compare name1 name2
-
-    let equal t1 t2 =
-      compare t1 t2 = 0
-
-    let hash (t, name) =
-      Hashtbl.hash (T.hash t, Misc.Stdlib.Option.hash Name.hash name)
-
-    let print ppf (t, name) =
-      match name with
-      | None -> T.print ppf t
-      | Some name -> Format.fprintf ppf "%a = %a" T.print t Name.print name
-  end)
-end
-
-module Naked_immediate_with_name = Make_with_name (Naked_immediate)
-module Float_with_name = Make_with_name (Float)
-module Int32_with_name = Make_with_name (Int32)
-module Int64_with_name = Make_with_name (Int64)
-module Targetint_with_name = Make_with_name (Targetint)
-module Closure_with_name = Make_with_name (Closure)
-module Set_of_closures_with_name = Make_with_name (Set_of_closures)
 
 module Evaluated = struct
   (* We use a set-theoretic model that enables us to keep track of joins
@@ -567,12 +625,13 @@ module Evaluated = struct
     | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Closures of Closure_with_name.Set.t
-    | Set_of_closures of Set_of_closures_with_name.Set.t
+    | Closures of Closure_with_name.t list Or_not_all_values_known.t
+    | Set_of_closures of
+        Set_of_closures_with_name.t list Or_not_all_values_known.t
     (* CR-someday mshinwell: Improve the [Float_array] case when we end up with
        immutable float arrays at the user level. *)
-    | Float_array of { lengths : Int.Set.t; }
-    | Strings of ...
+    | Strings of String_info.Set.t Or_not_all_values_known.t
+    | Float_arrays of { lengths : Int.Set.t Or_not_all_values_known.t; }
 
   type t0 =
     | Values of t0_values
@@ -595,8 +654,9 @@ module Evaluated = struct
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
-    | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
-    | Float_array of { lengths : Int.Set.t; }
+    | Set_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
+    | Strings of String_info.Set.t Or_not_all_values_known.t
+    | Float_arrays of { lengths : Int.Set.t Or_not_all_values_known.t; }
 
   type t =
     | Values of t0_values
@@ -624,7 +684,9 @@ module Evaluated = struct
         | Boxed_int64s _
         | Boxed_nativeints _
         | Closures _
-        | Set_of_closures _ -> ()
+        | Set_of_closures _
+        | Strings
+        | Float_arrays -> ()
         end
       | Naked_immediates _
       | Naked_floats _
@@ -651,12 +713,14 @@ module Evaluated = struct
           | Boxed_int64s is -> Boxed_int64s is
           | Boxed_nativeints is -> Boxed_nativeints is
           | Closures Not_all_values_known -> Closures Not_all_values_known
-          | Closures (Exactly map) ->
-            Closures (Joined_set_of_closures.create map
+          | Closures (Exactly closures) ->
+            Closures (Joined_set_of_closures.create closures)
           | Set_of_closures Not_all_values_known ->
             Set_of_closures Not_all_values_known
           | Set_of_closures (Exactly sets) ->
             Set_of_closures (Joined_set_of_closures.create sets)
+          | Strings strs -> Strings strs
+          | Float_arrays { lengths; } -> Float_arrays { lengths; }
         in
         Values values
       | Naked_immediates is -> Naked_immediates is
@@ -683,6 +747,8 @@ module Evaluated = struct
       | Naked_nativeints _
       | Closures _
       | Set_of_closures _ ->
+      | Strings _ ->
+      | Float_arrays _ ->
         (* CR mshinwell: For something like a statically-allocated set of
            closures we may not need to scan it, and maybe in some cases it
            might only be marked [Can_scan].  Are we at risk of this lub
@@ -706,7 +772,9 @@ module Evaluated = struct
       | Boxed_int64s Not_all_values_known
       | Boxed_nativeints Not_all_values_known
       | Closures Not_all_values_known
-      | Set_of_closures Not_all_values_known -> true
+      | Set_of_closures Not_all_values_known
+      | Strings Not_all_values_known
+      | Float_arrays { lengths = Not_all_values_known; } -> true
       | Bottom
       | Blocks_and_tagged_immediates _
       | Boxed_floats (Exactly _)
@@ -715,7 +783,9 @@ module Evaluated = struct
       | Boxed_nativeints (Exactly _)
       | Naked_nativeints (Exactly _)
       | Closures (Exactly _)
-      | Set_of_closures (Exactly _) -> false
+      | Set_of_closures (Exactly _)
+      | Strings (Exactly _)
+      | Float_arrays { lengths = Exactly _; } -> false
       end
     | Naked_floats Not_all_values_known
     | Naked_int32s Not_all_values_known
@@ -739,6 +809,8 @@ module Evaluated = struct
       | Boxed_int64s (Exactly is) -> Int64.Set.is_empty is
       | Boxed_nativeints (Exactly is) -> Nativeint.Set.is_empty is
       | Closures (Exactly map) -> Closure_id.Map.is_empty map
+      | Strings (Exactly strs) -> String_info.Set.is_empty strs
+      | Float_arrays { lengths = Exactly lengths; } -> Int.Set.is_empty lengths
       | Unknown
       | Blocks_and_tagged_immediates Not_all_values_known
       | Boxed_floats Not_all_values_known
@@ -746,7 +818,9 @@ module Evaluated = struct
       | Boxed_int64s Not_all_values_known
       | Boxed_nativeints Not_all_values_known
       | Closures Not_all_values_known
-      | Set_of_closures _ -> false
+      | Set_of_closures _
+      | Strings Not_all_values_known
+      | Float_arrays { lengths = Not_all_values_known; } -> false
       end
     | Naked_floats (Exactly fs) -> Float.Set.is_empty fs
     | Naked_int32s (Exactly is) -> Int32.Set.is_empty is
@@ -818,6 +892,11 @@ module Evaluated = struct
       Closures (Closure_with_name.Set.union closures1 closures2)
     | Set_of_closures set1, Set_of_closures set2 ->
       Set_of_closures (Set_of_closures_with_name.union set1 set2)
+    | Strings strs1, Strings strs2 ->
+      Strings (String_info.Set.union strs1 strs2)
+    | Float_arrays { lengths = lengths1; },
+        Float_arrays { lengths = lengths2; } ->
+      Float_arrays { lengths = Int.Set.union lengths1 lengths2; }
     | (Blocks_and_tagged_immediates _
       | Boxed_floats _
       | Boxed_int32s _
@@ -828,7 +907,9 @@ module Evaluated = struct
       | Naked_int64s _
       | Naked_nativeints _
       | Closures _
-      | Set_of_closures _), _ -> Unknown
+      | Set_of_closures _,
+      | Strings _
+      | Float_arrays { lengths = _; }), _ -> Unknown
 
   let meet ~importer ~type_of_name t1 t2 =
     let meet_immediates =
@@ -887,6 +968,11 @@ module Evaluated = struct
       Closures (Closure_with_name.meet_sets closures1 closures2)
     | Set_of_closures set1, Set_of_closures set2 ->
       Set_of_closures (Set_of_closures_with_name.meet_sets set1 set2)
+    | Strings strs1, Strings strs2 ->
+      Strings (String_info.Set.inter strs1 strs2)
+    | Float_arrays { lengths = lengths1; },
+        Float_arrays { lengths = lengths2; } ->
+      Float_arrays { lengths = Int.Set.inter lengths1 lengths2; }
     | (Blocks_and_tagged_immediates _
       | Boxed_floats _
       | Boxed_int32s _
@@ -897,7 +983,9 @@ module Evaluated = struct
       | Naked_int64s _
       | Naked_nativeints _
       | Closures _
-      | Set_of_closures _), _ -> Bottom
+      | Set_of_closures _
+      | Strings _
+      | Float_arrays { lengths = _; }), _ -> Bottom
 end
 
 type 'a known_unknown_or_wrong =
@@ -1054,8 +1142,10 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           Set_of_closures (Exactly (
             Set_of_closures.create ~set_of_closures_var:resolved_ty_value.var
               set))
-        | String _
-        | Float_array _ -> Unknown
+        | String str -> String (Exactly (String_info.Set.singleton str))
+        | Float_array fields ->
+          let length = Array.length fields in
+          Float_arrays { lengths = Exactly (Int.Set.singleton length); }
       in
       eval ~importer_this_kind:I.import_value_type_as_resolved_ty_value
         ~force_to_kind:force_to_kind_value
@@ -1182,7 +1272,9 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       | Boxed_int64s _
       | Boxed_nativeints _
       | Closures _
-      | Set_of_closures _ -> try_name ()
+      | Set_of_closures _
+      | Strings _
+      | Float_arrays _ -> try_name ()
       end
     | Naked_immediates (Exactly is) ->
       begin match Immediate.Set.get_singleton is with
@@ -1243,7 +1335,7 @@ let get_field ~importer ~type_of_name t ~field_index
       else
         Blocks.get_field ~importer ~type_of_name blocks ~field_index
           ~expected_result_kind
-    | Float_array { lengths; } ->
+    | Float_arrays { lengths; } ->
       let if_used_at = Flambda_kind.naked_float () in
       (* CR mshinwell: If this check fails, maybe it's always a compiler bug?
          We need to check how the kind for [Block_load] is set in the frontend
@@ -1252,9 +1344,12 @@ let get_field ~importer ~type_of_name t ~field_index
         Invalid
       else
         let index_is_out_of_range_for_all_lengths =
-          Int.Set.for_all (fun length ->
-              field_index < 0 || field_index >= length)
-            lengths
+          match lengths with
+          | Not_all_values_known -> false
+          | Exactly lengths ->
+            Int.Set.for_all (fun length ->
+                field_index < 0 || field_index >= length)
+              lengths
         in
         if index_is_out_of_range_for_all_lengths then
           Invalid
@@ -1267,7 +1362,8 @@ let get_field ~importer ~type_of_name t ~field_index
     | Boxed_int64s _
     | Boxed_nativeints _
     | Closures _
-    | Set_of_closures _ -> Invalid
+    | Set_of_closures _
+    | Strings _ -> Invalid
     end
   | Naked_immediates _
   | Naked_floats _
@@ -1301,7 +1397,8 @@ let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
     | Boxed_nativeints _
     | Closures _
     | Set_of_closures _
-    | Float_array _ -> Invalid
+    | Strings _
+    | Float_arrays _ -> Invalid
     end
   | Naked_immediates _
   | Naked_floats _
@@ -1342,7 +1439,9 @@ let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
       | Boxed_int64s _
       | Boxed_nativeints _
       | Closures _
-      | Set_of_closures _ -> Invalid
+      | Set_of_closures _
+      | Strings _
+      | Float_arrays _ -> Invalid
       end
     | Naked_immediates _
     | Naked_floats _
@@ -1363,6 +1462,38 @@ let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
 
 (* XXX Lengths of strings: for this, I think we can assume that Obj.truncate
    is always illegal here *)
+
+type closures_proof =
+  | Proved of Joined_closures.t Not_all_values_known.t
+  | Invalid
+
+let prove_closures ~importer ~type_of_name t : closures_proof =
+  let t_evaluated = eval ~importer ~type_of_name t in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Closures Not_all_values_known -> Proved Not_all_values_known
+    | Closures (Exactly set) -> Proved (Exactly set)
+    | Bottom
+    | Boxed_floats _
+    | Blocks_and_tagged_immediates _
+    | Tagged_immediates_only _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Set_of_closures _
+    | Strings _
+    | Float_arrays _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be one or more \
+        closures: %a"
+      print t
 
 type set_of_closures_proof =
   | Proved of Joined_set_of_closures.t Not_all_values_known.t
@@ -1394,7 +1525,6 @@ let prove_set_of_closures ~importer ~type_of_name t : set_of_closures_proof =
     Misc.fatal_errorf "Wrong kind for something claimed to be a set of \
         closures: %a"
       print t
-
 
 (*
 type proved_scannable_block =
@@ -1431,82 +1561,6 @@ let reify_as_tagged_immediate t =
   | Boxed_int64s _
   | Boxed_nativeints _
   | Wrong -> None
-
-type reified_as_closure_allowing_unresolved =
-  | Wrong
-  | Unresolved of unresolved_value
-  | Unknown
-  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
-
-let reify_as_closure_allowing_unresolved t
-      : reified_as_closure_allowing_unresolved =
-  match descr t with
-  | Closure closure -> begin
-    match Closure_id.Map.get_singleton closure.potential_closures with
-    | None -> begin
-      try
-        let closures =
-          Closure_id.Map.map (fun (set_of_closures : t) ->
-            match set_of_closures.descr with
-            | Set_of_closures set_of_closures -> set_of_closures
-            | Closure _ | Union _ | Boxed_number _ | Unboxed_float _
-            | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
-            | Unknown _ | Bottom | Load_lazily _ | Immutable_string _
-            | Mutable_string _ | Float_array _  ->
-              raise Exit)
-            closure.potential_closures
-        in
-        Ok (closures, None, None)
-      with Exit -> Wrong
-      end
-    | Some (closure_id, set_of_closures) ->
-      match set_of_closures.descr with
-      | Set_of_closures value_set_of_closures ->
-        let symbol = match set_of_closures.symbol with
-          | Some (symbol, None) -> Some symbol
-          | None | Some (_, Some _) -> None
-        in
-        Ok (Closure_id.Map.singleton closure_id value_set_of_closures,
-            set_of_closures.var, symbol)
-      | Closure _ | Boxed_number _ | Unboxed_float _ | Unboxed_int32 _
-      | Unboxed_int64 _ | Unboxed_nativeint _ | Unknown _ | Bottom
-      | Load_lazily _ | Immutable_string _ | Mutable_string _ | Float_array _
-      | Union _ -> Wrong
-    end
-  | Unknown (_, Unresolved_value value) -> Unresolved value
-  | Set_of_closures _ | Union _ | Boxed_number _
-  | Unboxed_float _ | Unboxed_int32 _ | Unboxed_int64 _ | Unboxed_nativeint _
-  | Bottom | Load_lazily _ | Immutable_string _ | Mutable_string _
-  | Float_array _  -> Wrong
-  (* CR-soon mshinwell: This should be unwound once the reason for a value
-     being unknown can be correctly propagated through the export info. *)
-  | Unknown (_, Other) -> Unknown
-
-type strict_reified_as_closure_singleton =
-  | Wrong
-  | Ok of Closure_id.t * Variable.t option * Symbol.t option * set_of_closures
-
-let strict_reify_as_closure_singleton t
-  : strict_reified_as_closure_singleton =
-  match reify_as_closure_allowing_unresolved t with
-  | Ok (closures, set_of_closures_var, set_of_closures_symbol) -> begin
-    match Closure_id.Map.get_singleton closures with
-    | None -> Wrong
-    | Some (closure_id, value_set_of_closures) ->
-      Ok (closure_id, set_of_closures_var, set_of_closures_symbol,
-          value_set_of_closures)
-    end
-  | Wrong | Unknown | Unresolved _ -> Wrong
-
-type strict_reified_as_closure =
-  | Wrong
-  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
-
-let strict_reify_as_closure t : strict_reified_as_closure =
-  match reify_as_closure_allowing_unresolved t with
-  | Ok (closures, set_of_closures_var, set_of_closures_symbol) ->
-    Ok (closures, set_of_closures_var, set_of_closures_symbol)
-  | Wrong | Unknown | Unresolved _ -> Wrong
 *)
 
 type switch_branch_classification =
@@ -1534,15 +1588,17 @@ let classify_switch_branch ~importer ~type_of_name t ~scrutinee branch
     | Boxed_int64s _
     | Boxed_nativeints _
     | Closures _
-    | Set_of_closures _ -> Cannot_be_taken
+    | Set_of_closures _
+    | Strings _
+    | Float_arrays _ -> Cannot_be_taken
     end
   | Naked_immediates _
   | Naked_floats _
   | Naked_int32s _
   | Naked_int64s _
   | Naked_nativeints _ ->
-    Misc.fatal_errorf "Switch on %a has wrong kind: the name must have kind \
-        [Value]"
+    Misc.fatal_errorf "Switch on %a has wrong kind: the scrutinee must have \
+        kind [Value]"
       Name.print scrutinee
 
 let as_or_more_precise _t ~than:_ =

@@ -73,7 +73,7 @@ module Joined_closures : sig
   val to_type : t -> flambda_type
 end
 
-module Joined_set_of_closures : sig
+module Joined_sets_of_closures : sig
   type t
 
   (** The canonical name bound to the set of closures, if such exists. *)
@@ -121,8 +121,9 @@ module Evaluated : sig
     | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
-    | Set_of_closures of Joined_set_of_closures.t Or_not_all_values_known.t
-    | Float_array of { lengths : Int.Set.t; }
+    | Set_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
+    | Strings of String_info.Set.t Or_not_all_values_known.t
+    | Float_arrays of { lengths : Int.Set.t Or_not_all_values_known.t; }
 
   type t = private
     | Values of t0_values

@@ -54,10 +54,14 @@ module type S = sig
     | Contents of string
     | Unknown_or_mutable
 
-  type string_ty = private {
-    contents : string_contents;
-    size : int;
-  }
+  module String_info : sig
+    type t = private {
+      contents : string_contents;
+      size : int;
+    }
+
+    include Identifiable.S with type t := t
+  end
 
   type 'a or_alias = private
     | Normal of 'a
@@ -147,7 +151,7 @@ module type S = sig
     | Block of Tag.Scannable.t * (ty_value array)
     | Set_of_closures of set_of_closures
     | Closure of closure
-    | String of string_ty
+    | String of String_info.t
     | Float_array of ty_naked_float array
 
   and inlinable_function_declaration = private {
