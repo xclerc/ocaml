@@ -254,6 +254,8 @@ type get_field_result =
 module Blocks : sig
   type t = ty_value array Tag.Scannable.Map.t
 
+  val is_bottom : t -> bool
+
   val get_field
      : (t
     -> field_index:int
@@ -340,52 +342,41 @@ module Joined_closures : sig
 
   val create : (Closure.t list -> t) type_accessor
 
-  val name : t -> Name.t option
+  val is_bottom : t -> bool
+
   val sets_of_closures : t -> ty_value Closure_id.Map.t
 end = struct
   type t = {
-    (* CR mshinwell: I'm unsure whether we should be storing a name for
-       each possible [Closure_id.t]. *)
-    name : Name.t option;
     sets_of_closures : ty_value Closure_id.Map.t;
   }
 
-  let name t = t.name
   let sets_of_closures t = t.sets_of_closures
 
+  let is_bottom t = Closure_id.Map.is_empty t.sets_of_closures
+
   let of_closure (closure : Closure.t) : t =
-    let name = Closure.name closure in
-    let closure = Closure.thing closure in
     let sets_of_closures =
       Closure_id.Map.add closure.closure_id closure.set_of_closures
         Closure_id.Map.empty
     in
-    { name;
-      sets_of_closures;
+    { sets_of_closures;
     }
 
   let join ~importer ~type_of_name t1 t2 =
-    let name =
-      match t1.name, t2.name with
-      | Some name1, Some name2 when Name.equal name1 name2 -> t1.name
-      | _, _ -> None
-    in
     let sets_of_closures =
       Closure_id.Map.union (fun closure_id ty_value1 ty_value2 ->
           Some (join_ty_value ~importer ~type_of_name ty_value1 ty_value2))
         t1.sets_of_closures
         t2.sets_of_closures
     in
-    { name;
-      sets_of_closures;
+    { sets_of_closures;
     }
 
   let create ~importer ~type_of_name (closures : Closure.t list) =
     let sets = List.map of_closure closures in
     match sets with
     | [] ->
-      { name = None;
-        sets_of_closures = Closure_id.Map.empty;
+      { sets_of_closures = Closure_id.Map.empty;
       }
     | set::sets ->
       List.fold_left (fun result t ->
@@ -407,7 +398,6 @@ module Joined_sets_of_closures : sig
   val to_type : t -> flambda_type
 end = struct
   type t = {
-    name : Name.t option;
     set_of_closures_id_and_origin :
       (Set_of_closures_id.t * Set_of_closures_origin.t)
         Or_not_all_values_known.t;
@@ -415,7 +405,6 @@ end = struct
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
-  let name t = t.name
   let function_decls t = t.function_decls
   let closure_elements t = t.closure_elements
 
@@ -427,10 +416,7 @@ end = struct
       (Var_within_closure.Map.keys t.closure_elements)
 
   let of_set_of_closures (set : Set_of_closures.t) : t =
-    let name = Set_of_closures.name set in
-    let set = Set_of_closures.thing set in
-    { name;
-      set_of_closures_id_and_origin =
+    { set_of_closures_id_and_origin =
         Exactly (set.set_of_closures_id, set.set_of_closures_origin);
       function_decls = set.function_decls;
       closure_elements = set.closure_elements;
@@ -499,8 +485,7 @@ end = struct
         (fun ty1 ty2 -> join_ty_value ~importer ~type_of_name ty1 ty2)
         t1.closure_elements t2.closure_elements
     in
-    { name = None;
-      set_of_closures_id_and_origin = Not_all_values_known;
+    { set_of_closures_id_and_origin = Not_all_values_known;
       function_decls;
       closure_elements;
     }
@@ -537,16 +522,7 @@ end = struct
           (join_ty_value ~importer ~type_of_name)
           t1.closure_elements t2.closure_elements
       in
-      let name =
-        match t1.name with
-        | Some name -> Some name
-        | None ->
-          match t2.name with
-          | Some name -> Some name
-          | None -> None
-      in
-      { name;
-        set_of_closures_id_and_origin;
+      { set_of_closures_id_and_origin;
         function_decls = t1.function_decls;
         closure_elements;
       }
@@ -558,8 +534,7 @@ end = struct
     let sets = List.map of_set_of_closures sets in
     match sets with
     | [] ->
-      { name = None;
-        (* CR mshinwell: This is a bit strange: should there be a proper
+      { (* CR mshinwell: This is a bit strange: should there be a proper
            constructor for "bottom" here? *)
         set_of_closures_id_and_origin = Not_all_values_known;
         function_decls = Closure_id.Map.empty;
@@ -628,13 +603,14 @@ module Evaluated = struct
       match t with
       | Values values ->
         begin match values with
-        | Blocks_and_tagged_immediates (blocks, _imms) ->
-          if Blocks.is_empty blocks then begin
+        | Blocks_and_tagged_immediates (Exactly (blocks, _imms)) ->
+          if Blocks.is_bottom blocks then begin
             Misc.fatal_error "Use [Tagged_immediates_only] instead of \
                 [Blocks_and_tagged_immediates] when there are no blocks"
           end
         | Unknown
         | Bottom
+        | Blocks_and_tagged_immediates Not_all_values_known
         | Tagged_immediates_only _
         | Boxed_floats _
         | Boxed_int32s _
@@ -642,8 +618,8 @@ module Evaluated = struct
         | Boxed_nativeints _
         | Closures _
         | Set_of_closures _
-        | Strings
-        | Float_arrays -> ()
+        | Strings _
+        | Float_arrays _ -> ()
         end
       | Naked_immediates _
       | Naked_floats _
@@ -652,7 +628,7 @@ module Evaluated = struct
       | Naked_nativeints _ -> ()
     end
 
-  let t_of_t0 (t0 : t0) =
+  let t_of_t0 ~importer ~type_of_name (t0 : t0) =
     let t : t =
       match t0 with
       | Values values ->
@@ -660,22 +636,30 @@ module Evaluated = struct
           match values with
           | Unknown -> Unknown
           | Bottom -> Bottom
-          | Blocks_and_tagged_immediates (blocks, imms) ->
-            if Blocks.With_names.Map.is_empty blocks then
-              Tagged_immediates_only imms
+          | Blocks_and_tagged_immediates Not_all_values_known ->
+            Blocks_and_tagged_immediates Not_all_values_known
+          | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
+            if Blocks.is_bottom blocks then
+              Tagged_immediates_only (Exactly imms)
             else
-              Blocks_and_tagged_immediates blocks
+              Blocks_and_tagged_immediates (Exactly (blocks, imms))
           | Boxed_floats fs -> Boxed_floats fs
           | Boxed_int32s is -> Boxed_int32s is
           | Boxed_int64s is -> Boxed_int64s is
           | Boxed_nativeints is -> Boxed_nativeints is
           | Closures Not_all_values_known -> Closures Not_all_values_known
           | Closures (Exactly closures) ->
-            Closures (Joined_set_of_closures.create closures)
+            let joined =
+              Joined_closures.create ~importer ~type_of_name closures
+            in
+            Closures (Exactly joined)
           | Set_of_closures Not_all_values_known ->
             Set_of_closures Not_all_values_known
           | Set_of_closures (Exactly sets) ->
-            Set_of_closures (Joined_set_of_closures.create sets)
+            let joined =
+              Joined_sets_of_closures.create ~importer ~type_of_name sets
+            in
+            Set_of_closures (Exactly joined)
           | Strings strs -> Strings strs
           | Float_arrays { lengths; } -> Float_arrays { lengths; }
         in
@@ -701,7 +685,6 @@ module Evaluated = struct
       | Boxed_int32s _
       | Boxed_int64s _
       | Boxed_nativeints _
-      | Naked_nativeints _
       | Closures _
       | Set_of_closures _
       | Strings _
@@ -724,6 +707,7 @@ module Evaluated = struct
       begin match values with
       | Unknown
       | Blocks_and_tagged_immediates Not_all_values_known
+      | Tagged_immediates_only Not_all_values_known
       | Boxed_floats Not_all_values_known
       | Boxed_int32s Not_all_values_known
       | Boxed_int64s Not_all_values_known
@@ -733,24 +717,27 @@ module Evaluated = struct
       | Strings Not_all_values_known
       | Float_arrays { lengths = Not_all_values_known; } -> true
       | Bottom
-      | Blocks_and_tagged_immediates _
+      | Blocks_and_tagged_immediates (Exactly _)
+      | Tagged_immediates_only (Exactly _)
       | Boxed_floats (Exactly _)
       | Boxed_int32s (Exactly _)
       | Boxed_int64s (Exactly _)
       | Boxed_nativeints (Exactly _)
-      | Naked_nativeints (Exactly _)
       | Closures (Exactly _)
       | Set_of_closures (Exactly _)
       | Strings (Exactly _)
       | Float_arrays { lengths = Exactly _; } -> false
       end
+    | Naked_immediates Not_all_values_known
     | Naked_floats Not_all_values_known
     | Naked_int32s Not_all_values_known
     | Naked_int64s Not_all_values_known
     | Naked_nativeints Not_all_values_known -> true
+    | Naked_immediates (Exactly _)
     | Naked_floats (Exactly _)
     | Naked_int32s (Exactly _)
-    | Naked_int64s (Exactly _) -> false
+    | Naked_int64s (Exactly _)
+    | Naked_nativeints (Exactly _) -> false
 
   let is_known t = not (is_unknown t)
 
@@ -758,18 +745,21 @@ module Evaluated = struct
     match t with
     | Values values ->
       begin match values with
-      | Bottom
+      | Bottom -> true
       | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
-        Blocks.is_bottom blocks && Immediate.Set.empty imms
+        assert (not (Blocks.is_bottom blocks));  (* cf. [invariant]. *)
+        Immediate.Set.is_empty imms
+      | Tagged_immediates_only (Exactly imms) -> Immediate.Set.is_empty imms
       | Boxed_floats (Exactly fs) -> Float.Set.is_empty fs
       | Boxed_int32s (Exactly is) -> Int32.Set.is_empty is
       | Boxed_int64s (Exactly is) -> Int64.Set.is_empty is
-      | Boxed_nativeints (Exactly is) -> Nativeint.Set.is_empty is
-      | Closures (Exactly map) -> Closure_id.Map.is_empty map
+      | Boxed_nativeints (Exactly is) -> Targetint.Set.is_empty is
+      | Closures (Exactly closures) -> Joined_closures.is_bottom closures
       | Strings (Exactly strs) -> String_info.Set.is_empty strs
       | Float_arrays { lengths = Exactly lengths; } -> Int.Set.is_empty lengths
       | Unknown
       | Blocks_and_tagged_immediates Not_all_values_known
+      | Tagged_immediates_only Not_all_values_known
       | Boxed_floats Not_all_values_known
       | Boxed_int32s Not_all_values_known
       | Boxed_int64s Not_all_values_known
@@ -779,10 +769,12 @@ module Evaluated = struct
       | Strings Not_all_values_known
       | Float_arrays { lengths = Not_all_values_known; } -> false
       end
+    | Naked_immediates (Exactly is) -> Immediate.Set.is_empty is
     | Naked_floats (Exactly fs) -> Float.Set.is_empty fs
     | Naked_int32s (Exactly is) -> Int32.Set.is_empty is
     | Naked_int64s (Exactly is) -> Int64.Set.is_empty is
-    | Naked_nativeints (Exactly is) -> Nativeint.Set.is_empty is
+    | Naked_nativeints (Exactly is) -> Targetint.Set.is_empty is
+    | Naked_immediates Not_all_values_known
     | Naked_floats Not_all_values_known
     | Naked_int32s Not_all_values_known
     | Naked_int64s Not_all_values_known
@@ -792,83 +784,95 @@ module Evaluated = struct
 
   let useful t = is_known t && is_non_bottom t
 
-  let join ~importer ~type_of_name t1 t2 =
+  let join ~importer ~type_of_name t1 t2 : t =
     let join_immediates =
       Or_not_all_values_known.join (fun imms1 imms2 : _ or_wrong ->
         Ok (Immediate.join_set imms1  imms2))
     in
-    match t1, t2 with
-    | Unknown, _ | _, Unknown -> Unknown
-    | Bottom, _ -> t2
-    | _, Bottom -> t1
-    | Blocks_and_tagged_immediates (b1, imms1),
-        Blocks_and_tagged_immediates (b2, imms2) ->
-      let blocks_join = Blocks.join ~importer b1 b2 in
-      let imms_join = join_immediates imms1 imms2 in
-      begin match blocks_join, imms_join with
-      | Ok blocks, Ok imms -> Blocks_and_tagged_immediates (blocks, imms)
-      | Wrong, _ | _, Wrong -> Unknown
+    match values1, values2 with
+    | Values values1, Values values2 ->
+      begin match t1, t2 with
+      | Unknown, _ | _, Unknown -> Unknown
+      | Bottom, _ -> t2
+      | _, Bottom -> t1
+      | Blocks_and_tagged_immediates variant1,
+          Blocks_and_tagged_immediates variant2 ->
+        begin match
+          Or_not_all_values_known.join
+            (fun (b1, imms1) (b2, imms2) : _ or_wrong ->
+              let blocks_join = Blocks.join ~importer b1 b2 in
+              let imms_join = join_immediates imms1 imms2 in
+              begin match blocks_join, imms_join with
+              | Ok blocks, Ok imms ->
+                Blocks_and_tagged_immediates (blocks, imms)
+              | Wrong, _ | _, Wrong -> Unknown
+              end)
+        with
+        | Ok variant -> Blocks_and_tagged_immediates variant
+        | Wrong -> Unknown
+        end
+      | Boxed_floats fs1, Boxed_floats fs2 ->
+        begin match
+          Or_not_all_values_known.join (fun fs1 fs2 : Float.Set.t or_wrong ->
+             Ok (Float.Set.union fs1 fs2))
+            fs1 fs2
+        with
+        | Ok fs -> Boxed_floats fs
+        | Wrong -> Unknown
+        end
+      | Boxed_int32s is1, Boxed_int32s is2 ->
+        begin match
+          Or_not_all_values_known.join (fun is1 is2 : Int32.Set.t or_wrong ->
+              Ok (Int32.Set.union is1 is2))
+            is1 is2
+        with
+        | Ok is -> Boxed_int32s is
+        | Wrong -> Unknown
+        end
+      | Boxed_int64s is1, Boxed_int64s is2 ->
+        begin match
+          Or_not_all_values_known.join (fun is1 is2 : Int64.Set.t or_wrong ->
+              Ok (Int64.Set.union is1 is2))
+            is1 is2
+        with
+        | Ok is -> Boxed_int64s is
+        | Wrong -> Unknown
+        end
+      | Boxed_nativeints is1, Boxed_nativeints is2 ->
+        begin match
+          Or_not_all_values_known.join
+            (fun is1 is2 : Targetint.Set.t or_wrong ->
+              Ok (Targetint.Set.union is1 is2))
+            is1 is2
+        with
+        | Ok is -> Boxed_nativeints is
+        | Wrong -> Unknown
+        end
+      | Closures closures1, Closures closures2 ->
+        Closures (Closure.Set.union closures1 closures2)
+      | Set_of_closures set1, Set_of_closures set2 ->
+        Set_of_closures (Set_of_closures.union set1 set2)
+      | Strings strs1, Strings strs2 ->
+        Strings (String_info.Set.union strs1 strs2)
+      | Float_arrays { lengths = lengths1; },
+          Float_arrays { lengths = lengths2; } ->
+        Float_arrays { lengths = Int.Set.union lengths1 lengths2; }
+      | (Blocks_and_tagged_immediates _
+        | Boxed_floats _
+        | Boxed_int32s _
+        | Boxed_int64s _
+        | Boxed_nativeints _
+        | Closures _
+        | Set_of_closures _
+        | Strings _
+        | Float_arrays { lengths = _; }), _ -> Unknown
       end
-    | Boxed_floats fs1, Boxed_floats fs2 ->
-      begin match
-        Or_not_all_values_known.join (fun fs1 fs2 : Float.Set.t or_wrong ->
-           Ok (Float.Set.union fs1 fs2))
-          fs1 fs2
-      with
-      | Ok fs -> Boxed_floats fs
-      | Wrong -> Unknown
-      end
-    | Boxed_int32s is1, Boxed_int32s is2 ->
-      begin match
-        Or_not_all_values_known.join (fun is1 is2 : Int32.Set.t or_wrong ->
-            Ok (Int32.Set.union is1 is2))
-          is1 is2
-      with
-      | Ok is -> Boxed_int32s is
-      | Wrong -> Unknown
-      end
-    | Boxed_int64s is1, Boxed_int64s is2 ->
-      begin match
-        Or_not_all_values_known.join (fun is1 is2 : Int64.Set.t or_wrong ->
-            Ok (Int64.Set.union is1 is2))
-          is1 is2
-      with
-      | Ok is -> Boxed_int64s is
-      | Wrong -> Unknown
-      end
-    | Boxed_nativeints is1, Boxed_nativeints is2 ->
-      begin match
-        Or_not_all_values_known.join (fun is1 is2 : Targetint.Set.t or_wrong ->
-            Ok (Targetint.Set.union is1 is2))
-          is1 is2
-      with
-      | Ok is -> Boxed_nativeints is
-      | Wrong -> Unknown
-      end
-    | Closures closures1, Closures closures2 ->
-      Closures (Closure.Set.union closures1 closures2)
-    | Set_of_closures set1, Set_of_closures set2 ->
-      Set_of_closures (Set_of_closures.union set1 set2)
-    | Strings strs1, Strings strs2 ->
-      Strings (String_info.Set.union strs1 strs2)
-    | Float_arrays { lengths = lengths1; },
-        Float_arrays { lengths = lengths2; } ->
-      Float_arrays { lengths = Int.Set.union lengths1 lengths2; }
-    | (Blocks_and_tagged_immediates _
-      | Boxed_floats _
-      | Boxed_int32s _
-      | Boxed_int64s _
-      | Boxed_nativeints _
-      | Naked_floats _
-      | Naked_int32s _
-      | Naked_int64s _
-      | Naked_nativeints _
-      | Closures _
-      | Set_of_closures _
-      | Strings _
-      | Float_arrays { lengths = _; }), _ -> Unknown
+    | Naked_floats _
+    | Naked_int32s _
+    | Naked_int64s _
+    | Naked_nativeints _
 
-  let meet ~importer ~type_of_name t1 t2 =
+  let meet ~importer ~type_of_name t1 t2 : t =
     let meet_immediates =
       Or_not_all_values_known.meet (fun imms1 imms2 : _ or_wrong ->
         Ok (Immediate.meet_set imms1  imms2))
