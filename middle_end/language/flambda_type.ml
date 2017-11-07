@@ -338,7 +338,7 @@ end = struct
         : get_field_result =
     match Tag.Scannable.Map.get_singleton t with
     | None -> Invalid
-    | Some (tag, fields) ->
+    | Some (_tag, fields) ->
       if field_index < 0 || field_index >= Array.length fields then
         Invalid
       else
@@ -450,10 +450,6 @@ module Evaluated_first_stage = struct
 
     let combine_values ~importer ~type_of_name
           (t1 : t_values) (t2 : t_values) : t_values =
-      let combine_immediates =
-        P.combine_or_not_all_values_known (fun imms1 imms2 : _ or_wrong ->
-          Ok (P.combine_immediate_sets imms1 imms2))
-      in
       match t1, t2 with
       | Unknown, _ -> if P.is_join then Unknown else t2
       | _, Unknown -> if P.is_join then Unknown else t1
@@ -588,7 +584,7 @@ module Evaluated_first_stage = struct
         | Float_arrays { lengths = _; }), _ ->
           absorbing_element_for_values
 
-    let combine_naked_immediates ~importer ~type_of_name
+    let combine_naked_immediates ~importer:_ ~type_of_name:_
           (t1 : t_naked_immediates) (t2 : t_naked_immediates)
           : t_naked_immediates =
       begin match
@@ -600,7 +596,7 @@ module Evaluated_first_stage = struct
       | Wrong -> assert false
       end
 
-    let combine_naked_floats ~importer ~type_of_name
+    let combine_naked_floats ~importer:_ ~type_of_name:_
           (t1 : t_naked_floats) (t2 : t_naked_floats)
           : t_naked_floats =
       begin match
@@ -612,7 +608,7 @@ module Evaluated_first_stage = struct
       | Wrong -> assert false
       end
 
-    let combine_naked_int32s ~importer ~type_of_name
+    let combine_naked_int32s ~importer:_ ~type_of_name:_
           (t1 : t_naked_int32s) (t2 : t_naked_int32s)
           : t_naked_int32s =
       begin match
@@ -624,7 +620,7 @@ module Evaluated_first_stage = struct
       | Wrong -> assert false
       end
 
-    let combine_naked_int64s ~importer ~type_of_name
+    let combine_naked_int64s ~importer:_ ~type_of_name:_
           (t1 : t_naked_int64s) (t2 : t_naked_int64s)
           : t_naked_int64s =
       begin match
@@ -636,7 +632,7 @@ module Evaluated_first_stage = struct
       | Wrong -> assert false
       end
 
-    let combine_naked_nativeints ~importer ~type_of_name
+    let combine_naked_nativeints ~importer:_ ~type_of_name:_
           (t1 : t_naked_nativeints) (t2 : t_naked_nativeints)
           : t_naked_nativeints =
       begin match
@@ -925,6 +921,8 @@ module Joined_closures : sig
   val sets_of_closures : t -> ty_value Closure_id.Map.t
 
   val print : Format.formatter -> t -> unit
+
+  val to_type : t -> flambda_type
 end = struct
   type t = {
     sets_of_closures : ty_value Closure_id.Map.t;
@@ -948,7 +946,7 @@ end = struct
 
   let join ~importer ~type_of_name t1 t2 =
     let sets_of_closures =
-      Closure_id.Map.union (fun closure_id ty_value1 ty_value2 ->
+      Closure_id.Map.union (fun _closure_id ty_value1 ty_value2 ->
           Some (join_ty_value ~importer ~type_of_name ty_value1 ty_value2))
         t1.sets_of_closures
         t2.sets_of_closures
@@ -1512,11 +1510,13 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       print t
       K.print expected_kind
   end;
-  result, t
+  result
 
 let get_field ~importer ~type_of_name t ~field_index
       ~(field_kind : Flambda_primitive.field_kind) : get_field_result =
-  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
   let expected_result_kind =
     (* CR mshinwell: This should move to a new module called
        [Flambda_primitive.Field_kind] *)
@@ -1527,8 +1527,8 @@ let get_field ~importer ~type_of_name t ~field_index
   match t_evaluated with
   | Values values ->
     begin match values with
-    | Unknown -> unknown expected_result_kind Other
-    | Blocks_and_tagged_immediates (blocks, imms) ->
+    | Unknown -> Ok (unknown expected_result_kind Other)
+    | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
       if not (Immediate.Set.is_empty imms) then
         Invalid
       else
@@ -1555,6 +1555,7 @@ let get_field ~importer ~type_of_name t ~field_index
         else
           Ok (unknown (Flambda_kind.naked_float ()) Other)
     | Bottom
+    | Blocks_and_tagged_immediates _
     | Tagged_immediates_only _
     | Boxed_floats _
     | Boxed_int32s _
@@ -1579,15 +1580,17 @@ type boxed_float_proof =
   | Invalid
 
 let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
-  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
   match t_evaluated with
   | Values values ->
     begin match values with
     | Unknown
-    | Boxed_floats Not_all_values_known -> Not_all_values_known
+    | Boxed_floats Not_all_values_known -> Proved Not_all_values_known
     | Boxed_floats (Exactly fs) ->
       if Float.Set.is_empty fs then Invalid
-      else Proved fs
+      else Proved (Exactly fs)
     | Blocks_and_tagged_immediates _
     | Bottom
     | Tagged_immediates_only _
@@ -1608,39 +1611,150 @@ let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
         float: %a"
       print t
 
-(* XXX and for the other boxed numbers, once the above compiles *)
+type boxed_int32_proof =
+  | Proved of Int32.Set.t Or_not_all_values_known.t
+  | Invalid
+
+let prove_boxed_int32 ~importer ~type_of_name t : boxed_int32_proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Boxed_int32s Not_all_values_known -> Proved Not_all_values_known
+    | Boxed_int32s (Exactly fs) ->
+      if Int32.Set.is_empty fs then Invalid
+      else Proved (Exactly fs)
+    | Blocks_and_tagged_immediates _
+    | Bottom
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _
+    | Float_arrays _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a boxed \
+        int32: %a"
+      print t
+
+type boxed_int64_proof =
+  | Proved of Int64.Set.t Or_not_all_values_known.t
+  | Invalid
+
+let prove_boxed_int64 ~importer ~type_of_name t : boxed_int64_proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Boxed_int64s Not_all_values_known -> Proved Not_all_values_known
+    | Boxed_int64s (Exactly fs) ->
+      if Int64.Set.is_empty fs then Invalid
+      else Proved (Exactly fs)
+    | Blocks_and_tagged_immediates _
+    | Bottom
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_nativeints _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _
+    | Float_arrays _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a boxed \
+        int64: %a"
+      print t
+
+type boxed_nativeint_proof =
+  | Proved of Targetint.Set.t Or_not_all_values_known.t
+  | Invalid
+
+let prove_boxed_nativeint ~importer ~type_of_name t : boxed_nativeint_proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Boxed_nativeints Not_all_values_known -> Proved Not_all_values_known
+    | Boxed_nativeints (Exactly fs) ->
+      if Targetint.Set.is_empty fs then Invalid
+      else Proved (Exactly fs)
+    | Blocks_and_tagged_immediates _
+    | Bottom
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _
+    | Float_arrays _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a boxed \
+        nativeint: %a"
+      print t
 
 type lengths_of_arrays_or_blocks_proof =
   | Proved of Int.Set.t Or_not_all_values_known.t
   | Invalid
 
-let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
+let lengths_of_arrays_or_blocks ~importer ~type_of_name t
+      : lengths_of_arrays_or_blocks_proof =
   let result =
-    let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
+    let t_evaluated, _canonical_name =
+      Evaluated.create ~importer ~type_of_name t
+    in
     match t_evaluated with
     | Values values ->
       begin match values with
       | Unknown
-      | Float_array Not_all_values_known -> Not_all_values_known
-      | Float_array { lengths; } -> Proved lengths
-      | Blocks_and_tagged_immediates (blocks, imms) ->
+      | Float_arrays { lengths =  Not_all_values_known; } ->
+        Proved Not_all_values_known
+      | Float_arrays { lengths = Exactly lengths; } ->
+        Proved (Exactly lengths)
+      | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
         if not (Immediate.Set.is_empty imms) then
           Invalid
         else
           begin match Blocks.unique_tag_and_size blocks with
           | None -> Invalid
-          | Some (_tag, size) -> Proved (Int.Set.singleton size)
+          | Some (_tag, size) -> Proved (Exactly (Int.Set.singleton size))
           end
       | Boxed_floats _
       | Bottom
+      | Blocks_and_tagged_immediates _
       | Tagged_immediates_only _
       | Boxed_int32s _
       | Boxed_int64s _
       | Boxed_nativeints _
       | Closures _
       | Sets_of_closures _
-      | Strings _
-      | Float_arrays _ -> Invalid
+      | Strings _ -> Invalid
       end
     | Naked_immediates _
     | Naked_floats _
@@ -1657,17 +1771,17 @@ let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
     if Config.ban_obj_dot_truncate then result
     else Proved Not_all_values_known
 
-
-
 (* XXX Lengths of strings: for this, I think we can assume that Obj.truncate
    is always illegal here *)
 
 type closures_proof =
-  | Proved of Joined_closures.t Not_all_values_known.t
+  | Proved of Joined_closures.t Or_not_all_values_known.t
   | Invalid
 
 let prove_closures ~importer ~type_of_name t : closures_proof =
-  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
   match t_evaluated with
   | Values values ->
     begin match values with
@@ -1694,18 +1808,19 @@ let prove_closures ~importer ~type_of_name t : closures_proof =
         closures: %a"
       print t
 
-type set_of_closures_proof =
-  | Proved of Joined_set_of_closures.t Not_all_values_known.t
+type sets_of_closures_proof =
+  | Proved of Joined_sets_of_closures.t Or_not_all_values_known.t
   | Invalid
 
-let prove_set_of_closures ~importer ~type_of_name t : set_of_closures_proof =
-  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
+let prove_sets_of_closures ~importer ~type_of_name t : sets_of_closures_proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
   match t_evaluated with
   | Values values ->
     begin match values with
-    | Unknown
-    | Set_of_closures Not_all_values_known -> Proved Not_all_values_known
-    | Set_of_closures (Exactly set) -> Proved (Exactly set)
+    | Unknown -> Proved Not_all_values_known
+    | Sets_of_closures set -> Proved set
     | Bottom
     | Boxed_floats _
     | Blocks_and_tagged_immediates _
@@ -1714,7 +1829,8 @@ let prove_set_of_closures ~importer ~type_of_name t : set_of_closures_proof =
     | Boxed_int64s _
     | Boxed_nativeints _
     | Closures _
-    | Float_array _ -> Invalid
+    | Strings _
+    | Float_arrays _ -> Invalid
     end
   | Naked_immediates _
   | Naked_floats _
@@ -1769,7 +1885,10 @@ type switch_branch_classification =
 
 let classify_switch_branch ~importer ~type_of_name t ~scrutinee branch
       : switch_branch_classification =
-  match Evaluated.create ~importer ~type_of_name t with
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
   | Values values ->
     begin match values with
     | Unknown

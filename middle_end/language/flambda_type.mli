@@ -104,7 +104,7 @@ module Evaluated : sig
     | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
     | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
-    | Set_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
+    | Sets_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
     | Float_arrays of { lengths : Numbers.Int.Set.t Or_not_all_values_known.t; }
 
@@ -118,7 +118,7 @@ module Evaluated : sig
 
   (** Evaluate the given type to a canonical form, possibly with an associated
       name. *)
-  val create : (t -> t * (Name.t option)) type_accessor
+  val create : (flambda_type -> t * (Name.t option)) type_accessor
 
   val print : Format.formatter -> t -> unit
 
@@ -184,9 +184,9 @@ type reification_result =
     returned then a fatal error will be produced.
 *)
 val reify
-   : (t
-  -> allow_free_variables:bool
+   : (allow_free_variables:bool
   -> expected_kind:Flambda_kind.t
+  -> flambda_type
   -> reification_result) type_accessor
 
 type get_field_result = private
@@ -241,6 +241,13 @@ type boxed_nativeint_proof = private
 (** As for [prove_boxed_float] but for [Nativeint]. *)
 val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
 
+type closures_proof =
+  | Proved of Joined_closures.t Or_not_all_values_known.t
+  | Invalid
+
+(** As for [proved_boxed_float] but for closures. *)
+val prove_closures : (t -> closures_proof) type_accessor
+
 type sets_of_closures_proof = private
   | Proved of Joined_sets_of_closures.t Or_not_all_values_known.t
   | Invalid
@@ -248,7 +255,7 @@ type sets_of_closures_proof = private
 (** As for [proved_boxed_float] but for sets of closures. *)
 val prove_sets_of_closures : (t -> sets_of_closures_proof) type_accessor
 
-type lengths_of_array_or_block_proof = private
+type lengths_of_arrays_or_blocks_proof = private
   | Proved of Numbers.Int.Set.t Or_not_all_values_known.t
   | Invalid
 
@@ -260,7 +267,7 @@ type lengths_of_array_or_block_proof = private
 *)
 val lengths_of_arrays_or_blocks
    : (t
-  -> lengths_of_array_or_block_proof) type_accessor
+  -> lengths_of_arrays_or_blocks_proof) type_accessor
 
 (*
 (** As for [reify] but only produces terms when the type describes a
@@ -296,17 +303,6 @@ val reify_as_scannable_block_or_immediate
   -> reified_as_scannable_block_or_immediate
 
 *)
-
-type 'a known_unknown_or_wrong =
-  | Known of 'a
-  | Unknown
-  | Wrong
-
-(** Try to prove that a value with the given type may be used as a
-    set of closures. *)
-val prove_set_of_closures
-   : (t
-  -> Set_of_closures.t known_unknown_or_wrong) type_accessor
 
 (*
 
@@ -350,10 +346,10 @@ type switch_branch_classification =
     the corresponding switch with the given integer label either cannot be
     taken, can be taken or will always be taken. *)
 val classify_switch_branch
-   : (t
+   : (flambda_type
   -> scrutinee:Name.t
   -> Targetint.t
-  -> switch_branch_classification)
+  -> switch_branch_classification) type_accessor
 
 (** Returns [true] iff the given type provides strictly more information
     about the corresponding value than the supplied type [than]. *)
