@@ -85,16 +85,22 @@ module Joined_sets_of_closures : sig
   val to_type : t -> flambda_type
 end
 
-module Immediate_with_name : Identifiable.S
-  with type t = Immediate.t * Name.t option
-module Float_with_name : Identifiable.S
-  with type t = float * Name.t option
-module Int32_with_name : Identifiable.S
-  with type t = Int32.t * Name.t option
-module Int64_with_name : Identifiable.S
-  with type t = Int64.t * Name.t option
-module Targetint_with_name : Identifiable.S
-  with type t = Targetint.t * Name.t option
+module type With_name = sig
+  type thing
+
+  type t
+
+  val thing : t -> thing
+  val name : t -> Name.t option
+
+  include Identifiable.S with type t := t
+end
+
+module Immediate_with_name : With_name with type thing = Immediate.t
+module Float_with_name : With_name with type thing = float
+module Int32_with_name : With_name with type thing = Int32.t
+module Int64_with_name : With_name with type thing = Int64.t
+module Targetint_with_name : With_name with type thing = Targetint.t
 
 module Evaluated : sig
   (** A straightforward canonical form which can be used easily for the
@@ -123,10 +129,10 @@ module Evaluated : sig
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Set_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
-    | Float_arrays of { lengths : Int.Set.t Or_not_all_values_known.t; }
+    | Float_arrays of { lengths : Numbers.Int.Set.t Or_not_all_values_known.t; }
 
   type t = private
-    | Values of t0_values
+    | Values of t_values
     | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
     | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
@@ -197,7 +203,7 @@ type reification_result =
     If [expected_kind] does not match the kind of the term / type being
     returned then a fatal error will be produced.
 *)
-val reify :
+val reify
    : (t
   -> allow_free_variables:bool
   -> expected_kind:Flambda_kind.t
@@ -249,21 +255,21 @@ type boxed_int64_proof = private
 val prove_boxed_int64 : (t -> boxed_int64_proof) type_accessor
 
 type boxed_nativeint_proof = private
-  | Proved of Nativeint_with_name.Set.t Or_not_all_values_known.t
+  | Proved of Targetint_with_name.Set.t Or_not_all_values_known.t
   | Invalid
 
 (** As for [prove_boxed_float] but for [Nativeint]. *)
 val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
 
-type set_of_closures_proof = private
-  | Proved of Joined_set_of_closures.t Not_all_values_known.t
+type sets_of_closures_proof = private
+  | Proved of Joined_sets_of_closures.t Or_not_all_values_known.t
   | Invalid
 
 (** As for [proved_boxed_float] but for sets of closures. *)
-val prove_set_of_closures : (t -> set_of_closures_proof) type_accessor
+val prove_sets_of_closures : (t -> sets_of_closures_proof) type_accessor
 
 type lengths_of_array_or_block_proof = private
-  | Proved of Int.Set.t Or_not_all_values_known.t
+  | Proved of Numbers.Int.Set.t Or_not_all_values_known.t
   | Invalid
 
 (** Determine the known length(s) of the array(s) or structured block(s)

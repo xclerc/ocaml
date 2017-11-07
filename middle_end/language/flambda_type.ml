@@ -244,15 +244,21 @@ module Or_not_all_values_known = struct
     | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
 end
 
-module Make_with_name (T : Identifiable.S) : sig
+module type With_name = sig
+  type thing
+
   type t
 
-  val create : T.t -> Name.t option -> t
+  val create : thing -> Name.t option -> t
 
-  val thing : t -> T.t
+  val thing : t -> thing
   val name : t -> Name.t option
 
   include Identifiable.S with type t := t
+end
+
+module Make_with_name (T : Identifiable.S) : sig
+  include With_name with type thing = T.t
 end = struct
   include Identifiable.Make (struct
     type t = T.t * Name.t option
@@ -377,8 +383,6 @@ module Joined_closures : sig
   val create : (Closure_with_name.t list -> t) type_accessor
 
   val name : t -> Name.t option
-
-  val to_type : t -> flambda_type
 end = struct
   type t = {
     (* CR mshinwell: I'm unsure whether we should be storing a name for
@@ -423,6 +427,9 @@ end = struct
       List.fold_left (fun result t ->
           join ~importer ~type_of_name result t)
         set sets
+
+  let to_type _t =
+    assert false
 end
 
 module Joined_sets_of_closures : sig
@@ -659,7 +666,7 @@ module Evaluated = struct
     | Float_arrays of { lengths : Int.Set.t Or_not_all_values_known.t; }
 
   type t =
-    | Values of t0_values
+    | Values of t_values
     | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
     | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
     | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t

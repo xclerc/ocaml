@@ -92,3 +92,8 @@ let char value = {
   value = Targetint.of_int (Char.code value);
   print_as_char = true;
 }
+
+let set_to_targetint_set set =
+  Set.fold (fun t targetints -> Targetint.Set.add t.value targetints)
+    set
+    Targetint.Set.empty

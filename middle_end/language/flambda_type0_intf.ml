@@ -227,7 +227,7 @@ module type S = sig
   module Set_of_closures : sig
     type t = set_of_closures
 
-    val meet_sets : t list -> t list -> t list
+    val meet_lists : t list -> t list -> t list
   end
 
   val print : Format.formatter -> t -> unit

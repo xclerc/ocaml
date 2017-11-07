@@ -171,7 +171,7 @@ end) = struct
     | Contents of string
     | Unknown_or_mutable
 
-  module String_info : sig
+  module String_info = struct
     type t = {
       contents : string_contents;
       size : int;
@@ -727,23 +727,23 @@ end) = struct
     Value (Normal (Resolved (Ok (Singleton (Boxed_nativeint n)))))
 
   let this_immutable_string_as_ty_value str : ty_value =
-    let String_info.t : String_info.t =
+    let str : String_info.t =
       { contents = Contents str;
         size = String.length str;
       }
     in
-    Normal (Resolved (Ok (Singleton (String String_info.t))))
+    Normal (Resolved (Ok (Singleton (String str))))
 
   let this_immutable_string str : t =
     Value (this_immutable_string_as_ty_value str)
 
   let mutable_string ~size : t =
-    let String_info.t : String_info.t =
+    let str : String_info.t =
       { contents = Unknown_or_mutable;
         size;
       }
     in
-    Value (Normal (Resolved (Ok (Singleton (String String_info.t)))))
+    Value (Normal (Resolved (Ok (Singleton (String str)))))
 
   (* CR mshinwell: We need to think about these float array functions in
      conjunction with the 4.06 feature for disabling the float array
@@ -1281,7 +1281,7 @@ end) = struct
       Misc.fatal_errorf "Type has wrong kind (expected [Naked_nativeint]): %a"
         print t
 
-  let t_of_ty_value (ty : ty_value) : t = Value ty_value
+  let t_of_ty_value (ty : ty_value) : t = Value ty
 
   let ty_of_resolved_ty (ty : _ resolved_ty) : _ ty =
     match ty with
@@ -1328,7 +1328,7 @@ end) = struct
   let resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
         ~force_to_kind ~type_of_name ~make_unknown ty =
     let ty, canonical_name =
-      resolve_aliases ~importer_this_kind ~force_to_kind ~type_of_name ty
+      resolve_aliases_on_ty ~importer_this_kind ~force_to_kind ~type_of_name ty
     in
     let ty =
       match ty with
@@ -1403,7 +1403,7 @@ end) = struct
     let rec scanning_ty_value (ty : ty_value) : K.scanning =
       let module I = (val importer : Importer) in
       let importer_this_kind = I.import_value_type_as_resolved_ty_value in
-      let ty : _ or_unknown_or_bottom =
+      let (ty : _ or_unknown_or_bottom), _canonical_name =
         resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
           ~force_to_kind:force_to_kind_value
           ~type_of_name
@@ -1868,12 +1868,14 @@ end) = struct
           unknown_payload_top
           combine_contents combine_unknown_payload
           (ty1 : (a, u) ty) (ty2 : (a, u) ty) : (a, u) ty =
-      let ty1 =
-        resolve_aliases ~importer_this_kind ~force_to_kind
+      (* CR mshinwell: Should something be happening here with the canonical
+         names? *)
+      let ty1, _canonical_name1 =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
           ~type_of_name ty1
       in
-      let ty2 =
-        resolve_aliases ~importer_this_kind ~force_to_kind
+      let ty2, _canonical_name2 =
+        resolve_aliases_on_ty ~importer_this_kind ~force_to_kind
           ~type_of_name ty2
       in
       match ty1, ty2 with
@@ -2139,12 +2141,12 @@ end) = struct
   module Closure = struct
     type t = closure
 
-    let meet_list _list1 _list2 = assert false
+    let meet_lists _list1 _list2 = assert false
   end
 
   module Set_of_closures = struct
     type t = set_of_closures
 
-    let meet_list _list1 _list2 = assert false
+    let meet_lists _list1 _list2 = assert false
   end
 end

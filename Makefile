@@ -406,6 +406,7 @@ utils/config.ml: utils/config.mlp config/Makefile
 	    -e 's|%%ARCMD%%|$(ARCMD)|' \
 	    -e 's|%%ASM%%|$(ASM)|' \
 	    -e 's|%%ASM_CFI_SUPPORTED%%|$(ASM_CFI_SUPPORTED)|' \
+	    -e 's|%%BAN_OBJ_DOT_TRUNCATE%%|$(BAN_OBJ_DOT_TRUNCATE)|' \
 	    -e 's|%%BYTECCLIBS%%|$(BYTECCLIBS)|' \
 	    -e 's|%%BYTERUN%%|$(BYTERUN)|' \
 	    -e 's|%%CC%%|$(CC)|' \
