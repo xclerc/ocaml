@@ -560,6 +560,13 @@ end) = struct
     | Naked_nativeint ty ->
       Format.fprintf ppf "(Naked_nativeint (%a))" print_ty_naked_nativeint ty
 
+  let print_ty_value_array ppf ty_values =
+    Format.fprintf ppf "@[[| %a |]@]"
+      (Format.pp_print_list
+        ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
+        print_ty_value)
+      (Array.to_list ty_values)
+
   let alias (kind : Flambda_kind.t) name : t =
     match kind with
     | Value _ -> Value (Alias name)
@@ -2137,6 +2144,7 @@ end) = struct
   let join_ty_value = Join.combine_ty_value
 
   let meet = Meet.combine
+  let meet_ty_value = Meet.combine_ty_value
 
   module Closure = struct
     type t = closure

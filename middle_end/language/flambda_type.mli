@@ -70,6 +70,8 @@ module Joined_closures : sig
   (** The canonical name bound to the closures, if such exists. *)
   val name : t -> Name.t option
 
+  val sets_of_closures : t -> ty_value Closure_id.Map.t
+
   val to_type : t -> flambda_type
 end
 

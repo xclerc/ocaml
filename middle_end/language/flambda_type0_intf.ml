@@ -232,6 +232,8 @@ module type S = sig
 
   val print : Format.formatter -> t -> unit
 
+  val print_ty_value_array : Format.formatter -> ty_value array -> unit
+
   (** Construction of top types. *)
   val unknown : Flambda_kind.t -> unknown_because_of -> t
   val any_value : Flambda_kind.scanning -> unknown_because_of -> t
@@ -412,6 +414,9 @@ module type S = sig
 
   (** Greatest lower bound of two types. *)
   val meet : (t -> t -> t) type_accessor
+
+  (** Like [meet], but starts with a [ty_value], not a [t]. *)
+  val meet_ty_value : (ty_value -> ty_value -> ty_value) type_accessor
 
   (** Follow chains of [Alias]es, loading .cmx files as necessary, until
       either a [Normal] type is reached or a name cannot be resolved.

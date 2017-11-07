@@ -30,36 +30,39 @@ include F0.Flambda_type
 let unknown_types_from_arity t =
   List.map (fun kind -> unknown kind Other) t
 
-let rename_variables ~importer t ~f =
+let rename_variables ~importer:_ ~type_of_name:_ _t ~f:_ =
+  assert false
+(* XXX need to fix [Flambda_type0.clean]
   clean ~importer t (fun var -> Available_different_name (f var))
+*)
 
 let unresolved_symbol sym =
   any_value Must_scan (Unresolved_value (Symbol sym))
 
 let this_tagged_immediate_named n : Named.t * t =
-  Const (Tagged_immediate n), this_tagged_immediate n
+  Simple (Simple.const (Tagged_immediate n)), this_tagged_immediate n
 
 let this_tagged_bool_named b : Named.t * t =
   let imm =
     if b then Immediate.bool_true
     else Immediate.bool_false
   in
-  Const (Tagged_immediate imm), this_tagged_immediate imm
+  Simple (Simple.const (Tagged_immediate imm)), this_tagged_immediate imm
 
 let this_untagged_immediate_named n : Named.t * t =
-  Const (Untagged_immediate n), this_naked_immediate n
+  Simple (Simple.const (Untagged_immediate n)), this_naked_immediate n
 
 let this_naked_float_named f : Named.t * t =
-  Const (Naked_float f), this_naked_float f
+  Simple (Simple.const (Naked_float f)), this_naked_float f
 
 let this_naked_int32_named n : Named.t * t =
-  Const (Naked_int32 n), this_naked_int32 n
+  Simple (Simple.const (Naked_int32 n)), this_naked_int32 n
 
 let this_naked_int64_named n : Named.t * t =
-  Const (Naked_int64 n), this_naked_int64 n
+  Simple (Simple.const (Naked_int64 n)), this_naked_int64 n
 
 let this_naked_nativeint_named n : Named.t * t =
-  Const (Naked_nativeint n), this_naked_nativeint n
+  Simple (Simple.const (Naked_nativeint n)), this_naked_nativeint n
 
 (*
 let is_float_array t =
@@ -260,8 +263,12 @@ end
 module Make_with_name (T : Identifiable.S) : sig
   include With_name with type thing = T.t
 end = struct
+  type thing = T.t
+
+  type t = T.t * Name.t option
+
   include Identifiable.Make (struct
-    type t = T.t * Name.t option
+    type nonrec t = t
 
     let compare (t1, name1) (t2, name2) =
       let c = T.compare t1 t2 in
@@ -272,7 +279,9 @@ end = struct
       compare t1 t2 = 0
 
     let hash (t, name) =
-      Hashtbl.hash (T.hash t, Misc.Stdlib.Option.hash Name.hash name)
+      match name with
+      | None -> T.hash t
+      | Some name -> Hashtbl.hash (T.hash t, Name.hash name)
 
     let print ppf (t, name) =
       match name with
@@ -286,13 +295,35 @@ end = struct
   let name (_thing, name) = name
 end
 
-module Naked_immediate_with_name = Make_with_name (Naked_immediate)
+module Make_with_name_non_comparable (T : sig type t end) : sig
+  type t
+
+  val create : T.t -> Name.t option -> t
+
+  val thing : t -> T.t
+  val name : t -> Name.t option
+end = struct
+  type thing = T.t
+
+  type t = T.t * Name.t option
+
+  let create thing name = thing, name
+
+  let thing (thing, _name) = thing
+  let name (_thing, name) = name
+end
+
+module Immediate_with_name = Make_with_name (Immediate)
 module Float_with_name = Make_with_name (Float)
 module Int32_with_name = Make_with_name (Int32)
 module Int64_with_name = Make_with_name (Int64)
 module Targetint_with_name = Make_with_name (Targetint)
-module Closure_with_name = Make_with_name (Closure)
-module Set_of_closures_with_name = Make_with_name (Set_of_closures)
+
+(* CR mshinwell: Can we make these things comparable?  e.g. by using set of
+   closures ID? *)
+module Closure_with_name = Make_with_name_non_comparable (Closure)
+module Set_of_closures_with_name =
+  Make_with_name_non_comparable (Set_of_closures)
 
 type get_field_result =
   | Ok of t
@@ -311,6 +342,9 @@ module Blocks_with_names : sig
 end = struct
   (* XXX keep track of the names *)
   type t = ty_value array Tag.Scannable.Map.t
+
+  let print ppf t =
+    Tag.Scannable.Map.print print_ty_value_array ppf t
 
   let is_bottom t = Tag.Scannable.Map.is_empty t
 
@@ -353,11 +387,13 @@ end = struct
     with Same_tag_different_arities -> Wrong
 
   let unique_tag_and_size t =
-    Tag.Scannable.Map.get_singleton t
+    match Tag.Scannable.Map.get_singleton t with
+    | None -> None
+    | Some (tag, fields) -> Some (tag, Array.length fields)
 
   let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
         : get_field_result =
-    match unique_tag_and_size t with
+    match Tag.Scannable.Map.get_singleton t with
     | None -> Invalid
     | Some (tag, fields) ->
       if field_index < 0 || field_index >= Array.length fields then
@@ -373,8 +409,9 @@ end = struct
             field_index
             K.print expected_result_kind
             K.print actual_kind
+            print t
         end;
-        t_of_ty_value ty
+        Ok (t_of_ty_value ty)
 end
 
 module Joined_closures : sig
@@ -383,6 +420,7 @@ module Joined_closures : sig
   val create : (Closure_with_name.t list -> t) type_accessor
 
   val name : t -> Name.t option
+  val sets_of_closures : t -> ty_value Closure_id.Map.t
 end = struct
   type t = {
     (* CR mshinwell: I'm unsure whether we should be storing a name for
@@ -391,11 +429,14 @@ end = struct
     sets_of_closures : ty_value Closure_id.Map.t;
   }
 
+  let name t = t.name
+  let sets_of_closures t = t.sets_of_closures
+
   let of_closure (closure : Closure_with_name.t) : t =
-    let closure = Closure_with_name.thing closure in
     let name = Closure_with_name.name closure in
+    let closure = Closure_with_name.thing closure in
     let sets_of_closures =
-      Closure_id.Map.add closure.closure_id closure.sets_of_closures
+      Closure_id.Map.add closure.closure_id closure.set_of_closures
         Closure_id.Map.empty
     in
     { name;
@@ -418,11 +459,13 @@ end = struct
       sets_of_closures;
     }
 
-  let create ~importer ~type_of_name (closures : closure list) =
+  let create ~importer ~type_of_name (closures : Closure_with_name.t list) =
     let sets = List.map of_closure closures in
     match sets with
     | [] ->
-      { sets_of_closures = Closure_id.Map.empty; }
+      { name = None;
+        sets_of_closures = Closure_id.Map.empty;
+      }
     | set::sets ->
       List.fold_left (fun result t ->
           join ~importer ~type_of_name result t)
@@ -453,6 +496,7 @@ end = struct
     closure_elements : ty_value Var_within_closure.Map.t;
   }
 
+  let name t = t.name
   let function_decls t = t.function_decls
   let closure_elements t = t.closure_elements
 
@@ -464,8 +508,8 @@ end = struct
       (Var_within_closure.Map.keys t.closure_elements)
 
   let of_set_of_closures (set : Set_of_closures_with_name.t) : t =
-    let set = Set_of_closures_with_name.thing set in
     let name = Set_of_closures_with_name.name set in
+    let set = Set_of_closures_with_name.thing set in
     { name;
       set_of_closures_id_and_origin =
         Exactly (set.set_of_closures_id, set.set_of_closures_origin);
@@ -477,13 +521,10 @@ end = struct
     match t.set_of_closures_id_and_origin with
     | Not_all_values_known -> any_value Must_scan Other
     | Exactly (set_of_closures_id, set_of_closures_origin) ->
-      let set =
-        create_set_of_closures ~set_of_closures_id
-          ~set_of_closures_origin
-          ~function_decls:t.function_decls
-          ~closure_elements:t.closure_elements
-      in
-      set_of_closures set
+      set_of_closures ~set_of_closures_id
+        ~set_of_closures_origin
+        ~function_decls:t.function_decls
+        ~closure_elements:t.closure_elements
 
   let make_non_inlinable_function_declaration (f : function_declaration)
         : function_declaration =
@@ -496,7 +537,7 @@ end = struct
       Non_inlinable decl
     | Non_inlinable _ -> f
 
-  let join_and_make_all_functions_non_inlinable ~importer
+  let join_and_make_all_functions_non_inlinable ~importer ~type_of_name
         (t1 : t) (t2 : t) : t =
     let join_results_and_make_non_inlinable (f1 : function_declaration)
           (f2 : function_declaration) : function_declaration =
@@ -539,12 +580,13 @@ end = struct
         (fun ty1 ty2 -> join_ty_value ~importer ~type_of_name ty1 ty2)
         t1.closure_elements t2.closure_elements
     in
-    { set_of_closures_id_and_origin = Not_all_values_known;
+    { name = None;
+      set_of_closures_id_and_origin = Not_all_values_known;
       function_decls;
       closure_elements;
     }
 
-  let join ~importer (t1 : t) (t2 : t) : t =
+  let join ~importer ~type_of_name (t1 : t) (t2 : t) : t =
     let set_of_closures_id_and_origin =
       Or_not_all_values_known.join (fun (id1, origin1) (id2, origin2) ->
           if Set_of_closures_id.equal id1 id2 then begin
@@ -572,32 +614,35 @@ end = struct
          It can be kept for now to help debugging *)
       assert (t1.function_decls == t2.function_decls);
       let closure_elements =
-        Var_within_closure.Map.union_merge (join_ty_value ~importer)
+        Var_within_closure.Map.union_merge
+          (join_ty_value ~importer ~type_of_name)
           t1.closure_elements t2.closure_elements
       in
-      let set_of_closures_var =
-        match t1.set_of_closures_var with
-        | Some var -> Some var
+      let name =
+        match t1.name with
+        | Some name -> Some name
         | None ->
-          match t2.set_of_closures_var with
-          | Some var -> Some var
+          match t2.name with
+          | Some name -> Some name
           | None -> None
       in
-      { set_of_closures_var;
+      { name;
         set_of_closures_id_and_origin;
         function_decls = t1.function_decls;
         closure_elements;
       }
     | Ok Not_all_values_known | Wrong ->
-      join_and_make_all_functions_non_inlinable ~importer t1 t2
+      join_and_make_all_functions_non_inlinable ~importer ~type_of_name t1 t2
 
-  let create ~importer ~type_of_name (sets : set_of_closures list) : t =
+  let create ~importer ~type_of_name (sets : Set_of_closures_with_name.t list)
+        : t =
     let sets = List.map of_set_of_closures sets in
     match sets with
     | [] ->
-      (* CR mshinwell: This is a bit strange: should there be a proper
-         constructor for "bottom" here? *)
-      { set_of_closures_id_and_origin = None;
+      { name = None;
+        (* CR mshinwell: This is a bit strange: should there be a proper
+           constructor for "bottom" here? *)
+        set_of_closures_id_and_origin = Not_all_values_known;
         function_decls = Closure_id.Map.empty;
         closure_elements = Var_within_closure.Map.empty;
       }
@@ -605,16 +650,6 @@ end = struct
       List.fold_left (fun result t ->
           join ~importer ~type_of_name result t)
         set sets
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let print = print
-
-    let compare t1 t2 =
-      (* CR mshinwell for pchambart: Is this correct? *)
-      Set_of_closures
-  end)
 end
 
 module Evaluated = struct
@@ -753,8 +788,8 @@ module Evaluated = struct
       | Boxed_nativeints _
       | Naked_nativeints _
       | Closures _
-      | Set_of_closures _ ->
-      | Strings _ ->
+      | Set_of_closures _
+      | Strings _
       | Float_arrays _ ->
         (* CR mshinwell: For something like a statically-allocated set of
            closures we may not need to scan it, and maybe in some cases it
@@ -914,7 +949,7 @@ module Evaluated = struct
       | Naked_int64s _
       | Naked_nativeints _
       | Closures _
-      | Set_of_closures _,
+      | Set_of_closures _
       | Strings _
       | Float_arrays { lengths = _; }), _ -> Unknown
 
@@ -1056,7 +1091,7 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~type_of_name
         ty
     in
-    begin match resolved_ty_value with
+    match resolved_ty_value with
     | Unknown _ -> Unknown
     | Bottom -> Bottom
     | Ok or_combination ->
