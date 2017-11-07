@@ -116,6 +116,8 @@ module Evaluated : sig
     | Naked_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint.Set.t Or_not_all_values_known.t
 
+  val print : Format.formatter -> t -> unit
+
   (** The kind of the given evaluated type. *)
   val kind : t -> Flambda_kind.t
 end

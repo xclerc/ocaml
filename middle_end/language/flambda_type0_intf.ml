@@ -222,15 +222,21 @@ module type S = sig
     type t = closure
 
     val meet_lists : t list -> t list -> t list
+
+    val print : Format.formatter -> t -> unit
   end
 
   module Set_of_closures : sig
     type t = set_of_closures
 
     val meet_lists : t list -> t list -> t list
+
+    val print : Format.formatter -> t -> unit
   end
 
   val print : Format.formatter -> t -> unit
+
+  val print_ty_value : Format.formatter -> ty_value -> unit
 
   val print_ty_value_array : Format.formatter -> ty_value array -> unit
 

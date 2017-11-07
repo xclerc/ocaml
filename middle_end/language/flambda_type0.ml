@@ -426,10 +426,7 @@ end) = struct
           print_ty_value) (Array.to_list fields)
     | Set_of_closures set_of_closures ->
       print_set_of_closures ppf set_of_closures
-    | Closure { set_of_closures; closure_id; } ->
-      Format.fprintf ppf "(closure:@ @[<2>[@ %a @[<2>from@ %a@];@ ]@])"
-        Closure_id.print closure_id
-        print_ty_value set_of_closures
+    | Closure closure -> print_closure ppf closure
     | String { contents; size; } ->
       begin match contents with
       | Unknown_or_mutable -> Format.fprintf ppf "string %i" size
@@ -455,6 +452,11 @@ end) = struct
     print_ty_generic print_of_kind_value print_scanning ppf ty
 
   and _unused = Expr.print
+
+  and print_closure ppf ({ closure_id; set_of_closures; } : closure) =
+    Format.fprintf ppf "(closure:@ @[<2>[@ %a @[<2>from@ %a@];@ ]@])"
+      Closure_id.print closure_id
+      print_ty_value set_of_closures
 
   and print_inlinable_function_declaration ppf
         (decl : inlinable_function_declaration) =
@@ -2150,11 +2152,13 @@ end) = struct
     type t = closure
 
     let meet_lists _list1 _list2 = assert false
+    let print = print_closure
   end
 
   module Set_of_closures = struct
     type t = set_of_closures
 
     let meet_lists _list1 _list2 = assert false
+    let print = print_set_of_closures
   end
 end
