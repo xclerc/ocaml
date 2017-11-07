@@ -30,7 +30,7 @@ module Let_cont = F0.Let_cont
 module Let_mutable = F0.Let_mutable
 module Switch = F0.Switch
 module Trap_action = F0.Trap_action
-module With_free_variables = F0.With_free_variables
+module With_free_names = F0.With_free_names
 
 module Call_kind = struct
   include F0.Call_kind
@@ -40,16 +40,20 @@ module Call_kind = struct
     | Direct _
     | Indirect_unknown_arity
     | Indirect_known_arity _ -> t
-    | Method { kind; obj; } -> Method { kind; obj = f obj; }
+    | Method { kind; obj; } ->
+      Method {
+        kind;
+        obj = Name.map_var obj ~f;
+      }
 end
 
 module Apply = struct
   include F0.Apply
 
   let rename_variables t ~f =
-    { func = f t.func;
+    { func = Name.map_var t.func ~f;
       continuation = t.continuation;
-      args = List.map f t.args;
+      args = List.map (fun arg -> Simple.map_var arg ~f) t.args;
       call_kind = Call_kind.rename_variables t.call_kind ~f;
       dbg = t.dbg;
       inline = t.inline;
@@ -97,7 +101,7 @@ module rec Expr : sig
   val invariant
      : (Invariant_env.t
     -> t
-    -> unit) Flambda_type.with_importer
+    -> unit) Flambda_type.type_accessor
   val equal : t -> t -> bool
   val make_closure_declaration
      : (id:Variable.t
@@ -110,11 +114,11 @@ module rec Expr : sig
     -> continuation:Continuation.t
     -> return_arity:Flambda_arity.t
     -> dbg:Debuginfo.t
-    -> t) Flambda_type.with_importer
+    -> t) Flambda_type.type_accessor
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.with_importer
+    -> t) Flambda_type.type_accessor
   val description_of_toplevel_node : t -> string
   val bind
      : bindings:(Variable.t * Flambda_kind.t * Named.t) list
@@ -238,17 +242,18 @@ end = struct
       Let_mutable {var = mv2; initial_value = v2; contents_type = ct2; body = b2}
       ->
       Mutable_variable.equal mv1 mv2
-        && Variable.equal v1 v2
+        && Name.equal v1 v2
         && ct1 == ct2
         (* CR pchambart: There should be a proper equality function
            for Flambda_type.t to handle that *)
         && equal b1 b2
     | Let_mutable _, _ | _, Let_mutable _ -> false
     | Switch (a1, s1), Switch (a2, s2) ->
-      Variable.equal a1 a2 && Switch.equal s1 s2
+      Name.equal a1 a2 && Switch.equal s1 s2
     | Switch _, _ | _, Switch _ -> false
     | Apply_cont (e1, trap1, a1), Apply_cont (e2, trap2, a2) ->
-      Continuation.equal e1 e2 && Misc.Stdlib.List.equal Variable.equal a1 a2
+      Continuation.equal e1 e2
+        && Misc.Stdlib.List.equal Simple.equal a1 a2
         && Misc.Stdlib.Option.equal Trap_action.equal trap1 trap2
     | Apply_cont _, _ | _, Apply_cont _ -> false
     | Let_cont { body = body1; handlers = handlers1; },
@@ -362,9 +367,7 @@ end = struct
     let iter_sets_of_closures f t =
       iter_named (function
           | Set_of_closures clos -> f clos
-          | Var _ | Symbol _ | Const _ | Read_mutable _
-          | Assign _ | Read_symbol_field _ | Project_closure _
-          | Move_within_set_of_closures _ | Project_var _ | Prim _ -> ())
+          | Simple _ | Read_mutable _ | Assign _ | Prim _ -> ())
         t
 
     module Toplevel_only = struct
@@ -443,9 +446,7 @@ end = struct
       and aux_named (id : Variable.t) _kind (named : Named.t) =
         let named : Named.t =
           match named with
-          | Var _ | Symbol _ | Const _ | Read_mutable _
-          | Assign _ | Project_closure _ | Move_within_set_of_closures _
-          | Project_var _ | Prim _ | Read_symbol_field _ -> named
+          | Simple _ | Read_mutable _ | Assign _ | Prim _  -> named
           | Set_of_closures ({ function_decls; free_vars;
               direct_call_surrogates }) ->
             if toplevel then named
@@ -543,22 +544,15 @@ end = struct
 
     let map_symbols tree ~f =
       map_named (function
-          | (Symbol symbol) as named ->
-            let new_symbol = f symbol in
-            if new_symbol == symbol then
+          | (Simple simple) as named ->
+            let new_simple = Simple.map_symbol simple ~f in
+            if new_simple == simple then
               named
             else
-              Symbol new_symbol
-          | ((Read_symbol_field (symbol, field)) as named) ->
-            let new_symbol = f symbol in
-            if new_symbol == symbol then
-              named
-            else
-              Read_symbol_field (new_symbol, field)
-          | (Var _ | Const _ | Set_of_closures _
-             | Read_mutable _ | Project_closure _
-             | Move_within_set_of_closures _ | Project_var _ | Prim _
-             | Assign _) as named -> named)
+              Simple new_simple
+          | (Set_of_closures _ | Read_mutable _ | Prim _ | Assign _)
+              as named ->
+            named)
         tree
 
     let map_apply tree ~f =
@@ -579,9 +573,7 @@ end = struct
             let new_set_of_closures = f set_of_closures in
             if new_set_of_closures == set_of_closures then named
             else Set_of_closures new_set_of_closures
-          | (Var _ | Symbol _ | Const _ | Project_closure _
-          | Move_within_set_of_closures _ | Project_var _ | Assign _
-          | Prim _ | Read_mutable _ | Read_symbol_field _) as named -> named)
+          | (Simple _ | Assign _ | Prim _ | Read_mutable _) as named -> named)
         tree
 
     (* CR mshinwell: duplicate function *)
@@ -602,10 +594,8 @@ end = struct
               let new_set_of_closures = f set_of_closures in
               if new_set_of_closures == set_of_closures then named
               else Set_of_closures new_set_of_closures
-            | (Var _ | Symbol _ | Const _ | Read_mutable _
-            | Read_symbol_field _ | Project_closure _
-            | Move_within_set_of_closures _ | Project_var _ | Prim _
-            | Assign _) as named -> named)
+            | (Simple _ | Read_mutable _ | Prim _ | Assign _) as named ->
+              named)
           tree
       end
   end
@@ -614,12 +604,12 @@ end = struct
     let fold_lets_option (t : t) ~init ~for_defining_expr
           ~for_last_body ~filter_defining_expr =
       let finish ~last_body ~acc ~rev_lets =
-        let module W = With_free_variables in
+        let module W = With_free_names in
         let acc, t =
           List.fold_left (fun (acc, t) (var, kind, defining_expr) ->
-              let free_vars_of_body = W.free_variables t in
+              let free_names_of_body = W.free_names t in
               let acc, var, defining_expr =
-                filter_defining_expr acc var defining_expr free_vars_of_body
+                filter_defining_expr acc var defining_expr free_names_of_body
               in
               match defining_expr with
               | None ->
@@ -660,11 +650,12 @@ end = struct
   end
 
   (* CR-soon mshinwell: this should use the explicit ignore functions *)
-  let toplevel_substitution ~importer sb tree =
+  let toplevel_substitution ~importer ~type_of_name sb tree =
     let sb' = sb in
     let sb v = try Variable.Map.find v sb with Not_found -> v in
     let substitute_type ty =
-      Flambda_type.rename_variables ~importer ty ~f:(fun var -> sb var)
+      Flambda_type.rename_variables ~importer ~type_of_name ty
+        ~f:(fun var -> sb var)
     in
     let substitute_params_list params =
       List.map (fun param ->
@@ -673,19 +664,19 @@ end = struct
         params
     in
     let substitute_args_list args =
-      List.map (fun arg -> sb arg) args
+      List.map (fun arg -> Simple.map_var arg ~f:sb) args
     in
     let aux (expr : t) : t =
       (* Note that this does not have to traverse subexpressions; the call to
          [map_toplevel] below will deal with that. *)
       match expr with
       | Let_mutable mutable_let ->
-        let initial_value = sb mutable_let.initial_value in
+        let initial_value = Name.map_var mutable_let.initial_value ~f:sb in
         Let_mutable { mutable_let with initial_value }
       | Apply apply ->
         Apply (Apply.rename_variables apply ~f:sb)
       | Switch (cond, sw) ->
-        let cond = sb cond in
+        let cond = Name.map_var cond ~f:sb in
         Switch (cond, sw)
       | Apply_cont (cont, trap_action, args) ->
         let args = substitute_args_list args in
@@ -707,16 +698,14 @@ end = struct
     in
     let aux_named (named : Named.t) : Named.t =
       match named with
-      | Var var ->
-        let var' = sb var in
-        if var == var' then named
-        else Var var'
-      | Symbol _ | Const _ -> named
+      | Simple simple ->
+        let simple' = Simple.map_var simple ~f:sb in
+        if simple == simple' then named
+        else Simple simple'
       | Read_mutable _ -> named
       | Assign { being_assigned; new_value; } ->
-        let new_value = sb new_value in
+        let new_value = Simple.map_var new_value ~f:sb in
         Assign { being_assigned; new_value; }
-      | Read_symbol_field _ -> named
       | Set_of_closures set_of_closures ->
         let function_decls =
           Function_declarations.map_parameter_types
@@ -733,21 +722,6 @@ end = struct
             ~direct_call_surrogates:set_of_closures.direct_call_surrogates
         in
         Set_of_closures set_of_closures
-      | Project_closure project_closure ->
-        Project_closure {
-          project_closure with
-          set_of_closures = sb project_closure.set_of_closures;
-        }
-      | Move_within_set_of_closures move_within_set_of_closures ->
-        Move_within_set_of_closures {
-          move_within_set_of_closures with
-          closure = sb move_within_set_of_closures.closure;
-        }
-      | Project_var project_var ->
-        Project_var {
-          project_var with
-          closure = sb project_var.closure;
-        }
       | Prim (prim, dbg) ->
         Prim (Flambda_primitive.rename_variables prim ~f:sb, dbg)
     in
@@ -759,7 +733,7 @@ end = struct
         ~stub ~continuation ~return_arity ~dbg : Expr.t =
     let my_closure = Variable.rename id in
     let closure_id = Closure_id.wrap id in
-    let free_variables = Expr.free_variables body in
+    let free_variables = Expr.free_names body in
     let param_set = Typed_parameter.List.var_set params in
     if not (Variable.Set.subset param_set free_variables) then begin
       Misc.fatal_error "Expr.make_closure_declaration"
@@ -1191,12 +1165,12 @@ end and Named : sig
   val invariant
      : (Invariant_env.t
     -> t
-    -> Flambda_primitive.result_kind) Flambda_type.with_importer
+    -> Flambda_primitive.result_kind) Flambda_type.type_accessor
   val equal : t -> t -> bool
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.with_importer
+    -> t) Flambda_type.type_accessor
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
     val iter_named : (t -> unit) -> t -> unit
@@ -1395,7 +1369,7 @@ end = struct
 end and Set_of_closures : sig
   include module type of F0.Set_of_closures
 
-  val invariant : (Invariant_env.t -> t -> unit) Flambda_type.with_importer
+  val invariant : (Invariant_env.t -> t -> unit) Flambda_type.type_accessor
 
   val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
 

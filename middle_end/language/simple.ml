@@ -95,6 +95,14 @@ let map_var t ~f =
     else Name name'
   | Const _ -> t
 
+let map_symbol t ~f =
+  match t with
+  | Name name ->
+    let name' = Name.map_symbol name ~f in
+    if name == name' then t
+    else Name name'
+  | Const _ -> t
+
 include Identifiable.Make (struct
   type nonrec t = t
 

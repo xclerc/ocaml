@@ -44,6 +44,8 @@ val free_names : t -> Name.Set.t
 
 val map_var : t -> f:(Variable.t -> Variable.t) -> t
 
+val map_symbol : t -> f:(Symbol.t -> Symbol.t) -> t
+
 include Identifiable.S with type t := t
 
 module List : sig

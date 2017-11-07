@@ -31,6 +31,14 @@ let map_var t ~f =
     else Var var'
   | Symbol _ -> t
 
+let map_symbol t ~f =
+  match t with
+  | Var _ -> t
+  | Symbol symbol ->
+    let symbol' = f symbol in
+    if symbol == symbol' then t
+    else Symbol symbol'
+
 include Identifiable.Make (struct
   type nonrec t = t
 
