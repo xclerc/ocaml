@@ -61,7 +61,7 @@ module Or_not_all_values_known : sig
 end
 
 module Blocks : sig
-  type t = private ty_value array Tag.Scannable.Map.t
+  type t
 end
 
 module Joined_closures : sig

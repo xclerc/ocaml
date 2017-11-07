@@ -442,6 +442,26 @@ module type S = sig
          the canonical name. *)
   val resolve_aliases : (t -> t * (Name.t option)) type_accessor
 
+  (** Like [resolve_aliases], but for use when you have a [ty], not a [t]. *)
+  val resolve_aliases_on_ty
+     : importer_this_kind:(('a, 'b) ty -> ('a, 'b) resolved_ty)
+    -> force_to_kind:(t -> ('a, 'b) ty)
+    -> type_of_name:(Name.t -> t option)
+    -> ('a, 'b) ty
+    -> ('a, 'b) resolved_ty * (Name.t option)
+
+  val force_to_kind_value : t -> ty_value
+
+  val force_to_kind_naked_immediate : t -> ty_naked_immediate
+
+  val force_to_kind_naked_float : t -> ty_naked_float
+
+  val force_to_kind_naked_int32 : t -> ty_naked_int32
+
+  val force_to_kind_naked_int64 : t -> ty_naked_int64
+
+  val force_to_kind_naked_nativeint : t -> ty_naked_nativeint
+
   val t_of_ty_value : ty_value -> t
 
 (*
