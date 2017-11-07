@@ -60,15 +60,12 @@ module Or_not_all_values_known : sig
     | Not_all_values_known
 end
 
-module Blocks_with_names : sig
+module Blocks : sig
   type t = private ty_value array Tag.Scannable.Map.t
 end
 
 module Joined_closures : sig
   type t
-
-  (** The canonical name bound to the closures, if such exists. *)
-  val name : t -> Name.t option
 
   val sets_of_closures : t -> ty_value Closure_id.Map.t
 
@@ -78,31 +75,11 @@ end
 module Joined_sets_of_closures : sig
   type t
 
-  (** The canonical name bound to the set of closures, if such exists. *)
-  val name : t -> Name.t option
-
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 
   val to_type : t -> flambda_type
 end
-
-module type With_name = sig
-  type thing
-
-  type t
-
-  val thing : t -> thing
-  val name : t -> Name.t option
-
-  include Identifiable.S with type t := t
-end
-
-module Immediate_with_name : With_name with type thing = Immediate.t
-module Float_with_name : With_name with type thing = float
-module Int32_with_name : With_name with type thing = Int32.t
-module Int64_with_name : With_name with type thing = Int64.t
-module Targetint_with_name : With_name with type thing = Targetint.t
 
 module Evaluated : sig
   (** A straightforward canonical form which can be used easily for the
@@ -117,17 +94,15 @@ module Evaluated : sig
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks_with_names.t * Immediate_with_name.Set.t)
-          Or_not_all_values_known.t
+        (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
     (** For [Blocks_and_tagged_immediates] it is guaranteed that the
         "blocks" portion is non-empty.  (Otherwise [Tagged_immediates_only]
         will be produced.) *)
-    | Tagged_immediates_only of
-        Immediate_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Tagged_immediates_only of Immediate.Set.t Or_not_all_values_known.t
+    | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Set_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
@@ -135,18 +110,19 @@ module Evaluated : sig
 
   type t = private
     | Values of t_values
-    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
-    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of Immediate.Set.t Or_not_all_values_known.t
+    | Naked_floats of Numbers.Float.Set.t Or_not_all_values_known.t
+    | Naked_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
+    | Naked_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
+    | Naked_nativeints of Targetint.Set.t Or_not_all_values_known.t
 
   (** The kind of the given evaluated type. *)
   val kind : t -> Flambda_kind.t
 end
 
-(** Evaluate the given type to a canonical form. *)
-val eval : (t -> Evaluated.t) type_accessor
+(** Evaluate the given type to a canonical form, possibly with an associated
+    name. *)
+val eval : (t -> Evaluated.t * (Name.t option)) type_accessor
 
 (** Whether the given type says that a term of that type can never be
     constructed (in other words, it is [Invalid]). *)
@@ -230,7 +206,7 @@ val get_field
   -> get_field_result) type_accessor
 
 type boxed_float_proof = private
-  | Proved of Float_with_name.Set.t Or_not_all_values_known.t
+  | Proved of Numbers.Float.Set.t Or_not_all_values_known.t
   | Invalid
 
 (** Prove that the given type represents:
@@ -243,21 +219,21 @@ type boxed_float_proof = private
 val prove_boxed_float : (t -> boxed_float_proof) type_accessor
 
 type boxed_int32_proof = private
-  | Proved of Int32_with_name.Set.t Or_not_all_values_known.t
+  | Proved of Numbers.Int32.Set.t Or_not_all_values_known.t
   | Invalid
 
 (** As for [prove_boxed_float] but for [Int32]. *)
 val prove_boxed_int32 : (t -> boxed_int32_proof) type_accessor
 
 type boxed_int64_proof = private
-  | Proved of Int64_with_name.Set.t Or_not_all_values_known.t
+  | Proved of Numbers.Int64.Set.t Or_not_all_values_known.t
   | Invalid
 
 (** As for [prove_boxed_float] but for [Int64]. *)
 val prove_boxed_int64 : (t -> boxed_int64_proof) type_accessor
 
 type boxed_nativeint_proof = private
-  | Proved of Targetint_with_name.Set.t Or_not_all_values_known.t
+  | Proved of Targetint.Set.t Or_not_all_values_known.t
   | Invalid
 
 (** As for [prove_boxed_float] but for [Nativeint]. *)

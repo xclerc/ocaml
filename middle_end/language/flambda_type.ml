@@ -247,89 +247,11 @@ module Or_not_all_values_known = struct
     | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
 end
 
-module type With_name = sig
-  type thing
-
-  type t
-
-  val create : thing -> Name.t option -> t
-
-  val thing : t -> thing
-  val name : t -> Name.t option
-
-  include Identifiable.S with type t := t
-end
-
-module Make_with_name (T : Identifiable.S) : sig
-  include With_name with type thing = T.t
-end = struct
-  type thing = T.t
-
-  type t = T.t * Name.t option
-
-  include Identifiable.Make (struct
-    type nonrec t = t
-
-    let compare (t1, name1) (t2, name2) =
-      let c = T.compare t1 t2 in
-      if c <> 0 then c
-      else Misc.Stdlib.Option.compare Name.compare name1 name2
-
-    let equal t1 t2 =
-      compare t1 t2 = 0
-
-    let hash (t, name) =
-      match name with
-      | None -> T.hash t
-      | Some name -> Hashtbl.hash (T.hash t, Name.hash name)
-
-    let print ppf (t, name) =
-      match name with
-      | None -> T.print ppf t
-      | Some name -> Format.fprintf ppf "%a = %a" T.print t Name.print name
-  end)
-
-  let create thing name = thing, name
-
-  let thing (thing, _name) = thing
-  let name (_thing, name) = name
-end
-
-module Make_with_name_non_comparable (T : sig type t end) : sig
-  type t
-
-  val create : T.t -> Name.t option -> t
-
-  val thing : t -> T.t
-  val name : t -> Name.t option
-end = struct
-  type thing = T.t
-
-  type t = T.t * Name.t option
-
-  let create thing name = thing, name
-
-  let thing (thing, _name) = thing
-  let name (_thing, name) = name
-end
-
-module Immediate_with_name = Make_with_name (Immediate)
-module Float_with_name = Make_with_name (Float)
-module Int32_with_name = Make_with_name (Int32)
-module Int64_with_name = Make_with_name (Int64)
-module Targetint_with_name = Make_with_name (Targetint)
-
-(* CR mshinwell: Can we make these things comparable?  e.g. by using set of
-   closures ID? *)
-module Closure_with_name = Make_with_name_non_comparable (Closure)
-module Set_of_closures_with_name =
-  Make_with_name_non_comparable (Set_of_closures)
-
 type get_field_result =
   | Ok of t
   | Invalid
 
-module Blocks_with_names : sig
+module Blocks : sig
   type t = ty_value array Tag.Scannable.Map.t
 
   val get_field
@@ -340,7 +262,6 @@ module Blocks_with_names : sig
 
   val unique_tag_and_size : t -> (Tag.Scannable.t * int) option
 end = struct
-  (* XXX keep track of the names *)
   type t = ty_value array Tag.Scannable.Map.t
 
   let print ppf t =
@@ -417,7 +338,7 @@ end
 module Joined_closures : sig
   type t
 
-  val create : (Closure_with_name.t list -> t) type_accessor
+  val create : (Closure.t list -> t) type_accessor
 
   val name : t -> Name.t option
   val sets_of_closures : t -> ty_value Closure_id.Map.t
@@ -432,9 +353,9 @@ end = struct
   let name t = t.name
   let sets_of_closures t = t.sets_of_closures
 
-  let of_closure (closure : Closure_with_name.t) : t =
-    let name = Closure_with_name.name closure in
-    let closure = Closure_with_name.thing closure in
+  let of_closure (closure : Closure.t) : t =
+    let name = Closure.name closure in
+    let closure = Closure.thing closure in
     let sets_of_closures =
       Closure_id.Map.add closure.closure_id closure.set_of_closures
         Closure_id.Map.empty
@@ -459,7 +380,7 @@ end = struct
       sets_of_closures;
     }
 
-  let create ~importer ~type_of_name (closures : Closure_with_name.t list) =
+  let create ~importer ~type_of_name (closures : Closure.t list) =
     let sets = List.map of_closure closures in
     match sets with
     | [] ->
@@ -478,9 +399,7 @@ end
 module Joined_sets_of_closures : sig
   type t
 
-  val create : (Set_of_closures_with_name.t list -> t) type_accessor
-
-  val name : t -> Name.t option
+  val create : (Set_of_closures.t list -> t) type_accessor
 
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
@@ -507,9 +426,9 @@ end = struct
       Var_within_closure.Set.print
       (Var_within_closure.Map.keys t.closure_elements)
 
-  let of_set_of_closures (set : Set_of_closures_with_name.t) : t =
-    let name = Set_of_closures_with_name.name set in
-    let set = Set_of_closures_with_name.thing set in
+  let of_set_of_closures (set : Set_of_closures.t) : t =
+    let name = Set_of_closures.name set in
+    let set = Set_of_closures.thing set in
     { name;
       set_of_closures_id_and_origin =
         Exactly (set.set_of_closures_id, set.set_of_closures_origin);
@@ -634,7 +553,7 @@ end = struct
     | Ok Not_all_values_known | Wrong ->
       join_and_make_all_functions_non_inlinable ~importer ~type_of_name t1 t2
 
-  let create ~importer ~type_of_name (sets : Set_of_closures_with_name.t list)
+  let create ~importer ~type_of_name (sets : Set_of_closures.t list)
         : t =
     let sets = List.map of_set_of_closures sets in
     match sets with
@@ -661,15 +580,13 @@ module Evaluated = struct
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks_with_names.t * Immediate_with_name.Set.t)
-          Or_not_all_values_known.t
-    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
-    | Closures of Closure_with_name.t list Or_not_all_values_known.t
-    | Set_of_closures of
-        Set_of_closures_with_name.t list Or_not_all_values_known.t
+        (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
+    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
+    | Closures of Closure.t list Or_not_all_values_known.t
+    | Set_of_closures of Set_of_closures.t list Or_not_all_values_known.t
     (* CR-someday mshinwell: Improve the [Float_array] case when we end up with
        immutable float arrays at the user level. *)
     | Strings of String_info.Set.t Or_not_all_values_known.t
@@ -677,24 +594,22 @@ module Evaluated = struct
 
   type t0 =
     | Values of t0_values
-    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
-    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of Immediate.Set.t Or_not_all_values_known.t
+    | Naked_floats of Float.Set.t Or_not_all_values_known.t
+    | Naked_int32s of Int32.Set.t Or_not_all_values_known.t
+    | Naked_int64s of Int64.Set.t Or_not_all_values_known.t
+    | Naked_nativeints of Targetint.Set.t Or_not_all_values_known.t
 
   type t_values =
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks_with_names.t * Immediate_with_name.Set.t)
-          Or_not_all_values_known.t
-    | Tagged_immediates_only of
-        Immediate_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+        (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
+    | Tagged_immediates_only of Immediate.Set.t Or_not_all_values_known.t
+    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
+    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
+    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
+    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Set_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
@@ -702,11 +617,11 @@ module Evaluated = struct
 
   type t =
     | Values of t_values
-    | Naked_immediates of Immediate_with_name.Set.t Or_not_all_values_known.t
-    | Naked_floats of Float_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int32s of Int32_with_name.Set.t Or_not_all_values_known.t
-    | Naked_int64s of Int64_with_name.Set.t Or_not_all_values_known.t
-    | Naked_nativeints of Targetint_with_name.Set.t Or_not_all_values_known.t
+    | Naked_immediates of Immediate.Set.t Or_not_all_values_known.t
+    | Naked_floats of Float.Set.t Or_not_all_values_known.t
+    | Naked_int32s of Int32.Set.t Or_not_all_values_known.t
+    | Naked_int64s of Int64.Set.t Or_not_all_values_known.t
+    | Naked_nativeints of Targetint.Set.t Or_not_all_values_known.t
 
   let invariant t =
     if !Clflags.flambda_invariant_checks then begin
@@ -714,7 +629,7 @@ module Evaluated = struct
       | Values values ->
         begin match values with
         | Blocks_and_tagged_immediates (blocks, _imms) ->
-          if Blocks_with_names.is_empty blocks then begin
+          if Blocks.is_empty blocks then begin
             Misc.fatal_error "Use [Tagged_immediates_only] instead of \
                 [Blocks_and_tagged_immediates] when there are no blocks"
           end
@@ -931,9 +846,9 @@ module Evaluated = struct
       | Wrong -> Unknown
       end
     | Closures closures1, Closures closures2 ->
-      Closures (Closure_with_name.Set.union closures1 closures2)
+      Closures (Closure.Set.union closures1 closures2)
     | Set_of_closures set1, Set_of_closures set2 ->
-      Set_of_closures (Set_of_closures_with_name.union set1 set2)
+      Set_of_closures (Set_of_closures.union set1 set2)
     | Strings strs1, Strings strs2 ->
       Strings (String_info.Set.union strs1 strs2)
     | Float_arrays { lengths = lengths1; },
@@ -1007,9 +922,9 @@ module Evaluated = struct
       | Wrong -> Unknown
       end
     | Closures closures1, Closures closures2 ->
-      Closures (Closure_with_name.meet_sets closures1 closures2)
+      Closures (Closure.meet_sets closures1 closures2)
     | Set_of_closures set1, Set_of_closures set2 ->
-      Set_of_closures (Set_of_closures_with_name.meet_sets set1 set2)
+      Set_of_closures (Set_of_closures.meet_sets set1 set2)
     | Strings strs1, Strings strs2 ->
       Strings (String_info.Set.inter strs1 strs2)
     | Float_arrays { lengths = lengths1; },
@@ -1080,7 +995,7 @@ let prove_naked_nativeint_from_ty_naked_nativeint ~importer
   | Ok (Naked_nativeint i) -> Known i
   | Bottom -> Wrong
 
-let eval ~importer ~type_of_name (t : t) : Evaluated.t =
+let rec eval ~importer ~type_of_name (t : t) : Evaluated.t * (Name.t option) =
   let module I = (val importer : Importer) in
   let eval ~importer_this_kind ~force_to_kind
         ~(eval_singleton : _ -> Evaluated.t0) ty =
@@ -1092,30 +1007,43 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ty
     in
     match resolved_ty_value with
-    | Unknown _ -> Unknown
-    | Bottom -> Bottom
+    | Unknown _ -> Unknown, canonical_name
+    | Bottom -> Bottom, canonical_name
     | Ok or_combination ->
       begin match or_combination with
       | Singleton singleton -> eval_singleton singleton ~canonical_name
       | Combination (Union, ty1, ty2) ->
         let t1 : t = Normal ty1 in
         let t2 : t = Normal ty2 in
-        let eval1 = eval ~importer ~type_of_name t1 in
-        let eval2 = eval ~importer ~type_of_name t2 in
-        (* XXX does anything need to happen with [canonical_name]? *)
-        Evaluated.join eval1 eval2
+        let eval1, canonical_name1 = eval ~importer ~type_of_name t1 in
+        let eval2, canonical_name2 = eval ~importer ~type_of_name t2 in
+        let eval = Evaluated.join eval1 eval2 in
+        let canonical_name =
+          match canonical_name1, canonical_name2 with
+          | Some name1, Some name2 when Name.equal name1 name2 ->
+            canonical_name1
+          | _, _ -> None
+        in
+        eval, canonical_name
       | Combination (Intersection, ty1, ty2) ->
         let t1 : t = Normal ty1 in
         let t2 : t = Normal ty2 in
-        let eval1 = eval ~importer ~type_of_name t1 in
-        let eval2 = eval ~importer ~type_of_name t2 in
-        Evaluated.meet eval1 eval2
+        let eval1, canonical_name1 = eval ~importer ~type_of_name t1 in
+        let eval2, canonical_name2 = eval ~importer ~type_of_name t2 in
+        let eval = Evaluated.meet eval1 eval2 in
+        let canonical_name =
+          match canonical_name1, canonical_name2 with
+          | Some name1, Some name2 when Name.equal name1 name2 ->
+            canonical_name1
+          | _, _ -> None
+        in
+        eval, canonical_name
       end
   in
-  let t0 : Evaluated.t0 =
+  let (t0 : Evaluated.t0), canonical_name =
     match t with
     | Value ty ->
-      let eval_singleton (o : of_kind_value) ~canonical_name : Evaluated.t0 =
+      let eval_singleton (o : of_kind_value) : Evaluated.t0 =
         match o with
         | Tagged_immediate ty ->
           begin match
@@ -1126,10 +1054,10 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
             Blocks_and_tagged_immediates (
               Tag.Scannable.Map.empty, Not_all_values_known)
           | Known i ->
-            let i = Immediate_with_name.create i canonical_name in
+            let i = Immediate.create i canonical_name in
             Blocks_and_tagged_immediates (
               Tag.Scannable.Map.empty,
-              Exactly (Immediate_with_name.Set.singleton i))
+              Exactly (Immediate.Set.singleton i))
           end
         | Boxed_float ty ->
           begin match
@@ -1138,8 +1066,8 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           | Wrong -> Unknown
           | Unknown -> Boxed_floats Not_all_values_known
           | Known f ->
-            let f = Float_with_name.create f canonical_name in
-            Boxed_floats (Exactly (Float_with_name.Set.singleton f))
+            let f = Float.create f canonical_name in
+            Boxed_floats (Exactly (Float.Set.singleton f))
           end
         | Boxed_int32 ty ->
           begin match
@@ -1148,8 +1076,8 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           | Wrong -> Unknown
           | Unknown -> Boxed_int32s Not_all_values_known
           | Known i ->
-            let i = Int32_with_name.create i canonical_name in
-            Boxed_int32s (Exactly (Int32_with_name.Set.singleton i))
+            let i = Int32.create i canonical_name in
+            Boxed_int32s (Exactly (Int32.Set.singleton i))
           end
         | Boxed_int64 ty ->
           begin match
@@ -1158,8 +1086,8 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           | Wrong -> Unknown
           | Unknown -> Boxed_int64s Not_all_values_known
           | Known i ->
-            let i = Int64_with_name.create i canonical_name in
-            Boxed_int64s (Exactly (Int64_with_name.Set.singleton i))
+            let i = Int64.create i canonical_name in
+            Boxed_int64s (Exactly (Int64.Set.singleton i))
           end
         | Boxed_nativeint ty ->
           begin match
@@ -1168,22 +1096,20 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
           | Wrong -> Unknown
           | Unknown -> Boxed_nativeints Not_all_values_known
           | Known i ->
-            let i = Targetint_with_name.create i canonical_name in
-            Boxed_nativeints (Exactly (Targetint_with_name.Set.singleton i))
+            let i = Targetint.create i canonical_name in
+            Boxed_nativeints (Exactly (Targetint.Set.singleton i))
           end
         | Block (tag, fields) ->
           let blocks =
             Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
           in
           Blocks_and_tagged_immediates (blocks,
-            Exactly Immediate_with_name.Set.empty)
+            Exactly Immediate.Set.empty)
         | Closure _ ->
           Unknown
             (* [@ppwarning "TODO"] *)
         | Set_of_closures set ->
-          Set_of_closures (Exactly (
-            Set_of_closures.create ~set_of_closures_var:resolved_ty_value.var
-              set))
+          Set_of_closures (Exactly (Set_of_closures.create set))
         | String str -> String (Exactly (String_info.Set.singleton str))
         | Float_array fields ->
           let length = Array.length fields in
@@ -1194,13 +1120,11 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_immediate ty ->
-      let eval_singleton (o : of_kind_naked_immediate) ~canonical_name
-            : Evaluated.t0 =
+      let eval_singleton (o : of_kind_naked_immediate) : Evaluated.t0 =
         match o with
         | Naked_immediate imm ->
-          let imm = Naked_immediate_with_name.create imm canonical_name in
           Naked_immediates (Exactly (
-            Naked_immediate_with_name.Set.singleton imm))
+            Naked_immediate.Set.singleton imm))
       in
       eval ~importer_this_kind:
           I.import_naked_immediate_type_as_resolved_ty_naked_immediate
@@ -1208,13 +1132,11 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_float ty ->
-      let eval_singleton (o : of_kind_naked_float) ~canonical_name
-            : Evaluated.t0 =
+      let eval_singleton (o : of_kind_naked_float) : Evaluated.t0 =
         match o with
         | Naked_float f ->
-          let f = Naked_float_with_name.create f canonical_name in
           Naked_floats (Exactly (
-            Naked_float_with_name.Set.singleton f))
+            Naked_float.Set.singleton f))
       in
       eval ~importer_this_kind:
           I.import_naked_float_type_as_resolved_ty_naked_float
@@ -1222,13 +1144,11 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_int32 ty ->
-      let eval_singleton (o : of_kind_naked_int32) ~canonical_name
-            : Evaluated.t0 =
+      let eval_singleton (o : of_kind_naked_int32) : Evaluated.t0 =
         match o with
         | Naked_int32 i ->
-          let i = Naked_int32_with_name.create i canonical_name in
           Naked_int32s (Exactly (
-            Naked_int32_with_name.Set.singleton i))
+            Naked_int32.Set.singleton i))
       in
       eval ~importer_this_kind:
           I.import_naked_int32_type_as_resolved_ty_naked_int32
@@ -1236,13 +1156,11 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_int64 ty ->
-      let eval_singleton (o : of_kind_naked_int64) ~canonical_name
-            : Evaluated.t0 =
+      let eval_singleton (o : of_kind_naked_int64) : Evaluated.t0 =
         match o with
         | Naked_int64 i ->
-          let i = Naked_int64_with_name.create i canonical_name in
           Naked_int64s (Exactly (
-            Naked_int64_with_name.Set.singleton i))
+            Naked_int64.Set.singleton i))
       in
       eval ~importer_this_kind:
           I.import_naked_int64_type_as_resolved_ty_naked_int64
@@ -1250,13 +1168,11 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
     | Naked_nativeint ty ->
-      let eval_singleton (o : of_kind_naked_nativeint) ~canonical_name
-            : Evaluated.t0 =
+      let eval_singleton (o : of_kind_naked_nativeint) : Evaluated.t0 =
         match o with
         | Naked_nativeint i ->
-          let i = Naked_nativeint_with_name.create i canonical_name in
           Naked_nativeints (Exactly (
-            Naked_nativeint_with_name.Set.singleton i))
+            Naked_nativeint.Set.singleton i))
       in
       eval ~importer_this_kind:
           I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
@@ -1264,7 +1180,8 @@ let eval ~importer ~type_of_name (t : t) : Evaluated.t =
         ~eval_singleton
         ty
   in
-  Evaluated.t0_to_t t0
+  let t = Evaluated.t0_to_t t0 in
+  t, canonical_name
 
 let is_bottom ~importer ~type_of_name t =
   Evaluated.is_bottom (eval ~importer ~type_of_name t)
@@ -1286,8 +1203,8 @@ type reification_result =
 let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       : reification_result =
   let original_t = t in
-  let t, canonical_name = resolve_aliases ~importer ~type_of_name t in
-  let t_evaluated = eval ~importer ~type_of_name t in
+  let t, _canonical_name = resolve_aliases ~importer ~type_of_name t in
+  let t_evaluated, canonical_name = eval ~importer ~type_of_name t in
   let try_name () : reification_result =
     match canonical_name with
     | None -> Cannot_reify
@@ -1359,7 +1276,7 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
 
 let get_field ~importer ~type_of_name t ~field_index
       ~(field_kind : Flambda_primitive.field_kind) : get_field_result =
-  let t_evaluated = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
   let expected_result_kind =
     (* CR mshinwell: This should move to a new module called
        [Flambda_primitive.Field_kind] *)
@@ -1418,18 +1335,18 @@ let get_field ~importer ~type_of_name t ~field_index
       print t
 
 type boxed_float_proof =
-  | Proved of Float_with_name.Set.t Or_not_all_values_known.t
+  | Proved of Float.Set.t Or_not_all_values_known.t
   | Invalid
 
 let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
-  let t_evaluated = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
   match t_evaluated with
   | Values values ->
     begin match values with
     | Unknown
     | Boxed_floats Not_all_values_known -> Not_all_values_known
     | Boxed_floats (Exactly fs) ->
-      if Float_with_name.Set.is_empty fs then Invalid
+      if Float.Set.is_empty fs then Invalid
       else Proved fs
     | Blocks_and_tagged_immediates _
     | Bottom
@@ -1459,7 +1376,7 @@ type lengths_of_arrays_or_blocks_proof =
 
 let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
   let result =
-    let t_evaluated = eval ~importer ~type_of_name t in
+    let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
     match t_evaluated with
     | Values values ->
       begin match values with
@@ -1470,7 +1387,7 @@ let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
         if not (Immediate.Set.is_empty imms) then
           Invalid
         else
-          begin match Blocks_with_names.unique_tag_and_size blocks with
+          begin match Blocks.unique_tag_and_size blocks with
           | None -> Invalid
           | Some (_tag, size) -> Proved (Int.Set.singleton size)
           end
@@ -1510,7 +1427,7 @@ type closures_proof =
   | Invalid
 
 let prove_closures ~importer ~type_of_name t : closures_proof =
-  let t_evaluated = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
   match t_evaluated with
   | Values values ->
     begin match values with
@@ -1542,7 +1459,7 @@ type set_of_closures_proof =
   | Invalid
 
 let prove_set_of_closures ~importer ~type_of_name t : set_of_closures_proof =
-  let t_evaluated = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
   match t_evaluated with
   | Values values ->
     begin match values with
