@@ -40,7 +40,7 @@ module type S = sig
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
-    | Symbol of Symbol.t
+    | Name of Name.t
 
   type unknown_because_of =
     | Unresolved_value of unresolved_value
@@ -450,6 +450,16 @@ module type S = sig
     -> ('a, 'b) ty
     -> ('a, 'b) resolved_ty * (Name.t option)
 
+  (** Like [resolve_aliases_on_ty], but unresolved names are changed into
+      an [Unknown] (with payload given by [unknown_payload]). *)
+  val resolve_aliases_and_squash_unresolved_names_on_ty
+     : importer_this_kind:(('a, 'b) ty -> ('a, 'b) resolved_ty)
+    -> force_to_kind:(t -> ('a, 'b) ty)
+    -> type_of_name:(Name.t -> t option)
+    -> unknown_payload:'b
+    -> ('a, 'b) ty
+    -> ('a, 'b) or_unknown_or_bottom * (Name.t option)
+
   val force_to_kind_value : t -> ty_value
 
   val force_to_kind_naked_immediate : t -> ty_naked_immediate
@@ -476,4 +486,8 @@ module type S = sig
       under another name, or unavailable. *)
   val clean : (t -> (Variable.t -> cleaning_spec) -> t) type_accessor
 *)
+
+  val combination_component_to_ty
+     : 'a singleton_or_combination or_alias
+    -> ('a, _) ty
 end

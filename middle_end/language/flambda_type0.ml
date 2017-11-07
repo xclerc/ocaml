@@ -58,7 +58,7 @@ end) = struct
   type unresolved_value =
     | Set_of_closures_id of Set_of_closures_id.t
     | Export_id of Export_id.t
-    | Symbol of Symbol.t
+    | Name of Name.t
 
   type unknown_because_of =
     | Unresolved_value of unresolved_value
@@ -72,8 +72,8 @@ end) = struct
       if Set_of_closures_id.equal s1 s2 then u1 else Other
     | Unresolved_value (Export_id s1), Unresolved_value (Export_id s2) ->
       if Export_id.equal s1 s2 then u1 else Other
-    | Unresolved_value (Symbol s1), Unresolved_value (Symbol s2) ->
-      if Symbol.equal s1 s2 then u1 else Other
+    | Unresolved_value (Name s1), Unresolved_value (Name s2) ->
+      if Name.equal s1 s2 then u1 else Other
     | _, _ -> Other
 
   (** Types from other compilation units are loaded lazily.  There are two
@@ -328,8 +328,8 @@ end) = struct
     match unresolved with
     | Set_of_closures_id set ->
       Format.fprintf ppf "Set_of_closures_id %a" Set_of_closures_id.print set
-    | Symbol symbol ->
-      Format.fprintf ppf "Symbol %a" Symbol.print symbol
+    | Name name ->
+      Format.fprintf ppf "Name %a" Name.print name
     | Export_id id ->
       Format.fprintf ppf "Export_id %a" Export_id.print id
 
@@ -973,7 +973,8 @@ end) = struct
           in
           match t with
           | None ->
-            Treat_as_unknown_must_scan (Unresolved_value (Symbol sym))
+            Treat_as_unknown_must_scan (Unresolved_value (
+              Name (Name.symbol sym)))
           | Some t ->
             match create_resolved_t t with
             (* CR mshinwell: We used to [augment_with_symbol] here but maybe
@@ -1335,14 +1336,14 @@ end) = struct
       (importer_this_kind ty)
 
   let resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
-        ~force_to_kind ~type_of_name ~make_unknown ty =
+        ~force_to_kind ~type_of_name ~unknown_payload ty =
     let ty, canonical_name =
       resolve_aliases_on_ty ~importer_this_kind ~force_to_kind ~type_of_name ty
     in
     let ty =
       match ty with
       | Normal ty -> ty
-      | Alias _ -> make_unknown ()
+      | Alias name -> Unknown (Unresolved_value (Name name), unknown_payload)
     in
     ty, canonical_name
 
@@ -1416,7 +1417,7 @@ end) = struct
         resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
           ~force_to_kind:force_to_kind_value
           ~type_of_name
-          ~make_unknown:(fun () -> Unknown (Other, K.Must_scan))
+          ~unknown_payload:K.Must_scan
           ty
       in
       match ty with
@@ -2161,4 +2162,11 @@ end) = struct
     let meet_lists _list1 _list2 = assert false
     let print = print_set_of_closures
   end
+
+  let combination_component_to_ty (type a)
+        (ty : a singleton_or_combination or_alias)
+        : (a, _) ty =
+    match ty with
+    | Alias alias -> Alias alias
+    | Normal s_or_c -> Normal (Resolved (Ok s_or_c))
 end

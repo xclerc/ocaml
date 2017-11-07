@@ -37,7 +37,7 @@ let rename_variables ~importer:_ ~type_of_name:_ _t ~f:_ =
 *)
 
 let unresolved_symbol sym =
-  any_value Must_scan (Unresolved_value (Symbol sym))
+  any_value Can_scan (Unresolved_value (Name (Name.symbol sym)))
 
 let this_tagged_immediate_named n : Named.t * t =
   Simple (Simple.const (Tagged_immediate n)), this_tagged_immediate n
@@ -215,64 +215,6 @@ let reify_as_string t : string option =
   | Load_lazily _ -> None
 *)
 
-type 'a known_unknown_or_wrong =
-  | Known of 'a
-  | Unknown
-  | Wrong
-
-let prove_naked_immediate_from_ty_naked_immediate ~importer ~type_of_name
-      (ty : ty_naked_immediate) : _ known_unknown_or_wrong =
-  let module I = (val importer : Importer) in
-  let resolved_ty, _canonical_name =
-    resolve_aliases_on_ty
-      ~importer_this_kind:
-        I.import_naked_immediate_type_as_resolved_ty_naked_immediate
-      ~force_to_kind:force_to_kind_naked_immediate
-      ~type_of_name
-      ty
-  in
-  match resolved_ty with
-  | Alias _ -> Unknown
-  | Normal (Unknown _) -> Unknown
-  | Normal (Ok (Naked_immediate i)) -> Known i
-  | Normal Bottom -> Wrong
-
-let prove_naked_float_from_ty_naked_float ~importer
-      (ty : ty_naked_float) : _ known_unknown_or_wrong =
-  let module I = (val importer : Importer) in
-  let ty = I.import_naked_float_type_as_resolved_ty_naked_float ty in
-  match ty.descr with
-  | Unknown _ -> Unknown
-  | Ok (Naked_float f) -> Known f
-  | Bottom -> Wrong
-
-let prove_naked_int32_from_ty_naked_int32 ~importer
-      (ty : ty_naked_int32) : _ known_unknown_or_wrong =
-  let module I = (val importer : Importer) in
-  let ty = I.import_naked_int32_type_as_resolved_ty_naked_int32 ty in
-  match ty.descr with
-  | Unknown _ -> Unknown
-  | Ok (Naked_int32 i) -> Known i
-  | Bottom -> Wrong
-
-let prove_naked_int64_from_ty_naked_int64 ~importer
-      (ty : ty_naked_int64) : _ known_unknown_or_wrong =
-  let module I = (val importer : Importer) in
-  let ty = I.import_naked_int64_type_as_resolved_ty_naked_int64 ty in
-  match ty.descr with
-  | Unknown _ -> Unknown
-  | Ok (Naked_int64 i) -> Known i
-  | Bottom -> Wrong
-
-let prove_naked_nativeint_from_ty_naked_nativeint ~importer
-      (ty : ty_naked_nativeint) : _ known_unknown_or_wrong =
-  let module I = (val importer : Importer) in
-  let ty = I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty in
-  match ty.descr with
-  | Unknown _ -> Unknown
-  | Ok (Naked_nativeint i) -> Known i
-  | Bottom -> Wrong
-
 type 'a or_wrong =
   | Ok of 'a
   | Wrong
@@ -315,9 +257,13 @@ type get_field_result =
   | Invalid
 
 module Blocks : sig
-  type t = ty_value array Tag.Scannable.Map.t
+  type t
+
+  val empty : t
 
   val is_empty : t -> bool
+
+  val create_singleton : Tag.Scannable.t -> ty_value array -> t
 
   val get_field
      : (t
@@ -338,7 +284,12 @@ end = struct
   let print ppf t =
     Tag.Scannable.Map.print print_ty_value_array ppf t
 
+  let empty = Tag.Scannable.Map.empty
+
   let is_empty t = Tag.Scannable.Map.is_empty t
+
+  let create_singleton tag fields =
+    Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
 
   let join ~importer ~type_of_name t1 t2 : t or_wrong =
     let exception Same_tag_different_arities in
@@ -504,10 +455,10 @@ module Evaluated_first_stage = struct
           Ok (P.combine_immediate_sets imms1 imms2))
       in
       match t1, t2 with
-      | Unknown, _ -> if P.is_join then Unknown else values2
-      | _, Unknown -> if P.is_join then Unknown else values1
-      | Bottom, _ -> if P.is_join then values2 else Bottom
-      | _, Bottom -> if P.is_join then values1 else Bottom
+      | Unknown, _ -> if P.is_join then Unknown else t2
+      | _, Unknown -> if P.is_join then Unknown else t1
+      | Bottom, _ -> if P.is_join then t2 else Bottom
+      | _, Bottom -> if P.is_join then t1 else Bottom
       | Blocks_and_tagged_immediates variant1,
           Blocks_and_tagged_immediates variant2 ->
         begin match
@@ -522,10 +473,7 @@ module Evaluated_first_stage = struct
             variant1 variant2
         with
         | Ok (Exactly (blocks, imms)) ->
-          if Blocks.is_empty blocks then
-            Tagged_immediates_only (Exactly imms)
-          else
-            Blocks_and_tagged_immediates (Exactly (blocks, imms))
+          Blocks_and_tagged_immediates (Exactly (blocks, imms))
         | Ok Not_all_values_known ->
           Blocks_and_tagged_immediates Not_all_values_known
         | Wrong ->
@@ -589,12 +537,46 @@ module Evaluated_first_stage = struct
         | Wrong -> assert false
         end
       | Sets_of_closures set1, Sets_of_closures set2 ->
-        Sets_of_closures (set1 @ set2)
-      | Strings strs1, Strings strs2 ->
-        Strings (P.combine_string_info_sets strs1 strs2)
+        let sets_of_closures =
+          P.combine_or_not_all_values_known
+            (fun sets_of_closures1 sets_of_closures2 : _ or_wrong ->
+              Ok (sets_of_closures1 @ sets_of_closures2))
+            set1 set2
+        in
+        begin match sets_of_closures with
+        | Ok (Exactly sets_of_closures) ->
+          Sets_of_closures (Exactly sets_of_closures)
+        | Ok Not_all_values_known ->
+          Sets_of_closures Not_all_values_known
+        | Wrong -> assert false
+        end
+      | Strings strings1, Strings strings2 ->
+        let strings =
+          P.combine_or_not_all_values_known
+            (fun strings1 strings2 : _ or_wrong ->
+              Ok (P.combine_string_info_sets strings1 strings2))
+            strings1 strings2
+        in
+        begin match strings with
+        | Ok (Exactly strings) -> Strings (Exactly strings)
+        | Ok Not_all_values_known -> Strings Not_all_values_known
+        | Wrong -> assert false
+        end
       | Float_arrays { lengths = lengths1; },
           Float_arrays { lengths = lengths2; } ->
-        Float_arrays { lengths = P.combine_int_sets lengths1 lengths2; }
+        let lengths =
+          P.combine_or_not_all_values_known
+            (fun lengths1 lengths2 : _ or_wrong ->
+              Ok (P.combine_int_sets lengths1 lengths2))
+            lengths1 lengths2
+        in
+        begin match lengths with
+        | Ok (Exactly lengths) ->
+          Float_arrays { lengths = Exactly lengths; }
+        | Ok Not_all_values_known ->
+          Float_arrays { lengths = Not_all_values_known; }
+        | Wrong -> assert false
+        end
       | (Blocks_and_tagged_immediates _
         | Boxed_floats _
         | Boxed_int32s _
@@ -659,7 +641,7 @@ module Evaluated_first_stage = struct
           : t_naked_nativeints =
       begin match
         P.combine_or_not_all_values_known (fun is1 is2 : _ or_wrong ->
-            Ok (P.combine_nativeint_sets is1 is2))
+            Ok (P.combine_targetint_sets is1 is2))
           t1 t2
       with
       | Ok is -> is
@@ -677,7 +659,7 @@ module Evaluated_first_stage = struct
     let combine_float_sets = Float.Set.union
     let combine_int32_sets = Int32.Set.union
     let combine_int64_sets = Int64.Set.union
-    let combine_nativeint_sets = Targetint.Set.union
+    let combine_targetint_sets = Targetint.Set.union
     let combine_string_info_sets = String_info.Set.union
   end)
 
@@ -691,21 +673,21 @@ module Evaluated_first_stage = struct
     let combine_float_sets = Float.Set.inter
     let combine_int32_sets = Int32.Set.inter
     let combine_int64_sets = Int64.Set.inter
-    let combine_nativeint_sets = Targetint.Set.inter
+    let combine_targetint_sets = Targetint.Set.inter
     let combine_string_info_sets = String_info.Set.inter
   end)
 
-  let evaluate_ty (type singleton) (type result)
-        ~importer_this_kind ~type_of_name ~force_to_kind
-        ~(join : result -> result -> result)
-        ~(meet : result -> result -> result)
+  let evaluate_ty (type singleton) (type result) ~importer
+        ~importer_this_kind ~type_of_name ~force_to_kind ~unknown_payload
+        ~(join : (result -> result -> result) type_accessor)
+        ~(meet : (result -> result -> result) type_accessor)
         ~(eval_singleton : singleton -> result)
         ~(unknown : result) ~(bottom : result)
         (ty : (singleton, _) ty) : result * (Name.t option) =
     let rec evaluate (ty : (singleton, _) ty) : result * (Name.t option) =
       let resolved_ty, canonical_name =
-        resolve_aliases_and_squash_unresolved_names ~importer_this_kind
-          ~force_to_kind ~type_of_name ty
+        resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
+          ~force_to_kind ~type_of_name ~unknown_payload ty
       in
       match resolved_ty with
       | Unknown _ -> unknown, canonical_name
@@ -715,14 +697,14 @@ module Evaluated_first_stage = struct
         | Singleton singleton ->
           eval_singleton singleton, canonical_name
         | Combination (op, ty1, ty2) ->
-          let ty1 : (singleton, _) ty = Normal (Resolved (Ok ty1)) in
-          let ty2 : (singleton, _) ty = Normal (Resolved (Ok ty2)) in
+          let ty1 : (singleton, _) ty = combination_component_to_ty ty1 in
+          let ty2 : (singleton, _) ty = combination_component_to_ty ty2 in
           let eval1, canonical_name1 = evaluate ty1 in
           let eval2, canonical_name2 = evaluate ty2 in
           let eval =
-            begin match op with
-            | Union -> join eval1 eval2
-            | Intersection -> meet eval1 eval2
+            match op with
+            | Union -> join ~importer ~type_of_name eval1 eval2
+            | Intersection -> meet ~importer ~type_of_name eval1 eval2
           in
           let canonical_name =
             match canonical_name1, canonical_name2 with
@@ -736,168 +718,201 @@ module Evaluated_first_stage = struct
     evaluate ty
 
   let rec evaluate_ty_value ~importer ~type_of_name (ty : ty_value)
-        : t_values =
+        : t_values * Name.t option =
     let module I = (val importer : Importer) in
     let eval_singleton (singleton : of_kind_value) : t_values =
       match singleton with
       | Tagged_immediate ty ->
-        let t_naked_immediates =
+        let t_naked_immediates, _canonical_name =
           evaluate_ty_naked_immediate ~importer ~type_of_name ty
         in
-        Tagged_immediates_only t_naked_immediates
+        begin match t_naked_immediates with
+        | Exactly imms ->
+          Blocks_and_tagged_immediates (Exactly (Blocks.empty, imms))
+        | Not_all_values_known ->
+          Blocks_and_tagged_immediates Not_all_values_known
+        end
       | Boxed_float ty ->
-        let t_naked_floats =
-          evaluate_ty_naked_floats ~importer ~type_of_name ty
+        let t_naked_floats, _canonical_name =
+          evaluate_ty_naked_float ~importer ~type_of_name ty
         in
         Boxed_floats t_naked_floats
       | Boxed_int32 ty ->
-        let t_naked_int32s =
-          evaluate_ty_naked_int32s ~importer ~type_of_name ty
+        let t_naked_int32s, _canonical_name =
+          evaluate_ty_naked_int32 ~importer ~type_of_name ty
         in
         Boxed_int32s t_naked_int32s
       | Boxed_int64 ty ->
-        let t_naked_int64s =
-          evaluate_ty_naked_int64s ~importer ~type_of_name ty
+        let t_naked_int64s, _canonical_name =
+          evaluate_ty_naked_int64 ~importer ~type_of_name ty
         in
         Boxed_int64s t_naked_int64s
       | Boxed_nativeint ty ->
-        let t_naked_nativeints =
-          evaluate_ty_naked_nativeints ~importer ~type_of_name ty
+        let t_naked_nativeints, _canonical_name =
+          evaluate_ty_naked_nativeint ~importer ~type_of_name ty
         in
         Boxed_nativeints t_naked_nativeints
       | Block (tag, fields) ->
-        let blocks =
-          Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
-        in
-        Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
-      | Closure closure -> Closure (Exactly [closure])
-      | Set_of_closures set -> Set_of_closures (Exactly [set])
-      | String str -> String (Exactly (String_info.Set.singleton str))
+        let blocks = Blocks.create_singleton tag fields in
+        Blocks_and_tagged_immediates (Exactly (blocks, Immediate.Set.empty))
+      | Closure closure -> Closures (Exactly [closure])
+      | Set_of_closures set -> Sets_of_closures (Exactly [set])
+      | String str -> Strings (Exactly (String_info.Set.singleton str))
       | Float_array fields ->
         let length = Array.length fields in
         Float_arrays { lengths = Exactly (Int.Set.singleton length); }
     in
-    evaluate_ty
+    evaluate_ty ~importer
       ~importer_this_kind:
         I.import_value_type_as_resolved_ty_value
       ~type_of_name
       ~force_to_kind:force_to_kind_value
+      ~unknown_payload:K.Must_scan
       ~join:Join.combine_values
       ~meet:Meet.combine_values
       ~eval_singleton
       ~unknown:Unknown
       ~bottom:Bottom
+      ty
 
   and evaluate_ty_naked_immediate ~importer ~type_of_name
-        (ty : ty_naked_immediate) : t_naked_immediates =
+        (ty : ty_naked_immediate) : t_naked_immediates * Name.t option =
     let module I = (val importer : Importer) in
     let eval_singleton (singleton : of_kind_naked_immediate)
           : t_naked_immediates =
       match singleton with
-      | Naked_immediate imm -> Exactly (Naked_immediate.Set.singleton imm)
+      | Naked_immediate imm -> Exactly (Immediate.Set.singleton imm)
     in
-    evaluate_ty
+    evaluate_ty ~importer
       ~importer_this_kind:
         I.import_naked_immediate_type_as_resolved_ty_naked_immediate
       ~type_of_name
       ~force_to_kind:force_to_kind_naked_immediate
+      ~unknown_payload:()
       ~join:Join.combine_naked_immediates
       ~meet:Meet.combine_naked_immediates
       ~eval_singleton
-      ~unknown:Not_all_values_known
-      ~bottom:(Exactly Naked_immediate.Set.empty)
+      ~unknown:(Not_all_values_known : t_naked_immediates)
+      ~bottom:((Exactly Immediate.Set.empty) : t_naked_immediates)
+      ty
 
   and evaluate_ty_naked_float ~importer ~type_of_name
-        (ty : ty_naked_float) : t_naked_floats =
+        (ty : ty_naked_float) : t_naked_floats * Name.t option =
     let module I = (val importer : Importer) in
     let eval_singleton (singleton : of_kind_naked_float)
           : t_naked_floats =
       match singleton with
-      | Naked_float imm -> Exactly (Naked_float.Set.singleton imm)
+      | Naked_float imm -> Exactly (Float.Set.singleton imm)
     in
-    evaluate_ty
+    evaluate_ty ~importer
       ~importer_this_kind:
         I.import_naked_float_type_as_resolved_ty_naked_float
       ~type_of_name
       ~force_to_kind:force_to_kind_naked_float
+      ~unknown_payload:()
       ~join:Join.combine_naked_floats
       ~meet:Meet.combine_naked_floats
       ~eval_singleton
-      ~unknown:Not_all_values_known
-      ~bottom:(Exactly Naked_float.Set.empty)
+      ~unknown:(Not_all_values_known : t_naked_floats)
+      ~bottom:((Exactly Float.Set.empty) : t_naked_floats)
+      ty
 
   and evaluate_ty_naked_int32 ~importer ~type_of_name
-        (ty : ty_naked_int32) : t_naked_int32s =
+        (ty : ty_naked_int32) : t_naked_int32s * Name.t option =
     let module I = (val importer : Importer) in
     let eval_singleton (singleton : of_kind_naked_int32)
           : t_naked_int32s =
       match singleton with
-      | Naked_int32 imm -> Exactly (Naked_int32.Set.singleton imm)
+      | Naked_int32 imm -> Exactly (Int32.Set.singleton imm)
     in
-    evaluate_ty
+    evaluate_ty ~importer
       ~importer_this_kind:
         I.import_naked_int32_type_as_resolved_ty_naked_int32
       ~type_of_name
       ~force_to_kind:force_to_kind_naked_int32
+      ~unknown_payload:()
       ~join:Join.combine_naked_int32s
       ~meet:Meet.combine_naked_int32s
       ~eval_singleton
-      ~unknown:Not_all_values_known
-      ~bottom:(Exactly Naked_int32.Set.empty)
+      ~unknown:(Not_all_values_known : t_naked_int32s)
+      ~bottom:((Exactly Int32.Set.empty) : t_naked_int32s)
+      ty
 
   and evaluate_ty_naked_int64 ~importer ~type_of_name
-        (ty : ty_naked_int64) : t_naked_int64s =
+        (ty : ty_naked_int64) : t_naked_int64s * Name.t option =
     let module I = (val importer : Importer) in
     let eval_singleton (singleton : of_kind_naked_int64)
           : t_naked_int64s =
       match singleton with
-      | Naked_int64 imm -> Exactly (Naked_int64.Set.singleton imm)
+      | Naked_int64 imm -> Exactly (Int64.Set.singleton imm)
     in
-    evaluate_ty
+    evaluate_ty ~importer
       ~importer_this_kind:
         I.import_naked_int64_type_as_resolved_ty_naked_int64
       ~type_of_name
       ~force_to_kind:force_to_kind_naked_int64
+      ~unknown_payload:()
       ~join:Join.combine_naked_int64s
       ~meet:Meet.combine_naked_int64s
       ~eval_singleton
-      ~unknown:Not_all_values_known
-      ~bottom:(Exactly Naked_int64.Set.empty)
+      ~unknown:(Not_all_values_known : t_naked_int64s)
+      ~bottom:((Exactly Int64.Set.empty) : t_naked_int64s)
+      ty
 
   and evaluate_ty_naked_nativeint ~importer ~type_of_name
-        (ty : ty_naked_nativeint) : t_naked_nativeints =
+        (ty : ty_naked_nativeint) : t_naked_nativeints * Name.t option =
     let module I = (val importer : Importer) in
     let eval_singleton (singleton : of_kind_naked_nativeint)
           : t_naked_nativeints =
       match singleton with
-      | Naked_nativeint imm -> Exactly (Naked_nativeint.Set.singleton imm)
+      | Naked_nativeint imm -> Exactly (Targetint.Set.singleton imm)
     in
-    evaluate_ty
+    evaluate_ty ~importer
       ~importer_this_kind:
         I.import_naked_nativeint_type_as_resolved_ty_naked_nativeint
       ~type_of_name
       ~force_to_kind:force_to_kind_naked_nativeint
+      ~unknown_payload:()
       ~join:Join.combine_naked_nativeints
       ~meet:Meet.combine_naked_nativeints
       ~eval_singleton
-      ~unknown:Not_all_values_known
-      ~bottom:(Exactly Naked_nativeint.Set.empty)
+      ~unknown:(Not_all_values_known : t_naked_nativeints)
+      ~bottom:((Exactly Targetint.Set.empty) : t_naked_nativeints)
+      ty
 
   let create ~importer ~type_of_name (t : flambda_type)
         : t * (Name.t option) =
     match t with
     | Value ty ->
-      Values (evaluate_ty_value ~importer ~type_of_name ty)
+      let ty, canonical_name =
+        evaluate_ty_value ~importer ~type_of_name ty
+      in
+      Values ty, canonical_name
     | Naked_immediate ty ->
-      Naked_immediates (evaluate_ty_naked_immediate ~importer ~type_of_name ty)
+      let ty, canonical_name =
+        evaluate_ty_naked_immediate ~importer ~type_of_name ty
+      in
+      Naked_immediates ty, canonical_name
     | Naked_float ty ->
-      Naked_floats (evaluate_ty_naked_float ~importer ~type_of_name ty)
+      let ty, canonical_name =
+        evaluate_ty_naked_float ~importer ~type_of_name ty
+      in
+      Naked_floats ty, canonical_name
     | Naked_int32 ty ->
-      Naked_int32s (evaluate_ty_naked_int32 ~importer ~type_of_name ty)
+      let ty, canonical_name =
+        evaluate_ty_naked_int32 ~importer ~type_of_name ty
+      in
+      Naked_int32s ty, canonical_name
     | Naked_int64 ty ->
-      Naked_int64s (evaluate_ty_naked_int64 ~importer ~type_of_name ty)
+      let ty, canonical_name =
+        evaluate_ty_naked_int64 ~importer ~type_of_name ty
+      in
+      Naked_int64s ty, canonical_name
     | Naked_nativeint ty ->
-      Naked_nativeints (evaluate_ty_naked_nativeint ~importer ~type_of_name ty)
+      let ty, canonical_name =
+        evaluate_ty_naked_nativeint ~importer ~type_of_name ty
+      in
+      Naked_nativeints ty, canonical_name
 end
 
 module Joined_closures : sig
@@ -1345,7 +1360,7 @@ module Evaluated = struct
 
   let is_non_bottom t = not (is_bottom t)
 
-  let useful t = is_known t && is_non_bottom t
+  let is_useful t = is_known t && is_non_bottom t
 
   let of_evaluated_first_stage ~importer ~type_of_name
         (evaluated_first_stage : Evaluated_first_stage.t) : t =
@@ -1399,19 +1414,23 @@ module Evaluated = struct
     in
     let t = of_evaluated_first_stage ~importer ~type_of_name t0 in
     t, canonical_name
+
+  let create_ignore_name ~importer ~type_of_name t =
+    let t, _name = create ~importer ~type_of_name t in
+    t
 end
 
 let is_bottom ~importer ~type_of_name t =
-  Evaluated.is_bottom (eval ~importer ~type_of_name t)
+  Evaluated.is_bottom (Evaluated.create_ignore_name ~importer ~type_of_name t)
 
 let is_known ~importer ~type_of_name t =
-  Evaluated.is_known (eval ~importer ~type_of_name t)
+  Evaluated.is_known (Evaluated.create_ignore_name ~importer ~type_of_name t)
 
 let is_useful ~importer ~type_of_name t =
-  Evaluated.is_useful (eval ~importer ~type_of_name t)
+  Evaluated.is_useful (Evaluated.create_ignore_name ~importer ~type_of_name t)
 
-let all_not_useful ~importer ts =
-  List.for_all (fun t -> not (useful ~importer t)) ts
+let all_not_useful ~importer ~type_of_name ts =
+  List.for_all (fun t -> not (is_useful ~importer ~type_of_name t)) ts
 
 type reification_result =
   | Term of Simple.t * t
@@ -1422,23 +1441,25 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       : reification_result =
   let original_t = t in
   let t, _canonical_name = resolve_aliases ~importer ~type_of_name t in
-  let t_evaluated, canonical_name = eval ~importer ~type_of_name t in
+  let t_evaluated, canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
   let try_name () : reification_result =
     match canonical_name with
     | None -> Cannot_reify
     | Some name ->
       match name with
       | Var _ when not allow_free_variables -> Cannot_reify
-      | Var _ | Symbol _ -> Term (Simple.name name)
+      | Var _ | Symbol _ -> Term (Simple.name name, t)
   in
   let result =
     match t_evaluated with
     | Values values ->
       begin match values with
       | Bottom -> Invalid
-      | Tagged_immediates_only imms ->
+      | Tagged_immediates_only (Exactly imms) ->
         begin match Immediate.Set.get_singleton imms with
-        | Some imm -> Term (Simple.immediate imm)
+        | Some imm -> Term (Simple.const (Tagged_immediate imm), t)
         | None -> try_name ()
         end
       | Unknown
@@ -1455,29 +1476,30 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       end
     | Naked_immediates (Exactly is) ->
       begin match Immediate.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Naked_immediate i))
+      | Some i -> Term (Simple.const (Untagged_immediate i), t)
       | None -> try_name ()
       end
     | Naked_floats (Exactly fs) ->
       begin match Float.Set.get_singleton fs with
-      | Some f -> Term (Simple.const (Naked_float f))
+      | Some f -> Term (Simple.const (Naked_float f), t)
       | None -> try_name ()
       end
     | Naked_int32s (Exactly is) ->
       begin match Int32.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Naked_int32 i))
+      | Some i -> Term (Simple.const (Naked_int32 i), t)
       | None -> try_name ()
       end
     | Naked_int64s (Exactly is) ->
       begin match Int64.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Naked_int64 i))
+      | Some i -> Term (Simple.const (Naked_int64 i), t)
       | None -> try_name ()
       end
     | Naked_nativeints (Exactly is) ->
       begin match Targetint.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Naked_nativeint i))
+      | Some i -> Term (Simple.const (Naked_nativeint i), t)
       | None -> try_name ()
       end
+    | Naked_immediates Not_all_values_known
     | Naked_floats Not_all_values_known
     | Naked_int32s Not_all_values_known
     | Naked_int64s Not_all_values_known
@@ -1494,7 +1516,7 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
 
 let get_field ~importer ~type_of_name t ~field_index
       ~(field_kind : Flambda_primitive.field_kind) : get_field_result =
-  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
   let expected_result_kind =
     (* CR mshinwell: This should move to a new module called
        [Flambda_primitive.Field_kind] *)
@@ -1557,7 +1579,7 @@ type boxed_float_proof =
   | Invalid
 
 let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
-  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
   match t_evaluated with
   | Values values ->
     begin match values with
@@ -1594,7 +1616,7 @@ type lengths_of_arrays_or_blocks_proof =
 
 let lengths_of_arrays_or_blocks t : lengths_of_arrays_or_blocks_proof =
   let result =
-    let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
+    let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
     match t_evaluated with
     | Values values ->
       begin match values with
@@ -1645,7 +1667,7 @@ type closures_proof =
   | Invalid
 
 let prove_closures ~importer ~type_of_name t : closures_proof =
-  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
   match t_evaluated with
   | Values values ->
     begin match values with
@@ -1677,7 +1699,7 @@ type set_of_closures_proof =
   | Invalid
 
 let prove_set_of_closures ~importer ~type_of_name t : set_of_closures_proof =
-  let t_evaluated, _canonical_name = eval ~importer ~type_of_name t in
+  let t_evaluated, _canonical_name = Evaluated.create ~importer ~type_of_name t in
   match t_evaluated with
   | Values values ->
     begin match values with
@@ -1747,7 +1769,7 @@ type switch_branch_classification =
 
 let classify_switch_branch ~importer ~type_of_name t ~scrutinee branch
       : switch_branch_classification =
-  match eval ~importer ~type_of_name t with
+  match Evaluated.create ~importer ~type_of_name t with
   | Values values ->
     begin match values with
     | Unknown
