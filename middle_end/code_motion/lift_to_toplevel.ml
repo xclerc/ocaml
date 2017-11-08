@@ -14,18 +14,18 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(* CR mshinwell for pchambart: Given your changes in Closure_conversion, maybe
-   we don't need the special [Pmakeblock] case here now. *)
-
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module K = Flambda_kind
 module Program_body = Flambda_static.Program_body
 
-let should_copy (named : Flambda.Named.t) =
+let do_not_lift (named : Flambda.Named.t) =
   match named with
-  | Simple ((Name (Symbol _)) | (Const _)) -> true
-  | _ -> false
+  | Simple _ -> true
+  | Prim _
+  | Set_of_closures _
+  | Assign _
+  | Read_mutable _ -> false
 
 let static_structure name ~params : Program_body.static_structure =
   let dbg = Debuginfo.none in
@@ -138,7 +138,7 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
       in
       free_conts, lifted, expr
     end
-  | Let { var; kind; defining_expr; body; _ } when should_copy defining_expr ->
+  | Let { var; kind; defining_expr; body; _ } when do_not_lift defining_expr ->
     (* This let-expression is not to be lifted, but instead restated at the
        top of each lifted expression. *)
     let to_copy = (var, kind, defining_expr)::to_copy in
@@ -152,13 +152,35 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
     free_conts, lifted, body
   | Let { var; kind; defining_expr; body; _ } ->
     (* This let-expression is to be lifted. *)
+    let static_part : Flambda_static.Static_part.t =
+      match kind with
+      | Value _ ->
+        begin match defining_expr with
+        | 
+
+        | _ ->
+          Block (Tag.Scannable.zero, Immutable, [Dynamically_computed var])
+        end
+      | Naked_float -> Boxed_float (Var var)
+      | Naked_int32 -> Boxed_int32 (Var var)
+      | Naked_int64 -> Boxed_int64 (Var var)
+      | Naked_nativeint -> Boxed_nativeint (Var var)
+      | Naked_immediate -> Misc.fatal_errorf "Not yet implemented"
+    in
+
+
+
+
+
+
+
     let var' = Variable.rename var in
+
     let symbol, sym_defining_expr =
-      (* We have a special case here for [Pmakeblock] to avoid relying on
-         the unboxing pass for [Initialize_symbol] constructions when
-         compiling module blocks (which must be represented in a particular
-         way). *)
       match defining_expr with
+
+
+
       | Prim (Pmakeblock (tag, Immutable, _shape), _fields, _dbg) ->
         if not (K.is_value kind) then begin
           Misc.fatal_errorf "[Let]-binding of variable %a should be of kind \

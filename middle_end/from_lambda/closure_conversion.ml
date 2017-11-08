@@ -665,6 +665,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
       (Read_symbol_field { symbol = block_symbol; logical_field = 0 })
       body
   in
+  (* XXX This needs to change to use the new [Program_body] structure. *)
   let block_initialize : Flambda_static.Program_body.Initialize_symbol.t =
     { expr = close t Env.empty ilam;
       return_cont = ilam_result_cont;
