@@ -1252,6 +1252,55 @@ end = struct
     end
   end
 
+  let primitive_invariant env t =
+    (* This cannot go in [Flambda_primitive] due to a circularity. *)
+    let module E = Invariant_env in
+    match t with
+    | Unary (prim, x0) ->
+      let kind0 = arg_kind_of_unary_primitive prim in
+      E.check_simple_is_bound_and_of_kind env x0 kind0;
+      begin match prim, x0 with
+      | Project_closure closure_id, set_of_closures ->
+        E.check_variable_is_bound_and_of_kind env set_of_closures
+          (K.value Must_scan);
+        Closure_id.Set.iter (fun closure_id ->
+            E.add_use_of_closure_id env closure_id)
+          closure_id
+      | Move_within_set_of_closures move, closure ->
+        E.check_variable_is_bound_and_of_kind env closure
+          (K.value Must_scan);
+        Closure_id.Map.iter (fun closure_id move_to ->
+            E.add_use_of_closure_id env closure_id;
+            E.add_use_of_closure_id env move_to)
+          move
+      | Project_var var, closure ->
+        E.check_variable_is_bound_and_of_kind env closure
+          (K.value Must_scan);
+        Closure_id.Map.iter (fun closure_id var_within_closure ->
+            E.add_use_of_closure_id env closure_id;
+            E.add_use_of_var_within_closure env var_within_closure)
+          var
+      end
+    | Binary (prim, x0, x1) ->
+      let kind0, kind1 = args_kind_of_binary_primitive prim in
+      E.check_simple_is_bound_and_of_kind env x0 kind0;
+      E.check_simple_is_bound_and_of_kind env x1 kind1
+    | Ternary (prim, x0, x1, x2) ->
+      let kind0, kind1, kind2 = args_kind_of_ternary_primitive prim in
+      E.check_simple_is_bound_and_of_kind env x0 kind0;
+      E.check_simple_is_bound_and_of_kind env x1 kind1;
+      E.check_simple_is_bound_and_of_kind env x2 kind2
+    | Variadic (prim, xs) ->
+      let kinds =
+        match args_kind_of_variadic_primitive prim with
+        | Variadic kinds -> kinds
+        | Variadic_all_of_kind kind ->
+          List.init (List.length xs) (fun _index -> kind)
+      in
+      List.iter2 (fun var kind ->
+          E.check_simple_is_bound_and_of_kind env var kind)
+        xs kinds
+
   (* CR mshinwell: It seems that the type [Flambda_primitive.result_kind]
      should move into [K], now it's used here. *)
   let invariant ~importer env t : Flambda_primitive.result_kind =
@@ -1300,31 +1349,8 @@ end = struct
     | Set_of_closures set_of_closures ->
       Set_of_closures.invariant ~importer env set_of_closures;
       Singleton (K.value Must_scan)
-    | Project_closure { set_of_closures; closure_id; } ->
-      E.check_variable_is_bound_and_of_kind env set_of_closures
-        (K.value Must_scan);
-      Closure_id.Set.iter (fun closure_id ->
-          E.add_use_of_closure_id env closure_id)
-        closure_id;
-      Singleton (K.value Must_scan)
-    | Move_within_set_of_closures { closure; move } ->
-      E.check_variable_is_bound_and_of_kind env closure
-        (K.value Must_scan);
-      Closure_id.Map.iter (fun closure_id move_to ->
-          E.add_use_of_closure_id env closure_id;
-          E.add_use_of_closure_id env move_to)
-        move;
-      Singleton (K.value Must_scan)
-    | Project_var { closure; var; } ->
-      E.check_variable_is_bound_and_of_kind env closure
-        (K.value Must_scan);
-      Closure_id.Map.iter (fun closure_id var_within_closure ->
-          E.add_use_of_closure_id env closure_id;
-          E.add_use_of_var_within_closure env var_within_closure)
-        var;
-      Singleton (K.value Must_scan)
     | Prim (prim, dbg) ->
-      Flambda_primitive.invariant env prim;
+      primitive_invariant env prim;
       ignore (dbg : Debuginfo.t);
       Flambda_primitive.result_kind prim
 end and Let_cont_handlers : sig

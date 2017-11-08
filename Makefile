@@ -287,13 +287,13 @@ MIDDLE_END_LANGUAGE=\
   middle_end/language/simple.cmo \
   middle_end/language/flambda_kind.cmo \
   middle_end/language/flambda_arity.cmo \
-  middle_end/language/invariant_env.cmo \
   middle_end/language/flambda_primitive.cmo \
   middle_end/language/allocated_const.cmo \
   middle_end/language/flambda_type0_intf.cmo \
   middle_end/language/flambda_type0.cmo \
   middle_end/language/flambda0.cmo \
   middle_end/language/flambda_type.cmo \
+  middle_end/language/invariant_env.cmo \
   middle_end/language/flambda.cmo \
   middle_end/language/flambda_static0.cmo \
   middle_end/language/flambda_static.cmo \

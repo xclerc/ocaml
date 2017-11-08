@@ -1868,7 +1868,6 @@ middle_end/language/flambda_primitive.cmo : \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/tag.cmi middle_end/language/simple.cmi \
     middle_end/base_types/name.cmi middle_end/base_types/linkage_name.cmi \
-    middle_end/language/invariant_env.cmi \
     middle_end/language/flambda_kind.cmi \
     middle_end/language/flambda_arity.cmi \
     middle_end/base_types/closure_id.cmi \
@@ -1877,7 +1876,6 @@ middle_end/language/flambda_primitive.cmx : \
     middle_end/base_types/var_within_closure.cmx \
     middle_end/base_types/tag.cmx middle_end/language/simple.cmx \
     middle_end/base_types/name.cmx middle_end/base_types/linkage_name.cmx \
-    middle_end/language/invariant_env.cmx \
     middle_end/language/flambda_kind.cmx \
     middle_end/language/flambda_arity.cmx \
     middle_end/base_types/closure_id.cmx \
@@ -1887,7 +1885,6 @@ middle_end/language/flambda_primitive.cmi : \
     middle_end/base_types/var_within_closure.cmi \
     middle_end/base_types/tag.cmi middle_end/language/simple.cmi \
     middle_end/base_types/name.cmi middle_end/base_types/linkage_name.cmi \
-    middle_end/language/invariant_env.cmi \
     middle_end/language/flambda_kind.cmi \
     middle_end/language/flambda_arity.cmi \
     middle_end/base_types/closure_id.cmi

@@ -214,9 +214,6 @@ type t =
 
 type primitive_application = t
 
-(** Check the well-formedness of a primitive application. *)
-val invariant : Invariant_env.t -> t -> unit
-
 (** Print a primitive and its arguments to a formatter. *)
 val print : Format.formatter -> t -> unit
 
@@ -226,19 +223,23 @@ val free_names : t -> Name.Set.t
 (** Rename variables in a primitive application. *)
 val rename_variables : t -> f:(Variable.t -> Variable.t) -> t
 
-(* Probably not required
-(** A description of the kinds of values which a primitive expects as
+(** A description of the kind of values which a unary primitive expects as
     its arguments. *)
+val arg_kind_of_unary_primitive : unary_primitive -> Flambda_kind.t
+
+val args_kind_of_binary_primitive
+   : binary_primitive
+  -> Flambda_kind.t * Flambda_kind.t
+
+val args_kind_of_ternary_primitive
+   : ternary_primitive
+  -> Flambda_kind.t * Flambda_kind.t * Flambda_kind.t
+
 type arg_kinds =
-  | Unary of Flambda_kind.t
-  | Binary of Flambda_kind.t * Flambda_kind.t
-  | Ternary of Flambda_kind.t * Flambda_kind.t * Flambda_kind.t
   | Variadic of Flambda_kind.t list
   | Variadic_all_of_kind of Flambda_kind.t
 
-(** Describe the argument kinds required for the given primitive. *)
-val arg_kinds : t -> arg_kinds
-*)
+val args_kind_of_variadic_primitive : variadic_primitive -> arg_kinds
 
 (** A description of the kinds of values (or in the case of [Unit], the
     actual value) which a primitive expects as its arguments. *)

@@ -252,7 +252,7 @@ let print_unary_float_arith_op ppf o =
 
 type arg_kinds =
   | Variadic of K.t list
-  | Variadic_all_of_kind of Flambda_kind.t
+  | Variadic_all_of_kind of K.t
 
 type result_kind =
   | Singleton of K.t
@@ -700,32 +700,6 @@ type t =
   | Variadic of variadic_primitive * (Simple.t list)
 
 type primitive_application = t
-
-let invariant env t =
-  let module E = Invariant_env in
-  match t with
-  | Unary (prim, x0) ->
-    let kind0 = arg_kind_of_unary_primitive prim in
-    E.check_simple_is_bound_and_of_kind env x0 kind0
-  | Binary (prim, x0, x1) ->
-    let kind0, kind1 = args_kind_of_binary_primitive prim in
-    E.check_simple_is_bound_and_of_kind env x0 kind0;
-    E.check_simple_is_bound_and_of_kind env x1 kind1
-  | Ternary (prim, x0, x1, x2) ->
-    let kind0, kind1, kind2 = args_kind_of_ternary_primitive prim in
-    E.check_simple_is_bound_and_of_kind env x0 kind0;
-    E.check_simple_is_bound_and_of_kind env x1 kind1;
-    E.check_simple_is_bound_and_of_kind env x2 kind2
-  | Variadic (prim, xs) ->
-    let kinds =
-      match args_kind_of_variadic_primitive prim with
-      | Variadic kinds -> kinds
-      | Variadic_all_of_kind kind ->
-        List.init (List.length xs) (fun _index -> kind)
-    in
-    List.iter2 (fun var kind ->
-        E.check_simple_is_bound_and_of_kind env var kind)
-      xs kinds
 
 let print ppf t =
   match t with
