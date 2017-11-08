@@ -58,12 +58,9 @@ module Static_part : sig
 
   val print : Format.formatter -> t -> unit
 
-  (** All variables free in the given static part. *)
-  val free_variables : t -> Variable.Set.t
-
-  (** All symbols free in the given static part.  Note that this descends
-      under closures. *)
-  val free_symbols : t -> Symbol.Set.t
+  (** All names free in the given static part.  (Note that this will
+      descend into function bodies to find symbols.) *)
+  val free_names : t -> Name.Set.t
 end
 
 module Program_body : sig

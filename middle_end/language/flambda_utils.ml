@@ -143,16 +143,15 @@ let create_wrapper_params ~params ~specialised_args
   renaming_map, wrapper_params, wrapper_specialised_args
 *)
 
-let make_let_cont_alias ~importer ~name ~alias_of ~parameter_types
-      : Flambda.Let_cont_handlers.t =
+let make_let_cont_alias ~importer ~type_of_name ~name ~alias_of
+      ~parameter_types : Flambda.Let_cont_handlers.t =
   let handler_params, apply_params =
     let param_and_var_for ty =
-      let kind = Flambda_type.kind ~importer ty in
-      let ty = Flambda_type.unknown kind Other in
+      let ty = Flambda_type.unknown_like ~importer ~type_of_name ty in
       let var = Variable.create "let_cont_alias" in
       let param = Parameter.wrap var in
       let typed_param = Flambda.Typed_parameter.create param ty in
-      typed_param, var
+      typed_param, Simple.var var
     in
     List.split (List.map param_and_var_for parameter_types)
   in

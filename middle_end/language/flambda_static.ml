@@ -32,13 +32,13 @@ end
 module Static_part = struct
   include Flambda_static0.Static_part
 
-  let invariant ~importer env t =
+  let invariant env t =
     let module E = Invariant_env in
     match t with
     | Block (_tag, _mut, fields) ->
       List.iter (fun field -> Of_kind_value.invariant env field) fields
     | Set_of_closures set ->
-      Flambda.Set_of_closures.invariant ~importer env set
+      Flambda.Set_of_closures.invariant env set
     | Closure (sym, _closure_id) ->
       E.check_symbol_is_bound env sym
     | Boxed_float (Var v) ->
@@ -149,8 +149,7 @@ module Program_body = struct
       | Root _ -> ()
   end
 
-  let invariant_define_symbol ~importer env defn
-        (recursive : Flambda.recursive) =
+  let invariant_define_symbol env defn (recursive : Flambda.recursive) =
     let module E = Invariant_env in
     begin match defn.computation with
     | None -> ()
@@ -186,7 +185,7 @@ module Program_body = struct
           Normal
           (E.Continuation_stack.var ())
       in
-      Flambda.Expr.invariant ~importer computation_env computation.expr;
+      Flambda.Expr.invariant computation_env computation.expr;
       List.iter (fun (var, _kind) ->
           if Invariant_env.variable_is_bound env var then begin
             Misc.fatal_errorf "[computed_values] of a toplevel computation \
@@ -202,36 +201,39 @@ module Program_body = struct
       | Non_recursive -> env
       | Recursive ->
         List.fold_left (fun env (sym, _static_part) ->
-            E.add_symbol env sym)
+            let ty = Flambda_type.unknown (Flambda_kind.value Can_scan) Other in
+            E.add_symbol env sym ty)
           env
           defn.static_structure
     in
-    let allowed_fvs =
+    let allowed_fns =
       match defn.computation with
-      | None -> Variable.Set.empty
+      | None -> Name.Set.empty
       | Some computation ->
-        Variable.Set.of_list (
-          List.map (fun (var, _kind) -> var) computation.computed_values)
+        Name.Set.of_list (
+          List.map (fun (var, _kind) -> Name.var var)
+            computation.computed_values)
     in
     List.iter (fun (sym, static_part) ->
-        let free_variables = Static_part.free_variables static_part in
+        let free_names = Static_part.free_names static_part in
         (* This will also be caught by [invariant_static_part], but will
            give a better message; and allows some testing of
            [Static_part.free_variables]. *)
-        if not (Variable.Set.subset free_variables allowed_fvs) then begin
+        if not (Name.Set.subset free_names allowed_fns) then begin
           Misc.fatal_errorf "Static part is only allowed to reference \
-              the following free variables: { %a }, whereas it references \
+              the following free names: { %a }, whereas it references \
               { %a }.  Static part: %a = %a"
-            Variable.Set.print free_variables
-            Variable.Set.print allowed_fvs
+            Name.Set.print free_names
+            Name.Set.print allowed_fns
             Symbol.print sym
             Static_part.print static_part
         end;
-        Static_part.invariant ~importer env static_part)
+        Static_part.invariant env static_part)
       defn.static_structure;
     List.fold_left (fun env (sym, _static_part) ->
+        let ty = Flambda_type.unknown (Flambda_kind.value Can_scan) Other in
         match recursive with
-        | Non_recursive -> E.add_symbol env sym
+        | Non_recursive -> E.add_symbol env sym ty
         | Recursive ->
           (* If we ever store data about symbols, this place needs updating
              to do a "redefine_symbol" operation on [env]. *)
@@ -239,15 +241,15 @@ module Program_body = struct
       env
       defn.static_structure
 
-  let rec invariant ~importer env t =
+  let rec invariant env t =
     let module E = Invariant_env in
     match t with
     | Define_symbol (defn, t) ->
-      let env = invariant_define_symbol ~importer env defn Non_recursive in
-      invariant ~importer env t
+      let env = invariant_define_symbol env defn Non_recursive in
+      invariant env t
     | Define_symbol_rec (defn, t) ->
-      let env = invariant_define_symbol ~importer env defn Recursive in
-      invariant ~importer env t
+      let env = invariant_define_symbol env defn Recursive in
+      invariant env t
     | Root sym -> E.check_symbol_is_bound env sym
 end
 
@@ -605,7 +607,7 @@ module Program = struct
     }
 *)
 
-  let invariant ~importer t =
+  let invariant t =
     let module E = Invariant_env in
     let every_used_function_from_current_unit_is_declared env t =
       let current_compilation_unit = Compilation_unit.get_current_exn () in
@@ -639,11 +641,13 @@ module Program = struct
       end
     in
     let env =
-      Symbol.Set.fold (fun symbol env -> E.add_symbol env symbol)
+      Symbol.Set.fold (fun symbol env ->
+          let ty = Flambda_type.unknown (Flambda_kind.value Can_scan) Other in
+          E.add_symbol env symbol ty)
         t.imported_symbols
         (E.create ())
     in
-    Program_body.invariant ~importer env t.body;
+    Program_body.invariant env t.body;
     every_used_function_from_current_unit_is_declared env t;
     every_used_var_within_closure_from_current_unit_is_declared env t
 end

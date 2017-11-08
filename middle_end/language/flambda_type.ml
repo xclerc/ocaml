@@ -30,6 +30,10 @@ include F0.Flambda_type
 let unknown_types_from_arity t =
   List.map (fun kind -> unknown kind Other) t
 
+let unknown_like ~importer ~type_of_name t =
+  let kind = kind ~importer ~type_of_name t in
+  unknown kind Other
+
 let rename_variables ~importer:_ ~type_of_name:_ _t ~f:_ =
   assert false
 (* XXX need to fix [Flambda_type0.clean]

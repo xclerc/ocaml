@@ -66,4 +66,4 @@ val make_let_cont_alias
    : (name:Continuation.t
   -> alias_of:Continuation.t
   -> parameter_types:Flambda_type.t list
-  -> Flambda.Let_cont_handlers.t) Flambda_type.with_importer
+  -> Flambda.Let_cont_handlers.t) Flambda_type.type_accessor

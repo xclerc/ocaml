@@ -28,7 +28,7 @@ module Program : sig
 
   (** Perform well-formedness checks on the expression.  This is basically a
       simple type / kind checking algorithm. *)
-  val invariant : (t -> unit) Flambda_type.with_importer
+  val invariant : t -> unit
 
   (** All symbols imported from other compilation units by the given program. *)
   val imported_symbols : t -> Symbol.Set.t

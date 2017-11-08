@@ -47,15 +47,11 @@ module Of_kind_value = struct
     | Symbol _ | Tagged_immediate _ -> false
     | Dynamically_computed _ -> true
 
-  let free_variables t =
+  let free_names t =
     match t with
-    | Dynamically_computed var -> Variable.Set.singleton var
-    | Symbol _ | Tagged_immediate _ -> Variable.Set.empty
-
-  let free_symbols t =
-    match t with
-    | Symbol sym -> Symbol.Set.singleton sym
-    | Tagged_immediate _ | Dynamically_computed _ -> Symbol.Set.empty
+    | Dynamically_computed var -> Name.Set.singleton (Name.var var)
+    | Symbol sym -> Name.Set.singleton (Name.symbol sym)
+    | Tagged_immediate _ -> Name.Set.empty
 end
 
 module Static_part = struct
@@ -97,41 +93,34 @@ module Static_part = struct
     | Immutable_string _ -> false
 
   let free_names t =
-(* XXX and collect syms *)
-    let free_variables =
-      match t with
-      | Block (_tag, _mut, fields) ->
-        List.fold_left (fun fvs field ->
-            Variable.Set.union fvs (Of_kind_value.free_variables field))
-          Variable.Set.empty
-          fields
-      | Set_of_closures _
-      | Closure _ -> Variable.Set.empty
-      | Boxed_float (Var v)
-      | Boxed_int32 (Var v)
-      | Boxed_int64 (Var v)
-      | Boxed_nativeint (Var v)
-      | Mutable_string { initial_value = Var v; }
-      | Immutable_string (Var v) -> Variable.Set.singleton v
-      | Boxed_float (Const _)
-      | Boxed_int32 (Const _)
-      | Boxed_int64 (Const _)
-      | Boxed_nativeint (Const _)
-      | Mutable_string { initial_value = Const _; }
-      | Immutable_string (Const _) -> Variable.Set.empty
-      | Mutable_float_array { initial_value = fields; }
-      | Immutable_float_array fields ->
-        List.fold_left (fun fvs (field : float or_variable) ->
-            match field with
-            | Var v -> Variable.Set.add v fvs
-            | Const _ -> fvs)
-          Variable.Set.empty
-          fields
-    in
-    Variable.Set.fold (fun free_var free_names ->
-        Name.Set.add (Name.var free_var) free_names)
-      free_variables
-      Name.Set.empty
+    match t with
+    | Block (_tag, _mut, fields) ->
+      List.fold_left (fun fvs field ->
+          Name.Set.union fvs (Of_kind_value.free_names field))
+        Name.Set.empty
+        fields
+    | Set_of_closures set -> Flambda0.Set_of_closures.free_names set
+    | Closure (sym, _) -> Name.Set.singleton (Name.symbol sym)
+    | Boxed_float (Var v)
+    | Boxed_int32 (Var v)
+    | Boxed_int64 (Var v)
+    | Boxed_nativeint (Var v)
+    | Mutable_string { initial_value = Var v; }
+    | Immutable_string (Var v) -> Name.Set.singleton (Name.var v)
+    | Boxed_float (Const _)
+    | Boxed_int32 (Const _)
+    | Boxed_int64 (Const _)
+    | Boxed_nativeint (Const _)
+    | Mutable_string { initial_value = Const _; }
+    | Immutable_string (Const _) -> Name.Set.empty
+    | Mutable_float_array { initial_value = fields; }
+    | Immutable_float_array fields ->
+      List.fold_left (fun fns (field : float or_variable) ->
+          match field with
+          | Var v -> Name.Set.add (Name.var v) fns
+          | Const _ -> fns)
+        Name.Set.empty
+        fields
 
   let free_symbols t = Name.set_to_symbol_set (free_names t)
 
