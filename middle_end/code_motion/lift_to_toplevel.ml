@@ -41,46 +41,31 @@ let static_structure name ~params : Program_body.static_structure =
     Symbol.create (Compilation_unit.get_current_exn ()) linkage_name
   in
   let arity = Flambda.Typed_parameter.List.arity ~importer params in
-  if Flambda_arity.is_all_values arity then
-    let fields =
-      List.map (fun param : Flambda_static.Of_kind_value.t ->
-          Dynamically_computed (Typed_parameter.var param))
-        params
-    in
-    let block : Flambda_static.Static_part.t =
-      Block (Tag.Scannable.zero, Immutable, fields)
-    in
-    Some [make_symbol None, block]
-  else if Flambda_arity.is_all_naked_floats arity then
-    let initial_value =
-      List.map (fun param : _ Flambda_static.Static_part.or_variable ->
-          Var (Flambda.Typed_parameter.var param))
-        params
-    in
-    let static_part : Flambda_static.Static_part.t =
-      Immutable_float_array { initial_value; }
-    in
-    Some [make_symbol None, static_part]
-  else
-    let rec assign_symbols index params_with_kinds result =
-      match params with
-      | [] -> List.rev result
-      | (param, (kind : K.t))::params_with_kinds ->
-        let symbol = make_symbol (Some index) in
-        let var = Flambda.Typed_parameter.var param in
-        let static_part : Flambda_static.Static_part.t =
-          match kind with
-          | Value _ -> Block (Tag.Scannable.zero, mutable, [var])
-          | Naked_immediate -> Boxed_nativeint (Var var)
-          | Naked_float -> Boxed_float (Var var)
-          | Naked_int32 -> Boxed_int32 (Var var)
-          | Naked_int64 -> Boxed_int64 (Var var)
-          | Naked_nativeint -> Boxed_nativeint (Var var)
-        in
-        assign_symbols (index + 1) params_with_kinds
-          ((symbol, static_part) :: result)
-    in
-    Some (assign_symbols 0 (List.combine params arity) [])
+  let rec assign_symbols index params_with_kinds result =
+    (* Even when it looks like we could produce a single symbol with multiple
+       fields (say when all of the parameters are of kind [Value] or
+       [Naked_float]), we still produce multiple symbols, since unused
+       definitions (e.g. arising as a result of unboxing) will then be cleared
+       away by the straightforward "unused symbol" analysis rather than
+       requiring something more complicated. *)
+    match params with
+    | [] -> List.rev result
+    | (param, (kind : K.t))::params_with_kinds ->
+      let symbol = make_symbol (Some index) in
+      let var = Flambda.Typed_parameter.var param in
+      let static_part : Flambda_static.Static_part.t =
+        match kind with
+        | Value _ -> Block (Tag.Scannable.zero, Immutable, [var])
+        | Naked_immediate -> Boxed_nativeint (Var var)
+        | Naked_float -> Boxed_float (Var var)
+        | Naked_int32 -> Boxed_int32 (Var var)
+        | Naked_int64 -> Boxed_int64 (Var var)
+        | Naked_nativeint -> Boxed_nativeint (Var var)
+      in
+      assign_symbols (index + 1) params_with_kinds
+        ((symbol, static_part) :: result)
+  in
+  assign_symbols 0 (List.combine params arity) []
 
 let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
   match expr with
