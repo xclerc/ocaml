@@ -1094,36 +1094,11 @@ asmcomp/x86_proc.cmo : asmcomp/x86_ast.cmi utils/config.cmi \
 asmcomp/x86_proc.cmx : asmcomp/x86_ast.cmi utils/config.cmx \
     utils/clflags.cmx utils/ccomp.cmx asmcomp/x86_proc.cmi
 asmcomp/x86_proc.cmi : asmcomp/x86_ast.cmi
-middle_end/analysis/alias_analysis.cmo : middle_end/base_types/variable.cmi \
-    middle_end/base_types/var_within_closure.cmi \
-    middle_end/base_types/tag.cmi middle_end/base_types/symbol.cmi \
-    utils/misc.cmi bytecomp/lambda.cmi middle_end/base_types/immediate.cmi \
-    middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
-    middle_end/base_types/closure_id.cmi \
-    middle_end/language/allocated_const.cmi \
+middle_end/analysis/alias_analysis.cmo : \
     middle_end/analysis/alias_analysis.cmi
-middle_end/analysis/alias_analysis.cmx : middle_end/base_types/variable.cmx \
-    middle_end/base_types/var_within_closure.cmx \
-    middle_end/base_types/tag.cmx middle_end/base_types/symbol.cmx \
-    utils/misc.cmx bytecomp/lambda.cmx middle_end/base_types/immediate.cmx \
-    middle_end/language/flambda_static.cmx middle_end/language/flambda.cmx \
-    middle_end/base_types/closure_id.cmx \
-    middle_end/language/allocated_const.cmx \
+middle_end/analysis/alias_analysis.cmx : \
     middle_end/analysis/alias_analysis.cmi
-middle_end/analysis/alias_analysis.cmi : middle_end/base_types/variable.cmi \
-    middle_end/base_types/var_within_closure.cmi \
-    middle_end/base_types/tag.cmi middle_end/base_types/symbol.cmi \
-    bytecomp/lambda.cmi middle_end/base_types/immediate.cmi \
-    middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
-    middle_end/base_types/closure_id.cmi \
-    middle_end/language/allocated_const.cmi
-middle_end/analysis/effect_analysis.cmo : \
-    bytecomp/semantics_of_primitives.cmi bytecomp/lambda.cmi \
-    middle_end/language/flambda.cmi middle_end/analysis/effect_analysis.cmi
-middle_end/analysis/effect_analysis.cmx : \
-    bytecomp/semantics_of_primitives.cmx bytecomp/lambda.cmx \
-    middle_end/language/flambda.cmx middle_end/analysis/effect_analysis.cmi
-middle_end/analysis/effect_analysis.cmi : middle_end/language/flambda.cmi
+middle_end/analysis/alias_analysis.cmi :
 middle_end/analysis/extract_projections.cmo : \
     middle_end/analysis/extract_projections.cmi
 middle_end/analysis/extract_projections.cmx : \
@@ -1495,12 +1470,10 @@ middle_end/code_motion/share_constants.cmi : \
     middle_end/language/flambda_static.cmi
 middle_end/code_motion/sink_lets.cmo : middle_end/base_types/variable.cmi \
     middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
-    middle_end/analysis/effect_analysis.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi middle_end/code_motion/sink_lets.cmi
 middle_end/code_motion/sink_lets.cmx : middle_end/base_types/variable.cmx \
     middle_end/language/flambda_static.cmx middle_end/language/flambda.cmx \
-    middle_end/analysis/effect_analysis.cmx \
     middle_end/base_types/continuation.cmx \
     middle_end/base_types/closure_id.cmx middle_end/code_motion/sink_lets.cmi
 middle_end/code_motion/sink_lets.cmi : \
@@ -2235,14 +2208,12 @@ middle_end/simplify/simplify_aux.cmo : middle_end/base_types/variable.cmi \
     middle_end/simplify/simplify_env.cmi middle_end/base_types/parameter.cmi \
     middle_end/inlining/inlining_cost.cmi middle_end/simplify/freshening.cmi \
     middle_end/language/flambda_primitive.cmi middle_end/language/flambda.cmi \
-    middle_end/analysis/effect_analysis.cmi \
     middle_end/base_types/closure_id.cmi middle_end/simplify/simplify_aux.cmi
 middle_end/simplify/simplify_aux.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/var_within_closure.cmx \
     middle_end/simplify/simplify_env.cmx middle_end/base_types/parameter.cmx \
     middle_end/inlining/inlining_cost.cmx middle_end/simplify/freshening.cmx \
     middle_end/language/flambda_primitive.cmx middle_end/language/flambda.cmx \
-    middle_end/analysis/effect_analysis.cmx \
     middle_end/base_types/closure_id.cmx middle_end/simplify/simplify_aux.cmi
 middle_end/simplify/simplify_aux.cmi : middle_end/base_types/variable.cmi \
     middle_end/inlining/inlining_cost.cmi \
@@ -2296,8 +2267,7 @@ middle_end/simplify/simplify_expr.cmo : utils/warnings.cmi \
     middle_end/inlining/inlining_decision.cmi \
     middle_end/inlining/inlining_cost.cmi middle_end/simplify/freshening.cmi \
     middle_end/language/flambda_type.cmi middle_end/language/flambda_kind.cmi \
-    middle_end/language/flambda.cmi middle_end/analysis/effect_analysis.cmi \
-    middle_end/base_types/debuginfo.cmi \
+    middle_end/language/flambda.cmi middle_end/base_types/debuginfo.cmi \
     middle_end/inlining/continuation_approx.cmi \
     middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi utils/clflags.cmi \
@@ -2312,8 +2282,7 @@ middle_end/simplify/simplify_expr.cmx : utils/warnings.cmx \
     middle_end/inlining/inlining_decision.cmx \
     middle_end/inlining/inlining_cost.cmx middle_end/simplify/freshening.cmx \
     middle_end/language/flambda_type.cmx middle_end/language/flambda_kind.cmx \
-    middle_end/language/flambda.cmx middle_end/analysis/effect_analysis.cmx \
-    middle_end/base_types/debuginfo.cmx \
+    middle_end/language/flambda.cmx middle_end/base_types/debuginfo.cmx \
     middle_end/inlining/continuation_approx.cmx \
     middle_end/base_types/continuation.cmx \
     middle_end/base_types/closure_id.cmx utils/clflags.cmx \
