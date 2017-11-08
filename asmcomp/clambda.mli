@@ -51,7 +51,7 @@ and ulambda =
   | Ustaticfail of int * ulambda list
   | Ucatch of int * Ident.t list * ulambda * ulambda
   | Utrywith of ulambda * Ident.t * ulambda
-  | Uifthenelse of ulambda * ulambda * ulambda
+  | Uifthenelse of ulambda * Lambda.temperature_attribute * ulambda * ulambda
   | Usequence of ulambda * ulambda
   | Uwhile of ulambda * ulambda
   | Ufor of Ident.t * ulambda * ulambda * direction_flag * ulambda
@@ -66,6 +66,7 @@ and ufunction = {
   body   : ulambda;
   dbg    : Debuginfo.t;
   env    : Ident.t option;
+  temperature : Lambda.temperature_attribute;
 }
 
 and ulambda_switch =
@@ -81,7 +82,8 @@ type function_description =
     fun_arity: int;                     (* Number of arguments *)
     mutable fun_closed: bool;           (* True if environment not used *)
     mutable fun_inline: (Ident.t list * ulambda) option;
-    mutable fun_float_const_prop: bool  (* Can propagate FP consts *)
+    mutable fun_float_const_prop: bool;  (* Can propagate FP consts *)
+    fun_temperature : Lambda.temperature_attribute;
   }
 
 (* Approximation of values *)

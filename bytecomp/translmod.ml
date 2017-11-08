@@ -369,7 +369,8 @@ let rec transl_module cc rootpath mexp =
                             attr = { inline = inline_attribute;
                                      specialise = Default_specialise;
                                      is_a_functor = true;
-                                     stub = false; };
+                                     stub = false;
+                                     temperature = Tepid; };
                             loc = loc;
                             body = transl_module Tcoerce_none bodypath body}
               | Tcoerce_functor(ccarg, ccres) ->
@@ -378,7 +379,8 @@ let rec transl_module cc rootpath mexp =
                             attr = { inline = inline_attribute;
                                      specialise = Default_specialise;
                                      is_a_functor = true;
-                                     stub = false; };
+                                     stub = false;
+                                     temperature = Tepid; };
                             loc = loc;
                             body = Llet(Alias, Pgenval, param,
                                         apply_coercion loc Alias ccarg

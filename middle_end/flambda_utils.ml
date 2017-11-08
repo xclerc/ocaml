@@ -127,8 +127,8 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
   | Try_with (a1, v1, b1), Try_with (a2, v2, b2) ->
     same a1 a2 && Variable.equal v1 v2 && same b1 b2
   | Try_with _, _ | _, Try_with _ -> false
-  | If_then_else (a1, b1, c1), If_then_else (a2, b2, c2) ->
-    Variable.equal a1 a2 && same b1 b2 && same c1 c2
+  | If_then_else (a1, b1, c1, d1), If_then_else (a2, b2, c2, d2) ->
+    Variable.equal a1 a2 && Lambda.same_temperature b1 b2 && same c1 c2 && same d1 d2
   | If_then_else _, _ | _, If_then_else _ -> false
   | While (a1, b1), While (a2, b2) ->
     same a1 a2 && same b1 b2
@@ -245,9 +245,9 @@ let toplevel_substitution sb tree =
       let func = sb func in
       let args = List.map sb args in
       Apply { func; args; kind; dbg; inline; specialise; }
-    | If_then_else (cond, e1, e2) ->
+    | If_then_else (cond, temp, e1, e2) ->
       let cond = sb cond in
-      If_then_else (cond, e1, e2)
+      If_then_else (cond, temp, e1, e2)
     | Switch (cond, sw) ->
       let cond = sb cond in
       Switch (cond, sw)
@@ -337,7 +337,8 @@ let make_closure_declaration ~id ~body ~params ~stub : Flambda.t =
   let function_declaration =
     Flambda.create_function_declaration ~params:(List.map subst params)
       ~body ~stub ~dbg:Debuginfo.none ~inline:Default_inline
-      ~specialise:Default_specialise ~is_a_functor:false
+      ~specialise:Default_specialise ~temperature:Tepid
+      ~is_a_functor:false
   in
   assert (Variable.Set.equal (Variable.Set.map subst free_variables)
     function_declaration.free_variables);
@@ -672,10 +673,10 @@ let substitute_read_symbol_field_for_variables
             bind to_substitute fresh expr)
           bindings expr
       end
-    | If_then_else (cond, ifso, ifnot)
+    | If_then_else (cond, temp, ifso, ifnot)
         when Variable.Map.mem cond substitution ->
       let fresh = Variable.rename cond in
-      bind cond fresh (If_then_else (fresh, ifso, ifnot))
+      bind cond fresh (If_then_else (fresh, temp, ifso, ifnot))
     | If_then_else _ ->
       expr
     | Switch (cond, sw) when Variable.Map.mem cond substitution ->

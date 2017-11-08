@@ -19,6 +19,12 @@ open Primitive
 open Types
 open Lambda
 
+let temperature ppf = function
+  | Cold  true  -> fprintf ppf "cold*"
+  | Cold  false -> fprintf ppf "cold"
+  | Tepid       -> fprintf ppf "tepid"
+  | Hot   true  -> fprintf ppf "hot*"
+  | Hot   false -> fprintf ppf "hot"
 
 let rec struct_const ppf = function
   | Const_base(Const_int n) -> fprintf ppf "%i" n
@@ -430,7 +436,7 @@ let name_of_primitive = function
   | Pint_as_pointer -> "Pint_as_pointer"
   | Popaque -> "Popaque"
 
-let function_attribute ppf { inline; specialise; is_a_functor; stub } =
+let function_attribute ppf { inline; specialise; is_a_functor; stub; temperature = temp } =
   if is_a_functor then
     fprintf ppf "is_a_functor@ ";
   if stub then
@@ -445,7 +451,8 @@ let function_attribute ppf { inline; specialise; is_a_functor; stub } =
   | Default_specialise -> ()
   | Always_specialise -> fprintf ppf "always_specialise@ "
   | Never_specialise -> fprintf ppf "never_specialise@ "
-  end
+  end;
+  temperature ppf temp
 
 let apply_tailcall_attribute ppf tailcall =
   if tailcall then
@@ -575,8 +582,12 @@ let rec lam ppf = function
   | Ltrywith(lbody, param, lhandler) ->
       fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"
         lam lbody Ident.print param lam lhandler
-  | Lifthenelse(lcond, lif, lelse) ->
-      fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" lam lcond lam lif lam lelse
+  | Lifthenelse(lcond, temp, lif, lelse) ->
+      fprintf ppf "@[<2>(if@ %a@ %a@ %a@ %a)@]"
+        lam lcond
+        temperature temp
+        lam lif
+        lam lelse
   | Lsequence(l1, l2) ->
       fprintf ppf "@[<2>(seq@ %a@ %a)@]" lam l1 sequence l2
   | Lwhile(lcond, lbody) ->

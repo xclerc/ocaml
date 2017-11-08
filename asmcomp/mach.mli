@@ -76,13 +76,14 @@ type instruction =
     arg: Reg.t array;
     res: Reg.t array;
     dbg: Debuginfo.t;
-    mutable live: Reg.Set.t }
+    mutable live: Reg.Set.t;
+    mutable temperature : Lambda.temperature_attribute; }
 
 and instruction_desc =
     Iend
   | Iop of operation
   | Ireturn
-  | Iifthenelse of test * instruction * instruction
+  | Iifthenelse of test * Lambda.temperature_attribute * instruction * instruction
   | Iswitch of int array * instruction array
   | Iloop of instruction
   | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
@@ -110,6 +111,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
+    fun_temperature : Lambda.temperature_attribute;
   }
 
 val dummy_instr: instruction
@@ -123,3 +125,5 @@ val instr_cons_debug:
 val instr_iter: (instruction -> unit) -> instruction -> unit
 
 val spacetime_node_hole_pointer_is_live_before : instruction -> bool
+
+val adjust_temperature : Lambda.temperature_attribute -> instruction -> unit

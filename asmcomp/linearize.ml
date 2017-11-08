@@ -26,7 +26,8 @@ type instruction =
     arg: Reg.t array;
     res: Reg.t array;
     dbg: Debuginfo.t;
-    live: Reg.Set.t }
+    live: Reg.Set.t;
+    mutable temperature : Lambda.temperature_attribute; }
 
 and instruction_desc =
     Lend
@@ -54,6 +55,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : Mach.spacetime_shape option;
+    fun_temperature : Lambda.temperature_attribute;
   }
 
 (* Invert a test *)
@@ -79,19 +81,22 @@ let rec end_instr =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty }
+    live = Reg.Set.empty;
+    temperature = Lambda.Tepid; }
 
 (* Cons an instruction (live, debug empty) *)
 
 let instr_cons d a r n =
   { desc = d; next = n; arg = a; res = r;
-    dbg = Debuginfo.none; live = Reg.Set.empty }
+    dbg = Debuginfo.none; live = Reg.Set.empty;
+    temperature = Lambda.Tepid; }
 
 (* Cons a simple instruction (arg, res, live empty) *)
 
 let cons_instr d n =
   { desc = d; next = n; arg = [||]; res = [||];
-    dbg = Debuginfo.none; live = Reg.Set.empty }
+    dbg = Debuginfo.none; live = Reg.Set.empty;
+    temperature = Lambda.Tepid; }
 
 (* Build an instruction with arg, res, dbg, live taken from
    the given Mach.instruction *)
@@ -99,7 +104,14 @@ let cons_instr d n =
 let copy_instr d i n =
   { desc = d; next = n;
     arg = i.Mach.arg; res = i.Mach.res;
-    dbg = i.Mach.dbg; live = i.Mach.live }
+    dbg = i.Mach.dbg; live = i.Mach.live;
+    temperature = i.Mach.temperature; }
+
+let copy_instr' d i n =
+  { desc = d; next = n;
+    arg = i.arg; res = i.res;
+    dbg = i.dbg; live = i.live;
+    temperature = i.temperature; }
 
 (*
    Label the beginning of the given instruction sequence.
@@ -193,7 +205,7 @@ let rec linear i n =
       if !Proc.contains_calls
       then cons_instr Lreloadretaddr n1
       else n1
-  | Iifthenelse(test, ifso, ifnot) ->
+  | Iifthenelse(test, temp, ifso, ifnot) ->
       let n1 = linear i.Mach.next n in
       begin match (ifso.Mach.desc, ifnot.Mach.desc, n1.desc) with
         Iend, _, Lbranch lbl ->
@@ -222,10 +234,33 @@ let rec linear i n =
                      (linear ifso n2)
       | _, _, _ ->
         (* Should attempt branch prediction here *)
-          let (lbl_end, n2) = get_label n1 in
-          let (lbl_else, nelse) = get_label (linear ifnot n2) in
-          copy_instr (Lcondbranch(invert_test test, lbl_else)) i
-            (linear ifso (add_branch lbl_end nelse))
+        (*XXXC let add_jump_if_temperature_changes n res =
+          if not (Lambda.same_temperature i.Mach.temperature n.Mach.temperature) then begin
+            let lbl = Cmm.new_label() in
+            let next =
+              copy_instr
+                (Llabel lbl)
+                n
+                res in
+            copy_instr
+              (Lbranch lbl)
+              i
+              next
+          end else
+            res in*)
+        let (lbl_end, n2) = get_label n1 in
+        begin match temp with
+        | Lambda.Tepid | Lambda.Hot _ ->
+           let (lbl_else, nelse) = get_label (linear ifnot n2) in
+           copy_instr (Lcondbranch(invert_test test, lbl_else)) i
+             (*XXXC add_jump_if_temperature_changes ifso*)
+               (linear ifso (add_branch lbl_end nelse))
+        | Lambda.Cold _ ->
+          let (lbl_then, nthen) = get_label (linear ifso n2) in
+          copy_instr (Lcondbranch (test, lbl_then)) i
+            (*XXXC add_jump_if_temperature_changes ifnot*)
+               (linear ifnot (add_branch lbl_then nthen))
+        end
       end
   | Iswitch(index, cases) ->
       let lbl_cases = Array.make (Array.length cases) 0 in
@@ -308,10 +343,58 @@ let rec linear i n =
   | Iraise k ->
       copy_instr (Lraise k) i (discard_dead_code n)
 
+(* Ensures that a label always has the same temperature as the following
+   instructions *)
+let rec fix_label_temperatures i =
+  if i.desc <> Lend then begin
+    fix_label_temperatures i.next;
+    match i.desc with
+    | Llabel _ when i.next.desc <> Lend ->
+      i.temperature <- i.next.temperature
+    | _ ->
+      ()
+  end
+
+(* XXXC let rec fix_jump_temperatures i =
+  if i.desc <> Lend then begin
+    begin match i.next.desc with
+    | Lbranch _ | Lcondbranch _ | Lcondbranch3 _ | Lswitch _ ->
+      i.next.temperature <- i.temperature
+    | _ ->
+      ()
+    end;
+    fix_jump_temperatures i.next
+   end *)
+
+let rec add_jump_for_temperature_changes (i : instruction) =
+  if (i.desc <> Lend)
+  && (i.next.desc <> Lend)
+  && not (Lambda.same_temperature i.temperature i.next.temperature)
+  && (has_fallthrough i.desc) then begin
+    match i.next.desc with
+    | Lbranch _ | Lreloadretaddr ->
+      i.next.temperature <- i.temperature
+    | Llabel lbl ->
+      let jump = copy_instr' (Lbranch lbl) i i.next in
+      i.next <- jump;
+    | _ ->
+      let new_label = Cmm.new_label () in
+      let label = copy_instr' (Llabel  new_label) i.next i.next in
+      let jump  = copy_instr' (Lbranch new_label) i      label  in
+      i.next <- jump;
+  end;
+  if i.desc <> Lend then
+    add_jump_for_temperature_changes i.next
+
 let fundecl f =
+  Mach.(adjust_temperature f.fun_temperature f.fun_body);
+  let fun_body = linear f.Mach.fun_body end_instr in
+  fix_label_temperatures fun_body;
+  add_jump_for_temperature_changes fun_body;
   { fun_name = f.Mach.fun_name;
-    fun_body = linear f.Mach.fun_body end_instr;
+    fun_body;
     fun_fast = f.Mach.fun_fast;
     fun_dbg  = f.Mach.fun_dbg;
     fun_spacetime_shape = f.Mach.fun_spacetime_shape;
+    fun_temperature = f.Mach.fun_temperature;
   }

@@ -84,8 +84,12 @@ and lam ppf = function
       let idents ppf =
         List.iter (fprintf ppf "@ %a" Ident.print)in
       let one_fun ppf f =
-        fprintf ppf "@[<2>(fun@ %s@ %d @[<2>%a@]@ @[<2>%a@]@])"
-          f.label f.arity idents f.params lam f.body in
+        fprintf ppf "@[<2>(fun@ %s@ %a@ %d @[<2>%a@]@ @[<2>%a@]@])"
+          f.label
+          Printlambda.temperature f.temperature
+          f.arity
+          idents f.params
+          lam f.body in
       let funs ppf =
         List.iter (fprintf ppf "@ %a" one_fun) in
       let lams ppf =
@@ -168,8 +172,12 @@ and lam ppf = function
   | Utrywith(lbody, param, lhandler) ->
       fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"
         lam lbody Ident.print param lam lhandler
-  | Uifthenelse(lcond, lif, lelse) ->
-      fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" lam lcond lam lif lam lelse
+  | Uifthenelse(lcond, temp, lif, lelse) ->
+      fprintf ppf "@[<2>(if@ %a@ (%a)@ %a@ %a)@]"
+        lam lcond
+        Printlambda.temperature temp
+        lam lif
+        lam lelse
   | Usequence(l1, l2) ->
       fprintf ppf "@[<2>(seq@ %a@ %a)@]" lam l1 sequence l2
   | Uwhile(lcond, lbody) ->

@@ -102,7 +102,7 @@ type t =
   | Apply of apply
   | Send of send
   | Assign of assign
-  | If_then_else of Variable.t * t * t
+  | If_then_else of Variable.t * Lambda.temperature_attribute * t * t
   | Switch of Variable.t * switch
   | String_switch of Variable.t * (string * t) list * t option
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
@@ -323,6 +323,7 @@ and function_declaration = private {
   (** Inlining requirements from the source code. *)
   specialise : Lambda.specialise_attribute;
   (** Specialising requirements from the source code. *)
+  temperature : Lambda.temperature_attribute;
   is_a_functor : bool;
   (** Whether the function is known definitively to be a functor. *)
 }
@@ -552,6 +553,7 @@ val create_function_declaration
   -> dbg:Debuginfo.t
   -> inline:Lambda.inline_attribute
   -> specialise:Lambda.specialise_attribute
+  -> temperature:Lambda.temperature_attribute
   -> is_a_functor:bool
   -> function_declaration
 

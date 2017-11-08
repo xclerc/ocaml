@@ -89,6 +89,7 @@ let code_for_function_prologue ~function_name ~node_hole =
       Cop (Cand, [Cvar node; Cconst_int 1], dbg),
       Cifthenelse (
         Cop (Ccmpi Cne, [Cvar must_allocate_node; Cconst_int 1], dbg),
+        Lambda.Hot false,
         Cvar node,
         Clet (is_new_node,
           Clet (pc, Cconst_symbol function_name,
@@ -105,6 +106,7 @@ let code_for_function_prologue ~function_name ~node_hole =
               else
                 Cifthenelse (
                   Cop (Ccmpi Ceq, [Cvar is_new_node; Cconst_int 0], dbg),
+                  Lambda.Hot false,
                   Cvar new_node,
                   initialize_direct_tail_call_points_and_return_node))))))
 
@@ -149,6 +151,7 @@ let code_for_blockheader ~value's_header ~node ~dbg =
       Clet (profinfo,
         Cifthenelse (
           Cop (Ccmpi Cne, [Cvar existing_profinfo; Cconst_int 1 (* () *)], dbg),
+          Lambda.Hot false,
           Cvar existing_profinfo,
           generate_new_profinfo),
         Clet (existing_count,

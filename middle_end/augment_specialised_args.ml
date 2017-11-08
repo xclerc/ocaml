@@ -537,6 +537,7 @@ module Make (T : S) = struct
         ~dbg:Debuginfo.none
         ~inline:Default_inline
         ~specialise:Default_specialise
+        ~temperature:function_decl.temperature
         ~is_a_functor:false
     in
     new_fun_var, new_function_decl, rewritten_existing_specialised_args,
@@ -618,6 +619,7 @@ module Make (T : S) = struct
           ~dbg:function_decl.dbg
           ~inline:function_decl.inline
           ~specialise:function_decl.specialise
+          ~temperature:function_decl.temperature
           ~is_a_functor:function_decl.is_a_functor
       in
       let funs, direct_call_surrogates =

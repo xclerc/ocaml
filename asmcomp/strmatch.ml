@@ -87,7 +87,7 @@ module Make(I:I) = struct
     let test =
       Cop (Ccmpi cmp_op, [ Cvar id; Cconst_natpointer nat ], dbg)
     in
-    Cifthenelse (test, ifso, ifnot)
+    Cifthenelse (test, Tepid, ifso, ifnot)
 
   let mk_lt = mk_cmp_gen Clt
   let mk_eq = mk_cmp_gen Ceq

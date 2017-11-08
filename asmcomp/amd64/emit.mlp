@@ -473,8 +473,33 @@ let function_name = ref ""
 (* Entry point for tail recursive calls *)
 let tailrec_entry_point = ref 0
 
+let current_temperature = ref Lambda.Tepid
+
+let section_tepid () =
+  current_temperature := Lambda.Tepid;
+  D.text () (* i.e. section [ ".text" ] None [] *)
+
+let section_hot () =
+  current_temperature := Lambda.Hot false;
+  (* D.section [ ".text-hot" ] (Some "a") ["@progbits"] *)
+  D.text ~sub:1 ()
+
+let section_cold () =
+  current_temperature := Lambda.Cold false;
+  (* D.section [ ".text-cold" ] (Some "a") ["@progbits"] *)
+  D.text ~sub:2 ()
+
+let section_of_temperature ?(force = false) temp =
+  if force || not (Lambda.same_temperature temp !current_temperature) then begin
+    match temp with
+    | Lambda.Cold _ -> section_cold ()
+    | Lambda.Tepid -> section_tepid ()
+    | Lambda.Hot _ -> section_hot ()
+  end
+
 (* Emit an instruction *)
 let emit_instr fallthrough i =
+  section_of_temperature i.temperature;
   emit_debug_info i.dbg;
   match i.desc with
   | Lend -> ()
@@ -821,7 +846,7 @@ let emit_instr fallthrough i =
         D.long (ConstSub (ConstLabel(emit_label jumptbl.(i)),
                          ConstLabel lbl))
       done;
-      D.text ()
+      section_of_temperature ~force:true i.temperature
   | Lsetuptrap lbl ->
       I.call (label lbl)
   | Lpushtrap ->
@@ -887,7 +912,7 @@ let fundecl fundecl =
   bound_error_sites := [];
   bound_error_call := 0;
   all_functions := fundecl :: !all_functions;
-  D.text ();
+  section_of_temperature ~force:true fundecl.fun_temperature;
   D.align 16;
   add_def_symbol fundecl.fun_name;
   if system = S_macosx
@@ -925,6 +950,7 @@ let fundecl fundecl =
       cfi_adjust_cfa_offset (-n);
     end;
   end;
+  section_of_temperature fundecl.fun_temperature;
   cfi_endproc ();
   begin match system with
   | S_gnu | S_linux ->
@@ -1050,7 +1076,8 @@ let end_assembly() =
     List.iter (fun (cst,lbl) -> emit_float_constant cst lbl) !float_constants
   end;
 
-  D.text ();
+  (* D.text (); *)
+  D.text ~sub:3 ();
   if system = S_macosx then I.nop ();
   (* suppress "ld warning: atom sorting error" *)
 

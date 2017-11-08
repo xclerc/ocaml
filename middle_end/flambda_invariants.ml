@@ -205,7 +205,7 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       check_variable_is_bound env obj;
       check_variables_are_bound env args;
       ignore_debuginfo dbg
-    | If_then_else (cond, ifso, ifnot) ->
+    | If_then_else (cond, _temp, ifso, ifnot) ->
       check_variable_is_bound env cond;
       loop env ifso;
       loop env ifnot

@@ -845,7 +845,7 @@ let transl_class ids cl_id pub_meths cl vflag =
   llets (
   lcache (
   Lsequence(
-  Lifthenelse(lfield cached 0, lambda_unit,
+  Lifthenelse(lfield cached 0, Hot false, lambda_unit,
               if ids = [] then ldirect () else
               if not concrete then lclass_virt () else
               lclass (

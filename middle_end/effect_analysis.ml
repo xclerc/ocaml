@@ -31,7 +31,7 @@ let rec no_effects (flam : Flambda.t) =
   | Let_rec (defs, body) ->
     no_effects body
       && List.for_all (fun (_, def) -> no_effects_named def) defs
-  | If_then_else (_, ifso, ifnot) -> no_effects ifso && no_effects ifnot
+  | If_then_else (_, _, ifso, ifnot) -> no_effects ifso && no_effects ifnot
   | Switch (_, sw) ->
     let aux (_, flam) = no_effects flam in
     List.for_all aux sw.blocks

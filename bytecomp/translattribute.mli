@@ -58,3 +58,19 @@ val get_and_remove_specialised_attribute
 val get_tailcall_attribute
    : Typedtree.expression
   -> bool * Typedtree.expression
+
+val get_temperature_function
+   : Location.t
+  -> Parsetree.attributes
+  -> Lambda.temperature_attribute
+
+val get_temperature_ifthenelse
+   : Location.t
+  -> Parsetree.attributes
+  -> Lambda.temperature_attribute
+
+val add_temperature_attribute
+   : Lambda.lambda
+  -> Location.t
+  -> Parsetree.attributes
+  -> Lambda.lambda

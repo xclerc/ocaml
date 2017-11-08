@@ -262,12 +262,12 @@ let untag_int i dbg =
   | Cop(Cor, [c; Cconst_int 1], _) -> Cop(Casr, [c; Cconst_int 1], dbg)
   | c -> Cop(Casr, [c; Cconst_int 1], dbg)
 
-let if_then_else (cond, ifso, ifnot) =
+let if_then_else (cond, temp, ifso, ifnot) =
   match cond with
   | Cconst_int 0 -> ifnot
   | Cconst_int 1 -> ifso
   | _ ->
-    Cifthenelse(cond, ifso, ifnot)
+    Cifthenelse(cond, temp, ifso, ifnot)
 
 (* Turning integer divisions into multiply-high then shift.
    The [division_parameters] function is used in module Emit for
@@ -411,6 +411,7 @@ let rec div_int c1 c2 is_safe dbg =
       bind "divisor" c2 (fun c2 ->
         bind "dividend" c1 (fun c1 ->
           Cifthenelse(c2,
+                      Hot false,
                       Cop(Cdivi, [c1; c2], dbg),
                       raise_symbol dbg "caml_exn_Division_by_zero")))
 
@@ -448,6 +449,7 @@ let mod_int c1 c2 is_safe dbg =
       bind "divisor" c2 (fun c2 ->
         bind "dividend" c1 (fun c1 ->
           Cifthenelse(c2,
+                      Hot false,
                       Cop(Cmodi, [c1; c2], dbg),
                       raise_symbol dbg "caml_exn_Division_by_zero")))
 
@@ -466,7 +468,7 @@ let safe_divmod_bi mkop is_safe mkm1 c1 c2 bi dbg =
     if Arch.division_crashes_on_overflow
     && (size_int = 4 || bi <> Pint32)
     && not (is_different_from (-1) c2)
-    then Cifthenelse(Cop(Ccmpi Cne, [c2; Cconst_int(-1)], dbg), c, mkm1 c1 dbg)
+    then Cifthenelse(Cop(Ccmpi Cne, [c2; Cconst_int(-1)], dbg), Hot false, c, mkm1 c1 dbg)
     else c))
 
 let safe_div_bi is_safe =
@@ -502,8 +504,8 @@ let rec unbox_float dbg cmm =
   match cmm with
   | Cop(Calloc, [_header; c], _) -> c
   | Clet(id, exp, body) -> Clet(id, exp, unbox_float dbg body)
-  | Cifthenelse(cond, e1, e2) ->
-      Cifthenelse(cond, unbox_float dbg e1, unbox_float dbg e2)
+  | Cifthenelse(cond, temp, e1, e2) ->
+      Cifthenelse(cond, temp, unbox_float dbg e1, unbox_float dbg e2)
   | Csequence(e1, e2) -> Csequence(e1, unbox_float dbg e2)
   | Cswitch(e, tbl, el, dbg) ->
     Cswitch(e, tbl, Array.map (unbox_float dbg) el, dbg)
@@ -530,8 +532,8 @@ let rec remove_unit = function
   | Csequence(c, Cconst_pointer 1) -> c
   | Csequence(c1, c2) ->
       Csequence(c1, remove_unit c2)
-  | Cifthenelse(cond, ifso, ifnot) ->
-      Cifthenelse(cond, remove_unit ifso, remove_unit ifnot)
+  | Cifthenelse(cond, temp, ifso, ifnot) ->
+      Cifthenelse(cond, temp, remove_unit ifso, remove_unit ifnot)
   | Cswitch(sel, index, cases, dbg) ->
       Cswitch(sel, index, Array.map remove_unit cases, dbg)
   | Ccatch(rec_flag, handlers, body) ->
@@ -922,8 +924,8 @@ let rec unbox_int bi arg dbg =
   | Cop(Calloc, [_hdr; _ops; contents], _dbg) ->
       contents
   | Clet(id, exp, body) -> Clet(id, exp, unbox_int bi body dbg)
-  | Cifthenelse(cond, e1, e2) ->
-      Cifthenelse(cond, unbox_int bi e1 dbg, unbox_int bi e2 dbg)
+  | Cifthenelse(cond, temp, e1, e2) ->
+      Cifthenelse(cond, temp, unbox_int bi e1 dbg, unbox_int bi e2 dbg)
   | Csequence(e1, e2) -> Csequence(e1, unbox_int bi e2 dbg)
   | Cswitch(e, tbl, el, dbg) ->
       Cswitch(e, tbl, Array.map (fun e -> unbox_int bi e dbg) el, dbg)
@@ -1403,7 +1405,7 @@ struct
   let make_offset arg n = add_const arg n Debuginfo.none
   let make_isout h arg = Cop (Ccmpa Clt, [h ; arg], Debuginfo.none)
   let make_isin h arg = Cop (Ccmpa Cge, [h ; arg], Debuginfo.none)
-  let make_if cond ifso ifnot = Cifthenelse (cond, ifso, ifnot)
+  let make_if cond ifso ifnot = Cifthenelse (cond, Tepid, ifso, ifnot)
   let make_switch arg cases actions =
     make_switch arg cases actions Debuginfo.none
   let bind arg body = bind "switcher" arg body
@@ -1596,7 +1598,7 @@ let rec is_unboxed_number ~strict env e =
       | Some default -> join k default
       end
   | Ustaticfail _ -> No_result
-  | Uifthenelse (_, e1, e2) | Ucatch (_, _, e1, e2) | Utrywith (e1, _, e2) ->
+  | Uifthenelse (_, _, e1, e2) | Ucatch (_, _, e1, e2) | Utrywith (e1, _, e2) ->
       join (is_unboxed_number ~strict env e1) e2
   | _ -> No_unboxing
 
@@ -1624,6 +1626,13 @@ let strmatch_compile =
         let transl_switch = transl_int_switch
       end) in
   S.compile
+
+let invert_temperature temp =
+  let open Lambda in
+  match temp with
+  | Cold x -> Hot x
+  | Tepid -> Tepid
+  | Hot x -> Cold x
 
 let rec transl env e =
   match e with
@@ -1803,6 +1812,7 @@ let rec transl env e =
         bind "switch" (transl env arg) (fun arg ->
           Cifthenelse(
           Cop(Cand, [arg; Cconst_int 1], dbg),
+          Tepid,
           transl_switch dbg env
             (untag_int arg dbg) s.us_index_consts s.us_actions_consts,
           transl_switch dbg env
@@ -1821,27 +1831,27 @@ let rec transl env e =
       ccatch(nfail, ids, transl env body, transl env handler)
   | Utrywith(body, exn, handler) ->
       Ctrywith(transl env body, exn, transl env handler)
-  | Uifthenelse(Uprim(Pnot, [arg], _), ifso, ifnot) ->
-      transl env (Uifthenelse(arg, ifnot, ifso))
-  | Uifthenelse(cond, ifso, Ustaticfail (nfail, [])) ->
+  | Uifthenelse(Uprim(Pnot, [arg], _), temp, ifso, ifnot) ->
+      transl env (Uifthenelse(arg, invert_temperature temp, ifnot, ifso))
+  | Uifthenelse(cond, _temp, ifso, Ustaticfail (nfail, [])) ->
       let dbg = Debuginfo.none in
       exit_if_false dbg env cond (transl env ifso) nfail
-  | Uifthenelse(cond, Ustaticfail (nfail, []), ifnot) ->
+  | Uifthenelse(cond, _temp, Ustaticfail (nfail, []), ifnot) ->
       let dbg = Debuginfo.none in
       exit_if_true dbg env cond nfail (transl env ifnot)
-  | Uifthenelse(Uprim(Psequand, _, dbg) as cond, ifso, ifnot) ->
+  | Uifthenelse(Uprim(Psequand, _, dbg) as cond, _temp, ifso, ifnot) ->
       let raise_num = next_raise_count () in
       make_catch
         raise_num
         (exit_if_false dbg env cond (transl env ifso) raise_num)
         (transl env ifnot)
-  | Uifthenelse(Uprim(Psequor, _, dbg) as cond, ifso, ifnot) ->
+  | Uifthenelse(Uprim(Psequor, _, dbg) as cond, _temp, ifso, ifnot) ->
       let raise_num = next_raise_count () in
       make_catch
         raise_num
         (exit_if_true dbg env cond raise_num (transl env ifnot))
         (transl env ifso)
-  | Uifthenelse (Uifthenelse (cond, condso, condnot), ifso, ifnot) ->
+  | Uifthenelse (Uifthenelse (cond, condtemp, condso, condnot), _temp, ifso, ifnot) ->
       let dbg = Debuginfo.none in
       let num_true = next_raise_count () in
       make_catch
@@ -1850,13 +1860,15 @@ let rec transl env e =
            (fun shared_false ->
              if_then_else
                (test_bool dbg (transl env cond),
+                condtemp,
                 exit_if_true dbg env condso num_true shared_false,
                 exit_if_true dbg env condnot num_true shared_false))
            (transl env ifnot))
         (transl env ifso)
-  | Uifthenelse(cond, ifso, ifnot) ->
+  | Uifthenelse(cond, temp, ifso, ifnot) ->
       let dbg = Debuginfo.none in
-      if_then_else(test_bool dbg (transl env cond), transl env ifso,
+      if_then_else(test_bool dbg (transl env cond), temp,
+        transl env ifso,
         transl env ifnot)
   | Usequence(exp1, exp2) ->
       Csequence(remove_unit(transl env exp1), transl env exp2)
@@ -1883,6 +1895,7 @@ let rec transl env e =
                 (raise_num, [],
                  Cifthenelse
                    (Cop(Ccmpi tst, [Cvar id; high], dbg),
+                    Tepid,
                     Cexit (raise_num, []),
                     Cloop
                       (Csequence
@@ -1894,7 +1907,8 @@ let rec transl env e =
                                  dbg)),
                              Cifthenelse
                                (Cop(Ccmpi Ceq, [Cvar id_prev; high],
-                                  dbg),
+                                    dbg),
+                                Cold false,
                                 Cexit (raise_num,[]), Ctuple [])))))),
                  Ctuple []))))
   | Uassign(id, exp) ->
@@ -2037,6 +2051,7 @@ and transl_prim_1 env p arg dbg =
             else
               bind "header" hdr (fun hdr ->
                 Cifthenelse(is_addr_array_hdr hdr dbg,
+                            Tepid,
                             Cop(Clsr, [hdr; Cconst_int wordsize_shift], dbg),
                             Cop(Clsr, [hdr; Cconst_int numfloat_shift], dbg))) in
           Cop(Cor, [len; Cconst_int 1], dbg)
@@ -2108,13 +2123,13 @@ and transl_prim_2 env p arg1 arg2 dbg =
 
   (* Boolean operations *)
   | Psequand ->
-      if_then_else(test_bool dbg (transl env arg1),
+      if_then_else(test_bool dbg (transl env arg1), Tepid,
         transl env arg2, Cconst_int 1)
       (* let id = Ident.create "res1" in
       Clet(id, transl env arg1,
            Cifthenelse(test_bool dbg (Cvar id), transl env arg2, Cvar id)) *)
   | Psequor ->
-      if_then_else(test_bool dbg (transl env arg1),
+      if_then_else(test_bool dbg (transl env arg1), Tepid,
         Cconst_int 3, transl env arg2)
 
   (* Integer operations *)
@@ -2269,6 +2284,7 @@ and transl_prim_2 env p arg1 arg2 dbg =
           bind "arr" (transl env arg1) (fun arr ->
             bind "index" (transl env arg2) (fun idx ->
               Cifthenelse(is_addr_array_ptr arr dbg,
+                          Tepid,
                           addr_array_ref arr idx dbg,
                           float_array_ref dbg arr idx)))
       | Paddrarray ->
@@ -2288,10 +2304,12 @@ and transl_prim_2 env p arg1 arg2 dbg =
             if wordsize_shift = numfloat_shift then
               Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                         Cifthenelse(is_addr_array_hdr hdr dbg,
+                                    Tepid,
                                     addr_array_ref arr idx dbg,
                                     float_array_ref dbg arr idx))
             else
               Cifthenelse(is_addr_array_hdr hdr dbg,
+                Tepid,
                 Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                           addr_array_ref arr idx dbg),
                 Csequence(make_checkbound dbg [float_array_length hdr dbg; idx],
@@ -2427,6 +2445,7 @@ and transl_prim_3 env p arg1 arg2 arg3 dbg =
             bind "index" (transl env arg2) (fun index ->
               bind "arr" (transl env arg1) (fun arr ->
                 Cifthenelse(is_addr_array_ptr arr dbg,
+                            Tepid,
                             addr_array_set arr index newval dbg,
                             float_array_set arr index (unbox_float dbg newval)
                               dbg))))
@@ -2451,12 +2470,14 @@ and transl_prim_3 env p arg1 arg2 arg3 dbg =
             if wordsize_shift = numfloat_shift then
               Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                         Cifthenelse(is_addr_array_hdr hdr dbg,
+                                    Tepid,
                                     addr_array_set arr idx newval dbg,
                                     float_array_set arr idx
                                                     (unbox_float dbg newval)
                                                     dbg))
             else
               Cifthenelse(is_addr_array_hdr hdr dbg,
+                Tepid,
                 Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                           addr_array_set arr idx newval dbg),
                 Csequence(make_checkbound dbg [float_array_length hdr dbg; idx],
@@ -2640,11 +2661,11 @@ and exit_if_true dbg env cond nfail otherwise =
   match cond with
   | Uconst (Uconst_ptr 0) -> otherwise
   | Uconst (Uconst_ptr 1) -> Cexit (nfail,[])
-  | Uifthenelse (arg1, Uconst (Uconst_ptr 1), arg2)
+  | Uifthenelse (arg1, _, Uconst (Uconst_ptr 1), arg2)
   | Uprim(Psequor, [arg1; arg2], _) ->
       exit_if_true dbg env arg1 nfail
         (exit_if_true dbg env arg2 nfail otherwise)
-  | Uifthenelse (_, _, Uconst (Uconst_ptr 0))
+  | Uifthenelse (_, _, _, Uconst (Uconst_ptr 0))
   | Uprim(Psequand, _, _) ->
       begin match otherwise with
       | Cexit (raise_num,[]) ->
@@ -2658,27 +2679,28 @@ and exit_if_true dbg env cond nfail otherwise =
       end
   | Uprim(Pnot, [arg], _) ->
       exit_if_false dbg env arg otherwise nfail
-  | Uifthenelse (cond, ifso, ifnot) ->
+  | Uifthenelse (cond, temp, ifso, ifnot) ->
       make_catch2
         (fun shared ->
           if_then_else
             (test_bool dbg (transl env cond),
+             temp,
              exit_if_true dbg env ifso nfail shared,
              exit_if_true dbg env ifnot nfail shared))
         otherwise
   | _ ->
-      if_then_else(test_bool dbg (transl env cond),
+      if_then_else(test_bool dbg (transl env cond), Tepid,
         Cexit (nfail, []), otherwise)
 
 and exit_if_false dbg env cond otherwise nfail =
   match cond with
   | Uconst (Uconst_ptr 0) -> Cexit (nfail,[])
   | Uconst (Uconst_ptr 1) -> otherwise
-  | Uifthenelse (arg1, arg2, Uconst (Uconst_ptr 0))
+  | Uifthenelse (arg1, _, arg2, Uconst (Uconst_ptr 0))
   | Uprim(Psequand, [arg1; arg2], _) ->
       exit_if_false dbg env arg1
         (exit_if_false dbg env arg2 otherwise nfail) nfail
-  | Uifthenelse (_, Uconst (Uconst_ptr 1), _)
+  | Uifthenelse (_, _, Uconst (Uconst_ptr 1), _)
   | Uprim(Psequor, _, _) ->
       begin match otherwise with
       | Cexit (raise_num,[]) ->
@@ -2692,16 +2714,17 @@ and exit_if_false dbg env cond otherwise nfail =
       end
   | Uprim(Pnot, [arg], _) ->
       exit_if_true dbg env arg nfail otherwise
-  | Uifthenelse (cond, ifso, ifnot) ->
+  | Uifthenelse (cond, temp, ifso, ifnot) ->
       make_catch2
         (fun shared ->
           if_then_else
             (test_bool dbg (transl env cond),
+             temp,
              exit_if_false dbg env ifso shared nfail,
              exit_if_false dbg env ifnot shared nfail))
         otherwise
   | _ ->
-      if_then_else (test_bool dbg (transl env cond), otherwise,
+      if_then_else (test_bool dbg (transl env cond), Tepid, otherwise,
         Cexit (nfail, []))
 
 and transl_switch _dbg env arg index cases = match Array.length cases with
@@ -2795,7 +2818,8 @@ let transl_function f =
              fun_args = List.map (fun id -> (id, typ_val)) f.params;
              fun_body = cmm_body;
              fun_fast = !Clflags.optimize_for_speed;
-             fun_dbg  = f.dbg}
+             fun_dbg  = f.dbg;
+             fun_temperature = f.temperature; }
 
 (* Translate all function definitions *)
 
@@ -3048,7 +3072,8 @@ let compunit (ulam, preallocated_blocks, constants) =
   let c1 = [Cfunction {fun_name = Compilenv.make_symbol (Some "entry");
                        fun_args = [];
                        fun_body = init_code; fun_fast = false;
-                       fun_dbg  = Debuginfo.none }] in
+                       fun_dbg  = Debuginfo.none;
+                       fun_temperature = Tepid; }] in
   let c2 = emit_constants c1 constants in
   let c3 = transl_all_functions_and_emit_all_constants c2 in
   emit_preallocated_blocks preallocated_blocks c3
@@ -3095,10 +3120,11 @@ let cache_public_method meths tag cache dbg =
                           [meths; lsl_const (Cvar mi) log2_size_addr dbg],
                           dbg)],
                      dbg)], dbg),
+           Tepid,
            Cassign(hi, Cop(Csubi, [Cvar mi; Cconst_int 2], dbg)),
            Cassign(li, Cvar mi)),
         Cifthenelse
-          (Cop(Ccmpi Cge, [Cvar li; Cvar hi], dbg), Cexit (raise_num, []),
+          (Cop(Ccmpi Cge, [Cvar li; Cvar hi], dbg), Tepid, Cexit (raise_num, []),
            Ctuple [])))),
      Ctuple []),
   Clet (
@@ -3142,6 +3168,7 @@ let apply_function_body arity =
    if arity = 1 then app_fun clos 0 else
    Cifthenelse(
    Cop(Ccmpi Ceq, [get_field env (Cvar clos) 1 dbg; int_const arity], dbg),
+   Tepid,
    Cop(Capply typ_val,
        get_field env (Cvar clos) 2 dbg :: List.map (fun s -> Cvar s) all_args,
        dbg),
@@ -3171,6 +3198,7 @@ let send_function arity =
     Clet (
     real,
     Cifthenelse(Cop(Ccmpa Cne, [tag'; tag], dbg),
+                Cold false,
                 cache_public_method (Cvar meths) tag cache dbg,
                 cached_pos),
     Cop(Cload (Word_val, Mutable),
@@ -3189,7 +3217,8 @@ let send_function arity =
     fun_args = fun_args;
     fun_body = body;
     fun_fast = true;
-    fun_dbg  = Debuginfo.none }
+    fun_dbg  = Debuginfo.none;
+    fun_temperature = Tepid; }
 
 let apply_function arity =
   let (args, clos, body) = apply_function_body arity in
@@ -3201,6 +3230,7 @@ let apply_function arity =
     fun_body = body;
     fun_fast = true;
     fun_dbg  = Debuginfo.none;
+    fun_temperature = Tepid;
    }
 
 (* Generate tuplifying functions:
@@ -3226,6 +3256,7 @@ let tuplify_function arity =
           dbg);
     fun_fast = true;
     fun_dbg  = Debuginfo.none;
+    fun_temperature = Tepid;
    }
 
 (* Generate currying functions:
@@ -3288,7 +3319,8 @@ let final_curry_function arity =
     fun_args = [last_arg, typ_val; last_clos, typ_val];
     fun_body = curry_fun [] last_clos (arity-1);
     fun_fast = true;
-    fun_dbg  = Debuginfo.none }
+    fun_dbg  = Debuginfo.none;
+    fun_temperature = Tepid; }
 
 let rec intermediate_curry_functions arity num =
   let dbg = Debuginfo.none in
@@ -3318,7 +3350,8 @@ let rec intermediate_curry_functions arity num =
                  int_const 1; Cvar arg; Cvar clos],
                 dbg);
       fun_fast = true;
-      fun_dbg  = Debuginfo.none }
+      fun_dbg  = Debuginfo.none;
+      fun_temperature = Tepid; }
     ::
       (if arity <= max_arity_optimized && arity - num > 2 then
           let rec iter i =
@@ -3346,7 +3379,8 @@ let rec intermediate_curry_functions arity num =
                fun_body = iter (num+1)
                   (List.map (fun (arg,_) -> Cvar arg) direct_args) clos;
                fun_fast = true;
-               fun_dbg = Debuginfo.none }
+               fun_dbg = Debuginfo.none;
+               fun_temperature = Tepid; }
           in
           cf :: intermediate_curry_functions arity (num+1)
        else
@@ -3409,7 +3443,8 @@ let entry_point namelist =
              fun_args = [];
              fun_body = body;
              fun_fast = false;
-             fun_dbg  = Debuginfo.none }
+             fun_dbg  = Debuginfo.none;
+             fun_temperature = Tepid; }
 
 (* Generate the table of globals *)
 
