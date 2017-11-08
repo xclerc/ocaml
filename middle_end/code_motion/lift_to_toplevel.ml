@@ -19,12 +19,68 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module IS = Flambda_static.Program_body.Initialize_symbol
+module K = Flambda_kind
+module Program_body = Flambda_static.Program_body
 
 let should_copy (named : Flambda.Named.t) =
   match named with
-  | Symbol _ | Read_symbol_field _ | Const _ -> true
+  | Simple ((Name (Symbol _)) | (Const _)) -> true
   | _ -> false
+
+let static_structure name ~params : Program_body.static_structure =
+  let make_symbol index =
+    let index =
+      match index with
+      | None -> ""
+      | Some index -> Printf.sprintf " %d" index
+    in
+    let linkage_name =
+      Linkage_name.create
+        (Format.asprintf "lifted_%a%a%s" Continuation.print name index)
+    in
+    Symbol.create (Compilation_unit.get_current_exn ()) linkage_name
+  in
+  let arity = Flambda.Typed_parameter.List.arity ~importer params in
+  if Flambda_arity.is_all_values arity then
+    let fields =
+      List.map (fun param : Flambda_static.Of_kind_value.t ->
+          Dynamically_computed (Typed_parameter.var param))
+        params
+    in
+    let block : Flambda_static.Static_part.t =
+      Block (Tag.Scannable.zero, Immutable, fields)
+    in
+    Some [make_symbol None, block]
+  else if Flambda_arity.is_all_naked_floats arity then
+    let initial_value =
+      List.map (fun param : _ Flambda_static.Static_part.or_variable ->
+          Var (Flambda.Typed_parameter.var param))
+        params
+    in
+    let static_part : Flambda_static.Static_part.t =
+      Immutable_float_array { initial_value; }
+    in
+    Some [make_symbol None, static_part]
+  else
+    let rec assign_symbols index params_with_kinds result =
+      match params with
+      | [] -> List.rev result
+      | (param, (kind : K.t))::params_with_kinds ->
+        let symbol = make_symbol (Some index) in
+        let var = Flambda.Typed_parameter.var param in
+        let static_part : Flambda_static.Static_part.t =
+          match kind with
+          | Value _ -> Block (Tag.Scannable.zero, mutable, [var])
+          | Naked_immediate -> Boxed_nativeint (Var var)
+          | Naked_float -> Boxed_float (Var var)
+          | Naked_int32 -> Boxed_int32 (Var var)
+          | Naked_int64 -> Boxed_int64 (Var var)
+          | Naked_nativeint -> Boxed_nativeint (Var var)
+        in
+        assign_symbols (index + 1) params_with_kinds
+          ((symbol, static_part) :: result)
+    in
+    Some (assign_symbols 0 (List.combine params arity) [])
 
 let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
   match expr with
@@ -39,31 +95,22 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
     end else if Continuation.Set.equal free_conts_body our_cont then begin
       (* The body of this [Let_cont] can only return through [name], which
          means that [handler] postdominates [body].  As such we can cut off
-         [body] and put it inside an [Initialize_symbol] whose continuation
+         [body] and put it inside a [computation] whose continuation
          is [handler].
          We augment [to_copy] to ensure that the bindings of the variables
          currently serving as parameters to [handler] is/are restated at the
          top of each subsequent lifted expression. *)
       let arity = Flambda.Typed_parameter.List.arity ~importer params in
-      let symbol =
-        let linkage_name =
-          Linkage_name.create
-            (Format.asprintf "lifted_%a" Continuation.print name)
-        in
-        Symbol.create (Compilation_unit.get_current_exn ())
-          linkage_name
-          ~kind:(Symbol.mixed_kind arity)
-      in
       let to_copy' =
         List.mapi (fun param_index param ->
+            let param_var = Flambda.Typed_parameter.var param in
+            let param_kind = Flambda.Typed_parameter.kind ~importer param in
             let defining_expr : Flambda.Named.t =
-              Read_symbol_field {
+              Prim (Unary (Block_load, 
                 symbol;
                 logical_field = param_index;
               }
             in
-            let param_var = Flambda.Typed_parameter.var param in
-            let param_kind = Flambda.Typed_parameter.kind ~importer param in
             param_var, param_kind, defining_expr)
           params
       in
@@ -122,11 +169,11 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
          way). *)
       match defining_expr with
       | Prim (Pmakeblock (tag, Immutable, _shape), _fields, _dbg) ->
-        if not (Flambda_kind.is_value kind) then begin
+        if not (K.is_value kind) then begin
           Misc.fatal_errorf "[Let]-binding of variable %a should be of kind \
               [Value] but is of kind %a.  Defining expression: %a"
             Variable.print var
-            Flambda_kind.print kind
+            K.print kind
             Flambda.Named.print defining_expr
         end;
         let tag = Tag.create_exn tag in
@@ -169,7 +216,7 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
         return_cont, return_arity, expr
       | _ ->
         let return_cont = Continuation.create () in
-        let return_arity = [Flambda_kind.value Must_scan] in
+        let return_arity = [K.value Must_scan] in
         let expr : Flambda.Expr.t =
           Flambda.Expr.create_let var' kind defining_expr
             (Apply_cont (return_cont, None, [var']))

@@ -260,7 +260,7 @@ MIDDLE_END_BASE_TYPES=\
 MIDDLE_END_CODE_MOTION=\
   middle_end/code_motion/lift_constants.cmo \
   middle_end/code_motion/lift_let_cont.cmo \
-  middle_end/code_motion/lift_let_to_initialize_symbol.cmo \
+  middle_end/code_motion/lift_to_toplevel.cmo \
   middle_end/code_motion/share_constants.cmo \
   middle_end/code_motion/sink_lets.cmo
 

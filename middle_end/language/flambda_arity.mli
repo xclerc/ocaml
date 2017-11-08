@@ -23,4 +23,8 @@ type t = Flambda_kind.t list
 
 val length : t -> int
 
+val is_all_values : t -> bool
+
+val is_all_naked_floats : t -> bool
+
 include Identifiable.S with type t := t

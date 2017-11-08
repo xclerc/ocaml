@@ -70,13 +70,15 @@ module Program_body : sig
         [return_cont]. *)
   }
 
+  type static_structure = (Symbol.t * Static_part.t) list
+
   type definition = {
     computation : computation option;
     (** A computation which provides values to fill in parts of the
         statically-declared structure of one or more symbols.
         [computation] may not reference the symbols bound by the same
         definition's [static_structure]. *)
-    static_structure : (Symbol.t * Static_part.t) list;
+    static_structure : static_structure;
     (** The statically-declared structure of the symbols being declared.
         Bindings of symbols in [static_structure] are simultaneous, not
         ordered. *)

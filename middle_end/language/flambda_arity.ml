@@ -33,3 +33,9 @@ include Identifiable.Make (struct
         Flambda_kind.print)
       t
 end)
+
+let is_all_values t =
+  List.for_all Flambda_kind.is_value t
+
+let is_all_naked_floats t =
+  List.for_all Flambda_kind.is_naked_float t
