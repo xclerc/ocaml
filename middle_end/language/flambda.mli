@@ -86,10 +86,7 @@ end
 module rec Expr : sig
   include module type of struct include F0.Expr end
 
-  val invariant
-     : (Invariant_env.t
-    -> t
-    -> unit) Flambda_type.type_accessor
+  val invariant : Invariant_env.t -> t -> unit
 
   (* CR mshinwell: Check that apply_cont is well-formed when there is a
      trap installation or removal. *)
@@ -102,6 +99,10 @@ module rec Expr : sig
      symbols? *)
   (** Structural equality (not alpha equivalence). *)
   val equal : t -> t -> bool
+
+  val free_variables : t -> Variable.Set.t
+
+  val free_symbols : t -> Symbol.Set.t
 
   (* Given an expression, freshen all variables within it, and form a function
      whose body is the resulting expression.  The variables specified by
@@ -280,7 +281,7 @@ module rec Expr : sig
           'b
         -> Variable.t
         -> Named.t
-        -> Variable.Set.t
+        -> Name.Set.t
         -> 'b * Variable.t * (Named.t option))
       -> t * 'b
   end
@@ -305,10 +306,7 @@ end
 and Set_of_closures : sig
   include module type of struct include F0.Set_of_closures end
 
-  val invariant
-     : (Invariant_env.t
-    -> t
-    -> unit) Flambda_type.type_accessor
+  val invariant : Invariant_env.t -> t -> unit
 
   val variables_bound_by_the_closure : t -> Var_within_closure.Set.t
 
@@ -386,8 +384,6 @@ end and Function_declarations : sig
     -> Closure_id.Set.t
 
   val all_functions_parameters : t -> Variable.Set.t
-
-  val all_free_symbols : t -> Symbol.Set.t
 
   val contains_stub : t -> bool
 end and Function_declaration : sig

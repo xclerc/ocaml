@@ -72,11 +72,20 @@ val add_use_of_closure_id : t -> Closure_id.t -> unit
 (* XXX this one needs to error upon rebinding *)
 val add_set_of_closures_id : t -> Set_of_closures_id.t -> unit
 
+(** The type of the given name, returning [None] iff the name is unbound. *)
+val type_of_name_option : t -> Name.t -> Flambda_type.t option
+
 val variable_is_bound : t -> Variable.t -> bool
 
 val check_variable_is_bound : t -> Variable.t -> unit
 
 val check_variables_are_bound : t -> Variable.t list -> unit
+
+val check_name_is_bound : t -> Name.t -> unit
+
+val check_simple_is_bound : t -> Simple.t -> unit
+
+val check_simples_are_bound : t -> Simple.t list -> unit
 
 (* CR mshinwell: Change the names of these functions to be "and is compatible
    with kind", or similar -- see new naming in Flambda_kind. *)
@@ -98,6 +107,12 @@ val check_simple_is_bound_and_of_kind
   -> Flambda_kind.t
   -> unit
 
+val check_simples_are_bound_and_of_kind
+   : t
+  -> Simple.t list
+  -> Flambda_kind.t
+  -> unit
+
 val check_variables_are_bound_and_of_kind
    : t
   -> Variable.t list
@@ -114,6 +129,10 @@ val find_continuation_opt
   -> (Flambda_arity.t * continuation_kind * Continuation_stack.t) option
 
 val continuation_arity : t -> Continuation.t -> Flambda_arity.t
+
+val kind_of_simple : t -> Simple.t -> Flambda_kind.t
+
+val kind_of_name : t -> Name.t -> Flambda_kind.t
 
 val kind_of_variable : t -> Variable.t -> Flambda_kind.t
 

@@ -73,6 +73,16 @@ module Const = struct
       | Naked_int64 n -> Format.fprintf ppf "%Ld!" n
       | Naked_nativeint n -> Format.fprintf ppf "%a!" Targetint.print n
   end)
+
+  let kind t =
+    let module K = Flambda_kind in
+    match t with
+    | Untagged_immediate _ -> K.naked_immediate ()
+    | Tagged_immediate _ -> K.value Can_scan
+    | Naked_float _ -> K.naked_float ()
+    | Naked_int32 _ -> K.naked_int32 ()
+    | Naked_int64 _ -> K.naked_int64 ()
+    | Naked_nativeint _ -> K.naked_nativeint ()
 end
 
 type t =

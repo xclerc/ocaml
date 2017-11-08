@@ -284,8 +284,8 @@ MIDDLE_END_INLINING=\
   middle_end/inlining/inlining_transforms.cmo
 
 MIDDLE_END_LANGUAGE=\
-  middle_end/language/simple.cmo \
   middle_end/language/flambda_kind.cmo \
+  middle_end/language/simple.cmo \
   middle_end/language/flambda_arity.cmo \
   middle_end/language/flambda_primitive.cmo \
   middle_end/language/allocated_const.cmo \

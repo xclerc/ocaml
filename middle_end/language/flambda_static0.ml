@@ -96,53 +96,44 @@ module Static_part = struct
     | Mutable_string _
     | Immutable_string _ -> false
 
-  let free_variables t =
-    match t with
-    | Block (_tag, _mut, fields) ->
-      List.fold_left (fun fvs field ->
-          Variable.Set.union fvs (Of_kind_value.free_variables field))
-        Variable.Set.empty
-        fields
-    | Set_of_closures _
-    | Closure _ -> Variable.Set.empty
-    | Boxed_float (Var v)
-    | Boxed_int32 (Var v)
-    | Boxed_int64 (Var v)
-    | Boxed_nativeint (Var v)
-    | Mutable_string { initial_value = Var v; }
-    | Immutable_string (Var v) -> Variable.Set.singleton v
-    | Boxed_float (Const _)
-    | Boxed_int32 (Const _)
-    | Boxed_int64 (Const _)
-    | Boxed_nativeint (Const _)
-    | Mutable_string { initial_value = Const _; }
-    | Immutable_string (Const _) -> Variable.Set.empty
-    | Mutable_float_array { initial_value = fields; }
-    | Immutable_float_array fields ->
-      List.fold_left (fun fvs (field : float or_variable) ->
-          match field with
-          | Var v -> Variable.Set.add v fvs
-          | Const _ -> fvs)
-        Variable.Set.empty
-        fields
+  let free_names t =
+(* XXX and collect syms *)
+    let free_variables =
+      match t with
+      | Block (_tag, _mut, fields) ->
+        List.fold_left (fun fvs field ->
+            Variable.Set.union fvs (Of_kind_value.free_variables field))
+          Variable.Set.empty
+          fields
+      | Set_of_closures _
+      | Closure _ -> Variable.Set.empty
+      | Boxed_float (Var v)
+      | Boxed_int32 (Var v)
+      | Boxed_int64 (Var v)
+      | Boxed_nativeint (Var v)
+      | Mutable_string { initial_value = Var v; }
+      | Immutable_string (Var v) -> Variable.Set.singleton v
+      | Boxed_float (Const _)
+      | Boxed_int32 (Const _)
+      | Boxed_int64 (Const _)
+      | Boxed_nativeint (Const _)
+      | Mutable_string { initial_value = Const _; }
+      | Immutable_string (Const _) -> Variable.Set.empty
+      | Mutable_float_array { initial_value = fields; }
+      | Immutable_float_array fields ->
+        List.fold_left (fun fvs (field : float or_variable) ->
+            match field with
+            | Var v -> Variable.Set.add v fvs
+            | Const _ -> fvs)
+          Variable.Set.empty
+          fields
+    in
+    Variable.Set.fold (fun free_var free_names ->
+        Name.Set.add (Name.var free_var) free_names)
+      free_variables
+      Name.Set.empty
 
-  let free_symbols t =
-    match t with
-    | Block (_tag, _mut, fields) ->
-      List.fold_left (fun syms field ->
-          Symbol.Set.union syms (Of_kind_value.free_symbols field))
-        Symbol.Set.empty
-        fields
-    | Closure (sym, _) -> Symbol.Set.singleton sym
-    | Set_of_closures set -> Flambda.Set_of_closures.free_symbols set
-    | Boxed_float _
-    | Boxed_int32 _
-    | Boxed_int64 _
-    | Boxed_nativeint _
-    | Mutable_float_array _
-    | Immutable_float_array _
-    | Mutable_string _
-    | Immutable_string _ -> Symbol.Set.empty
+  let free_symbols t = Name.set_to_symbol_set (free_names t)
 
   let print ppf (t : t) =
     let fprintf = Format.fprintf in
@@ -239,7 +230,8 @@ module Program_body = struct
             Flambda_kind.print kind))
       comp.computed_values
 
-  let free_symbols_of_computation comp = Flambda.Expr.free_symbols comp.expr
+  let free_symbols_of_computation comp =
+    Flambda.Expr.free_symbols comp.expr
 
   type definition = {
     computation : computation option;

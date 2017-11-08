@@ -561,6 +561,9 @@ end and Function_declarations : sig
     -> t
 
   val print : Format.formatter -> t -> unit
+
+  (** All names free in the given function declarations. *)
+  val free_names : t -> Name.Set.t
 end and Function_declaration : sig
   type t = private {
     closure_origin : Closure_origin.t;

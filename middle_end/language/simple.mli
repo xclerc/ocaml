@@ -29,6 +29,8 @@ module Const : sig
     | Naked_nativeint of Targetint.t
 
   include Identifiable.S with type t := t
+
+  val kind : t -> Flambda_kind.t
 end
 
 (* CR mshinwell: Consider putting [Var] and [Symbol] directly in here. *)

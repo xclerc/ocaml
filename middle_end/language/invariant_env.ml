@@ -250,6 +250,14 @@ let check_name_is_bound t name =
     Misc.fatal_errorf "Unbound name %a" Name.print name
   end
 
+let check_simple_is_bound t (simple : Simple.t) =
+  match simple with
+  | Name name -> check_name_is_bound t name
+  | Const _ -> ()
+
+let check_simples_are_bound t simples =
+  List.iter (fun simple -> check_simple_is_bound t simple) simples
+
 let check_variable_is_bound t var =
   check_name_is_bound t (Name.var var)
 
@@ -282,7 +290,20 @@ let check_name_is_bound_and_of_kind t name desired_kind =
 let check_simple_is_bound_and_of_kind t (simple : Simple.t) desired_kind =
   match simple with
   | Name name -> check_name_is_bound_and_of_kind t name desired_kind
-  | Const _ -> ()
+  | Const const ->
+    let actual_kind = Simple.Const.kind const in
+    if not (Flambda_kind.equal actual_kind desired_kind) then begin
+      Misc.fatal_errorf "Simple term %a expected to have kind %a but is \
+          of kind %a"
+        Simple.print simple
+        Flambda_kind.print desired_kind
+        Flambda_kind.print actual_kind
+    end
+
+let check_simples_are_bound_and_of_kind t simples desired_kind =
+  List.iter (fun simple ->
+      check_simple_is_bound_and_of_kind t simple desired_kind)
+    simples
 
 let check_variable_is_bound_and_of_kind t var desired_kind =
   check_name_is_bound_and_of_kind t (Name.var var) desired_kind
@@ -311,14 +332,21 @@ let continuation_arity t cont =
   | None ->
     Misc.fatal_errorf "Unbound continuation %a" Continuation.print cont
 
-let kind_of_variable t var =
-  match Name.Map.find (Name.var var) t.names with
+let kind_of_name t name =
+  match Name.Map.find name t.names with
   | exception Not_found ->
-    Misc.fatal_errorf "Unbound variable %a" Variable.print var
+    Misc.fatal_errorf "Unbound name %a" Name.print name
   | ty ->
     Flambda_type.kind ty
       ~importer:Flambda_type.null_importer
       ~type_of_name:(fun ty -> type_of_name_option t ty)
+
+let kind_of_simple t (simple : Simple.t) =
+  match simple with
+  | Name name -> kind_of_name t name
+  | Const const -> Simple.Const.kind const
+
+let kind_of_variable t var = kind_of_name t (Name.var var)
 
 let kind_of_mutable_variable t var =
   match Mutable_variable.Map.find var t.mutable_variables with

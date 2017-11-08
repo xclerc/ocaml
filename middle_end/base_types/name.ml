@@ -44,6 +44,11 @@ let to_var t =
   | Var var -> Some var
   | Symbol _ -> None
 
+let to_symbol t =
+  match t with
+  | Var _ -> None
+  | Symbol sym -> Some sym
+
 include Identifiable.Make (struct
   type nonrec t = t
 
@@ -75,3 +80,11 @@ let set_to_var_set t =
       | Some var -> Variable.Set.add var vars)
     t
     Variable.Set.empty
+
+let set_to_symbol_set t =
+  Set.fold (fun name syms ->
+      match to_symbol name with
+      | None -> syms
+      | Some sym -> Symbol.Set.add sym syms)
+    t
+    Symbol.Set.empty
