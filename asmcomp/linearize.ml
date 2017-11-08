@@ -239,37 +239,18 @@ let rec linear temp i n =
                      (linear temp_ifso ifso n2)
       | _, _, _ ->
         (* Should attempt branch prediction here *)
+        begin match testtemp with
+        | Lambda.Tepid | Lambda.Hot _ ->
           let (lbl_end, n2) = get_label n1 in
           let (lbl_else, nelse) = get_label (linear temp_ifnot ifnot n2) in
           copy_instr (Lcondbranch(invert_test test, lbl_else)) i
             (linear temp_ifso ifso (add_branch lbl_end nelse))
-        (* XXXC let add_jump_if_temperature_changes t res =
-          if not (Lambda.same_temperature temp t) then begin
-            let lbl = Cmm.new_label() in
-            let next =
-              copy_instr
-                (Llabel lbl)
-                n
-                res in
-            copy_instr
-              (Lbranch lbl)
-              i
-              next
-          end else
-            res in
-        let (lbl_end, n2) = get_label n1 in
-        begin match testtemp with
-        | Lambda.Tepid | Lambda.Hot _ ->
-          let (lbl_else, nelse) = get_label (linear temp_ifnot ifnot n2) in
-          let next = linear temp_ifso ifso (add_branch lbl_end nelse) in
-          copy_instr (Lcondbranch(invert_test test, lbl_else)) i next
-            (*add_jump_if_temperature_changes temp_ifso next*)
         | Lambda.Cold _ ->
+          let (lbl_end, n2) = get_label n1 in
           let (lbl_then, nthen) = get_label (linear temp_ifso ifso n2) in
-          let next = linear temp_ifnot ifnot (add_branch lbl_then nthen) in
-          copy_instr (Lcondbranch (test, lbl_then)) i next
-            (*add_jump_if_temperature_changes temp_ifnot next*)
-        end*)
+          copy_instr (Lcondbranch(test, lbl_then)) i
+            (linear temp_ifnot ifnot (add_branch lbl_end nthen))
+        end
       end
   | Iswitch(index, cases) ->
       let lbl_cases = Array.make (Array.length cases) 0 in
