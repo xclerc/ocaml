@@ -120,6 +120,23 @@ module Static_part = struct
       | Immutable_float_array _
       | Mutable_string _
       | Immutable_string _ -> t
+
+(*
+    let map_set_of_closures t ~f =
+      (* XXX this doesn't descend recursively.  Change name or semantics *)
+      match t with
+      | Set_of_closures set -> Set_of_closures (f set)
+      | Block _
+      | Closure _
+      | Boxed_float _
+      | Boxed_int32 _
+      | Boxed_int64 _
+      | Boxed_nativeint _
+      | Mutable_float_array _
+      | Immutable_float_array _
+      | Mutable_string _
+      | Immutable_string _ -> t
+*)
   end
 end
 
@@ -134,7 +151,8 @@ module Program_body = struct
         let continuation_arity =
           List.map (fun (_var, kind) -> kind) computation.computed_values
         in
-        f ~continuation_arity computation.return_cont computation.expr
+        f ~continuation_arity computation.return_cont computation.expr;
+        Flambda.Expr.Iterators.iter_function_bodies computation.expr ~f
       end;
       List.iter (fun (_sym, static_part) ->
           Static_part.Iterators.iter_toplevel_exprs static_part ~f)
@@ -165,6 +183,46 @@ module Program_body = struct
         iter_sets_of_closures_in_definition defn ~f;
         iter_sets_of_closures t ~f
       | Root _ -> ()
+  end
+
+  module Mappers = struct
+    let map_toplevel_exprs_in_definition defn ~f =
+      let computation =
+        match defn.computation with
+        | None -> None
+        | Some computation ->
+          let continuation_arity =
+            List.map (fun (_var, kind) -> kind) computation.computed_values
+          in
+          let expr =
+            Flambda.Expr.Mappers.map_function_bodies ~f computation.expr
+          in
+          let expr =
+            f ~continuation_arity computation.return_cont expr
+          in
+          Some { computation with expr; }
+      in
+      let static_structure =
+        List.map (fun (sym, static_part) ->
+            let static_part =
+              Static_part.Mappers.map_toplevel_exprs static_part ~f
+            in
+            sym, static_part)
+          defn.static_structure
+      in
+      { computation;
+        static_structure;
+      }
+
+    let rec map_toplevel_exprs t ~f : t =
+      match t with
+      | Define_symbol (defn, t) ->
+        let defn = map_toplevel_exprs_in_definition defn ~f in
+        Define_symbol (defn, map_toplevel_exprs t ~f)
+      | Define_symbol_rec (defn, t) ->
+        let defn = map_toplevel_exprs_in_definition defn ~f in
+        Define_symbol_rec (defn, map_toplevel_exprs t ~f)
+      | Root _ -> t
   end
 
   let invariant_define_symbol env defn (recursive : Flambda.recursive) =
@@ -359,8 +417,13 @@ module Program = struct
       iter_toplevel_exprs t ~f:(fun ~continuation_arity:_ _ e ->
         Flambda.Expr.Iterators.iter_named f e)
   end
-(*
+
   module Mappers = struct
+    let map_toplevel_exprs t ~f =
+      { t with body = Program_body.Mappers.map_toplevel_exprs t.body ~f; }
+  end
+
+(*
     let map_sets_of_closures (program : t)
           ~(f : F.Set_of_closures.t -> F.Set_of_closures.t) =
       let rec loop (program : Program_body.t)

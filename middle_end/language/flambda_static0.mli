@@ -49,13 +49,6 @@ module Static_part : sig
     | Mutable_string of { initial_value : string or_variable; }
     | Immutable_string of string or_variable
 
-  module Mappers : sig
-    val map_set_of_closures
-       : t
-      -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
-      -> t
-  end
-
   val print : Format.formatter -> t -> unit
 
   (** All names free in the given static part.  (Note that this will

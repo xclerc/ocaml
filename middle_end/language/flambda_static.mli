@@ -124,11 +124,32 @@ module Program : sig
 *)
   end
 
+  module Mappers : sig
+    (** Apply the given [f] to every expression at toplevel or forming the
+        body of a function, including nested functions, within the given [t].
+        That is to say:
+        (a) the expressions associated with [computation]s at toplevel;
+        (b) the bodies of functions found within the expressions from
+            part (a), together with (recursively) the bodies of any functions
+            nested therein;
+        (c) the bodies of functions, together with (recursively) the bodies
+            of any functions nested within such functions, found in
+            the [static_structure]. *)
+    val map_toplevel_exprs
+       : t
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> Flambda.Expr.t
+        -> Flambda.Expr.t)
+      -> t
+  end
+
 (*
   module Mappers : sig    
-    val map_sets_of_closures
+    (* CR mshinwell: Define semantics -- does it recurse? *)
+    val map_set_of_closures
        : t
-      -> f:(Flambda.Set_of_closures.t -> Flambda.Set_of_closures.t)
+      -> f:(Flambda0.Set_of_closures.t -> Flambda0.Set_of_closures.t)
       -> t
 
     (* CR mshinwell: check naming.

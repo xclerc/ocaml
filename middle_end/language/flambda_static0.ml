@@ -180,22 +180,6 @@ module Static_part = struct
       fprintf ppf "@[(Immutable_string@ \"%s\")@]" s
     | Immutable_string (Var v) ->
       fprintf ppf "@[(Immutable_string@ %a)@]" Variable.print v
-
-  module Mappers = struct
-    let map_set_of_closures t ~f =
-      match t with
-      | Set_of_closures set -> Set_of_closures (f set)
-      | Block _
-      | Closure _
-      | Boxed_float _
-      | Boxed_int32 _
-      | Boxed_int64 _
-      | Boxed_nativeint _
-      | Mutable_float_array _
-      | Immutable_float_array _
-      | Mutable_string _
-      | Immutable_string _ -> t
-  end
 end
 
 module Program_body = struct

@@ -198,6 +198,16 @@ module rec Expr : sig
 
     val iter_sets_of_closures : (Set_of_closures.t -> unit) -> t -> unit
 
+    (** Apply the given [f] to every function body within the given
+        expression. *)
+    val iter_function_bodies
+       : t
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> Expr.t
+        -> unit)
+      -> unit
+
     (** Iterators, mappers and folders in [Toplevel_only] modules never
         recurse into the bodies of functions. *) 
     module Toplevel_only : sig 
@@ -248,6 +258,15 @@ module rec Expr : sig
     val map_all_immutable_let_and_let_rec_bindings
        : t
       -> f:(Variable.t -> Named.t -> Named.t)
+      -> t
+
+    val map_function_bodies
+       : ?ignore_stubs:unit
+      -> t
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> Expr.t
+        -> Expr.t)
       -> t
          
     module Toplevel_only : sig 
@@ -345,7 +364,10 @@ and Set_of_closures : sig
     val map_function_bodies
        : ?ignore_stubs:unit
       -> t
-      -> f:(Expr.t -> Expr.t)
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> Expr.t
+        -> Expr.t)
       -> t
   end
 

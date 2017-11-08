@@ -380,4 +380,6 @@ and lift ~importer ~type_of_name (expr : Flambda.Expr.t) =
 
 let run ~importer ~type_of_name program =
   Flambda_static.Program.Mappers.map_toplevel_exprs program
-    ~f:(lift ~importer ~type_of_name)
+    ~f:(fun ~continuation_arity:_ _continuation expr ->
+      (* CR mshinwell: Shouldn't this do something with [continuation]? *)
+      lift ~importer ~type_of_name expr)

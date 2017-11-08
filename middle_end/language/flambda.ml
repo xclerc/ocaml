@@ -150,6 +150,13 @@ module rec Expr : sig
       -> f:(Variable.t -> Named.t -> unit)
       -> unit
     val iter_sets_of_closures : (Set_of_closures.t -> unit) -> t -> unit
+    val iter_function_bodies
+       : t
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> t
+        -> unit)
+      -> unit
     val iter_lets
         : t
       -> for_defining_expr:(Variable.t -> K.t -> Named.t -> unit)
@@ -189,6 +196,14 @@ module rec Expr : sig
     val map_all_immutable_let_and_let_rec_bindings
        : t
       -> f:(Variable.t -> Named.t -> Named.t)
+      -> t
+    val map_function_bodies
+       : ?ignore_stubs:unit
+      -> t
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> t
+        -> t)
       -> t
     module Toplevel_only : sig 
       val map : (t -> t) -> (Named.t -> Named.t) -> t -> t
@@ -392,7 +407,16 @@ end = struct
           | Simple _ | Read_mutable _ | Assign _ | Prim _ -> ())
         t
 
+    let iter_function_bodies t ~f =
+      iter_sets_of_closures (fun (set : Set_of_closures.t) ->
+          Set_of_closures.Iterators.iter_function_bodies set ~f)
+        t
+
     module Toplevel_only = struct
+      (* CR mshinwell: "toplevel" again -- confusing.  We need two separate
+         words:
+         1. Not under a lambda
+         2. Directly bound in the static part (cf. Flambda_static). *)
       let iter f f_named t =
         iter_general ~toplevel:true f f_named (Is_expr t)
 
@@ -597,6 +621,10 @@ end = struct
             else Set_of_closures new_set_of_closures
           | (Simple _ | Assign _ | Prim _ | Read_mutable _) as named -> named)
         tree
+
+    let map_function_bodies ?ignore_stubs t ~f =
+      map_sets_of_closures t ~f:(fun (set : Set_of_closures.t) ->
+        Set_of_closures.Mappers.map_function_bodies ?ignore_stubs set ~f)
 
     (* CR mshinwell: duplicate function *)
     let map_all_immutable_let_and_let_rec_bindings (expr : t)
@@ -1495,7 +1523,10 @@ end and Set_of_closures : sig
     val map_function_bodies
        : ?ignore_stubs:unit
       -> t
-      -> f:(Expr.t -> Expr.t)
+      -> f:(continuation_arity:Flambda_arity.t
+        -> Continuation.t
+        -> Expr.t
+        -> Expr.t)
       -> t
   end
   module Folders : sig
@@ -1563,7 +1594,13 @@ end = struct
             let new_body =
               match ignore_stubs, function_decl.stub with
               | Some (), true -> function_decl.body
-              | _, _ -> f function_decl.body
+              | _, _ ->
+                let body =
+                  Expr.Mappers.map_function_bodies ?ignore_stubs
+                    function_decl.body ~f
+                in
+                f ~continuation_arity:function_decl.return_arity
+                  function_decl.continuation_param body
             in
             if new_body == function_decl.body then
               function_decl
