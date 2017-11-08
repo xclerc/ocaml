@@ -28,6 +28,7 @@ let should_copy (named : Flambda.Named.t) =
   | _ -> false
 
 let static_structure name ~params : Program_body.static_structure =
+  let dbg = Debuginfo.none in
   let make_symbol index =
     let index =
       match index with
@@ -41,7 +42,8 @@ let static_structure name ~params : Program_body.static_structure =
     Symbol.create (Compilation_unit.get_current_exn ()) linkage_name
   in
   let arity = Flambda.Typed_parameter.List.arity ~importer params in
-  let rec assign_symbols index params_with_kinds result =
+  let rec assign_symbols index params_with_kinds
+        resulting_static_part resulting_bindings =
     (* Even when it looks like we could produce a single symbol with multiple
        fields (say when all of the parameters are of kind [Value] or
        [Naked_float]), we still produce multiple symbols, since unused
@@ -49,23 +51,37 @@ let static_structure name ~params : Program_body.static_structure =
        away by the straightforward "unused symbol" analysis rather than
        requiring something more complicated. *)
     match params with
-    | [] -> List.rev result
+    | [] -> (List.rev resulting_static_part), (List.rev resulting_bindings)
     | (param, (kind : K.t))::params_with_kinds ->
       let symbol = make_symbol (Some index) in
       let var = Flambda.Typed_parameter.var param in
       let static_part : Flambda_static.Static_part.t =
         match kind with
         | Value _ -> Block (Tag.Scannable.zero, Immutable, [var])
-        | Naked_immediate -> Boxed_nativeint (Var var)
         | Naked_float -> Boxed_float (Var var)
         | Naked_int32 -> Boxed_int32 (Var var)
         | Naked_int64 -> Boxed_int64 (Var var)
         | Naked_nativeint -> Boxed_nativeint (Var var)
+        | Naked_immediate -> Misc.fatal_errorf "Not yet implemented"
       in
+      let prim : Flambda_primitive.t =
+        let var = Simple.var var in
+        match kind with
+        | Value _ -> Unary (Block_load (0, Not_a_float, Immutable), var)
+        | Naked_float -> Unary (Unbox_number Naked_float, var)
+        | Naked_int32 -> Unary (Unbox_number Naked_int32, var)
+        | Naked_int64 -> Unary (Unbox_number Naked_int64, var)
+        | Naked_nativeint -> Unary (Unbox_number Naked_nativeint, var)
+        | Naked_immediate -> Misc.fatal_errorf "Not yet implemented"
+      in
+      let binding : Flambda.Named.t = Prim (prim, dbg) in
       assign_symbols (index + 1) params_with_kinds
-        ((symbol, static_part) :: result)
+        ((symbol, static_part) :: resulting_static_part)
+        ((var, kind, binding) :: resulting_bindings)
   in
-  assign_symbols 0 (List.combine params arity) []
+  let params_with_kinds = List.combine params arity in
+  let static_part, bindings = assign_symbols 0 params_with_kinds [] [] in
+  params_with_kinds, static_part, bindings
 
 let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
   match expr with
@@ -86,27 +102,17 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
          currently serving as parameters to [handler] is/are restated at the
          top of each subsequent lifted expression. *)
       let arity = Flambda.Typed_parameter.List.arity ~importer params in
-      let to_copy' =
-        List.mapi (fun param_index param ->
-            let param_var = Flambda.Typed_parameter.var param in
-            let param_kind = Flambda.Typed_parameter.kind ~importer param in
-            let defining_expr : Flambda.Named.t =
-              Prim (Unary (Block_load, 
-                symbol;
-                logical_field = param_index;
-              }
-            in
-            param_var, param_kind, defining_expr)
-          params
+      let computed_values, static_structure, to_copy' =
+        static_structure name ~params
       in
       let to_copy = to_copy' @ to_copy in
       let free_conts_handler, lifted', handler =
         lift ~importer handler ~to_copy
       in
-      let descr : IS.t =
+      let computation : Program_body.computation =
         { expr = body;
           return_cont = name;
-          return_arity = arity;
+          computed_values;
         }
       in
       let lifted = lifted @ [symbol, descr, to_copy] @ lifted' in
