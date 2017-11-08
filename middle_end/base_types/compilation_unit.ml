@@ -17,6 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 type t = {
+  (* CR mshinwell: Stop using Ident.t *)
   id : Ident.t;
   linkage_name : Linkage_name.t;
   hash : int;
@@ -70,3 +71,13 @@ let get_current_exn () =
   | Some current -> current
   | None -> Misc.fatal_error "Compilation_unit.get_current_exn"
 let get_current_id_exn () = get_persistent_ident (get_current_exn ())
+
+let predefined_exception_t =
+  create (Ident.create_persistent "predef exn")
+    (Linkage_name.create "predef exn")
+
+let predefined_exception () =
+  predefined_exception_t
+
+let is_predefined_exception t =
+  equal t predefined_exception_t

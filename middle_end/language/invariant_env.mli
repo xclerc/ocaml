@@ -35,9 +35,7 @@ end
     freshness of bound variables is checked across the whole program. *)
 type t
 
-val create
-   : symbol_is_predefined_exception:(Symbol.t -> string option)
-  -> t
+val create : unit -> t
 
 val prepare_for_function_body
    : t

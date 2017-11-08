@@ -1924,3 +1924,12 @@ let as_or_more_precise _t ~than:_ =
 
 let strictly_more_precise _t ~than:_ =
   Misc.fatal_error "not yet implemented"
+
+module No_importing = struct
+  let import_export_id _ = None
+  let import_symbol _ = None
+end
+
+module Null_importer = Make_importer (No_importing)
+
+let null_importer = (module Null_importer : Importer)

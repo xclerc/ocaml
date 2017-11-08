@@ -358,3 +358,6 @@ val strictly_more_precise : t -> than:t -> bool
 (** Returns [true] iff the given type provides the same or strictly more
     information about the corresponding value than the supplied type [than]. *)
 val as_or_more_precise : t -> than:t -> bool
+
+(** An [Importer] that does nothing. *)
+val null_importer : (module Importer)

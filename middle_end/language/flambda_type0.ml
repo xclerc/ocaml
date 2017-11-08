@@ -915,7 +915,6 @@ end) = struct
   module type Importer_intf = sig
     val import_export_id : Export_id.t -> t option
     val import_symbol : Symbol.t -> t option
-    val symbol_is_predefined_exception : Symbol.t -> string option
   end
 
   type 'a type_accessor =
@@ -931,11 +930,6 @@ end) = struct
     type 'a import_result =
       | Have_resolved of 'a
       | Treat_as_unknown_must_scan of unknown_because_of
-
-    let symbol_is_predefined_exception sym =
-      match S.symbol_is_predefined_exception sym with
-      | None -> false
-      | Some _ -> true
 
     let import_type (type a) ll ~create_symbol
           ~(create_resolved_t : t -> a create_resolved_t_result) =
@@ -960,7 +954,7 @@ end) = struct
           let t =
             let current_unit = Compilation_unit.get_current_exn () in
             if Symbol.in_compilation_unit sym current_unit
-              || symbol_is_predefined_exception sym
+              || Symbol.is_predefined_exception sym
             then begin
               Some (create_symbol sym)
             end else begin

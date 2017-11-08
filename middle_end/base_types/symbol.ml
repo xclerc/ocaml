@@ -84,3 +84,6 @@ let compare_lists l1 l2 =
 
 let in_compilation_unit t cu =
   Compilation_unit.equal t.compilation_unit cu
+
+let is_predefined_exception t =
+  Compilation_unit.is_predefined_exception t.compilation_unit

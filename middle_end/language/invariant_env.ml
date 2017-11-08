@@ -96,7 +96,6 @@ end = struct
 end
 
 type t = {
-  symbol_is_predefined_exception : (Symbol.t -> string option);
   all_names_seen : Name.Set.t ref;
   all_mutable_variables_seen : Mutable_variable.Set.t ref;
   all_continuations_seen : Continuation.Set.t ref;
@@ -113,9 +112,8 @@ type t = {
   continuation_stack : Continuation_stack.t;
 }
 
-let create ~symbol_is_predefined_exception =
-  { symbol_is_predefined_exception;
-    all_names_seen = ref Name.Set.empty;
+let create () =
+  { all_names_seen = ref Name.Set.empty;
     all_mutable_variables_seen = ref Mutable_variable.Set.empty;
     all_continuations_seen = ref Continuation.Set.empty;
     all_set_of_closures_ids_seen = ref Set_of_closures_id.Set.empty;
@@ -258,25 +256,21 @@ let check_variable_is_bound t var =
 let check_variables_are_bound t vars =
   List.iter (fun var -> check_variable_is_bound t var) vars
 
-let type_of_name t name =
+let type_of_name_option t name =
   match Name.Map.find name t.names with
-  | exception Not_found ->
-    Misc.fatal_errorf "Unbound name %a" Name.print name
-  | ty -> ty
-
-module No_importing = struct
-  let import_export_id _ = None
-  let import_symbol _ = None
-  let symbol_is_predefined_exception = t.symbol_is_predefined_exception
-end
+  | exception Not_found -> None
+  | ty -> Some ty
 
 let check_name_is_bound_and_of_kind t name desired_kind =
   match Name.Map.find name t.names with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound name %a" Name.print name
   | ty ->
-    let importer = (module No_importing : Flambda_type.Importer_intf) in
-    let kind = Flambda_type.kind ty ~importer ~type_of_name in
+    let kind =
+      Flambda_type.kind ty
+        ~importer:Flambda_type.null_importer
+        ~type_of_name:(fun ty -> type_of_name_option t ty)
+    in
     if not (Flambda_kind.compatible kind ~if_used_at:desired_kind) then begin
       Misc.fatal_errorf "Name %a is expected to have kind [%a] but is \
           of kind %a"
@@ -321,13 +315,19 @@ let kind_of_variable t var =
   match Name.Map.find (Name.var var) t.names with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound variable %a" Variable.print var
-  | kind -> kind
+  | ty ->
+    Flambda_type.kind ty
+      ~importer:Flambda_type.null_importer
+      ~type_of_name:(fun ty -> type_of_name_option t ty)
 
 let kind_of_mutable_variable t var =
   match Mutable_variable.Map.find var t.mutable_variables with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound mutable variable %a" Mutable_variable.print var
-  | kind -> kind
+  | ty ->
+    Flambda_type.kind ty
+      ~importer:Flambda_type.null_importer
+      ~type_of_name:(fun ty -> type_of_name_option t ty)
 
 let current_continuation_stack t = t.continuation_stack
 
