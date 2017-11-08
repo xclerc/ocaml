@@ -234,7 +234,6 @@ ASMCOMP=\
 
 MIDDLE_END_ANALYSIS=\
   middle_end/analysis/alias_analysis.cmo \
-  middle_end/analysis/effect_analysis.cmo \
   middle_end/analysis/extract_projections.cmo \
   middle_end/analysis/find_recursive_functions.cmo \
   middle_end/analysis/inconstant_idents.cmo \
