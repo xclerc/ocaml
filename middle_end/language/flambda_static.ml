@@ -103,6 +103,24 @@ module Static_part = struct
       | Mutable_string _
       | Immutable_string _ -> ()
   end
+
+  module Mappers = struct
+    let map_toplevel_exprs t ~f : t =
+      match t with
+      | Set_of_closures set ->
+        let set = Flambda.Set_of_closures.Mappers.map_function_bodies set ~f in
+        Set_of_closures set
+      | Block _
+      | Closure _
+      | Boxed_float _
+      | Boxed_int32 _
+      | Boxed_int64 _
+      | Boxed_nativeint _
+      | Mutable_float_array _
+      | Immutable_float_array _
+      | Mutable_string _
+      | Immutable_string _ -> t
+  end
 end
 
 module Program_body = struct

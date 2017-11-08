@@ -411,8 +411,9 @@ end and Let_cont_handlers : sig
       permissible to introduce mutual recursion through stubs associated with
       such continuations, so long as [Simplify] is run afterwards
       to inline them out and turn the resulting single [Recursive] handler into
-      a [Nonrecursive] one. *)
+      a [Non_recursive] one. *)
   type t =
+    (* CR mshinwell: Change Nonrecursive -> Non_recursive to be consistent *)
     | Nonrecursive of {
         name : Continuation.t;
         handler : Continuation_handler.t;
