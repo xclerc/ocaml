@@ -774,6 +774,16 @@ let effects_and_coeffects (t : t) =
   | Ternary (prim, _, _, _) -> effects_and_coeffects_of_ternary_primitive prim
   | Variadic (prim, _) -> effects_and_coeffects_of_variadic_primitive prim
 
+let no_effects_or_coeffects t =
+  match effects_and_coeffects t with
+  | No_effects, No_coeffects -> true
+  | _, _ -> false
+
+let maybe_generative_effects_but_no_coeffects t =
+  match effects_and_coeffects t with
+  | (No_effects | Only_generative_effects _), No_coeffects -> true
+  | _, _ -> false
+
 module With_fixed_value = struct
   type t = primitive_application
 

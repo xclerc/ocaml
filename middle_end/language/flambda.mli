@@ -88,6 +88,10 @@ module rec Expr : sig
 
   val invariant : Invariant_env.t -> t -> unit
 
+  (** Returns [true] if the given expression has neither effects nor
+      coeffects (see [Flambda_primitive] for documentation on such). *)
+  val no_effects_or_coeffects : t -> bool
+
   (* CR mshinwell: Check that apply_cont is well-formed when there is a
      trap installation or removal. *)
   (* CR-someday pchambart: for sum types, we should probably add an exhaustive
@@ -287,6 +291,8 @@ module rec Expr : sig
   end
 end and Named : sig
   include module type of struct include F0.Named end
+
+  val maybe_generative_effects_but_no_coeffects : t -> bool
 
   val toplevel_substitution
      : (Variable.t Variable.Map.t

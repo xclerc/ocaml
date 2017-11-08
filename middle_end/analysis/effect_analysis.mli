@@ -14,6 +14,8 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(* CR mshinwell: I reckon we could probably ditch this module *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 (** Simple side effect analysis. *)

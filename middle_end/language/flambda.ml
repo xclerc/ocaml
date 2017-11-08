@@ -101,6 +101,7 @@ module rec Expr : sig
   include module type of F0.Expr
 
   val invariant : Invariant_env.t -> t -> unit
+  val no_effects_or_coeffects : t -> bool
   val free_variables : t -> Variable.Set.t
   val free_symbols : t -> Symbol.Set.t
   val equal : t -> t -> bool
@@ -232,6 +233,20 @@ end = struct
 
   let free_symbols t =
     Name.set_to_symbol_set (free_names t)
+
+  let rec no_effects_or_coeffects (t : t) =
+    match t with
+    | Let { defining_expr; body; _ } ->
+      Named.no_effects_or_coeffects defining_expr
+        && no_effects_or_coeffects body
+    | Let_mutable { body; _ } -> no_effects_or_coeffects body
+    | Let_cont { body; handlers; } ->
+      no_effects_or_coeffects body
+        && Let_cont_handlers.no_effects_or_coeffects handlers
+    | Apply_cont _
+    | Switch _ -> true
+    | Apply _
+    | Invalid _ -> false
 
   let rec equal t1 t2 =
     (* CR mshinwell: next comment may no longer be relevant? *)
@@ -1170,6 +1185,8 @@ end and Named : sig
      : (Variable.t Variable.Map.t
     -> t
     -> t) Flambda_type.type_accessor
+  val no_effects_or_coeffects : t -> bool
+  val maybe_generative_effects_but_no_coeffects : t -> bool
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit
     val iter_named : (t -> unit) -> t -> unit
@@ -1179,6 +1196,21 @@ end and Named : sig
   end
 end = struct
   include F0.Named
+
+  let no_effects_or_coeffects (t : t) =
+    match t with
+    | Simple _ -> true
+    | Prim (prim, _) -> Flambda_primitive.no_effects_or_coeffects prim
+    | Set_of_closures _ -> true
+    | Assign _ | Read_mutable _ -> false
+
+  let maybe_generative_effects_but_no_coeffects (t : t) =
+    match t with
+    | Simple _ -> true
+    | Prim (prim, _) ->
+      Flambda_primitive.maybe_generative_effects_but_no_coeffects prim
+    | Set_of_closures _ -> true
+    | Assign _ | Read_mutable _ -> false
 
   (* CR mshinwell: Implement this properly. *)
   let toplevel_substitution ~importer ~type_of_name sb (t : t) =
@@ -1378,8 +1410,16 @@ end and Let_cont_handlers : sig
   include module type of F0.Let_cont_handlers
 
   val equal : t -> t -> bool
+  val no_effects_or_coeffects : t -> bool
 end = struct
   include F0.Let_cont_handlers
+
+  let no_effects_or_coeffects (t : t) =
+    match t with
+    | Nonrecursive { name = _; handler; } ->
+      Continuation_handler.no_effects_or_coeffects handler
+    | Recursive handlers ->
+      Continuation_handlers.no_effects_or_coeffects handlers
 
   let equal t1 t2 =
     match t1, t2 with
@@ -1394,8 +1434,12 @@ end and Continuation_handler : sig
   include module type of F0.Continuation_handler
 
   val equal : t -> t -> bool
+  val no_effects_or_coeffects : t -> bool
 end = struct
   include F0.Continuation_handler
+
+  let no_effects_or_coeffects (t : t) =
+    Expr.no_effects_or_coeffects t.handler
 
   let equal _ _ = false
 (* CR mshinwell: Can we remove this?  We don't have equality on types at
@@ -1409,9 +1453,15 @@ end = struct
 end and Continuation_handlers : sig
   include module type of F0.Continuation_handlers
 
+  val no_effects_or_coeffects : t -> bool
   val equal : t -> t -> bool
 end = struct
   include F0.Continuation_handlers
+
+  let no_effects_or_coeffects t =
+    Continuation.Map.for_all (fun _cont handler ->
+        Continuation_handler.no_effects_or_coeffects handler)
+      t
 
   let equal t1 t2 =
     Continuation.Map.equal Continuation_handler.equal t1 t2

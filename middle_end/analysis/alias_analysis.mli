@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(*
+
 type allocation_point =
   | Symbol of Symbol.t
   | Variable of Variable.t
@@ -67,3 +69,5 @@ val print_constant_defining_value
    : Format.formatter
   -> constant_defining_value
   -> unit
+
+*)
