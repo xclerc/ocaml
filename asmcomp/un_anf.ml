@@ -42,6 +42,7 @@ let ignore_int_array (_ : int array) = ()
 let ignore_ident_list (_ : Ident.t list) = ()
 let ignore_direction_flag (_ : Asttypes.direction_flag) = ()
 let ignore_meth_kind (_ : Lambda.meth_kind) = ()
+let ignore_temperature (_ : Lambda.temperature_attribute) = ()
 
 (* CR-soon mshinwell: check we aren't traversing function bodies more than
    once (need to analyse exactly what the calls are from Cmmgen into this
@@ -88,7 +89,7 @@ let make_ident_info (clam : Clambda.ulambda) : ident_info =
     | Uclosure (functions, captured_variables) ->
       List.iter loop captured_variables;
       List.iter (fun (
-        { Clambda. label; arity; params; body; dbg; env; } as clos) ->
+        { Clambda. label; arity; params; body; dbg; env; temperature; } as clos) ->
           (match closure_environment_ident clos with
            | None -> ()
            | Some env_var ->
@@ -99,7 +100,8 @@ let make_ident_info (clam : Clambda.ulambda) : ident_info =
           ignore_ident_list params;
           loop body;
           ignore_debuginfo dbg;
-          ignore_ident_option env)
+          ignore_ident_option env;
+          ignore_temperature temperature)
         functions
     | Uoffset (expr, offset) ->
       loop expr;
@@ -143,7 +145,8 @@ let make_ident_info (clam : Clambda.ulambda) : ident_info =
       loop body;
       ignore_ident ident;
       loop handler
-    | Uifthenelse (cond, ifso, ifnot) ->
+    | Uifthenelse (cond, temp, ifso, ifnot) ->
+      ignore_temperature temp;
       loop cond;
       loop ifso;
       loop ifnot
@@ -256,7 +259,7 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
     | Uclosure (functions, captured_variables) ->
       ignore_ulambda_list captured_variables;
       (* Start a new let stack for speed. *)
-      List.iter (fun { Clambda. label; arity; params; body; dbg; env; } ->
+      List.iter (fun { Clambda. label; arity; params; body; dbg; env; temperature; } ->
           ignore_function_label label;
           ignore_int arity;
           ignore_ident_list params;
@@ -264,7 +267,8 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
           loop body;
           let_stack := [];
           ignore_debuginfo dbg;
-          ignore_ident_option env)
+          ignore_ident_option env;
+          ignore_temperature temperature)
         functions
     | Uoffset (expr, offset) ->
       (* [expr] should usually be a variable. *)
@@ -347,7 +351,8 @@ let let_bound_vars_that_can_be_moved ident_info (clam : Clambda.ulambda) =
       ignore_ident ident;
       loop handler;
       let_stack := []
-    | Uifthenelse (cond, ifso, ifnot) ->
+    | Uifthenelse (cond, temp, ifso, ifnot) ->
+      ignore_temperature temp;
       examine_argument_list [cond];
       let_stack := [];
       loop ifso;
@@ -486,11 +491,11 @@ let rec substitute_let_moveable is_let_moveable env (clam : Clambda.ulambda)
     let body = substitute_let_moveable is_let_moveable env body in
     let handler = substitute_let_moveable is_let_moveable env handler in
     Utrywith (body, id, handler)
-  | Uifthenelse (cond, ifso, ifnot) ->
+  | Uifthenelse (cond, temp, ifso, ifnot) ->
     let cond = substitute_let_moveable is_let_moveable env cond in
     let ifso = substitute_let_moveable is_let_moveable env ifso in
     let ifnot = substitute_let_moveable is_let_moveable env ifnot in
-    Uifthenelse (cond, ifso, ifnot)
+    Uifthenelse (cond, temp, ifso, ifnot)
   | Usequence (e1, e2) ->
     let e1 = substitute_let_moveable is_let_moveable env e1 in
     let e2 = substitute_let_moveable is_let_moveable env e2 in
@@ -682,7 +687,7 @@ let rec un_anf_and_moveable ident_info env (clam : Clambda.ulambda)
     let body = un_anf ident_info env body in
     let handler = un_anf ident_info env handler in
     Utrywith (body, id, handler), Fixed
-  | Uifthenelse (cond, ifso, ifnot) ->
+  | Uifthenelse (cond, temp, ifso, ifnot) ->
     let cond, cond_moveable = un_anf_and_moveable ident_info env cond in
     let ifso, ifso_moveable = un_anf_and_moveable ident_info env ifso in
     let ifnot, ifnot_moveable = un_anf_and_moveable ident_info env ifnot in
@@ -690,7 +695,7 @@ let rec un_anf_and_moveable ident_info env (clam : Clambda.ulambda)
       both_moveable cond_moveable
         (both_moveable ifso_moveable ifnot_moveable)
     in
-    Uifthenelse (cond, ifso, ifnot), moveable
+    Uifthenelse (cond, temp, ifso, ifnot), moveable
   | Usequence (e1, e2) ->
     let e1 = un_anf ident_info env e1 in
     let e2 = un_anf ident_info env e2 in

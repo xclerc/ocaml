@@ -322,8 +322,9 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
   | Try_with (body, var, handler) ->
     let id, env_handler = Env.add_fresh_ident env var in
     Utrywith (to_clambda t env body, id, to_clambda t env_handler handler)
-  | If_then_else (arg, ifso, ifnot) ->
-    Uifthenelse (subst_var env arg, to_clambda t env ifso,
+  | If_then_else (arg, temp, ifso, ifnot) ->
+    Uifthenelse (subst_var env arg, temp,
+      to_clambda t env ifso,
       to_clambda t env ifnot)
   | While (cond, body) ->
     Uwhile (to_clambda t env cond, to_clambda t env body)
@@ -520,6 +521,7 @@ and to_clambda_set_of_closures t env
       body = to_clambda t env_body function_decl.body;
       dbg = function_decl.dbg;
       env = Some env_var;
+      temperature = function_decl.temperature;
     }
   in
   let funs = List.map to_clambda_function all_functions in
@@ -560,6 +562,7 @@ and to_clambda_closed_set_of_closures t env symbol
       body = to_clambda t env_body function_decl.body;
       dbg = function_decl.dbg;
       env = None;
+      temperature = function_decl.temperature;
     }
   in
   let ufunct = List.map to_clambda_function functions in

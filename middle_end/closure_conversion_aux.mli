@@ -69,6 +69,7 @@ module Function_decls : sig
     val body : t -> Lambda.lambda
     val inline : t -> Lambda.inline_attribute
     val specialise : t -> Lambda.specialise_attribute
+    val temperature : t -> Lambda.temperature_attribute
     val is_a_functor : t -> bool
     val stub : t -> bool
     val loc : t -> Location.t

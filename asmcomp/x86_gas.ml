@@ -239,6 +239,9 @@ let print_instr b = function
    which means the FSUBR instruction should be used.
 *)
 
+let is_prefix ~prefix str =
+  let prelen = String.length prefix in
+  String.length str >= prelen && String.sub str 0 prelen = prefix
 
 let print_line b = function
   | Ins instr -> print_instr b instr
@@ -257,7 +260,10 @@ let print_line b = function
   | NewLabel (s, _) -> bprintf b "%s:" s
   | Quad n -> bprintf b "\t.quad\t%a" cst n
   | Section ([".data" ], _, _) -> bprintf b "\t.data"
-  | Section ([".text" ], _, _) -> bprintf b "\t.text"
+  | Section ([".text" | ".text 0" ], _, _) -> bprintf b "\t.text"
+  | Section ([name], _, _) when is_prefix ~prefix:".text " name ->
+    bprintf b "\t%s" name
+  | Section ([".text 2" ], _, _) -> bprintf b "\t.text 2"
   | Section (name, flags, args) ->
       bprintf b "\t.section %s" (String.concat "," name);
       begin match flags with

@@ -17,6 +17,7 @@ open Lambda
 
 open Format
 
+val temperature : formatter -> temperature_attribute -> unit
 val structured_constant: formatter -> structured_constant -> unit
 val lambda: formatter -> lambda -> unit
 val program: formatter -> program -> unit

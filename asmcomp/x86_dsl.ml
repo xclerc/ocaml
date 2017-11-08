@@ -100,7 +100,7 @@ module D = struct
   let setvar (x, y) = directive (Set (x, y))
   let size name cst = directive (Size (name, cst))
   let space n = directive (Space n)
-  let text () = section [ ".text" ] None []
+  let text ?(sub = 0) () = section [ Printf.sprintf ".text %d" sub ] None []
   let type_ name typ = directive (Type (name, typ))
   let word cst = directive (Word cst)
 end

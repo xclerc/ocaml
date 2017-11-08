@@ -64,7 +64,7 @@ type t =
   | Apply of apply
   | Send of send
   | Assign of assign
-  | If_then_else of Variable.t * t * t
+  | If_then_else of Variable.t * Lambda.temperature_attribute * t * t
   | Switch of Variable.t * switch
   | String_switch of Variable.t * (string * t) list * t option
   | Static_raise of Static_exception.t * Variable.t list
@@ -124,6 +124,7 @@ and function_declaration = {
   dbg : Debuginfo.t;
   inline : Lambda.inline_attribute;
   specialise : Lambda.specialise_attribute;
+  temperature : Lambda.temperature_attribute;
   is_a_functor : bool;
 }
 
@@ -316,9 +317,10 @@ let rec lam ppf (flam : t) =
   | Try_with(lbody, param, lhandler) ->
       fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"
         lam lbody Variable.print param lam lhandler
-  | If_then_else(lcond, lif, lelse) ->
-      fprintf ppf "@[<2>(if@ %a@ then begin@ %a@ end else begin@ %a@ end)@]"
+  | If_then_else(lcond, temp, lif, lelse) ->
+      fprintf ppf "@[<2>(if@ %a@ %a@ then begin@ %a@ end else begin@ %a@ end)@]"
         Variable.print lcond
+        Printlambda.temperature temp
         lam lif lam lelse
   | While(lcond, lbody) ->
       fprintf ppf "@[<2>(while@ %a@ %a)@]" lam lcond lam lbody
@@ -577,7 +579,7 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         aux e1;
         bound_variable var;
         aux e2
-      | If_then_else (var, e1, e2) ->
+      | If_then_else (var, _temp, e1, e2) ->
         free_variable var;
         aux e1;
         aux e2
@@ -781,7 +783,7 @@ let iter_general ~toplevel f f_named maybe_named =
       | Static_catch (_,_,f1,f2) ->
         aux f1; aux f2
       | For { body; _ } -> aux body
-      | If_then_else (_, f1, f2) ->
+      | If_then_else (_, _, f1, f2) ->
         aux f1; aux f2
       | Switch (_, sw) ->
         List.iter (fun (_,l) -> aux l) sw.consts;
@@ -987,7 +989,9 @@ let free_symbols_program (program : program) =
 
 let create_function_declaration ~params ~body ~stub ~dbg
       ~(inline : Lambda.inline_attribute)
-      ~(specialise : Lambda.specialise_attribute) ~is_a_functor
+      ~(specialise : Lambda.specialise_attribute)
+      ~(temperature : Lambda.temperature_attribute)
+      ~is_a_functor
       : function_declaration =
   begin match stub, inline with
   | true, (Never_inline | Default_inline)
@@ -1014,6 +1018,7 @@ let create_function_declaration ~params ~body ~stub ~dbg
     inline;
     specialise;
     is_a_functor;
+    temperature;
   }
 
 let create_function_declarations ~funs =

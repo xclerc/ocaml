@@ -142,7 +142,7 @@ and expression =
   | Ctuple of expression list
   | Cop of operation * expression list * Debuginfo.t
   | Csequence of expression * expression
-  | Cifthenelse of expression * expression * expression
+  | Cifthenelse of expression * Lambda.temperature_attribute * expression * expression
   | Cswitch of expression * int array * expression array * Debuginfo.t
   | Cloop of expression
   | Ccatch of rec_flag * (int * Ident.t list * expression) list * expression
@@ -155,6 +155,7 @@ type fundecl =
     fun_body: expression;
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
+    fun_temperature: Lambda.temperature_attribute;
   }
 
 type data_item =

@@ -74,7 +74,7 @@ let rec live i finally =
         i.live <- across;
         Reg.add_set_array across arg
       end
-  | Iifthenelse(_test, ifso, ifnot) ->
+  | Iifthenelse(_test, _temp, ifso, ifnot) ->
       let at_join = live i.next finally in
       let at_fork = Reg.Set.union (live ifso at_join) (live ifnot at_join) in
       i.live <- at_fork;

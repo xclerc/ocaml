@@ -48,6 +48,7 @@ let import_set_of_closures =
             ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
             ~inline:function_decl.inline
             ~specialise:function_decl.specialise
+            ~temperature:function_decl.temperature
             ~is_a_functor:function_decl.is_a_functor)
         clos.funs
     in

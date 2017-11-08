@@ -57,7 +57,7 @@ let variables_not_used_as_local_reference (tree:Flambda.t) =
     | Let_mutable { initial_value = v; body } ->
       set := Variable.Set.add v !set;
       loop body
-    | If_then_else (cond, ifso, ifnot) ->
+    | If_then_else (cond, _temp, ifso, ifnot) ->
       set := Variable.Set.add cond !set;
       loop ifso;
       loop ifnot

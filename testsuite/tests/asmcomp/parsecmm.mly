@@ -143,7 +143,7 @@ fundecl:
     LPAREN FUNCTION fun_name LPAREN params RPAREN sequence RPAREN
       { List.iter (fun (id, ty) -> unbind_ident id) $5;
         {fun_name = $3; fun_args = $5; fun_body = $7; fun_fast = true;
-         fun_dbg = debuginfo ()} }
+         fun_dbg = debuginfo (); fun_temperature = Lambda.Tepid; } }
 ;
 fun_name:
     STRING              { $1 }
@@ -188,13 +188,13 @@ expr:
   | LPAREN unaryop expr RPAREN { Cop($2, [$3], debuginfo ()) }
   | LPAREN binaryop expr expr RPAREN { Cop($2, [$3; $4], debuginfo ()) }
   | LPAREN SEQ sequence RPAREN { $3 }
-  | LPAREN IF expr expr expr RPAREN { Cifthenelse($3, $4, $5) }
+  | LPAREN IF expr expr expr RPAREN { Cifthenelse($3, Lambda.Tepid, $4, $5) }
   | LPAREN SWITCH INTCONST expr caselist RPAREN { make_switch $3 $4 $5 }
   | LPAREN WHILE expr sequence RPAREN
       { let body =
           match $3 with
             Cconst_int x when x <> 0 -> $4
-          | _ -> Cifthenelse($3, $4, (Cexit(0,[]))) in
+          | _ -> Cifthenelse($3, Lambda.Tepid, $4, (Cexit(0,[]))) in
         Ccatch(Recursive, [0, [], Cloop body], Ctuple []) }
   | LPAREN EXIT IDENT exprlist RPAREN
     { Cexit(find_label $3, List.rev $4) }

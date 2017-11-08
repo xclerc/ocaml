@@ -24,6 +24,11 @@ let label ppf l =
   Format.fprintf ppf "L%i" l
 
 let instr ppf i =
+  fprintf ppf "%c|"
+    (match i.temperature with
+     | Lambda.Cold _ -> '-'
+     | Lambda.Tepid -> ' '
+     | Lambda.Hot _ -> '+');
   begin match i.desc with
   | Lend -> ()
   | Lop op ->
@@ -80,4 +85,8 @@ let fundecl ppf f =
       ""
     else
       " " ^ Debuginfo.to_string f.fun_dbg in
-  fprintf ppf "@[<v 2>%s:%s@,%a@]" f.fun_name dbg all_instr f.fun_body
+  fprintf ppf "@[<v 2>%s %a:%s@,%a@]"
+    f.fun_name
+    Printlambda.temperature f.fun_temperature
+    dbg
+    all_instr f.fun_body

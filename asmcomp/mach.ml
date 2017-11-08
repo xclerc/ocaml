@@ -66,13 +66,14 @@ type instruction =
     arg: Reg.t array;
     res: Reg.t array;
     dbg: Debuginfo.t;
-    mutable live: Reg.Set.t }
+    mutable live: Reg.Set.t;
+    mutable temperature : Lambda.temperature_attribute; }
 
 and instruction_desc =
     Iend
   | Iop of operation
   | Ireturn
-  | Iifthenelse of test * instruction * instruction
+  | Iifthenelse of test * Lambda.temperature_attribute * instruction * instruction
   | Iswitch of int array * instruction array
   | Iloop of instruction
   | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
@@ -94,6 +95,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
+    fun_temperature : Lambda.temperature_attribute;
   }
 
 let rec dummy_instr =
@@ -102,7 +104,8 @@ let rec dummy_instr =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty }
+    live = Reg.Set.empty;
+    temperature = Lambda.Tepid; }
 
 let end_instr () =
   { desc = Iend;
@@ -110,14 +113,17 @@ let end_instr () =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty }
+    live = Reg.Set.empty;
+    temperature = Lambda.Tepid; }
 
 let instr_cons d a r n =
   { desc = d; next = n; arg = a; res = r;
-    dbg = Debuginfo.none; live = Reg.Set.empty }
+    dbg = Debuginfo.none; live = Reg.Set.empty;
+    temperature = Lambda.Tepid; }
 
 let instr_cons_debug d a r dbg n =
-  { desc = d; next = n; arg = a; res = r; dbg = dbg; live = Reg.Set.empty }
+  { desc = d; next = n; arg = a; res = r; dbg = dbg; live = Reg.Set.empty;
+    temperature = Lambda.Tepid; }
 
 let rec instr_iter f i =
   match i.desc with
@@ -127,7 +133,7 @@ let rec instr_iter f i =
       match i.desc with
         Iend -> ()
       | Ireturn | Iop(Itailcall_ind _) | Iop(Itailcall_imm _) -> ()
-      | Iifthenelse(_tst, ifso, ifnot) ->
+      | Iifthenelse(_tst, _temp, ifso, ifnot) ->
           instr_iter f ifso; instr_iter f ifnot; instr_iter f i.next
       | Iswitch(_index, cases) ->
           for i = 0 to Array.length cases - 1 do
@@ -179,3 +185,37 @@ let spacetime_node_hole_pointer_is_live_before insn =
     end
   | Iend | Ireturn | Iifthenelse _ | Iswitch _ | Iloop _ | Icatch _
   | Iexit _ | Itrywith _ | Iraise _ -> false
+
+let rec adjust_temperature curr_temp i =
+  i.temperature <- curr_temp;
+  begin match i.desc with
+  | Iend | Iop _ | Ireturn | Iexit _ | Iraise _ ->
+    ()
+  | Iswitch (_, a) ->
+    adjust_temperature_array curr_temp a
+  | Iloop j ->
+    adjust_temperature curr_temp j
+  | Icatch (_, l, j) ->
+    adjust_temperature_list curr_temp (List.map snd l);
+    adjust_temperature curr_temp j
+  | Itrywith (j, k) ->
+    adjust_temperature curr_temp j;
+    adjust_temperature curr_temp k
+  | Iifthenelse (_, temp, ifso, ifno) ->
+    let open Lambda in
+    let temp_ifso, temp_ifno =
+      match temp with
+      | Cold x -> Cold x, Hot x
+      | Tepid -> Tepid, Tepid
+      | Hot x -> Hot x, Cold x in
+    adjust_temperature temp_ifso ifso;
+    adjust_temperature temp_ifno ifno
+  end;
+  if i.desc <> Iend then
+    adjust_temperature curr_temp i.next
+
+and adjust_temperature_array curr_temp a =
+  Array.iter (adjust_temperature curr_temp) a
+
+and adjust_temperature_list curr_temp l =
+  List.iter (adjust_temperature curr_temp) l

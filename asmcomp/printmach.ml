@@ -171,8 +171,11 @@ let rec instr ppf i =
       operation op i.arg ppf i.res
   | Ireturn ->
       fprintf ppf "return %a" regs i.arg
-  | Iifthenelse(tst, ifso, ifnot) ->
-      fprintf ppf "@[<v 2>if %a then@,%a" (test tst) i.arg instr ifso;
+  | Iifthenelse(tst, temp, ifso, ifnot) ->
+      fprintf ppf "@[<v 2>if %a %a then@,%a"
+        (test tst) i.arg
+        Printlambda.temperature temp
+        instr ifso;
       begin match ifnot.desc with
       | Iend -> ()
       | _ -> fprintf ppf "@;<0 -2>else@,%a" instr ifnot
@@ -225,8 +228,12 @@ let fundecl ppf f =
       ""
     else
       " " ^ Debuginfo.to_string f.fun_dbg in
-  fprintf ppf "@[<v 2>%s(%a)%s@,%a@]"
-    f.fun_name regs f.fun_args dbg instr f.fun_body
+  fprintf ppf "@[<v 2>%s %a(%a)%s@,%a@]"
+    f.fun_name
+    Printlambda.temperature f.fun_temperature
+    regs f.fun_args
+    dbg
+    instr f.fun_body
 
 let phase msg ppf f =
   fprintf ppf "*** %s@.%a@." msg fundecl f

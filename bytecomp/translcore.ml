@@ -748,6 +748,7 @@ and transl_exp0 e =
         default_function_attribute with
         inline = Translattribute.get_inline_attribute e.exp_attributes;
         specialise = Translattribute.get_specialise_attribute e.exp_attributes;
+        temperature = Translattribute.get_temperature_function e.exp_loc e.exp_attributes;
       }
       in
       let loc = e.exp_loc in
@@ -976,11 +977,17 @@ and transl_exp0 e =
         Lprim(Pmakearray (kind, Mutable), ll, e.exp_loc)
       end
   | Texp_ifthenelse(cond, ifso, Some ifnot) ->
+      let temperature =
+        Translattribute.get_temperature_ifthenelse e.exp_loc e.exp_attributes in
       Lifthenelse(transl_exp cond,
+                  temperature,
                   event_before ifso (transl_exp ifso),
                   event_before ifnot (transl_exp ifnot))
   | Texp_ifthenelse(cond, ifso, None) ->
+      let temperature =
+        Translattribute.get_temperature_ifthenelse e.exp_loc  e.exp_attributes in
       Lifthenelse(transl_exp cond,
+                  temperature,
                   event_before ifso (transl_exp ifso),
                   lambda_unit)
   | Texp_sequence(expr1, expr2) ->
@@ -1044,7 +1051,7 @@ and transl_exp0 e =
   | Texp_assert (cond) ->
       if !Clflags.noassert
       then lambda_unit
-      else Lifthenelse (transl_exp cond, lambda_unit, assert_failed e)
+      else Lifthenelse (transl_exp cond, Hot false, lambda_unit, assert_failed e)
   | Texp_lazy e ->
       (* when e needs no computation (constants, identifiers, ...), we
          optimize the translation just as Lazy.lazy_from_val would
@@ -1112,7 +1119,7 @@ and transl_guard guard rhs =
   match guard with
   | None -> expr
   | Some cond ->
-      event_before cond (Lifthenelse(transl_exp cond, expr, staticfail))
+      event_before cond (Lifthenelse(transl_exp cond, Tepid, expr, staticfail))
 
 and transl_case {c_lhs; c_guard; c_rhs} =
   c_lhs, transl_guard c_guard c_rhs
@@ -1254,6 +1261,9 @@ and transl_let rec_flag pat_expr_list body =
           let lam =
             Translattribute.add_specialise_attribute lam vb_loc attr
           in
+          let lam =
+            Translattribute.add_temperature_attribute lam vb_loc attr
+          in
           Matching.for_let pat.pat_loc lam pat (transl rem)
       in transl pat_expr_list
   | Recursive ->
@@ -1272,6 +1282,10 @@ and transl_let rec_flag pat_expr_list body =
         in
         let lam =
           Translattribute.add_specialise_attribute lam vb_loc
+            vb_attributes
+        in
+        let lam =
+          Translattribute.add_temperature_attribute lam vb_loc
             vb_attributes
         in
         if not (check_recursive_lambda idlist lam) then

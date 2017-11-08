@@ -683,6 +683,7 @@ let introduce_free_variables_in_set_of_closures
                  ~dbg:func_decl.dbg
                  ~inline:func_decl.inline
                  ~specialise:func_decl.specialise
+                 ~temperature:func_decl.temperature
                  ~is_a_functor:func_decl.is_a_functor
              end)
           function_decls.funs)
