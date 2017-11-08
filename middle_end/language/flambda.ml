@@ -1410,9 +1410,12 @@ end and Let_cont_handlers : sig
   include module type of F0.Let_cont_handlers
 
   val equal : t -> t -> bool
+  val free_variables : t -> Variable.Set.t
   val no_effects_or_coeffects : t -> bool
 end = struct
   include F0.Let_cont_handlers
+
+  let free_variables t = Name.set_to_var_set (free_names t)
 
   let no_effects_or_coeffects (t : t) =
     match t with

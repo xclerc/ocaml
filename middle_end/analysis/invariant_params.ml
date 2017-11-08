@@ -16,6 +16,10 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* XXX Commented out for the moment.  The continuation part of this is
+   mostly ok (except for changes relating to [Name]) but the function part
+   needs overhauling as a result of the closure change
+
 (* CR-someday pchambart to pchambart: in fact partial application doesn't
    work because there are no 'known' partial application left: they are
    converted to applications new partial function declaration.
@@ -39,7 +43,7 @@
 *)
 
 module type Continuations_or_functions = sig
-  module Name : sig
+  module Identifier : sig
     type t
     include Identifiable.S with type t := t
 
@@ -48,8 +52,8 @@ module type Continuations_or_functions = sig
     val of_variable : Variable.t -> t option
   end
 
-  module Name_and_variable : sig
-    include Identifiable.S with type t = Name.t * Variable.t
+  module Identifier_and_variable : sig
+    include Identifiable.S with type t = Identifier.t * Variable.t
   end
 
   module Declaration : sig
@@ -58,7 +62,7 @@ module type Continuations_or_functions = sig
     val params : t -> Variable.t list
     val body : t -> Flambda.Expr.t
 
-    val free_variables_of_body_excluding_callees_and_args
+    val free_names_of_body_excluding_callees_and_args
        : t
       -> Variable.Set.t
   end
@@ -71,12 +75,12 @@ module type Continuations_or_functions = sig
     val function_variable_aliases
        : t
       -> backend:(module Backend_intf.S)
-      -> Name.t Variable.Map.t
+      -> Identifier.t Variable.Map.t
   end
 
   type application = {
-    callee : Name.t;
-    args : Variable.t list;
+    callee : Identifier.t;
+    args : Simple.t list;
   }
 
   val check_application : Flambda.Expr.t -> application option
@@ -100,8 +104,8 @@ module For_functions = struct
     let params (t : t) = Flambda.Typed_parameter.List.vars t.params
     let body (t : t) = t.body
 
-    let free_variables_of_body_excluding_callees_and_args (t : t) =
-      Flambda.Expr.free_variables ~ignore_uses_as_callee:()
+    let free_names_of_body_excluding_callees_and_args (t : t) =
+      Flambda.Expr.free_names ~ignore_uses_as_callee:()
         ~ignore_uses_as_argument:() t.body
   end
 
@@ -171,7 +175,7 @@ end
 *)
 
 module For_continuations = struct
-  module Name = struct
+  module Identifier = struct
     include Continuation
 
     (* Continuations are not first class. *)
@@ -179,7 +183,7 @@ module For_continuations = struct
     let of_variable _ = None
   end
 
-  module Name_and_variable = struct
+  module Identifier_and_variable = struct
     type t = Continuation.t * Variable.t
 
     include Identifiable.Make (struct
@@ -204,11 +208,12 @@ module For_continuations = struct
 
   module Declaration = struct
     type t = Flambda.Continuation_handler.t
+
     let params (t : t) = Flambda.Typed_parameter.List.vars t.params
     let body (t : t) = t.handler
 
-    let free_variables_of_body_excluding_callees_and_args (t : t) =
-      Flambda.Expr.free_variables
+    let free_names_of_body_excluding_callees_and_args (t : t) =
+      Flambda.Expr.free_names_advanced
         ~ignore_uses_as_continuation_argument:() t.handler
   end
 
@@ -220,8 +225,8 @@ module For_continuations = struct
   end
 
   type application = {
-    callee : Name.t;
-    args : Variable.t list;
+    callee : Identifier.t;
+    args : Simple.t list;
   }
 
   let check_application (expr : Flambda.Expr.t) : application option =
@@ -234,27 +239,27 @@ end
 module Analyse (CF : Continuations_or_functions) = struct
   type t =
     | Top
-    | Implication of CF.Name_and_variable.Set.t
+    | Implication of CF.Identifier_and_variable.Set.t
 
   let _print ppf = function
     | Top -> Format.fprintf ppf "Top"
     | Implication args ->
         Format.fprintf ppf "Implication: @[<hv>%a@]"
-          CF.Name_and_variable.Set.print args
+          CF.Identifier_and_variable.Set.print args
 
   let top relation p =
-    CF.Name_and_variable.Map.add p Top relation
+    CF.Identifier_and_variable.Map.add p Top relation
 
   let implies relation from to_ =
-    match CF.Name_and_variable.Map.find to_ relation with
+    match CF.Identifier_and_variable.Map.find to_ relation with
     | Top -> relation
     | Implication set ->
-      CF.Name_and_variable.Map.add to_
-        (Implication (CF.Name_and_variable.Set.add from set))
+      CF.Identifier_and_variable.Map.add to_
+        (Implication (CF.Identifier_and_variable.Set.add from set))
         relation
     | exception Not_found ->
-      CF.Name_and_variable.Map.add to_
-        (Implication (CF.Name_and_variable.Set.singleton from))
+      CF.Identifier_and_variable.Map.add to_
+        (Implication (CF.Identifier_and_variable.Set.singleton from))
         relation
 
   let transitive_closure state =
@@ -262,38 +267,38 @@ module Analyse (CF : Continuations_or_functions) = struct
       match s1, s2 with
       | Top, _ | _, Top -> Top
       | Implication s1, Implication s2 ->
-        Implication (CF.Name_and_variable.Set.union s1 s2)
+        Implication (CF.Identifier_and_variable.Set.union s1 s2)
     in
     let equal s1 s2 =
       match s1, s2 with
       | Top, Implication _ | Implication _, Top -> false
       | Top, Top -> true
-      | Implication s1, Implication s2 -> CF.Name_and_variable.Set.equal s1 s2
+      | Implication s1, Implication s2 -> CF.Identifier_and_variable.Set.equal s1 s2
     in
     let update arg state =
       let original_set =
-        try CF.Name_and_variable.Map.find arg state with
-        | Not_found -> Implication CF.Name_and_variable.Set.empty
+        try CF.Identifier_and_variable.Map.find arg state with
+        | Not_found -> Implication CF.Identifier_and_variable.Set.empty
       in
       match original_set with
       | Top -> state
       | Implication arguments ->
         let set =
-          CF.Name_and_variable.Set.fold (fun orig acc ->
+          CF.Identifier_and_variable.Set.fold (fun orig acc ->
               let set =
-                try CF.Name_and_variable.Map.find orig state with
-                | Not_found -> Implication CF.Name_and_variable.Set.empty in
+                try CF.Identifier_and_variable.Map.find orig state with
+                | Not_found -> Implication CF.Identifier_and_variable.Set.empty in
               union set acc)
             arguments original_set
         in
-        CF.Name_and_variable.Map.add arg set state
+        CF.Identifier_and_variable.Map.add arg set state
     in
     let once state =
-      CF.Name_and_variable.Map.fold (fun arg _ state -> update arg state) state state
+      CF.Identifier_and_variable.Map.fold (fun arg _ state -> update arg state) state state
     in
     let rec fp state =
       let state' = once state in
-      if CF.Name_and_variable.Map.equal equal state state'
+      if CF.Identifier_and_variable.Map.equal equal state state'
       then state
       else fp state'
     in
@@ -306,12 +311,12 @@ module Analyse (CF : Continuations_or_functions) = struct
       CF.Declarations.function_variable_aliases decls ~backend
     in
     let param_indexes_by_fun_vars =
-      CF.Name.Map.map (fun (decl : CF.Declaration.t) ->
+      CF.Identifier.Map.map (fun (decl : CF.Declaration.t) ->
           Array.of_list (CF.Declaration.params decl))
         (CF.Declarations.declarations decls)
     in
     let find_callee_arg ~callee ~callee_pos =
-      match CF.Name.Map.find callee param_indexes_by_fun_vars with
+      match CF.Identifier.Map.find callee param_indexes_by_fun_vars with
       | exception Not_found -> None (* not a recursive call *)
       | arr ->
         (* Ignore overapplied parameters: they are applied to a different
@@ -319,22 +324,22 @@ module Analyse (CF : Continuations_or_functions) = struct
         if callee_pos < Array.length arr then Some arr.(callee_pos)
         else None
     in
-    let escaping_functions = CF.Name.Tbl.create 13 in
+    let escaping_functions = CF.Identifier.Tbl.create 13 in
     let escaping_function fun_var =
       let fun_var =
         match Variable.Map.find fun_var function_variable_alias with
-        | exception Not_found -> CF.Name.of_variable fun_var
+        | exception Not_found -> CF.Identifier.of_variable fun_var
         | fun_var -> Some fun_var
       in
       match fun_var with
       | None -> ()
       | Some fun_var ->
-        if CF.Name.Map.mem fun_var (CF.Declarations.declarations decls)
-        then CF.Name.Tbl.add escaping_functions fun_var ()
+        if CF.Identifier.Map.mem fun_var (CF.Declarations.declarations decls)
+        then CF.Identifier.Tbl.add escaping_functions fun_var ()
     in
     let used_variables = Variable.Tbl.create 42 in
     let used_variable var = Variable.Tbl.add used_variables var () in
-    let relation = ref CF.Name_and_variable.Map.empty in
+    let relation = ref CF.Identifier_and_variable.Map.empty in
     (* If the called closure is in the current set of closures, record the
        relation (callee, callee_arg) <- (caller, caller_arg) *)
     let check_argument ~caller ~callee ~callee_pos ~caller_arg =
@@ -343,13 +348,13 @@ module Analyse (CF : Continuations_or_functions) = struct
       | None ->
         used_variable caller_arg (* not a recursive call *)
       | Some callee_arg ->
-        match CF.Name.Map.find caller (CF.Declarations.declarations decls) with
+        match CF.Identifier.Map.find caller (CF.Declarations.declarations decls) with
         | exception Not_found ->
           assert false
         | decl ->
           let new_relation =
-            (* We only track dataflow for parameters of functions, not
-               arbitrary variables. *)
+            (* We only track dataflow for parameters of functions and
+               continuations, not arbitrary variables. *)
             (* CR mshinwell: remove use of polymorphic comparison *)
             let params = CF.Declaration.params decl in
             if List.mem caller_arg params then begin
@@ -362,14 +367,14 @@ module Analyse (CF : Continuations_or_functions) = struct
           relation := new_relation
     in
     let arity ~callee =
-      match CF.Name.Map.find callee (CF.Declarations.declarations decls) with
+      match CF.Identifier.Map.find callee (CF.Declarations.declarations decls) with
       | exception Not_found -> 0
       | func -> List.length (CF.Declaration.params func)
     in
     let check_expr ~caller (expr : Flambda.Expr.t) =
       match CF.check_application expr with
       | Some { callee; args; } ->
-        let callee_var = CF.Name.as_variable callee in
+        let callee_var = CF.Identifier.as_variable callee in
         Misc.Stdlib.Option.iter used_variable callee_var;
         let callee =
           match callee_var with
@@ -393,26 +398,26 @@ module Analyse (CF : Continuations_or_functions) = struct
           args
       | None -> ()
     in
-    CF.Name.Map.iter (fun caller (decl : CF.Declaration.t) ->
+    CF.Identifier.Map.iter (fun caller (decl : CF.Declaration.t) ->
         Flambda.Expr.Iterators.iter (check_expr ~caller)
-          (fun (_ : Flambda.Named.t) -> ())
+          (fun (_ : Flambda.Identifierd.t) -> ())
           (CF.Declaration.body decl);
         Variable.Set.iter
           (fun var -> escaping_function var; used_variable var)
           (* CR-soon mshinwell: we should avoid recomputing this, cache in
              [function_declaration].  See also comment on
              [only_via_symbols] in [Flambda_utils]. *)
-          (CF.Declaration.free_variables_of_body_excluding_callees_and_args
+          (CF.Declaration.free_names_of_body_excluding_callees_and_args
             decl))
       (CF.Declarations.declarations decls);
-    CF.Name.Map.iter
+    CF.Identifier.Map.iter
       (fun func_var decl ->
         List.iter
           (fun param ->
               if Variable.Tbl.mem used_variables param then
                 relation :=
                   param_to_anywhere ~caller:func_var ~caller_arg:param !relation;
-              if CF.Name.Tbl.mem escaping_functions func_var then
+              if CF.Identifier.Tbl.mem escaping_functions func_var then
                 relation :=
                   anything_to_param ~callee:func_var ~callee_arg:param
                     !relation)
@@ -471,19 +476,19 @@ module Analyse (CF : Continuations_or_functions) = struct
         decls
     in
     let not_unchanging =
-      CF.Name_and_variable.Map.fold (fun (func, var) set not_unchanging ->
+      CF.Identifier_and_variable.Map.fold (fun (func, var) set not_unchanging ->
           match set with
           | Top -> Variable.Set.add var not_unchanging
           | Implication set ->
-            if CF.Name_and_variable.Set.exists (fun (func', var') ->
-                CF.Name.equal func func' && not (Variable.equal var var'))
+            if CF.Identifier_and_variable.Set.exists (fun (func', var') ->
+                CF.Identifier.equal func func' && not (Variable.equal var var'))
               set
             then Variable.Set.add var not_unchanging
             else not_unchanging)
         relation Variable.Set.empty
     in
     let params =
-      CF.Name.Map.fold (fun _ decl set ->
+      CF.Identifier.Map.fold (fun _ decl set ->
           let params = CF.Declaration.params decl in
           Variable.Set.union (Variable.Set.of_list params) set)
         (CF.Declarations.declarations decls)
@@ -491,11 +496,11 @@ module Analyse (CF : Continuations_or_functions) = struct
     in
     let unchanging = Variable.Set.diff params not_unchanging in
     let aliased_to =
-      CF.Name_and_variable.Map.fold (fun (_, var) set aliases ->
+      CF.Identifier_and_variable.Map.fold (fun (_, var) set aliases ->
           match set with
           | Implication set
             when Variable.Set.mem var unchanging ->
-              CF.Name_and_variable.Set.fold (fun (_, caller_args) aliases ->
+              CF.Identifier_and_variable.Set.fold (fun (_, caller_args) aliases ->
                   if Variable.Set.mem caller_args unchanging then
                     let alias_set =
                       match Variable.Map.find caller_args aliases with
@@ -530,7 +535,7 @@ module Analyse (CF : Continuations_or_functions) = struct
         ~anything_to_param ~param_to_anywhere
         decls
     in
-    CF.Name_and_variable.Map.fold (fun (_, var) set relation ->
+    CF.Identifier_and_variable.Map.fold (fun (_, var) set relation ->
         match set with
         | Top -> relation
         | Implication set -> Variable.Map.add var set relation)
@@ -554,9 +559,9 @@ module Analyse (CF : Continuations_or_functions) = struct
         decls
     in
     let arguments =
-      CF.Name.Map.fold (fun fun_var decl acc ->
+      CF.Identifier.Map.fold (fun fun_var decl acc ->
           List.fold_left (fun acc param ->
-              match CF.Name_and_variable.Map.find (fun_var, param) relation with
+              match CF.Identifier_and_variable.Map.find (fun_var, param) relation with
               | exception Not_found -> Variable.Set.add param acc
               | Implication _ -> Variable.Set.add param acc
               | Top -> acc)
@@ -579,3 +584,5 @@ module Continuations = struct
   module Continuation_and_variable = For_continuations.Name_and_variable
   include Analyse (For_continuations)
 end
+
+*)

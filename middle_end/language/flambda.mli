@@ -44,8 +44,6 @@ module Let :
   module type of struct include F0.Let end
 module Let_cont :
   module type of struct include F0.Let_cont end
-module Let_cont_handlers :
-  module type of struct include F0.Let_cont_handlers end
 module Let_mutable :
   module type of struct include F0.Let_mutable end
 module Switch :
@@ -75,6 +73,12 @@ module Reachable : sig
 
   val reachable : F0.Named.t -> t
   val invalid : unit -> t
+end
+
+module Let_cont_handlers : sig
+  include module type of struct include F0.Let_cont_handlers end
+
+  val free_variables : t -> Variable.Set.t
 end
 
 module Typed_parameter : sig

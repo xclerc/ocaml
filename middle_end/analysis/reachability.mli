@@ -48,6 +48,9 @@
 
 (* CR mshinwell for pchambart / vlaviron: Please finish the above comment. *)
 
+(*
 type result = unit
 
 val run : Flambda_static.Program.t -> result
+
+*)

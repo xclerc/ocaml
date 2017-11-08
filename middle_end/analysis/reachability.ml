@@ -16,6 +16,8 @@
 
 (* CR mshinwell for pchambart / vlaviron: Please format to 80 columns. *)
 
+(*
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module Int = Numbers.Int
@@ -35,7 +37,7 @@ type descr =
     (* This is the value to which the projection is bound.
        If we want cross function analysis, we need to add the return continuation argument variable
        here to fetch it when applying. *)
-    mutable const : Flambda.Const.t option;
+    mutable const : Simple.Const.t option;
     mutable proj : Closure_id.t option;
     (* This can contain a closure projected using this closure_id from the original closure 'variable' *)
     mutable original_closure : Variable.t option;
@@ -327,7 +329,8 @@ let var env v ~assigned_to =
 
 let unit_info _env ~assigned_to =
   let created_as : Flambda.Named.t =
-    Const (Flambda.Const.Tagged_immediate (Immediate.int Targetint.zero))
+    Simple (Simple.const (Simple.Const.Tagged_immediate (
+      Immediate.int Targetint.zero)))
   in
   fresh_info ~created_as assigned_to
 
@@ -374,17 +377,15 @@ let init_param env var =
   from_external env var info;
   Variable.Tbl.add env.info var info
 
-let do_allocated_const _env ~(assigned_to : Variable.t)
-      (constant : Allocated_const.t) : info =
-  fresh_info ~created_as:(Allocated_const constant) assigned_to
-
 let rec do_named env (assigned_to : Variable.t) (named : Flambda.Named.t) =
   let info =
     match named with
-    | Var v ->
-      var env v ~assigned_to
-    | Const c ->
-      const env named c ~assigned_to
+    | Simple simple ->
+      begin match simple with
+      | Name (Var v) -> var env v ~assigned_to
+      | Name (Symbol s) > symbol env s ~assigned_to
+      | Const c -> const env named c ~assigned_to
+      end
     | Prim (Pmakeblock(_tag, Immutable, _), args, _dbg) ->
       block env (Some named) args ~assigned_to
     | Prim (Pfield i, [arg], _dbg) ->
@@ -399,8 +400,6 @@ let rec do_named env (assigned_to : Variable.t) (named : Flambda.Named.t) =
     | Read_mutable mut_var ->
       let read_info = find_mut_info env mut_var in
       var env read_info.var ~assigned_to
-    | Symbol s ->
-      symbol env (Symbol.to_symbol s) ~assigned_to
     | Read_symbol_field { symbol; logical_field; } ->
       let var = Symbol.Tbl.find env.info_symbol symbol in
       field env logical_field var ~assigned_to
@@ -811,3 +810,5 @@ let run (prog : Flambda_static.Program.t) : result =
   (* show env; *)
   let _ = show in
   ()
+
+*)

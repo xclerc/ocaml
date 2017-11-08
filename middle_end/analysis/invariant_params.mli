@@ -62,6 +62,7 @@ module Functions : sig
 end
 *)
 
+(*
 module Continuations : sig
   module Continuation_and_variable : sig
     include Identifiable.S with type t = Continuation.t * Variable.t
@@ -84,3 +85,5 @@ module Continuations : sig
     -> backend:(module Backend_intf.S)
     -> Variable.Set.t
 end
+
+*)
