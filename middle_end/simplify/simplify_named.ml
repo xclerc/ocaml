@@ -36,7 +36,7 @@ let type_for_const (const : Flambda.Const.t) =
   | Naked_nativeint n -> T.this_naked_nativeint n
 
 let type_for_simple env (simple : Simple.t)
-      : (Flambda.Named.t * Flambda_type.t) Flambda.Or_invalid.t
+      : (Flambda.Named.t * Flambda_type.t) Flambda.Or_invalid.t =
   match simple with
   | Const c -> Ok (Simple (Const c), type_for_const c)
   | Name name ->

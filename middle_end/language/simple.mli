@@ -38,6 +38,8 @@ type t = private
 
 val name : Name.t -> t
 
+val var : Variable.t -> t
+
 val const : Const.t -> t
 
 val free_names : t -> Name.Set.t

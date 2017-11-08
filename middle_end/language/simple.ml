@@ -80,6 +80,7 @@ type t =
   | Const of Const.t
 
 let name t = Name t
+let var t = Name (Name.var t)
 let const t = Const t
 
 let free_names t =

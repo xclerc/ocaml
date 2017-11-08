@@ -159,6 +159,11 @@ module Free_var = struct
     equality : Flambda_primitive.With_fixed_value.t option;
   }
 
+  let create var =
+    { var;
+      equality = None;
+    }
+
   let var t = t.var
 
   let print ppf (t : t) =
@@ -1115,13 +1120,13 @@ end = struct
 end and Set_of_closures : sig
   type t = {
     function_decls : Function_declarations.t;
-    free_vars : Free_vars.t;
+    free_vars : Free_vars.t;  (* CR mshinwell: rename to "in_closure" *)
     direct_call_surrogates : Closure_id.t Closure_id.Map.t;
   }
 
   val create
      : function_decls:Function_declarations.t
-    -> free_vars:Free_vars.t
+    -> in_closure:Free_vars.t
     -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> t
   val free_names : t -> Name.Set.t
@@ -1130,51 +1135,8 @@ end and Set_of_closures : sig
 end = struct
   include Set_of_closures
 
-  let create ~(function_decls : Function_declarations.t) ~free_vars
+  let create ~(function_decls : Function_declarations.t) ~in_closure:free_vars
         ~direct_call_surrogates =
-    (* CR pchambart: there is nothing to check about free vars anymore. *)
-    (*
-    if !Clflags.flambda_invariant_checks then begin
-      let all_fun_vars = Closure_id.Map.keys function_decls.funs in
-      let expected_free_vars =
-        Variable.Map.fold (fun _fun_var (function_decl : Function_declaration.t)
-                  expected_free_vars ->
-            let free_vars =
- sc              Variable.Set.diff function_decl.free_variables
-                (Variable.Set.union
-                  (Typed_parameter.List.var_set function_decl.params)
-                  all_fun_vars)
-            in
-            Variable.Set.union free_vars expected_free_vars)
-          function_decls.funs
-          Variable.Set.empty
-      in
-      (* CR-soon pchambart: We do not seem to be able to maintain the
-         invariant that if a variable is not used inside the closure, it
-         is not used outside either. This would be a nice property for
-         better dead code elimination during inline_and_simplify, but it
-         is not obvious how to ensure that.
- 
-         This would be true when the function is known never to have
-         been inlined.
- 
-         Note that something like that may maybe enforcable in
-         inline_and_simplify, but there is no way to do that on other
-         passes.
- 
-         mshinwell: see CR in Flambda_invariants about this too
-      *)
-      let free_vars_domain = Closure_id.Map.keys free_vars in
-      if not (Variable.Set.subset expected_free_vars free_vars_domain) then begin
-        Misc.fatal_errorf "Set_of_closures.create: [free_vars] mapping of \
-            variables bound by the closure(s) is wrong.  (Must map at least \
-            %a but only maps %a.)@ \nfunction_decls:@ %a"
-          Variable.Set.print expected_free_vars
-          Variable.Set.print free_vars_domain
-          Function_declarations.print function_decls
-      end
-    end;
-    *)
     { function_decls;
       free_vars;
       direct_call_surrogates;

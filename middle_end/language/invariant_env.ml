@@ -96,6 +96,7 @@ end = struct
 end
 
 type t = {
+  symbol_is_predefined_exception : (Symbol.t -> string option);
   all_names_seen : Name.Set.t ref;
   all_mutable_variables_seen : Mutable_variable.Set.t ref;
   all_continuations_seen : Continuation.Set.t ref;
@@ -104,16 +105,17 @@ type t = {
   uses_of_closure_ids_seen : Closure_id.Set.t ref;
   all_var_within_closures_seen : Var_within_closure.Set.t ref;
   uses_of_var_within_closures_seen : Var_within_closure.Set.t ref;
-  names : Flambda_kind.t Name.Map.t;
-  mutable_variables : Flambda_kind.t Mutable_variable.Map.t;
+  names : Flambda_type.t Name.Map.t;
+  mutable_variables : Flambda_type.t Mutable_variable.Map.t;
   continuations :
     (Flambda_arity.t * continuation_kind * Continuation_stack.t)
       Continuation.Map.t;
   continuation_stack : Continuation_stack.t;
 }
 
-let create () =
-  { all_names_seen = ref Name.Set.empty;
+let create ~symbol_is_predefined_exception =
+  { symbol_is_predefined_exception;
+    all_names_seen = ref Name.Set.empty;
     all_mutable_variables_seen = ref Mutable_variable.Set.empty;
     all_continuations_seen = ref Continuation.Set.empty;
     all_set_of_closures_ids_seen = ref Set_of_closures_id.Set.empty;
@@ -148,7 +150,7 @@ let prepare_for_function_body t ~return_cont ~return_cont_arity
     continuation_stack;
   }
 
-let add_variable t var kind =
+let add_variable t var ty =
   let name = Name.var var in
   if Name.Map.mem name t.names then begin
     Misc.fatal_errorf "Duplicate binding of variable %a which is already \
@@ -169,13 +171,13 @@ let add_variable t var kind =
   end;
   t.all_names_seen := Name.Set.add name !(t.all_names_seen);
   { t with
-    names = Name.Map.add name kind t.names;
+    names = Name.Map.add name ty t.names;
   }
 
-let add_variables t vars_and_kinds =
-  List.fold_left (fun t (var, kind) -> add_variable t var kind) t vars_and_kinds
+let add_variables t vars_and_tys =
+  List.fold_left (fun t (var, ty) -> add_variable t var ty) t vars_and_tys
 
-let add_mutable_variable t var kind =
+let add_mutable_variable t var ty =
   if Mutable_variable.Map.mem var t.mutable_variables then begin
     Misc.fatal_errorf "Duplicate binding of mutable variable %a which is \
         already bound in the current scope"
@@ -196,10 +198,10 @@ let add_mutable_variable t var kind =
   t.all_mutable_variables_seen :=
     Mutable_variable.Set.add var !(t.all_mutable_variables_seen);
   { t with
-    mutable_variables = Mutable_variable.Map.add var kind t.mutable_variables;
+    mutable_variables = Mutable_variable.Map.add var ty t.mutable_variables;
   }
 
-let add_symbol t sym =
+let add_symbol t sym ty =
   let name = Name.symbol sym in
   if Name.Map.mem name t.names then begin
     Misc.fatal_errorf "Duplicate binding of symbol %a which is already \
@@ -220,7 +222,7 @@ let add_symbol t sym =
   end;
   t.all_names_seen := Name.Set.add name !(t.all_names_seen);
   { t with
-    names = Name.Map.add name (Flambda_kind.value Can_scan) t.names;
+    names = Name.Map.add name ty t.names;
   }
 
 let add_continuation t cont arity kind stack =
@@ -256,11 +258,25 @@ let check_variable_is_bound t var =
 let check_variables_are_bound t vars =
   List.iter (fun var -> check_variable_is_bound t var) vars
 
+let type_of_name t name =
+  match Name.Map.find name t.names with
+  | exception Not_found ->
+    Misc.fatal_errorf "Unbound name %a" Name.print name
+  | ty -> ty
+
+module No_importing = struct
+  let import_export_id _ = None
+  let import_symbol _ = None
+  let symbol_is_predefined_exception = t.symbol_is_predefined_exception
+end
+
 let check_name_is_bound_and_of_kind t name desired_kind =
   match Name.Map.find name t.names with
   | exception Not_found ->
     Misc.fatal_errorf "Unbound name %a" Name.print name
-  | kind ->
+  | ty ->
+    let importer = (module No_importing : Flambda_type.Importer_intf) in
+    let kind = Flambda_type.kind ty ~importer ~type_of_name in
     if not (Flambda_kind.compatible kind ~if_used_at:desired_kind) then begin
       Misc.fatal_errorf "Name %a is expected to have kind [%a] but is \
           of kind %a"

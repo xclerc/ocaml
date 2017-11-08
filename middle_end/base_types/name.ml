@@ -39,6 +39,11 @@ let map_symbol t ~f =
     if symbol == symbol' then t
     else Symbol symbol'
 
+let to_var t =
+  match t with
+  | Var var -> Some var
+  | Symbol _ -> None
+
 include Identifiable.Make (struct
   type nonrec t = t
 
@@ -62,3 +67,11 @@ include Identifiable.Make (struct
   let equal t1 t2 =
     compare t1 t2 = 0
 end)
+
+let set_to_var_set t =
+  Set.fold (fun name vars ->
+      match to_var name with
+      | None -> vars
+      | Some var -> Variable.Set.add var vars)
+    t
+    Variable.Set.empty

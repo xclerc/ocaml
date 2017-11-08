@@ -95,6 +95,8 @@ module Free_var : sig
     equality : Flambda_primitive.With_fixed_value.t option;
   }
 
+  val create : Variable.t -> t
+
   val print : Format.formatter -> t -> unit
 end
 
@@ -496,7 +498,7 @@ end and Set_of_closures : sig
       are reasonable. *)
   val create
      : function_decls:Function_declarations.t
-    -> free_vars:Free_vars.t
+    -> in_closure:Free_vars.t
     -> direct_call_surrogates:Closure_id.t Closure_id.Map.t
     -> t
 

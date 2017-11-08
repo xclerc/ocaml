@@ -17,6 +17,7 @@
 [@@@ocaml.warning "+a-4-30-40-41-42"]  (* N.B. Warning 9 is enabled! *)
 
 module F0 = Flambda0
+module K = Flambda_kind
 
 type assign = F0.assign
 type mutable_or_immutable = Flambda0.mutable_or_immutable
@@ -102,10 +103,11 @@ module rec Expr : sig
      : (Invariant_env.t
     -> t
     -> unit) Flambda_type.type_accessor
+  val free_variables : t -> Variable.Set.t
   val equal : t -> t -> bool
   val make_closure_declaration
      : (id:Variable.t
-    -> free_variable_kind:(Variable.t -> Flambda_kind.t)
+    -> free_variable_kind:(Variable.t -> K.t)
     -> body:t
     -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
@@ -121,7 +123,7 @@ module rec Expr : sig
     -> t) Flambda_type.type_accessor
   val description_of_toplevel_node : t -> string
   val bind
-     : bindings:(Variable.t * Flambda_kind.t * Named.t) list
+     : bindings:(Variable.t * K.t * Named.t) list
     -> body:t
     -> t
   val all_defined_continuations_toplevel : t -> Continuation.Set.t
@@ -150,7 +152,7 @@ module rec Expr : sig
     val iter_sets_of_closures : (Set_of_closures.t -> unit) -> t -> unit
     val iter_lets
         : t
-      -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> unit)
+      -> for_defining_expr:(Variable.t -> K.t -> Named.t -> unit)
       -> for_last_body:(t -> unit)
       -> for_each_let:(t -> unit)
       -> unit
@@ -166,7 +168,7 @@ module rec Expr : sig
     val map : (t -> t) -> (Named.t -> Named.t) -> t -> t
     val map_lets
        : t
-      -> for_defining_expr:(Variable.t -> Flambda_kind.t -> Named.t -> Named.t)
+      -> for_defining_expr:(Variable.t -> K.t -> Named.t -> Named.t)
       -> for_last_body:(t -> t)
       -> after_rebuild:(t -> t)
       -> t
@@ -205,12 +207,12 @@ module rec Expr : sig
       -> for_defining_expr:(
           'a
         -> Variable.t
-        -> Flambda_kind.t
+        -> K.t
         -> Named.t
         -> 'a
-          * (Variable.t * Flambda_kind.t * Named.t) list
+          * (Variable.t * K.t * Named.t) list
           * Variable.t
-          * Flambda_kind.t
+          * K.t
           * Reachable.t)
       -> for_last_body:('a -> t -> t * 'b)
       (* CR-someday mshinwell: consider making [filter_defining_expr]
@@ -225,6 +227,9 @@ module rec Expr : sig
   end
 end = struct
   include F0.Expr
+
+  let free_variables t =
+    Name.set_to_var_set (free_names t)
 
   let rec equal t1 t2 =
     (* CR mshinwell: next comment may no longer be relevant? *)
@@ -471,7 +476,7 @@ end = struct
                   Function_declarations.update function_decls ~funs
                 in
                 let set_of_closures =
-                  Set_of_closures.create ~function_decls ~free_vars
+                  Set_of_closures.create ~function_decls ~in_closure:free_vars
                     ~direct_call_surrogates
                 in
                 Set_of_closures set_of_closures
@@ -715,7 +720,7 @@ end = struct
         let set_of_closures =
           Set_of_closures.create
             ~function_decls
-            ~free_vars:
+            ~in_closure:
               (Var_within_closure.Map.map (fun (free_var : Free_var.t) ->
                   { free_var with var = sb free_var.var; })
                 set_of_closures.free_vars)
@@ -728,12 +733,12 @@ end = struct
     if Variable.Map.is_empty sb' then tree
     else Mappers.Toplevel_only.map aux aux_named tree
 
-  let make_closure_declaration ~importer ~id
-        ~free_variable_kind ~body ~params ~continuation_param
-        ~stub ~continuation ~return_arity ~dbg : Expr.t =
+  let make_closure_declaration ~importer ~type_of_name ~id
+        ~(free_variable_kind : Variable.t -> K.t) ~body ~params
+        ~continuation_param ~stub ~continuation ~return_arity ~dbg : Expr.t =
     let my_closure = Variable.rename id in
     let closure_id = Closure_id.wrap id in
-    let free_variables = Expr.free_names body in
+    let free_variables = Expr.free_variables body in
     let param_set = Typed_parameter.List.var_set params in
     if not (Variable.Set.subset param_set free_variables) then begin
       Misc.fatal_error "Expr.make_closure_declaration"
@@ -746,7 +751,7 @@ end = struct
     (* CR-soon mshinwell: try to eliminate this [toplevel_substitution].  This
        function is only called from [Simplify], so we should be able
        to do something similar to what happens in [Inlining_transforms] now. *)
-    let body = toplevel_substitution ~importer sb body in
+    let body = toplevel_substitution ~importer ~type_of_name sb body in
     let vars_within_closure =
       Variable.Map.of_set Var_within_closure.wrap
         (Variable.Set.diff free_variables param_set)
@@ -754,19 +759,22 @@ end = struct
     let body =
       Variable.Map.fold (fun var var_within_closure body ->
           let new_var = Variable.Map.find var sb in
-          let kind : Flambda_kind.t = free_variable_kind var in
+          let kind : K.t = free_variable_kind var in
           let projection : Named.t =
-            Project_var {
-              closure = my_closure;
-              var = Closure_id.Map.singleton closure_id var_within_closure }
+            let by_closure_id =
+              Closure_id.Map.singleton closure_id var_within_closure
+            in
+            let my_closure = Simple.var my_closure in
+            Prim (Unary (Project_var by_closure_id, my_closure), dbg)
           in
           match kind with
           | Value _ ->
             Expr.create_let new_var kind projection body
-          | _ ->
+          | Naked_immediate | Naked_float | Naked_int32
+          | Naked_int64 | Naked_nativeint  ->
             let boxed_var = Variable.rename new_var in
             let unbox, boxed_kind =
-              Flambda0.Named.unbox_value boxed_var kind dbg
+              Named.unbox_value (Name.var boxed_var) kind dbg
             in
             Expr.create_let boxed_var boxed_kind projection
               (Expr.create_let new_var kind unbox body))
@@ -783,61 +791,55 @@ end = struct
         ~closure_origin:(Closure_origin.create closure_id)
         ~my_closure
     in
-    let free_vars, boxed_var =
-      Variable.Map.fold (fun id var_within_closure (fv', boxed_vars) ->
+    let in_closure, boxed_vars =
+      Variable.Map.fold (fun id var_within_closure (in_closure, boxed_vars) ->
           let var, boxed_vars =
-            match (free_variable_kind id : Flambda_kind.t) with
+            let kind = free_variable_kind id in
+            match kind with
             | Value _ ->
               id, boxed_vars
-            | kind ->
+            | Naked_immediate | Naked_float | Naked_int32
+            | Naked_int64 | Naked_nativeint ->
               let boxed_var = Variable.rename id in
-              let box, boxed_kind = Flambda0.Named.box_value id kind dbg in
-              boxed_var,
-                (boxed_var, box, boxed_kind) :: boxed_vars
+              let box, boxed_kind = Named.box_value (Name.var id) kind dbg in
+              boxed_var, ((boxed_var, boxed_kind, box) :: boxed_vars)
           in
-          let free_var : Free_var.t =
-            { var;
-              projection = None;
-            }
+          let free_var = Free_var.create var in
+          let in_closure =
+            Var_within_closure.Map.add var_within_closure free_var in_closure
           in
-          Var_within_closure.Map.add var_within_closure free_var fv',
-          boxed_vars)
+          in_closure, boxed_vars)
         vars_within_closure
         (Var_within_closure.Map.empty, [])
     in
-    let compilation_unit = Compilation_unit.get_current_exn () in
+    let current_compilation_unit = Compilation_unit.get_current_exn () in
     let set_of_closures_var =
-      Variable.create "set_of_closures"
-        ~current_compilation_unit:compilation_unit
+      Variable.create "set_of_closures" ~current_compilation_unit
     in
     let set_of_closures =
       let function_decls =
         Function_declarations.create
           ~funs:(Closure_id.Map.singleton closure_id function_declaration)
       in
-      Set_of_closures.create ~function_decls ~free_vars
+      Set_of_closures.create ~function_decls ~in_closure
         ~direct_call_surrogates:Closure_id.Map.empty
     in
     let project_closure : Named.t =
-      Project_closure {
-        set_of_closures = set_of_closures_var;
-        closure_id = Closure_id.Set.singleton closure_id;
-      }
+      let possible_closures = Closure_id.Set.singleton closure_id in
+      let set_of_closures = Simple.var set_of_closures_var in
+      Prim (Unary (Project_closure possible_closures, set_of_closures), dbg)
     in
     let project_closure_var =
-      Variable.create "project_closure"
-        ~current_compilation_unit:compilation_unit
+      Variable.create "project_closure" ~current_compilation_unit
     in
     let body =
-      Expr.create_let set_of_closures_var (Flambda_kind.value Must_scan)
+      Expr.create_let set_of_closures_var (K.value Must_scan)
         (Set_of_closures set_of_closures)
-        (Expr.create_let project_closure_var (Flambda_kind.value Must_scan)
+        (Expr.create_let project_closure_var (K.value Must_scan)
           project_closure
-          (Apply_cont (continuation, None, [project_closure_var])))
+          (Apply_cont (continuation, None, [Simple.var project_closure_var])))
     in
-    List.fold_left (fun body (boxed_var, box, boxed_kind) ->
-        Expr.create_let boxed_var boxed_kind box body)
-      body boxed_var
+    Expr.bind ~bindings:boxed_vars ~body
 
   let all_defined_continuations_toplevel expr =
     let defined_continuations = ref Continuation.Set.empty in
@@ -887,11 +889,11 @@ end = struct
         reason
         print expr
     in
-    let add_typed_parameters ~importer t params =
+    let add_typed_parameters ~importer ~type_of_name t params =
       List.fold_left (fun t param ->
           let var = Typed_parameter.var param in
-          let kind = Typed_parameter.kind ~importer param in
-          E.add_variable t var kind)
+          let ty = Typed_parameter.ty param in
+          E.add_variable t var ty)
         t
         params
     in
@@ -901,17 +903,17 @@ end = struct
         let named_kind =
           match Named.invariant ~importer env defining_expr with
           | Singleton kind -> Some kind
-          | Unit -> Some (Flambda_kind.value Can_scan)
+          | Unit -> Some (K.value Can_scan)
           | Never_returns -> None
         in
         begin match named_kind with
         | None -> ()
         | Some named_kind ->
-          if not (Flambda_kind.equal kind named_kind) then begin
+          if not (K.equal kind named_kind) then begin
             Misc.fatal_errorf "[Let] expression kind annotation (%a) does not \
                 match the inferred kind (%a) of the defining expression: %a"
-              Flambda_kind.print kind
-              Flambda_kind.print named_kind
+              K.print kind
+              K.print named_kind
               print t
           end
         end;
@@ -920,10 +922,10 @@ end = struct
       | Let_mutable { var; initial_value; body; contents_type; } ->
         let initial_value_kind = E.kind_of_variable env initial_value in
         let contents_kind = Flambda_type.kind ~importer contents_type in
-        if not (Flambda_kind.equal initial_value_kind contents_kind) then begin
+        if not (K.equal initial_value_kind contents_kind) then begin
           Misc.fatal_errorf "Initial value of [Let_mutable] term has kind %a \
               whereas %a was expected: %a"
-            Flambda_kind.print initial_value_kind
+            K.print initial_value_kind
             Flambda_type.print contents_type
             print t
         end;
@@ -1028,7 +1030,7 @@ end = struct
                 print expr
             end;
             assert (not (Continuation.equal cont exn_handler));
-            let expected_arity = [Flambda_kind.value Must_scan] in
+            let expected_arity = [K.value Must_scan] in
             if not (Flambda_arity.equal arity expected_arity) then begin
               Misc.fatal_errorf "Exception handler continuation %a has \
                   the wrong arity for the trap handler action of this \
@@ -1056,7 +1058,7 @@ end = struct
                 specialise; } ->
         let stack = E.current_continuation_stack env in
         E.check_variable_is_bound_and_of_kind env func
-          (Flambda_kind.value Must_scan);
+          (K.value Must_scan);
         let args_must_be_of_kind_value =
           match call_kind with
           | Direct { closure_id = _; return_arity; } ->
@@ -1078,12 +1080,12 @@ end = struct
           | Method { kind; obj; } ->
             ignore (kind : Call_kind.method_kind);
             E.check_variable_is_bound_and_of_kind env obj
-              (Flambda_kind.value Must_scan);
+              (K.value Must_scan);
             true
         in
         if args_must_be_of_kind_value then begin
           E.check_variables_are_bound_and_of_kind env args
-            (Flambda_kind.value Must_scan)
+            (K.value Must_scan)
         end else begin
           E.check_variables_are_bound env args
         end;
@@ -1115,7 +1117,7 @@ end = struct
         ignore (specialise : specialise_attribute)
       | Switch (arg, { numconsts; consts; failaction; }) ->
         E.check_variable_is_bound_and_of_kind env arg
-          (Flambda_kind.value Must_scan);
+          (K.value Must_scan);
         ignore (numconsts : Targetint.Set.t);
         if List.length consts < 1 then begin
           Misc.fatal_errorf "Empty switch: %a" print t
@@ -1187,7 +1189,7 @@ end = struct
     let cont = Continuation.create () in
     let expr : Expr.t =
       Expr.create_let var
-        (Flambda_kind.value Must_scan (* arbitrary *)) t
+        (K.value Must_scan (* arbitrary *)) t
         (Apply_cont (cont, None, []))
     in
     match Expr.toplevel_substitution ~importer sb expr with
@@ -1251,7 +1253,7 @@ end = struct
   end
 
   (* CR mshinwell: It seems that the type [Flambda_primitive.result_kind]
-     should move into [Flambda_kind], now it's used here. *)
+     should move into [K], now it's used here. *)
   let invariant ~importer env t : Flambda_primitive.result_kind =
     let module E = Invariant_env in
     match t with
@@ -1259,33 +1261,33 @@ end = struct
       Singleton (E.kind_of_variable env var)
     | Symbol symbol ->
       E.check_symbol_is_bound env symbol;
-      Singleton (Flambda_kind.value Can_scan)
+      Singleton (K.value Can_scan)
     | Const (Untagged_immediate _) ->
-      Singleton (Flambda_kind.naked_immediate ())
+      Singleton (K.naked_immediate ())
     | Const (Tagged_immediate _) ->
-      Singleton (Flambda_kind.value Can_scan)
+      Singleton (K.value Can_scan)
     | Const (Naked_float _) ->
-      Singleton (Flambda_kind.naked_float ())
+      Singleton (K.naked_float ())
     | Const (Naked_int32 _) ->
-      Singleton (Flambda_kind.naked_int32 ())
+      Singleton (K.naked_int32 ())
     | Const (Naked_int64 _) ->
-      Singleton (Flambda_kind.naked_int64 ())
+      Singleton (K.naked_int64 ())
     | Const (Naked_nativeint _) ->
-      Singleton (Flambda_kind.naked_nativeint ())
+      Singleton (K.naked_nativeint ())
     | Read_mutable mut_var ->
       Singleton (E.kind_of_mutable_variable env mut_var)
     | Assign { being_assigned; new_value; } ->
       let being_assigned_kind = E.kind_of_mutable_variable env being_assigned in
       let new_value_kind = E.kind_of_variable env new_value in
-      if not (Flambda_kind.equal new_value_kind being_assigned_kind) then begin
+      if not (K.equal new_value_kind being_assigned_kind) then begin
         Misc.fatal_errorf "Cannot put value %a of kind %a into mutable \
             variable %a with contents kind %a"
           Variable.print new_value
-          Flambda_kind.print new_value_kind
+          K.print new_value_kind
           Mutable_variable.print being_assigned
-          Flambda_kind.print being_assigned_kind
+          K.print being_assigned_kind
       end;
-      Singleton (Flambda_kind.value Can_scan)
+      Singleton (K.value Can_scan)
     | Read_symbol_field (symbol, field) ->
       E.check_symbol_is_bound env symbol;
       if field < 0 then begin
@@ -1294,33 +1296,33 @@ end = struct
           print t
       end;
       (* This must be [Must_scan] as the field might be mutable. *)
-      Singleton (Flambda_kind.value Must_scan)
+      Singleton (K.value Must_scan)
     | Set_of_closures set_of_closures ->
       Set_of_closures.invariant ~importer env set_of_closures;
-      Singleton (Flambda_kind.value Must_scan)
+      Singleton (K.value Must_scan)
     | Project_closure { set_of_closures; closure_id; } ->
       E.check_variable_is_bound_and_of_kind env set_of_closures
-        (Flambda_kind.value Must_scan);
+        (K.value Must_scan);
       Closure_id.Set.iter (fun closure_id ->
           E.add_use_of_closure_id env closure_id)
         closure_id;
-      Singleton (Flambda_kind.value Must_scan)
+      Singleton (K.value Must_scan)
     | Move_within_set_of_closures { closure; move } ->
       E.check_variable_is_bound_and_of_kind env closure
-        (Flambda_kind.value Must_scan);
+        (K.value Must_scan);
       Closure_id.Map.iter (fun closure_id move_to ->
           E.add_use_of_closure_id env closure_id;
           E.add_use_of_closure_id env move_to)
         move;
-      Singleton (Flambda_kind.value Must_scan)
+      Singleton (K.value Must_scan)
     | Project_var { closure; var; } ->
       E.check_variable_is_bound_and_of_kind env closure
-        (Flambda_kind.value Must_scan);
+        (K.value Must_scan);
       Closure_id.Map.iter (fun closure_id var_within_closure ->
           E.add_use_of_closure_id env closure_id;
           E.add_use_of_var_within_closure env var_within_closure)
         var;
-      Singleton (Flambda_kind.value Must_scan)
+      Singleton (K.value Must_scan)
     | Prim (prim, dbg) ->
       Flambda_primitive.invariant env prim;
       ignore (dbg : Debuginfo.t);

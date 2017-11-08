@@ -35,7 +35,9 @@ end
     freshness of bound variables is checked across the whole program. *)
 type t
 
-val create : unit -> t
+val create
+   : symbol_is_predefined_exception:(Symbol.t -> string option)
+  -> t
 
 val prepare_for_function_body
    : t
@@ -44,13 +46,13 @@ val prepare_for_function_body
   -> allowed_free_variables:Variable.Set.t
   -> t
 
-val add_variable : t -> Variable.t -> Flambda_kind.t -> t
+val add_variable : t -> Variable.t -> Flambda_type.t -> t
 
-val add_variables : t -> (Variable.t * Flambda_kind.t) list -> t
+val add_variables : t -> (Variable.t * Flambda_type.t) list -> t
 
-val add_mutable_variable : t -> Mutable_variable.t -> Flambda_kind.t -> t
+val add_mutable_variable : t -> Mutable_variable.t -> Flambda_type.t -> t
 
-val add_symbol : t -> Symbol.t -> t
+val add_symbol : t -> Symbol.t -> Flambda_type.t -> t
 
 val add_continuation
    : t
