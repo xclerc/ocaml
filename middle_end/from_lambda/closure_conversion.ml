@@ -127,41 +127,39 @@ let rec declare_const t (const : Lambda.structured_constant)
           "string"
     in
     register_const t const name
-  (* | Const_base (Const_float c) -> *)
-  (*   let c = float_of_string c in *)
-  (*   register_const t (CDV.create_allocated_const (Boxed_float c)) "float" *)
-  (* | Const_base (Const_int32 c) -> *)
-  (*   register_const t (CDV.create_allocated_const (Boxed_int32 c)) "int32" *)
-  (* | Const_base (Const_int64 c) -> *)
-  (*   register_const t (CDV.create_allocated_const (Boxed_int64 c)) "int64" *)
-  (* | Const_base (Const_nativeint c) -> *)
-  (*   (\* CR pchambart: this should be pushed further to lambda *\) *)
-  (*   let c = Targetint.of_int64 (Int64.of_nativeint c) in *)
-  (*   register_const t (CDV.create_allocated_const (Boxed_nativeint c)) *)
-  (*     "nativeint" *)
-  (* | Const_pointer c -> *)
-  (*   (\* XCR pchambart: the kind needs to be propagated somewhere to *)
-  (*      say that this value must be scanned *)
-  (*      mshinwell: I don't think it does need to be scanned? *)
-  (*   *\) *)
-  (*   Tagged_immediate (Immediate.int (Targetint.of_int c)), "pointer" *)
-  (* | Const_immstring c -> *)
-  (*   register_const t (CDV.create_allocated_const (Immutable_string c)) *)
-  (*     "immstring" *)
-  (* | Const_float_array c -> *)
-  (*   (\* CR mshinwell: check that Const_float_array is always immutable *\) *)
-  (*   register_const t *)
-  (*     (CDV.create_allocated_const *)
-  (*        (Immutable_float_array (List.map float_of_string c))) *)
-  (*     "float_array" *)
-  (* | Const_block (tag, consts) -> *)
-  (*   let const : CDV.t = *)
-  (*     CDV.create_block *)
-  (*       (Tag.Scannable.create_exn tag) *)
-  (*       (List.map (fun c -> fst (declare_const t c)) consts) *)
-  (*   in *)
-  (*   register_const t const "const_block" *)
-  | _ -> assert false
+  | Const_base (Const_float c) ->
+    let c = float_of_string c in
+    register_const t (Static_part.Boxed_float (Const c)) "float"
+  | Const_base (Const_int32 c) ->
+    register_const t (Static_part.Boxed_int32 (Const c)) "int32"
+  | Const_base (Const_int64 c) ->
+    register_const t (Static_part.Boxed_int64 (Const c)) "int64"
+  | Const_base (Const_nativeint c) ->
+    (* CR pchambart: this should be pushed further to lambda *)
+    let c = Targetint.of_int64 (Int64.of_nativeint c) in
+    register_const t (Static_part.Boxed_nativeint (Const c))
+      "nativeint"
+  | Const_pointer c ->
+    (* XCR pchambart: the kind needs to be propagated somewhere to
+       say that this value must be scanned
+       mshinwell: I don't think it does need to be scanned?
+    *)
+    Tagged_immediate (Immediate.int (Targetint.of_int c)), "pointer"
+  | Const_immstring c ->
+    register_const t (Static_part.Immutable_string (Const c)) "immstring"
+  | Const_float_array c ->
+    (* CR mshinwell: check that Const_float_array is always immutable *)
+    register_const t
+      (Static_part.Immutable_float_array
+         (List.map (fun s -> Static_part.Const (float_of_string s)) c))
+      "float_array"
+  | Const_block (tag, consts) ->
+    let const : Static_part.t =
+      Block
+        (Tag.Scannable.create_exn tag, Immutable,
+         List.map (fun c -> fst (declare_const t c)) consts)
+    in
+    register_const t const "const_block"
 
 let close_const t (const : Lambda.structured_constant)
       : Flambda.Named.t * string =
