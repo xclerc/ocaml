@@ -413,6 +413,7 @@ let rec compile_functor mexp coercion root_path loc =
       specialise = Default_specialise;
       is_a_functor = true;
       stub = false;
+      temperature = Tepid;
     };
     loc;
     body;
