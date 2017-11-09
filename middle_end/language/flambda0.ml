@@ -1393,9 +1393,11 @@ end = struct
       Expr.print f.body
 end and Typed_parameter : sig
   type t
-  val create : Parameter.t -> Flambda_type.t -> t
+  val create : (Parameter.t -> Flambda_type.t -> t) Flambda_type.type_accessor
+  val create_from_kind : Parameter.t -> Flambda_kind.t -> t
   val var : t -> Variable.t
   val ty : t -> Flambda_type.t
+  val kind : t -> Flambda_kind.t
   val equalities : t -> Flambda_primitive.With_fixed_value.t list
   val with_type : t -> Flambda_type.t -> t
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
@@ -1408,7 +1410,7 @@ end and Typed_parameter : sig
     val name_set : t -> Name.Set.t
     val equal_vars : t -> Variable.t list -> bool
     val rename : t -> t
-    val arity : (t -> Flambda_kind.t list) Flambda_type.type_accessor
+    val arity : t -> Flambda_kind.t list
     val free_names : t -> Name.Set.t
     val print : Format.formatter -> t -> unit
   end
@@ -1418,18 +1420,32 @@ end = struct
   type t = {
     param : Parameter.t;
     equalities : Flambda_primitive.With_fixed_value.t list;
+    (* CR mshinwell: Add an invariant check that [kind] matches [ty] *)
     ty : Flambda_type.t;
+    (* [kind] is here so that you don't need an environment, which
+       [Flambda_type.kind] needs, to determine the parameter's kind. *)
+    kind : Flambda_kind.t;
   }
 
-  let create param ty =
+  let create ~importer ~type_of_name param ty =
+    let kind = Flambda_type.kind ~importer ~type_of_name ty in
     { param;
       equalities = [];
       ty;
+      kind;
+    }
+
+  let create_from_kind param kind =
+    { param;
+      equalities = [];
+      ty = Flambda_type.unknown kind Other;
+      kind;
     }
 
   let var t = Parameter.var t.param
   let equalities t = t.equalities
   let ty t = t.ty
+  let kind t = t.kind
 
   let with_type t ty = { t with ty; }
 
@@ -1505,10 +1521,7 @@ end = struct
 
     let rename t = List.map (fun t -> rename t) t
 
-    let arity ~importer ~type_of_name t =
-      List.map (fun t ->
-          Flambda_type.kind ~importer ~type_of_name (ty t))
-        t
+    let arity t = List.map (fun t -> kind t) t
 
     let print ppf t =
       Format.pp_print_list ~pp_sep:Format.pp_print_space print ppf t

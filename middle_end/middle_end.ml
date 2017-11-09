@@ -105,8 +105,8 @@ let middle_end ppf ~prefixname ~backend
         +-+ ("Sink_lets 1", Sink_lets.run)
         +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
         +-+ ("Share_constants", Share_constants.share_constants)
-        +-+ ("Lift_let_to_initialize_symbol",
-             Lift_let_to_initialize_symbol.lift ~backend)
+        +-+ ("Lift_to_toplevel",
+             Lift_to_toplevel.lift ~backend)
         +-+ ("Simplify",
              Simplify.run ~never_inline:false
                ~allow_continuation_inlining:true
@@ -136,8 +136,8 @@ let middle_end ppf ~prefixname ~backend
           +-+ ("Remove_unused_program_constructs",
                Remove_unused_program_constructs.
                  remove_unused_program_constructs)
-          +-+ ("Lift_let_to_initialize_symbol",
-               Lift_let_to_initialize_symbol.lift ~backend)
+          +-+ ("Lift_to_toplevel",
+               Lift_to_toplevel.lift ~backend)
           +-+ ("Lift_let_cont 2", Lift_let_cont.run)
           +-+ ("Sink_lets 2", Sink_lets.run)
           +-+ ("Remove_unused_closure_vars 1",

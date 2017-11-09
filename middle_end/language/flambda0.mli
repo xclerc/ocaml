@@ -666,13 +666,21 @@ end and Typed_parameter : sig
   type t
 
   (** Create a typed parameter with no projection information. *)
-  val create : Parameter.t -> Flambda_type.t -> t
+  val create : (Parameter.t -> Flambda_type.t -> t) Flambda_type.type_accessor
+
+  (** As for [create] except that the parameter is given an unknown type of the
+      specified kind.  This means that the [type_accessor] functions do not
+      need to be provided. *)
+  val create_from_kind : Parameter.t -> Flambda_kind.t -> t
 
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
 
   (** The type of a parameter. *)
   val ty : t -> Flambda_type.t
+
+  (** The kind of a parameter. *)
+  val kind : t -> Flambda_kind.t
 
   (** Equalities to primitive applications that hold about this parameter. *)
   val equalities : t -> Flambda_primitive.With_fixed_value.t list
@@ -708,7 +716,7 @@ end and Typed_parameter : sig
 
     val rename : t -> t
 
-    val arity : (t -> Flambda_arity.t) Flambda_type.type_accessor
+    val arity : t -> Flambda_arity.t
 
     val print : Format.formatter -> t -> unit
   end

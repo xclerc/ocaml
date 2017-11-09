@@ -20,6 +20,12 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+module Of_kind_value :
+  module type of struct include Flambda_static0.Of_kind_value end
+
+module Static_part :
+  module type of struct include Flambda_static0.Static_part end
+
 module Program_body :
   module type of struct include Flambda_static0.Program_body end
 

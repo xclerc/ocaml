@@ -19,22 +19,15 @@
 module K = Flambda_kind
 module Program_body = Flambda_static.Program_body
 
-let static_structure name ~params : Program_body.static_structure =
+let static_structure name ~vars_with_kinds =
   let dbg = Debuginfo.none in
   let make_symbol index =
-    let index =
-      match index with
-      | None -> ""
-      | Some index -> Printf.sprintf " %d" index
-    in
     let linkage_name =
-      Linkage_name.create
-        (Format.asprintf "lifted_%a%a%s" Continuation.print name index)
+      Linkage_name.create (Format.asprintf "lifted_%s%d" name index)
     in
     Symbol.create (Compilation_unit.get_current_exn ()) linkage_name
   in
-  let arity = Flambda.Typed_parameter.List.arity ~importer params in
-  let rec assign_symbols index params_with_kinds
+  let rec assign_symbols index ~vars_with_kinds
         resulting_static_part resulting_bindings =
     (* Even when it looks like we could produce a single symbol with multiple
        fields (say when all of the parameters are of kind [Value] or
@@ -42,14 +35,15 @@ let static_structure name ~params : Program_body.static_structure =
        definitions (e.g. arising as a result of unboxing) will then be cleared
        away by the straightforward "unused symbol" analysis rather than
        requiring something more complicated. *)
-    match params with
+    match vars_with_kinds with
     | [] -> (List.rev resulting_static_part), (List.rev resulting_bindings)
-    | (param, (kind : K.t))::params_with_kinds ->
-      let symbol = make_symbol (Some index) in
-      let var = Flambda.Typed_parameter.var param in
+    | (var, (kind : K.t))::vars_with_kinds ->
+      let symbol = make_symbol index in
       let static_part : Flambda_static.Static_part.t =
         match kind with
-        | Value _ -> Block (Tag.Scannable.zero, Immutable, [var])
+        | Value _ ->
+          Block (Tag.Scannable.zero, Immutable,
+            [Flambda_static.Of_kind_value.Dynamically_computed var])
         | Naked_float -> Boxed_float (Var var)
         | Naked_int32 -> Boxed_int32 (Var var)
         | Naked_int64 -> Boxed_int64 (Var var)
@@ -67,24 +61,23 @@ let static_structure name ~params : Program_body.static_structure =
         | Naked_immediate -> Misc.fatal_errorf "Not yet implemented"
       in
       let binding : Flambda.Named.t = Prim (prim, dbg) in
-      assign_symbols (index + 1) params_with_kinds
+      assign_symbols (index + 1) ~vars_with_kinds
         ((symbol, static_part) :: resulting_static_part)
         ((var, kind, binding) :: resulting_bindings)
   in
-  let params_with_kinds = List.combine params arity in
-  let static_part, bindings = assign_symbols 0 params_with_kinds [] [] in
-  params_with_kinds, static_part, bindings
+  assign_symbols 0 ~vars_with_kinds [] []
 
 type or_do_not_lift =
-  | Lift of Flambda_static.Static_part.t
+  | Lift of Program_body.static_structure
+      * ((Variable.t * Flambda_kind.t * Flambda.Named.t) list)
   | Do_not_lift
 
-let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
+let rec lift (expr : Flambda.Expr.t) ~to_copy =
   match expr with
   | Let_cont ({ body; handlers = Nonrecursive { name; handler = ({
       params; handler; is_exn_handler; _ } as handler_record); }; })
       when (not is_exn_handler) ->
-    let free_conts_body, lifted, body = lift ~importer body ~to_copy in
+    let free_conts_body, lifted, body = lift body ~to_copy in
     let our_cont = Continuation.Set.singleton name in
     if Continuation.Set.is_empty free_conts_body then begin
       (* The continuation is unused; delete it. *)
@@ -97,26 +90,29 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
          We augment [to_copy] to ensure that the bindings of the variables
          currently serving as parameters to [handler] is/are restated at the
          top of each subsequent lifted expression. *)
-      let arity = Flambda.Typed_parameter.List.arity ~importer params in
-      let computed_values, static_structure, to_copy' =
-        static_structure name ~params
+      let vars = Flambda.Typed_parameter.List.vars params in
+      let arity = Flambda.Typed_parameter.List.arity params in
+      let vars_with_kinds = List.combine vars arity in
+      let static_structure, to_copy' =
+        let name = Format.asprintf "%a" Continuation.print name in
+        static_structure name ~vars_with_kinds
       in
       let to_copy = to_copy' @ to_copy in
       let free_conts_handler, lifted', handler =
-        lift ~importer handler ~to_copy
+        lift handler ~to_copy
       in
       let computation : Program_body.computation =
         { expr = body;
           return_cont = name;
-          computed_values;
+          computed_values = vars_with_kinds;
         }
       in
-      let defn : Flambda_static.definition =
+      let defn : Program_body.definition =
         { computation = Some computation;
           static_structure;
         }
       in
-      let lifted = lifted @ [symbol, defn, to_copy] @ lifted' in
+      let lifted = lifted @ [defn, to_copy] @ lifted' in
       let expr = Flambda.Expr.bind ~bindings:to_copy' ~body:handler in
       free_conts_handler, lifted, expr
     end else begin
@@ -140,30 +136,26 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
       free_conts, lifted, expr
     end
   | Let { var; kind; defining_expr; body; _ } ->
+    let vars_with_kinds = [var, kind] in
     let static_part_or_do_not_lift =
-      match kind with
-      | Value _ ->
-        begin match defining_expr with
-        | Simple _ -> Do_not_lift
-        | Prim _
-        | Set_of_closures _
-        | Assign _
-        | Read_mutable _ ->
-          Lift (Block (
-            Tag.Scannable.zero, Immutable, [Dynamically_computed var]))
-        end
-      | Naked_float -> Boxed_float (Var var)
-      | Naked_int32 -> Boxed_int32 (Var var)
-      | Naked_int64 -> Boxed_int64 (Var var)
-      | Naked_nativeint -> Boxed_nativeint (Var var)
-      | Naked_immediate -> Misc.fatal_errorf "Not yet implemented"
+      match defining_expr with
+      | Simple _ -> Do_not_lift
+      | Prim _
+      | Set_of_closures _
+      | Assign _
+      | Read_mutable _ ->
+        let name = Format.asprintf "%a" Variable.print var in
+        let static_structure, bindings =
+          static_structure name ~vars_with_kinds
+        in
+        Lift (static_structure, bindings)
     in
     begin match static_part_or_do_not_lift with
     | Do_not_lift ->
       (* This let-expression is not to be lifted, but instead restated at the
          top of each lifted expression. *)
       let to_copy = (var, kind, defining_expr)::to_copy in
-      let free_conts, lifted, body = lift ~importer body ~to_copy in
+      let free_conts, lifted, body = lift body ~to_copy in
       let body =
         if Variable.Set.mem var (Flambda.Expr.free_variables body) then
           Flambda.Expr.create_let var kind defining_expr body
@@ -171,48 +163,36 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
           body
       in
       free_conts, lifted, body
-    | Lift static_part ->
-
-
-
-
-
-
-
-    let var' = Variable.rename var in
-
-    let symbol, sym_defining_expr =
-        let symbol =
-          Flambda_utils.make_variable_symbol var
-        in
-        symbol,
-          Flambda.Named.Read_symbol_field {
-            symbol;
-            logical_field = 0;
-          }
-    in
-    let to_copy = (var, kind, sym_defining_expr)::to_copy in
-    let free_conts, lifted, body = lift ~importer body ~to_copy in
-    let return_cont, return_arity, expr =
+    | Lift (static_structure, to_copy') ->
+      let to_copy = to_copy' @ to_copy in
+      let free_conts, lifted, body = lift body ~to_copy in
+      let return_cont, expr =
+        let var' = Variable.rename var in
         let return_cont = Continuation.create () in
-        let return_arity = [K.value Must_scan] in
         let expr : Flambda.Expr.t =
           Flambda.Expr.create_let var' kind defining_expr
-            (Apply_cont (return_cont, None, [var']))
+            (Apply_cont (return_cont, None, [Simple.var var']))
         in
-        return_cont, return_arity, expr
-    in
-    let descr : IS.t =
-      { expr;
-        return_cont;
-        return_arity;
-      }
-    in
-    let lifted = (symbol, descr, to_copy) :: lifted in
-    let body = Flambda.Expr.create_let var kind sym_defining_expr body in
-    free_conts, lifted, body
+        return_cont, expr
+      in
+      let computation : Program_body.computation =
+        { expr;
+          return_cont;
+          computed_values = vars_with_kinds;
+        }
+      in
+      let defn : Program_body.definition =
+        { computation = Some computation;
+          static_structure;
+        }
+      in
+      let lifted = (defn, to_copy) :: lifted in
+      let body = Flambda.Expr.bind ~bindings:to_copy' ~body in
+      free_conts, lifted, body
+    end
   | Let_cont { body; handlers; } ->
-    let free_conts_body, lifted, body = lift ~importer body ~to_copy in
+    (* Note that we do not recurse into the continuation [handlers]. *)
+    let free_conts_body, lifted, body = lift body ~to_copy in
     let expr : Flambda.Expr.t =
       Let_cont {
         body;
@@ -236,38 +216,54 @@ let rec lift ~importer (expr : Flambda.Expr.t) ~to_copy =
 (* CR-someday mshinwell: Try to avoid having a separate substitution phase
    (so long as it doesn't complicate the code too much; the function above
    is already quite tricky). *)
-let introduce_symbols ~importer defn =
-  let _free_conts, lifted, expr = lift ~importer expr ~to_copy:[] in
-  let lifted =
-    List.map (fun (symbol, defn, to_copy) ->
-        let to_copy, subst =
-          List.fold_left (fun (to_copy, subst)
-                  (var, kind, defining_expr) ->
-              let var' = Variable.rename var in
-              let to_copy = (var', kind, defining_expr) :: to_copy in
-              to_copy, Variable.Map.add var var' subst)
-            ([], Variable.Map.empty)
-            to_copy
-        in
-        let to_copy =
-          List.map (fun (var, kind, defining_expr) ->
-              let defining_expr =
-                Flambda.Named.toplevel_substitution ~importer subst
-                  defining_expr
-              in
-              var, kind, defining_expr)
-            to_copy
-        in
-        let expr = Flambda.Expr.toplevel_substitution ~importer subst expr in
-        let descr = { descr with expr; } in
-        symbol, descr, to_copy)
-      lifted
+let introduce_symbols ~importer (defn : Program_body.definition) =
+  let computation_and_lifted =
+    Misc.Stdlib.Option.map (fun (computation : Program_body.computation) ->
+      let _free_conts, lifted, expr = lift computation.expr ~to_copy:[] in
+      let lifted =
+        List.map (fun ((defn : Program_body.definition), to_copy) ->
+            let to_copy, subst =
+              List.fold_left (fun (to_copy, subst)
+                      (var, kind, defining_expr) ->
+                  let var' = Variable.rename var in
+                  let to_copy = (var', kind, defining_expr) :: to_copy in
+                  to_copy, Variable.Map.add var var' subst)
+                ([], Variable.Map.empty)
+                to_copy
+            in
+            let to_copy =
+              List.map (fun (var, kind, defining_expr) ->
+                  let defining_expr =
+                    Flambda.Named.toplevel_substitution ~importer subst
+                      defining_expr
+                  in
+                  var, kind, defining_expr)
+                to_copy
+            in
+            let computation =
+              Misc.Stdlib.Option.map
+                (fun (computation : Program_body.computation) ->
+                  let expr =
+                    Flambda.Expr.toplevel_substitution ~importer subst expr
+                  in
+                  { computation with expr; })
+                defn.computation
+            in
+            let defn = { defn with computation; } in
+            { defn with computation; }, to_copy)
+          lifted
+      in
+      lifted, { computation with expr; })
+    defn.computation
   in
-  lifted, expr
+  match computation_and_lifted with
+  | None -> [], defn
+  | Some (lifted, computation) ->
+    lifted, { defn with computation = Some computation; }
 
 let add_extracted lifted program_body =
   List.fold_left
-    (fun acc (symbol, (defn : Flambda_static.Program_body.definition), to_copy)
+    (fun acc ((defn : Flambda_static.Program_body.definition), to_copy)
         : Flambda_static.Program_body.t ->
       let computation =
         Misc.Stdlib.Option.map
@@ -285,27 +281,27 @@ let add_extracted lifted program_body =
             { computation with expr; })
           defn.computation
       in
-      Define_symbol (symbol, { defn with computation; }, acc))
+      Define_symbol ({ defn with computation; }, acc))
     program_body
     (List.rev lifted)
 
 let rec lift_program_body ~importer (body : Flambda_static.Program_body.t)
       : Flambda_static.Program_body.t =
-  match program with
-  | Define_symbol (defn, body)
-    let body = lift_program_body ~importer body in
+  let lift_define_symbol defn body ~rebuild =
     let introduced, defn = introduce_symbols ~importer defn in
-    add_extracted introduced
-      (Flambda_static.Program_body.Define_symbol (symbol, defn, body))
+    let body = lift_program_body ~importer body in
+    add_extracted introduced (rebuild defn body)
+  in
+  match body with
+  | Define_symbol (defn, body) ->
+    lift_define_symbol defn body ~rebuild:(fun defn body ->
+      Program_body.Define_symbol (defn, body))
   | Define_symbol_rec (defn, body) ->
-    let body = lift_program_body body in
-    let introduced, defn = introduce_symbols defn in
-    add_extracted introduced
-      (Flambda_static.Program_body.Define_symbol (symbol, defn, body))
-  | Root _ -> program
+    lift_define_symbol defn body ~rebuild:(fun defn body ->
+      Program_body.Define_symbol_rec (defn, body))
+  | Root _ -> body
 
 let lift ~importer (program : Flambda_static.Program.t) =
   { program with
-    program_body =
-      lift_program_body ~importer ~type_of_name program.program_body;
+    body = lift_program_body ~importer program.body;
   }

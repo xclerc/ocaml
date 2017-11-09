@@ -992,11 +992,7 @@ end = struct
               if handler.is_exn_handler then Exn_handler else Normal
             in
             let params = handler.params in
-            let arity =
-              Typed_parameter.List.arity ~importer
-                ~type_of_name:(fun name -> E.type_of_name_option env name)
-                params
-            in
+            let arity = Typed_parameter.List.arity params in
             let env = add_typed_parameters env params in
             let env = E.set_current_continuation_stack env handler_stack in
             loop env handler.handler;
@@ -1005,11 +1001,7 @@ end = struct
             let recursive_env =
               Continuation.Map.fold
                 (fun cont (handler : Continuation_handler.t) env ->
-                  let arity =
-                    Typed_parameter.List.arity ~importer
-                      ~type_of_name:(fun name -> E.type_of_name_option env name)
-                      handler.params
-                  in
+                  let arity = Typed_parameter.List.arity handler.params in
                   let kind : Invariant_env.continuation_kind =
                     if handler.is_exn_handler then Exn_handler else Normal
                   in

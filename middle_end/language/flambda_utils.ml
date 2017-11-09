@@ -150,7 +150,9 @@ let make_let_cont_alias ~importer ~type_of_name ~name ~alias_of
       let ty = Flambda_type.unknown_like ~importer ~type_of_name ty in
       let var = Variable.create "let_cont_alias" in
       let param = Parameter.wrap var in
-      let typed_param = Flambda.Typed_parameter.create param ty in
+      let typed_param =
+        Flambda.Typed_parameter.create ~importer ~type_of_name param ty
+      in
       typed_param, Simple.var var
     in
     List.split (List.map param_and_var_for parameter_types)
