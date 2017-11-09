@@ -352,48 +352,48 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
   (*   in *)
   (*   Flambda.Expr.create_let set_of_closures_var (Flambda_kind.value Must_scan) *)
   (*     set_of_closures body *)
-  (* | Let_cont let_cont -> *)
-  (*   if let_cont.is_exn_handler then begin *)
-  (*     assert (not let_cont.administrative); *)
-  (*     assert (List.length let_cont.params = 1); *)
-  (*     assert (let_cont.recursive = Asttypes.Nonrecursive); *)
-  (*   end; *)
-  (*   (\* Inline out administrative redexes. *\) *)
-  (*   if let_cont.administrative then begin *)
-  (*     assert (let_cont.recursive = Asttypes.Nonrecursive); *)
-  (*     let body_env = *)
-  (*       Env.add_administrative_redex env let_cont.name ~params:let_cont.params *)
-  (*         ~handler:let_cont.handler *)
-  (*     in *)
-  (*     close t body_env let_cont.body *)
-  (*   end else begin *)
-  (*     let handler_env, params = Env.add_vars_like env let_cont.params in *)
-  (*     let params = *)
-  (*       List.map (fun param -> *)
-  (*         Flambda.Typed_parameter.create *)
-  (*           (Parameter.wrap param) *)
-  (*           (Flambda_type.any_value Must_scan Other)) *)
-  (*         params *)
-  (*     in *)
-  (*     let handler : Flambda.Continuation_handler.t = *)
-  (*       { params; *)
-  (*         stub = false; *)
-  (*         is_exn_handler = let_cont.is_exn_handler; *)
-  (*         handler = close t handler_env let_cont.handler; *)
-  (*       }; *)
-  (*     in *)
-  (*     let handlers : Flambda.Let_cont_handlers.t = *)
-  (*       match let_cont.recursive with *)
-  (*       | Nonrecursive -> Nonrecursive { name = let_cont.name; handler; } *)
-  (*       | Recursive -> *)
-  (*         Recursive (Continuation.Map.add let_cont.name handler *)
-  (*           Continuation.Map.empty) *)
-  (*     in *)
-  (*     Let_cont { *)
-  (*       body = close t env let_cont.body; *)
-  (*       handlers; *)
-  (*     }; *)
-  (*   end *)
+  | Let_cont let_cont ->
+    if let_cont.is_exn_handler then begin
+      assert (not let_cont.administrative);
+      assert (List.length let_cont.params = 1);
+      assert (let_cont.recursive = Asttypes.Nonrecursive);
+    end;
+    (* Inline out administrative redexes. *)
+    if let_cont.administrative then begin
+      assert (let_cont.recursive = Asttypes.Nonrecursive);
+      let body_env =
+        Env.add_administrative_redex env let_cont.name ~params:let_cont.params
+          ~handler:let_cont.handler
+      in
+      close t body_env let_cont.body
+    end else begin
+      let handler_env, params = Env.add_vars_like env let_cont.params in
+      let params =
+        List.map (fun param ->
+          Flambda.Typed_parameter.create
+            (Parameter.wrap param)
+            (Flambda_type.any_value Must_scan Other))
+          params
+      in
+      let handler : Flambda.Continuation_handler.t =
+        { params;
+          stub = false;
+          is_exn_handler = let_cont.is_exn_handler;
+          handler = close t handler_env let_cont.handler;
+        };
+      in
+      let handlers : Flambda.Let_cont_handlers.t =
+        match let_cont.recursive with
+        | Nonrecursive -> Nonrecursive { name = let_cont.name; handler; }
+        | Recursive ->
+          Recursive (Continuation.Map.add let_cont.name handler
+            Continuation.Map.empty)
+      in
+      Let_cont {
+        body = close t env let_cont.body;
+        handlers;
+      };
+    end
   | Apply { kind; func; args; continuation; loc; should_be_tailcall = _;
       inlined; specialised; } ->
     let call_kind : Flambda.Call_kind.t =
@@ -420,50 +420,49 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       inline = convert_inline_attribute_from_lambda inlined;
       specialise = convert_specialise_attribute_from_lambda specialised;
     })
-  (* | Apply_cont (cont, trap_action, args) -> *)
-  (*   let args = Env.find_vars env args in *)
-  (*   begin match Env.find_administrative_redex env cont with *)
-  (*   | Some (params, handler) when trap_action = None -> *)
-  (*     let handler_env = Env.add_vars env params args in *)
-  (*     close t handler_env handler *)
-  (*   | _ -> *)
-  (*     let trap_action = *)
-  (*       Misc.Stdlib.Option.map (fun (trap_action : Ilambda.trap_action) *)
-  (*                 : Flambda.Trap_action.t -> *)
-  (*           match trap_action with *)
-  (*           | Push { id; exn_handler; } -> Push { id; exn_handler; } *)
-  (*           | Pop { id; exn_handler; } -> Pop { id; exn_handler; }) *)
-  (*         trap_action *)
-  (*     in *)
-  (*     Apply_cont (cont, trap_action, args) *)
-  (*   end *)
-  (* | Switch (scrutinee, sw) -> *)
-  (*   (\* CR pchambart: Switch representation should be changed. *)
-  (*      There is no point in default anymore. The code sharing *)
-  (*      is present by default since branches are continuations. *\) *)
-  (*   let arms = *)
-  (*     List.map (fun (case, arm) -> Targetint.of_int_exn case, arm) *)
-  (*       sw.consts *)
-  (*   in *)
-  (*   let all_possible_values = *)
-  (*     match sw.failaction with *)
-  (*     | None -> *)
-  (*       List.fold_left (fun set (case, _) -> *)
-  (*         Targetint.Set.add (Targetint.of_int_exn case) set) *)
-  (*         Targetint.Set.empty *)
-  (*         sw.consts *)
-  (*     | Some _ -> *)
-  (*       Numbers.Int.Set.fold (fun case set -> *)
-  (*         Targetint.Set.add (Targetint.of_int_exn case) set) *)
-  (*         (Numbers.Int.zero_to_n (sw.numconsts - 1)) *)
-  (*         Targetint.Set.empty *)
-  (*   in *)
-  (*   Flambda.Expr.create_switch ~scrutinee:(Env.find_var env scrutinee) *)
-  (*     ~all_possible_values *)
-  (*     ~arms *)
-  (*     ~default:sw.failaction *)
-  (* | Event (ilam, _) -> close t env ilam *)
-  | _ -> assert false
+  | Apply_cont (cont, trap_action, args) ->
+    let args = Env.find_vars env args in
+    begin match Env.find_administrative_redex env cont with
+    | Some (params, handler) when trap_action = None ->
+      let handler_env = Env.add_vars env params args in
+      close t handler_env handler
+    | _ ->
+      let trap_action =
+        Misc.Stdlib.Option.map (fun (trap_action : Ilambda.trap_action)
+                  : Flambda.Trap_action.t ->
+            match trap_action with
+            | Push { id; exn_handler; } -> Push { id; exn_handler; }
+            | Pop { id; exn_handler; } -> Pop { id; exn_handler; })
+          trap_action
+      in
+      Apply_cont (cont, trap_action, List.map Simple.var args)
+    end
+  | Switch (scrutinee, sw) ->
+    (* CR pchambart: Switch representation should be changed.
+       There is no point in default anymore. The code sharing
+       is present by default since branches are continuations. *)
+    let arms =
+      List.map (fun (case, arm) -> Targetint.of_int_exn case, arm)
+        sw.consts
+    in
+    let all_possible_values =
+      match sw.failaction with
+      | None ->
+        List.fold_left (fun set (case, _) ->
+          Targetint.Set.add (Targetint.of_int_exn case) set)
+          Targetint.Set.empty
+          sw.consts
+      | Some _ ->
+        Numbers.Int.Set.fold (fun case set ->
+          Targetint.Set.add (Targetint.of_int_exn case) set)
+          (Numbers.Int.zero_to_n (sw.numconsts - 1))
+          Targetint.Set.empty
+    in
+    Flambda.Expr.create_switch ~scrutinee:(Env.find_name env scrutinee)
+      ~all_possible_values
+      ~arms
+      ~default:sw.failaction
+  | Event (ilam, _) -> close t env ilam
 
 and close_named t env (named : Ilambda.named) : Flambda.Named.t =
   match named with
