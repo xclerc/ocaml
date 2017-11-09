@@ -36,6 +36,8 @@ type array_kind =
 (* CR mshinwell: "Float" -> "Naked_float"? *)
 (* CR mshinwell: Don't call this "kind".  Kind errors are errors in the
    compiler code, whereas a mismatch here may be due to invalid code. *)
+(* CR pchambart: Not_a_float can be a float
+   Should it be called Any or something like that ? *)
 type field_kind = Not_a_float | Float
 
 type string_or_bytes = String | Bytes

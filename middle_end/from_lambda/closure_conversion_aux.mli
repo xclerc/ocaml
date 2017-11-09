@@ -38,12 +38,14 @@ module Env : sig
   val find_name : t -> Ident.t -> Name.t
   val find_name_exn : t -> Ident.t -> Name.t
 
-  val find_simples : t -> Ident.t list -> Simple.t list
+  val find_simple : t -> Ident.t -> Simple.t
+  val find_simple_exn : t -> Ident.t -> Simple.t
 
   val find_var : t -> Ident.t -> Variable.t
   val find_var_exn : t -> Ident.t -> Variable.t
 
   val find_vars : t -> Ident.t list -> Variable.t list
+  val find_simples : t -> Ident.t list -> Simple.t list
 
   val add_administrative_redex
      : t

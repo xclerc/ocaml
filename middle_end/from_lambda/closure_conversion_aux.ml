@@ -64,6 +64,9 @@ module Env = struct
   let find_name t id = Name.var (find_var t id)
   let find_name_exn t id = Name.var (find_var_exn t id)
 
+  let find_simple t id = Simple.var (find_var t id)
+  let find_simple_exn t id = Simple.var (find_var_exn t id)
+
   let find_vars t ids =
     List.map (fun id -> find_var t id) ids
 

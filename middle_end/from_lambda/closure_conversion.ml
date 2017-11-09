@@ -169,7 +169,7 @@ let close_const t (const : Lambda.structured_constant)
   | Tagged_immediate c, name ->
     Simple (Simple.const (Tagged_immediate c)), name
   | Symbol s, name ->
-    Simple (Simple.name (Name.symbol s)), name
+    Simple (Simple.symbol s), name
   | Dynamically_computed _, name ->
     Misc.fatal_errorf "Declaring a computed constant %s" name
 
@@ -193,8 +193,8 @@ let flambda_type_of_lambda_value_kind (k : Lambda.value_kind) : Flambda_type.t =
     (* Flambda_type.any_naked_immediate () *)
 
 let convert_inline_attribute_from_lambda
-    (attr : Lambda.inline_attribute)
-    : Flambda.inline_attribute =
+      (attr : Lambda.inline_attribute)
+      : Flambda.inline_attribute =
   match attr with
   | Always_inline -> Always_inline
   | Never_inline -> Never_inline
@@ -202,12 +202,65 @@ let convert_inline_attribute_from_lambda
   | Default_inline -> Default_inline
 
 let convert_specialise_attribute_from_lambda
-    (attr : Lambda.specialise_attribute)
-    : Flambda.specialise_attribute =
+      (attr : Lambda.specialise_attribute)
+      : Flambda.specialise_attribute =
   match attr with
   | Always_specialise -> Always_specialise
   | Never_specialise -> Never_specialise
   | Default_specialise -> Default_specialise
+
+(* CR mshinwell: Moved here from Flambda_kind
+
+
+val of_block_shape : Lambda.block_shape -> num_fields:int -> t
+*)
+
+let of_block_shape (shape : Lambda.block_shape) ~num_fields =
+  match shape with
+  | None ->
+    List.init num_fields (fun _field -> Flambda_kind.value Must_scan)
+  | Some shape ->
+    let shape_length = List.length shape in
+    if num_fields <> shape_length then begin
+      Misc.fatal_errorf "Flambda_arity.of_block_shape: num_fields is %d \
+          yet the shape has %d fields"
+        num_fields
+        shape_length
+    end;
+    List.map (fun (kind : Lambda.value_kind) ->
+        match kind with
+        | Pgenval | Pfloatval | Pboxedintval _ -> Flambda_kind.value Must_scan
+        | Pintval -> Flambda_kind.value Can_scan
+        | Pnaked_intval -> Flambda_kind.naked_immediate ())
+      shape
+
+let convert_mutable_flag (flag : Asttypes.mutable_flag)
+      : Flambda_primitive.mutable_or_immutable =
+  match flag with
+  | Mutable -> Mutable
+  | Immutable -> Immutable
+
+let convert_primitive (prim : Lambda.primitive) (args : Simple.t list)
+      : Flambda_primitive.t =
+  match prim, args with
+  | Pmakeblock (tag, flag, shape), _ ->
+    let flag = convert_mutable_flag flag in
+    let arity = of_block_shape shape ~num_fields:(List.length args) in
+    Variadic (Make_block (Tag.Scannable.create_exn tag, flag, arity), args)
+  | Pnegint, [arg] ->
+    Unary (Int_arith (Flambda_kind.Standard_int.Tagged_immediate, Neg), arg)
+  | Pfield field, [arg] ->
+    (* CR pchambart: every load is annotated as mutable we must be
+       careful to update that when we know it is not. This should not
+       be an error.
+       We need more type propagations to be precise here *)
+    Unary (Block_load (field, Not_a_float, Mutable), arg)
+  | ( Pfield _ | Pnegint ), _ ->
+    Misc.fatal_errorf "Closure_conversion.convert_primitive: \
+                       Wrong arrity for %a: %i"
+      Printlambda.primitive prim (List.length args)
+  | _ ->
+    assert false
 
 let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
   match lam with
@@ -415,40 +468,40 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
 and close_named t env (named : Ilambda.named) : Flambda.Named.t =
   match named with
   | Var id ->
-    let name =
+    let simple =
       if Ident.is_predef_exn id then begin
         let symbol = t.symbol_for_global' id in
         t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-        Name.symbol symbol
+        Simple.symbol symbol
       end else begin
-        Name.var (Env.find_var env id)
+        Simple.var (Env.find_var env id)
       end
     in
-    Simple (Simple.name name)
+    Simple simple
   | Const cst ->
     fst (close_const t cst)
-  (* | Prim (Pread_mutable id, args, _) -> *)
-  (*   (\* All occurrences of mutable variables bound by [Let_mutable] are *)
-  (*      identified by [Prim (Pread_mutable, ...)] in Ilambda. *\) *)
-  (*   assert (args = []); *)
-  (*   Read_mutable (Env.find_mutable_var env id) *)
-  (* | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id -> *)
-  (*   let symbol = t.symbol_for_global' id in *)
-  (*   t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols; *)
-  (*   Symbol (Symbol.of_symbol_exn symbol) *)
-  (* | Prim (Pgetglobal id, [], _) -> *)
-  (*   assert (not (Ident.same id t.current_unit_id)); *)
-  (*   let symbol = t.symbol_for_global' id in *)
-  (*   t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols; *)
-  (*   Symbol (Symbol.of_symbol_exn symbol) *)
-  (* | Prim (p, args, loc) -> *)
-  (*   Prim (p, Env.find_vars env args, Debuginfo.from_location loc) *)
-  (* | Assign { being_assigned; new_value; } -> *)
-  (*   Assign { *)
-  (*     being_assigned = Env.find_mutable_var env being_assigned; *)
-  (*     new_value = Env.find_var env new_value; *)
-  (*   } *)
-  | _ -> assert false
+  | Prim (Pread_mutable id, args, _) ->
+    (* All occurrences of mutable variables bound by [Let_mutable] are
+       identified by [Prim (Pread_mutable, ...)] in Ilambda. *)
+    assert (args = []);
+    Read_mutable (Env.find_mutable_var env id)
+  | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
+    let symbol = t.symbol_for_global' id in
+    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+    Simple (Simple.symbol symbol)
+  | Prim (Pgetglobal id, [], _) ->
+    assert (not (Ident.same id t.current_unit_id));
+    let symbol = t.symbol_for_global' id in
+    t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+    Simple (Simple.symbol symbol)
+  | Prim (p, args, loc) ->
+    let prim = convert_primitive p (Env.find_simples env args) in
+    Prim (prim, Debuginfo.from_location loc)
+  | Assign { being_assigned; new_value; } ->
+    Assign {
+      being_assigned = Env.find_mutable_var env being_assigned;
+      new_value = Env.find_simple env new_value;
+    }
 
 (** Perform closure conversion on a set of function declarations, returning a
     set of closures.  (The set will often only contain a single function;
@@ -730,32 +783,6 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   (* } *)
 
   assert false
-
-(* CR mshinwell: Moved here from Flambda_kind
-
-
-val of_block_shape : Lambda.block_shape -> num_fields:int -> t
-
-let of_block_shape (shape : Lambda.block_shape) ~num_fields =
-  match shape with
-  | None ->
-    List.init num_fields (fun _field -> Flambda_kind.value Must_scan)
-  | Some shape ->
-    let shape_length = List.length shape in
-    if num_fields <> shape_length then begin
-      Misc.fatal_errorf "Flambda_arity.of_block_shape: num_fields is %d \
-          yet the shape has %d fields"
-        num_fields
-        shape_length
-    end;
-    List.map (fun (kind : Lambda.value_kind) ->
-        match kind with
-        | Pgenval | Pfloatval | Pboxedintval _ -> Flambda_kind.value Must_scan
-        | Pintval -> Flambda_kind.value Can_scan
-        | Pnaked_intval -> Flambda_kind.naked_immediate ())
-      shape
-
-*)
 
 (* CR mshinwell: read carefully.  Moved here from Flambda_type
 
