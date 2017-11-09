@@ -35,6 +35,11 @@ module Env : sig
   val add_var_like : t -> Ident.t -> t * Variable.t
   val add_vars_like : t -> Ident.t list -> t * Variable.t list
 
+  val find_name : t -> Ident.t -> Name.t
+  val find_name_exn : t -> Ident.t -> Name.t
+
+  val find_simples : t -> Ident.t list -> Simple.t list
+
   val find_var : t -> Ident.t -> Variable.t
   val find_var_exn : t -> Ident.t -> Variable.t
 
