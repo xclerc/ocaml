@@ -1856,6 +1856,8 @@ let lengths_of_arrays_or_blocks ~importer ~type_of_name t
   match result with
   | Invalid -> Invalid
   | Proved _ ->
+    (* XXX [Obj.truncate] can only make blocks shorter, which is a fact we
+       should be able to use *)
     if Config.ban_obj_dot_truncate then result
     else Proved Not_all_values_known
 
