@@ -138,17 +138,18 @@ val does_not_freshen : t -> Variable.t list -> bool
 val add_symbol
    : t
   -> Symbol.t
-  -> Flambda_type.Of_symbol.t
+  -> Flambda_type.t
   -> t
 
 val redefine_symbol
    : t
   -> Symbol.t
-  -> Flambda_type.Of_symbol.t
+  -> Flambda_type.t
   -> t
 
-val find_symbol : t -> Symbol.t -> Flambda_type.Of_symbol.t
+val find_symbol : t -> Symbol.t -> Flambda_type.t
 
+(* XXX to be turned into equations (including to primitives)
 (** Note that the given [bound_to] holds the given [projection]. *)
 val add_projection
    : t
@@ -162,6 +163,7 @@ val find_projection
    : t
   -> projection:Projection.t
   -> Variable.t option
+*)
 
 (** Whether the environment has an approximation for the given variable. *)
 val mem : t -> Variable.t -> bool
