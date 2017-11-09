@@ -99,77 +99,79 @@ type t = {
 (*     ~specialise:Default_specialise ~is_a_functor:false *)
 (*     ~closure_origin:(Closure_origin.create closure_bound_var) *)
 
-(* module CDV = Flambda_static.Constant_defining_value *)
+module Static_part = Flambda_static0.Static_part
 
-(* let register_const t (constant : CDV.t) name *)
-(*       : Flambda_static.Constant_defining_value_block_field.t * string = *)
-(*   let current_compilation_unit = Compilation_unit.get_current_exn () in *)
-(*   (\* Create a variable to ensure uniqueness of the symbol *\) *)
-(*   let var = Variable.create ~current_compilation_unit name in *)
-(*   let symbol = *)
-(*     Flambda_utils.make_variable_symbol var *)
-(*       ~kind:(Symbol.value_kind (CDV.tag constant)) *)
-(*   in *)
-(*   t.declared_symbols <- (symbol, constant) :: t.declared_symbols; *)
-(*   Symbol symbol, name *)
+let register_const t (constant : Static_part.t) name
+      : Flambda_static0.Of_kind_value.t * string =
+  let current_compilation_unit = Compilation_unit.get_current_exn () in
+  (* Create a variable to ensure uniqueness of the symbol *)
+  let var = Variable.create ~current_compilation_unit name in
+  let symbol =
+    Flambda_utils.make_variable_symbol var
+  in
+  t.declared_symbols <- (symbol, constant) :: t.declared_symbols;
+  Symbol symbol, name
 
-(* let rec declare_const t (const : Lambda.structured_constant) *)
-(*       : Flambda_static.Constant_defining_value_block_field.t * string = *)
-(*   match const with *)
-(*   | Const_base (Const_int c) -> *)
-(*     Tagged_immediate (Immediate.int (Targetint.of_int c)), "int" *)
-(*   | Const_base (Const_char c) -> Tagged_immediate (Immediate.char c), "char" *)
-(*   | Const_base (Const_string (s, _)) -> *)
-(*     let const, name = *)
-(*       if Config.safe_string then *)
-(*         CDV.create_allocated_const (Immutable_string s), "immstring" *)
-(*       else *)
-(*         CDV.create_allocated_const (Mutable_string { initial_value = s; }), *)
-(*           "string" *)
-(*     in *)
-(*     register_const t const name *)
-(*   | Const_base (Const_float c) -> *)
-(*     let c = float_of_string c in *)
-(*     register_const t (CDV.create_allocated_const (Boxed_float c)) "float" *)
-(*   | Const_base (Const_int32 c) -> *)
-(*     register_const t (CDV.create_allocated_const (Boxed_int32 c)) "int32" *)
-(*   | Const_base (Const_int64 c) -> *)
-(*     register_const t (CDV.create_allocated_const (Boxed_int64 c)) "int64" *)
-(*   | Const_base (Const_nativeint c) -> *)
-(*     (\* CR pchambart: this should be pushed further to lambda *\) *)
-(*     let c = Targetint.of_int64 (Int64.of_nativeint c) in *)
-(*     register_const t (CDV.create_allocated_const (Boxed_nativeint c)) *)
-(*       "nativeint" *)
-(*   | Const_pointer c -> *)
-(*     (\* XCR pchambart: the kind needs to be propagated somewhere to *)
-(*        say that this value must be scanned *)
-(*        mshinwell: I don't think it does need to be scanned? *)
-(*     *\) *)
-(*     Tagged_immediate (Immediate.int (Targetint.of_int c)), "pointer" *)
-(*   | Const_immstring c -> *)
-(*     register_const t (CDV.create_allocated_const (Immutable_string c)) *)
-(*       "immstring" *)
-(*   | Const_float_array c -> *)
-(*     (\* CR mshinwell: check that Const_float_array is always immutable *\) *)
-(*     register_const t *)
-(*       (CDV.create_allocated_const *)
-(*          (Immutable_float_array (List.map float_of_string c))) *)
-(*       "float_array" *)
-(*   | Const_block (tag, consts) -> *)
-(*     let const : CDV.t = *)
-(*       CDV.create_block *)
-(*         (Tag.Scannable.create_exn tag) *)
-(*         (List.map (fun c -> fst (declare_const t c)) consts) *)
-(*     in *)
-(*     register_const t const "const_block" *)
+let rec declare_const t (const : Lambda.structured_constant)
+      : Flambda_static0.Of_kind_value.t * string =
+  match const with
+  | Const_base (Const_int c) ->
+    Tagged_immediate (Immediate.int (Targetint.of_int c)), "int"
+  | Const_base (Const_char c) -> Tagged_immediate (Immediate.char c), "char"
+  | Const_base (Const_string (s, _)) ->
+    let const, name =
+      if Config.safe_string then
+        Static_part.Immutable_string (Const s), "immstring"
+      else
+        Static_part.Mutable_string { initial_value = Const s; },
+          "string"
+    in
+    register_const t const name
+  (* | Const_base (Const_float c) -> *)
+  (*   let c = float_of_string c in *)
+  (*   register_const t (CDV.create_allocated_const (Boxed_float c)) "float" *)
+  (* | Const_base (Const_int32 c) -> *)
+  (*   register_const t (CDV.create_allocated_const (Boxed_int32 c)) "int32" *)
+  (* | Const_base (Const_int64 c) -> *)
+  (*   register_const t (CDV.create_allocated_const (Boxed_int64 c)) "int64" *)
+  (* | Const_base (Const_nativeint c) -> *)
+  (*   (\* CR pchambart: this should be pushed further to lambda *\) *)
+  (*   let c = Targetint.of_int64 (Int64.of_nativeint c) in *)
+  (*   register_const t (CDV.create_allocated_const (Boxed_nativeint c)) *)
+  (*     "nativeint" *)
+  (* | Const_pointer c -> *)
+  (*   (\* XCR pchambart: the kind needs to be propagated somewhere to *)
+  (*      say that this value must be scanned *)
+  (*      mshinwell: I don't think it does need to be scanned? *)
+  (*   *\) *)
+  (*   Tagged_immediate (Immediate.int (Targetint.of_int c)), "pointer" *)
+  (* | Const_immstring c -> *)
+  (*   register_const t (CDV.create_allocated_const (Immutable_string c)) *)
+  (*     "immstring" *)
+  (* | Const_float_array c -> *)
+  (*   (\* CR mshinwell: check that Const_float_array is always immutable *\) *)
+  (*   register_const t *)
+  (*     (CDV.create_allocated_const *)
+  (*        (Immutable_float_array (List.map float_of_string c))) *)
+  (*     "float_array" *)
+  (* | Const_block (tag, consts) -> *)
+  (*   let const : CDV.t = *)
+  (*     CDV.create_block *)
+  (*       (Tag.Scannable.create_exn tag) *)
+  (*       (List.map (fun c -> fst (declare_const t c)) consts) *)
+  (*   in *)
+  (*   register_const t const "const_block" *)
+  | _ -> assert false
 
-(* let close_const t (const : Lambda.structured_constant) *)
-(*       : Flambda.Named.t * string = *)
-(*   match declare_const t const with *)
-(*   | Tagged_immediate c, name -> *)
-(*     Const (Tagged_immediate c), name *)
-(*   | Symbol s, name -> *)
-(*     Symbol (Symbol.of_symbol_exn s), name *)
+let close_const t (const : Lambda.structured_constant)
+      : Flambda.Named.t * string =
+  match declare_const t const with
+  | Tagged_immediate c, name ->
+    Simple (Simple.const (Tagged_immediate c)), name
+  | Symbol s, name ->
+    Simple (Simple.name (Name.symbol s)), name
+  | Dynamically_computed _, name ->
+    Misc.fatal_errorf "Declaring a computed constant %s" name
 
 (* CR pchambart: move to flambda_type ? *)
 let flambda_type_of_lambda_value_kind (k : Lambda.value_kind) : Flambda_type.t =
@@ -412,15 +414,19 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
 
 and close_named t env (named : Ilambda.named) : Flambda.Named.t =
   match named with
-  (* | Var id -> *)
-  (*   if Ident.is_predef_exn id then begin *)
-  (*     let symbol = t.symbol_for_global' id in *)
-  (*     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols; *)
-  (*     Symbol (Symbol.of_symbol_exn symbol) *)
-  (*   end else begin *)
-  (*     Var (Env.find_var env id) *)
-  (*   end *)
-  (* | Const cst -> fst (close_const t cst) *)
+  | Var id ->
+    let name =
+      if Ident.is_predef_exn id then begin
+        let symbol = t.symbol_for_global' id in
+        t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
+        Name.symbol symbol
+      end else begin
+        Name.var (Env.find_var env id)
+      end
+    in
+    Simple (Simple.name name)
+  | Const cst ->
+    fst (close_const t cst)
   (* | Prim (Pread_mutable id, args, _) -> *)
   (*   (\* All occurrences of mutable variables bound by [Let_mutable] are *)
   (*      identified by [Prim (Pread_mutable, ...)] in Ilambda. *\) *)
