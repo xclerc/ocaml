@@ -1774,8 +1774,8 @@ let prove_tagged_immediate ~importer ~type_of_name t =
         immediate: %a"
       print t
 
-type string_proof = private
-  | Proved of Immediate.Set.t Or_not_all_values_known.t
+type string_proof =
+  | Proved of String_info.Set.t Or_not_all_values_known.t
   | Invalid
 
 let prove_string ~importer ~type_of_name t =
@@ -1797,7 +1797,6 @@ let prove_string ~importer ~type_of_name t =
     | Boxed_int64s _
     | Closures _
     | Sets_of_closures _
-    | Strings _
     | Float_arrays _ -> Invalid
     end
   | Naked_immediates _
