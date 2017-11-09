@@ -25,7 +25,7 @@ type named_simplifier =
   (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t
     * Flambda_type.t * R.t
 
-let type_for_const (const : Flambda.Const.t) =
+let type_for_const (const : Simple.Const.t) =
   match const with
   (* CR mshinwell: unify terminology: "untagged" vs "naked" *)
   | Untagged_immediate i -> T.this_naked_immediate i
@@ -775,7 +775,7 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
       | _ -> expr, T.value_unknown Other, C.Benefit.zero
       end
     | [Union union1; Union union2] ->
-      begin match T.Unionable.flatten union1, A.Unionable.flatten union2 with
+      begin match T.Unionable.flatten union1, T.Unionable.flatten union2 with
       | Ok (Int x | Constptr x), Ok (Int y | Constptr y) ->
         let shift_precond = 0 <= y && y < 8 * size_int in
         begin match p with
@@ -817,34 +817,34 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
       | Pfloatcomp (c, Boxed)  -> S.const_comparison_expr expr c n1 n2
       | _ -> expr, T.value_unknown Other, C.Benefit.zero
       end
-    | [T.Boxed_int(A.Nativeint, n)] ->
+    | [T.Boxed_int(T.Nativeint, n)] ->
       I.Simplify_boxed_nativeint.simplify_unop p Nativeint expr n
-    | [T.Boxed_int(A.Int32, n)] ->
+    | [T.Boxed_int(T.Int32, n)] ->
       I.Simplify_boxed_int32.simplify_unop p Int32 expr n
-    | [T.Boxed_int(A.Int64, n)] ->
+    | [T.Boxed_int(T.Int64, n)] ->
       I.Simplify_boxed_int64.simplify_unop p Int64 expr n
-    | [T.Boxed_int(A.Nativeint, n1);
-       T.Boxed_int(A.Nativeint, n2)] ->
+    | [T.Boxed_int(T.Nativeint, n1);
+       T.Boxed_int(T.Nativeint, n2)] ->
       I.Simplify_boxed_nativeint.simplify_binop p Nativeint expr n1 n2
-    | [T.Boxed_int(A.Int32, n1); A.Boxed_int(A.Int32, n2)] ->
+    | [T.Boxed_int(T.Int32, n1); T.Boxed_int(T.Int32, n2)] ->
       I.Simplify_boxed_int32.simplify_binop p Int32 expr n1 n2
-    | [T.Boxed_int(A.Int64, n1); A.Boxed_int(A.Int64, n2)] ->
+    | [T.Boxed_int(T.Int64, n1); T.Boxed_int(T.Int64, n2)] ->
       I.Simplify_boxed_int64.simplify_binop p Int64 expr n1 n2
-    | [T.Boxed_int(A.Nativeint, n1); Union union2] ->
+    | [T.Boxed_int(T.Nativeint, n1); Union union2] ->
       begin match T.Unionable.flatten union2 with
       | Ok (Int n2) ->
         I.Simplify_boxed_nativeint.simplify_binop_int p Nativeint expr n1 n2
           ~size_int
       | _ -> expr, T.value_unknown Other, C.Benefit.zero
       end
-    | [T.Boxed_int(A.Int32, n1); Union union2] ->
+    | [T.Boxed_int(T.Int32, n1); Union union2] ->
       begin match T.Unionable.flatten union2 with
       | Ok (Int n2) ->
         I.Simplify_boxed_int32.simplify_binop_int p Int32 expr n1 n2
           ~size_int
       | _ -> expr, T.value_unknown Other, C.Benefit.zero
       end
-    | [T.Boxed_int(A.Int64, n1); Union union2] ->
+    | [T.Boxed_int(T.Int64, n1); Union union2] ->
       begin match T.Unionable.flatten union2 with
       | Ok (Int n2) ->
         I.Simplify_boxed_int64.simplify_binop_int p Int64 expr n1 n2
