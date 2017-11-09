@@ -399,6 +399,13 @@ module type S = sig
     -> type_of_name:(Name.t -> t option)
     -> 'a
 
+  (** Annotation for functions that may require the importing of types from
+      .cmx files (but not the examination of the current simplification
+      environment). *)
+  type 'a with_importer =
+       importer:(module Importer)
+    -> 'a
+
   (** Each type has a unique kind.  (This is mostly syntactic save for the
       "Value" cases.) *)
   val kind : (t -> Flambda_kind.t) type_accessor

@@ -34,7 +34,7 @@ let unknown_like ~importer ~type_of_name t =
   let kind = kind ~importer ~type_of_name t in
   unknown kind Other
 
-let rename_variables ~importer:_ ~type_of_name:_ _t ~f:_ =
+let rename_variables ~importer:_ _t ~f:_ =
   assert false
 (* XXX need to fix [Flambda_type0.clean]
   clean ~importer t (fun var -> Available_different_name (f var))

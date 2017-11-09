@@ -38,7 +38,7 @@ val unknown_like : (t -> t) type_accessor
 val rename_variables
    : (t
   -> f:(Variable.t -> Variable.t)
-  -> t) type_accessor
+  -> t) with_importer
 
 (** Building of types and terms representing tagged / boxed values from
     specified constants. *)

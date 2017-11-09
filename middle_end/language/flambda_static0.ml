@@ -206,9 +206,11 @@ module Program_body = struct
   let free_symbols_of_computation comp =
     Flambda.Expr.free_symbols comp.expr
 
+  type static_structure = (Symbol.t * Static_part.t) list
+
   type definition = {
     computation : computation option;
-    static_structure : (Symbol.t * Static_part.t) list;
+    static_structure : static_structure;
   }
 
   let print_definition ppf defn =

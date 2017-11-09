@@ -19,6 +19,5 @@
 (** Lift expressions to [Define_symbol] constructions. *)
 
 val lift
-   : backend:(module Backend_intf.S)
-  -> Flambda_static.Program.t
-  -> Flambda_static.Program.t
+   : (Flambda_static.Program.t
+  -> Flambda_static.Program.t) Flambda_type.with_importer

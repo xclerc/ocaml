@@ -131,12 +131,12 @@ module rec Expr : sig
     -> continuation:Continuation.t
     -> return_arity:Flambda_arity.t
     -> dbg:Debuginfo.t
-    -> t) Flambda_type.type_accessor
+    -> t) Flambda_type.with_importer
 
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.type_accessor
+    -> t) Flambda_type.with_importer
 
   val description_of_toplevel_node : t -> string
 
@@ -320,7 +320,7 @@ end and Named : sig
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.type_accessor
+    -> t) Flambda_type.with_importer
 
   module Iterators : sig
     val iter : (Expr.t -> unit) -> (t -> unit) -> t -> unit

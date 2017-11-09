@@ -116,11 +116,11 @@ module rec Expr : sig
     -> continuation:Continuation.t
     -> return_arity:Flambda_arity.t
     -> dbg:Debuginfo.t
-    -> t) Flambda_type.type_accessor
+    -> t) Flambda_type.with_importer
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.type_accessor
+    -> t) Flambda_type.with_importer
   val description_of_toplevel_node : t -> string
   val bind
      : bindings:(Variable.t * K.t * Named.t) list
@@ -700,11 +700,11 @@ end = struct
   end
 
   (* CR-soon mshinwell: this should use the explicit ignore functions *)
-  let toplevel_substitution ~importer ~type_of_name sb tree =
+  let toplevel_substitution ~importer sb tree =
     let sb' = sb in
     let sb v = try Variable.Map.find v sb with Not_found -> v in
     let substitute_type ty =
-      Flambda_type.rename_variables ~importer ~type_of_name ty
+      Flambda_type.rename_variables ~importer ty
         ~f:(fun var -> sb var)
     in
     let substitute_params_list params =
@@ -778,7 +778,7 @@ end = struct
     if Variable.Map.is_empty sb' then tree
     else Mappers.Toplevel_only.map aux aux_named tree
 
-  let make_closure_declaration ~importer ~type_of_name ~id
+  let make_closure_declaration ~importer ~id
         ~(free_variable_kind : Variable.t -> K.t) ~body ~params
         ~continuation_param ~stub ~continuation ~return_arity ~dbg : Expr.t =
     let my_closure = Variable.rename id in
@@ -796,7 +796,7 @@ end = struct
     (* CR-soon mshinwell: try to eliminate this [toplevel_substitution].  This
        function is only called from [Simplify], so we should be able
        to do something similar to what happens in [Inlining_transforms] now. *)
-    let body = toplevel_substitution ~importer ~type_of_name sb body in
+    let body = toplevel_substitution ~importer sb body in
     let vars_within_closure =
       Variable.Map.of_set Var_within_closure.wrap
         (Variable.Set.diff free_variables param_set)
@@ -1102,33 +1102,28 @@ end = struct
                 specialise; } ->
         let stack = E.current_continuation_stack env in
         E.check_name_is_bound_and_of_kind env func (K.value Must_scan);
-        let args_must_be_of_kind_value =
-          match call_kind with
-          | Direct { closure_id = _; return_arity; } ->
-            let arity = E.continuation_arity env continuation in
-            if not (Flambda_arity.equal return_arity arity) then begin
-              Misc.fatal_errorf "Return arity specified in direct-call \
-                  [Apply], %a, does not match up with the arity, %a, of the \
-                  return continuation: %a"
-                Flambda_arity.print return_arity
-                Flambda_arity.print arity
-                print t
-            end;
-            false
-          | Indirect_unknown_arity -> false
-          | Indirect_known_arity { param_arity; return_arity; } ->
-            ignore (param_arity : Flambda_arity.t);
-            ignore (return_arity : Flambda_arity.t);
-            false
-          | Method { kind; obj; } ->
-            ignore (kind : Call_kind.method_kind);
-            E.check_name_is_bound_and_of_kind env obj (K.value Must_scan);
-            true
-        in
-        if args_must_be_of_kind_value then begin
-          E.check_simples_are_bound_and_of_kind env args (K.value Must_scan)
-        end else begin
+        begin match call_kind with
+        | Direct { closure_id = _; return_arity; } ->
+          let arity = E.continuation_arity env continuation in
+          if not (Flambda_arity.equal return_arity arity) then begin
+            Misc.fatal_errorf "Return arity specified in direct-call \
+                [Apply], %a, does not match up with the arity, %a, of the \
+                return continuation: %a"
+              Flambda_arity.print return_arity
+              Flambda_arity.print arity
+              print t
+          end;
           E.check_simples_are_bound env args
+        | Indirect_unknown_arity ->
+          E.check_simples_are_bound_and_of_kind env args (K.value Must_scan)
+        | Indirect_known_arity { param_arity; return_arity; } ->
+          ignore (param_arity : Flambda_arity.t);
+          ignore (return_arity : Flambda_arity.t);
+          E.check_simples_are_bound env args
+        | Method { kind; obj; } ->
+          ignore (kind : Call_kind.method_kind);
+          E.check_name_is_bound_and_of_kind env obj (K.value Must_scan);
+          E.check_simples_are_bound_and_of_kind env args (K.value Must_scan)
         end;
         begin match E.find_continuation_opt env continuation with
         | None ->
@@ -1212,7 +1207,7 @@ end and Named : sig
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
-    -> t) Flambda_type.type_accessor
+    -> t) Flambda_type.with_importer
   val no_effects_or_coeffects : t -> bool
   val maybe_generative_effects_but_no_coeffects : t -> bool
   module Iterators : sig
@@ -1241,7 +1236,7 @@ end = struct
     | Assign _ | Read_mutable _ -> false
 
   (* CR mshinwell: Implement this properly. *)
-  let toplevel_substitution ~importer ~type_of_name sb (t : t) =
+  let toplevel_substitution ~importer sb (t : t) =
     let var = Variable.create "subst" in
     let cont = Continuation.create () in
     let expr : Expr.t =
@@ -1249,7 +1244,7 @@ end = struct
         (K.value Must_scan (* arbitrary *)) t
         (Apply_cont (cont, None, []))
     in
-    match Expr.toplevel_substitution ~importer ~type_of_name sb expr with
+    match Expr.toplevel_substitution ~importer sb expr with
     | Let let_expr -> let_expr.defining_expr
     | _ -> assert false
 

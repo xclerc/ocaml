@@ -400,6 +400,9 @@ let simplify_let_cont env r ~body ~handlers : Flambda.Expr.t * R.t =
               (* CR mshinwell: share somehow with [Continuation_approx].
                  Also, think about this in the multi-argument case -- need
                  to freshen. *)
+              (* CR mshinwell: Check instead that the continuation doesn't
+                 have any arguments and doesn't have any effects, to avoid
+                 this syntactic match *)
               | Apply_cont (_cont, None, []) -> true
               | _ -> false
             in
@@ -674,6 +677,11 @@ let simplify_partial_application env r ~lhs_of_application
         ~append:"_partial_fun"
         (Closure_id.unwrap closure_id_being_applied)
     in
+    (* CR mshinwell: [make_closure_declaration] is only used here and it also
+       calls [toplevel_substitution].  We should alter that function or else
+       inline it here.  Note that the boxing stuff in that function isn't
+       needed here because a partial application can only involve arguments
+       of kind [Value] *)
     Flambda.Expr.make_closure_declaration ~id:closure_variable
       ~body
       ~params:remaining_args

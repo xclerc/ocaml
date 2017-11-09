@@ -922,6 +922,10 @@ end) = struct
     -> type_of_name:(Name.t -> t option)
     -> 'a
 
+  type 'a with_importer =
+       importer:(module Importer)
+    -> 'a
+
   type 'a create_resolved_t_result =
     | Have_resolved of 'a
     | Load_lazily_again of load_lazily
