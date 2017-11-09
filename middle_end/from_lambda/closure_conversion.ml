@@ -283,75 +283,74 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       body;
       contents_type = flambda_type_of_lambda_value_kind contents_kind;
     }
-  (* | Let_rec (defs, body) -> *)
-  (*   let env = *)
-  (*     List.fold_right (fun (id,  _) env -> *)
-  (*         let env, _var = Env.add_var_like env id in *)
-  (*         env) *)
-  (*       defs env *)
-  (*   in *)
-  (*   let function_declarations = *)
-  (*     (\* Functions will be named after the corresponding identifier in the *)
-  (*        [let rec]. *\) *)
-  (*     List.map (function *)
-  (*         | (let_rec_ident, *)
-  (*             ({ kind; continuation_param; params; body; attr; loc; stub; *)
-  (*               free_idents_of_body; } : Ilambda.function_declaration)) -> *)
-  (*           let closure_bound_var = *)
-  (*             Closure_id.wrap *)
-  (*               (Variable.create_with_same_name_as_ident let_rec_ident) *)
-  (*           in *)
-  (*           let function_declaration = *)
-  (*             Function_decl.create ~let_rec_ident:(Some let_rec_ident) *)
-  (*               ~closure_bound_var ~kind ~params ~continuation_param ~body *)
-  (*               ~attr ~loc ~free_idents_of_body ~stub *)
-  (*           in *)
-  (*           function_declaration) *)
-  (*       defs *)
-  (*   in *)
-  (*   (\* We eliminate the [let rec] construction, instead producing a normal *)
-  (*      [Let] that binds a set of closures containing all of the functions. *)
-  (*      ([let rec] on non-functions was removed in [Prepare_lambda].) *)
-  (*   *\) *)
-  (*   let name = *)
-  (*     (\* The Microsoft assembler has a 247-character limit on symbol *)
-  (*        names, so we keep them shorter to try not to hit this. *\) *)
-  (*     (\* CR-soon mshinwell: We should work out how to shorten symbol names *)
-  (*        anyway, to help avoid enormous ELF string tables. *\) *)
-  (*     if Sys.win32 then begin *)
-  (*       match defs with *)
-  (*       | (id, _)::_ -> (Ident.unique_name id) ^ "_let_rec" *)
-  (*       | _ -> "let_rec" *)
-  (*     end else begin *)
-  (*       String.concat "_and_" *)
-  (*         (List.map (fun (id, _) -> Ident.unique_name id) defs) *)
-  (*     end *)
-  (*   in *)
-  (*   let set_of_closures_var = Variable.create name in *)
-  (*   let set_of_closures = *)
-  (*     close_functions t env (Function_decls.create function_declarations) *)
-  (*   in *)
-  (*   let body = *)
-  (*     List.fold_left (fun body decl -> *)
-  (*         let let_rec_ident = Function_decl.let_rec_ident decl in *)
-  (*         let closure_bound_var = Function_decl.closure_bound_var decl in *)
-  (*         let let_bound_var = Env.find_var env let_rec_ident in *)
-  (*         let closure_id = *)
-  (*           Closure_id.Set.singleton closure_bound_var *)
-  (*         in *)
-  (*         (\* Inside the body of the [let], each function is referred to by *)
-  (*            a [Project_closure] expression, which projects from the set of *)
-  (*            closures. *\) *)
-  (*         (Flambda.Expr.create_let let_bound_var (Flambda_kind.value Must_scan) *)
-  (*           (Project_closure { *)
-  (*             set_of_closures = set_of_closures_var; *)
-  (*             closure_id; *)
-  (*           }) *)
-  (*           body)) *)
-  (*       (close t env body) function_declarations *)
-  (*   in *)
-  (*   Flambda.Expr.create_let set_of_closures_var (Flambda_kind.value Must_scan) *)
-  (*     set_of_closures body *)
+  | Let_rec (defs, body) ->
+    let env =
+      List.fold_right (fun (id,  _) env ->
+          let env, _var = Env.add_var_like env id in
+          env)
+        defs env
+    in
+    let function_declarations =
+      (* Functions will be named after the corresponding identifier in the
+         [let rec]. *)
+      List.map (function
+          | (let_rec_ident,
+              ({ kind; continuation_param; params; body; attr; loc; stub;
+                free_idents_of_body; } : Ilambda.function_declaration)) ->
+            let closure_bound_var =
+              Closure_id.wrap
+                (Variable.create_with_same_name_as_ident let_rec_ident)
+            in
+            let function_declaration =
+              Function_decl.create ~let_rec_ident:(Some let_rec_ident)
+                ~closure_bound_var ~kind ~params ~continuation_param ~body
+                ~attr ~loc ~free_idents_of_body ~stub
+            in
+            function_declaration)
+        defs
+    in
+    (* We eliminate the [let rec] construction, instead producing a normal
+       [Let] that binds a set of closures containing all of the functions.
+       ([let rec] on non-functions was removed in [Prepare_lambda].)
+    *)
+    let name =
+      (* The Microsoft assembler has a 247-character limit on symbol
+         names, so we keep them shorter to try not to hit this. *)
+      (* CR-soon mshinwell: We should work out how to shorten symbol names
+         anyway, to help avoid enormous ELF string tables. *)
+      if Sys.win32 then begin
+        match defs with
+        | (id, _)::_ -> (Ident.unique_name id) ^ "_let_rec"
+        | _ -> "let_rec"
+      end else begin
+        String.concat "_and_"
+          (List.map (fun (id, _) -> Ident.unique_name id) defs)
+      end
+    in
+    let set_of_closures_var = Variable.create name in
+    let set_of_closures =
+      close_functions t env (Function_decls.create function_declarations)
+    in
+    let body =
+      List.fold_left (fun body decl ->
+          let let_rec_ident = Function_decl.let_rec_ident decl in
+          let closure_bound_var = Function_decl.closure_bound_var decl in
+          let let_bound_var = Env.find_var env let_rec_ident in
+          let closure_id =
+            Closure_id.Set.singleton closure_bound_var
+          in
+          (* Inside the body of the [let], each function is referred to by
+             a [Project_closure] expression, which projects from the set of
+             closures. *)
+          (Flambda.Expr.create_let let_bound_var (Flambda_kind.value Must_scan)
+             (Prim (Unary (Project_closure closure_id,
+                           Simple.var set_of_closures_var),
+                    Debuginfo.none))
+            body))
+        (close t env body) function_declarations
+    in
+    Flambda.Expr.create_let set_of_closures_var (Flambda_kind.value Must_scan)
+      set_of_closures body
   | Let_cont let_cont ->
     if let_cont.is_exn_handler then begin
       assert (not let_cont.administrative);
