@@ -746,6 +746,17 @@ end) = struct
   let this_immutable_string str : t =
     Value (this_immutable_string_as_ty_value str)
 
+  let immutable_string_as_ty_value ~size : ty_value =
+    let str : String_info.t =
+      { contents = Unknown_or_mutable;
+        size;
+      }
+    in
+    Normal (Resolved (Ok (Singleton (String str))))
+
+  let immutable_string ~size : t =
+    Value (immutable_string_as_ty_value ~size)
+
   let mutable_string ~size : t =
     let str : String_info.t =
       { contents = Unknown_or_mutable;

@@ -14,10 +14,13 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** Simplification of the contents of entire compilation units.  These are
+    known (maybe somewhat misleadingly) as "programs". *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val simplify_program
-   : env:Simplify_env.t
+   : Simplify_env.t
   -> backend:(module Backend_intf.S)
-  -> program:Flambda_static.Program.t
+  -> Flambda_static.Program.t
   -> Flambda_static.Program.t

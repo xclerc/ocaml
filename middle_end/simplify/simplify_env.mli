@@ -143,6 +143,13 @@ val add_symbol
   -> Flambda_type.t
   -> t
 
+(** Mark the given symbol as bound, but with its definition currently unknown,
+    to be loaded lazily from a .cmx file. *)
+val import_symbol
+   : t
+  -> Symbol.t
+  -> t
+
 val redefine_symbol
    : t
   -> Symbol.t

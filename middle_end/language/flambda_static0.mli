@@ -46,7 +46,8 @@ module Static_part : sig
     | Boxed_nativeint of Targetint.t or_variable
     | Mutable_float_array of { initial_value : float or_variable list; }
     | Immutable_float_array of float or_variable list
-    | Mutable_string of { initial_value : string or_variable; }
+    | Mutable_string of
+        { initial_value : Flambda_type.String_info.t or_variable; }
     | Immutable_string of Flambda_type.String_info.t or_variable
 
   val print : Format.formatter -> t -> unit

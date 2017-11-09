@@ -81,6 +81,10 @@ module Joined_sets_of_closures : sig
   val function_decls : t -> function_declaration Closure_id.Map.t
   val closure_elements : t -> ty_value Var_within_closure.Map.t
 
+  (** Return the type of a given closure, specified by closure ID, selected
+      from the given set of closures. *)
+  val type_for_closure_id : t -> Closure_id.t -> flambda_type
+
   val to_type : t -> flambda_type
 end
 
@@ -271,6 +275,13 @@ type tagged_immediate_proof = private
 
 (** As for [prove_boxed_float] but for a tagged immediate. *)
 val prove_tagged_immediate : (t -> tagged_immediate_proof) type_accessor
+
+type string_proof = private
+  | Proved of String_info.Set.t Or_not_all_values_known.t
+  | Invalid
+
+(** As for [prove_boxed_float] but for a tagged immediate. *)
+val prove_string : (t -> string_proof) type_accessor
 
 type lengths_of_arrays_or_blocks_proof = private
   | Proved of Numbers.Int.Set.t Or_not_all_values_known.t
