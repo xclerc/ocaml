@@ -276,6 +276,10 @@ module type S = sig
   val this_naked_int64 : Int64.t -> t
   val this_naked_nativeint : Targetint.t -> t
 
+  (** Building of types corresponding to immutable values given only the
+      size of such values. *)
+  val immutable_string : size:int -> t
+
   (** Building of types corresponding to mutable values. *)
   val mutable_string : size:int -> t
   val mutable_float_array : size:int -> t

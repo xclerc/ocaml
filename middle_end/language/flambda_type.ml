@@ -1723,6 +1723,55 @@ let prove_boxed_nativeint ~importer ~type_of_name t : boxed_nativeint_proof =
         nativeint: %a"
       print t
 
+let prove_naked_float ~importer ~type_of_name t =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Naked_floats fs -> Proved fs
+  | Values _
+  | Naked_immediates _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a naked \
+        float: %a"
+      print t
+
+type tagged_immediate_proof = private
+  | Proved of Immediate.Set.t Or_not_all_values_known.t
+  | Invalid
+
+let prove_tagged_immediate ~importer ~type_of_name t =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown
+    | Tagged_immediates_only Not_all_values_known -> Proved Not_all_values_known
+    | Tagged_immediates_only (Exactly is) -> Proved (Exactly is)
+    | Boxed_nativeints _
+    | Blocks_and_tagged_immediates _
+    | Bottom
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _
+    | Float_arrays _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a tagged \
+        immediate: %a"
+      print t
+
 type lengths_of_arrays_or_blocks_proof =
   | Proved of Int.Set.t Or_not_all_values_known.t
   | Invalid

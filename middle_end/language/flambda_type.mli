@@ -258,6 +258,20 @@ type sets_of_closures_proof = private
 (** As for [proved_boxed_float] but for sets of closures. *)
 val prove_sets_of_closures : (t -> sets_of_closures_proof) type_accessor
 
+(** As for [proved_boxed_float] but for naked floats.  Note that there is
+    no [Invalid] case returned---no such cases are possible that are not
+    kind errors (which cause a fatal error). *)
+val prove_naked_float
+   : (t
+  -> Numbers.Float.Set.t Or_not_all_values_known.t) type_accessor
+
+type tagged_immediate_proof = private
+  | Proved of Immediate.Set.t Or_not_all_values_known.t
+  | Invalid
+
+(** As for [prove_boxed_float] but for a tagged immediate. *)
+val prove_tagged_immediate : (t -> tagged_immediate_proof) type_accessor
+
 type lengths_of_arrays_or_blocks_proof = private
   | Proved of Numbers.Int.Set.t Or_not_all_values_known.t
   | Invalid

@@ -113,7 +113,9 @@ val mem_continuation : t -> Continuation.t -> bool
 (** Find the approximation of a given variable, raising a fatal error if
     the environment does not know about the variable.  Use [find_opt]
     instead if you need to catch the failure case. *)
-val find_exn : t -> Variable.t -> Flambda_type.t
+val find_var : t -> Variable.t -> Flambda_type.t
+
+val type_of_name : t -> Name.t -> Flambda_type.t option
 
 (** Like [find_exn], but for mutable variables. *)
 val find_mutable_exn : t -> Mutable_variable.t -> Flambda_type.t

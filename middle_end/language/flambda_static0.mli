@@ -47,7 +47,7 @@ module Static_part : sig
     | Mutable_float_array of { initial_value : float or_variable list; }
     | Immutable_float_array of float or_variable list
     | Mutable_string of { initial_value : string or_variable; }
-    | Immutable_string of string or_variable
+    | Immutable_string of Flambda_type.String_info.t or_variable
 
   val print : Format.formatter -> t -> unit
 

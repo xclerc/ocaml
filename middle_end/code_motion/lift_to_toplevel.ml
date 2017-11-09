@@ -140,6 +140,9 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
     let static_part_or_do_not_lift =
       match defining_expr with
       | Simple _ -> Do_not_lift
+      (* CR mshinwell: We should probably lift some primitives (e.g.
+         Project_var, and maybe closed sets of closures, directly to toplevel
+         here. *)
       | Prim _
       | Set_of_closures _
       | Assign _
