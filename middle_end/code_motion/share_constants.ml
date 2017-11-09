@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(* XXX Let's fix this later
+
 module CDV = Flambda_static.Constant_defining_value
 module BF = Flambda_static.Constant_defining_value_block_field
 
@@ -116,3 +118,7 @@ let share_constants (program : Flambda_static.Program.t) =
   { program with
     program_body = loop program.program_body;
   }
+
+*)
+
+let share_constants (program : Flambda_static.Program.t) = program

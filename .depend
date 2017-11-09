@@ -1421,12 +1421,10 @@ middle_end/code_motion/lift_to_toplevel.cmi : \
     middle_end/language/flambda_type.cmi \
     middle_end/language/flambda_static.cmi
 middle_end/code_motion/share_constants.cmo : \
-    middle_end/base_types/symbol.cmi middle_end/language/flambda_static.cmi \
-    middle_end/language/flambda.cmi \
+    middle_end/language/flambda_static.cmi \
     middle_end/code_motion/share_constants.cmi
 middle_end/code_motion/share_constants.cmx : \
-    middle_end/base_types/symbol.cmx middle_end/language/flambda_static.cmx \
-    middle_end/language/flambda.cmx \
+    middle_end/language/flambda_static.cmx \
     middle_end/code_motion/share_constants.cmi
 middle_end/code_motion/share_constants.cmi : \
     middle_end/language/flambda_static.cmi

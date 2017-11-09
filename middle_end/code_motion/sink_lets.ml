@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module W = Flambda.With_free_variables
+module W = Flambda.With_free_names
 
 let rec join_continuation_stacks stack1 stack2 =
   match stack1, stack2 with
@@ -24,7 +24,7 @@ let rec join_continuation_stacks stack1 stack2 =
   | (cont1, rec1)::stack1, (cont2, _rec2)::stack2 ->
     if Continuation.equal cont1 cont2 then
       match (rec1 : Flambda.recursive) with
-      | Nonrecursive ->
+      | Non_recursive ->
         (cont1, rec1) :: join_continuation_stacks stack1 stack2
       | Recursive -> []  (* Don't sink lets into recursive continuations. *)
     else []
@@ -192,7 +192,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     let state =
       match sink_into with
       | Some sink_into
-        when Effect_analysis.only_generative_effects_named
+        when Flambda.Named.maybe_generative_effects_but_no_coeffects
           (W.to_named defining_expr) ->
         begin match List.rev sink_into with
         | [] -> state
@@ -202,23 +202,26 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
       | _ -> state
     in
     let add_candidates ~sink_into =
-      Variable.Set.fold (fun var state ->
-          let sink_into =
-            match State.is_candidate_to_sink state var with
-            | None -> sink_into
-            | Some sink_into' -> join_continuation_stacks sink_into sink_into'
-          in
-          State.add_candidates_to_sink state
-            ~sink_into
-            ~candidates_to_sink:(Variable.Set.singleton var))
-        (W.free_variables defining_expr)
+      Name.Set.fold (fun (name : Name.t) state ->
+          match name with
+          | Symbol _ -> state
+          | Var var ->
+            let sink_into =
+              match State.is_candidate_to_sink state var with
+              | None -> sink_into
+              | Some sink_into' -> join_continuation_stacks sink_into sink_into'
+            in
+            State.add_candidates_to_sink state
+              ~sink_into
+              ~candidates_to_sink:(Variable.Set.singleton var))
+        (W.free_names defining_expr)
         state
     in
     let keep_let () =
       W.create_let_reusing_defining_expr var defining_expr body
     in
     let only_generative_effects =
-      Effect_analysis.only_generative_effects_named
+      Flambda.Named.maybe_generative_effects_but_no_coeffects
         (W.to_named defining_expr)
     in
     (* CR mshinwell: Try to improve the structure of the code here and
@@ -238,9 +241,12 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
   | Let_mutable { var; initial_value; contents_type; body; }->
     let body, state = sink_expr body ~state in
     let state =
-      State.add_candidates_to_sink state
-        ~sink_into:[]
-        ~candidates_to_sink:(Variable.Set.singleton initial_value)
+      match initial_value with
+      | Var initial_value ->
+        State.add_candidates_to_sink state
+          ~sink_into:[]
+          ~candidates_to_sink:(Variable.Set.singleton initial_value)
+      | Symbol _ -> state
     in
     Let_mutable { var; initial_value; contents_type; body; }, state
   | Let_cont { body; handlers = Recursive handlers; } ->
@@ -285,15 +291,17 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     in
     let state =
       State.add_candidates_to_sink_from_handler_state state
-        ~current_continuation:(name, Nonrecursive)
+        ~current_continuation:(name, Non_recursive)
         ~handler_state
         ~except:params_set
     in
     let state = State.add_to_sink_from_state state ~from:handler_state in
     let state =
+      let free_names = Flambda.Typed_parameter.List.free_names params in
+      let free_variables = Name.set_to_var_set free_names in
       State.add_candidates_to_sink state
         ~sink_into:[]
-        ~candidates_to_sink:(Flambda.Typed_parameter.List.free_variables params)
+        ~candidates_to_sink:free_variables
     in
     Let_cont { body; handlers =
       Nonrecursive { name; handler = {
@@ -319,7 +327,7 @@ and sink_set_of_closures (set_of_closures : Flambda.Set_of_closures.t) =
       set_of_closures.function_decls ~funs
   in
   Flambda.Set_of_closures.create ~function_decls
-    ~free_vars:set_of_closures.free_vars
+    ~in_closure:set_of_closures.free_vars
     ~direct_call_surrogates:set_of_closures.direct_call_surrogates
 
 and sink (expr : Flambda.Expr.t) =
@@ -363,5 +371,8 @@ and sink (expr : Flambda.Expr.t) =
   in
   sink expr
 
+and sink_top ~continuation_arity:_ _continuation expr =
+  sink expr
+
 let run program =
-  Flambda_static.Program.Mappers.map_toplevel_exprs program ~f:sink
+  Flambda_static.Program.Mappers.map_toplevel_exprs program ~f:sink_top
