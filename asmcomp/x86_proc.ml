@@ -222,6 +222,34 @@ let string_of_rounding = function
 (* These hooks can be used to insert optimization passes on
    the assembly code. *)
 let assembler_passes = ref ([] : (asm_program -> asm_program) list)
+let add_assembler_passes p =
+  assembler_passes := p :: !assembler_passes
+
+let use_smaller_cmp = true
+let smaller_cmp l =
+  let int64_between ~lower ~upper x =
+    (Int64.compare x lower >= 0)
+    && (Int64.compare x upper <= 0)
+  in
+  let rec loop acc = function
+    | (Ins (AND (Imm 255L , Reg64 r1)) as and_255)
+      :: Ins (CMP (Imm cst, Reg64 r2))
+      :: tl
+      when (r1 = r2) && (int64_between ~lower:0L ~upper:255L cst) ->
+      let acc =
+        Ins (CMP (Imm cst, Reg8L r2))
+        :: and_255
+        :: acc
+      in
+      loop acc tl
+    | hd :: tl -> loop (hd :: acc) tl
+    | [] -> List.rev acc
+  in
+  if use_smaller_cmp then
+    loop [] l
+  else
+    l
+let () = add_assembler_passes smaller_cmp
 
 let internal_assembler = ref None
 let register_internal_assembler f = internal_assembler := Some f
