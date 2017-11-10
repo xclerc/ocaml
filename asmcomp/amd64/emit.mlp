@@ -51,6 +51,9 @@ let register_name r =
 
 (* CFI directives *)
 
+let absolute_cfa = true
+let current_cfa = ref 0
+
 let cfi_startproc () =
   if Config.asm_cfi_supported then D.cfi_startproc ()
 
@@ -58,7 +61,13 @@ let cfi_endproc () =
   if Config.asm_cfi_supported then D.cfi_endproc ()
 
 let cfi_adjust_cfa_offset n =
-  if Config.asm_cfi_supported then D.cfi_adjust_cfa_offset n
+  current_cfa := !current_cfa + n;
+  if Config.asm_cfi_supported then begin
+    if absolute_cfa then
+      D.cfi_def_cfa_offset (!current_cfa)
+    else
+      D.cfi_adjust_cfa_offset n
+  end
 
 let emit_debug_info dbg =
   emit_debug_info_gen dbg D.file D.loc
@@ -491,10 +500,13 @@ let section_cold () =
 
 let section_of_temperature ?(force = false) temp =
   if force || not (Lambda.same_temperature temp !current_temperature) then begin
-    match temp with
+    if not force then cfi_endproc ();
+    begin match temp with
     | Lambda.Cold _ -> section_cold ()
     | Lambda.Tepid -> section_tepid ()
     | Lambda.Hot _ -> section_hot ()
+    end;
+    if not force then cfi_startproc ();
   end
 
 (* Emit an instruction *)
