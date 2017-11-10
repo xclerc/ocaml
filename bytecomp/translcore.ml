@@ -744,11 +744,20 @@ and transl_exp0 e =
             transl_function e.exp_loc !Clflags.native_code repr partial
               param pl)
       in
+      let inline = Translattribute.get_inline_attribute e.exp_attributes in
+      let specialise = Translattribute.get_specialise_attribute e.exp_attributes in
+      let temperature = Translattribute.get_temperature_function e.exp_loc e.exp_attributes in
+      let temperature =
+        if temperature = Tepid && inline = Never_inline then
+          Cold true
+        else
+          temperature
+      in
       let attr = {
         default_function_attribute with
-        inline = Translattribute.get_inline_attribute e.exp_attributes;
-        specialise = Translattribute.get_specialise_attribute e.exp_attributes;
-        temperature = Translattribute.get_temperature_function e.exp_loc e.exp_attributes;
+        inline;
+        specialise;
+        temperature;
       }
       in
       let loc = e.exp_loc in
