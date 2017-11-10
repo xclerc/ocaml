@@ -20,6 +20,7 @@ module Env = Closure_conversion_aux.Env
 module Function_decls = Closure_conversion_aux.Function_decls
 module Function_decl = Function_decls.Function_decl
 module IdentSet = Lambda.IdentSet
+module P = Flambda_primitive
 
 type t = {
   current_unit_id : Ident.t;
@@ -69,7 +70,7 @@ let tupled_function_call_stub
   in
   let body_with_closure_bound =
     let move =
-      Flambda_primitive.Move_within_set_of_closures
+      P.Move_within_set_of_closures
         (Closure_id.Map.singleton closure_bound_var unboxed_version)
     in
     Flambda.Expr.create_let unboxed_version_var (Flambda_kind.value Must_scan)
@@ -235,13 +236,12 @@ let of_block_shape (shape : Lambda.block_shape) ~num_fields =
       shape
 
 let convert_mutable_flag (flag : Asttypes.mutable_flag)
-      : Flambda_primitive.mutable_or_immutable =
+      : P.mutable_or_immutable =
   match flag with
   | Mutable -> Mutable
   | Immutable -> Immutable
 
-let convert_primitive (prim : Lambda.primitive) (args : Simple.t list)
-      : Flambda_primitive.t =
+let convert_primitive (prim : Lambda.primitive) (args : Simple.t list) : P.t =
   match prim, args with
   | Pmakeblock (tag, flag, shape), _ ->
     let flag = convert_mutable_flag flag in
@@ -255,7 +255,23 @@ let convert_primitive (prim : Lambda.primitive) (args : Simple.t list)
        be an error.
        We need more type propagations to be precise here *)
     Unary (Block_load (field, Not_a_float, Mutable), arg)
-  | ( Pfield _ | Pnegint ), _ ->
+  | Psetfield (field, immediate_or_pointer, initialization_or_assignment),
+    [block; value] ->
+    let set_kind : P.block_set_kind =
+      match immediate_or_pointer with
+        | Immediate -> Immediate
+        | Pointer -> Pointer
+    in
+    let init_or_assign : P.init_or_assign =
+      match initialization_or_assignment with
+      | Assignment -> Assignment
+      | Heap_initialization -> Initialization
+      (* Root initialization cannot exist in lambda. This is
+         represented by the static part of expressions in flambda. *)
+      | Root_initialization -> assert false
+    in
+    Binary (Block_set (field, set_kind, init_or_assign), block, value)
+  | ( Pfield _ | Pnegint | Psetfield _ ), _ ->
     Misc.fatal_errorf "Closure_conversion.convert_primitive: \
                        Wrong arrity for %a: %i"
       Printlambda.primitive prim (List.length args)
