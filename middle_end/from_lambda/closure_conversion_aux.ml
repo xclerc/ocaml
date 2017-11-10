@@ -71,7 +71,7 @@ module Env = struct
     List.map (fun id -> find_var t id) ids
 
   let find_simples t ids =
-    List.map (fun id -> Simple.name (Name.var find_var t id)) ids
+    List.map (fun id -> Simple.var (find_var t id)) ids
 
   let add_mutable_var t id mutable_var =
     { t with
