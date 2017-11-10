@@ -2051,7 +2051,7 @@ and transl_prim_1 env p arg dbg =
             else
               bind "header" hdr (fun hdr ->
                 Cifthenelse(is_addr_array_hdr hdr dbg,
-                            Tepid,
+                            Hot false,
                             Cop(Clsr, [hdr; Cconst_int wordsize_shift], dbg),
                             Cop(Clsr, [hdr; Cconst_int numfloat_shift], dbg))) in
           Cop(Cor, [len; Cconst_int 1], dbg)
@@ -2286,7 +2286,7 @@ and transl_prim_2 env p arg1 arg2 dbg =
           bind "arr" (transl env arg1) (fun arr ->
             bind "index" (transl env arg2) (fun idx ->
               Cifthenelse(is_addr_array_ptr arr dbg,
-                          Tepid,
+                          Hot false,
                           addr_array_ref arr idx dbg,
                           float_array_ref dbg arr idx)))
       | Paddrarray ->
@@ -2306,12 +2306,12 @@ and transl_prim_2 env p arg1 arg2 dbg =
             if wordsize_shift = numfloat_shift then
               Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                         Cifthenelse(is_addr_array_hdr hdr dbg,
-                                    Tepid,
+                                    Hot false,
                                     addr_array_ref arr idx dbg,
                                     float_array_ref dbg arr idx))
             else
               Cifthenelse(is_addr_array_hdr hdr dbg,
-                Tepid,
+                Hot false,
                 Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                           addr_array_ref arr idx dbg),
                 Csequence(make_checkbound dbg [float_array_length hdr dbg; idx],
@@ -2447,7 +2447,7 @@ and transl_prim_3 env p arg1 arg2 arg3 dbg =
             bind "index" (transl env arg2) (fun index ->
               bind "arr" (transl env arg1) (fun arr ->
                 Cifthenelse(is_addr_array_ptr arr dbg,
-                            Tepid,
+                            Hot false,
                             addr_array_set arr index newval dbg,
                             float_array_set arr index (unbox_float dbg newval)
                               dbg))))
@@ -2472,14 +2472,14 @@ and transl_prim_3 env p arg1 arg2 arg3 dbg =
             if wordsize_shift = numfloat_shift then
               Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                         Cifthenelse(is_addr_array_hdr hdr dbg,
-                                    Tepid,
+                                    Hot false,
                                     addr_array_set arr idx newval dbg,
                                     float_array_set arr idx
                                                     (unbox_float dbg newval)
                                                     dbg))
             else
               Cifthenelse(is_addr_array_hdr hdr dbg,
-                Tepid,
+                Hot false,
                 Csequence(make_checkbound dbg [addr_array_length hdr dbg; idx],
                           addr_array_set arr idx newval dbg),
                 Csequence(make_checkbound dbg [float_array_length hdr dbg; idx],
