@@ -534,17 +534,24 @@ let emit_instr fallthrough i =
         | _ ->
           I.mov (int 0) (res i 0)
       end
+      (*else  OK: I.mov (nat n) (res i 0) *)
       else begin
         let fits_in_32_bits =
-          Nativeint.compare n (Nativeint.of_int32 (Int32.min_int)) >= 0
-            && Nativeint.compare n (Nativeint.of_int32 (Int32.max_int)) <= 0
+          Nativeint.compare n (Nativeint.of_int32 Int32.min_int) >= 0
+            && Nativeint.compare n (Nativeint.of_int32 Int32.max_int) <= 0
         in
+        let positive = Nativeint.compare n Nativeint.zero >= 0 in
         if fits_in_32_bits then begin
           match i.res.(0).loc with
-          | Reg _ ->
+          | Reg _ when positive ->
             (* Setting the bottom half also sets the top half to zero
                (with the same caveat as above). *)
             I.mov (nat n) (res32 i 0)
+          | Reg _ when (not positive) && (res32 i 0 = Reg32 RAX) ->
+            (* If the destination is rax, we can use the same trick as for
+               positive values, and then perform sign extension. *)
+            I.mov (nat n) (res32 i 0);
+            I.cdqe ()
           | _ -> I.mov (nat n) (res i 0)
         end else begin
           let fits_in_top_32_bits =
