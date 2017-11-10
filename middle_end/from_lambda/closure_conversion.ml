@@ -38,68 +38,68 @@ let tupled_function_call_stub
       ( original_params : ( Variable.t * Lambda.value_kind ) list )
       (unboxed_version : Closure_id.t) ~(closure_bound_var : Closure_id.t)
       : Flambda.Function_declaration.t =
-(*   let continuation_param = Continuation.create () in *)
-(*   let tuple_param_var = *)
-(*     Variable.rename ~append:"tupled_stub_param" *)
-(*       (Closure_id.unwrap unboxed_version) *)
-(*   in *)
-(*   let my_closure = *)
-(*     Variable.rename ~append:"tupled_stub" *)
-(*       (Closure_id.unwrap unboxed_version) *)
-(*   in *)
-(*   let params = List.map (fun (p, _) -> Variable.rename p) original_params in *)
-(*   let unboxed_version_var = *)
-(*     Variable.create "unboxed_version" *)
-(*   in *)
-(*   let call : Flambda.Expr.t = *)
-(*     Apply ({ *)
-(*         kind = Function; *)
-(*         continuation = continuation_param; *)
-(*         func = unboxed_version_var; *)
-(*         args = params; *)
-(*         (\* CR-someday mshinwell for mshinwell: investigate if there is some *)
-(*            redundancy here (func is also unboxed_version) *\) *)
-(*         call_kind = Direct { *)
-(*           closure_id = unboxed_version; *)
-(*           return_arity = [Flambda_kind.value Must_scan]; *)
-(*         }; *)
-(*         dbg = Debuginfo.none; *)
-(*         inline = Default_inline; *)
-(*         specialise = Default_specialise; *)
-(*       }) *)
-(*   in *)
-(*   let body_with_closure_bound = *)
-(*     Flambda.Expr.create_let unboxed_version_var (Flambda_kind.value Must_scan) *)
-(*       (Move_within_set_of_closures { *)
-(*          closure = my_closure; *)
-(*          move = Closure_id.Map.singleton closure_bound_var unboxed_version; *)
-(*        }) *)
-(*       call *)
-(*   in *)
-(*   let _, body = *)
-(*     List.fold_left (fun (pos, body) param -> *)
-(*         let lam : Flambda.Named.t = *)
-(*           Prim (Pfield pos, [tuple_param_var], Debuginfo.none) *)
-(*         in *)
-(*         pos + 1, *)
-(*         Flambda.Expr.create_let param (Flambda_kind.value Must_scan) lam body) *)
-(*       (0, body_with_closure_bound) params *)
-(*   in *)
-(*   let tuple_param = *)
-(*     Flambda.Typed_parameter.create (Parameter.wrap tuple_param_var) *)
-(*       (Flambda_type.block Tag.Scannable.zero *)
-(*         (Array.of_list *)
-(*           (List.map (fun _ -> Flambda_type.any_value Must_scan Other) params))) *)
-(*   in *)
-(*   Flambda.Function_declaration.create *)
-(*     ~my_closure *)
-(*     ~params:[tuple_param] ~continuation_param *)
-(*     ~return_arity:[Flambda_kind.value Must_scan] *)
-(*     ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline *)
-(*     ~specialise:Default_specialise ~is_a_functor:false *)
-(*     ~closure_origin:(Closure_origin.create closure_bound_var) *)
-
-  assert false
+  let continuation_param = Continuation.create () in
+  let tuple_param_var =
+    Variable.rename ~append:"tupled_stub_param"
+      (Closure_id.unwrap unboxed_version)
+  in
+  let my_closure =
+    Variable.rename ~append:"tupled_stub"
+      (Closure_id.unwrap unboxed_version)
+  in
+  let params = List.map (fun (p, _) -> Variable.rename p) original_params in
+  let unboxed_version_var =
+    Variable.create "unboxed_version"
+  in
+  let call : Flambda.Expr.t =
+    Apply ({
+        continuation = continuation_param;
+        func = Name.var unboxed_version_var;
+        args = List.map Simple.var params;
+        (* CR-someday mshinwell for mshinwell: investigate if there is some
+           redundancy here (func is also unboxed_version) *)
+        call_kind = Direct {
+          closure_id = unboxed_version;
+          return_arity = [Flambda_kind.value Must_scan];
+        };
+        dbg = Debuginfo.none;
+        inline = Default_inline;
+        specialise = Default_specialise;
+      })
+  in
+  let body_with_closure_bound =
+    let move =
+      Flambda_primitive.Move_within_set_of_closures
+        (Closure_id.Map.singleton closure_bound_var unboxed_version)
+    in
+    Flambda.Expr.create_let unboxed_version_var (Flambda_kind.value Must_scan)
+      (Prim (Unary (move, Simple.var my_closure), Debuginfo.none))
+      call
+  in
+  let _, body =
+    List.fold_left (fun (pos, body) param ->
+        let lam : Flambda.Named.t =
+          Prim (Unary (Block_load (pos, Not_a_float, Immutable),
+                       Simple.var tuple_param_var),
+                Debuginfo.none)
+        in
+        pos + 1,
+        Flambda.Expr.create_let param (Flambda_kind.value Must_scan) lam body)
+      (0, body_with_closure_bound) params
+  in
+  let tuple_param =
+    Flambda.Typed_parameter.create (Parameter.wrap tuple_param_var)
+      (Flambda_type.block Tag.Scannable.zero
+        (Array.of_list
+          (List.map (fun _ -> Flambda_type.any_value Must_scan Other) params)))
+  in
+  Flambda.Function_declaration.create
+    ~my_closure
+    ~params:[tuple_param] ~continuation_param
+    ~return_arity:[Flambda_kind.value Must_scan]
+    ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
+    ~specialise:Default_specialise ~is_a_functor:false
+    ~closure_origin:(Closure_origin.create closure_bound_var)
 
 module Static_part = Flambda_static0.Static_part
 
