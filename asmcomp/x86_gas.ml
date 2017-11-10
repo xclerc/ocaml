@@ -263,7 +263,6 @@ let print_line b = function
   | Section ([".text" | ".text 0" ], _, _) -> bprintf b "\t.text"
   | Section ([name], _, _) when is_prefix ~prefix:".text " name ->
     bprintf b "\t%s" name
-  | Section ([".text 2" ], _, _) -> bprintf b "\t.text 2"
   | Section (name, flags, args) ->
       bprintf b "\t.section %s" (String.concat "," name);
       begin match flags with
