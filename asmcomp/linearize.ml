@@ -210,7 +210,7 @@ let rec linear temp i n =
       let temp_ifso, temp_ifnot =
         match testtemp with
         | Lambda.Cold x -> Lambda.Cold x, Lambda.Hot x
-        | Lambda.Tepid -> Lambda.Tepid, Lambda.Tepid
+        | Lambda.Tepid -> temp, temp
         | Lambda.Hot x -> Lambda.Hot x, Lambda.Cold x in
       begin match (ifso.Mach.desc, ifnot.Mach.desc, n1.desc) with
         Iend, _, Lbranch lbl ->
