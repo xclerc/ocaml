@@ -146,7 +146,7 @@ let shared = ref false (* -shared *)
 let dlcode = ref true (* not -nodynlink *)
 
 let pic_code = ref (match Config.architecture with (* -fPIC *)
-                     | "amd64" -> true
+                     | "amd64" -> false
                      | _       -> false)
 
 let runtime_variant = ref "";;      (* -runtime-variant *)
