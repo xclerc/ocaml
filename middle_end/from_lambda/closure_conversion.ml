@@ -675,15 +675,15 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
     }
   in
   let module_symbol = Backend.symbol_for_global' module_ident in
-  let block_symbol =
-    let linkage_name = Linkage_name.create "module_as_block" in
-    Symbol.create compilation_unit linkage_name
-  in
+  (* let block_symbol = *)
+  (*   let linkage_name = Linkage_name.create "module_as_block" in *)
+  (*   Symbol.create compilation_unit linkage_name *)
+  (* in *)
   (* The global module block is built by accessing the fields of all the
      introduced symbols. *)
   (* CR-soon mshinwell for mshinwell: Add a comment describing how modules are
      compiled. *)
-  let continuation = Continuation.create () in
+  (* let continuation = Continuation.create () in *)
   (* let main_module_block_expr = *)
   (*   let field_vars = *)
   (*     List.init size *)
@@ -708,13 +708,74 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   (*     (Read_symbol_field { symbol = block_symbol; logical_field = 0 }) *)
   (*     body *)
   (* in *)
-  (* let block_initialize : Flambda_static.Program_body.Initialize_symbol.t = *)
-  (*   { expr = close t Env.empty ilam; *)
-  (*     return_cont = ilam_result_cont; *)
-  (*     return_arity = [Flambda_kind.value Must_scan]; *)
-  (*   } *)
-  (* in *)
-  (* let module_initialize : Flambda_static.Program_body.Initialize_symbol.t = *)
+
+  let block_var = Variable.create "module_block" in
+  let assign_continuation = Continuation.create () in
+  let field_vars =
+    List.init size
+      (fun pos ->
+         let pos_str = string_of_int pos in
+         Variable.create ("block_symbol_" ^ pos_str),
+         Flambda_kind.value Must_scan)
+  in
+  let assign_continuation_body =
+    let field_vars =
+      List.init size
+        (fun pos ->
+           let pos_str = string_of_int pos in
+           pos, Variable.create ("block_symbol_" ^ pos_str))
+    in
+    let body : Flambda.Expr.t =
+      Apply_cont
+        (assign_continuation, None,
+         List.map (fun (_, var) -> Simple.var var) field_vars)
+    in
+    List.fold_left (fun body (pos, var) ->
+      Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+        (Prim (Unary (Block_load (pos, Not_a_float, Immutable),
+                      Simple.var block_var),
+               Debuginfo.none))
+        body)
+      body field_vars
+  in
+  let assign_cont_def : Flambda.Continuation_handler.t =
+    { params =
+        [Flambda.Typed_parameter.create
+           (Parameter.wrap block_var)
+           (Flambda_type.any_value Must_scan Other)];
+      stub = true;
+      is_exn_handler = false;
+      handler = assign_continuation_body;
+    }
+  in
+  let expr : Flambda.Expr.t =
+    Let_cont
+      { handlers =
+          Nonrecursive { name = ilam_result_cont; handler = assign_cont_def };
+        body = close t Env.empty ilam; }
+  in
+
+  let computation : Flambda_static.Program_body.computation =
+    { expr;
+      return_cont = assign_continuation;
+      computed_values = field_vars;
+    }
+  in
+  let static_part : Static_part.t =
+    Block (Tag.Scannable.zero, Immutable,
+           List.map (fun (var, _) : Flambda_static0.Of_kind_value.t ->
+             Dynamically_computed var)
+             field_vars)
+  in
+  let program_body : Flambda_static.Program_body.t =
+    Define_symbol
+      ({ computation = Some computation;
+         static_structure =
+           [module_symbol, static_part]; },
+       (Root module_symbol))
+  in
+
+(* let module_initialize : Flambda_static.Program_body.Initialize_symbol.t = *)
   (*   { expr = main_module_block_expr; *)
   (*     return_cont = continuation; *)
   (*     return_arity = List.init size (fun _ -> Flambda_kind.value Must_scan); *)
@@ -736,11 +797,10 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   (*     module_initializer *)
   (*     t.declared_symbols *)
   (* in *)
-  (* { imported_symbols = t.imported_symbols; *)
-  (*   program_body; *)
-  (* } *)
+  { imported_symbols = t.imported_symbols;
+    body = program_body;
+  }
 
-  assert false
 
 (* CR mshinwell: read carefully.  Moved here from Flambda_type
 
