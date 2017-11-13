@@ -207,11 +207,7 @@ let rec linear temp i n =
       else n1
   | Iifthenelse(test, testtemp, ifso, ifnot) ->
       let n1 = linear temp i.Mach.next n in
-      let temp_ifso, temp_ifnot =
-        match testtemp with
-        | Lambda.Cold x -> Lambda.Cold x, Lambda.Hot x
-        | Lambda.Tepid -> temp, temp
-        | Lambda.Hot x -> Lambda.Hot x, Lambda.Cold x in
+      let temp_ifso, temp_ifnot = Mach.combine_temperature temp testtemp in
       begin match (ifso.Mach.desc, ifnot.Mach.desc, n1.desc) with
         Iend, _, Lbranch lbl ->
           copy_instr (Lcondbranch(test, lbl)) i (linear temp_ifnot ifnot n1)

@@ -221,6 +221,24 @@ let tweak_temperature_according_to_exceptions instr =
          ())
     instr
 
+let combine_temperature current annot =
+  (* v1..3:
+  let open Lambda in
+  match annot with
+  | Cold  x -> Cold x,  Hot x
+  | Tepid   -> current, current
+  | Hot   x -> Hot x,   Cold x *)
+  let open Lambda in
+  match annot, current with
+  (* likely *)
+  | Hot _, Cold x -> Cold x, Cold x
+  | Hot x, (Tepid | Hot _) -> current, Cold x
+  (* unlikely *)
+  | Cold _, Cold x -> Cold x, Cold x
+  | Cold x, (Tepid | Hot _) -> Cold x, current
+  (* no annotation *)
+  | Tepid, _ -> current, current
+
 let rec adjust_temperature curr_temp i =
   i.temperature <- curr_temp;
   begin match i.desc with
@@ -237,12 +255,7 @@ let rec adjust_temperature curr_temp i =
     adjust_temperature curr_temp j;
     adjust_temperature curr_temp k
   | Iifthenelse (_, temp, ifso, ifno) ->
-    let open Lambda in
-    let temp_ifso, temp_ifno =
-      match temp with
-      | Cold x -> Cold x, Hot x
-      | Tepid -> curr_temp, curr_temp
-      | Hot x -> Hot x, Cold x in
+    let temp_ifso, temp_ifno = combine_temperature curr_temp temp in
     adjust_temperature temp_ifso ifso;
     adjust_temperature temp_ifno ifno
   end;
