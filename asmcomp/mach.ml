@@ -188,16 +188,17 @@ let spacetime_node_hole_pointer_is_live_before insn =
 
 let rec does_always_raise i =
   match i.desc with
-  | Iend | Ireturn | Iexit _ | Itrywith _ | Icatch _ ->
+  | Iend | Ireturn | Iexit _ ->
     false
-  | Iop _ ->
+  | Iop _ | Itrywith _ | Icatch _ ->
     does_always_raise i.next
   | Iifthenelse (_, _, ifso, ifno) ->
-    (does_always_raise ifso) && (does_always_raise ifno)
+    ((does_always_raise ifso) && (does_always_raise ifno))
+     || (does_always_raise i.next)
   | Iswitch (_, a) ->
-    does_always_raise_array a
+    (does_always_raise_array a) || (does_always_raise i.next)
   | Iloop j ->
-    does_always_raise j
+    (does_always_raise j) || (does_always_raise i.next)
   | Iraise _ ->
     true
 
