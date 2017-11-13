@@ -289,6 +289,40 @@ type unary_primitive =
   | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
   | Project_var of Var_within_closure.t Closure_id.Map.t
 
+let compare_unary_primitive p1 p2 =
+  match p1, p2 with
+  | Block_load (size1, kind1, mut1), Block_load (size2, kind2, mut2) ->
+    size1 = size2 && kind1 = kind2 && mut1 = mut2
+  | Duplicate_array (kind1, mut1), Duplicate_array (kind2, mut2) ->
+    kind1 = kind2 && mut1 = mut2
+  | Duplicate_record { repr = repr1; num_fields = num_fields1; },
+      Duplicate_record { repr = repr2; num_fields = num_fields2; } ->
+    repr1 = repr2 && num_fields1 = num_fields2
+  | Is_int
+  | Get_tag
+  | String_length of string_or_bytes
+
+  | Swap_byte_endianness kind1, Swap_byte_endianness kind2 ->
+
+  | Int_as_pointer
+  | Opaque_identity
+  | Raise of raise_kind
+  | Int_arith of K.Standard_int.t * unary_int_arith_op
+  | Int_conv of {
+      src : Flambda_kind.Standard_int.t;
+      dst : Flambda_kind.Standard_int.t;
+    }
+  | Float_arith of unary_float_arith_op
+  | Int_of_float
+  | Float_of_int
+  | Array_length of array_kind
+  | Bigarray_length of { dimension : int; }
+  | Unbox_number of K.Boxable_number.t
+  | Box_number of K.Boxable_number.t
+  | Project_closure of Closure_id.Set.t
+  | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
+  | Project_var of Var_within_closure.t Closure_id.Map.t
+
 let print_unary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with

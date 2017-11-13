@@ -148,4 +148,8 @@ module List = struct
         Name.Set.union free (free_names t))
       Name.Set.empty
       t
+
+  let equal t1 t2 =
+    List.compare_lengths t1 t2 = 0
+      && List.for_all2 equal t1 t2
 end

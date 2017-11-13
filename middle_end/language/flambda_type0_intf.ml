@@ -496,4 +496,9 @@ module type S = sig
   val combination_component_to_ty
      : 'a singleton_or_combination or_alias
     -> ('a, _) ty
+
+  val function_declarations_equal
+     : type_equal:(t -> t -> bool)
+    -> function_declaration
+    -> function_declaration
 end

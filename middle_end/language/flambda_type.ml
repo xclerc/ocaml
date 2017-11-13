@@ -68,6 +68,76 @@ let this_naked_int64_named n : Named.t * t =
 let this_naked_nativeint_named n : Named.t * t =
   Simple (Simple.const (Naked_nativeint n)), this_naked_nativeint n
 
+let equal_function_declaration ~equal_type
+      (decl1 : function_declaration)
+      (decl2 : function_declaration) =
+  match decl1, decl2 with
+  | Inlinable {
+      closure_origin = closure_origin1;
+      continuation_param = continuation_param1;
+      is_classic_mode = is_classic_mode1;
+      params = params1;
+      body = body1;
+      free_names_in_body = free_names_in_body1;
+      result = result1;
+      stub = stub1;
+      dbg = dbg1;
+      inline = inline1;
+      specialise = specialise1;
+      is_a_functor = is_a_functor1;
+      invariant_params = invariant_params1;
+      size = size1;
+      direct_call_surrogate = direct_call_surrogate1;
+    },
+    Inlinable {
+      closure_origin = closure_origin2;
+      continuation_param = continuation_param2;
+      is_classic_mode = is_classic_mode2;
+      params = params2;
+      body = body2;
+      free_names_in_body = free_names_in_body2;
+      result = result2;
+      stub = stub2;
+      dbg = dbg2;
+      inline = inline2;
+      specialise = specialise2;
+      is_a_functor = is_a_functor2;
+      invariant_params = invariant_params2;
+      size = size2;
+      direct_call_surrogate = direct_call_surrogate2;
+    } ->
+    Closure_origin.equal closure_origin1 closure_origin2
+      && Continuation.equal continuation_param1 continuation_param2
+      && Pervasives.compare is_classic_mode1 is_classic_mode2 = 0
+      && Expr.equal ~equal_type body1 body2
+      && Free_names.Set.equal free_names_in_body1 free_names_in_body2
+      && equal_type result1 result2
+      && Pervasives.compare stub1 stub2 = 0
+      && Debuginfo.equal dbg1 dbg2
+      && Pervasives.compare inline1 inline2 = 0
+      && Pervasives.compare specialise1 specialise2 = 0
+      && Pervasives.compare is_a_functor1 is_a_functor2 = 0
+      && Variable.Set.equal (Lazy.force invariant_params1)
+           (Lazy.force invariant_params2)
+      && Misc.Stdlib.Option.equal Numbers.Int.equal size1 size2
+      && Misc.Stdlib.Option.equal Closure_id.equal
+        direct_call_surrogate1 direct_call_surrogate2
+  | Non_inlinable {
+      result = result1;
+      direct_call_surrogate = direct_call_surrogate1;
+    },
+    Non_inlinable {
+      result = result2;
+      direct_call_surrogate = direct_call_surrogate2;
+    } ->
+    List.compare_lengths result1 result2
+      && List.for_all2 (fun t1 t2 -> equal_type t1 t2)
+        result1 result2
+      && Misc.Stdlib.Option.equal Closure_id.equal
+        direct_call_surrogate1 direct_call_surrogate2
+  | Inlinable _, Non_inlinable _
+  | Non_inlinable _, Inlinable _ -> false
+
 (*
 let is_float_array t =
   match descr t with
@@ -1156,8 +1226,19 @@ end = struct
           join ~importer ~type_of_name result t)
         set sets
 
-  let equal t1 t2 =
-    assert false
+  let equal ~equal_type t1 t2 =
+    Or_not_all_values_known.equal (fun (id1, origin1) (id2, origin2) ->
+        Set_of_closures_id.equal id1 id2
+          && Set_of_closures_origin.equal origin1 origin2)
+      t1.set_of_closures_id_and_origin
+      t2.set_of_closures_id_and_origin
+    && Closure_id.Map.equal (equal_function_declaration ~equal_type)
+      t1.function_decls
+      t2.function_decls
+    && Var_within_closure.Map.equal (fun ty_value1 ty_value2 ->
+        equal_type (t_of_ty_value ty_value1) (t_of_ty_value ty_value2))
+      t1.closure_elements
+      t2.closure_elements
 end
 
 module Evaluated = struct
@@ -1508,7 +1589,7 @@ let equal ~importer ~type_of_name t1 t2 =
   Evaluated.type_equal ~importer ~type_of_name t1 t2
 
 let as_or_more_precise ~importer ~type_of_name t ~than =
-  equal t (meet ~importer ~type_of_name t than)
+  equal ~importer ~type_of_name t (meet ~importer ~type_of_name t than)
 
 let is_bottom ~importer ~type_of_name t =
   Evaluated.is_bottom (Evaluated.create_ignore_name ~importer ~type_of_name t)

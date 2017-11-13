@@ -170,15 +170,18 @@ let rec simplify_let_cont_handler ~env ~r ~cont ~handler ~arg_tys =
           Typed_parameter.map_var param
             ~f:(fun var -> Freshening.apply_variable freshening var)
         in
-        let existing_ty = Typed_parameter.ty param in
+        let param_ty = Typed_parameter.ty param in
+        if !Clflags.flambda_invariant_checks then begin
+          if not (T.as_or_more_precise arg_ty ~than:param_ty) then begin
+            Misc.fatal_errorf "Parameter %a of continuation %k supplied \
+                with argument which has regressed in preciseness of type: %a"
+              Typed_parameter.print param
+              Continuation.print cont
+              T.print arg_ty
+          end
+        end;
         let ty =
-          (* CR mshinwell: When we're not expecting to regress in
-             preciseness (i.e. when not doing the first round for a recursive
-             continuation handler), we could have an invariant check that
-             we have not regressed (and we then don't need to do the meet when
-             invariants are disabled). *)
-          (E.with_importer env T.rename_variables)
-            ((E.type_accessor env T.meet) arg_ty existing_ty)
+          (E.with_importer env T.rename_variables) arg_ty
             ~f:(fun var -> Freshening.apply_variable freshening var)
         in
         Typed_parameter.with_type param ty)

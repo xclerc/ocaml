@@ -300,6 +300,12 @@ module rec Expr : sig
     -> maybe_named
     -> unit
 
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
+
   val print : Format.formatter -> t -> unit
 end and Named : sig
   (** Values of type [t] will always be [Let]-bound to a [Variable.t].

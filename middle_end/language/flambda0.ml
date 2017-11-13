@@ -383,6 +383,11 @@ module rec Expr : sig
     -> (Named.t -> unit)
     -> maybe_named
     -> unit
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
   val print : Format.formatter -> t -> unit
 end = struct
   include Expr
@@ -722,6 +727,25 @@ end = struct
     | Is_expr expr -> aux expr
     | Is_named named -> aux_named named
 
+  let equal ~equal_type t1 t2 =
+    match t1, t2 with
+    | Let let1, Let let2 -> Let.equal ~equal_type let1 let2
+    | Let_mutable lm1, Let_mutable lm2 -> Let_mutable.equal ~equal_type lm1 lm2
+    | Let_cont lc1, Let_cont lc2 -> Let_cont.equal ~equal_type lc1 lc2
+    | Apply apply1, Apply apply2 -> Apply.equal apply1 apply2
+    | Apply_cont (cont1, trap1, args1), Apply_cont (cont2, trap2, args2) ->
+      Continuation.equal cont1 cont2
+        && Trap_action.equal trap1 trap2
+        && Simple.List.equal args1 args2
+    | Switch (name1, switch1), Switch (name2, switch2) ->
+      Name.equal name1 name2 && Switch.equal switch1 switch2
+    | Invalid invalid1, Invalid invalid2 ->
+      Pervasives.compare invalid1 invalid2 = 0
+    | (Let _ | Let_mutable _ | Let_cont _ | Apply _ | Apply_cont _
+        | Switch _ | Invalid _), _
+    | _, (Let _ | Let_mutable _ | Let_cont _ | Apply _ | Apply_cont _
+        | Switch _ | Invalid _) -> false
+
   let rec print ppf (t : t) =
     match t with
     | Apply ({ func; continuation; args; call_kind; inline; dbg; }) ->
@@ -954,13 +978,24 @@ end and Let_mutable : sig
     contents_type : Flambda_type.t;
     body : Expr.t;
   }
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
 end = struct
   include Let_mutable
+
 end and Let_cont : sig
   type t = {
     body : Expr.t;
     handlers : Let_cont_handlers.t;
   }
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
 end = struct
   include Let_cont
 end and Let_cont_handlers : sig
@@ -981,6 +1016,11 @@ end and Let_cont_handlers : sig
   val free_and_bound_continuations : t -> free_and_bound
   val to_continuation_map : t -> Continuation_handlers.t
   val map : t -> f:(Continuation_handlers.t -> Continuation_handlers.t) -> t
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
   val print : Format.formatter -> t -> unit
   val print_using_where : Format.formatter -> t -> unit
 end = struct
@@ -1106,8 +1146,16 @@ end = struct
         handlers
 end and Continuation_handlers : sig
   type t = Continuation_handler.t Continuation.Map.t
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
 end = struct
   include Continuation_handlers
+
+  let equal ~equal_type t1 t2 =
+    Continuation.Map.compare (Continuation_handler.compare ~equal_type) t1 t2
 end and Continuation_handler : sig
   type t = {
     params : Typed_parameter.t list;
@@ -1115,8 +1163,23 @@ end and Continuation_handler : sig
     is_exn_handler : bool;
     handler : Expr.t;
   }
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
 end = struct
   include Continuation_handler
+
+  let equal ~equal_type
+        { params = params1; stub = stub1; is_exn_handler = is_exn_handler1;
+          handler = handler1; }
+        { params = params2; stub = stub2; is_exn_handler = is_exn_handler2;
+          handler = handler2; } ->
+    Typed_parameter.List.equal ~equal_type params1 params2
+      && Pervasives.compare stub1 stub2 = 0
+      && Pervasives.compare is_exn_handler1 is_exn_handler2 = 0
+      && Expr.equal ~equal_type handler1 handler2
 end and Set_of_closures : sig
   type t = {
     function_decls : Function_declarations.t;
@@ -1131,6 +1194,11 @@ end and Set_of_closures : sig
     -> t
   val free_names : t -> Name.Set.t
   val has_empty_environment : t -> bool
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
   val print : Format.formatter -> t -> unit
 end = struct
   include Set_of_closures
@@ -1181,6 +1249,11 @@ end and Function_declarations : sig
     -> (Set_of_closures_id.t -> Set_of_closures_id.t)
     -> (Set_of_closures_origin.t -> Set_of_closures_origin.t)
     -> t
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
   val print : Format.formatter -> t -> unit
   val free_names : t -> Name.Set.t
 end = struct
@@ -1271,6 +1344,11 @@ end and Function_declaration : sig
     -> t
   val used_params : t -> Variable.Set.t
   val free_names : t -> Name.Set.t
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
   val print : Closure_id.t -> Format.formatter -> t -> unit
 end = struct
   include Function_declaration
@@ -1403,6 +1481,11 @@ end and Typed_parameter : sig
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
   val free_names : t -> Name.Set.t
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
   module List : sig
     type nonrec t = t list
     val vars : t -> Variable.t list
@@ -1413,13 +1496,18 @@ end and Typed_parameter : sig
     val arity : t -> Flambda_kind.t list
     val free_names : t -> Name.Set.t
     val print : Format.formatter -> t -> unit
+    val equal
+       : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+      -> t
+      -> t
+      -> bool
   end
 (*  include Identifiable.S with type t := t *)
   val print : Format.formatter -> t -> unit
 end = struct
   type t = {
     param : Parameter.t;
-    equalities : Flambda_primitive.With_fixed_value.t list;
+    equalities : Flambda_primitive.With_fixed_value.Set.t;
     (* CR mshinwell: Add an invariant check that [kind] matches [ty] *)
     ty : Flambda_type.t;
     (* [kind] is here so that you don't need an environment, which
@@ -1485,6 +1573,9 @@ end = struct
 
   end)
 *)
+
+  let equal ~equal_type t1 t2 =
+    
 
   let print ppf { param; equalities; ty; } =
     let print_equalities ppf equalities =

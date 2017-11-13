@@ -58,4 +58,6 @@ module List : sig
   val print : Format.formatter -> t -> unit
 
   val free_names : t -> Name.Set.t
+
+  val equal : t -> t -> bool
 end
