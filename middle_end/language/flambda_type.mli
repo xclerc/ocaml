@@ -148,6 +148,14 @@ val is_useful : (t -> bool) type_accessor
 (** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : (t list -> bool) type_accessor
 
+(** XXX Something like this? *)
+type equation_rhs =
+  | Simple of Simple.t
+  | Type of t
+
+val equations_implied_by_type
+   : (t -> (equation_rhs Variable.Map.t)) type_accessor
+
 (*
 (** Whether the given type describes a float array. *)
 val is_float_array : t -> bool
@@ -383,6 +391,7 @@ val classify_switch_branch
     information about the corresponding value than the supplied type [than]. *)
 val as_or_more_precise : (t -> than:t -> bool) type_accessor
 
+(** Type equality.  (This isn't just syntactic.) *)
 val equal : (t -> t -> bool) type_accessor
 
 (** An [Importer] that does nothing. *)

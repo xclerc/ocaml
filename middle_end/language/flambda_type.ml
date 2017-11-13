@@ -352,7 +352,7 @@ module Blocks : sig
   val meet : (t -> t -> t or_wrong) type_accessor
 
   val equal
-     : type_equal:(t -> t -> bool)
+     : equal_type:(t -> t -> bool)
     -> t
     -> t
     -> bool
@@ -436,13 +436,13 @@ end = struct
         end;
         Ok (t_of_ty_value ty)
 
-  let equal ~type_equal t1 t2 =
+  let equal ~equal_type t1 t2 =
     Tag.Scannable.Map.equal (fun ty_values1 ty_values2 ->
         Array.length ty_values1 = Array.length ty_values2
           && Array.for_all2 (fun ty_value1 ty_value2 ->
               let t1 = t_of_ty_value ty_value1 in
               let t2 = t_of_ty_value ty_value2 in
-              type_equal t1 t2)
+              equal_type t1 t2)
             ty_values1 ty_values2)
       t1 t2
 end
@@ -1014,7 +1014,11 @@ module Joined_closures : sig
 
   val to_type : t -> flambda_type
 
-  val equal : t -> t -> bool
+  val equal
+     : equal_type:(flambda_type -> flambda_type -> bool)
+    -> t
+    -> t
+    -> bool
 end = struct
   type t = {
     sets_of_closures : ty_value Closure_id.Map.t;
@@ -1060,8 +1064,11 @@ end = struct
   let to_type _t =
     assert false
 
-  let equal t1 t2 =
-    assert false
+  let equal ~equal_type { sets_of_closures = sets1; }
+        { sets_of_closures = sets2; } =
+    Closure_id.Map.equal (fun ty_value1 ty_value2 ->
+        equal_type (t_of_ty_value ty_value1) (t_of_ty_value ty_value2))
+      sets1 sets2
 end
 
 module Joined_sets_of_closures : sig
@@ -1071,7 +1078,11 @@ module Joined_sets_of_closures : sig
   val closure_elements : t -> ty_value Var_within_closure.Map.t
   val type_for_closure_id : t -> Closure_id.t -> flambda_type
   val to_type : t -> flambda_type
-  val equal : t -> t -> bool
+  val equal
+     : equal_type:(flambda_type -> flambda_type -> bool)
+    -> t
+    -> t
+    -> bool
   val print : Format.formatter -> t -> unit
 end = struct
   type t = {
@@ -1531,13 +1542,14 @@ module Evaluated = struct
   let equal_t_values ~importer ~type_of_name
         (tv1 : t_values1) (tv2 : t_values2) =
     let module O = Or_not_all_values_known.t in
+    let equal_type = equal_type ~importer ~type_of_name in
     match tv1, tv2 with
     | Unknown, Unknown
     | Bottom, Bottom -> true
     | Blocks_and_tagged_immediates bti1,
         Blocks_and_tagged_immediates bti2 ->
       O.equal (fun (blocks1, imms1) (blocks2, imms2) ->
-          Blocks.equal ~type_equal blocks1 blocks2
+          Blocks.equal ~equal_type blocks1 blocks2
             && Immediate.Set.equal imms1 imms2
         bti1 bti2
     | Tagged_immediates_only ti1,
@@ -1552,9 +1564,9 @@ module Evaluated = struct
     | Boxed_nativeints is1, Boxed_nativeints is2 ->
       O.equal Targetint.Set.equal is1 is2
     | Closures closures1, Closures closures2 ->
-      O.equal Joined_closures.equal is1 is2
+      O.equal (Joined_closures.equal ~equal_type) is1 is2
     | Sets_of_closures sets1, Sets_of_closures sets2 ->
-      O.equal Joined_sets_of_closures.equal is1 is2
+      O.equal (Joined_sets_of_closures.equal ~equal_type) is1 is2
     | Strings strs1, Strings strs2 ->
       O.equal String_info.Set.equal strs1 strs2
     | Float_arrays { lengths = lengths1; },
@@ -1578,7 +1590,7 @@ module Evaluated = struct
       O.equal Targetint.Set.equal is1 is2
     | _, _ -> false
 
-  and type_equal ~importer ~type_of_name
+  and equal_type ~importer ~type_of_name
         (type1 : flambda_type) (type2 : flambda_type) =
     let t1 = create_ignore_name ~importer ~type_of_name type1 in
     let t2 = create_ignore_name ~importer ~type_of_name type2 in
@@ -1586,7 +1598,7 @@ module Evaluated = struct
 end
 
 let equal ~importer ~type_of_name t1 t2 =
-  Evaluated.type_equal ~importer ~type_of_name t1 t2
+  Evaluated.equal_type ~importer ~type_of_name t1 t2
 
 let as_or_more_precise ~importer ~type_of_name t ~than =
   equal ~importer ~type_of_name t (meet ~importer ~type_of_name t than)
