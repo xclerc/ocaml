@@ -582,9 +582,7 @@ end and Function_declaration : sig
     params : Typed_parameter.t list;
     (** The normal (variable) parameters of the function together with their
         types.  Some of the parameters may have non-trivial types that
-        indicate previous specialisation of the function.  Types of parameters
-        must never regress in preciseness. *)
-    (* CR mshinwell: check non-regression property with xclerc's code *)
+        indicate previous specialisation of the function. *)
     body : Expr.t;
     (** The code of the function's body. *)
     free_names_in_body : Name.Set.t;

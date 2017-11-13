@@ -310,9 +310,9 @@ MIDDLE_END_REMOVAL=\
 
 MIDDLE_END_SIMPLIFY=\
   middle_end/simplify/freshening.cmo \
-  middle_end/simplify/simplify_env.cmo \
-  middle_end/simplify/simplify_result.cmo \
+  middle_end/simplify/simplify_env_and_result.cmo \
   middle_end/simplify/simplify_aux.cmo \
+  middle_end/simplify/simplify_simple.cmo \
   middle_end/simplify/simplify_named.cmo \
   middle_end/simplify/simplify_expr.cmo \
   middle_end/simplify/simplify_program.cmo \

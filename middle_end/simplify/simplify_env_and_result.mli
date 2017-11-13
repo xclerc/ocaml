@@ -14,10 +14,12 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** Environments and result structures used during simplification. *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-val simplify_expr
-   : Simplify_env_and_result.Env.t
-  -> Simplify_env_and_result.Result.t
-  -> Flambda.Expr.t
-  -> Flambda.Expr.t * Simplify_env_and_result.Result.t
+module rec Env : sig
+  include Simplify_env_and_result_intf.Env with type result = Result.t
+end and Result : sig
+  include Simplify_env_and_result_intf.Result with type env = Env.t
+end

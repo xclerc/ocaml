@@ -17,53 +17,13 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module B = Inlining_cost.Benefit
-module E = Simplify_env
-module R = Simplify_result
+module E = Simplify_env_and_result.Env
+module R = Simplify_env_and_result.Result
 module T = Flambda_type
 
 type named_simplifier =
   (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t
     * Flambda_type.t * R.t
-
-let type_for_const (const : Simple.Const.t) =
-  match const with
-  (* CR mshinwell: unify terminology: "untagged" vs "naked" *)
-  | Untagged_immediate i -> T.this_naked_immediate i
-  | Tagged_immediate i -> T.this_tagged_immediate i
-  | Naked_float f -> T.this_naked_float f
-  | Naked_int32 n -> T.this_naked_int32 n
-  | Naked_int64 n -> T.this_naked_int64 n
-  | Naked_nativeint n -> T.this_naked_nativeint n
-
-let type_for_simple env (simple : Simple.t)
-      : (Flambda.Named.t * Flambda_type.t) Flambda.Or_invalid.t =
-  match simple with
-  | Const c -> Ok (Simple (Const c), type_for_const c)
-  | Name name ->
-    let ty = E.type_for_name env name in
-    let reified =
-      T.reify ~importer
-        ~type_for_name:(fun name -> E.type_for_name env name)
-        ty
-    in
-    match reified with
-    | Term (named, ty) -> Ok (named, ty)
-    | Cannot_reify -> Ok (Simple simple, ty)
-    | Invalid -> Invalid
-
-let type_for_allocated_const (const : Allocated_const.t) =
-  match const with
-  | Mutable_string { initial_value; } ->
-    T.mutable_string ~size:(String.length initial_value)
-  | Immutable_string s -> T.this_immutable_string s
-  | Boxed_int32 i -> T.this_boxed_int32 i
-  | Boxed_int64 i -> T.this_boxed_int64 i
-  | Boxed_nativeint i -> T.this_boxed_nativeint i
-  | Boxed_float f -> T.this_boxed_float f
-  | Mutable_float_array { initial_value; } ->
-    T.mutable_float_array ~size:(List.length initial_value)
-  | Immutable_float_array fs ->
-    T.this_immutable_float_array (Array.of_list fs)
 
 (* Simplification of operations on boxed integers (nativeint, Int32, Int64). *)
 module Simplify_boxed_integer_operator (I : sig
@@ -1117,6 +1077,9 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
   | Var var ->
     let var, var_ty = freshen_and_squash_aliases env var in
     var, var_ty, r
+  | Symbol sym ->
+    let symbol_ty = E.find_symbol env sym in
+    Reachable tree, symbol_ty, r
   | Const cst -> [], Reachable tree, type_for_const cst, r
   | Read_mutable mut_var ->
     (* See comment on the [Assign] case. *)
@@ -1124,17 +1087,6 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
       Freshening.apply_mutable_variable (E.freshening env) mut_var
     in
     [], Reachable (Read_mutable mut_var), T.unknown Value Other
-  | Symbol sym ->
-    let symbol_ty = E.find_symbol env sym in
-    Reachable tree, symbol_ty, r
-  | Read_symbol_field (symbol, field) ->
-    let symbol_ty = E.find_symbol env sym in
-    begin match T.get_field symbol_ty field with
-    | None -> [], invalid, r
-    | Some flambda_type ->
-      let flambda_type = T.augment_with_symbol_field ty symbol field in
-      simpler_equivalent_term env r tree ty
-    end
   | Set_of_closures set_of_closures -> begin
     let backend = E.backend env in
     let cont_usage_snapshot = R.snapshot_continuation_uses r in
@@ -1221,11 +1173,7 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
               ~pass_name:"Remove_unused_arguments"
           | None -> [], Reachable (Set_of_closures set_of_closures), r
     end
-  | Project_closure project_closure ->
-    simplify_project_closure env r ~project_closure
-  | Project_var project_var -> simplify_project_var env r ~project_var
-  | Move_within_set_of_closures move_within_set_of_closures ->
-    simplify_move_within_set_of_closures env r ~move_within_set_of_closures
+  | Prim (prim, dbg) -> simplify_primitive env r prim dbg
   | Assign { being_assigned; new_value; } ->
     (* No need to use something like [freshen_and_squash_aliases]: the
        Flambda type of [being_assigned] is always unknown. *)
@@ -1235,4 +1183,3 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
     freshen_and_squash_aliases_named env new_value ~f:(fun _env new_value _type ->
       [], Reachable (Assign { being_assigned; new_value; }),
         ret r (T.unknown Value Other))
-  | Prim (prim, args, dbg) -> simplify_primitive env r prim args dbg

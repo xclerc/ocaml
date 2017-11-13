@@ -379,13 +379,11 @@ val classify_switch_branch
   -> Targetint.t
   -> switch_branch_classification) type_accessor
 
-(** Returns [true] iff the given type provides strictly more information
-    about the corresponding value than the supplied type [than]. *)
-val strictly_more_precise : t -> than:t -> bool
-
 (** Returns [true] iff the given type provides the same or strictly more
     information about the corresponding value than the supplied type [than]. *)
-val as_or_more_precise : t -> than:t -> bool
+val as_or_more_precise : (t -> than:t -> bool) type_accessor
+
+val equal : (t -> t -> bool) type_accessor
 
 (** An [Importer] that does nothing. *)
 val null_importer : (module Importer)

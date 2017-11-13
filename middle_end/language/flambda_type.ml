@@ -281,6 +281,12 @@ module Blocks : sig
 
   val meet : (t -> t -> t or_wrong) type_accessor
 
+  val equal
+     : type_equal:(t -> t -> bool)
+    -> t
+    -> t
+    -> bool
+
   val print : Format.formatter -> t -> unit
 end = struct
   type t = ty_value array Tag.Scannable.Map.t
@@ -359,6 +365,16 @@ end = struct
             print t
         end;
         Ok (t_of_ty_value ty)
+
+  let equal ~type_equal t1 t2 =
+    Tag.Scannable.Map.equal (fun ty_values1 ty_values2 ->
+        Array.length ty_values1 = Array.length ty_values2
+          && Array.for_all2 (fun ty_value1 ty_value2 ->
+              let t1 = t_of_ty_value ty_value1 in
+              let t2 = t_of_ty_value ty_value2 in
+              type_equal t1 t2)
+            ty_values1 ty_values2)
+      t1 t2
 end
 
 module Evaluated_first_stage = struct
@@ -927,6 +943,8 @@ module Joined_closures : sig
   val print : Format.formatter -> t -> unit
 
   val to_type : t -> flambda_type
+
+  val equal : t -> t -> bool
 end = struct
   type t = {
     sets_of_closures : ty_value Closure_id.Map.t;
@@ -971,6 +989,9 @@ end = struct
 
   let to_type _t =
     assert false
+
+  let equal t1 t2 =
+    assert false
 end
 
 module Joined_sets_of_closures : sig
@@ -980,6 +1001,7 @@ module Joined_sets_of_closures : sig
   val closure_elements : t -> ty_value Var_within_closure.Map.t
   val type_for_closure_id : t -> Closure_id.t -> flambda_type
   val to_type : t -> flambda_type
+  val equal : t -> t -> bool
   val print : Format.formatter -> t -> unit
 end = struct
   type t = {
@@ -1133,6 +1155,9 @@ end = struct
       List.fold_left (fun result t ->
           join ~importer ~type_of_name result t)
         set sets
+
+  let equal t1 t2 =
+    assert false
 end
 
 module Evaluated = struct
@@ -1421,7 +1446,69 @@ module Evaluated = struct
   let create_ignore_name ~importer ~type_of_name t =
     let t, _name = create ~importer ~type_of_name t in
     t
+
+  let equal_t_values ~importer ~type_of_name
+        (tv1 : t_values1) (tv2 : t_values2) =
+    let module O = Or_not_all_values_known.t in
+    match tv1, tv2 with
+    | Unknown, Unknown
+    | Bottom, Bottom -> true
+    | Blocks_and_tagged_immediates bti1,
+        Blocks_and_tagged_immediates bti2 ->
+      O.equal (fun (blocks1, imms1) (blocks2, imms2) ->
+          Blocks.equal ~type_equal blocks1 blocks2
+            && Immediate.Set.equal imms1 imms2
+        bti1 bti2
+    | Tagged_immediates_only ti1,
+        Tagged_immediates_only ti2 ->
+      O.equal Immediate.Set.equal ti1 ti2
+    | Boxed_floats fs1, Boxed_floats fs2 ->
+      O.equal Float.Set.equal fs1 fs2
+    | Boxed_int32s is1, Boxed_int32s is2 ->
+      O.equal Int32.Set.equal is1 is2
+    | Boxed_int64s is1, Boxed_int64s is2 ->
+      O.equal Int64.Set.equal is1 is2
+    | Boxed_nativeints is1, Boxed_nativeints is2 ->
+      O.equal Targetint.Set.equal is1 is2
+    | Closures closures1, Closures closures2 ->
+      O.equal Joined_closures.equal is1 is2
+    | Sets_of_closures sets1, Sets_of_closures sets2 ->
+      O.equal Joined_sets_of_closures.equal is1 is2
+    | Strings strs1, Strings strs2 ->
+      O.equal String_info.Set.equal strs1 strs2
+    | Float_arrays { lengths = lengths1; },
+        Float_arrays { lengths = lengths2; } ->
+      O.equal Int.Set.equal lengths1 lengths2
+    | _, _ -> false
+
+  and equal ~importer ~type_of_name (t1 : t) (t1 : t) =
+    match t1, t2 with
+    | Values t_values1, Values t_values2 ->
+      equal_t_values ~importer ~type_of_name t_values1 t_values2
+    | Naked_immediates is1, Naked_immediates is2 ->
+      O.equal Immediate.Set.equal is1 is2
+    | Naked_floats fs1, Naked_floats fs2 ->
+      O.equal Float.Set.equal fs1 fs2
+    | Naked_int32s is1, Naked_int32s is2 ->
+      O.equal Int32.Set.equal is1 is2
+    | Naked_int64s is1, Naked_int64s is2 ->
+      O.equal Int64.Set.equal is1 is2
+    | Naked_nativeints is1, Naked_nativeints is2 ->
+      O.equal Targetint.Set.equal is1 is2
+    | _, _ -> false
+
+  and type_equal ~importer ~type_of_name
+        (type1 : flambda_type) (type2 : flambda_type) =
+    let t1 = create_ignore_name ~importer ~type_of_name type1 in
+    let t2 = create_ignore_name ~importer ~type_of_name type2 in
+    equal ~importer ~type_of_name t1 t2
 end
+
+let equal ~importer ~type_of_name t1 t2 =
+  Evaluated.type_equal ~importer ~type_of_name t1 t2
+
+let as_or_more_precise ~importer ~type_of_name t ~than =
+  equal t (meet ~importer ~type_of_name t than)
 
 let is_bottom ~importer ~type_of_name t =
   Evaluated.is_bottom (Evaluated.create_ignore_name ~importer ~type_of_name t)
@@ -2008,12 +2095,6 @@ let classify_switch_branch ~importer ~type_of_name t ~scrutinee branch
     Misc.fatal_errorf "Switch on %a has wrong kind: the scrutinee must have \
         kind [Value]"
       Name.print scrutinee
-
-let as_or_more_precise _t ~than:_ =
-  Misc.fatal_error "not yet implemented"
-
-let strictly_more_precise _t ~than:_ =
-  Misc.fatal_error "not yet implemented"
 
 module No_importing = struct
   let import_export_id _ = None

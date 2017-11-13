@@ -17,16 +17,17 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val simplify_named
-   : Simplify_env.t
-  -> Simplify_result.t
+   : Simplify_env_and_result.Env.t
+  -> Simplify_env_and_result.Result.t
   -> Flambda.Named.t
-  -> (Variable.t * Flambda.Named.t) list
+  -> (Variable.t * Flambda_kind.t * Flambda.Named.t) list
        * Flambda.Reachable.t
        * Flambda_type.t
-       * Simplify_result.t
+       * Simplify_env_and_result.Result.t
 
 val simplify_set_of_closures
-   : Simplify_env.t
-  -> Simplify_result.t
+   : Simplify_env_and_result.Env.t
+  -> Simplify_env_and_result.Result.t
   -> Flambda.Set_of_closures.t
-  -> Flambda.Set_of_closures.t * Flambda_type.t * Simplify_result.t
+  -> Flambda.Set_of_closures.t * Flambda_type.t
+       * Simplify_env_and_result.Result.t

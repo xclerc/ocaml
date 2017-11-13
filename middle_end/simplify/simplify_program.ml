@@ -16,8 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module E = Simplify_env
-module R = Simplify_result
+module E = Simplify_env_and_result.Env
+module R = Simplify_env_and_result.Result
 module T = Flambda_type
 
 module Float = Numbers.Float

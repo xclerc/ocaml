@@ -114,7 +114,7 @@ let rec add_sb_mutable_var sb id id' =
   in
   { sb with back_mutable_var }
 
-let apply_static_exception t i =
+let apply_continuation t i =
   match t with
   | Inactive ->
     i
@@ -122,7 +122,7 @@ let apply_static_exception t i =
     try Continuation.Map.find i t.sb_exn
     with Not_found -> i
 
-let add_static_exception t i =
+let add_continuation t i =
   match t with
   | Inactive -> i, t
   | Active t ->
