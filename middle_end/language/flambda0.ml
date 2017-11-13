@@ -156,12 +156,12 @@ type assign = {
 module Free_var = struct
   type t = {
     var : Variable.t;
-    equality : Flambda_primitive.With_fixed_value.t option;
+    equalities : Flambda_primitive.With_fixed_value.Set.t;
   }
 
   let create var =
     { var;
-      equality = None;
+      equalities : Flambda_primitive.With_fixed_value.Set.empty;
     }
 
   let var t = t.var
@@ -173,9 +173,14 @@ module Free_var = struct
     | Some equality ->
       fprintf ppf "%a(= %a)"
         Variable.print t.var
-        Flambda_primitive.With_fixed_value.print equality
+        Flambda_primitive.With_fixed_value.Set.print equalities
 
   let free_names t = Name.Set.singleton (Name.var t.var)
+
+  let equal { var = var1; equalities = equalities1; }
+        { var = var2; equalities = equalities2; } =
+    Variable.equal var1 var2
+      && Flambda_primitive.With_fixed_value.Set.equal equalities1 equalities2
 end
 
 module Free_vars = struct
@@ -208,6 +213,9 @@ module Free_vars = struct
         Name.Set.union free_names (Free_var.free_names free_var))
       t
       Name.Set.empty
+
+  let equal ~equal_type:_ t1 t2 =
+    Var_within_closure.Map.equal Free_var.equal t1 t2
 end
 
 module Trap_action = struct
@@ -854,6 +862,11 @@ end and Named : sig
      -> Flambda_kind.t
      -> Debuginfo.t
      -> Named.t * Flambda_kind.t
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
 end = struct
   include Named
 
@@ -941,6 +954,23 @@ end = struct
     | Naked_nativeint ->
       Prim (Unary (Unbox_number Naked_nativeint, simple), dbg),
         K.naked_nativeint ()
+
+  let equal ~equal_type t1 t2 =
+    match t1, t2 with
+    | Simple s1, Simple s2 -> Simple.equal s1 s2
+    | Prim (prim1, dbg1), Prim (prim2, dbg2) ->
+      Flambda_primitive.equal prim1 prim2 && Debuginfo.equal dbg1 dbg2
+    | Set_of_closures set1, Set_of_closures set2 ->
+      Set_of_closures.equal ~equal_type set1 set2
+    | Assign { being_assigned = being_assigned1; new_value = new_value1; },
+        Assign { being_assigned = being_assigned2; new_value = new_value2; } ->
+      Mutable_variable.equal being_assigned1 being_assigned2
+        && Simple.equal new_value1 new_value2
+    | Read_mutable mut1, Read_mutable mut2 ->
+      Mutable_variable.equal mut1 mut2
+    | (Simple _, Prim _, Set_of_closures _, Assign _, Read_mutable), _
+    | _, (Simple _, Prim _, Set_of_closures _, Assign _, Read_mutable) ->
+      false
 end and Let : sig
   type t = {
     var : Variable.t;
@@ -952,6 +982,11 @@ end and Let : sig
   }
 
   val map_defining_expr : Let.t -> f:(Named.t -> Named.t) -> Expr.t
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
 end = struct
   include Let
 
@@ -971,6 +1006,30 @@ end = struct
         free_names_of_defining_expr;
         free_names_of_body = let_expr.free_names_of_body;
       }
+
+  let equal ~equal_type
+        { var = var1;
+          kind = kind1;
+          defining_expr = defining_expr1;
+          body = body1;
+          free_names_of_defining_expr = free_names_of_defining_expr1;
+          free_names_of_body = free_names_of_body1;
+        }
+        { var = var2;
+          kind = kind2;
+          defining_expr = defining_expr2;
+          body = body2;
+          free_names_of_defining_expr = free_names_of_defining_expr2;
+          free_names_of_body = free_names_of_body2;
+        } =
+    Variable.equal var1 var2
+      && Flambda_kind.equal kind1 kind2
+      && Named.equal ~equal_type defining_expr1 defining_expr2
+      && Expr.equal ~equal_type defining_expr1 defining_expr2
+      && Name.Set.equal free_names_of_defining_expr1
+        free_names_of_defining_expr2
+      && Name.Set.equal free_names_of_body1
+        free_names_of_body2
 end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
@@ -986,6 +1045,21 @@ end and Let_mutable : sig
 end = struct
   include Let_mutable
 
+  let equal ~equal_type
+        { var = var1;
+          initial_value = initial_value1;
+          contents_type = contents_type1;
+          body = body1;
+        }
+        { var = var2;
+          initial_value = initial_value2;
+          contents_type = contents_type2;
+          body = body2;
+        } =
+    Mutable_variable.equal var1 var2
+      && Name.equal initial_value1 initial_value2
+      && Flambda_type.equal contents_type1 contents_type2
+      && Expr.equal ~equal_type body1 body2
 end and Let_cont : sig
   type t = {
     body : Expr.t;
@@ -1083,6 +1157,17 @@ end = struct
           returned more than one handler for a [Nonrecursive] binding"
       end
     | Recursive handlers -> Recursive (f handlers)
+
+  let equal ~equal_type t1 t2 =
+    match t1, t2 with
+    | Nonrecursive { name = name1; handler = handler1; },
+        Nonrecursive { name = name2; handler = handler2; } ->
+      Continuation.equal name1 name2
+        && Continuation_handler.equal ~equal_type handler1 handler2
+    | Recursive handlers1, Recursive handlers2 ->
+      Continuation_handlers.equal ~equal_type handlers1 handlers2
+    | Nonrecursive _, Recursive _
+    | Recursive _, Nonrecursive _ -> false
 
   let print_using_where ppf (t : t) =
     match t with
@@ -1234,6 +1319,20 @@ end = struct
     let in_decls = Function_declarations.free_names t.function_decls in
     let in_free_vars = Free_vars.free_names t.free_vars in
     Name.Set.union in_decls in_free_vars
+
+  let equal ~equal_type
+        { function_decls = function_decls1;
+          free_vars = free_vars1;
+          direct_call_surrogates = direct_call_surrogates1;
+        }
+        { function_decls = function_decls2;
+          free_vars = free_vars2;
+          direct_call_surrogates = direct_call_surrogates2;
+        } =
+    Function_declarations.equal ~equal_type function_decls1 function_decls2
+      && Free_vars.equal ~equal_type free_vars1 free_vars2
+      && Closure_id.Map.equal Closure_id.equal direct_call_surrogates1
+        direct_call_surrogates2
 end and Function_declarations : sig
   type t = {
     set_of_closures_id : Set_of_closures_id.t;
@@ -1431,6 +1530,46 @@ end = struct
     let params = Typed_parameter.List.free_names t.params in
     let bound = Name.Set.add my_closure params in
     Name.Set.diff t.free_names_in_body bound
+
+  let equal ~equal_type
+        { closure_origin = closure_origin1;
+          continuation_param = continuation_param1;
+          return_arity = return_arity1;
+          params = params1;
+          body = body1;
+          free_names_in_body = free_names_in_body1;
+          stub = stub1;
+          dbg = dbg1;
+          inline = inline1;
+          specialise = specialise1;
+          is_a_functor = is_a_functor1;
+          my_closure = my_closure1;
+        }
+        { closure_origin = closure_origin2;
+          continuation_param = continuation_param2;
+          return_arity = return_arity2;
+          params = params2;
+          body = body2;
+          free_names_in_body = free_names_in_body2;
+          stub = stub2;
+          dbg = dbg2;
+          inline = inline2;
+          specialise = specialise2;
+          is_a_functor = is_a_functor2;
+          my_closure = my_closure2;
+        } =
+    Closure_origin.equal closure_origin1 closure_origin2
+      && Continuation.equal continuation_param1 continuation_param2
+      && Flambda_arity.equal return_arity1 return_arity2
+      && Typed_parameter.List.equal ~equal_type params1 params2
+      && Expr.equal ~equal_type body1 body2
+      && Free_names.Set.equal free_names_in_body1 free_names_in_body2
+      && Pervasives.compare stub1 stub2 = 0
+      && Debuginfo.equal dbg1 dbg2
+      && Pervasives.compare inline1 inline2 = 0
+      && Pervasives.compare specialise1 specialise2 = 0
+      && Pervasives.compare is_a_functor1 is_a_functor2 = 0
+      && Variable.equal my_closure1 my_closure2
 
   let print closure_id ppf (f : t) =
     let stub =
