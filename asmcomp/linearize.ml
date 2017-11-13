@@ -377,6 +377,7 @@ let rec add_jump_for_temperature_changes (i : instruction) =
     add_jump_for_temperature_changes i.next
 
 let fundecl f =
+  Mach.(tweak_temperature_according_to_exceptions f.fun_body);
   Mach.(adjust_temperature f.fun_temperature f.fun_body);
   let fun_body = linear f.Mach.fun_temperature f.Mach.fun_body end_instr in
   fix_label_temperatures fun_body;

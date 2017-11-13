@@ -61,7 +61,7 @@ type operation =
   | Ispecific of Arch.specific_operation
 
 type instruction =
-  { desc: instruction_desc;
+  { mutable desc: instruction_desc;
     next: instruction;
     arg: Reg.t array;
     res: Reg.t array;
@@ -186,6 +186,41 @@ let spacetime_node_hole_pointer_is_live_before insn =
   | Iend | Ireturn | Iifthenelse _ | Iswitch _ | Iloop _ | Icatch _
   | Iexit _ | Itrywith _ | Iraise _ -> false
 
+let rec does_always_raise i =
+  match i.desc with
+  | Iend | Ireturn | Iexit _ | Itrywith _ | Icatch _ ->
+    false
+  | Iop _ ->
+    does_always_raise i.next
+  | Iifthenelse (_, _, ifso, ifno) ->
+    (does_always_raise ifso) && (does_always_raise ifno)
+  | Iswitch (_, a) ->
+    does_always_raise_array a
+  | Iloop j ->
+    does_always_raise j
+  | Iraise _ ->
+    true
+
+and does_always_raise_array a =
+  Array.for_all does_always_raise a
+
+let tweak_temperature_according_to_exceptions instr =
+  instr_iter
+    (fun i ->
+       match i.desc with
+       | Iifthenelse (cond, Lambda.Tepid, ifso, ifno) ->
+         begin match does_always_raise ifso, does_always_raise ifno with
+         | false, true ->
+           i.desc <- Iifthenelse (cond, Lambda.Hot false, ifso, ifno)
+         | true, false ->
+           i.desc <- Iifthenelse (cond, Lambda.Cold false, ifso, ifno)
+         | true, true | false, false ->
+           ()
+         end
+       | _ ->
+         ())
+    instr
+
 let rec adjust_temperature curr_temp i =
   i.temperature <- curr_temp;
   begin match i.desc with
@@ -206,7 +241,7 @@ let rec adjust_temperature curr_temp i =
     let temp_ifso, temp_ifno =
       match temp with
       | Cold x -> Cold x, Hot x
-      | Tepid -> Tepid, Tepid
+      | Tepid -> curr_temp, curr_temp
       | Hot x -> Hot x, Cold x in
     adjust_temperature temp_ifso ifso;
     adjust_temperature temp_ifno ifno

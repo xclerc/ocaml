@@ -71,7 +71,7 @@ type operation =
   | Ispecific of Arch.specific_operation
 
 type instruction =
-  { desc: instruction_desc;
+  { mutable desc: instruction_desc;
     next: instruction;
     arg: Reg.t array;
     res: Reg.t array;
@@ -126,4 +126,5 @@ val instr_iter: (instruction -> unit) -> instruction -> unit
 
 val spacetime_node_hole_pointer_is_live_before : instruction -> bool
 
+val tweak_temperature_according_to_exceptions : instruction -> unit
 val adjust_temperature : Lambda.temperature_attribute -> instruction -> unit
