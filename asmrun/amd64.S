@@ -265,7 +265,7 @@
 #  define CLEANUP_AFTER_C_CALL
 #endif
 
-        .text
+        .text 1
 
         .globl  G(caml_system__code_begin)
 G(caml_system__code_begin):
