@@ -152,4 +152,7 @@ module List = struct
   let equal t1 t2 =
     List.compare_lengths t1 t2 = 0
       && List.for_all2 equal t1 t2
+
+  let compare t1 t2 =
+    Misc.Stdlib.List.compare compare t1 t2
 end

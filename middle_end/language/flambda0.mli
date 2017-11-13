@@ -687,7 +687,7 @@ end and Typed_parameter : sig
   val kind : t -> Flambda_kind.t
 
   (** Equalities to primitive applications that hold about this parameter. *)
-  val equalities : t -> Flambda_primitive.With_fixed_value.t list
+  val equalities : t -> Flambda_primitive.With_fixed_value.Set.t
 
   (** Replace the type of a parameter. *)
   val with_type : t -> Flambda_type.t -> t

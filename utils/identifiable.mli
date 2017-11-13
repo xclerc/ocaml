@@ -25,6 +25,14 @@ module type Thing = sig
   val print : Format.formatter -> t -> unit
 end
 
+module type Thing_no_hash = sig
+  type t
+
+  include Map.OrderedType with type t := t
+
+  val print : Format.formatter -> t -> unit
+end
+
 module Pair : functor (A : Thing) (B : Thing) -> Thing with type t = A.t * B.t
 
 module type Set = sig
@@ -123,3 +131,15 @@ module type S = sig
 end
 
 module Make (T : Thing) : S with type t := T.t
+
+module type S_no_hash = sig
+  type t
+
+  module T : Thing with type t = t
+  include Thing with type t := T.t
+
+  module Set : Set with module T := T
+  module Map : Map with module T := T
+end
+
+module Make (T : Thing_no_hash) : S_no_hash with type t := T.t

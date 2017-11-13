@@ -1518,7 +1518,7 @@ end = struct
   let create ~importer ~type_of_name param ty =
     let kind = Flambda_type.kind ~importer ~type_of_name ty in
     { param;
-      equalities = [];
+      equalities = Flambda_primitive.With_fixed_value.Set.empty;
       ty;
       kind;
     }
@@ -1547,7 +1547,7 @@ end = struct
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the
        equality (if such exists) and the type. *)
-    List.fold_left (fun from_equalities prim ->
+    Flambda_primitive.With_fixed_value.fold (fun from_equalities prim ->
         Name.Set.union from_equalities
           (Flambda_primitive.With_fixed_value.free_names prim))
       (Flambda_type.free_names t.ty)
@@ -1574,24 +1574,19 @@ end = struct
   end)
 *)
 
-  let equal ~equal_type t1 t2 =
-    
+  let equal ~equal_type
+        { param = param1; equalities = equalities1; ty = ty1; kind = kind1; }
+        { param = param2; equalities = equalities2; ty = ty2; kind = kind2; } =
+    Parameter.equal param1 param2
+      && Flambda_primitive.With_fixed_value.Set.equal equalities1 equalities2
+      && equal_type ty1 ty2
+      && Flambda_kind.equal kind1 kind2
 
   let print ppf { param; equalities; ty; } =
-    let print_equalities ppf equalities =
-      match equalities with
-      | [] -> ()
-      | _ ->
-        Format.fprintf ppf "@ =@ %a"
-          (Format.pp_print_list ~pp_sep:(fun ppf () ->
-              Format.pp_print_string ppf " /\ ")
-            Flambda_primitive.With_fixed_value.print)
-        equalities
-    in
     Format.fprintf ppf "@[(%a : %a%a)@]"
       Parameter.print param
       Flambda_type.print ty
-      print_equalities equalities
+      Flambda_primitive.With_fixed_value.Set.print equalities
 
   module List = struct
     type nonrec t = t list
@@ -1613,6 +1608,10 @@ end = struct
     let rename t = List.map (fun t -> rename t) t
 
     let arity t = List.map (fun t -> kind t) t
+
+    let equal ~equal_type t1 t2 =
+      List.compare_lengths t1 t2 = 0
+        && List.for_all2 (equal ~equal_type) t1 t2
 
     let print ppf t =
       Format.pp_print_list ~pp_sep:Format.pp_print_space print ppf t

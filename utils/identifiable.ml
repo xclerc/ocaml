@@ -23,6 +23,14 @@ module type Thing = sig
   val print : Format.formatter -> t -> unit
 end
 
+module type Thing_no_hash = sig
+  type t
+
+  include Map.OrderedType with type t := t
+
+  val print : Format.formatter -> t -> unit
+end
+
 module type Set = sig
   module T : Set.OrderedType
   include Set.S
@@ -299,4 +307,22 @@ module Make (T : Thing) = struct
   module Set = Make_set (T)
   module Map = Make_map (T)
   module Tbl = Make_tbl (T)
+end
+
+module type S_no_hash = sig
+  type t
+
+  module T : Thing with type t = t
+  include Thing with type t := T.t
+
+  module Set : Set with module T := T
+  module Map : Map with module T := T
+end
+
+module Make_no_hash (T : Thing_no_hash) = struct
+  module T = T
+  include T
+
+  module Set = Make_set (T)
+  module Map = Make_map (T)
 end

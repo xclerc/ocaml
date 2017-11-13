@@ -60,4 +60,6 @@ module List : sig
   val free_names : t -> Name.Set.t
 
   val equal : t -> t -> bool
+
+  val compare : t -> t -> bool
 end

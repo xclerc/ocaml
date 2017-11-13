@@ -997,27 +997,72 @@ type t =
 
 type primitive_application = t
 
-let print ppf t =
-  match t with
-  | Unary (prim, v0) ->
-    Format.fprintf ppf "@[(Prim %a %a)@]"
-      print_unary_primitive prim
-      Simple.print v0
-  | Binary (prim, v0, v1) ->
-    Format.fprintf ppf "@[(Prim %a %a %a)@]"
-      print_binary_primitive prim
-      Simple.print v0
-      Simple.print v1
-  | Ternary (prim, v0, v1, v2) ->
-    Format.fprintf ppf "@[(Prim %a %a %a %a)@]"
-      print_ternary_primitive prim
-      Simple.print v0
-      Simple.print v1
-      Simple.print v2
-  | Variadic (prim, vs) ->
-    Format.fprintf ppf "@[(Prim %a %a)@]"
-      print_variadic_primitive prim
-      (Format.pp_print_list ~pp_sep:Format.pp_print_space Simple.print) vs
+include Identifiable.Make (struct
+  type nonrec t = t
+
+  let compare t1 t2 =
+    let numbering t =
+      match t with
+      | Unary _ -> 0
+      | Binary _ -> 1
+      | Ternary _ -> 2
+      | Variadic _ -> 3
+    in
+    match t1, t2 with
+    | Unary (p, s1), Unary (p', s1') ->
+      let c = compare_unary_primitive p p' in
+      if c <> 0 then c
+      else Simple.compare s1 s1'
+    | Binary (p, s1, s2), Binary (p', s1', s2') ->
+      let c = compare_binary_primitive p p' in
+      if c <> 0 then c
+      else
+        let c = Simple.compare s1 s1' in
+        if c <> 0 then c
+        else Simple.compare s2 s2'
+    | Ternary (p, s1, s2, s3), Ternary (p', s1', s2', s3') ->
+      let c = compare_ternary_primitive p p' in
+      if c <> 0 then c
+      else
+        let c = Simple.compare s1 s1' in
+        if c <> 0 then c
+        else
+          let c = Simple.compare s2 s2' in
+          if c <> 0 then c
+          else Simple.compare s3 s3'
+    | Variadic (p, s), Variadic (p', s') ->
+      let c = compare_variadic_primitive p p' in
+      if c <> 0 then c
+      else Simple.List.compare s s'
+    | (Unary _ | Binary _ | Ternary _ | Variadic _), _
+    | _, (Unary _ | Binary _ | Ternary _ | Variadic _) ->
+      Pervasives.compare (numbering t1) (numbering t2)
+
+  let equal t1 t2 =
+    compare t1 t2 = 0
+
+  let print ppf t =
+    match t with
+    | Unary (prim, v0) ->
+      Format.fprintf ppf "@[(Prim %a %a)@]"
+        print_unary_primitive prim
+        Simple.print v0
+    | Binary (prim, v0, v1) ->
+      Format.fprintf ppf "@[(Prim %a %a %a)@]"
+        print_binary_primitive prim
+        Simple.print v0
+        Simple.print v1
+    | Ternary (prim, v0, v1, v2) ->
+      Format.fprintf ppf "@[(Prim %a %a %a %a)@]"
+        print_ternary_primitive prim
+        Simple.print v0
+        Simple.print v1
+        Simple.print v2
+    | Variadic (prim, vs) ->
+      Format.fprintf ppf "@[(Prim %a %a)@]"
+        print_variadic_primitive prim
+        (Format.pp_print_list ~pp_sep:Format.pp_print_space Simple.print) vs
+end)
 
 let free_names t =
   match t with
@@ -1094,5 +1139,10 @@ module With_fixed_value = struct
   let to_primitive t = t
 
   let free_names = free_names
+  let compare = compare
+  let equal = equal
   let print = print
+
+  module Map = Map
+  module Set = Set
 end
