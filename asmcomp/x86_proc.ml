@@ -232,7 +232,7 @@ let smaller_cmp l =
     && (Int64.compare x upper <= 0)
   in
   let rec loop acc = function
-    | (Ins (AND (Imm 255L , Reg64 r1)) as and_255)
+    | (Ins (AND (Imm 255L , (Reg64 r1 | Reg32 r1))) as and_255)
       :: Ins (CMP (Imm cst, Reg64 r2))
       :: tl
       when (r1 = r2) && (int64_between ~lower:0L ~upper:255L cst) ->

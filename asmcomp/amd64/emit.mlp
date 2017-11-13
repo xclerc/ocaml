@@ -765,6 +765,9 @@ let emit_instr fallthrough i =
       let lbl = bound_error_label ?label:label_after_error i.dbg ~spacetime in
       I.cmp (int n) (arg i 0);
       I.jbe (label lbl)
+  | Lop(Iintop_imm (Iand, n))
+    when n >= 0 && n < 0x01_0000_0000 ->
+    I.and_ (int n) (res32 i 0)
   | Lop(Iintop(Idiv | Imod)) ->
       I.cqo ();
       I.idiv (arg i 1)
