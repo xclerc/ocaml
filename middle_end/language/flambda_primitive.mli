@@ -217,6 +217,12 @@ type primitive_application = t
 (** Print a primitive and its arguments to a formatter. *)
 val print : Format.formatter -> t -> unit
 
+(** Total ordering on primitive applications. *)
+val compare : t -> t -> int
+
+(** Equality on primitive applications with respect to [compare]. *)
+val equal : t -> t -> bool
+
 (** All free names in a primitive application. *)
 val free_names : t -> Name.Set.t
 
