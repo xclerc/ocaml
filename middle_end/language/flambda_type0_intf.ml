@@ -395,6 +395,9 @@ module type S = sig
       straightforward backend-provided ones. *)
   module Make_importer (S : Importer_intf) : Importer
 
+  (** An [Importer] that does nothing. *)
+  val null_importer : (module Importer)
+
   (** Annotation for functions that may require the importing of types from
       .cmx files or the examination of the current simplification
       environment. *)

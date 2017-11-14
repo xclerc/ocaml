@@ -916,11 +916,7 @@ end = struct
           use cont;
           use exn_handler
         | Switch (_, switch) ->
-          List.iter (fun (_const, cont) -> use cont) switch.consts;
-          begin match switch.failaction with
-          | None -> ()
-          | Some cont -> use cont
-          end
+          Targetint.Map.iter (fun _value cont -> use cont) switch.arms
         | Let _ | Let_mutable _ | Let_cont _ | Invalid _ -> ())
       (fun _named -> ())
       expr;
@@ -1143,13 +1139,12 @@ end = struct
         ignore (dbg : Debuginfo.t);
         ignore (inline : inline_attribute);
         ignore (specialise : specialise_attribute)
-      | Switch (arg, { numconsts; consts; failaction; }) ->
+      | Switch (arg, { arms; }) ->
         E.check_name_is_bound_and_of_kind env arg (K.value Must_scan);
-        ignore (numconsts : Targetint.Set.t);
-        if List.length consts < 1 then begin
+        if Targetint.Map.cardinal arms < 1 then begin
           Misc.fatal_errorf "Empty switch: %a" print t
         end;
-        let check (i, cont) =
+        let check i cont =
           ignore (i : Targetint.t);
           match E.find_continuation_opt env cont with
           | None ->
@@ -1172,19 +1167,7 @@ end = struct
                 Flambda_arity.print arity
             end
         in
-        List.iter check consts;
-        begin match failaction with
-        | None -> ()
-        | Some cont ->
-          check (Targetint.zero, cont);
-          let cont_stack =
-            match E.find_continuation_opt env cont with
-            | None -> unbound_continuation cont "[Switch] term"
-            | Some (_arity, _kind, cont_stack) -> cont_stack
-          in
-          let current_stack = E.current_continuation_stack env in
-          E.Continuation_stack.unify cont cont_stack current_stack
-        end
+        Targetint.Map.iter check arms
       | Invalid _ -> ()
     in
     loop env expr

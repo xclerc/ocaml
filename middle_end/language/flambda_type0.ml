@@ -1234,6 +1234,15 @@ end) = struct
         import_naked_nativeint_type_as_resolved_ty_naked_nativeint ty)
   end
 
+  module No_importing = struct
+    let import_export_id _ = None
+    let import_symbol _ = None
+  end
+
+  module Null_importer = Make_importer (No_importing)
+
+  let null_importer = (module Null_importer : Importer)
+
   let force_to_kind_value t =
     match t with
     | Value ty_value -> ty_value

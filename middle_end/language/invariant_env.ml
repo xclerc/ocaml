@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
+module T = Flambda0.Flambda_type
+
 type continuation_kind = Normal | Exn_handler
 
 (* For checking that push- and pop-trap operations match up correctly. *)
@@ -104,8 +106,8 @@ type t = {
   uses_of_closure_ids_seen : Closure_id.Set.t ref;
   all_var_within_closures_seen : Var_within_closure.Set.t ref;
   uses_of_var_within_closures_seen : Var_within_closure.Set.t ref;
-  names : Flambda_type.t Name.Map.t;
-  mutable_variables : Flambda_type.t Mutable_variable.Map.t;
+  names : T.t Name.Map.t;
+  mutable_variables : T.t Mutable_variable.Map.t;
   continuations :
     (Flambda_arity.t * continuation_kind * Continuation_stack.t)
       Continuation.Map.t;
@@ -275,8 +277,8 @@ let check_name_is_bound_and_of_kind t name desired_kind =
     Misc.fatal_errorf "Unbound name %a" Name.print name
   | ty ->
     let kind =
-      Flambda_type.kind ty
-        ~importer:Flambda_type.null_importer
+      T.kind ty
+        ~importer:T.null_importer
         ~type_of_name:(fun ty -> type_of_name_option t ty)
     in
     if not (Flambda_kind.compatible kind ~if_used_at:desired_kind) then begin
@@ -337,8 +339,8 @@ let kind_of_name t name =
   | exception Not_found ->
     Misc.fatal_errorf "Unbound name %a" Name.print name
   | ty ->
-    Flambda_type.kind ty
-      ~importer:Flambda_type.null_importer
+    T.kind ty
+      ~importer:T.null_importer
       ~type_of_name:(fun ty -> type_of_name_option t ty)
 
 let kind_of_simple t (simple : Simple.t) =
@@ -353,8 +355,8 @@ let kind_of_mutable_variable t var =
   | exception Not_found ->
     Misc.fatal_errorf "Unbound mutable variable %a" Mutable_variable.print var
   | ty ->
-    Flambda_type.kind ty
-      ~importer:Flambda_type.null_importer
+    T.kind ty
+      ~importer:T.null_importer
       ~type_of_name:(fun ty -> type_of_name_option t ty)
 
 let current_continuation_stack t = t.continuation_stack

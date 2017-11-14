@@ -142,23 +142,14 @@ module Trap_action : sig
 end
 
 module Switch : sig
-  (** Equivalent to the similar type in [Ilambda]. *)
+  (** Conditional control flow (the only such form). *)
   type t = private {
-    (* CR pchambart: [numconsts] and [failaction] should be removed.
-       This was useful when the cases contents were not continuations. It
-       allowed sharing without declaring a continuation. Now that sharing is
-       there by default, there is no benefit of not having that part of
-       consts.
-       mshinwell: Let's fix this once everything is compiling again. *)
-    numconsts : Targetint.Set.t;
-    (** All possible values that the scrutinee might have. *)
-    consts : (Targetint.t * Continuation.t) list;
-    (** Branches for specific values of the scrutinee. *)
-    failaction : Continuation.t option;
-    (** Action to take if none of the [consts] matched. *)
+    arms : Continuation.t Targetint.Map.t;
+    (** Branches for all possible values of the scrutinee.
+        Invariant: the map is always non-empty. *)
   }
 
-  val equal : t -> t -> bool
+  include Identifiable.S_no_hash with type t := t
 end
 
 (** What the optimizer should do when it reaches a term that is known to be
@@ -224,20 +215,12 @@ module rec Expr : sig
       not actually be a [Switch].) *)
   val create_switch
      : scrutinee:Name.t
-    -> all_possible_values:Targetint.Set.t
-    -> arms:(Targetint.t * Continuation.t) list
-    -> default:Continuation.t option
+    -> arms:Continuation.t Targetint.Map.t
     -> Expr.t
-
-  (** As for [create], but also returns a map showing the continuations
-      that occur within the returned expression, and how many uses of each there
-      are therein. *)
   val create_switch'
      : scrutinee:Name.t
-    -> all_possible_values:Targetint.Set.t
-    -> arms:(Targetint.t * Continuation.t) list
-    -> default:Continuation.t option
-    -> Expr.t * (int Continuation.Map.t)
+    -> arms:Continuation.t Targetint.Map.t
+    -> Expr.t * bool  (* CR mshinwell: improve result type *)
 
   (** Compute the free names of a term.  (This is O(1) for [Let]s).
       If [ignore_uses_as_callee], all free names inside [Apply] expressions

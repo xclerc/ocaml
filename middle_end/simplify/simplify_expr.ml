@@ -206,7 +206,7 @@ let rec simplify_let_cont_handler ~env ~r ~cont ~handler ~arg_tys =
   in
   r, handler
 
-and simplify_let_cont_handlers ~env ~r ~handlers ~arg_tys
+and simplify_let_cont_handlers ~env ~r ~handlers
       ~(recursive : Flambda.recursive) ~freshening
       : Flambda.Let_cont_handlers.t option * R.t =
   Continuation.Map.iter (fun cont _handler ->
@@ -235,6 +235,9 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~arg_tys
       Continuation.Map.fold (fun cont
                 (handler : Flambda.Continuation_handler.t) handlers ->
           let cont' = Freshening.apply_continuation freshening cont in
+
+
+
           let arg_tys =
             let unknown () =
               Array.to_list (Array.init (List.length handler.params)
@@ -260,6 +263,9 @@ and simplify_let_cont_handlers ~env ~r ~handlers ~arg_tys
                 arg_tys
               end
           in
+
+
+
           let r, handler =
             simplify_let_cont_handler ~env ~r:(R.create ()) ~cont:cont' ~handler
               ~arg_tys
@@ -1035,69 +1041,26 @@ and simplify_switch env r arg sw : Expr.t * R.t =
         | T.Must_be_taken ->
           Must_be_taken cont
   in
-  (* Use type information to determine which branches definitely
-     will be taken, or may be taken. *)
-  begin match filter_branches T.classify_switch_branch sw.consts [] with
+  match filter_branches T.classify_switch_branch sw.arms [] with
   | Must_be_taken cont ->
     let expr, r =
       simplify_apply_cont env r cont ~trap_action:None
         ~args:[] ~args_types:[]
     in
     expr, R.map_benefit r B.remove_branch
-  | Can_be_taken consts ->
-    match consts, sw.failaction with
-    | [], None -> Expr.invalid (), r
-    | [_, cont], None ->
+  | Can_be_taken arms ->
+    let env = E.inside_branch env in
+    let snapshot = R.snapshot_continuation_uses r in
+    let f (arms, r) (value, cont) =
       let cont, r =
         simplify_continuation_use_cannot_inline env r cont ~args_types:[]
       in
-      Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
-    | [], Some cont ->
-      if destination_is_unreachable cont then
-        Invalid Treat_as_unreachable, R.map_benefit r B.remove_branch
-      else
-        let cont, r =
-          simplify_continuation_use_cannot_inline env r cont ~args_types:[]
-        in
-        Apply_cont (cont, None, []), R.map_benefit r B.remove_branch
-    | _ ->
-      let env = E.inside_branch env in
-      let snapshot = R.snapshot_continuation_uses r in
-      let f (acc, r) (i, cont) =
-        let cont, r =
-          simplify_continuation_use_cannot_inline env r cont ~args_types:[]
-        in
-        (i, cont)::acc, r
-      in
-      let consts, r = List.fold_left f ([], r) consts in
-      let failaction, r =
-        match sw.failaction with
-        | None -> None, r
-        | Some cont ->
-          if destination_is_unreachable cont then
-            None, r
-          else
-            let cont, r =
-              simplify_continuation_use_cannot_inline env r cont ~args_types:[]
-            in
-            Some cont, r
-      in
-      let switch, used_conts =
-        Expr.create_switch' ~scrutinee:arg
-          ~all_possible_values:sw.numconsts
-          ~arms:consts
-          ~default:failaction
-      in
-      let r = R.roll_back_continuation_uses r snapshot in
-      let r = ref r in
-      Continuation.Map.iter (fun cont num_uses ->
-          for _use = 1 to num_uses do
-            r := R.use_continuation !r env cont
-              (Not_inlinable_or_specialisable [])
-          done)
-        used_conts;
-      switch, !r
-  end
+      Targetint.Map.add value cont arms, r
+    in
+    let arms, r = Targetint.Map.fold f (Targetint.Set.empty, r) arms in
+    let switch, removed_branch = Expr.create_switch' ~scrutinee:arg ~arms in
+    if removed_branch then switch, R.map_benefit r B.remove_branch
+    else switch, r
 
 and simplify_expr env r (tree : Expr.t) : Expr.t * R.t =
   match tree with

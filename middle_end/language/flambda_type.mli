@@ -395,6 +395,3 @@ val as_or_more_precise : (t -> than:t -> bool) type_accessor
 
 (** Type equality.  (This isn't just syntactic.) *)
 val equal : (t -> t -> bool) type_accessor
-
-(** An [Importer] that does nothing. *)
-val null_importer : (module Importer)

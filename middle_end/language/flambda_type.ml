@@ -2202,12 +2202,3 @@ let classify_switch_branch ~importer ~type_of_name t ~scrutinee branch
     Misc.fatal_errorf "Switch on %a has wrong kind: the scrutinee must have \
         kind [Value]"
       Name.print scrutinee
-
-module No_importing = struct
-  let import_export_id _ = None
-  let import_symbol _ = None
-end
-
-module Null_importer = Make_importer (No_importing)
-
-let null_importer = (module Null_importer : Importer)

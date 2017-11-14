@@ -16,7 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Int = Numbers.Int
 module K = Flambda_kind
 
 let fprintf = Format.fprintf
@@ -269,50 +268,25 @@ end
 
 module Switch = struct
   type t = {
-    numconsts : Targetint.Set.t;
-    consts : (Targetint.t * Continuation.t) list;
-    failaction : Continuation.t option;
+    arms : Continuation.t Targetint.Map.t;
   }
 
-  include Identifiable.Make (struct
+  include Identifiable.Make_no_hash (struct
     type nonrec t = t
 
     let compare t1 t2 =
-      let c = Targetint.Set.compare t1.numconsts t2.numconsts in
-      if c <> 0 then c
-      else
-        let c =
-          let compare_one (i1, k1) (i2, k2) =
-            let c = Targetint.compare i1 i2 in
-            if c <> 0 then c
-            else Continuation.compare k1 k2
-          in
-          Misc.Stdlib.List.compare compare_one t1.consts t2.consts
-        in
-        if c <> 0 then c
-        else
-          Misc.Stdlib.Option.compare Continuation.compare
-            t1.failaction t2.failaction
+      Targetint.Map.compare Continuation.compare t1.arms t2.arms
 
     let equal t1 t2 = (compare t1 t2 = 0)
 
-    let hash _t = Misc.fatal_error "Not implemented"
-
     let print ppf (t : t) =
       let spc = ref false in
-      List.iter (fun (n, l) ->
+      Targetint.Map.iter (fun n l ->
           if !spc then fprintf ppf "@ " else spc := true;
           fprintf ppf "@[<hv 1>| %a ->@ goto %a@]"
             Targetint.print n
             Continuation.print l)
-        t.consts;
-      begin match t.failaction with
-      | None  -> ()
-      | Some l ->
-        if !spc then fprintf ppf "@ " else spc := true;
-        let module Int = Int in
-        fprintf ppf "@[<hv 1>| _ ->@ goto %a@]" Continuation.print l
-      end
+        t.arms
   end)
 end
 
@@ -341,16 +315,12 @@ module rec Expr : sig
   val create_let : Variable.t -> Flambda_kind.t -> Named.t -> t -> t
   val create_switch
      : scrutinee:Name.t
-    -> all_possible_values:Targetint.Set.t
-    -> arms:(Targetint.t * Continuation.t) list
-    -> default:Continuation.t option
+    -> arms:Continuation.t Targetint.Map.t
     -> Expr.t
   val create_switch'
      : scrutinee:Name.t
-    -> all_possible_values:Targetint.Set.t
-    -> arms:(Targetint.t * Continuation.t) list
-    -> default:Continuation.t option
-    -> Expr.t * (int Continuation.Map.t)
+    -> arms:Continuation.t Targetint.Map.t
+    -> Expr.t * bool
   val free_names_advanced
      : ?ignore_uses_as_callee:unit
     -> ?ignore_uses_as_argument:unit
@@ -506,88 +476,16 @@ end = struct
     else
       Invalid Halt_and_catch_fire
 
-  let create_switch' ~scrutinee ~all_possible_values ~arms ~default
-        : t * (int Continuation.Map.t) =
-    let result_switch : Switch.t =
-      { numconsts = all_possible_values;
-        consts = arms;
-        failaction = default;
-      }
-    in
-    let result : t = Switch (scrutinee, result_switch) in
-    let arms =
-      List.sort (fun (value1, _) (value2, _) -> Pervasives.compare value1 value2)
-        arms
-    in
-    let num_possible_values = Targetint.Set.cardinal all_possible_values in
-    let num_arms = List.length arms in
-    let arm_values = List.map (fun (value, _cont) -> value) arms in
-    let num_arm_values = List.length arm_values in
-    let arm_values_set = Targetint.Set.of_list arm_values in
-    let num_arm_values_set = Targetint.Set.cardinal arm_values_set in
-    if num_arm_values <> num_arm_values_set then begin
-      Misc.fatal_errorf "More than one arm of this switch matches on \
-          the same value: %a"
-        print result
-    end;
-    if num_arms > num_possible_values then begin
-      Misc.fatal_errorf "This switch has too many arms: %a"
-        print result
-    end;
-    if not (Targetint.Set.subset arm_values_set all_possible_values) then begin
-      Misc.fatal_errorf "This switch matches on values that were not specified \
-          in the set of all possible values: %a"
-        print result
-    end;
-    if num_possible_values < 1 then begin
-      invalid (), Continuation.Map.empty
-    end else if num_arms = 0 && default = None then begin
-      (* [num_possible_values] might be strictly greater than zero in this
-         case, but that doesn't matter. *)
-      invalid (), Continuation.Map.empty
-    end else begin
-      let default =
-        if num_arm_values = num_possible_values then None
-        else default
-      in
-      let single_case =
-        match arms, default with
-        | [_, cont], None
-        | [], Some cont -> Some cont
-        | arms, default ->
-          let destinations =
-            Continuation.Set.of_list (List.map (fun (_, cont) -> cont) arms)
-          in
-          assert (not (Continuation.Set.is_empty destinations));
-          match Continuation.Set.elements destinations, default with
-          | [cont], None -> Some cont
-          | [cont], Some cont' when Continuation.equal cont cont' -> Some cont
-          | _, _ -> None
-      in
-      match single_case with
-      | Some cont ->
-        Apply_cont (cont, None, []),
-          Continuation.Map.add cont 1 Continuation.Map.empty
-      | None ->
-        let num_uses = Continuation.Tbl.create 42 in
-        let add_use cont =
-          match Continuation.Tbl.find num_uses cont with
-          | exception Not_found -> Continuation.Tbl.add num_uses cont 1
-          | num -> Continuation.Tbl.replace num_uses cont (num + 1)
-        in
-        List.iter (fun (_const, cont) -> add_use cont) result_switch.consts;
-        begin match default with
-        | None -> ()
-        | Some default -> add_use default
-        end;
-        Switch (scrutinee, { result_switch with failaction = default; }),
-          Continuation.Tbl.to_map num_uses
-    end
+  let create_switch' ~scrutinee ~arms =
+    let num_possible_values = Targetint.Map.cardinal arms in
+    if num_possible_values < 1 then
+      invalid (), false
+    else
+      let t : t = Switch (scrutinee, { arms; }) in
+      t, true
 
-  let create_switch ~scrutinee ~all_possible_values ~arms ~default =
-    let switch, _uses =
-      create_switch' ~scrutinee ~all_possible_values ~arms ~default
-    in
+  let create_switch ~scrutinee ~arms =
+    let switch, _benefit = create_switch' ~scrutinee ~arms in
     switch
 
   let rec free_continuations (t : t) =
@@ -616,13 +514,7 @@ end = struct
       Continuation.Set.add cont trap_action
     | Apply { continuation; } -> Continuation.Set.singleton continuation
     | Switch (_scrutinee, switch) ->
-      let consts = List.map (fun (_int, cont) -> cont) switch.consts in
-      let failaction =
-        match switch.failaction with
-        | None -> Continuation.Set.empty
-        | Some cont -> Continuation.Set.singleton cont
-      in
-      Continuation.Set.union failaction (Continuation.Set.of_list consts)
+      Continuation.Set.of_list (Targetint.Map.data switch.arms)
     | Invalid _ -> Continuation.Set.empty
 
   let create_let var kind defining_expr body : t =
