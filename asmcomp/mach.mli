@@ -126,6 +126,7 @@ val instr_iter: (instruction -> unit) -> instruction -> unit
 
 val spacetime_node_hole_pointer_is_live_before : instruction -> bool
 
+val does_always_raise : instruction -> bool
 val combine_temperature : Lambda.temperature_attribute -> Lambda.temperature_attribute -> Lambda.temperature_attribute * Lambda.temperature_attribute
 val tweak_temperature_according_to_exceptions : instruction -> unit
 val adjust_temperature : Lambda.temperature_attribute -> instruction -> unit
