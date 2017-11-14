@@ -984,7 +984,7 @@ let fundecl fundecl =
   bound_error_call := 0;
   all_functions := fundecl :: !all_functions;
   section_of_temperature ~force:true fundecl.fun_temperature;
-  D.align 16;
+  D.align 32;
   add_def_symbol fundecl.fun_name;
   if system = S_macosx
   && not !Clflags.output_c_object
