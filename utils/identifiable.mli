@@ -5,8 +5,8 @@
 (*                       Pierre Chambart, OCamlPro                        *)
 (*           Mark Shinwell and Leo White, Jane Street Europe              *)
 (*                                                                        *)
-(*   Copyright 2013--2016 OCamlPro SAS                                    *)
-(*   Copyright 2014--2016 Jane Street Group LLC                           *)
+(*   Copyright 2013--2017 OCamlPro SAS                                    *)
+(*   Copyright 2014--2017 Jane Street Group LLC                           *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -31,6 +31,7 @@ module type Thing_no_hash = sig
   include Map.OrderedType with type t := t
 
   val print : Format.formatter -> t -> unit
+  val equal : t -> t -> bool
 end
 
 module Pair : functor (A : Thing) (B : Thing) -> Thing with type t = A.t * B.t
@@ -135,11 +136,13 @@ module Make (T : Thing) : S with type t := T.t
 module type S_no_hash = sig
   type t
 
-  module T : Thing with type t = t
-  include Thing with type t := T.t
+  module T : Thing_no_hash with type t = t
+  include Thing_no_hash with type t := T.t
 
   module Set : Set with module T := T
   module Map : Map with module T := T
+
+  val equal : t -> t -> bool
 end
 
-module Make (T : Thing_no_hash) : S_no_hash with type t := T.t
+module Make_no_hash (T : Thing_no_hash) : S_no_hash with type t := T.t

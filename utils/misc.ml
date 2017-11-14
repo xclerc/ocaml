@@ -196,6 +196,19 @@ module Stdlib = struct
         else if p (Array.unsafe_get a1 i) (Array.unsafe_get a2 i) then true
         else loop (succ i) in
       loop 0
+
+    let for_all2 p a1 a2 =
+      let n = Array.length a1 in
+      if Array.length a2 <> n then invalid_arg "Misc.Stdlib.Array.for_all2";
+      let rec loop i =
+        if i = n then
+          true
+        else if not (p (Array.unsafe_get a1 i) (Array.unsafe_get a2 i)) then
+          false
+        else
+          loop (succ i)
+      in
+      loop 0
   end
 
   module Set_once = struct

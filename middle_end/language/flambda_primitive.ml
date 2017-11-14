@@ -337,17 +337,17 @@ let compare_unary_primitive p1 p2 =
   | String_length kind1, String_length kind2 ->
     Pervasives.compare kind1 kind2
   | Swap_byte_endianness kind1, Swap_byte_endianness kind2 ->
-    K.Standard_int.compare kind1 kind2 in
+    K.Standard_int.compare kind1 kind2
   | Int_arith (kind1, op1), Int_arith (kind2, op2) ->
     let c = K.Standard_int.compare kind1 kind2 in
     if c <> 0 then c
     else Pervasives.compare op1 op2
-  | Int_conv of { src = src1; dst = dst1; },
-      Int_conv of { src = src2; dst = dst2; } ->
+  | Int_conv { src = src1; dst = dst1; },
+      Int_conv { src = src2; dst = dst2; } ->
     let c = K.Standard_int.compare src1 src2 in
     if c <> 0 then c
     else K.Standard_int.compare dst1 dst2
-  | Float_arith op1, Float_arity op2 ->
+  | Float_arith op1, Float_arith op2 ->
     Pervasives.compare op1 op2
   | Array_length kind1, Array_length kind2 ->
     Pervasives.compare kind1 kind2
@@ -387,29 +387,7 @@ let compare_unary_primitive p1 p2 =
     | Box_number _
     | Project_closure _
     | Move_within_set_of_closures _
-    | Project_var _), _
-  | _, (Block_load _
-    | Duplicate_array _
-    | Duplicate_record _
-    | Is_int
-    | Get_tag
-    | String_length _
-    | Swap_byte_endianness _
-    | Int_as_pointer
-    | Opaque_identity
-    | Raise _
-    | Int_arith _
-    | Int_conv _
-    | Float_arith _
-    | Int_of_float
-    | Float_of_int
-    | Array_length _
-    | Bigarray_length _
-    | Unbox_number _
-    | Box_number _
-    | Project_closure _
-    | Move_within_set_of_closures _
-    | Project_var _) ->
+    | Project_var _), _ ->
     Pervasives.compare (unary_primitive_numbering p1)
       (unary_primitive_numbering p2)
 
@@ -621,7 +599,10 @@ let compare_binary_primitive p1 p2 =
       let c = Pervasives.compare kind1 kind2 in
       if c <> 0 then c
       else Pervasives.compare init_or_assign1 init_or_assign2
-  | Int_arith (kind1, op1), Int_arith (kind2, op2)
+  | Int_arith (kind1, op1), Int_arith (kind2, op2) ->
+    let c = K.Standard_int.compare kind1 kind2 in
+    if c <> 0 then c
+    else Pervasives.compare op1 op2
   | Int_shift (kind1, op1), Int_shift (kind2, op2) ->
     let c = K.Standard_int.compare kind1 kind2 in
     if c <> 0 then c
@@ -633,8 +614,8 @@ let compare_binary_primitive p1 p2 =
   | Float_arith op1, Float_arith op2 ->
     Pervasives.compare op1 op2
   | Float_comp comp1, Float_comp comp2 ->
-    Pervasives.compare op1 op2
-  | Array_load (kind1, is_safe1), Array_load (kind1, is_safe2) ->
+    Pervasives.compare comp1 comp2
+  | Array_load (kind1, is_safe1), Array_load (kind2, is_safe2) ->
     let c = Pervasives.compare kind1 kind2 in
     if c <> 0 then c
     else Pervasives.compare is_safe1 is_safe2
@@ -656,18 +637,7 @@ let compare_binary_primitive p1 p2 =
     | Bit_test
     | Array_load _
     | String_load _
-    | Bigstring_load _), _
-  | _, (Block_load_computed_index
-    | Block_set _
-    | Int_arith _
-    | Int_shift _
-    | Int_comp _
-    | Float_arith _
-    | Float_comp _
-    | Bit_test
-    | Array_load _
-    | String_load _
-    | Bigstring_load _) ->
+    | Bigstring_load _), _ ->
     Pervasives.compare (binary_primitive_numbering p1)
       (binary_primitive_numbering p2)
 
@@ -785,20 +755,16 @@ let compare_ternary_primitive p1 p2 =
     let c = Pervasives.compare kind1 kind2 in
     if c <> 0 then c
     else Pervasives.compare is_safe1 is_safe2
-  | Bigstring_set (width1, is_safe1), Bigstring_set (width1, is_safe2) ->
+  | Bigstring_set (width1, is_safe1), Bigstring_set (width2, is_safe2) ->
     let c = Pervasives.compare width1 width2 in
     if c <> 0 then c
     else Pervasives.compare is_safe1 is_safe2
   | (Block_set_computed _
     | Bytes_set _
     | Array_set _
-    | Bigstring_set _), _
-  | _, (Block_set_computed _
-    | Bytes_set _
-    | Array_set _
-    | Bigstring_set _) ->
+    | Bigstring_set _), _ ->
     Pervasives.compare (ternary_primitive_numbering p1)
-      ternary_primitive_numbering p2)
+      (ternary_primitive_numbering p2)
 
 let print_ternary_primitive ppf p =
   let fprintf = Format.fprintf in
@@ -910,12 +876,7 @@ let compare_variadic_primitive p1 p2 =
     | Make_array _
     | Bigarray_set _
     | Bigarray_load _
-    | C_call _), _
-  | _, (Make_block _
-    | Make_array _
-    | Bigarray_set _
-    | Bigarray_load _
-    | C_call _) ->
+    | C_call _), _ ->
     Pervasives.compare (variadic_primitive_numbering p1)
       (variadic_primitive_numbering p2)
 
@@ -997,7 +958,7 @@ type t =
 
 type primitive_application = t
 
-include Identifiable.Make (struct
+include Identifiable.Make_no_hash (struct
   type nonrec t = t
 
   let compare t1 t2 =
@@ -1034,8 +995,7 @@ include Identifiable.Make (struct
       let c = compare_variadic_primitive p p' in
       if c <> 0 then c
       else Simple.List.compare s s'
-    | (Unary _ | Binary _ | Ternary _ | Variadic _), _
-    | _, (Unary _ | Binary _ | Ternary _ | Variadic _) ->
+    | (Unary _ | Binary _ | Ternary _ | Variadic _), _ ->
       Pervasives.compare (numbering t1) (numbering t2)
 
   let equal t1 t2 =
@@ -1139,10 +1099,12 @@ module With_fixed_value = struct
   let to_primitive t = t
 
   let free_names = free_names
-  let compare = compare
-  let equal = equal
-  let print = print
 
-  module Map = Map
-  module Set = Set
+  include Identifiable.Make_no_hash (struct
+    type nonrec t = t
+
+    let compare = compare
+    let equal = equal
+    let print = print
+  end)
 end

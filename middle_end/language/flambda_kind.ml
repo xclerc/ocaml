@@ -115,12 +115,20 @@ module Standard_int = struct
     | Naked_int64 -> Naked_int64
     | Naked_nativeint -> Naked_nativeint
 
-  let print ppf t =
-    match t with
-    | Tagged_immediate -> Format.pp_print_string ppf "Tagged_immediate"
-    | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
-    | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
-    | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let print ppf t =
+      match t with
+      | Tagged_immediate -> Format.pp_print_string ppf "Tagged_immediate"
+      | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
+      | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
+      | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
+
+    let compare = Pervasives.compare
+    let equal t1 t2 = (compare t1 t2 = 0)
+    let hash = Hashtbl.hash
+  end)
 
   let print_lowercase ppf t =
     match t with
@@ -144,12 +152,20 @@ module Boxable_number = struct
     | Naked_int64 -> Naked_int64
     | Naked_nativeint -> Naked_nativeint
 
-  let print ppf t =
-    match t with
-    | Naked_float -> Format.pp_print_string ppf "Naked_float"
-    | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
-    | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
-    | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let print ppf t =
+      match t with
+      | Naked_float -> Format.pp_print_string ppf "Naked_float"
+      | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
+      | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
+      | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
+
+    let compare = Pervasives.compare
+    let equal t1 t2 = (compare t1 t2 = 0)
+    let hash = Hashtbl.hash
+  end)
 
   let print_lowercase ppf t =
     match t with

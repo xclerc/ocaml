@@ -109,6 +109,8 @@ module Stdlib : sig
     (* Same as [Array.exists], but for a two-argument predicate. Raise
        Invalid_argument if the two arrays are determined to have
        different lengths. *)
+
+    val for_all2 : ('a -> 'b -> bool) -> 'a array -> 'b array -> bool
   end
 
   module Set_once : sig

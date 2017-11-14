@@ -55,11 +55,7 @@ include Identifiable.S with type t := t
 module List : sig
   type nonrec t = t list
 
-  val print : Format.formatter -> t -> unit
-
   val free_names : t -> Name.Set.t
 
-  val equal : t -> t -> bool
-
-  val compare : t -> t -> bool
+  include Identifiable.S with type t := t
 end

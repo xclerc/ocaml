@@ -148,6 +148,7 @@ val is_useful : (t -> bool) type_accessor
 (** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : (t list -> bool) type_accessor
 
+(*
 (** XXX Something like this? *)
 type equation_rhs =
   | Simple of Simple.t
@@ -155,6 +156,7 @@ type equation_rhs =
 
 val equations_implied_by_type
    : (t -> (equation_rhs Variable.Map.t)) type_accessor
+*)
 
 (*
 (** Whether the given type describes a float array. *)

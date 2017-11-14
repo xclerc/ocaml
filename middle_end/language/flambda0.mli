@@ -92,7 +92,7 @@ type assign = {
 module Free_var : sig
   type t = {
     var : Variable.t;
-    equality : Flambda_primitive.With_fixed_value.t option;
+    equalities : Flambda_primitive.With_fixed_value.Set.t;
   }
 
   val create : Variable.t -> t
@@ -702,6 +702,13 @@ end and Typed_parameter : sig
       to the parameter is assumed to be always a binding occurrence.) *)
   val free_names : t -> Name.Set.t
 
+  (** Equality on typed parameters. *)
+  val equal
+     : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+    -> t
+    -> t
+    -> bool
+
   module List : sig
     type nonrec t = t list
 
@@ -723,6 +730,12 @@ end and Typed_parameter : sig
     val arity : t -> Flambda_arity.t
 
     val print : Format.formatter -> t -> unit
+
+    val equal
+       : equal_type:(Flambda_type.t -> Flambda_type.t -> bool)
+      -> t
+      -> t
+      -> bool
   end
 
 (* XXX try to remove this

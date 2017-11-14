@@ -161,19 +161,18 @@ module Free_var = struct
 
   let create var =
     { var;
-      equalities : Flambda_primitive.With_fixed_value.Set.empty;
+      equalities = Flambda_primitive.With_fixed_value.Set.empty;
     }
 
   let var t = t.var
 
   let print ppf (t : t) =
-    match t.equality with
-    | None ->
+    if Flambda_primitive.With_fixed_value.Set.is_empty t.equalities then
       fprintf ppf "%a" Variable.print t.var
-    | Some equality ->
-      fprintf ppf "%a(= %a)"
+    else
+      fprintf ppf "%a(={%a})"
         Variable.print t.var
-        Flambda_primitive.With_fixed_value.Set.print equalities
+        Flambda_primitive.With_fixed_value.Set.print t.equalities
 
   let free_names t = Name.Set.singleton (Name.var t.var)
 
@@ -743,16 +742,14 @@ end = struct
     | Apply apply1, Apply apply2 -> Apply.equal apply1 apply2
     | Apply_cont (cont1, trap1, args1), Apply_cont (cont2, trap2, args2) ->
       Continuation.equal cont1 cont2
-        && Trap_action.equal trap1 trap2
+        && Misc.Stdlib.Option.equal Trap_action.equal trap1 trap2
         && Simple.List.equal args1 args2
     | Switch (name1, switch1), Switch (name2, switch2) ->
       Name.equal name1 name2 && Switch.equal switch1 switch2
     | Invalid invalid1, Invalid invalid2 ->
       Pervasives.compare invalid1 invalid2 = 0
     | (Let _ | Let_mutable _ | Let_cont _ | Apply _ | Apply_cont _
-        | Switch _ | Invalid _), _
-    | _, (Let _ | Let_mutable _ | Let_cont _ | Apply _ | Apply_cont _
-        | Switch _ | Invalid _) -> false
+        | Switch _ | Invalid _), _ -> false
 
   let rec print ppf (t : t) =
     match t with
@@ -968,8 +965,7 @@ end = struct
         && Simple.equal new_value1 new_value2
     | Read_mutable mut1, Read_mutable mut2 ->
       Mutable_variable.equal mut1 mut2
-    | (Simple _, Prim _, Set_of_closures _, Assign _, Read_mutable), _
-    | _, (Simple _, Prim _, Set_of_closures _, Assign _, Read_mutable) ->
+    | (Simple _ | Prim _ | Set_of_closures _ | Assign _ | Read_mutable _), _ ->
       false
 end and Let : sig
   type t = {
@@ -1025,7 +1021,7 @@ end = struct
     Variable.equal var1 var2
       && Flambda_kind.equal kind1 kind2
       && Named.equal ~equal_type defining_expr1 defining_expr2
-      && Expr.equal ~equal_type defining_expr1 defining_expr2
+      && Expr.equal ~equal_type body1 body2
       && Name.Set.equal free_names_of_defining_expr1
         free_names_of_defining_expr2
       && Name.Set.equal free_names_of_body1
@@ -1058,7 +1054,7 @@ end = struct
         } =
     Mutable_variable.equal var1 var2
       && Name.equal initial_value1 initial_value2
-      && Flambda_type.equal contents_type1 contents_type2
+      && equal_type contents_type1 contents_type2
       && Expr.equal ~equal_type body1 body2
 end and Let_cont : sig
   type t = {
@@ -1072,6 +1068,12 @@ end and Let_cont : sig
     -> bool
 end = struct
   include Let_cont
+
+  let equal ~equal_type
+        { body = body1; handlers = handlers1; }
+        { body = body2; handlers = handlers2; } =
+    Expr.equal ~equal_type body1 body2
+      && Let_cont_handlers.equal ~equal_type handlers1 handlers2
 end and Let_cont_handlers : sig
   type t =
     | Nonrecursive of {
@@ -1240,7 +1242,7 @@ end = struct
   include Continuation_handlers
 
   let equal ~equal_type t1 t2 =
-    Continuation.Map.compare (Continuation_handler.compare ~equal_type) t1 t2
+    Continuation.Map.equal (Continuation_handler.equal ~equal_type) t1 t2
 end and Continuation_handler : sig
   type t = {
     params : Typed_parameter.t list;
@@ -1260,7 +1262,7 @@ end = struct
         { params = params1; stub = stub1; is_exn_handler = is_exn_handler1;
           handler = handler1; }
         { params = params2; stub = stub2; is_exn_handler = is_exn_handler2;
-          handler = handler2; } ->
+          handler = handler2; } =
     Typed_parameter.List.equal ~equal_type params1 params2
       && Pervasives.compare stub1 stub2 = 0
       && Pervasives.compare is_exn_handler1 is_exn_handler2 = 0
@@ -1405,6 +1407,21 @@ end = struct
         Name.Set.union syms (Function_declaration.free_names func_decl))
       t.funs
       Name.Set.empty
+
+  let equal ~equal_type
+        { set_of_closures_id = set_of_closures_id1;
+          set_of_closures_origin = set_of_closures_origin1;
+          funs = funs1;
+        }
+        { set_of_closures_id = set_of_closures_id2;
+          set_of_closures_origin = set_of_closures_origin2;
+          funs = funs2;
+        } =
+    Set_of_closures_id.equal set_of_closures_id1 set_of_closures_id2
+      && Set_of_closures_origin.equal set_of_closures_origin1
+        set_of_closures_origin2
+      && Closure_id.Map.equal (Function_declaration.equal ~equal_type)
+        funs1 funs2
 end and Function_declaration : sig
   type t = {
     closure_origin : Closure_origin.t;
@@ -1563,7 +1580,7 @@ end = struct
       && Flambda_arity.equal return_arity1 return_arity2
       && Typed_parameter.List.equal ~equal_type params1 params2
       && Expr.equal ~equal_type body1 body2
-      && Free_names.Set.equal free_names_in_body1 free_names_in_body2
+      && Name.Set.equal free_names_in_body1 free_names_in_body2
       && Pervasives.compare stub1 stub2 = 0
       && Debuginfo.equal dbg1 dbg2
       && Pervasives.compare inline1 inline2 = 0
@@ -1615,7 +1632,7 @@ end and Typed_parameter : sig
   val var : t -> Variable.t
   val ty : t -> Flambda_type.t
   val kind : t -> Flambda_kind.t
-  val equalities : t -> Flambda_primitive.With_fixed_value.t list
+  val equalities : t -> Flambda_primitive.With_fixed_value.Set.t
   val with_type : t -> Flambda_type.t -> t
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
@@ -1664,7 +1681,7 @@ end = struct
 
   let create_from_kind param kind =
     { param;
-      equalities = [];
+      equalities = Flambda_primitive.With_fixed_value.Set.empty;
       ty = Flambda_type.unknown kind Other;
       kind;
     }
@@ -1686,11 +1703,11 @@ end = struct
     (* The variable within [t] is always presumed to be a binding
        occurrence, so the only free variables are those within the
        equality (if such exists) and the type. *)
-    Flambda_primitive.With_fixed_value.fold (fun from_equalities prim ->
+    Flambda_primitive.With_fixed_value.Set.fold (fun prim from_equalities ->
         Name.Set.union from_equalities
           (Flambda_primitive.With_fixed_value.free_names prim))
-      (Flambda_type.free_names t.ty)
       t.equalities
+      (Flambda_type.free_names t.ty)
 
 (*
   include Identifiable.Make (struct

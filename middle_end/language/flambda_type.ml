@@ -18,6 +18,8 @@
 
 module F0 = Flambda0
 module K = Flambda_kind
+
+module Expr = F0.Expr
 module Named = F0.Named
 
 module Float = Numbers.Float
@@ -109,9 +111,12 @@ let equal_function_declaration ~equal_type
     Closure_origin.equal closure_origin1 closure_origin2
       && Continuation.equal continuation_param1 continuation_param2
       && Pervasives.compare is_classic_mode1 is_classic_mode2 = 0
+      && Misc.Stdlib.List.equal (fun (param1, t1) (param2, t2) ->
+          Parameter.equal param1 param2 && equal_type t1 t2)
+        params1 params2
       && Expr.equal ~equal_type body1 body2
-      && Free_names.Set.equal free_names_in_body1 free_names_in_body2
-      && equal_type result1 result2
+      && Name.Set.equal free_names_in_body1 free_names_in_body2
+      && Misc.Stdlib.List.equal equal_type result1 result2
       && Pervasives.compare stub1 stub2 = 0
       && Debuginfo.equal dbg1 dbg2
       && Pervasives.compare inline1 inline2 = 0
@@ -119,7 +124,8 @@ let equal_function_declaration ~equal_type
       && Pervasives.compare is_a_functor1 is_a_functor2 = 0
       && Variable.Set.equal (Lazy.force invariant_params1)
            (Lazy.force invariant_params2)
-      && Misc.Stdlib.Option.equal Numbers.Int.equal size1 size2
+      && Misc.Stdlib.Option.equal Numbers.Int.equal
+           (Lazy.force size1) (Lazy.force size2)
       && Misc.Stdlib.Option.equal Closure_id.equal
         direct_call_surrogate1 direct_call_surrogate2
   | Non_inlinable {
@@ -130,7 +136,7 @@ let equal_function_declaration ~equal_type
       result = result2;
       direct_call_surrogate = direct_call_surrogate2;
     } ->
-    List.compare_lengths result1 result2
+    List.compare_lengths result1 result2 = 0
       && List.for_all2 (fun t1 t2 -> equal_type t1 t2)
         result1 result2
       && Misc.Stdlib.Option.equal Closure_id.equal
@@ -320,6 +326,13 @@ module Or_not_all_values_known = struct
     | Not_all_values_known, Exactly _ -> Ok t2
     | Not_all_values_known, Not_all_values_known -> Ok Not_all_values_known
 
+  let equal equal_contents t1 t2 =
+    match t1, t2 with
+    | Exactly c1, Exactly c2 -> equal_contents c1 c2
+    | Not_all_values_known, Not_all_values_known -> true
+    | Exactly _, Not_all_values_known
+    | Not_all_values_known, Exactly _ -> false
+
   let print f ppf t =
     match t with
     | Exactly thing -> f ppf thing
@@ -352,7 +365,7 @@ module Blocks : sig
   val meet : (t -> t -> t or_wrong) type_accessor
 
   val equal
-     : equal_type:(t -> t -> bool)
+     : equal_type:(flambda_type -> flambda_type -> bool)
     -> t
     -> t
     -> bool
@@ -439,7 +452,7 @@ end = struct
   let equal ~equal_type t1 t2 =
     Tag.Scannable.Map.equal (fun ty_values1 ty_values2 ->
         Array.length ty_values1 = Array.length ty_values2
-          && Array.for_all2 (fun ty_value1 ty_value2 ->
+          && Misc.Stdlib.Array.for_all2 (fun ty_value1 ty_value2 ->
               let t1 = t_of_ty_value ty_value1 in
               let t2 = t_of_ty_value ty_value2 in
               equal_type t1 t2)
@@ -1539,9 +1552,9 @@ module Evaluated = struct
     let t, _name = create ~importer ~type_of_name t in
     t
 
-  let equal_t_values ~importer ~type_of_name
-        (tv1 : t_values1) (tv2 : t_values2) =
-    let module O = Or_not_all_values_known.t in
+  let rec equal_t_values ~importer ~type_of_name
+        (tv1 : t_values) (tv2 : t_values) =
+    let module O = Or_not_all_values_known in
     let equal_type = equal_type ~importer ~type_of_name in
     match tv1, tv2 with
     | Unknown, Unknown
@@ -1550,7 +1563,7 @@ module Evaluated = struct
         Blocks_and_tagged_immediates bti2 ->
       O.equal (fun (blocks1, imms1) (blocks2, imms2) ->
           Blocks.equal ~equal_type blocks1 blocks2
-            && Immediate.Set.equal imms1 imms2
+            && Immediate.Set.equal imms1 imms2)
         bti1 bti2
     | Tagged_immediates_only ti1,
         Tagged_immediates_only ti2 ->
@@ -1564,9 +1577,9 @@ module Evaluated = struct
     | Boxed_nativeints is1, Boxed_nativeints is2 ->
       O.equal Targetint.Set.equal is1 is2
     | Closures closures1, Closures closures2 ->
-      O.equal (Joined_closures.equal ~equal_type) is1 is2
+      O.equal (Joined_closures.equal ~equal_type) closures1 closures2
     | Sets_of_closures sets1, Sets_of_closures sets2 ->
-      O.equal (Joined_sets_of_closures.equal ~equal_type) is1 is2
+      O.equal (Joined_sets_of_closures.equal ~equal_type) sets1 sets2
     | Strings strs1, Strings strs2 ->
       O.equal String_info.Set.equal strs1 strs2
     | Float_arrays { lengths = lengths1; },
@@ -1574,7 +1587,8 @@ module Evaluated = struct
       O.equal Int.Set.equal lengths1 lengths2
     | _, _ -> false
 
-  and equal ~importer ~type_of_name (t1 : t) (t1 : t) =
+  and equal ~importer ~type_of_name (t1 : t) (t2 : t) =
+    let module O = Or_not_all_values_known in
     match t1, t2 with
     | Values t_values1, Values t_values2 ->
       equal_t_values ~importer ~type_of_name t_values1 t_values2

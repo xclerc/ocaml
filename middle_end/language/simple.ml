@@ -141,18 +141,25 @@ end)
 module List = struct
   type nonrec t = t list
 
-  let print ppf t = (Format.pp_print_list print) ppf t
-
   let free_names t =
     List.fold_left (fun free t ->
         Name.Set.union free (free_names t))
       Name.Set.empty
       t
 
-  let equal t1 t2 =
-    List.compare_lengths t1 t2 = 0
-      && List.for_all2 equal t1 t2
+  include Identifiable.Make (struct
+    type nonrec t = t
 
-  let compare t1 t2 =
-    Misc.Stdlib.List.compare compare t1 t2
+    let equal t1 t2 =
+      List.compare_lengths t1 t2 = 0
+        && List.for_all2 equal t1 t2
+
+    let compare t1 t2 =
+      Misc.Stdlib.List.compare compare t1 t2
+
+    let hash t =
+      Hashtbl.hash (List.map hash t)
+
+    let print ppf t = (Format.pp_print_list print) ppf t
+  end)
 end

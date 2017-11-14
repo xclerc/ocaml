@@ -1679,6 +1679,7 @@ end = struct
           (* Check that projections on parameters only describe projections
              from other parameters of the same function. *)
           let params' = Typed_parameter.List.var_set params in
+(*
           List.iter (fun param ->
               match Typed_parameter.equalities param with
               | [] -> ()
@@ -1694,6 +1695,7 @@ end = struct
                     print t
                 end *)  )
             params;
+*)
           (* Check that parameters are unique across all functions in the
              declaration. *)
           let old_all_params_size = Variable.Set.cardinal all_params in

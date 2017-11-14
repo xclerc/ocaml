@@ -70,9 +70,9 @@ module Standard_int : sig
 
   val to_kind : t -> kind
 
-  val print : Format.formatter -> t -> unit
-
   val print_lowercase : Format.formatter -> t -> unit
+
+  include Identifiable.S with type t := t
 end
 
 module Boxable_number : sig
@@ -87,7 +87,7 @@ module Boxable_number : sig
 
   val to_kind : t -> kind
 
-  val print : Format.formatter -> t -> unit
-
   val print_lowercase : Format.formatter -> t -> unit
+
+  include Identifiable.S with type t := t
 end

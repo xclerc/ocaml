@@ -22,8 +22,8 @@
 (** Try to inline a full application of a known function, guided by various
     heuristics. *)
 val for_call_site
-   : env:Simplify_env.t
-  -> r:Simplify_result.t
+   : env:Simplify_env_and_result.Env.t
+  -> r:Simplify_env_and_result.Env.t
   -> lhs_of_application:Variable.t
   -> closure_id_being_applied:Closure_id.t
   -> function_decl:Flambda_type.inlinable_function_declaration
@@ -34,7 +34,7 @@ val for_call_site
   -> dbg:Debuginfo.t
   -> inline_requested:Flambda.inline_attribute
   -> specialise_requested:Flambda.specialise_attribute
-  -> Flambda.Expr.t * Simplify_result.t
+  -> Flambda.Expr.t * Simplify_env_and_result.Result.t
 
 (** When a function declaration is encountered by [for_call_site], the body
     may be subject to inlining immediately, thus changing the declaration.
