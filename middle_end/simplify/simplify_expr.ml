@@ -407,7 +407,9 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
                  to freshen. *)
               (* CR mshinwell: Check instead that the continuation doesn't
                  have any arguments and doesn't have any effects, to avoid
-                 this syntactic match *)
+                 this syntactic match
+                 ...except that we still need to know which continuation
+                 it calls, if any *)
               | Apply_cont (_cont, None, []) -> true
               | _ -> false
             in
