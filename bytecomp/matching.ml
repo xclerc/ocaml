@@ -1519,14 +1519,14 @@ let inline_lazy_force_cond arg loc =
               Lprim(Pintcomp Ceq,
                     [Lvar tag; Lconst(Const_base(Const_int Obj.forward_tag))],
                     loc),
-              Hot false,
+              Tepid,
               Lprim(Pfield 0, [varg], loc),
               Lifthenelse(
                 (* ... if (tag == Obj.lazy_tag) then Lazy.force varg else ... *)
                 Lprim(Pintcomp Ceq,
                       [Lvar tag; Lconst(Const_base(Const_int Obj.lazy_tag))],
                       loc),
-                Hot false,
+                Tepid,
                 Lapply{ap_should_be_tailcall=false;
                        ap_loc=loc;
                        ap_func=force_fun;

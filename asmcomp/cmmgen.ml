@@ -3223,7 +3223,7 @@ let send_function arity =
     fun_body = body;
     fun_fast = true;
     fun_dbg  = Debuginfo.none;
-    fun_temperature = Tepid; }
+    fun_temperature = Hot false; }
 
 let apply_function arity =
   let (args, clos, body) = apply_function_body arity in
@@ -3235,7 +3235,7 @@ let apply_function arity =
     fun_body = body;
     fun_fast = true;
     fun_dbg  = Debuginfo.none;
-    fun_temperature = Tepid;
+    fun_temperature = Hot false;
    }
 
 (* Generate tuplifying functions:
@@ -3261,7 +3261,7 @@ let tuplify_function arity =
           dbg);
     fun_fast = true;
     fun_dbg  = Debuginfo.none;
-    fun_temperature = Tepid;
+    fun_temperature = Hot false;
    }
 
 (* Generate currying functions:
@@ -3325,7 +3325,7 @@ let final_curry_function arity =
     fun_body = curry_fun [] last_clos (arity-1);
     fun_fast = true;
     fun_dbg  = Debuginfo.none;
-    fun_temperature = Tepid; }
+    fun_temperature = Hot false; }
 
 let rec intermediate_curry_functions arity num =
   let dbg = Debuginfo.none in
@@ -3356,7 +3356,7 @@ let rec intermediate_curry_functions arity num =
                 dbg);
       fun_fast = true;
       fun_dbg  = Debuginfo.none;
-      fun_temperature = Tepid; }
+      fun_temperature = Hot false; }
     ::
       (if arity <= max_arity_optimized && arity - num > 2 then
           let rec iter i =
@@ -3385,7 +3385,7 @@ let rec intermediate_curry_functions arity num =
                   (List.map (fun (arg,_) -> Cvar arg) direct_args) clos;
                fun_fast = true;
                fun_dbg = Debuginfo.none;
-               fun_temperature = Tepid; }
+               fun_temperature = Hot false; }
           in
           cf :: intermediate_curry_functions arity (num+1)
        else
