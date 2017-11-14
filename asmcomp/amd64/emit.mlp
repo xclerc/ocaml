@@ -483,6 +483,8 @@ let function_name = ref ""
 let tailrec_entry_point = ref 0
 
 let current_temperature = ref Lambda.Tepid
+let seen_cold = ref false
+let seen_hot = ref false
 
 let section_tepid () =
   current_temperature := Lambda.Tepid;
@@ -491,12 +493,24 @@ let section_tepid () =
 let section_hot () =
   current_temperature := Lambda.Hot false;
   (* D.section [ ".text-hot" ] (Some "a") ["@progbits"] *)
-  D.text ~sub:1 ()
+  (*D.text ~sub:1 ()*)
+  if !seen_hot then
+    D.section [ ".text.hot" ] None []
+  else begin
+    seen_hot := true;
+    D.section [ ".text.hot" ] (Some "a") ["@progbits"]
+  end
 
 let section_cold () =
   current_temperature := Lambda.Cold false;
   (* D.section [ ".text-cold" ] (Some "a") ["@progbits"] *)
-  D.text ~sub:2 ()
+  (*D.text ~sub:2 ()*)
+  if !seen_cold then
+    D.section [ ".text.cold" ] None []
+  else begin
+    seen_cold := true;
+    D.section [ ".text.cold" ] (Some "a") ["@progbits"]
+  end
 
 let section_of_temperature ?(force = false) temp =
   if force || not (Lambda.same_temperature temp !current_temperature) then begin
@@ -1047,6 +1061,8 @@ let begin_assembly() =
   reset_imp_table();
   float_constants := [];
   all_functions := [];
+  seen_hot := false;
+  seen_cold := false;
   if system = S_win64 then begin
     D.extrn "caml_young_ptr" QWORD;
     D.extrn "caml_young_limit" QWORD;
