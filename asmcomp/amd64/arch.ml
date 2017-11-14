@@ -20,9 +20,9 @@ let no_three_operand_lea = ref true
 let command_line_options =
   [ "-fPIC", Arg.Set Clflags.pic_code,
       " Generate position-independent machine code (default)";
-    "-fno-PIC", Arg.Clear Clflags.pic_code,
+    "-fno-PIC", Arg.Unit ignore(*Arg.Clear Clflags.pic_code*),
       " Generate position-dependent machine code";
-    "-fno-three-operand-lea", Arg.Set no_three_operand_lea,
+    "-fno-three-operand-lea", Arg.Unit ignore(*Arg.Set no_three_operand_lea*),
       " Do not generate three-operand LEA instructions";
   ]
 
