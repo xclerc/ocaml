@@ -172,8 +172,10 @@ let rec simplify_let_cont_handler ~env ~r ~cont ~handler ~arg_tys =
         in
         let param_ty = Typed_parameter.ty param in
         if !Clflags.flambda_invariant_checks then begin
-          if not (T.as_or_more_precise arg_ty ~than:param_ty) then begin
-            Misc.fatal_errorf "Parameter %a of continuation %k supplied \
+          if not ((E.type_accessor env T.as_or_more_precise)
+            arg_ty ~than:param_ty)
+          then begin
+            Misc.fatal_errorf "Parameter %a of continuation %a supplied \
                 with argument which has regressed in preciseness of type: %a"
               Typed_parameter.print param
               Continuation.print cont
@@ -490,17 +492,11 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
     end
   | Recursive handlers ->
     (* The sequence is:
-       1. Simplify the recursive handlers assuming that all of their
-          parameters have [Value_unknown] Flambda type.  This may result in
-          simplifying terms with less precise Flambda types than when
-          they were previously simplified (e.g. there might have been a
-          direct call to a closure whose Flambda type is now unknown).  The
-          simplifier can now handle this.
+       1. Simplify the recursive handlers with their parameter types as
+          pre-existing in the term.
        2. If all of the handlers are unused, there's nothing more to do.
        3. Extract the (hopefully more precise) Flambda types for the
-          handlers' parameters from [r].  These will be at least as precise
-          as the Flambda types deduced in any previous round of
-          simplification.
+          handlers' parameters from [r].
        4. The code from the simplification is discarded.
        5. The continuation(s) is/are unboxed as required.
        6. The continuation(s) are simplified once again using the
@@ -510,7 +506,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
     let original_handlers = handlers in
     let handlers, r =
       simplify_let_cont_handlers ~env ~r ~handlers
-        ~args_types:None ~recursive:Flambda.Recursive ~freshening
+        ~recursive:Flambda.Recursive ~freshening
     in
     begin match handlers with
     | None -> body, r

@@ -1666,6 +1666,9 @@ end = struct
               Closure_id.print fun_var
               (Function_declaration.print fun_var) function_decl
           end;
+          (* CR mshinwell: We should allow ordered dependencies left-to-right
+             in the parameter list.  Parameters' types maybe can also depend
+             on [my_closure]? *)
           (* Check that free names in parameters' types are bound. *)
           let _fns_in_parameters'_types =
             List.fold_left (fun fns_in_types param ->

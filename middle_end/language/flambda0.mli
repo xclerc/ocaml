@@ -669,7 +669,7 @@ end and Typed_parameter : sig
       type. *)
   type t
 
-  (** Create a typed parameter with no projection information. *)
+  (** Create a typed parameter with no equalities. *)
   val create : (Parameter.t -> Flambda_type.t -> t) Flambda_type.type_accessor
 
   (** As for [create] except that the parameter is given an unknown type of the
