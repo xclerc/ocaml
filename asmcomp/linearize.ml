@@ -374,7 +374,7 @@ let rec add_jump_for_temperature_changes (i : instruction) =
 
 let fundecl f =
   let fun_temperature =
-    if Mach.does_always_raise f.fun_body then
+    if Mach.(does_always_raise f.fun_body) then
       Lambda.Cold false
     else begin
       Mach.(tweak_temperature_according_to_exceptions f.fun_body);
@@ -390,5 +390,5 @@ let fundecl f =
     fun_fast = f.Mach.fun_fast;
     fun_dbg  = f.Mach.fun_dbg;
     fun_spacetime_shape = f.Mach.fun_spacetime_shape;
-    fun_temperature = f.Mach.fun_temperature;
+    fun_temperature;
   }

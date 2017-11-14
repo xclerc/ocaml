@@ -108,13 +108,13 @@ let lambda_smaller' lam ~than:threshold =
       incr size; lambda_size body; lambda_size handler
     | Try_with (body, _, handler) ->
       size := !size + 8; lambda_size body; lambda_size handler
-    | If_then_else (_, Lambda.Cold _, ifso, ifnot) ->
+    | If_then_else (_, Lambda.Cold _, _ifso, ifnot) ->
       size := !size + 2;
       lambda_size ifnot
     | If_then_else (_, Lambda.Tepid, ifso, ifnot) ->
       size := !size + 2;
       lambda_size ifso; lambda_size ifnot
-    | If_then_else (_, Lambda.Hot _, ifso, ifnot) ->
+    | If_then_else (_, Lambda.Hot _, ifso, _ifnot) ->
       size := !size + 2;
       lambda_size ifso
     | While (cond, body) ->
