@@ -235,40 +235,16 @@ and simplify_let_cont_handlers ~env ~r ~handlers
       Continuation.Map.fold (fun cont
                 (handler : Flambda.Continuation_handler.t) handlers ->
           let cont' = Freshening.apply_continuation freshening cont in
-
-
-
           let arg_tys =
-            let unknown () =
-              Array.to_list (Array.init (List.length handler.params)
-                (fun _ -> T.unknown Other))
-            in
-            match arg_tys with
-            | None ->
-              begin match recursive with
-              | Recursive -> unknown ()
-              | Nonrecursive ->
-                R.continuation_arg_tys r cont'
-                  ~num_params:(List.length handler.params)
-              end
-            | Some arg_tys ->
-              begin match Continuation.Map.find cont arg_tys with
-              | exception Not_found ->
-                (* A new continuation introduced by
-                   [Unbox_continuation_params] (see below). *)
-                (* CR mshinwell: maybe we should enforce that? *)
-                unknown ()
-              | arg_tys ->
-                assert (List.length handler.params = List.length arg_tys);
-                arg_tys
-              end
+            (* CR mshinwell: I have a suspicion that [r] may not contain the
+               usage information for the continuation when it's come from
+               [Unbox_continuation_params]. Check. *)
+            R.continuation_args_types r cont'
+              ~arity:(Flambda.Continuation_handler.param_arity handler)
           in
-
-
-
           let r, handler =
-            simplify_let_cont_handler ~env ~r:(R.create ()) ~cont:cont' ~handler
-              ~arg_tys
+            simplify_let_cont_handler ~env ~r:(R.create ()) ~cont:cont'
+              ~handler ~arg_tys
           in
           Continuation.Map.add cont' (handler, r) handlers)
         handlers
@@ -325,7 +301,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers
               let num_params = List.length handler.params in
               let handlers : Continuation_approx.continuation_handlers =
                 match recursive with
-                | Nonrecursive ->
+                | Non_recursive ->
                   begin match Continuation.Map.bindings handlers with
                   | [_cont, (handler, _)] -> Nonrecursive handler
                   | _ ->
@@ -340,7 +316,8 @@ and simplify_let_cont_handlers ~env ~r ~handlers
                   in
                   Recursive handlers
               in
-              Continuation_approx.create ~name:cont ~handlers ~num_params
+              Continuation_approx.create ~name:cont ~handlers
+                ~arity:(Flambda.Continuation_handler.param_arity handler)
             in
             let r =
               R.define_continuation r cont env recursive uses ty
@@ -351,9 +328,10 @@ and simplify_let_cont_handlers ~env ~r ~handlers
           (r, Continuation.Map.empty)
       in
       match recursive with
-      | Nonrecursive ->
+      | Non_recursive ->
         begin match Continuation.Map.bindings handlers with
-        | [name, handler] -> Some (Flambda.Nonrecursive { name; handler; }), r
+        | [name, handler] ->
+          Some (Flambda.Let_cont_handlers.Nonrecursive { name; handler; }), r
         | _ -> assert false
         end
       | Recursive ->
@@ -362,7 +340,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers
           else
             match Continuation.Map.bindings handlers with
             | [name, (handler : Flambda.Continuation_handler.t)] ->
-              let fcs = Flambda.free_continuations handler.handler in
+              let fcs = Flambda.Expr.free_continuations handler.handler in
               if not (Continuation.Set.mem name fcs) then
                 Some (name, handler)
               else
@@ -371,8 +349,8 @@ and simplify_let_cont_handlers ~env ~r ~handlers
         in
         match is_non_recursive with
         | Some (name, handler) ->
-          Some (Flambda.Nonrecursive { name; handler; }), r
-        | None -> Some (Flambda.Recursive handlers), r
+          Some (Flambda.Let_cont_handlers.Nonrecursive { name; handler; }), r
+        | None -> Some (Flambda.Let_cont_handlers.Recursive handlers), r
 
 and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
   (* In two stages we form the environment to be used for simplifying the
@@ -387,7 +365,6 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
           let freshened_name, freshening =
             Freshening.add_continuation freshening name
           in
-          let num_params = List.length handler.params in
           let ty =
             (* If it's a stub, we put the code for [handler] in the
                environment; this is unfreshened, but will be freshened up
@@ -413,15 +390,14 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
               | Apply_cont (_cont, None, []) -> true
               | _ -> false
             in
+            let arity = Flambda.Continuation_handler.param_arity handler in
             if handler.stub || alias_or_unreachable then begin
               assert (not (Continuation.Set.mem name
-                (Flambda.free_continuations handler.handler)));
+                (Flambda.Expr.free_continuations handler.handler)));
               Continuation_approx.create ~name:freshened_name
-                ~handlers:(Nonrecursive handler)
-                ~num_params
+                ~handlers:(Nonrecursive handler) ~arity
             end else begin
-              Continuation_approx.create_unknown ~name:freshened_name
-                ~num_params
+              Continuation_approx.create_unknown ~name:freshened_name ~arity
             end
           in
           let conts_and_types =
@@ -431,7 +407,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
         handlers
         (Continuation.Map.empty, E.freshening env)
     in
-    let handlers = Flambda.continuation_map_of_let_handlers ~handlers in
+    let handlers = Flambda.Let_cont_handlers.of_continuation_map handlers in
     normal_case ~handlers
   in
   (* CR mshinwell: Is _unfreshened_name redundant? *)

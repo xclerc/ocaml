@@ -104,7 +104,6 @@ module rec Expr : sig
   val no_effects_or_coeffects : t -> bool
   val free_variables : t -> Variable.Set.t
   val free_symbols : t -> Symbol.Set.t
-  val equal : t -> t -> bool
   val make_closure_declaration
      : (id:Variable.t
     -> free_variable_kind:(Variable.t -> K.t)
@@ -262,43 +261,6 @@ end = struct
     | Switch _ -> true
     | Apply _
     | Invalid _ -> false
-
-  let rec equal t1 t2 =
-    (* CR mshinwell: next comment may no longer be relevant? *)
-    t1 == t2 || (* it is ok for the string case: if they are physically the same,
-                   it is the same original branch *)
-    match t1, t2 with
-    | Apply a1 , Apply a2 -> Apply.equal a1 a2
-    | Apply _, _ | _, Apply _ -> false
-    | Let { var = var1; defining_expr = defining_expr1; body = body1; _ },
-        Let { var = var2; defining_expr = defining_expr2; body = body2; _ } ->
-      Variable.equal var1 var2 && Named.equal defining_expr1 defining_expr2
-        && equal body1 body2
-    | Let _, _ | _, Let _ -> false
-    | Let_mutable {var = mv1; initial_value = v1; contents_type = ct1; body = b1},
-      Let_mutable {var = mv2; initial_value = v2; contents_type = ct2; body = b2}
-      ->
-      Mutable_variable.equal mv1 mv2
-        && Name.equal v1 v2
-        && ct1 == ct2
-        (* CR pchambart: There should be a proper equality function
-           for Flambda_type.t to handle that *)
-        && equal b1 b2
-    | Let_mutable _, _ | _, Let_mutable _ -> false
-    | Switch (a1, s1), Switch (a2, s2) ->
-      Name.equal a1 a2 && Switch.equal s1 s2
-    | Switch _, _ | _, Switch _ -> false
-    | Apply_cont (e1, trap1, a1), Apply_cont (e2, trap2, a2) ->
-      Continuation.equal e1 e2
-        && Misc.Stdlib.List.equal Simple.equal a1 a2
-        && Misc.Stdlib.Option.equal Trap_action.equal trap1 trap2
-    | Apply_cont _, _ | _, Apply_cont _ -> false
-    | Let_cont { body = body1; handlers = handlers1; },
-        Let_cont { body = body2; handlers = handlers2; } ->
-      equal body1 body2
-        && Let_cont_handlers.equal handlers1 handlers2
-    | Invalid _, Invalid _ -> true
-    | Invalid _, _ | _, Invalid _ -> false
 
   let description_of_toplevel_node (expr : Expr.t) =
     match expr with
@@ -1178,7 +1140,6 @@ end and Named : sig
      : Invariant_env.t
     -> t
     -> Flambda_primitive.result_kind
-  val equal : t -> t -> bool
   val toplevel_substitution
      : (Variable.t Variable.Map.t
     -> t
@@ -1222,48 +1183,6 @@ end = struct
     match Expr.toplevel_substitution ~importer sb expr with
     | Let let_expr -> let_expr.defining_expr
     | _ -> assert false
-
-  let equal _t1 _t2 = false
-    (* CR mshinwell: Sort this out.  The latest problem is lack of
-       equality on [Const.t] due to the [print_as_char] field. *)
-(*
-    match t1, t2 with
-    | Var var1, Var var2 -> Variable.equal var1 var2
-    | Var _, _ | _, Var _ -> false
-    | Symbol s1 , Symbol s2  -> Symbol.equal s1 s2
-    | Symbol _, _ | _, Symbol _ -> false
-    | Const c1, Const c2 -> Const.equal c1 c2
-    | Const _, _ | _, Const _ -> false
-    | Allocated_const c1, Allocated_const c2 ->
-      Allocated_const.compare c1 c2 = 0
-    | Allocated_const _, _ | _, Allocated_const _ -> false
-    | Read_mutable mv1, Read_mutable mv2 -> Mutable_variable.equal mv1 mv2
-    | Read_mutable _, _ | _, Read_mutable _ -> false
-    | Assign { being_assigned = being_assigned1; new_value = new_value1; },
-      Assign { being_assigned = being_assigned2; new_value = new_value2; } ->
-      Mutable_variable.equal being_assigned1 being_assigned2
-        && Variable.equal new_value1 new_value2
-    | Assign _, _ | _, Assign _ -> false
-    | Read_symbol_field (s1, i1), Read_symbol_field (s2, i2) ->
-      Symbol.equal s1 s2 && i1 = i2
-    | Read_symbol_field _, _ | _, Read_symbol_field _ -> false
-    | Set_of_closures s1, Set_of_closures s2 ->
-      Set_of_closures.equal s1 s2
-    | Set_of_closures _, _ | _, Set_of_closures _ -> false
-    | Project_closure f1, Project_closure f2 ->
-      Projection.Project_closure.equal f1 f2
-    | Project_closure _, _ | _, Project_closure _ -> false
-    | Project_var v1, Project_var v2 ->
-      Variable.equal v1.closure v2.closure
-        && Closure_id.Map.equal Var_within_closure.equal v1.var v2.var
-    | Project_var _, _ | _, Project_var _ -> false
-    | Move_within_set_of_closures m1, Move_within_set_of_closures m2 ->
-      Projection.Move_within_set_of_closures.equal m1 m2
-    | Move_within_set_of_closures _, _ | _, Move_within_set_of_closures _ ->
-      false
-    | Prim (p1, al1, _), Prim (p2, al2, _) ->
-      p1 = p2 && Misc.Stdlib.List.equal Variable.equal al1 al2
-*)
 
   module Iterators = struct
     let iter f f_named t =
@@ -1407,7 +1326,6 @@ end = struct
 end and Let_cont_handlers : sig
   include module type of F0.Let_cont_handlers
 
-  val equal : t -> t -> bool
   val free_variables : t -> Variable.Set.t
   val no_effects_or_coeffects : t -> bool
 end = struct
@@ -1421,41 +1339,20 @@ end = struct
       Continuation_handler.no_effects_or_coeffects handler
     | Recursive handlers ->
       Continuation_handlers.no_effects_or_coeffects handlers
-
-  let equal t1 t2 =
-    match t1, t2 with
-    | Nonrecursive { name = name1; handler = handler1; },
-        Nonrecursive { name = name2; handler = handler2; } ->
-      Continuation.equal name1 name2
-        && Continuation_handler.equal handler1 handler2
-    | Recursive handlers1, Recursive handlers2 ->
-      Continuation_handlers.equal handlers1 handlers2
-    | _, _ -> false
 end and Continuation_handler : sig
   include module type of F0.Continuation_handler
 
-  val equal : t -> t -> bool
   val no_effects_or_coeffects : t -> bool
+  val param_arity : t -> Flambda_arity.t
 end = struct
   include F0.Continuation_handler
 
-  let no_effects_or_coeffects (t : t) =
-    Expr.no_effects_or_coeffects t.handler
-
-  let equal _ _ = false
-(* CR mshinwell: Can we remove this?  We don't have equality on types at
-   the moment.  Maybe we need to write that.
-        ({ params = params1; stub = stub1; handler = handler1; } : t)
-        ({ params = params2; stub = stub2; handler = handler2; } : t) =
-    Misc.Stdlib.List.compare Typed_parameter.compare params1 params2 = 0
-      && (stub1 : bool) = stub2
-      && Expr.equal handler1 handler2
-*)
+  let no_effects_or_coeffects t = Expr.no_effects_or_coeffects t.handler
+  let param_arity t = List.map Typed_parameter.kind t.params
 end and Continuation_handlers : sig
   include module type of F0.Continuation_handlers
 
   val no_effects_or_coeffects : t -> bool
-  val equal : t -> t -> bool
 end = struct
   include F0.Continuation_handlers
 
@@ -1463,9 +1360,6 @@ end = struct
     Continuation.Map.for_all (fun _cont handler ->
         Continuation_handler.no_effects_or_coeffects handler)
       t
-
-  let equal t1 t2 =
-    Continuation.Map.equal Continuation_handler.equal t1 t2
 end and Set_of_closures : sig
   include module type of F0.Set_of_closures
 
@@ -1475,8 +1369,6 @@ end and Set_of_closures : sig
 
   (* CR mshinwell: swap parameters and add "_exn" suffix or similar *)
   val find_free_variable : Var_within_closure.t -> t -> Variable.t
-
-(*  val equal : t -> t -> bool *)
 
   module Iterators : sig
     val iter_function_bodies
@@ -1520,13 +1412,6 @@ end = struct
       Var_within_closure.Map.find cv free_vars
     in
     free_var.var
-
-(*
-  let equal (t1 : t) (t2 : t) =
-    Variable.Map.equal Function_declaration.equal
-        t1.function_decls.funs t2.function_decls.funs
-      && Variable.Map.equal Free_var.equal t1.free_vars t2.free_vars
-*)
 
   module Iterators = struct
     let iter_function_bodies t ~f =
@@ -1839,34 +1724,11 @@ end and Function_declaration : sig
   (*    : t *)
   (*   -> function_decls:Function_declarations.t *)
   (*   -> int *)
-  val equal : t -> t -> bool
   val map_parameter_types : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 end = struct
   include F0.Function_declaration
 
   let function_arity t = List.length t.params
-
-  (* Removed because useless now.
-     This was used to evaluate the size increase of inlining the closure.
-     As there is no additionnal projections inserted at the inlining point
-     since this is now already part of the body of the function. *)
-  (*
-  let num_variables_in_closure t ~(function_decls : Function_declarations.t) =
-    let functions = Closure_id.Map.keys function_decls.funs in
-    let params = Typed_parameter.List.var_set t.params in
-    let vars_in_closure =
-      Variable.Set.diff (Variable.Set.diff t.free_variables params) functions
-    in
-    Variable.Set.cardinal vars_in_closure
-  *)
-
-  let equal _t1 _t2 =
-    false  (* CR mshinwell: see above *)
-(*
-    (* CR mshinwell: Is this right? *)
-    Misc.Stdlib.List.equal Typed_parameter.equal t1.params t2.params
-      && Expr.equal t1.body t2.body
-*)
 
   let map_parameter_types t ~f =
     let params =

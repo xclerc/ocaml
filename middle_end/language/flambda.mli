@@ -34,8 +34,6 @@ module Apply :
   module type of struct include F0.Apply end
 module Call_kind :
   module type of struct include F0.Call_kind end
-module Continuation_handler :
-  module type of struct include F0.Continuation_handler end
 module Continuation_handlers :
   module type of struct include F0.Continuation_handlers end
 module Free_var :
@@ -81,6 +79,12 @@ module Let_cont_handlers : sig
   val free_variables : t -> Variable.Set.t
 end
 
+module Continuation_handler : sig
+  include module type of struct include F0.Continuation_handler end
+
+  val param_arity : t -> Flambda_arity.t
+end
+
 module Typed_parameter : sig
   include module type of struct include F0.Typed_parameter end
 
@@ -105,8 +109,6 @@ module rec Expr : sig
      only true after [Simplify] has split overapplications. *)
   (* CR-someday mshinwell: What about checks for shadowed variables and
      symbols? *)
-  (** Structural equality (not alpha equivalence). *)
-  val equal : t -> t -> bool
 
   val free_variables : t -> Variable.Set.t
 
@@ -431,7 +433,4 @@ end and Function_declaration : sig
   (*    : t *)
   (*   -> function_decls:Function_declarations.t *)
   (*   -> int *)
-
-  (** Structural equality (not alpha equivalence). *)
-  val equal : t -> t -> bool
 end
