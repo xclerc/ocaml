@@ -70,9 +70,8 @@ module Static_part = struct
     | Boxed_nativeint of Targetint.t or_variable
     | Mutable_float_array of { initial_value : float or_variable list; }
     | Immutable_float_array of float or_variable list
-    | Mutable_string of
-        { initial_value : Flambda_type.String_info.t or_variable; }
-    | Immutable_string of Flambda_type.String_info.t or_variable
+    | Mutable_string of { initial_value : string or_variable; }
+    | Immutable_string of string or_variable
 
   let needs_gc_root t =
     match t with
@@ -174,13 +173,11 @@ module Static_part = struct
            print_float_array_field)
         fields
     | Mutable_string { initial_value = Const s; } ->
-      fprintf ppf "@[(Mutable_string@ \"%a\")@]"
-        Flambda_type.String_info.print s
+      fprintf ppf "@[(Mutable_string@ \"%s\")@]" s
     | Mutable_string { initial_value = Var v; } ->
       fprintf ppf "@[(Mutable_string@ %a)@]" Variable.print v
     | Immutable_string (Const s) ->
-      fprintf ppf "@[(Immutable_string@ \"%a\")@]"
-        Flambda_type.String_info.print s
+      fprintf ppf "@[(Immutable_string@ \"%s\")@]" s
     | Immutable_string (Var v) ->
       fprintf ppf "@[(Immutable_string@ %a)@]" Variable.print v
 end

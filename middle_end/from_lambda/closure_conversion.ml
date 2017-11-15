@@ -89,10 +89,15 @@ let tupled_function_call_stub
       (0, body_with_closure_bound) params
   in
   let tuple_param =
-    Flambda.Typed_parameter.create (Parameter.wrap tuple_param_var)
-      (Flambda_type.block Tag.Scannable.zero
-        (Array.of_list
-          (List.map (fun _ -> Flambda_type.any_value Must_scan Other) params)))
+    (* We do not have an accessor here *)
+
+    (* Flambda.Typed_parameter.create (Parameter.wrap tuple_param_var) *)
+    (*   (Flambda_type.block Tag.Scannable.zero *)
+    (*     (Array.of_list *)
+    (*       (List.map (fun _ -> Flambda_type.any_value Must_scan Other) params))) *)
+
+    Flambda.Typed_parameter.create_from_kind (Parameter.wrap tuple_param_var)
+      (Flambda_kind.value Must_scan)
   in
   Flambda.Function_declaration.create
     ~my_closure
@@ -317,9 +322,9 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       let handler_env, params = Env.add_vars_like env let_cont.params in
       let params =
         List.map (fun param ->
-          Flambda.Typed_parameter.create
+          Flambda.Typed_parameter.create_from_kind
             (Parameter.wrap param)
-            (Flambda_type.any_value Must_scan Other))
+            (Flambda_kind.value Must_scan))
           params
       in
       let handler : Flambda.Continuation_handler.t =
@@ -385,30 +390,26 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       Apply_cont (cont, trap_action, List.map Simple.var args)
     end
   | Switch (scrutinee, sw) ->
-    (* CR pchambart: Switch representation should be changed.
-       There is no point in default anymore. The code sharing
-       is present by default since branches are continuations. *)
     let arms =
       List.map (fun (case, arm) -> Targetint.of_int_exn case, arm)
         sw.consts
     in
-    let all_possible_values =
+    let arms =
       match sw.failaction with
       | None ->
-        List.fold_left (fun set (case, _) ->
-          Targetint.Set.add (Targetint.of_int_exn case) set)
-          Targetint.Set.empty
-          sw.consts
-      | Some _ ->
-        Numbers.Int.Set.fold (fun case set ->
-          Targetint.Set.add (Targetint.of_int_exn case) set)
+        Targetint.Map.of_list arms
+      | Some default ->
+        Numbers.Int.Set.fold (fun case cases ->
+          let case = Targetint.of_int_exn case in
+          if Targetint.Map.mem case cases then
+            cases
+          else
+            Targetint.Map.add case default cases)
           (Numbers.Int.zero_to_n (sw.numconsts - 1))
-          Targetint.Set.empty
+          (Targetint.Map.of_list arms)
     in
     Flambda.Expr.create_switch ~scrutinee:(Env.find_name env scrutinee)
-      ~all_possible_values
       ~arms
-      ~default:sw.failaction
   | Event (ilam, _) -> close t env ilam
 
 and close_named t env (named : Ilambda.named) : Flambda.Named.t =
@@ -565,6 +566,8 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
     let params =
       List.map (fun (p, t) ->
         Flambda.Typed_parameter.create (Parameter.wrap p)
+          ~importer:Flambda_type.null_importer
+          ~type_of_name:(fun _ -> None)
           (flambda_type_of_lambda_value_kind t))
         param_vars
     in
@@ -650,7 +653,8 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
       Ident.Map.fold (fun id var_within_closure map ->
         let external_var : Flambda.Free_var.t =
           { var = Env.find_var external_env id;
-            equality = None;
+            (* CR pchambart: Should we populate that with a projection primitive ? *)
+            equalities = Flambda_primitive.With_fixed_value.Set.empty;
           }
         in
         Var_within_closure.Map.add var_within_closure external_var map)
@@ -740,9 +744,9 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   in
   let assign_cont_def : Flambda.Continuation_handler.t =
     { params =
-        [Flambda.Typed_parameter.create
+        [Flambda.Typed_parameter.create_from_kind
            (Parameter.wrap block_var)
-           (Flambda_type.any_value Must_scan Other)];
+           (Flambda_kind.value Must_scan)];
       stub = true;
       is_exn_handler = false;
       handler = assign_continuation_body;
