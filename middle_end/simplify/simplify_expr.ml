@@ -352,7 +352,8 @@ and simplify_let_cont_handlers ~env ~r ~handlers
           Some (Flambda.Let_cont_handlers.Non_recursive { name; handler; }), r
         | None -> Some (Flambda.Let_cont_handlers.Recursive handlers), r
 
-and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
+and simplify_let_cont env r ~body
+      ~(handlers : Flambda.Let_cont_handlers.t) : Expr.t * R.t =
   (* In two stages we form the environment to be used for simplifying the
      [body].  If the continuations in [handlers] are recursive then
      that environment will also be used for simplifying the continuations
@@ -407,7 +408,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
         handlers
         (Continuation.Map.empty, E.freshening env)
     in
-    let handlers = Flambda.Let_cont_handlers.of_continuation_map handlers in
+    let handlers = Flambda.Let_cont_handlers.to_continuation_map handlers in
     normal_case ~handlers
   in
   (* CR mshinwell: Is _unfreshened_name redundant? *)
@@ -418,7 +419,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
       conts_and_types
       env
   in
-  let body, r = simplify body_env r body in
+  let body, r = simplify_expr body_env r body in
   begin match handlers with
   | Non_recursive { name; handler; } ->
     let with_wrapper : Expr.with_wrapper =
@@ -431,7 +432,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
       else
         let args_types =
           R.continuation_args_types r name
-            ~num_params:(List.length handler.params)
+            ~arity:(Flambda.Continuation_handler.param_arity handler)
         in
         Unbox_continuation_params.for_non_recursive_continuation ~handler
           ~args_types ~name ~backend:(E.backend env)
@@ -446,9 +447,9 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
       let handlers =
         Continuation.Map.add name handler Continuation.Map.empty
       in
+      let recursive : Flambda.recursive = Non_recursive in
       let handlers, r =
-        simplify_let_cont_handlers ~env ~r ~handlers ~args_types:None
-          ~recursive:Flambda.Non_recursive ~freshening
+        simplify_let_cont_handlers ~env ~r ~handlers ~recursive ~freshening
       in
       match handlers with
       | None -> body, r
@@ -459,7 +460,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
     | With_wrapper { new_cont; new_handler; wrapper_handler; } ->
       let ty =
         Continuation_approx.create_unknown ~name:new_cont
-          ~num_params:(List.length new_handler.params)
+          ~arity:(Flambda.Continuation_handler.param_arity new_handler)
       in
       let body, r =
         let env = E.add_continuation env new_cont ty in
@@ -488,9 +489,9 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
     *)
     let original_r = r in
     let original_handlers = handlers in
+    let recursive : Flambda.recursive = Recursive in
     let handlers, r =
-      simplify_let_cont_handlers ~env ~r ~handlers
-        ~recursive:Flambda.Recursive ~freshening
+      simplify_let_cont_handlers ~env ~r ~handlers ~recursive ~freshening
     in
     begin match handlers with
     | None -> body, r
@@ -505,7 +506,8 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
             (* N.B. If [cont]'s handler was deleted, the following function
                will produce [Value_bottom] for the arguments, rather than
                failing. *)
-            R.defined_continuation_args_types r cont ~num_params)
+            R.defined_continuation_args_types r cont
+              ~arity:(Flambda.Continuation_handler.param_arity handler))
           original_handlers
       in
       let handlers = original_handlers in
@@ -531,24 +533,20 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
                   Continuation.Map.add new_cont new_handler
                     (Continuation.Map.add cont wrapper_handler handlers)
                 in
+                let arity =
+                  Flambda.Continuation_handler.param_arity new_handler
+                in
                 let ty =
-                  Continuation_approx.create_unknown ~name:new_cont
-                    ~num_params:(List.length new_handler.params)
+                  Continuation_approx.create_unknown ~name:new_cont ~arity
                 in
                 let env = E.add_continuation env new_cont ty in
-                let update_use_env =
-                  (cont, (new_cont, ty)) :: update_use_env
-                in
+                let update_use_env = (cont, (new_cont, ty)) :: update_use_env in
                 handlers, env, update_use_env)
             with_wrappers
             (Continuation.Map.empty, body_env, [])
       in
       let handlers, r =
-        (* CR mshinwell: check that [args_types] is at least as precise as
-           last time *)
-        simplify_let_cont_handlers ~env ~r ~handlers
-          ~args_types:(Some args_types) ~recursive:Flambda.Recursive
-          ~freshening
+        simplify_let_cont_handlers ~env ~r ~handlers ~recursive ~freshening
       in
       let r =
         List.fold_left (fun r (if_present_in_env, then_add_to_env) ->
