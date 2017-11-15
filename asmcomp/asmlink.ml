@@ -209,6 +209,7 @@ let make_startup_file ppf units_list =
   Compilenv.reset ~source_provenance:Timings.Startup "_startup";
   (* set the name of the "current" compunit *)
   Emit.begin_assembly ();
+  Emit.begin_sections ();
   let name_list =
     List.flatten (List.map (fun (info,_,_) -> info.ui_defines) units_list) in
   compile_phrase (Cmmgen.entry_point name_list);
@@ -283,7 +284,25 @@ let link_shared ppf objfiles output_name =
   call_linker_shared (startup_obj :: objfiles) output_name;
   remove_file startup_obj
 
+let compile_end_file () =
+  (* XXXC should handle exceptions *)
+  let src = Filename.temp_file "camlend" ext_asm in
+  let dst = Filename.temp_file "camlend" ext_obj in
+  X86_proc.reset_asm_code ();
+  Emitaux.create_asm_file := true;
+  Emitaux.output_channel := open_out src;
+  Emit.end_sections ();
+  X86_proc.generate_code
+    (Some (X86_gas.generate_asm !Emitaux.output_channel));
+  close_out !Emitaux.output_channel;
+  let res = Proc.assemble_file src dst in
+  if res <> 0 then
+    raise(Error(Assembler_error src))
+  else
+    dst
+
 let call_linker file_list startup_file output_name =
+  let file_list = (compile_end_file ()) :: file_list in
   let main_dll = !Clflags.output_c_object
                  && Filename.check_suffix output_name Config.ext_dll
   and main_obj_runtime = !Clflags.output_complete_object
