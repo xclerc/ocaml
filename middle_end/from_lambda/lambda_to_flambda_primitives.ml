@@ -85,3 +85,132 @@ let convert (prim : Lambda.primitive) (args : Simple.t list) : P.t =
       Printlambda.primitive prim (List.length args)
   | _ ->
     assert false
+
+type expr_primitive =
+  | Simple of Simple.t
+  | Unary of P.unary_primitive * expr_primitive
+  | Binary of P.binary_primitive * expr_primitive * expr_primitive
+  | Ternary of P.ternary_primitive * expr_primitive * expr_primitive * expr_primitive
+  | Variadic of P.variadic_primitive * (expr_primitive list)
+
+type primitive =
+  | Unary of P.unary_primitive * expr_primitive
+  | Binary of P.binary_primitive * expr_primitive * expr_primitive
+  | Ternary of P.ternary_primitive * expr_primitive * expr_primitive * expr_primitive
+  | Variadic of P.variadic_primitive * (expr_primitive list)
+
+let rec bind_rec_primitive
+          (prim : expr_primitive)
+          (dbg : Debuginfo.t)
+          (cont : Simple.t -> Flambda.Expr.t)
+  : Flambda.Expr.t =
+  match prim with
+  | Simple s ->
+    cont s
+  | Unary (prim, arg) ->
+    (* CR pchambart: find a better name, and fix the other ones *)
+    let var = Variable.create "prim" in
+    let cont arg =
+      Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+        (Prim (Unary (prim, arg), dbg))
+        (cont (Simple.var var))
+    in
+    bind_rec_primitive arg dbg cont
+  | Binary (prim, arg1, arg2) ->
+    let var = Variable.create "prim" in
+    let cont2 arg2 =
+      let cont1 arg1 =
+        Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+          (Prim (Binary (prim, arg1, arg2), dbg))
+          (cont (Simple.var var))
+      in
+      bind_rec_primitive arg1 dbg cont1
+    in
+    bind_rec_primitive arg2 dbg cont2
+  | Ternary (prim, arg1, arg2, arg3) ->
+    let var = Variable.create "prim" in
+    let cont3 arg3 =
+      let cont2 arg2 =
+        let cont1 arg1 =
+          Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+            (Prim (Ternary (prim, arg1, arg2, arg3), dbg))
+            (cont (Simple.var var))
+        in
+        bind_rec_primitive arg1 dbg cont1
+      in
+      bind_rec_primitive arg2 dbg cont2
+    in
+    bind_rec_primitive arg3 dbg cont3
+  | Variadic (prim, args) ->
+    let var = Variable.create "prim" in
+    let cont args =
+      Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+        (Prim (Variadic (prim, args), dbg))
+        (cont (Simple.var var))
+    in
+    let rec build_cont args_to_convert converted_args =
+      match args_to_convert with
+      | [] ->
+        cont converted_args
+      | arg :: args_to_convert ->
+        let cont arg =
+          build_cont args_to_convert (arg :: converted_args)
+        in
+        bind_rec_primitive arg dbg cont
+    in
+    build_cont (List.rev args) []
+
+let bind_primitive
+      (var : Variable.t)
+      (prim : primitive)
+      (dbg : Debuginfo.t)
+      (cont : Flambda.Expr.t)
+  : Flambda.Expr.t =
+  match prim with
+  | Unary (p, arg) ->
+    let cont arg =
+      Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+        (Prim (Unary (p, arg), dbg))
+        cont
+    in
+    bind_rec_primitive arg dbg cont
+  | Binary (prim, arg1, arg2) ->
+    let cont2 arg2 =
+      let cont1 arg1 =
+        Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+          (Prim (Binary (prim, arg1, arg2), dbg))
+          cont
+      in
+      bind_rec_primitive arg1 dbg cont1
+    in
+    bind_rec_primitive arg2 dbg cont2
+  | Ternary (prim, arg1, arg2, arg3) ->
+    let cont3 arg3 =
+      let cont2 arg2 =
+        let cont1 arg1 =
+          Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+            (Prim (Ternary (prim, arg1, arg2, arg3), dbg))
+            cont
+        in
+        bind_rec_primitive arg1 dbg cont1
+      in
+      bind_rec_primitive arg2 dbg cont2
+    in
+    bind_rec_primitive arg3 dbg cont3
+  | Variadic (prim, args) ->
+    let cont args =
+      Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
+        (Prim (Variadic (prim, args), dbg))
+        cont
+    in
+    let rec build_cont args_to_convert converted_args =
+      match args_to_convert with
+      | [] ->
+        cont converted_args
+      | arg :: args_to_convert ->
+        let cont arg =
+          build_cont args_to_convert (arg :: converted_args)
+        in
+        bind_rec_primitive arg dbg cont
+    in
+    build_cont (List.rev args) []
