@@ -91,6 +91,7 @@ type t =
 
 let name t = Name t
 let var t = Name (Name.var t)
+let symbol t = Name (Name.symbol t)
 let const t = Const t
 
 let free_names t =
