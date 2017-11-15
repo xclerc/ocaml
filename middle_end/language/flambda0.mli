@@ -42,6 +42,11 @@ module Call_kind : sig
         return_arity : Flambda_arity.t;
       }
     | Method of { kind : method_kind; obj : Name.t; }
+    | C_call of {
+        name : Linkage_name.t;
+        native_name : Linkage_name.t;
+        alloc : bool;
+      }
 
   val return_arity : t -> Flambda_arity.t
 
@@ -67,6 +72,7 @@ module Apply : sig
        lhs_of_application -> callee *)
     func : Name.t;
     continuation : Continuation.t;
+    exn_continuation : Continuation.t;
     (** Where to send the result of the application. *)
     args : Simple.t list;
     call_kind : Call_kind.t;
@@ -564,6 +570,9 @@ end and Function_declaration : sig
         once the result of the function has been computed.  If the continuation
         takes more than one argument then the backend will compile the function
         so that it returns multiple values. *)
+    exn_continuation_param : Continuation.t;
+    (** To where we must jump if application of the function raises an
+        exception. *)
     return_arity : Flambda_arity.t;
     (** The kinds of the parameters of the [continuation_param] continuation.
         (This encodes whether the function returns multiple and/or unboxed

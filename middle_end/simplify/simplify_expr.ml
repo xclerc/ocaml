@@ -562,7 +562,7 @@ and simplify_let_cont env r ~body
     end
   end
 
-and simplify_method_call env r ~(apply : Flambda.apply) ~kind ~obj
+and simplify_method_call env r ~(apply : Flambda.Apply.t) ~kind ~obj
       : Expr.t * R.t =
   let obj, _obj_type = freshen_and_squash_aliases env obj in
   let func, _func_type = freshen_and_squash_aliases env func in

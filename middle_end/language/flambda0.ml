@@ -21,6 +21,10 @@ module K = Flambda_kind
 let fprintf = Format.fprintf
 
 module Call_kind = struct
+  (* CR-someday xclerc: we could add annotations to external declarations
+      (akin to [@@noalloc]) in order to be able to refine the computation of
+      effects/coeffects for such functions. *)
+
   type method_kind = Self | Public | Cached
 
   let print_method_kind ppf kind =

@@ -16,13 +16,14 @@
 (*                                                                        *)
 (**************************************************************************)
 
-(** Primitives used in Flambda.  The list excludes primitives forbidden in
-    Flambda; we are thus able to avoid "fatal error" cases in pattern matches.
-    We obtain greater static safety over [Lambda] by explicitly annotating
-    the correct arity of arguments.
+(** "Primitive" operations: those that perform computation but never affect
+    control flow.
 
     Primitives that accept int32, int64 or nativeint values always take (or
     return) the unboxed versions.
+
+    No primitive raises an exception.  (Bounds checking is handled
+    separately.)
 *)
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
@@ -46,16 +47,6 @@ type mutable_or_immutable = Immutable | Mutable
 
 type init_or_assign = Initialization | Assignment
 
-(* CR mshinwell: Can we have an explicit bounds-checking primitive in
-   Flambda, and then remove this flag?  It seems likely to be better for
-   optimization purposes.
-
-   mshinwell: Let's do this straight away.  We've got a lot of information in
-   our types which we can use to eliminate these accesses (e.g. sizes of
-   mutable strings and mutable arrays).
-*)
-type is_safe = Safe | Unsafe
-
 type comparison = Eq | Neq | Lt | Gt | Le | Ge
 
 type bigarray_kind =
@@ -68,8 +59,6 @@ type bigarray_kind =
   | Complex32 | Complex64
 
 type bigarray_layout = Unknown | C | Fortran
-
-type raise_kind = Regular | Reraise | No_trace
 
 type block_set_kind =
   | Immediate
@@ -125,7 +114,6 @@ type unary_primitive =
   (** [Int_as_pointer] is semantically the same as [Opaque_identity] except
       that the result _cannot_ be scanned by the GC. *)
   | Opaque_identity
-  | Raise of raise_kind
   | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
   | Int_conv of {
       src : Flambda_kind.Standard_int.t;
@@ -158,10 +146,7 @@ type unary_primitive =
 
 (** Binary arithmetic operations on integers. *)
 type binary_int_arith_op =
-  | Add | Sub | Mul
-  | Div of is_safe
-  | Mod of is_safe
-  | And | Or | Xor
+  | Add | Sub | Mul | Div | Mod | And | Or | Xor
 
 (** Shift operations on integers. *)
 type int_shift_op = Lsl | Lsr | Asr
@@ -179,33 +164,26 @@ type binary_primitive =
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
   | Bit_test
-  | Array_load of array_kind * is_safe
-  | String_load of string_accessor_width * is_safe
+  | Array_load of array_kind
+  | String_load of string_accessor_width
   (* CR-someday mshinwell: It seems as if [Cmmgen]'s handling of the
      bigstring accessors could be tidied up so as to integrate it with the
      (older) bigarray accessor (Pbigarrayref). *)
-  | Bigstring_load of bigstring_accessor_width * is_safe
+  | Bigstring_load of bigstring_accessor_width
 
 (** Primitives taking exactly three arguments. *)
 type ternary_primitive =
   | Block_set_computed of Flambda_kind.scanning * init_or_assign
-  | Bytes_set of string_accessor_width * is_safe
-  | Array_set of array_kind * is_safe
-  | Bigstring_set of bigstring_accessor_width * is_safe
+  | Bytes_set of string_accessor_width
+  | Array_set of array_kind
+  | Bigstring_set of bigstring_accessor_width
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
   | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
   | Make_array of array_kind * mutable_or_immutable
-  | Bigarray_set of is_safe * num_dimensions * bigarray_kind * bigarray_layout
-  | Bigarray_load of is_safe * num_dimensions * bigarray_kind * bigarray_layout
-  | C_call of {
-      name : Linkage_name.t;
-      native_name : Linkage_name.t;
-      args : Flambda_arity.t;
-      result : Flambda_kind.t;
-      alloc : bool;
-    }
+  | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
+  | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
 
 (** The application of a primitive to its arguments. *)
 type t =
