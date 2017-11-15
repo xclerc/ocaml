@@ -76,7 +76,7 @@ module State = struct
     let continuations_to_remain =
       match thing with
       | Let _ | Let_mutable _ -> t.continuations_to_remain
-      | Let_cont (Nonrecursive { name; _ }) ->
+      | Let_cont (Non_recursive { name; _ }) ->
         Continuation.Set.add name t.continuations_to_remain
       | Let_cont (Recursive handlers) ->
         Continuation.Set.union (Continuation.Map.keys handlers)
@@ -219,7 +219,7 @@ let rec lift_let_cont ~importer ~body ~handlers ~state
     | Recursive -> Recursive handlers
     | Non_recursive ->
       match Continuation.Map.bindings handlers with
-      | [name, handler] -> Nonrecursive { name; handler; }
+      | [name, handler] -> Non_recursive { name; handler; }
       | _ -> assert false
   in
   let fcs = Flambda.Let_cont_handlers.free_continuations handlers in
@@ -273,14 +273,14 @@ and lift_expr ~importer (expr : Flambda.Expr.t) ~state =
     in
     let expr, state = lift_expr ~importer body ~state in
     expr, State.forget_mutable_variable state var
-  | Let_cont { body; handlers = Nonrecursive ({ name; handler; }); }
+  | Let_cont { body; handlers = Non_recursive ({ name; handler; }); }
       when handler.is_exn_handler ->
     (* Don't lift anything out of the scope of an exception handler.
        Otherwise we might end up with lifted blocks that could jump (in the
        case of an exception) to a continuation that isn't in scope. *)
     (* CR mshinwell: Maybe we should think about this some more *)
     let handlers : Flambda.Let_cont_handlers.t =
-      Nonrecursive {
+      Non_recursive {
         name;
         handler = {
           handler with
@@ -309,7 +309,7 @@ and lift_expr ~importer (expr : Flambda.Expr.t) ~state =
   | Let_cont { body; handlers; } ->
     let recursive : Flambda.recursive =
       match handlers with
-      | Nonrecursive _ -> Non_recursive
+      | Non_recursive _ -> Non_recursive
       | Recursive _ -> Recursive
     in
     let handlers = Flambda.Let_cont_handlers.to_continuation_map handlers in

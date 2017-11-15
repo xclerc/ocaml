@@ -282,7 +282,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     in
     Let_cont { body; handlers = Recursive handlers; }, state
   | Let_cont { body; handlers =
-      Nonrecursive { name; handler = {
+      Non_recursive { name; handler = {
         params; stub; is_exn_handler; handler; }; }; } ->
     let params_set = Flambda.Typed_parameter.List.var_set params in
     let body, state = sink_expr body ~state in
@@ -304,7 +304,7 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
         ~candidates_to_sink:free_variables
     in
     Let_cont { body; handlers =
-      Nonrecursive { name; handler = {
+      Non_recursive { name; handler = {
         params; stub; is_exn_handler; handler; }; }; }, state
   | Apply _ | Apply_cont _ | Switch _ | Invalid _ ->
     let state =
@@ -344,7 +344,7 @@ and sink (expr : Flambda.Expr.t) =
     | Let_mutable { var; initial_value; contents_type; body; } ->
       let body = sink body in
       Let_mutable { var; initial_value; contents_type; body; }
-    | Let_cont { body; handlers = Nonrecursive { name; handler = {
+    | Let_cont { body; handlers = Non_recursive { name; handler = {
         params; stub; is_exn_handler; handler; }; }; } ->
       let body = sink body in
       let handler =
@@ -355,7 +355,7 @@ and sink (expr : Flambda.Expr.t) =
           handler
           (List.rev bindings)
       in
-      Let_cont { body; handlers = Nonrecursive { name; handler =
+      Let_cont { body; handlers = Non_recursive { name; handler =
         { params; stub; is_exn_handler; handler; }; }; }
     | Let_cont { body; handlers = Recursive handlers; } ->
       let body = sink body in

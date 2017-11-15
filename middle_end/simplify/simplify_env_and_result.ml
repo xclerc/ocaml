@@ -566,7 +566,7 @@ end = struct
   (List.length uses.Continuation_uses.application_points);
   *)
           match (recursive : Flambda.recursive) with
-          | Nonrecursive ->
+          | Non_recursive ->
             Continuation_uses.linearly_used_in_inlinable_position uses
           | Recursive -> false)
         t.defined_continuations

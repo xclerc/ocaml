@@ -213,7 +213,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           in
           Let_cont {
             body = expr;
-            handlers = Nonrecursive {
+            handlers = Non_recursive {
               name = filler_cont;
               handler = {
                 params = [];
@@ -266,7 +266,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           body = Let_cont {
             body = Let_cont {
               body = is_int_switch;
-              handlers = Nonrecursive {
+              handlers = Non_recursive {
                 name = is_int_cont;
                 handler = {
                   params = [];
@@ -287,7 +287,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
                 };
               };
             };
-            handlers = Nonrecursive {
+            handlers = Non_recursive {
               name = is_block_cont;
               handler = {
                 params = [];
@@ -304,7 +304,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
               };
             };
           };
-          handlers = Nonrecursive {
+          handlers = Non_recursive {
             name = join_cont;
             handler = {
               params = Parameter.List.wrap new_arguments_for_call_in_wrapper;
@@ -374,7 +374,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
             Flambda.Expr.create_let ctor_index_var (Const (Int ctor_index))
               (Let_cont {
                 body = expr;
-                handlers = Nonrecursive {
+                handlers = Non_recursive {
                   name = cont;
                   handler = {
                     handler = Apply_cont (join_cont, None, [ctor_index_var]);
@@ -409,7 +409,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
             in
             Let_cont {
               body = expr;
-              handlers = Nonrecursive {
+              handlers = Non_recursive {
                 name = boxing_cont;
                 handler = {
                   params = [];
@@ -428,7 +428,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
           body = Let_cont {
             body = Let_cont {
               body = boxing_is_int_switch;
-              handlers = Nonrecursive {
+              handlers = Non_recursive {
                 name = boxing_is_block_cont;
                 handler = {
                   params = [];
@@ -439,7 +439,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
                 };
               };
             };
-            handlers = Nonrecursive {
+            handlers = Non_recursive {
               name = boxing_is_int_cont;
               handler = {
                 params = [];
@@ -461,7 +461,7 @@ let how_to_unbox_core ~constant_ctors ~blocks ~being_unboxed
               };
             };
           };
-          handlers = Nonrecursive {
+          handlers = Non_recursive {
             name = join_cont;
             handler = {
               params = [Parameter.wrap boxed];

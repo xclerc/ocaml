@@ -74,7 +74,7 @@ type or_do_not_lift =
 
 let rec lift (expr : Flambda.Expr.t) ~to_copy =
   match expr with
-  | Let_cont ({ body; handlers = Nonrecursive { name; handler = ({
+  | Let_cont ({ body; handlers = Non_recursive { name; handler = ({
       params; handler; is_exn_handler; _ } as handler_record); }; })
       when (not is_exn_handler) ->
     let free_conts_body, lifted, body = lift body ~to_copy in
@@ -117,7 +117,7 @@ let rec lift (expr : Flambda.Expr.t) ~to_copy =
       free_conts_handler, lifted, expr
     end else begin
       let handlers : Flambda.Let_cont_handlers.t =
-        Nonrecursive {
+        Non_recursive {
           name;
           handler = handler_record;
         };

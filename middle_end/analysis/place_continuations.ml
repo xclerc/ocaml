@@ -145,7 +145,7 @@ let find_insertion_points expr ~vars_in_scope ~new_conts =
             let being_placed =
               let handlers_as_map =
                 match new_handlers with
-                | Nonrecursive { name; handler; } ->
+                | Non_recursive { name; handler; } ->
                   Continuation.Map.add name handler Continuation.Map.empty
                 | Recursive handlers -> handlers
               in

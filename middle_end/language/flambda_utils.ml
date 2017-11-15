@@ -157,7 +157,7 @@ let make_let_cont_alias ~importer ~type_of_name ~name ~alias_of
     in
     List.split (List.map param_and_var_for parameter_types)
   in
-  Nonrecursive {
+  Non_recursive {
     name;
     handler = {
       params = handler_params;

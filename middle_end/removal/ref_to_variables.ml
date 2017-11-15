@@ -56,7 +56,7 @@ let variables_not_used_as_local_reference (tree:Flambda.Expr.t) =
       set := Variable.Set.add v !set;
       loop body
     | Let_cont { body; handlers =
-        Nonrecursive { name = _; handler = { handler; _ }; }; } ->
+        Non_recursive { name = _; handler = { handler; _ }; }; } ->
       loop body;
       loop handler
     | Let_cont { body; handlers = Recursive handlers; } ->

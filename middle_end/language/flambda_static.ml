@@ -745,7 +745,7 @@ end
       }
     in
     let definition_group =
-      { recursive = Nonrecursive;
+      { recursive = Non_recursive;
         definitions = [definition];
       }
     in

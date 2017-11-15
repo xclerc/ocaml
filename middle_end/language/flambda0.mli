@@ -402,8 +402,8 @@ end and Let_cont_handlers : sig
       to inline them out and turn the resulting single [Recursive] handler into
       a [Non_recursive] one. *)
   type t =
-    (* CR mshinwell: Change Nonrecursive -> Non_recursive to be consistent *)
-    | Nonrecursive of {
+    (* CR mshinwell: Change Non_recursive -> Non_recursive to be consistent *)
+    | Non_recursive of {
         name : Continuation.t;
         handler : Continuation_handler.t;
       }
@@ -435,7 +435,7 @@ end and Let_cont_handlers : sig
 
   (** [map t ~f] is equivalent to calling [f] on [to_continuation_map t],
       then repacking the result in the same constructor ([Recursive] or
-      [Nonrecursive]) as [t]. *)
+      [Non_recursive]) as [t]. *)
   val map : t -> f:(Continuation_handlers.t -> Continuation_handlers.t) -> t
 
   val print : Format.formatter -> t -> unit
@@ -446,7 +446,7 @@ end and Continuation_handler : sig
     params : Typed_parameter.t list;
     stub : bool;
     is_exn_handler : bool;
-    (** Continuations used as exception handlers must always be [Nonrecursive]
+    (** Continuations used as exception handlers must always be [Non_recursive]
         and must have exactly one argument.  To enable identification of them
         in passes not invoked from [Simplify] (where they could be
         identified by looking at the [Apply_cont]s that reference them) they

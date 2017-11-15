@@ -65,7 +65,7 @@ and let_cont = {
   is_exn_handler : bool;
   (** If the continuation is an exception handler, it must not be marked as
       [administrative].
-      Continuations that are exception handlers must be [Nonrecursive] and
+      Continuations that are exception handlers must be [Non_recursive] and
       have exactly one parameter. *)
   params : Ident.t list;
   recursive : Asttypes.rec_flag;

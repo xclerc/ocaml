@@ -172,9 +172,9 @@ let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handlers.t)
        but it's nicer for debugging to check now. *)
     let handlers : Flambda.Let_cont_handlers.t =
       match recursive with
-      | Nonrecursive ->
+      | Non_recursive ->
         begin match Continuation.Map.bindings new_handlers with
-        | [name, handler] -> Nonrecursive { name; handler; }
+        | [name, handler] -> Non_recursive { name; handler; }
         | _ -> assert false
         end
       | Recursive -> Recursive new_handlers
@@ -212,7 +212,7 @@ let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handlers.t)
       in
       let new_handlers =
         match (new_handlers : Flambda.Let_cont_handlers.t) with
-        | Nonrecursive { handler; _ } -> [handler.handler]
+        | Non_recursive { handler; _ } -> [handler.handler]
         | Recursive handlers ->
           List.map (fun (handler : Flambda.Continuation_handler.t) ->
               handler.handler)
@@ -234,10 +234,10 @@ let try_specialising ~cont ~(old_handlers : Flambda.Continuation_handlers.t)
 let handlers_and_invariant_params ~cont ~approx ~backend =
   match Continuation_approx.handlers approx with
   | None -> None
-  | Some (Nonrecursive { is_exn_handler = true; _ }) -> None
+  | Some (Non_recursive { is_exn_handler = true; _ }) -> None
   | Some handlers ->
     match handlers with
-    | Nonrecursive handler ->
+    | Non_recursive handler ->
       let handlers =
         Continuation.Map.add cont handler Continuation.Map.empty
       in
@@ -361,7 +361,7 @@ let find_candidate_specialisations r ~backend =
         let application_points = U.application_points uses in
         let num_application_points = List.length application_points in
         match (recursive : Flambda.recursive), num_application_points, stub with
-        | Nonrecursive, n, _ when n <= 1 ->
+        | Non_recursive, n, _ when n <= 1 ->
           (* Non-recursive continuations that only have a single (inlinable)
              use point will be inlined out by [Continuation_inlining].
              (There would be no point in specialising such a continuation
@@ -371,7 +371,7 @@ let find_candidate_specialisations r ~backend =
         | _, _, true ->
           (* Stub continuations are never specialised. *)
           specialisations
-        | (Nonrecursive | Recursive), _, _ ->
+        | (Non_recursive | Recursive), _, _ ->
           List.fold_left (fun specialisations use ->
               examine_use ~specialisations ~cont ~handler ~invariant_params
               ~invariant_params_flow ~handlers ~recursive ~use)

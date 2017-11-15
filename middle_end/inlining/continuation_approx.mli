@@ -19,7 +19,7 @@
 type t
 
 type continuation_handlers =
-  | Nonrecursive of Flambda.Continuation_handler.t
+  | Non_recursive of Flambda.Continuation_handler.t
   | Recursive of Flambda.Continuation_handlers.t
 
 val create

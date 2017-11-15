@@ -86,7 +86,7 @@ let rec count_uses ~in_scope (ulam : Clambda.ulambda) =
       count_uses ~in_scope body
     in
     begin match kind, handlers with
-    | Normal Nonrecursive, [cont, _params, _handler] ->
+    | Normal Non_recursive, [cont, _params, _handler] ->
       used_within_catch_bodies :=
         Int.Map.add cont body_uses !used_within_catch_bodies
     | _ -> ()
@@ -94,7 +94,7 @@ let rec count_uses ~in_scope (ulam : Clambda.ulambda) =
     let in_scope_already = in_scope in
     let in_scope =
       match kind with
-      | Normal Nonrecursive | Exn_handler -> in_scope
+      | Normal Non_recursive | Exn_handler -> in_scope
       | Normal Recursive -> Int.Set.union in_scope handler_conts
     in
     (* Continuations defined outside of a recursive continuation and
@@ -284,7 +284,7 @@ let inline ulam ~(uses : N.t Int.Map.t) ~used_within_catch_bodies =
             (inline env handler)
         end
       end
-    | Ucatch (Normal Nonrecursive, [cont, params, handler], body) ->
+    | Ucatch (Normal Non_recursive, [cont, params, handler], body) ->
       let module Action = struct
         type t =
           | Unused
@@ -331,7 +331,7 @@ let inline ulam ~(uses : N.t Int.Map.t) ~used_within_catch_bodies =
           in
           match can_turn_into_let_or_sequence with
           | Nothing ->
-            Ucatch (Normal Nonrecursive, [cont, params, inline env handler],
+            Ucatch (Normal Non_recursive, [cont, params, inline env handler],
               inline env body)
           | Sequence ->
             let env = E.continuation_will_turn_into_sequence env ~cont in

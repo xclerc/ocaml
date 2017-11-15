@@ -293,18 +293,18 @@ end = struct
       | [cont, Unchanged { handler; }] ->
         Let_cont {
           body;
-          handlers = Nonrecursive { name = cont; handler; };
+          handlers = Non_recursive { name = cont; handler; };
         }
       | [cont, With_wrapper { new_cont; new_handler; wrapper_handler; }] ->
         Let_cont {
           body = Let_cont {
             body;
-            handlers = Nonrecursive {
+            handlers = Non_recursive {
               name = cont;
               handler = wrapper_handler;
             };
           };
-          handlers = Nonrecursive {
+          handlers = Non_recursive {
             name = new_cont;
             handler = new_handler;
           };
@@ -346,7 +346,7 @@ end = struct
         f body
       | Let_mutable { body; _ } -> f body
       | Let_cont { body; handlers =
-          Nonrecursive { handler = { handler; _ }; _ } } ->
+          Non_recursive { handler = { handler; _ }; _ } } ->
         f body;
         f handler
       | Let_cont { body; handlers = Recursive handlers; } ->
@@ -417,7 +417,7 @@ end = struct
             | Let_cont { body; handlers; } ->
               let new_body = aux body in
               match handlers with
-              | Nonrecursive { name; handler =
+              | Non_recursive { name; handler =
                   ({ handler = handler_expr; _ } as handler); } ->
                 let new_handler_expr = aux handler_expr in
                 if new_body == body && new_handler_expr == handler_expr then
@@ -425,7 +425,7 @@ end = struct
                 else
                   Let_cont {
                     body = new_body;
-                    handlers = Nonrecursive {
+                    handlers = Non_recursive {
                       name;
                       handler = { handler with handler = new_handler_expr; }
                     };
@@ -517,7 +517,7 @@ end = struct
       | Let_cont { body; handlers; } ->
         let new_body = f body in
         match handlers with
-        | Nonrecursive { name; handler =
+        | Non_recursive { name; handler =
             ({ handler = handler_expr; _ } as handler); } ->
           let new_handler_expr = f handler_expr in
           if new_body == body && new_handler_expr == handler_expr then
@@ -525,7 +525,7 @@ end = struct
           else
             Let_cont {
               body = new_body;
-              handlers = Nonrecursive {
+              handlers = Non_recursive {
                 name;
                 handler = { handler with handler = new_handler_expr; }
               };
@@ -945,7 +945,7 @@ end = struct
         let handler_stack = E.Continuation_stack.var () in
         let env =
           match handlers with
-          | Nonrecursive { name; handler; } ->
+          | Non_recursive { name; handler; } ->
             let kind : E.continuation_kind =
               if handler.is_exn_handler then Exn_handler else Normal
             in
@@ -1335,7 +1335,7 @@ end = struct
 
   let no_effects_or_coeffects (t : t) =
     match t with
-    | Nonrecursive { name = _; handler; } ->
+    | Non_recursive { name = _; handler; } ->
       Continuation_handler.no_effects_or_coeffects handler
     | Recursive handlers ->
       Continuation_handlers.no_effects_or_coeffects handlers

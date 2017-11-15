@@ -138,9 +138,9 @@ let run program ~backend =
   Flambda_static.Program.Mappers.map_toplevel_exprs program ~f:(fun expr ->
     Flambda.Expr.Mappers.map_expr (fun (expr : Flambda.Expr.t) ->
         match expr with
-        | Let_cont { body = _; handlers = Nonrecursive { name = _; handler = {
+        | Let_cont { body = _; handlers = Non_recursive { name = _; handler = {
             is_exn_handler = true; _ }; }; } -> expr
-        | Let_cont { body; handlers = Nonrecursive { name; handler; } } ->
+        | Let_cont { body; handlers = Non_recursive { name; handler; } } ->
           let unused =
             let fvs = Flambda.Expr.free_variables handler.handler in
             let params = Parameter.Set.of_list handler.params in
@@ -152,7 +152,7 @@ let run program ~backend =
             Continuation.Map.add name handler Continuation.Map.empty
           in
           for_continuation ~body ~handlers ~unused ~original:expr
-            ~recursive:Flambda.Nonrecursive
+            ~recursive:Flambda.Non_recursive
         | Let_cont { body; handlers = Recursive handlers; } ->
           let unused =
             Invariant_params.Continuations.unused_arguments handlers ~backend

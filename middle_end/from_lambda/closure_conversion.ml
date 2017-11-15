@@ -308,11 +308,11 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
     if let_cont.is_exn_handler then begin
       assert (not let_cont.administrative);
       assert (List.length let_cont.params = 1);
-      assert (let_cont.recursive = Asttypes.Nonrecursive);
+      assert (let_cont.recursive = Asttypes.Non_recursive);
     end;
     (* Inline out administrative redexes. *)
     if let_cont.administrative then begin
-      assert (let_cont.recursive = Asttypes.Nonrecursive);
+      assert (let_cont.recursive = Asttypes.Non_recursive);
       let body_env =
         Env.add_administrative_redex env let_cont.name ~params:let_cont.params
           ~handler:let_cont.handler
@@ -336,7 +336,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       in
       let handlers : Flambda.Let_cont_handlers.t =
         match let_cont.recursive with
-        | Nonrecursive -> Nonrecursive { name = let_cont.name; handler; }
+        | Non_recursive -> Non_recursive { name = let_cont.name; handler; }
         | Recursive ->
           Recursive (Continuation.Map.add let_cont.name handler
             Continuation.Map.empty)
@@ -755,7 +755,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   let expr : Flambda.Expr.t =
     Let_cont
       { handlers =
-          Nonrecursive { name = ilam_result_cont; handler = assign_cont_def };
+          Non_recursive { name = ilam_result_cont; handler = assign_cont_def };
         body = close t Env.empty ilam; }
   in
 

@@ -453,7 +453,7 @@ and do_expr env (expr : Flambda.Expr.t) : unit =
   | Let { var; defining_expr; body } ->
     do_named env var defining_expr;
     do_expr env body
-  | Let_cont { body; handlers = Nonrecursive { name; handler } } ->
+  | Let_cont { body; handlers = Non_recursive { name; handler } } ->
     declare_continuation env name handler;
     do_continuation env name handler;
     do_expr env body

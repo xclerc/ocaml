@@ -78,7 +78,7 @@ let unbox_function_decl ~fun_var
   let new_function_body : Flambda.Expr.t =
     Let_cont {
       body = function_decl.body;
-      handlers = Nonrecursive {
+      handlers = Non_recursive {
         name = function_decl.continuation_param;
         handler = {
           params = cont_wrapper_params;
@@ -136,7 +136,7 @@ let unbox_function_decl ~fun_var
         inline = Default_inline;
         specialise = Default_specialise;
       };
-      handlers = Nonrecursive {
+      handlers = Non_recursive {
         name = receive_results;
         handler = {
           params = Parameter.List.wrap results;

@@ -303,9 +303,9 @@ and simplify_let_cont_handlers ~env ~r ~handlers
                 match recursive with
                 | Non_recursive ->
                   begin match Continuation.Map.bindings handlers with
-                  | [_cont, (handler, _)] -> Nonrecursive handler
+                  | [_cont, (handler, _)] -> Non_recursive handler
                   | _ ->
-                    Misc.fatal_errorf "Nonrecursive Let_cont may only have one \
+                    Misc.fatal_errorf "Non_recursive Let_cont may only have one \
                         handler, but binds %a"
                       Continuation.Set.print (Continuation.Map.keys handlers)
                   end
@@ -331,7 +331,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers
       | Non_recursive ->
         begin match Continuation.Map.bindings handlers with
         | [name, handler] ->
-          Some (Flambda.Let_cont_handlers.Nonrecursive { name; handler; }), r
+          Some (Flambda.Let_cont_handlers.Non_recursive { name; handler; }), r
         | _ -> assert false
         end
       | Recursive ->
@@ -349,7 +349,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers
         in
         match is_non_recursive with
         | Some (name, handler) ->
-          Some (Flambda.Let_cont_handlers.Nonrecursive { name; handler; }), r
+          Some (Flambda.Let_cont_handlers.Non_recursive { name; handler; }), r
         | None -> Some (Flambda.Let_cont_handlers.Recursive handlers), r
 
 and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
@@ -395,7 +395,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
               assert (not (Continuation.Set.mem name
                 (Flambda.Expr.free_continuations handler.handler)));
               Continuation_approx.create ~name:freshened_name
-                ~handlers:(Nonrecursive handler) ~arity
+                ~handlers:(Non_recursive handler) ~arity
             end else begin
               Continuation_approx.create_unknown ~name:freshened_name ~arity
             end
@@ -420,7 +420,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
   in
   let body, r = simplify body_env r body in
   begin match handlers with
-  | Nonrecursive { name; handler; } ->
+  | Non_recursive { name; handler; } ->
     let with_wrapper : Expr.with_wrapper =
       (* CR mshinwell: Tidy all this up somehow. *)
       (* Unboxing of continuation parameters is done now so that in one pass
@@ -448,7 +448,7 @@ and simplify_let_cont env r ~body ~handlers : Expr.t * R.t =
       in
       let handlers, r =
         simplify_let_cont_handlers ~env ~r ~handlers ~args_types:None
-          ~recursive:Flambda.Nonrecursive ~freshening
+          ~recursive:Flambda.Non_recursive ~freshening
       in
       match handlers with
       | None -> body, r
@@ -712,7 +712,7 @@ and simplify_over_application env r ~args ~args_types ~continuation
   let after_full_application = Continuation.create () in
   let after_full_application_type =
     Continuation_approx.create ~name:after_full_application
-      ~handlers:(Nonrecursive handler) ~num_params:1
+      ~handlers:(Non_recursive handler) ~num_params:1
   in
   let full_application, r =
     let env =
@@ -735,13 +735,13 @@ Format.eprintf "full_application:@;%a@;" Expr.print full_application;
     R.exit_scope_catch r env after_full_application
   in
   let r =
-    R.define_continuation r after_full_application env Nonrecursive
+    R.define_continuation r after_full_application env Non_recursive
       after_full_application_uses after_full_application_type
   in
   let expr : Expr.t =
     Let_cont {
       body = full_application;
-      handlers = Nonrecursive {
+      handlers = Non_recursive {
         name = after_full_application;
         handler;
       };
@@ -931,7 +931,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
       Flambda.Pop { id; exn_handler; }, r
   in
   match Continuation_approx.handlers cont_approx with
-  | Some (Nonrecursive handler) when handler.stub && trap_action = None ->
+  | Some (Non_recursive handler) when handler.stub && trap_action = None ->
     (* Stubs are unconditionally inlined out now for two reasons:
        - [Continuation_inlining] cannot do non-linear inlining;
        - Even if it could, we don't want to have to run that pass when
@@ -959,7 +959,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
         let new_cont = Continuation.create () in
         Let_cont {
           body = Apply_cont (new_cont, Some trap_action, []);
-          handlers = Nonrecursive {
+          handlers = Non_recursive {
             name = new_cont;
             handler = {
               handler = handler.handler;
@@ -999,7 +999,7 @@ and simplify_switch env r arg sw : Expr.t * R.t =
     let cont_type = E.find_continuation env cont in
     match Continuation_approx.handlers cont_type with
     | None | Some (Recursive _) -> false
-    | Some (Nonrecursive handler) ->
+    | Some (Non_recursive handler) ->
       match handler.handler with
       | Invalid Treat_as_unreachable -> true
       | _ -> false

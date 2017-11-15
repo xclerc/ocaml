@@ -432,7 +432,7 @@ end = struct
         (* CR-soon mshinwell: Move the following into a separate function in
            the [Let_cont] module. *)
         begin match handlers with
-        | Nonrecursive { name = _; handler = { Continuation_handler.
+        | Non_recursive { name = _; handler = { Continuation_handler.
             params; handler; _ }; } ->
           List.iter (fun param -> bound_name (Typed_parameter.var param))
             params;
@@ -602,7 +602,7 @@ end = struct
         | Let_cont { body; handlers; _ } ->
           aux body;
           begin match handlers with
-          | Nonrecursive { name = _; handler = { handler; _ }; } ->
+          | Non_recursive { name = _; handler = { handler; _ }; } ->
             aux handler
           | Recursive handlers ->
             Continuation.Map.iter (fun _cont
@@ -968,7 +968,7 @@ end = struct
       && Let_cont_handlers.equal ~equal_type handlers1 handlers2
 end and Let_cont_handlers : sig
   type t =
-    | Nonrecursive of {
+    | Non_recursive of {
         name : Continuation.t;
         handler : Continuation_handler.t;
       }
@@ -996,15 +996,15 @@ end = struct
 
   let to_continuation_map t =
     match t with
-    | Nonrecursive { name; handler } -> Continuation.Map.singleton name handler
+    | Non_recursive { name; handler } -> Continuation.Map.singleton name handler
     | Recursive handlers -> handlers
 
   let free_and_bound_continuations (t : t) : free_and_bound =
     match t with
-    | Nonrecursive { name; handler = { handler; _ }; } ->
+    | Non_recursive { name; handler = { handler; _ }; } ->
       let fcs = Expr.free_continuations handler in
       if Continuation.Set.mem name fcs then begin
-        Misc.fatal_errorf "Nonrecursive [Let_cont] handler appears to be \
+        Misc.fatal_errorf "Non_recursive [Let_cont] handler appears to be \
             recursive:@ \n%a"
           print t
       end;
@@ -1042,30 +1042,30 @@ end = struct
 
   let map (t : t) ~f =
     match t with
-    | Nonrecursive { name; handler } ->
+    | Non_recursive { name; handler } ->
       let handlers = f (Continuation.Map.singleton name handler) in
       begin match Continuation.Map.bindings handlers with
-      | [ name, handler ] -> Nonrecursive { name; handler; }
+      | [ name, handler ] -> Non_recursive { name; handler; }
       | _ ->
         Misc.fatal_errorf "Flambda.map: the provided mapping function \
-          returned more than one handler for a [Nonrecursive] binding"
+          returned more than one handler for a [Non_recursive] binding"
       end
     | Recursive handlers -> Recursive (f handlers)
 
   let equal ~equal_type t1 t2 =
     match t1, t2 with
-    | Nonrecursive { name = name1; handler = handler1; },
-        Nonrecursive { name = name2; handler = handler2; } ->
+    | Non_recursive { name = name1; handler = handler1; },
+        Non_recursive { name = name2; handler = handler2; } ->
       Continuation.equal name1 name2
         && Continuation_handler.equal ~equal_type handler1 handler2
     | Recursive handlers1, Recursive handlers2 ->
       Continuation_handlers.equal ~equal_type handlers1 handlers2
-    | Nonrecursive _, Recursive _
-    | Recursive _, Nonrecursive _ -> false
+    | Non_recursive _, Recursive _
+    | Recursive _, Non_recursive _ -> false
 
   let print_using_where ppf (t : t) =
     match t with
-    | Nonrecursive { name; handler = { params; stub; handler; }; } ->
+    | Non_recursive { name; handler = { params; stub; handler; }; } ->
       fprintf ppf "@[<v 2>where %a%s%s@[%a@]%s =@ %a@]"
         Continuation.print name
         (if stub then " *stub*" else "")
@@ -1095,7 +1095,7 @@ end = struct
 
   let print ppf (t : t) =
     match t with
-    | Nonrecursive { name; handler = {
+    | Non_recursive { name; handler = {
         params; stub; handler; }; } ->
       fprintf ppf "%a@ %s%s%a%s=@ %a"
         Continuation.print name

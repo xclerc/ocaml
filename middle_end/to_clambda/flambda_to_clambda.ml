@@ -458,7 +458,7 @@ result
     | None -> expr
     | Some trap_action -> Usequence (trap_action, expr)
     end
-  | Let_cont { body; handlers = Nonrecursive { name; handler = {
+  | Let_cont { body; handlers = Non_recursive { name; handler = {
       params; is_exn_handler; handler; _ }; }; } ->
     if Continuation.Set.mem name t.exn_handlers && not is_exn_handler then begin
       Misc.fatal_errorf "Continuation %a is an exception handler but is not \
@@ -481,7 +481,7 @@ result
     let name = Continuation.to_int name in
     let kind : Clambda.catch_kind =
       if is_exn_handler then Exn_handler
-      else Normal Nonrecursive
+      else Normal Non_recursive
     in
     Ucatch (kind, [name, params, handler], to_clambda t env body)
   | Let_cont { body; handlers = Recursive handlers; } ->
@@ -907,7 +907,7 @@ let to_clambda_initialize_symbol t env symbol fields
       List.fold_left (fun (acc, prev_pos, prev_cont) (pos, field, cont) ->
           let prev_cont = Continuation.to_int prev_cont in
           let id = Ident.create "prev_field" in
-          Clambda.Ucatch (Normal Nonrecursive,
+          Clambda.Ucatch (Normal Non_recursive,
               [prev_cont, [id], Usequence (build_setfield prev_pos id, field)],
               acc),
             pos, cont)
@@ -916,7 +916,7 @@ let to_clambda_initialize_symbol t env symbol fields
     in
     let id = Ident.create "prev_field" in
     let return_cont = Continuation.create () in
-    Clambda.Ucatch (Normal Nonrecursive,
+    Clambda.Ucatch (Normal Non_recursive,
         [Continuation.to_int prev_cont, [id],
           Usequence (build_setfield prev_pos id,
             Ustaticfail (Continuation.to_int return_cont, []))],
@@ -971,7 +971,7 @@ let to_clambda_program t env constants (program : Flambda.program) =
       | [] -> e2, constants
       | fields ->
         let e1, cont = to_clambda_initialize_symbol t env symbol fields in
-        Ucatch (Normal Nonrecursive, [Continuation.to_int cont, [], e2], e1),
+        Ucatch (Normal Non_recursive, [Continuation.to_int cont, [], e2], e1),
           constants
       end
     | Effect (expr, cont, program) ->
@@ -979,7 +979,7 @@ let to_clambda_program t env constants (program : Flambda.program) =
       let e2, constants = loop env constants program in
       let cont = Continuation.to_int cont in
       let unused = Ident.create "unused" in
-      Ucatch (Normal Nonrecursive, [cont, [unused], e2], e1), constants
+      Ucatch (Normal Non_recursive, [cont, [unused], e2], e1), constants
     | End _ ->
       Uconst (Uconst_ptr 0), constants
   in

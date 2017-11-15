@@ -44,7 +44,7 @@ let for_toplevel_expression ~importer expr r =
       | Let_mutable ({ body; _ } as let_mutable) ->
         let body = substitute env body in
         Let_mutable { let_mutable with body; }
-      | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+      | Let_cont { body; handlers = Non_recursive { name; handler; }; } ->
         let handler =
           { handler with
             handler = substitute env handler.handler;
@@ -72,11 +72,11 @@ let for_toplevel_expression ~importer expr r =
              must be recorded. *)
           let approx =
             Continuation_approx.create ~name
-              ~handlers:(Nonrecursive handler)
+              ~handlers:(Non_recursive handler)
               ~num_params:(List.length handler.params)
           in
           r := R.update_defined_continuation_approx !r name approx;
-          Let_cont { body; handlers = Nonrecursive { name; handler; }; }
+          Let_cont { body; handlers = Non_recursive { name; handler; }; }
         end else begin
           body
         end

@@ -281,7 +281,7 @@ let rec approx_of_expr (env : Env.t) (r : Result.t) (flam : Flambda.Expr.t)
         Result.add_continuation_use_approx r continuation ~args_approxs
       | _ -> r
     end
-  | Let_cont { body; handlers = Nonrecursive { name; handler; }; } ->
+  | Let_cont { body; handlers = Non_recursive { name; handler; }; } ->
     let r = approx_of_expr env r body in
     let num_params = List.length handler.params in
     let args_approxs =

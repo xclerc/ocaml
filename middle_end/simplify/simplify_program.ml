@@ -393,7 +393,7 @@ let simplify_define_symbol env (recursive : Flambda.recursive)
         let expr : Flambda.Expr.t =
           Let_cont {
             body = computation.expr;
-            handlers = Nonrecursive {
+            handlers = Non_recursive {
               name = computation.return_cont;
               handler = {
                 params;

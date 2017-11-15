@@ -118,7 +118,7 @@ let rec loop (program : Flambda_static.Program_body.t)
             let expr : Flambda.Expr.t =
               Let_cont {
                 body = field;
-                handlers = Nonrecursive {
+                handlers = Non_recursive {
                   name = cont;
                   handler = {
                     params = [result_param];

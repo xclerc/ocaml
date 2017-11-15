@@ -97,7 +97,7 @@ Format.eprintf "staticfail now %a handler %a\n%!"
           administrative = false;
           is_exn_handler = false;
           params = [];
-          recursive = Nonrecursive;
+          recursive = Non_recursive;
           body;
           handler = Apply_cont (prev_cont, Some trap_action, []);
         }
@@ -132,7 +132,7 @@ Format.eprintf "staticfail now %a handler %a\n%!"
       administrative = false;
       is_exn_handler = false;
       params = [];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body;
       handler = Apply_cont (continuation, None, args);
     }
@@ -164,7 +164,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
           administrative = false;
           is_exn_handler = false;
           params = [result_var];
-          recursive = Nonrecursive;
+          recursive = Non_recursive;
           body = Apply apply;
           handler = after;
        }))
@@ -188,7 +188,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
       administrative = N.linear k_count_defining_expr;
       is_exn_handler = false;
       params = [temp_id];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body = defining_expr;
       handler = Let_mutable let_mutable;
     }
@@ -223,7 +223,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
       administrative = N.linear k_count_defining_expr;
       is_exn_handler = false;
       params = [id];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body = defining_expr;
       handler = body;
     }
@@ -257,7 +257,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
       administrative = N.linear k_count;
       is_exn_handler = false;
       params = [result_var];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body;
       handler = after;
     }
@@ -286,7 +286,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
       administrative = false;
       is_exn_handler = false;
       params = [result_var];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body =
         Let_cont {
           name = continuation;
@@ -323,7 +323,7 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
             administrative = false;
             is_exn_handler = false;
             params = [result_var];
-            recursive = Nonrecursive;
+            recursive = Non_recursive;
             body = Apply apply;
             handler = after;
           })))
@@ -345,28 +345,28 @@ let rec cps_non_tail (lam : L.lambda) (k : Ident.t -> Ilambda.t) : Ilambda.t =
       administrative = false;
       is_exn_handler = false;
       params = [result_var];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body =
         Let_cont {
           name = handler_continuation;
           administrative = false;
           is_exn_handler = true;
           params = [id];
-          recursive = Nonrecursive;
+          recursive = Non_recursive;
           body =
             Let_cont {
               name = poptrap_continuation;
               administrative = false;
               is_exn_handler = false;
               params = [body_result];
-              recursive = Nonrecursive;
+              recursive = Non_recursive;
               body =
                 Let_cont {
                   name = body_continuation;
                   administrative = false;
                   is_exn_handler = false;
                   params = [];
-                  recursive = Nonrecursive;
+                  recursive = Non_recursive;
                   body =
                     Apply_cont (body_continuation,
                       Some (I.Push {
@@ -430,7 +430,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
       administrative = N.linear k_count_defining_expr;
       is_exn_handler = false;
       params = [temp_id];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body = defining_expr;
       handler = Let_mutable let_mutable;
     }, k_count
@@ -466,7 +466,7 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
       administrative = N.linear k_count_defining_expr;
       is_exn_handler = false;
       params = [id];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body = defining_expr;
       handler = body;
     }, k_count
@@ -558,21 +558,21 @@ and cps_tail (lam : L.lambda) (k : Continuation.t) : Ilambda.t * N.t =
       administrative = false;
       is_exn_handler = true;
       params = [id];
-      recursive = Nonrecursive;
+      recursive = Non_recursive;
       body =
         Let_cont {
           name = poptrap_continuation;
           administrative = false;
           is_exn_handler = false;
           params = [body_result];
-          recursive = Nonrecursive;
+          recursive = Non_recursive;
           body =
             Let_cont {
               name = body_continuation;
               administrative = false;
               is_exn_handler = false;
               params = [];
-              recursive = Nonrecursive;
+              recursive = Non_recursive;
               body =
                 Apply_cont (body_continuation,
                   Some (I.Push {
@@ -666,7 +666,7 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
               administrative = false;
               is_exn_handler = false;
               params = [];
-              recursive = Nonrecursive;
+              recursive = Non_recursive;
               body = acc;
               handler;
             }
@@ -692,7 +692,7 @@ and cps_switch (switch : proto_switch) ~scrutinee (k : Continuation.t) =
             administrative = false;
             is_exn_handler = false;
             params = [];
-            recursive = Nonrecursive;
+            recursive = Non_recursive;
             body;
             handler;
           }

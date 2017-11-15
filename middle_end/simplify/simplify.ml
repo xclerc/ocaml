@@ -78,7 +78,7 @@ let check_toplevel_simplification_result r expr ~continuation ~descr =
       Continuation.Map.fold (fun _cont (_, approx, _, _) all_handlers ->
           match Continuation_approx.handlers approx with
           | None -> all_handlers
-          | Some (Nonrecursive _) ->
+          | Some (Non_recursive _) ->
             Continuation.Set.add (Continuation_approx.name approx) all_handlers
           | Some (Recursive handlers) ->
             Continuation.Set.union all_handlers
