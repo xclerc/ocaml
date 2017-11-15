@@ -179,9 +179,15 @@ let lambda_smaller lam threshold =
         incr size; lambda_size body; lambda_size handler
     | Utrywith(body, _id, handler) ->
         size := !size + 8; lambda_size body; lambda_size handler
-    | Uifthenelse(cond, _temp, ifso, ifnot) ->
+    | Uifthenelse(cond, Cold _, _ifso, ifnot) ->
+        size := !size + 2;
+        lambda_size cond; lambda_size ifnot
+    | Uifthenelse(cond, Tepid, ifso, ifnot) ->
         size := !size + 2;
         lambda_size cond; lambda_size ifso; lambda_size ifnot
+    | Uifthenelse(cond, Hot _, ifso, _ifnot) ->
+        size := !size + 2;
+        lambda_size cond; lambda_size ifso
     | Usequence(lam1, lam2) ->
         lambda_size lam1; lambda_size lam2
     | Uwhile(cond, body) ->
