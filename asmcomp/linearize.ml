@@ -381,7 +381,7 @@ let fundecl f =
       f.Mach.fun_temperature
     end
   in
-  Mach.(adjust_temperature f.fun_temperature f.fun_body);
+  Mach.(adjust_temperature fun_temperature f.fun_body);
   let fun_body = linear f.Mach.fun_temperature f.Mach.fun_body end_instr in
   fix_label_temperatures fun_body;
   add_jump_for_temperature_changes fun_body;
