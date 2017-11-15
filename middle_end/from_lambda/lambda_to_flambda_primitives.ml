@@ -160,57 +160,23 @@ let rec bind_rec_primitive
     in
     build_cont (List.rev args) []
 
+and bind_rec_primitive
+      (prim : simple_or_prim)
+      (dbg : Debuginfo.t)
+      (cont : Simple.t -> Flambda.Expr.t) =
+  match prim with
+  | Simple s -> cont s
+  | Prim p ->
+    (* CR pchambart: find a better name, and fix the other ones *)
+    let var = Variable.create "prim" in
+    bind_rec var p dbg cont
+
 let bind_primitive
       (var : Variable.t)
-      (prim : primitive)
+      (prim : expr_primitive)
       (dbg : Debuginfo.t)
       (cont : Flambda.Expr.t)
   : Flambda.Expr.t =
-  match prim with
-  | Unary (p, arg) ->
-    let cont arg =
-      Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
-        (Prim (Unary (p, arg), dbg))
-        cont
-    in
-    bind_rec_primitive arg dbg cont
-  | Binary (prim, arg1, arg2) ->
-    let cont2 arg2 =
-      let cont1 arg1 =
-        Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
-          (Prim (Binary (prim, arg1, arg2), dbg))
-          cont
-      in
-      bind_rec_primitive arg1 dbg cont1
-    in
-    bind_rec_primitive arg2 dbg cont2
-  | Ternary (prim, arg1, arg2, arg3) ->
-    let cont3 arg3 =
-      let cont2 arg2 =
-        let cont1 arg1 =
-          Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
-            (Prim (Ternary (prim, arg1, arg2, arg3), dbg))
-            cont
-        in
-        bind_rec_primitive arg1 dbg cont1
-      in
-      bind_rec_primitive arg2 dbg cont2
-    in
-    bind_rec_primitive arg3 dbg cont3
-  | Variadic (prim, args) ->
-    let cont args =
-      Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
-        (Prim (Variadic (prim, args), dbg))
-        cont
-    in
-    let rec build_cont args_to_convert converted_args =
-      match args_to_convert with
-      | [] ->
-        cont converted_args
-      | arg :: args_to_convert ->
-        let cont arg =
-          build_cont args_to_convert (arg :: converted_args)
-        in
-        bind_rec_primitive arg dbg cont
-    in
-    build_cont (List.rev args) []
+  bind_rec var prim dbg (fun _ -> cont)
+
+let _ = bind_primitive
