@@ -23,8 +23,8 @@ type label = Cmm.label
 type instruction =
   { mutable desc: instruction_desc;
     mutable next: instruction;
-    arg: Reg.t array;
-    res: Reg.t array;
+    mutable arg: Reg.t array;
+    mutable res: Reg.t array;
     dbg: Debuginfo.t;
     live: Reg.Set.t;
     mutable temperature : Lambda.temperature_attribute; }
@@ -38,11 +38,20 @@ and instruction_desc =
   | Lbranch of label
   | Lcondbranch of test * label
   | Lcondbranch3 of label option * label option * label option
+  | Lcondmove of cond_move_test * cond_move_operation * cond_move_operation option
   | Lswitch of label array
   | Lsetuptrap of label
   | Lpushtrap
   | Lpoptrap
   | Lraise of Cmm.raise_kind
+
+and cond_move_test =
+  | Linttest of Mach.integer_comparison
+
+and cond_move_operation =
+  | Lmove
+  | Lconst_symbol of string
+  | Lconst_int of nativeint
 
 let has_fallthrough = function
   | Lreturn | Lbranch _ | Lswitch _ | Lraise _
@@ -372,6 +381,67 @@ let rec add_jump_for_temperature_changes (i : instruction) =
   if i.desc <> Lend then
     add_jump_for_temperature_changes i.next
 
+let rec extract n acc (i : instruction) =
+  if n > 0 then begin
+    let acc = i :: acc in
+    extract (pred n) acc (if i.desc = Lend then i else i.next)
+  end else
+    List.rev acc, i
+
+let rec use_cmov_rather_than_branch (i : instruction) =
+  let diff x y =
+    x.Reg.loc <> y.Reg.loc in
+  match extract 6 [] i with
+  | [{ desc = Lcondbranch (Iinttest test, lbl1); _ } as cond;
+     { desc = Lop Imove; _ } as mov1;
+     { desc = Lbranch lbl2; _ };
+     { desc = Llabel lbl1'; _ };
+     { desc = Lop Imove; _ } as mov2;
+     { desc = Llabel lbl2'; _ }], next
+    when (lbl1 = lbl1') && (lbl2 = lbl2') ->
+    i.desc <- Lcondmove (Linttest test, Lmove, Some Lmove);
+    i.arg  <- Array.concat [cond.arg; mov1.arg; mov2.arg];
+    i.res  <- Array.concat [mov1.res; mov2.res];
+    i.next <- next;
+    use_cmov_rather_than_branch i.next
+  | [{ desc = Lcondbranch (Iinttest test, lbl1); _ } as cond;
+     { desc = Lop (Iconst_symbol sym1);
+       res = [| { Reg.loc = Reg.Reg _; _ } |]; _ } as mov1;
+     { desc = Lbranch lbl2; _ };
+     { desc = Llabel lbl1'; _ };
+     { desc = Lop (Iconst_symbol sym2);
+       res = [| { Reg.loc = Reg.Reg _; _ } |]; _ } as mov2;
+     { desc = Llabel lbl2'; _ }], next
+    when !Clflags.dlcode && (not X86_proc.windows)
+         && (lbl1 = lbl1') && (lbl2 = lbl2') ->
+    i.desc <- Lcondmove (Linttest test, Lconst_symbol sym1, Some (Lconst_symbol sym2));
+    i.arg  <- Array.concat [cond.arg; (*mov1.arg; mov2.arg*)];
+    i.res  <- Array.concat [mov1.res; mov2.res];
+    i.next <- next;
+    use_cmov_rather_than_branch i.next
+  | [{ desc = Lcondbranch (Iinttest test, lbl1); _ } as cond;
+     { desc = Lop (Iconst_int int1);
+       res = [| { Reg.loc = Reg.Reg reg1; _ } as r1 |]; _ } as mov1;
+     { desc = Lbranch lbl2; _ };
+     { desc = Llabel lbl1'; _ };
+     { desc = Lop (Iconst_int int2);
+       res = [| { Reg.loc = Reg.Reg reg2; _ } |]; _ } as mov2;
+     { desc = Llabel lbl2'; _ }], next
+    when (lbl1 = lbl1') && (lbl2 = lbl2') && (reg1 = reg2)
+         && (diff r1 cond.arg.(0)) && (diff r1 cond.arg.(1)) ->
+    (* XXXC: actually not a conditional move... *)
+    i.desc <- Lcondmove (Linttest test, Lconst_int int1, Some (Lconst_int int2));
+    i.arg  <- Array.concat [cond.arg; (*mov1.arg; mov2.arg*)];
+    i.res  <- Array.concat [mov1.res; mov2.res];
+    i.next <- next;
+    use_cmov_rather_than_branch i.next
+  | _ ->
+    if i.desc <> Lend then
+      use_cmov_rather_than_branch i.next
+    else
+      ()
+let use_cmov = true
+
 let fundecl f =
   let fun_temperature =
     if Mach.(does_always_raise f.fun_body) then
@@ -385,6 +455,7 @@ let fundecl f =
   let fun_body = linear f.Mach.fun_temperature f.Mach.fun_body end_instr in
   fix_label_temperatures fun_body;
   add_jump_for_temperature_changes fun_body;
+  if use_cmov then use_cmov_rather_than_branch fun_body;
   { fun_name = f.Mach.fun_name;
     fun_body;
     fun_fast = f.Mach.fun_fast;

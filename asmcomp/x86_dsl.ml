@@ -115,6 +115,7 @@ module I = struct
   let call x = emit (CALL x)
   let cdq () = emit CDQ
   let cdqe () = emit CDQE
+  let cmov cond x y = emit (CMOV (cond, x, y))
   let cmp x y = emit (CMP (x, y))
   let comisd x y = emit (COMISD (x, y))
   let cqo () = emit CQO

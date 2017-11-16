@@ -219,6 +219,7 @@ let arg16 i n = emit_subreg reg_low_16_name WORD i.arg.(n)
 let arg32 i n = emit_subreg reg_low_32_name DWORD i.arg.(n)
 let arg64 i n = reg64 i.arg.(n)
 
+let res8 i n = emit_subreg reg_low_8_name BYTE i.res.(n)
 let res16 i n = emit_subreg reg_low_16_name WORD i.res.(n)
 let res32 i n = emit_subreg reg_low_32_name DWORD i.res.(n)
 
@@ -902,6 +903,45 @@ let emit_instr fallthrough i =
       begin match lbl2 with
       | None -> ()
       | Some lbl -> I.jg (label lbl)
+      end
+  | Lcondmove (tst, op1, op2) ->
+    (* XXXC factor out with Lcondbranch above
+       (when/if extending to other conditions)*)
+      begin match tst with
+      | Linttest cmp ->
+        begin match op1, op2 with
+        | Lmove, (Some Lmove | None) ->
+          I.cmp (arg i 1) (arg i 0);
+          I.cmov (cond (Linearize.invert_integer_test cmp)) (arg i 2) (res i 0);
+          if op2 <> None then
+            I.cmov (cond cmp) (arg i 3) (res i 1)
+        | Lconst_symbol sym1, Some (Lconst_symbol sym2) ->
+          add_used_symbol sym1;
+          add_used_symbol sym2;
+          I.cmp (arg i 1) (arg i 0);
+          I.cmov
+            (cond (Linearize.invert_integer_test cmp))
+            (mem64_rip QWORD (emit_symbol sym1 ^ "@GOTPCREL"))
+            (res i 0);
+          I.cmov
+            (cond cmp)
+            (mem64_rip QWORD (emit_symbol sym2 ^ "@GOTPCREL"))
+            (res i 1);
+
+        | Lconst_int int1, Some (Lconst_int int2) ->
+          let int3 = Nativeint.sub int1 int2 in
+          let dst = res i 0 in
+          let dst8 = res8 i 0 in
+          let dst32 = res32 i 0 in
+          I.xor dst32 dst32;
+          I.cmp (arg i 1) (arg i 0);
+          I.set (cond cmp) dst8;
+          I.sub (int 1) dst;
+          I.and_ (nat int3) dst;
+          I.add (nat int2) dst
+        | _ ->
+          assert false
+        end
       end
   | Lswitch jumptbl ->
       let lbl = emit_label (new_label()) in

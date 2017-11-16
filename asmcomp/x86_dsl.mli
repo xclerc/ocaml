@@ -108,6 +108,7 @@ module I : sig
   val call: arg -> unit
   val cdq: unit -> unit
   val cdqe: unit -> unit
+  val cmov: condition -> arg -> arg -> unit
   val cmp: arg -> arg -> unit
   val comisd: arg -> arg -> unit
   val cqo: unit -> unit

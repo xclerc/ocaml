@@ -56,6 +56,8 @@ let instr ppf i =
          fprintf ppf "@,case %i: goto %a" n label lbl in
       case 0 lbl0; case 1 lbl1; case 2 lbl2;
       fprintf ppf "@,endswitch"
+  | Lcondmove _ ->
+      fprintf ppf "condmove %a %a" reg i.arg.(0) reg i.res.(0)
   | Lswitch lblv ->
       fprintf ppf "switch %a" reg i.arg.(0);
       for i = 0 to Array.length lblv - 1 do
