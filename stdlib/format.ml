@@ -1280,7 +1280,11 @@ let asprintf fmt = kasprintf (fun s -> s) fmt
 
 (* Output everything left in the pretty printer queue at end of execution. *)
 let () = at_exit print_flush
-
+(*
+let () = at_exit (fun () ->
+  pp_print_flush std_formatter ();
+  pp_print_flush err_formatter ())
+*)
 
 (*
 
