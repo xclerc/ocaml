@@ -251,6 +251,92 @@ let smaller_cmp l =
     l
 let () = add_assembler_passes smaller_cmp
 
+(*
+let invert_condition = function
+  | L  -> GE
+  | GE -> L
+  | LE -> G
+  | G  -> LE
+  | B  -> AE
+  | AE -> B
+  | BE -> A
+  | A  -> BE
+  | E  -> NE
+  | NE -> E
+  | O  -> NO
+  | NO -> O
+  | S  -> NS
+  | NS -> S
+  | P  -> NP
+  | NP -> P
+
+let imm_arg = function
+  | Imm _ -> true
+  | Sym _
+  | Reg8L _
+  | Reg8H _
+  | Reg16 _
+  | Reg32 _
+  | Reg64 _
+  | Regf _
+  | Mem _
+  | Mem64_RIP _ -> false
+
+let not_imm_arg x = not (imm_arg x)
+
+let use_cmov = true
+let cmov l =
+  let rec used_at_most_once seen label = function
+    | (Ins (CALL  (Sym lbl)) :: tl
+      | Ins (J (_, (Sym lbl))) :: tl
+      | Ins (JMP (Sym lbl)) :: tl)
+      when lbl = label ->
+      if seen then
+        false
+      else
+        used_at_most_once true label tl
+    | _ :: tl ->
+      used_at_most_once seen label tl
+    | [] ->
+      true
+  in
+  let used_at_most_once label =
+    used_at_most_once false label l
+  in
+  let rec loop acc = function
+    | (Ins (J (cond, Sym lbl1))
+      :: Ins (MOV (v1, reg1))
+      :: Ins (JMP (Sym lbl2))
+      :: Align _
+      :: NewLabel (lbl1', _)
+      :: Ins (MOV (v2, reg1'))
+      :: NewLabel (lbl2', _)
+      :: tl
+    | Ins (J (cond, Sym lbl1))
+      :: Ins (MOV (v1, reg1))
+      :: Ins (JMP (Sym lbl2))
+      :: NewLabel (lbl1', _)
+      :: Ins (MOV (v2, reg1'))
+      :: NewLabel (lbl2', _)
+      :: tl)
+      when (lbl1 = lbl1') && (reg1 = reg1') && (lbl2 = lbl2')
+           && (not_imm_arg v1) && (not_imm_arg v2)
+           && (used_at_most_once lbl1) && (used_at_most_once lbl2) ->
+      (* page 10-27 *)
+      let res = [
+        Ins (CMOV (invert_condition cond, v1, reg1));
+        Ins (CMOV (cond, v2, reg1));
+      ] in
+      loop ((List.rev res) @ acc) tl
+    | hd :: tl -> loop (hd :: acc) tl
+    | [] -> List.rev acc
+  in
+  if use_cmov then
+    loop [] l
+  else
+    l
+let () = add_assembler_passes cmov
+*)
 let internal_assembler = ref None
 let register_internal_assembler f = internal_assembler := Some f
 
