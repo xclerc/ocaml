@@ -237,7 +237,7 @@ let smaller_cmp l =
       :: tl
       when (r1 = r2) && (int64_between ~lower:0L ~upper:255L cst) ->
       let acc =
-        Ins (CMP (Imm cst, Reg8L r2))
+        Ins (CMP (Imm cst, Reg8L r2)) (* XXX? could TEST be used? *)
         :: and_255
         :: acc
       in
