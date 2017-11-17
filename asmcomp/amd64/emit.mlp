@@ -935,13 +935,24 @@ let emit_instr fallthrough i =
             (res i 1);
 
         | Lconst_int int1, Some (Lconst_int int2) ->
-          let int3 = Nativeint.sub int1 int2 in
+          (* as suggested by the Intel guide *)
+          (* let int3 = Nativeint.sub int1 int2 in
           let dst = res i 0 in
           let dst8 = res8 i 0 in
           let dst32 = res32 i 0 in
           I.xor dst32 dst32;
           I.cmp (arg i 1) (arg i 0);
           I.set (cond cmp) dst8;
+          I.sub (int 1) dst;
+          I.and_ (nat int3) dst;
+          I.add (nat int2) dst *)
+        (* by using the clang approach mentioned at https://gcc.gnu.org/bugzilla/show_bug.cgi?id=79389 *)
+          let int3 = Nativeint.sub int1 int2 in
+          let dst = res i 0 in
+          let dst8 = res8 i 0 in
+          I.cmp (arg i 1) (arg i 0);
+          I.set (cond cmp) dst8;
+          I.movzx dst8 dst;
           I.sub (int 1) dst;
           I.and_ (nat int3) dst;
           I.add (nat int2) dst
