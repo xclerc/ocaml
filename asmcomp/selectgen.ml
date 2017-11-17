@@ -1183,9 +1183,16 @@ method initial_env () = env_empty
 method emit_fundecl f =
   Proc.contains_calls := false;
   current_function_name := f.Cmm.fun_name;
+  (*let string_of_regs regs =
+    String.concat ", " (List.map Reg.name (Array.to_list regs)) in
+  Printf.printf "XXX Selectgen.emit_fundecl %S\n%!" f.Cmm.fun_name;*)
   let rargs =
     List.map
-      (fun (id, ty) -> let r = self#regs_for ty in name_regs id r; r)
+      (fun (id, ty) -> let r = self#regs_for ty in name_regs id r;
+        (*Printf.printf "XXX mapping %S to %s\n%!"
+          (Ident.name id)
+          (string_of_regs r);*)
+        r)
       f.Cmm.fun_args in
   let rarg = Array.concat rargs in
   let loc_arg = Proc.loc_parameters rarg in
@@ -1197,7 +1204,20 @@ method emit_fundecl f =
   let env =
     List.fold_right2
       (fun (id, _ty) r env -> env_add id r env)
-      f.Cmm.fun_args rargs (self#initial_env ()) in
+      f.Cmm.fun_args
+      rargs (* XXX OK: rargs *)
+      (* XXX KO: (List.map (fun x -> [|x|]) (Array.to_list loc_arg)) *)
+      (self#initial_env ()) in
+  (*Array.iteri
+    (fun i reg -> Printf.printf "XXX %d -> %S\n%!" i (Reg.name reg))
+    loc_arg;
+  Tbl.iter
+    (fun ident regs ->
+       Printf.printf "XXX argument %S (%d) ~> %s\n%!"
+         (Ident.unique_name ident)
+         (Array.length regs)
+         (string_of_regs regs))
+    env.vars;*)
   let spacetime_node_hole, env =
     if not Config.spacetime then None, env
     else begin
