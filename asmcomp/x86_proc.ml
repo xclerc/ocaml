@@ -252,6 +252,33 @@ let smaller_cmp l =
 let () = add_assembler_passes smaller_cmp
 
 (*
+let misc_ph_optims = true
+let misc_optims l =
+  let rec loop acc = function
+    | (Ins (MOV (Reg64 reg1, Reg64 reg2)) as first)
+      :: Ins (MOV (Reg64 reg2', Reg64 reg1'))
+      :: tl
+      when (reg1 = reg1') && (reg2 = reg2') ->
+      loop acc (first :: tl)
+    | (Ins (MOV (Reg64 reg1, Reg64 reg2)) as first)
+      :: Ins (ADD (Reg64 reg2', Reg64 reg1'))
+      :: tl
+      when (reg1 = reg1') && (reg2 = reg2') ->
+      let acc =
+        (Ins (ADD (Reg64 reg1', Reg64 reg1')))
+        :: first :: acc in
+      loop acc tl
+    | hd :: tl -> loop (hd :: acc) tl
+    | [] -> List.rev acc
+  in
+  if misc_ph_optims then
+    loop [] l
+  else
+    l
+let () = add_assembler_passes misc_optims
+*)
+
+(*
 let invert_condition = function
   | L  -> GE
   | GE -> L
