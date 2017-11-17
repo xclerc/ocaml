@@ -750,8 +750,8 @@ and transl_exp0 e =
       let temperature =
         if temperature = Tepid && inline = Never_inline then
           Cold true
-        else if temperature = Tepid && inline = Always_inline then
-          Hot true
+        (*else if temperature = Tepid && inline = Always_inline then
+          Hot true*)
         else
           temperature
       in
