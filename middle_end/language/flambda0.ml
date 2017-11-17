@@ -14,7 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+[@@@ocaml.warning "+a-4-30-40-41-42"]
 
 module K = Flambda_kind
 
@@ -45,7 +45,11 @@ module Call_kind = struct
         return_arity : Flambda_arity.t;
       }
     | Method of { kind : method_kind; obj : Name.t; }
-
+    | C_call of {
+        alloc : bool;
+        param_arity : Flambda_arity.t;
+        return_arity : Flambda_arity.t;
+      }
 
   let equal t1 t2 =
     match t1, t2 with
@@ -73,10 +77,18 @@ module Call_kind = struct
            | Public, _
            | Cached, _ -> false
            end
+    | C_call { alloc = alloc1; param_arity = param_arity1;
+               return_arity = return_arity1; },
+        C_call { alloc = alloc2; param_arity = param_arity2;
+                 return_arity = return_arity2; } ->
+      Pervasives.compare alloc1 alloc2 = 0
+        && Flambda_arity.equal param_arity1 param_arity2
+        && Flambda_arity.equal return_arity1 return_arity2
     | Direct _, _
     | Indirect_unknown_arity, _
     | Indirect_known_arity _, _
-    | Method _, _ -> false
+    | Method _, _
+    | C_call _, _ -> false
 
   let print ppf t =
     let fprintf = Format.fprintf in
@@ -95,6 +107,11 @@ module Call_kind = struct
       fprintf ppf "@[(Method %a : %a)@]"
         Name.print obj
         print_method_kind kind
+    | C_call { alloc; param_arity; return_arity; } ->
+      fprintf ppf "@[(C (alloc %b) : %a -> %a)@]"
+        alloc
+        Flambda_arity.print param_arity
+        Flambda_arity.print return_arity
 
   let return_arity t : Flambda_arity.t =
     match t with
@@ -102,6 +119,7 @@ module Call_kind = struct
     | Indirect_known_arity { return_arity; _ } -> return_arity
     | Indirect_unknown_arity
     | Method _ -> [Flambda_kind.value Must_scan]
+    | C_call { return_arity; _ } -> return_arity
 end
 
 type inline_attribute =
@@ -123,7 +141,7 @@ type specialise_attribute =
   | Never_specialise
   | Default_specialise
 
-let _print_specialise_attribute ppf attr =
+let print_specialise_attribute ppf attr =
   let fprintf = Format.fprintf in
   match attr with
   | Always_specialise -> fprintf ppf "Always_specialise"
@@ -134,6 +152,7 @@ module Apply = struct
   type t = {
     func : Name.t;
     continuation : Continuation.t;
+    exn_continuation : Continuation.t;
     args : Simple.t list;
     call_kind : Call_kind.t;
     dbg : Debuginfo.t;
@@ -141,14 +160,53 @@ module Apply = struct
     specialise : specialise_attribute;
   }
 
-  let equal t1 t2 =
-    Name.equal t1.func t2.func
-      && Continuation.equal t1.continuation t2.continuation
-      && Misc.Stdlib.List.equal Simple.equal t1.args t2.args
-      && Call_kind.equal t1.call_kind t2.call_kind
-      && Debuginfo.equal t1.dbg t2.dbg
-      && t1.inline = t2.inline
-      && t1.specialise = t2.specialise
+  let print ppf { func; continuation; exn_continuation; args; call_kind;
+        dbg; inline; specialise; } =
+    Format.fprintf ppf "@[(\
+        (func %a)@ \
+        (continuation %a)@ \
+        (exn_continuation %a)@ \
+        (args %a)@ \
+        (call_kind %a)@ \
+        (dbg %a)@ \
+        (inline %a)@ \
+        (specialise %a))@]"
+      Name.print func
+      Continuation.print continuation
+      Continuation.print exn_continuation
+      Simple.List.print args
+      Call_kind.print call_kind
+      Debuginfo.print_compact dbg
+      print_inline_attribute inline
+      print_specialise_attribute specialise
+
+  let equal
+        { func = func1;
+          continuation = continuation1;
+          exn_continuation = exn_continuation1;
+          args = args1;
+          call_kind = call_kind1;
+          dbg = dbg1;
+          inline = inline1;
+          specialise = specialise1;
+        }
+        { func = func2;
+          continuation = continuation2;
+          exn_continuation = exn_continuation2;
+          args = args2;
+          call_kind = call_kind2;
+          dbg = dbg2;
+          inline = inline2;
+          specialise = specialise2;
+        } =
+    Name.equal func1 func2
+      && Continuation.equal continuation1 continuation2
+      && Continuation.equal exn_continuation1 exn_continuation2
+      && Misc.Stdlib.List.equal Simple.equal args1 args2
+      && Call_kind.equal call_kind1 call_kind2
+      && Debuginfo.equal dbg1 dbg2
+      && inline1 = inline2
+      && specialise1 = specialise2
 end
 
 type assign = {
@@ -223,7 +281,11 @@ end
 module Trap_action = struct
   type t =
     | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
-    | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
+    | Pop of {
+        id : Trap_id.t;
+        exn_handler : Continuation.t;
+        take_backtrace : bool;
+      }
 
   include Identifiable.Make (struct
     type nonrec t = t
@@ -235,11 +297,17 @@ module Trap_action = struct
         let c = Trap_id.compare id1 id2 in
         if c <> 0 then c
         else Continuation.compare exn_handler1 exn_handler2
-      | Pop { id = id1; exn_handler = exn_handler1; },
-          Pop { id = id2; exn_handler = exn_handler2; } ->
+      | Pop { id = id1; exn_handler = exn_handler1;
+              take_backtrace = take_backtrace1; },
+          Pop { id = id2; exn_handler = exn_handler2;
+                take_backtrace = take_backtrace2; } ->
         let c = Trap_id.compare id1 id2 in
         if c <> 0 then c
-        else Continuation.compare exn_handler1 exn_handler2
+        else
+          let c = Continuation.compare exn_handler1 exn_handler2 in
+          if c <> 0 then c
+          else
+            Pervasives.compare take_backtrace1 take_backtrace2
       | Push _, Pop _ -> -1
       | Pop _, Push _ -> 1
 
@@ -247,9 +315,11 @@ module Trap_action = struct
 
     let hash t =
       match t with
-      | Push { id; exn_handler; }
-      | Pop { id; exn_handler; } ->
+      | Push { id; exn_handler; } ->
         Hashtbl.hash (Trap_id.hash id, Continuation.hash exn_handler)
+      | Pop { id; exn_handler; take_backtrace; } ->
+        Hashtbl.hash (Trap_id.hash id, Continuation.hash exn_handler,
+          take_backtrace)
 
     let print ppf t =
       match t with
@@ -257,8 +327,9 @@ module Trap_action = struct
         fprintf ppf "push %a %a then "
           Trap_id.print id
           Continuation.print exn_handler
-      | Pop { id; exn_handler; } ->
-        fprintf ppf "pop %a %a then "
+      | Pop { id; exn_handler; take_backtrace; } ->
+        fprintf ppf "pop%s %a %a then "
+          (if take_backtrace then " with backtrace" else "")
           Trap_id.print id
           Continuation.print exn_handler
   end)
@@ -395,6 +466,7 @@ end = struct
         | Indirect_unknown_arity
         | Indirect_known_arity { param_arity = _; return_arity = _; } -> ()
         | Method { kind = _; obj; } -> free_name obj
+        | C_call { alloc = _; param_arity = _; return_arity = _; } -> ()
         end;
         begin match ignore_uses_as_argument with
         | None -> free_names (Simple.List.free_names args)
@@ -516,7 +588,17 @@ end = struct
         | None -> Continuation.Set.empty
       in
       Continuation.Set.add cont trap_action
-    | Apply { continuation; } -> Continuation.Set.singleton continuation
+    | Apply {
+        func = _;
+        continuation;
+        exn_continuation;
+        args = _;
+        call_kind = _;
+        dbg = _;
+        inline = _;
+        specialise = _;
+        } ->
+      Continuation.Set.of_list [continuation; exn_continuation]
     | Switch (_scrutinee, switch) ->
       Continuation.Set.of_list (Targetint.Map.data switch.arms)
     | Invalid _ -> Continuation.Set.empty
@@ -610,7 +692,12 @@ end = struct
             aux handler
           | Recursive handlers ->
             Continuation.Map.iter (fun _cont
-                  { Continuation_handler. handler; } ->
+                  { Continuation_handler.
+                    params = _;
+                    stub = _;
+                    handler;
+                    is_exn_handler = _;
+                  } ->
                 aux handler)
               handlers
           end
@@ -649,12 +736,15 @@ end = struct
 
   let rec print ppf (t : t) =
     match t with
-    | Apply ({ func; continuation; args; call_kind; inline; dbg; }) ->
-      fprintf ppf "@[<2>(apply %a %a%a@ <%a> %a %a)@]"
+    | Apply ({ func; continuation; exn_continuation; args; call_kind; inline;
+               specialise; dbg; }) ->
+      fprintf ppf "@[<2>(apply %a %a%a%a@ <Kr=%a Ke=%a> %a %a)@]"
         Call_kind.print call_kind
         print_inline_attribute inline
+        print_specialise_attribute specialise
         Debuginfo.print_or_elide dbg
         Continuation.print continuation
+        Continuation.print exn_continuation
         Name.print func
         Simple.List.print args
     | Let { var = id; defining_expr = arg; body; _ } ->
@@ -1069,10 +1159,14 @@ end = struct
 
   let print_using_where ppf (t : t) =
     match t with
-    | Non_recursive { name; handler = { params; stub; handler; }; } ->
-      fprintf ppf "@[<v 2>where %a%s%s@[%a@]%s =@ %a@]"
+    | Non_recursive {
+        name;
+        handler = { params; stub; handler; is_exn_handler; };
+      } ->
+      fprintf ppf "@[<v 2>where %a%s%s%s@[%a@]%s =@ %a@]"
         Continuation.print name
         (if stub then " *stub*" else "")
+            (if is_exn_handler then "*exn* " else "")
         (match params with [] -> "" | _ -> " (")
         Typed_parameter.List.print params
         (match params with [] -> "" | _ -> ")")
@@ -1100,10 +1194,11 @@ end = struct
   let print ppf (t : t) =
     match t with
     | Non_recursive { name; handler = {
-        params; stub; handler; }; } ->
-      fprintf ppf "%a@ %s%s%a%s=@ %a"
+        params; stub; handler; is_exn_handler; }; } ->
+      fprintf ppf "%a@ %s%s%s%a%s=@ %a"
         Continuation.print name
         (if stub then "*stub* " else "")
+        (if is_exn_handler then "*exn* " else "")
         (match params with [] -> "" | _ -> "(")
         Typed_parameter.List.print params
         (match params with [] -> "" | _ -> ") ")
@@ -1198,7 +1293,7 @@ end = struct
 
   let print ppf t =
     match t with
-    | { function_decls; free_vars; } ->
+    | { function_decls; free_vars; direct_call_surrogates = _; } ->
       let funs ppf t =
         Closure_id.Map.iter (fun var decl ->
             Function_declaration.print var ppf decl)
@@ -1267,7 +1362,8 @@ end = struct
       funs;
     }
 
-  let find cf ({ funs } : t) =
+  let find cf ({ funs; set_of_closures_id = _;
+          set_of_closures_origin = _ } : t) =
     Closure_id.Map.find cf funs
 
   let update function_decls ~funs =
@@ -1322,6 +1418,7 @@ end and Function_declaration : sig
   type t = {
     closure_origin : Closure_origin.t;
     continuation_param : Continuation.t;
+    exn_continuation_param : Continuation.t;
     return_arity : Flambda_arity.t;
     params : Typed_parameter.t list;
     body : Expr.t;
@@ -1337,6 +1434,7 @@ end and Function_declaration : sig
   val create
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
+    -> exn_continuation_param:Continuation.t
     -> return_arity:Flambda_arity.t
     -> my_closure:Variable.t
     -> body:Expr.t
@@ -1365,8 +1463,8 @@ end and Function_declaration : sig
 end = struct
   include Function_declaration
 
-  let create ~params ~continuation_param ~return_arity ~my_closure
-        ~body ~stub ~dbg
+  let create ~params ~continuation_param ~exn_continuation_param
+        ~return_arity ~my_closure ~body ~stub ~dbg
         ~(inline : inline_attribute)
         ~(specialise : specialise_attribute) ~is_a_functor
         ~closure_origin : t =
@@ -1389,6 +1487,7 @@ end = struct
     { closure_origin;
       params;
       continuation_param;
+      exn_continuation_param;
       return_arity;
       body;
       free_names_in_body = Expr.free_names body;
@@ -1404,6 +1503,7 @@ end = struct
     { closure_origin = t.closure_origin;
       params = t.params;
       continuation_param = t.continuation_param;
+      exn_continuation_param = t.exn_continuation_param;
       return_arity = t.return_arity;
       body;
       free_names_in_body = Expr.free_names body;
@@ -1419,6 +1519,7 @@ end = struct
     { closure_origin = t.closure_origin;
       params;
       continuation_param = t.continuation_param;
+      exn_continuation_param = t.exn_continuation_param;
       return_arity = t.return_arity;
       body;
       free_names_in_body = Expr.free_names body;
@@ -1447,6 +1548,7 @@ end = struct
   let equal ~equal_type
         { closure_origin = closure_origin1;
           continuation_param = continuation_param1;
+          exn_continuation_param = exn_continuation_param1;
           return_arity = return_arity1;
           params = params1;
           body = body1;
@@ -1460,6 +1562,7 @@ end = struct
         }
         { closure_origin = closure_origin2;
           continuation_param = continuation_param2;
+          exn_continuation_param = exn_continuation_param2;
           return_arity = return_arity2;
           params = params2;
           body = body2;
@@ -1473,6 +1576,7 @@ end = struct
         } =
     Closure_origin.equal closure_origin1 closure_origin2
       && Continuation.equal continuation_param1 continuation_param2
+      && Continuation.equal exn_continuation_param1 exn_continuation_param2
       && Flambda_arity.equal return_arity1 return_arity2
       && Typed_parameter.List.equal ~equal_type params1 params2
       && Expr.equal ~equal_type body1 body2
@@ -1634,7 +1738,7 @@ end = struct
       && equal_type ty1 ty2
       && Flambda_kind.equal kind1 kind2
 
-  let print ppf { param; equalities; ty; } =
+  let print ppf { param; equalities; ty; kind = _; } =
     Format.fprintf ppf "@[(%a : %a%a)@]"
       Parameter.print param
       Flambda_type.print ty

@@ -14,7 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+[@@@ocaml.warning "+a-4-30-40-41-42"]
 
 (** Intermediate language used for tree-based analysis and optimization.
 
@@ -43,9 +43,9 @@ module Call_kind : sig
       }
     | Method of { kind : method_kind; obj : Name.t; }
     | C_call of {
-        name : Linkage_name.t;
-        native_name : Linkage_name.t;
         alloc : bool;
+        param_arity : Flambda_arity.t;
+        return_arity : Flambda_arity.t;
       }
 
   val return_arity : t -> Flambda_arity.t
@@ -86,6 +86,8 @@ module Apply : sig
   }
 
   val equal : t -> t -> bool
+
+  val print : Format.formatter -> t -> unit
 end
 
 (** The update of a mutable variable.  Mutable variables are distinct from
@@ -142,7 +144,11 @@ module Trap_action : sig
   type t =
     | Push of { id : Trap_id.t; exn_handler : Continuation.t; }
     (* CR mshinwell: Think about whether we really need the trap IDs now *)
-    | Pop of { id : Trap_id.t; exn_handler : Continuation.t; }
+    | Pop of {
+        id : Trap_id.t;
+        exn_handler : Continuation.t;
+        take_backtrace : bool;
+      }
 
   val equal : t -> t -> bool
 end
@@ -621,6 +627,7 @@ end and Function_declaration : sig
   val create
      : params:Typed_parameter.t list
     -> continuation_param:Continuation.t
+    -> exn_continuation_param:Continuation.t
     -> return_arity:Flambda_arity.t
     -> my_closure:Variable.t
     -> body:Expr.t

@@ -14,7 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-30-40-41-42"]  (* N.B. Warning 9 is enabled! *)
+[@@@ocaml.warning "+a-4-30-40-41-42"]
 
 module F0 = Flambda0
 module K = Flambda_kind
@@ -40,7 +40,8 @@ module Call_kind = struct
     match t with
     | Direct _
     | Indirect_unknown_arity
-    | Indirect_known_arity _ -> t
+    | Indirect_known_arity _
+    | C_call _ -> t
     | Method { kind; obj; } ->
       Method {
         kind;
@@ -54,6 +55,7 @@ module Apply = struct
   let rename_variables t ~f =
     { func = Name.map_var t.func ~f;
       continuation = t.continuation;
+      exn_continuation = t.exn_continuation;
       args = List.map (fun arg -> Simple.map_var arg ~f) t.args;
       call_kind = Call_kind.rename_variables t.call_kind ~f;
       dbg = t.dbg;
@@ -92,9 +94,6 @@ end
 
 module Typed_parameter = struct
   include Flambda0.Typed_parameter
-
-  let kind ~importer ~type_of_name t =
-    Flambda_type.kind ~importer ~type_of_name (ty t)
 end
 
 module rec Expr : sig
@@ -110,6 +109,7 @@ module rec Expr : sig
     -> body:t
     -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
+    -> exn_continuation_param:Continuation.t
     (* CR mshinwell: update comment. *)
     -> stub:bool
     -> continuation:Continuation.t
@@ -742,7 +742,8 @@ end = struct
 
   let make_closure_declaration ~importer ~id
         ~(free_variable_kind : Variable.t -> K.t) ~body ~params
-        ~continuation_param ~stub ~continuation ~return_arity ~dbg : Expr.t =
+        ~continuation_param ~exn_continuation_param ~stub ~continuation
+        ~return_arity ~dbg : Expr.t =
     let my_closure = Variable.rename id in
     let closure_id = Closure_id.wrap id in
     let free_variables = Expr.free_variables body in
@@ -792,7 +793,8 @@ end = struct
     let function_declaration : Function_declaration.t =
       Function_declaration.create
         ~params:(List.map subst_param params)
-        ~continuation_param ~return_arity ~body ~stub ~dbg:Debuginfo.none
+        ~continuation_param ~exn_continuation_param
+        ~return_arity ~body ~stub ~dbg:Debuginfo.none
         ~inline:Default_inline ~specialise:Default_specialise
         ~is_a_functor:false
         ~closure_origin:(Closure_origin.create closure_id)
@@ -1043,37 +1045,40 @@ end = struct
           | Some (Push { id; exn_handler }) ->
             let cont_stack = check_trap_action exn_handler in
             E.Continuation_stack.push id exn_handler current_stack, cont_stack
-          | Some (Pop { id; exn_handler }) ->
+          | Some (Pop { id; exn_handler; take_backtrace = _; }) ->
             let cont_stack = check_trap_action exn_handler in
             current_stack, E.Continuation_stack.push id exn_handler cont_stack
         in
         E.Continuation_stack.unify cont stack cont_stack
-      | Apply { func; continuation; args; call_kind; dbg; inline;
-                specialise; } ->
+      | Apply ({ func; continuation; exn_continuation; args; call_kind; dbg;
+                 inline; specialise; } as apply) ->
         let stack = E.current_continuation_stack env in
         E.check_name_is_bound_and_of_kind env func (K.value Must_scan);
         begin match call_kind with
-        | Direct { closure_id = _; return_arity; } ->
-          let arity = E.continuation_arity env continuation in
-          if not (Flambda_arity.equal return_arity arity) then begin
-            Misc.fatal_errorf "Return arity specified in direct-call \
-                [Apply], %a, does not match up with the arity, %a, of the \
-                return continuation: %a"
-              Flambda_arity.print return_arity
-              Flambda_arity.print arity
-              print t
-          end;
+        | Direct { closure_id = _; return_arity = _; } ->
+          (* Note that [return_arity] is checked for all the cases below. *)
           E.check_simples_are_bound env args
         | Indirect_unknown_arity ->
           E.check_simples_are_bound_and_of_kind env args (K.value Must_scan)
-        | Indirect_known_arity { param_arity; return_arity; } ->
+        | Indirect_known_arity { param_arity; return_arity = _; } ->
           ignore (param_arity : Flambda_arity.t);
-          ignore (return_arity : Flambda_arity.t);
           E.check_simples_are_bound env args
         | Method { kind; obj; } ->
           ignore (kind : Call_kind.method_kind);
           E.check_name_is_bound_and_of_kind env obj (K.value Must_scan);
           E.check_simples_are_bound_and_of_kind env args (K.value Must_scan)
+        | C_call { alloc = _; param_arity = _; return_arity = _; } ->
+          (* CR mshinwell: Check exactly what Cmmgen can compile and then
+             add further checks on [param_arity] and [return_arity] *)
+          begin match func with
+          | Symbol _ -> ()
+          | Var _ ->
+            (* CR-someday mshinwell: We could expose indirect C calls at the
+               source language level. *)
+            Misc.fatal_errorf "For [C_call] applications the callee must be \
+                directly specified as a [Symbol], not via a [Var]: %a"
+              Apply.print apply
+          end
         end;
         begin match E.find_continuation_opt env continuation with
         | None ->
@@ -1097,6 +1102,30 @@ end = struct
               print expr
           end;
           E.Continuation_stack.unify continuation stack cont_stack
+        end;
+        begin match E.find_continuation_opt env exn_continuation with
+        | None ->
+          unbound_continuation continuation
+            "[Apply] term exception continuation"
+        | Some (arity, kind, cont_stack) ->
+          begin match kind with
+          | Normal ->
+            Misc.fatal_errorf "Continuation %a is a normal continuation \
+                but is used in this [Apply] term as an exception handler: %a"
+              Continuation.print continuation
+              print expr
+          | Exn_handler -> ()
+          end;
+          let expected_arity = [Flambda_kind.value Must_scan] in
+          if not (Flambda_arity.equal arity expected_arity) then begin
+            Misc.fatal_errorf "Exception continuation %a named in this \
+                [Apply] term has the wrong arity: expected %a but have %a: %a"
+              Continuation.print continuation
+              Flambda_arity.print expected_arity
+              Flambda_arity.print arity
+              print expr
+          end;
+          E.Continuation_stack.unify exn_continuation stack cont_stack
         end;
         ignore (dbg : Debuginfo.t);
         ignore (inline : inline_attribute);
@@ -1236,7 +1265,6 @@ end = struct
       | Swap_byte_endianness _, _
       | Int_as_pointer, _
       | Opaque_identity, _
-      | Raise _, _
       | Int_arith _, _
       | Int_conv _, _
       | Float_arith _, _
@@ -1259,6 +1287,7 @@ end = struct
       | Int_arith _
       | Int_shift _
       | Int_comp _
+      | Int_comp_unsigned _
       | Float_arith _
       | Float_comp _
       | Bit_test
@@ -1291,8 +1320,7 @@ end = struct
       | Make_block _
       | Make_array _
       | Bigarray_set _
-      | Bigarray_load _
-      | C_call _ -> ()
+      | Bigarray_load _ -> ()
       end
 
   (* CR mshinwell: It seems that the type [Flambda_primitive.result_kind]
@@ -1508,9 +1536,17 @@ end = struct
           let all_params, all_free_vars = acc in
           (* CR-soon mshinwell: check function_decl.all_symbols *)
           let { Function_declaration.params; body; stub; dbg; my_closure;
-                continuation_param = return_cont; return_arity; _ } =
+                continuation_param = return_cont;
+                exn_continuation_param; return_arity; _ } =
             function_decl
           in
+          (* CR mshinwell: Check arity of [exn_continuation_param] *)
+          if Continuation.equal return_cont exn_continuation_param
+          then begin
+            Misc.fatal_errorf "Function declaration's return and exception \
+                continuations must be distinct: %a"
+              (Function_declaration.print fun_var) function_decl
+          end;
           assert (Closure_id.Set.mem fun_var functions_in_closure);
           E.add_closure_id env fun_var;
           ignore (stub : bool);

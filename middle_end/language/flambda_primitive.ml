@@ -282,19 +282,18 @@ let compare_unary_primitive p1 p2 =
     | Swap_byte_endianness _ -> 6
     | Int_as_pointer -> 7
     | Opaque_identity -> 8
-    | Raise _ -> 9
-    | Int_arith _ -> 10
-    | Int_conv _ -> 11
-    | Float_arith _ -> 12
-    | Int_of_float -> 13
-    | Float_of_int -> 14
-    | Array_length _ -> 15
-    | Bigarray_length _ -> 16
-    | Unbox_number _ -> 17
-    | Box_number _ -> 18
-    | Project_closure _ -> 19 
-    | Move_within_set_of_closures _ -> 20
-    | Project_var _ -> 21
+    | Int_arith _ -> 9
+    | Int_conv _ -> 10
+    | Float_arith _ -> 11
+    | Int_of_float -> 12
+    | Float_of_int -> 13
+    | Array_length _ -> 14
+    | Bigarray_length _ -> 15
+    | Unbox_number _ -> 16
+    | Box_number _ -> 17
+    | Project_closure _ -> 18 
+    | Move_within_set_of_closures _ -> 19
+    | Project_var _ -> 20
   in
   match p1, p2 with
   | Block_load (size1, kind1, mut1), Block_load (size2, kind2, mut2) ->
@@ -343,8 +342,6 @@ let compare_unary_primitive p1 p2 =
     Closure_id.Map.compare Closure_id.compare map1 map2
   | Project_var map1, Project_var map2 ->
     Closure_id.Map.compare Var_within_closure.compare map1 map2
-  | Raise kind1, Raise kind2 ->
-    Pervasives.compare kind1 kind2
   | (Block_load _
     | Duplicate_array _
     | Duplicate_record _
@@ -354,7 +351,6 @@ let compare_unary_primitive p1 p2 =
     | Swap_byte_endianness _
     | Int_as_pointer
     | Opaque_identity
-    | Raise _
     | Int_arith _
     | Int_conv _
     | Float_arith _
@@ -389,7 +385,6 @@ let print_unary_primitive ppf p =
   | Swap_byte_endianness _ -> fprintf ppf "swap_byte_endianness"
   | Int_as_pointer -> fprintf ppf "int_as_pointer"
   | Opaque_identity -> fprintf ppf "opaque_identity"
-  | Raise k -> fprintf ppf "raise %a" print_raise_kind k
   | Int_arith (_k, o) -> print_unary_int_arith_op ppf o
   | Int_conv { src; dst; } ->
     fprintf ppf "conv_%a_to_%a"
@@ -427,7 +422,6 @@ let arg_kind_of_unary_primitive p =
   | Swap_byte_endianness kind -> K.Standard_int.to_kind kind
   | Int_as_pointer -> K.value Can_scan
   | Opaque_identity -> K.value Must_scan
-  | Raise _ -> K.value Must_scan
   | Int_arith (kind, _) -> K.Standard_int.to_kind kind
   | Int_conv { src; dst = _; } -> K.Standard_int.to_kind src
   | Float_arith _ -> K.naked_float ()
@@ -453,7 +447,6 @@ let result_kind_of_unary_primitive p : result_kind =
   | Swap_byte_endianness kind -> Singleton (K.Standard_int.to_kind kind)
   | Int_as_pointer -> Singleton (K.naked_immediate ())
   | Opaque_identity -> Singleton (K.value Must_scan)
-  | Raise _ -> Never_returns
   | Int_arith (kind, _) -> Singleton (K.Standard_int.to_kind kind)
   | Int_conv { src = _; dst; } -> Singleton (K.Standard_int.to_kind dst)
   | Float_arith _ -> Singleton (K.naked_float ())
@@ -483,7 +476,6 @@ let effects_and_coeffects_of_unary_primitive p =
   | String_length _ -> reading_from_an_array_like_thing
   | Int_as_pointer
   | Opaque_identity -> Arbitrary_effects, Has_coeffects
-  | Raise _ -> Arbitrary_effects, No_coeffects
   | Swap_byte_endianness _
   | Int_arith (_, Neg)
   | Int_conv _
@@ -542,6 +534,7 @@ type binary_primitive =
   | Int_arith of K.Standard_int.t * binary_int_arith_op
   | Int_shift of K.Standard_int.t * int_shift_op
   | Int_comp of K.Standard_int.t * comparison
+  | Int_comp_unsigned of comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
   | Bit_test
@@ -557,12 +550,13 @@ let compare_binary_primitive p1 p2 =
     | Int_arith _ -> 2
     | Int_shift _ -> 3
     | Int_comp _ -> 4
-    | Float_arith _ -> 5
-    | Float_comp _ -> 6
-    | Bit_test -> 7
-    | Array_load _ -> 8
-    | String_load _ -> 9
-    | Bigstring_load _ -> 10
+    | Int_comp_unsigned _ -> 5
+    | Float_arith _ -> 6
+    | Float_comp _ -> 7
+    | Bit_test -> 8
+    | Array_load _ -> 9
+    | String_load _ -> 10
+    | Bigstring_load _ -> 11
   in
   match p1, p2 with
   | Block_set (field1, kind1, init_or_assign1),
@@ -585,6 +579,8 @@ let compare_binary_primitive p1 p2 =
     let c = K.Standard_int.compare kind1 kind2 in
     if c <> 0 then c
     else Pervasives.compare comp1 comp2
+  | Int_comp_unsigned comp1, Int_comp_unsigned comp2 ->
+    Pervasives.compare comp1 comp2
   | Float_arith op1, Float_arith op2 ->
     Pervasives.compare op1 op2
   | Float_comp comp1, Float_comp comp2 ->
@@ -600,6 +596,7 @@ let compare_binary_primitive p1 p2 =
     | Int_arith _
     | Int_shift _
     | Int_comp _
+    | Int_comp_unsigned _
     | Float_arith _
     | Float_comp _
     | Bit_test
@@ -622,6 +619,7 @@ let print_binary_primitive ppf p =
   | Int_arith (_k, op) -> print_binary_int_arith_op ppf op
   | Int_shift (_k, op) -> print_int_shift_op ppf op
   | Int_comp (_, c) -> print_comparison ppf c
+  | Int_comp_unsigned c -> fprintf ppf "%a[u]" print_comparison c
   | Float_arith op -> print_binary_float_arith_op ppf op
   | Float_comp c -> print_comparison ppf c; fprintf ppf "."
   | Bit_test -> fprintf ppf "bit_test"
@@ -649,6 +647,7 @@ let args_kind_of_binary_primitive p =
   | Int_comp (kind, _) ->
     let kind = K.Standard_int.to_kind kind in
     kind, kind
+  | Int_comp_unsigned _ -> K.naked_immediate (), K.naked_immediate ()
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
   | Bit_test -> string_or_bytes_kind, array_like_thing_index_kind
@@ -664,12 +663,13 @@ let result_kind_of_binary_primitive p : result_kind =
   | Int_shift (kind, _) -> Singleton (K.Standard_int.to_kind kind)
   | Float_arith _ -> Singleton (K.naked_float ())
   | Int_comp _
-  | Float_comp _ -> Singleton (K.naked_immediate ())
-  | Bit_test -> Singleton (K.naked_immediate ())
-  | Array_load ((Dynamic_must_scan_or_naked_float | Must_scan), _) ->
+  | Float_comp _
+  | Int_comp_unsigned _ -> Singleton (K.value Can_scan)
+  | Bit_test -> Singleton (K.value Can_scan)
+  | Array_load (Dynamic_must_scan_or_naked_float | Must_scan) ->
     Singleton (K.value Must_scan)
-  | Array_load (Can_scan, _) -> Singleton (K.value Can_scan)
-  | Array_load (Naked_float, _) -> Singleton (K.naked_float ())
+  | Array_load Can_scan -> Singleton (K.value Can_scan)
+  | Array_load Naked_float -> Singleton (K.naked_float ())
   | String_load _ -> Singleton (string_or_bytes_element_kind)
   | Bigstring_load _ -> Singleton (bigstring_element_kind)
 
@@ -683,7 +683,7 @@ let effects_and_coeffects_of_binary_primitive p =
       (Add | Sub | Mul | Div | Mod | And | Or | Xor)) ->
     No_effects, No_coeffects
   | Int_shift _ -> No_effects, No_coeffects
-  | Int_comp _ -> No_effects, No_coeffects
+  | Int_comp _ | Int_comp_unsigned _ -> No_effects, No_coeffects
   | Float_arith (Add | Sub | Mul | Div) -> No_effects, No_coeffects
   | Float_comp _ -> No_effects, No_coeffects
   | Bit_test -> No_effects, No_coeffects
@@ -712,11 +712,11 @@ let compare_ternary_primitive p1 p2 =
     if c <> 0 then c
     else Pervasives.compare init_or_assign1 init_or_assign2
   | Bytes_set width1, Bytes_set width2 ->
-    Pervasives.compare width1 width2 in
+    Pervasives.compare width1 width2
   | Array_set kind1, Array_set kind2 ->
-    Pervasives.compare kind1 kind2 in
+    Pervasives.compare kind1 kind2
   | Bigstring_set width1, Bigstring_set width2 ->
-    Pervasives.compare width1 width2 in
+    Pervasives.compare width1 width2
   | (Block_set_computed _
     | Bytes_set _
     | Array_set _
@@ -833,11 +833,11 @@ let args_kind_of_variadic_primitive p : arg_kinds =
     Variadic_all_of_kind (K.value Can_scan)
   | Make_array (Naked_float, _) ->
     Variadic_all_of_kind (K.naked_float ())
-  | Bigarray_set (_, num_dims, kind, _) ->
+  | Bigarray_set (num_dims, kind, _) ->
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     let new_value = element_kind_of_bigarray_kind kind in
     Variadic ([bigarray_kind] @ index @ [new_value])
-  | Bigarray_load (_, num_dims, _, _) ->
+  | Bigarray_load (num_dims, _, _) ->
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     Variadic ([bigarray_kind] @ index)
 
@@ -846,7 +846,7 @@ let result_kind_of_variadic_primitive p : result_kind =
   | Make_block _ -> Singleton block_kind
   | Make_array _ -> Singleton array_kind
   | Bigarray_set _ -> Unit
-  | Bigarray_load (_, _, kind, _) ->
+  | Bigarray_load (_, kind, _) ->
     Singleton (element_kind_of_bigarray_kind kind)
 
 let effects_and_coeffects_of_variadic_primitive p =
@@ -859,7 +859,7 @@ let effects_and_coeffects_of_variadic_primitive p =
     writing_to_an_array_like_thing
   | Bigarray_load (_, (Unknown | Complex32 | Complex64), _) ->
     Only_generative_effects Immutable, Has_coeffects
-  | Bigarray_load (_, _, _, _) ->
+  | Bigarray_load (_, _, _) ->
     reading_from_an_array_like_thing
 
 type t =

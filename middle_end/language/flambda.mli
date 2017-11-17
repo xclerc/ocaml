@@ -17,7 +17,7 @@
 (** Operations on Flambda terms whose implementations cannot break invariants
     enforced by the private types. *)
 
-[@@@ocaml.warning "+a-4-9-30-40-41-42"]
+[@@@ocaml.warning "+a-4-30-40-41-42"]
 
 module F0 = Flambda0
 
@@ -87,8 +87,6 @@ end
 
 module Typed_parameter : sig
   include module type of struct include F0.Typed_parameter end
-
-  val kind : (t -> Flambda_kind.t) Flambda_type.type_accessor
 end
 
 module rec Expr : sig
@@ -128,6 +126,7 @@ module rec Expr : sig
     -> body:t
     -> params:Typed_parameter.t list
     -> continuation_param:Continuation.t
+    -> exn_continuation_param:Continuation.t
     (* CR mshinwell: update comment. *)
     -> stub:bool
     -> continuation:Continuation.t

@@ -198,7 +198,7 @@ and lam ppf (t : t) =
           body = _; is_exn_handler; } =
       fprintf ppf "@[<v 2>where %a%s%s%s%s%a%s =@ %a@]"
         Continuation.print name
-        (match recursive with Non_recursive -> "" | Recursive -> "*")
+        (match recursive with Nonrecursive -> "" | Recursive -> "*")
         (if administrative then "<admin>" else "")
         (if is_exn_handler then "<exn>" else "")
         (match params with [] -> "" | _ -> " (")
