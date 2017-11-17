@@ -798,6 +798,12 @@ let emit_instr fallthrough i =
   | Lop(Iintop_imm (Iand, n))
     when n >= 0 && n < 0x01_0000_0000 ->
     I.and_ (int n) (res32 i 0)
+  (*
+  | Lop(Iintop_imm ((Idiv | Imod), n))
+    when n >= 0 ->
+      I.xor (Reg32 RDX) (Reg32 RDX);
+      I.idiv (arg i 1)
+  *)
   | Lop(Iintop(Idiv | Imod)) ->
       I.cqo ();
       I.idiv (arg i 1)
