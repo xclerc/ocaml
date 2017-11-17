@@ -389,8 +389,8 @@ let rec extract n acc (i : instruction) =
     List.rev acc, i
 
 let rec use_cmov_rather_than_branch (i : instruction) =
-  let diff x y =
-    x.Reg.loc <> y.Reg.loc in
+  (*let diff x y =
+    x.Reg.loc <> y.Reg.loc in*)
   match extract 6 [] i with
   | [{ desc = Lcondbranch (Iinttest test, lbl1); _ } as cond;
      { desc = Lop Imove; _ } as mov1;
@@ -421,14 +421,15 @@ let rec use_cmov_rather_than_branch (i : instruction) =
     use_cmov_rather_than_branch i.next
   | [{ desc = Lcondbranch (Iinttest test, lbl1); _ } as cond;
      { desc = Lop (Iconst_int int1);
-       res = [| { Reg.loc = Reg.Reg reg1; _ } as r1 |]; _ } as mov1;
+       res = [| { Reg.loc = Reg.Reg reg1; _ } (*as r1*) |]; _ } as mov1;
      { desc = Lbranch lbl2; _ };
      { desc = Llabel lbl1'; _ };
      { desc = Lop (Iconst_int int2);
        res = [| { Reg.loc = Reg.Reg reg2; _ } |]; _ } as mov2;
      { desc = Llabel lbl2'; _ }], next
     when (lbl1 = lbl1') && (lbl2 = lbl2') && (reg1 = reg2)
-         && (diff r1 cond.arg.(0)) && (diff r1 cond.arg.(1)) ->
+         (* XXXC needed if emit.mlp clear the destination before the comparison
+            && (diff r1 cond.arg.(0)) && (diff r1 cond.arg.(1))*) ->
     (* XXXC: actually not a conditional move... *)
     i.desc <- Lcondmove (Linttest test, Lconst_int int1, Some (Lconst_int int2));
     i.arg  <- Array.concat [cond.arg; (*mov1.arg; mov2.arg*)];
@@ -440,7 +441,7 @@ let rec use_cmov_rather_than_branch (i : instruction) =
       use_cmov_rather_than_branch i.next
     else
       ()
-let use_cmov = true
+let use_cmov = false
 
 let fundecl f =
   let fun_temperature =
