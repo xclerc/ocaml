@@ -16,6 +16,8 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(*
+
 (** Command line argument -inline *)
 val initial_inlining_threshold : round:int -> Inlining_cost.Threshold.t
 
@@ -39,3 +41,6 @@ val prepare_to_simplify_closure
   -> free_vars:Flambda.Free_var.t Variable.Map.t
   -> set_of_closures_env:Env.t
   -> Env.t
+
+*)
+

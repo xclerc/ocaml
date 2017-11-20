@@ -16,9 +16,10 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module E = Simplify_env
+module E = Simplify_env_and_result.Env
 module T = Flambda_types
 
+(*
 let prepare_to_simplify_set_of_closures ~env
       ~(set_of_closures : Flambda.Set_of_closures.t)
       ~function_decls ~freshen
@@ -166,6 +167,7 @@ let const_comparison_expr expr (cmp : Flambda_primitive.comparison) x y =
      | Gt -> x > y
      | Le -> x <= y
      | Ge -> x >= y)
+*)
 
 let freshen_and_squash_aliases env var =
   let var = Freshening.apply_variable (E.freshening env) var in

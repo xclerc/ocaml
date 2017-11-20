@@ -52,6 +52,10 @@ let simplify_continuation_use_cannot_inline env r cont ~arity =
   in
   cont, r
 
+let simplify_exn_continuation env r cont =
+  simplify_continuation_use_cannot_inline env r cont
+    ~arity:[Flambda_kind.value Must_scan]
+
 let for_defining_expr_of_let (env, r) var defining_expr =
   let new_bindings, defining_expr, ty, r =
     Simplify_named.simplify_named env r defining_expr
@@ -564,20 +568,23 @@ and simplify_let_cont env r ~body
 
 and simplify_method_call env r ~(apply : Flambda.Apply.t) ~kind ~obj
       : Expr.t * R.t =
-  let obj, _obj_type = freshen_and_squash_aliases env obj in
-  let func, _func_type = freshen_and_squash_aliases env func in
-  let args, _args_type = freshen_and_squash_aliases_list env args in
+  let obj, _obj_ty = E.simplify_name env obj in
+  let func, _func_ty = E.simplify_name env apply.func in
+  let args, _args_tys = List.split (E.simplify_simple_list env apply.args) in
   let continuation, r =
     simplify_continuation_use_cannot_inline env r apply.continuation
       ~arity:(Flambda.Call_kind.return_arity apply.call_kind)
   in
+  let exn_continuation, r =
+    simplify_exn_continuation env r apply.exn_continuation
+  in
   let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
-  let apply : Flambda.apply = {
-    kind = Method { kind; obj; };
+  let apply : Flambda.Apply.t = {
     func;
     continuation;
+    exn_continuation;
     args;
-    call_kind = apply.call_kind;
+    call_kind = Method { kind; obj; };
     dbg;
     inline = apply.inline;
     specialise = apply.specialise;
@@ -585,13 +592,12 @@ and simplify_method_call env r ~(apply : Flambda.Apply.t) ~kind ~obj
   in
   Apply apply, r
 
-and simplify_full_application env r ~function_decls ~lhs_of_application
-      ~closure_id_being_applied ~function_decl ~value_set_of_closures ~args
-      ~args_types ~continuation ~dbg ~inline_requested ~specialise_requested =
-  Inlining_decision.for_call_site ~env ~r ~function_decls
+and simplify_full_application env r ~lhs_of_application
+      ~closure_id_being_applied ~function_decl ~set_of_closures ~args
+      ~arg_tys ~continuation ~dbg ~inline_requested ~specialise_requested =
+  Inlining_decision.for_call_site ~env ~r ~set_of_closures
     ~lhs_of_application ~closure_id_being_applied ~function_decl
-    ~value_set_of_closures ~args ~args_types ~continuation ~dbg
-    ~inline_requested ~specialise_requested
+    ~args ~arg_tys ~continuation ~dbg ~inline_requested ~specialise_requested
 
 and simplify_partial_application env r ~lhs_of_application
       ~closure_id_being_applied
