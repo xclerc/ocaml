@@ -82,6 +82,7 @@ module Function_decls : sig
       -> kind:Lambda.function_kind
       -> params:(Ident.t * Lambda.value_kind) list
       -> continuation_param:Continuation.t
+      -> exn_continuation_param:Continuation.t
       -> body:Ilambda.t
       -> attr:Lambda.function_attribute
       -> loc:Location.t
@@ -95,6 +96,7 @@ module Function_decls : sig
     val kind : t -> Lambda.function_kind
     val params : t -> (Ident.t * Lambda.value_kind) list
     val continuation_param : t -> Continuation.t
+    val exn_continuation_param : t -> Continuation.t
     val body : t -> Ilambda.t
     val inline : t -> Lambda.inline_attribute
     val specialise : t -> Lambda.specialise_attribute

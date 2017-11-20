@@ -55,15 +55,17 @@ let middle_end ppf ~prefixname ~backend
         lam
       end
     in
-    let print_ilambda (ilam, return_cont) =
+    let print_ilambda (ilam : Ilambda.program) =
       if not !Clflags.dump_rawflambda then begin
-        ilam, return_cont
+        ilam
       end else begin
         Format.fprintf ppf
-          "After CPS conversion (return continuation %a):@ %a@."
-          Continuation.print return_cont
-          Ilambda.print ilam;
-        ilam, return_cont
+          "After CPS conversion (return continuation %a) \
+           (exception continuation %a):@ %a@."
+          Continuation.print ilam.return_continuation
+          Continuation.print ilam.exception_continuation
+          Ilambda.print ilam.expr;
+        ilam
       end
     in
     let (+-+) flam (name, pass) =
