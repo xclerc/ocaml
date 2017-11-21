@@ -479,7 +479,7 @@ module type Result = sig
 
   (** Mark that we are moving up out of the scope of a continuation-binding
       construct. *)
-  val exit_scope_catch
+  val exit_scope_of_let_cont
      : t
     -> env
     -> Continuation.t

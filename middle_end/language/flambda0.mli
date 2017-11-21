@@ -679,25 +679,28 @@ end and Typed_parameter : sig
   (** The underlying variable (cf. [Parameter.var]). *)
   val var : t -> Variable.t
 
-  (** The type of a parameter. *)
+  (** As for [var], but returns a [Simple.t] describing the variable. *)
+  val simple : t -> Simple.t
+
+  (** The type of the given parameter. *)
   val ty : t -> Flambda_type.t
 
-  (** The kind of a parameter. *)
+  (** The kind of the given parameter. *)
   val kind : t -> Flambda_kind.t
 
   (** Equalities to primitive applications that hold about this parameter. *)
   val equalities : t -> Flambda_primitive.With_fixed_value.Set.t
 
-  (** Replace the type of a parameter. *)
+  (** Replace the type of the given parameter. *)
   val with_type : t -> Flambda_type.t -> t
 
-  (** Map the underlying variable of a parameter. *)
+  (** Map the underlying variable of the given parameter. *)
   val map_var : t -> f:(Variable.t -> Variable.t) -> t
 
-  (** Map the type of a parameter. *)
+  (** Map the type of the given parameter. *)
   val map_type : t -> f:(Flambda_type.t -> Flambda_type.t) -> t
 
-  (** Free names in the parameter's type.  (The variable corresponding
+  (** Free names in the given parameter's type.  (The variable corresponding
       to the parameter is assumed to be always a binding occurrence.) *)
   val free_names : t -> Name.Set.t
 
@@ -715,6 +718,10 @@ end and Typed_parameter : sig
 
     (** As for [Parameter.List.vars]. *)
     val vars : t -> Variable.t list
+
+    (** As for [vars] but returns a list of [Simple.t] values describing the
+        variables. *)
+    val simples : t -> Simple.t list
 
     (** As for [vars] but returns a set. *)
     val var_set : t -> Variable.Set.t

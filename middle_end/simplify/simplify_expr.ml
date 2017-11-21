@@ -280,7 +280,7 @@ and simplify_let_cont_handlers ~env ~r ~handlers
       Continuation.Map.fold (fun cont
               ((handler : Flambda.Continuation_handler.t), _r_from_handler)
               (r, handlers) ->
-          let r, uses = R.exit_scope_catch r env cont in
+          let r, uses = R.exit_scope_of_let_cont r env cont in
           if continuation_unused cont then
             r, handlers
           else
@@ -443,7 +443,7 @@ and simplify_let_cont env r ~body
     in
     let simplify_one_handler env r ~name ~handler ~body
             : Expr.t * R.t =
-      (* CR mshinwell: Consider whether we should call [exit_scope_catch] for
+      (* CR mshinwell: Consider whether we should call [exit_scope_of_let_cont] for
          non-recursive ones before simplifying their body.  I'm not sure we
          need to, since we already ensure such continuations aren't in the
          environment when simplifying the [handlers].
@@ -592,15 +592,15 @@ and simplify_method_call env r ~(apply : Flambda.Apply.t) ~kind ~obj
   in
   Apply apply, r
 
-and simplify_full_application env r ~lhs_of_application
-      ~closure_id_being_applied ~function_decl ~set_of_closures ~args
+and simplify_full_application env r ~callee
+      ~callee's_closure_id ~function_decl ~set_of_closures ~args
       ~arg_tys ~continuation ~dbg ~inline_requested ~specialise_requested =
   Inlining_decision.for_call_site ~env ~r ~set_of_closures
-    ~lhs_of_application ~closure_id_being_applied ~function_decl
+    ~callee ~callee's_closure_id ~function_decl
     ~args ~arg_tys ~continuation ~dbg ~inline_requested ~specialise_requested
 
-and simplify_partial_application env r ~lhs_of_application
-      ~closure_id_being_applied
+and simplify_partial_application env r ~callee
+      ~callee's_closure_id
       ~(function_decl : Flambda.Function_declaration.t) ~args ~continuation ~dbg
       ~inline_requested ~specialise_requested =
   let arity = Flambda.Function_declaration.function_arity function_decl in
@@ -630,22 +630,23 @@ and simplify_partial_application env r ~lhs_of_application
   | Default_specialise -> ()
   end;
   let freshened_params =
-    List.map (fun p -> Parameter.rename p) function_decl.Flambda.params
+    Flambda.Typed_parameter.List.rename function_decl.params
   in
   let applied_args, remaining_args =
-    Misc.Stdlib.List.map2_prefix (fun arg id' -> id', arg)
+    Misc.Stdlib.List.map2_prefix (fun arg param -> param, arg)
       args freshened_params
   in
   let wrapper_continuation_param = Continuation.create () in
-  let wrapper_accepting_remaining_args =
+  let wrapper_exn_continuation_param = Continuation.create () in
+  let wrapper_taking_remaining_args =
     let body : Expr.t =
       Apply {
-        kind = Function;
         continuation = wrapper_continuation_param;
-        func = lhs_of_application;
-        args = Parameter.List.vars freshened_params;
+        exn_continuation = wrapper_exn_continuation_param;
+        func = callee;
+        args = Flambda.Typed_parameter.List.simples freshened_params;
         call_kind = Direct {
-          closure_id = closure_id_being_applied;
+          closure_id = callee's_closure_id;
           return_arity = function_decl.return_arity;
         };
         dbg;
@@ -656,57 +657,71 @@ and simplify_partial_application env r ~lhs_of_application
     let closure_variable =
       Variable.rename
         ~append:"_partial_fun"
-        (Closure_id.unwrap closure_id_being_applied)
+        (Closure_id.unwrap callee's_closure_id)
+    in
+    let free_variable_kind var =
+      (* There are no free variables in [body], above, except the wrapper's
+         parameters. *)
+      Misc.fatal_errorf "Variable %a should not be a free variable of [body]"
+        Variable.print var
     in
     (* CR mshinwell: [make_closure_declaration] is only used here and it also
        calls [toplevel_substitution].  We should alter that function or else
        inline it here.  Note that the boxing stuff in that function isn't
        needed here because a partial application can only involve arguments
        of kind [Value] *)
-    Expr.make_closure_declaration ~id:closure_variable
+    Expr.make_closure_declaration ~importer:(E.importer env)
+      ~id:closure_variable
+      ~free_variable_kind
       ~body
       ~params:remaining_args
+      ~return_arity:function_decl.return_arity
       ~stub:true
       ~continuation_param:wrapper_continuation_param
+      ~exn_continuation_param:wrapper_exn_continuation_param
       ~continuation
+      ~dbg
   in
-  let with_known_args =
-    Expr.bind
-      ~bindings:(List.map (fun (param, arg) ->
-          Parameter.var param, Flambda.Var arg) applied_args)
-      ~body:wrapper_accepting_remaining_args
+  let bindings =
+    List.map (fun (param, arg) ->
+        let param_var = Flambda.Typed_parameter.var param in
+        let param_kind = Flambda.Typed_parameter.kind param in
+        let arg = Flambda.Named.Simple (Simple.var arg) in
+        param_var, param_kind, arg)
+      applied_args
   in
-  simplify env r with_known_args
+  simplify_expr env r (Expr.bind ~bindings ~body:wrapper_taking_remaining_args)
 
-and simplify_over_application env r ~args ~args_types ~continuation
-      ~function_decls ~lhs_of_application ~closure_id_being_applied
-      ~(function_decl : Flambda.Function_declaration.t) ~value_set_of_closures
+and simplify_over_application env r ~args ~arg_tys ~continuation
+      ~exn_continuation ~function_decls ~callee ~callee's_closure_id
+      ~(function_decl : Flambda_type.Function_declaration.t) ~set_of_closures
       ~dbg ~inline_requested ~specialise_requested =
   let continuation, r =
     simplify_continuation_use_cannot_inline env r continuation
       ~arity:function_decl.return_arity
   in
-  let arity = Flambda.Function_declarations.function_arity function_decl in
+  let arity = Flambda.Function_declaration.function_arity function_decl in
   assert (arity < List.length args);
-  assert (List.length args = List.length args_types);
-  let full_app_args, remaining_args =
-    Misc.Stdlib.List.split_at arity args
-  in
-  let full_app_types, _ =
-    Misc.Stdlib.List.split_at arity args_types
-  in
+  assert (List.length args = List.length arg_tys);
+  let full_app_args, remaining_args = Misc.Stdlib.List.split_at arity args in
+  let full_app_types, _ = Misc.Stdlib.List.split_at arity arg_tys in
   let func_var = Variable.create "full_apply" in
+  let func_var_kind = Flambda_kind.value Must_scan in
+  let func_param =
+    Flambda.Typed_parameter.create_from_kind (Parameter.wrap func_var)
+      func_var_kind
+  in
   let handler : Flambda.Continuation_handler.t =
     { stub = false;
       is_exn_handler = false;
-      params = [Parameter.wrap func_var];
+      params = [func_param];
       handler =
         Apply {
-          kind = Function;
           continuation;
-          func = func_var;
+          exn_continuation;
+          func = Name.var func_var;
           args = remaining_args;
-          call_kind = Indirect;
+          call_kind = Indirect_unknown_arity;
           dbg;
           inline = inline_requested;
           specialise = specialise_requested;
@@ -714,29 +729,26 @@ and simplify_over_application env r ~args ~args_types ~continuation
     }
   in
   let after_full_application = Continuation.create () in
-  let after_full_application_type =
+  let after_full_application_approx =
     Continuation_approx.create ~name:after_full_application
-      ~handlers:(Non_recursive handler) ~num_params:1
+      ~handlers:(Non_recursive handler)
+      ~arity:[func_var_kind]
   in
   let full_application, r =
     let env =
       E.add_continuation env after_full_application
-        after_full_application_type
+        after_full_application_approx
     in
-    simplify_full_application env r ~function_decls ~lhs_of_application
-      ~closure_id_being_applied ~function_decl ~value_set_of_closures
-      ~args:full_app_args ~args_types:full_app_types
-      ~continuation:after_full_application ~dbg ~inline_requested
-      ~specialise_requested
+    simplify_full_application env r ~callee ~callee's_closure_id
+      ~function_decl ~set_of_closures ~args:full_app_args
+      ~arg_tys:full_app_types ~continuation:after_full_application ~dbg
+      ~inline_requested ~specialise_requested
   in
-(*
-Format.eprintf "full_application:@;%a@;" Expr.print full_application;
-*)
   (* CR mshinwell: Maybe it would be better just to build a proper term
      including the full application as a normal Apply node and call simplify
      on that? *)
   let r, after_full_application_uses =
-    R.exit_scope_catch r env after_full_application
+    R.exit_scope_of_let_cont r env after_full_application
   in
   let r =
     R.define_continuation r after_full_application env Non_recursive
@@ -753,35 +765,29 @@ Format.eprintf "full_application:@;%a@;" Expr.print full_application;
   in
   expr, r
 
-and simplify_function_apply env r ~(apply : Flambda.apply)
-      : Expr.t * R.t =
+and simplify_function_apply env r ~(apply : Flambda.apply) : Expr.t * R.t =
   let {
-    Flambda. func = lhs_of_application; args; call_kind; dbg;
+    Flambda.Apply. func = callee; args; call_kind; dbg;
     inline = inline_requested; specialise = specialise_requested;
     continuation; kind;
   } = apply in
   let dbg = E.add_inlined_debuginfo env ~dbg in
-  let lhs_of_application = freshen_and_squash_aliases env lhs_of_application in
-  (* CR mshinwell: We should take the meet of the types on the function's
-     parameters and the arguments *)
-  let args = freshen_and_squash_aliases_list env args in
-  (* By using the type of the left-hand side of the
-     application, attempt to determine which function is being applied
-     (even if the application is currently [Indirect]).  If
-     successful---in which case we then have a direct
-     application---consider inlining. *)
-  match T.reify_as_closure_singleton lhs_of_application_type with
-  | Ok (closure_id_being_applied, set_of_closures_var,
+  let callee, callee_ty = E.simplify_name env callee in
+  let args_with_tys = E.simplify_simple_list env args in
+  match (E.type_accessor env T.prove_closures) callee_ty with
+  | Proved (Exactly joined_closures) ->
+
+  | Ok (callee's_closure_id, set_of_closures_var,
         set_of_closures_symbol, value_set_of_closures) ->
-    let lhs_of_application, closure_id_being_applied,
+(* CR mshinwell: Have disabled direct call surrogates just for the moment
+    let callee, callee's_closure_id,
           value_set_of_closures, env, wrap =
       (* If the call site is a direct call to a function that has a
-         "direct call surrogate" (see inline_and_simplify_aux.mli),
-         repoint the call to the surrogate. *)
+         direct call surrogate, repoint the call to the surrogate. *)
       let surrogates = value_set_of_closures.direct_call_surrogates in
-      match Closure_id.Map.find closure_id_being_applied surrogates with
+      match Closure_id.Map.find callee's_closure_id surrogates with
       | exception Not_found ->
-        lhs_of_application, closure_id_being_applied,
+        callee, callee's_closure_id,
           value_set_of_closures, env, (fun expr -> expr)
       | surrogate ->
         let rec find_transitively surrogate =
@@ -791,11 +797,11 @@ and simplify_function_apply env r ~(apply : Flambda.apply)
         in
         let surrogate = find_transitively surrogate in
         let surrogate_var =
-          Variable.rename lhs_of_application ~append:"_surrogate"
+          Variable.rename callee ~append:"_surrogate"
         in
         let move_to_surrogate : Projection.move_within_set_of_closures =
-          { closure = lhs_of_application;
-            move = Closure_id.Map.singleton closure_id_being_applied
+          { closure = callee;
+            move = Closure_id.Map.singleton callee's_closure_id
                      surrogate;
           }
         in
@@ -812,16 +818,17 @@ and simplify_function_apply env r ~(apply : Flambda.apply)
         in
         surrogate_var, surrogate, value_set_of_closures, env, wrap
     in
+*)
     let function_decls = value_set_of_closures.function_decls in
     let function_decl =
       try
-        Flambda.Function_declarations.find closure_id_being_applied
+        Flambda.Function_declarations.find callee's_closure_id
           function_decls
       with
       | Not_found ->
         Misc.fatal_errorf "When handling application expression, \
             type references non-existent closure %a@."
-          Closure_id.print closure_id_being_applied
+          Closure_id.print callee's_closure_id
     in
     let arity_of_application =
       Flambda.Call_kind.return_arity apply.call_kind
@@ -834,12 +841,12 @@ and simplify_function_apply env r ~(apply : Flambda.apply)
       Misc.fatal_errorf "Application of %a (%a):@,function has return \
           arity %a but the application expression is expecting it \
           to have arity %a.  Function declaration is:@,%a"
-        Variable.print lhs_of_application
+        Variable.print callee
         Variable.print_list args
         Flambda_arity.print function_decl.return_arity
         Flambda_arity.print arity_of_application
         Flambda.Function_declaration.print
-        (lhs_of_application, function_decl)
+        (callee, function_decl)
     end;
     let r =
       match apply.call_kind with
@@ -860,17 +867,17 @@ and simplify_function_apply env r ~(apply : Flambda.apply)
     let result, r =
       if nargs = arity then
         simplify_full_application env r ~function_decls
-          ~lhs_of_application ~closure_id_being_applied ~function_decl
+          ~callee ~callee's_closure_id ~function_decl
           ~value_set_of_closures ~args ~args_types ~continuation ~dbg
           ~inline_requested ~specialise_requested
       else if nargs > arity then
         simplify_over_application env r ~args ~args_types
-          ~continuation ~function_decls ~lhs_of_application
-          ~closure_id_being_applied ~function_decl ~value_set_of_closures
+          ~continuation ~function_decls ~callee
+          ~callee's_closure_id ~function_decl ~value_set_of_closures
           ~dbg ~inline_requested ~specialise_requested
       else if nargs > 0 && nargs < arity then
-        simplify_partial_application env r ~lhs_of_application
-          ~closure_id_being_applied ~function_decl ~args
+        simplify_partial_application env r ~callee
+          ~callee's_closure_id ~function_decl ~args
           ~continuation ~dbg ~inline_requested ~specialise_requested
       else
         Misc.fatal_errorf "Function with arity %d when simplifying \
@@ -878,7 +885,7 @@ and simplify_function_apply env r ~(apply : Flambda.apply)
           arity Expr.print (Flambda.Apply apply)
     in
     wrap result, r
-  | Wrong ->
+  | Proved Not_all_values_known ->
     let call_kind : Flambda.Call_kind.t =
       match call_kind with
       | Indirect_unknown_arity
@@ -905,10 +912,11 @@ and simplify_function_apply env r ~(apply : Flambda.apply)
     let continuation, r =
       simplify_continuation_use_cannot_inline env r continuation ~arity
     in
-    Apply ({ kind; func = lhs_of_application; args; call_kind;
+    Apply ({ kind; func = callee; args; call_kind;
         dbg; inline = inline_requested; specialise = specialise_requested;
         continuation; }),
       r
+  | Invalid -> Flambda.Expr.invalid (), r
 
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)

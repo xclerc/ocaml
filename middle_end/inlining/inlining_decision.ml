@@ -32,6 +32,9 @@ type 'b good_idea =
   | Try_it
   | Don't_try_it of 'b
 
+(* CR mshinwell: We should take the meet of the types on the function's
+   parameters and the arguments when inlining *)
+
 let inline ~importer env r ~lhs_of_application
     ~closure_id_being_applied
     ~(function_decl : T.inlinable_function_declaration)

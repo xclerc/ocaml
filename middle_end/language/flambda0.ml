@@ -1687,6 +1687,7 @@ end = struct
     }
 
   let var t = Parameter.var t.param
+  let simple t = Simple.var (var t)
   let equalities t = t.equalities
   let ty t = t.ty
   let kind t = t.kind
@@ -1751,6 +1752,8 @@ end = struct
       Name.Set.union_list (List.map free_names t)
 
     let vars t = List.map var t
+
+    let simples t = List.map simple t
 
     let equal_vars t1 t2 =
       List.length t1 = List.length t2
