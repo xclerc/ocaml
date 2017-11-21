@@ -825,17 +825,6 @@ and simplify_function_apply env r ~(apply : Flambda.Apply.t) : Expr.t * R.t =
             Closure_id.print callee's_closure_id
             T.print callee_ty
         | Inlinable function_decl ->
-          let function_decls = value_set_of_closures.function_decls in
-          let function_decl =
-            try
-              Flambda.Function_declarations.find callee's_closure_id
-                function_decls
-            with
-            | Not_found ->
-              Misc.fatal_errorf "When handling application expression, \
-                  type references non-existent closure %a@."
-                Closure_id.print callee's_closure_id
-          in
           let arity_of_application =
             Flambda.Call_kind.return_arity apply.call_kind
           in
@@ -847,12 +836,11 @@ and simplify_function_apply env r ~(apply : Flambda.Apply.t) : Expr.t * R.t =
             Misc.fatal_errorf "Application of %a (%a):@,function has return \
                 arity %a but the application expression is expecting it \
                 to have arity %a.  Function declaration is:@,%a"
-              Variable.print callee
+              Name.print callee
               Simple.List.print args
               Flambda_arity.print function_decl.return_arity
               Flambda_arity.print arity_of_application
-              T.print_inlinable_function_declaration
-              (callee, function_decl)
+              T.print_inlinable_function_declaration function_decl
           end;
           let r =
             match call_kind with
