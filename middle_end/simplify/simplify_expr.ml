@@ -566,32 +566,6 @@ and simplify_let_cont env r ~body
     end
   end
 
-and simplify_method_call env r ~(apply : Flambda.Apply.t) ~kind ~obj
-      : Expr.t * R.t =
-  let obj, _obj_ty = E.simplify_name env obj in
-  let func, _func_ty = E.simplify_name env apply.func in
-  let args, _args_tys = List.split (E.simplify_simple_list env apply.args) in
-  let continuation, r =
-    simplify_continuation_use_cannot_inline env r apply.continuation
-      ~arity:(Flambda.Call_kind.return_arity apply.call_kind)
-  in
-  let exn_continuation, r =
-    simplify_exn_continuation env r apply.exn_continuation
-  in
-  let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
-  let apply : Flambda.Apply.t = {
-    func;
-    continuation;
-    exn_continuation;
-    args;
-    call_kind = Method { kind; obj; };
-    dbg;
-    inline = apply.inline;
-    specialise = apply.specialise;
-  }
-  in
-  Apply apply, r
-
 and simplify_full_application env r ~callee
       ~callee's_closure_id ~function_decl ~set_of_closures ~args
       ~arg_tys ~continuation ~dbg ~inline_requested ~specialise_requested =
@@ -630,25 +604,34 @@ and simplify_partial_application env r ~callee
   | Default_specialise -> ()
   end;
   let freshened_params =
-    Flambda.Typed_parameter.List.rename function_decl.params
+    List.map (fun (param, ty) -> Parameter.rename param, ty)
+      function_decl.params
   in
   let applied_args, remaining_args =
     Misc.Stdlib.List.map2_prefix (fun arg param -> param, arg)
       args freshened_params
   in
+  let return_arity =
+    (* CR mshinwell: Move to [Flambda_type] *)
+    List.map (E.type_accessor env T.kind) function_decl.result
+  in
   let wrapper_continuation_param = Continuation.create () in
   let wrapper_exn_continuation_param = Continuation.create () in
   let wrapper_taking_remaining_args =
+    let args =
+      List.map (fun (param, _ty) -> Simple.var (Parameter.var param))
+        freshened_params
+    in
     let body : Expr.t =
       Apply {
         continuation = wrapper_continuation_param;
         exn_continuation = wrapper_exn_continuation_param;
         func = callee;
-        args = Flambda.Typed_parameter.List.simples freshened_params;
-        call_kind = Direct {
+        args;
+        call_kind = Function (Direct {
           closure_id = callee's_closure_id;
-          return_arity = function_decl.return_arity;
-        };
+          return_arity;
+        });
         dbg;
         inline = Default_inline;
         specialise = Default_specialise;
@@ -665,6 +648,12 @@ and simplify_partial_application env r ~callee
       Misc.fatal_errorf "Variable %a should not be a free variable of [body]"
         Variable.print var
     in
+    let params =
+      List.map (fun (param, ty) ->
+          let kind = (E.type_accessor env T.kind) ty in
+          Typed_parameter.create_from_kind param kind)
+        remaining_args
+    in
     (* CR mshinwell: [make_closure_declaration] is only used here and it also
        calls [toplevel_substitution].  We should alter that function or else
        inline it here.  Note that the boxing stuff in that function isn't
@@ -674,8 +663,8 @@ and simplify_partial_application env r ~callee
       ~id:closure_variable
       ~free_variable_kind
       ~body
-      ~params:remaining_args
-      ~return_arity:function_decl.return_arity
+      ~params
+      ~return_arity
       ~stub:true
       ~continuation_param:wrapper_continuation_param
       ~exn_continuation_param:wrapper_exn_continuation_param
@@ -683,9 +672,9 @@ and simplify_partial_application env r ~callee
       ~dbg
   in
   let bindings =
-    List.map (fun (param, arg) ->
-        let param_var = Flambda.Typed_parameter.var param in
-        let param_kind = Flambda.Typed_parameter.kind param in
+    List.map (fun ((param, param_ty), arg) ->
+        let param_var = Parameter.var param in
+        let param_kind = (E.type_accessor env T.kind) param_ty in
         let arg = Flambda.Named.Simple (Simple.var arg) in
         param_var, param_kind, arg)
       applied_args
@@ -696,11 +685,15 @@ and simplify_over_application env r ~args ~arg_tys ~continuation
       ~exn_continuation ~function_decls ~callee ~callee's_closure_id
       ~(function_decl : Flambda_type.inlinable_function_declaration)
       ~set_of_closures ~dbg ~inline_requested ~specialise_requested =
+  let return_arity =
+    (* CR mshinwell: Move to [Flambda_type] *)
+    List.map (E.type_accessor env T.kind) function_decl.result
+  in
   let continuation, r =
     simplify_continuation_use_cannot_inline env r continuation
-      ~arity:function_decl.return_arity
+      ~arity:return_arity
   in
-  let arity = Flambda.Function_declaration.function_arity function_decl in
+  let arity = List.length return_arity in
   assert (arity < List.length args);
   assert (List.length args = List.length arg_tys);
   let full_app_args, remaining_args = Misc.Stdlib.List.split_at arity args in
@@ -721,7 +714,7 @@ and simplify_over_application env r ~args ~arg_tys ~continuation
           exn_continuation;
           func = Name.var func_var;
           args = remaining_args;
-          call_kind = Indirect_unknown_arity;
+          call_kind = Function Indirect_unknown_arity;
           dbg;
           inline = inline_requested;
           specialise = specialise_requested;
@@ -752,7 +745,7 @@ and simplify_over_application env r ~args ~arg_tys ~continuation
   in
   let r =
     R.define_continuation r after_full_application env Non_recursive
-      after_full_application_uses after_full_application_type
+      after_full_application_uses after_full_application_approx
   in
   let expr : Expr.t =
     Let_cont {
@@ -765,20 +758,45 @@ and simplify_over_application env r ~args ~arg_tys ~continuation
   in
   expr, r
 
-and simplify_function_apply env r ~(apply : Flambda.Apply.t) : Expr.t * R.t =
+and simplify_apply_shared env r (apply : Flambda.Apply.t)
+      : Flambda.Apply.t * R.t =
+  let func, _func_ty = E.simplify_name env apply.func in
+  let args, _args_tys = List.split (E.simplify_simple_list env apply.args) in
+  let continuation, r =
+    simplify_continuation_use_cannot_inline env r apply.continuation
+      ~arity:(Flambda.Call_kind.return_arity apply.call_kind)
+  in
+  let exn_continuation, r =
+    simplify_exn_continuation env r apply.exn_continuation
+  in
+  let dbg = E.add_inlined_debuginfo env ~dbg:apply.dbg in
+  let apply : Flambda.Apply.t = {
+    func;
+    continuation;
+    exn_continuation;
+    args;
+    call_kind = apply.call_kind;
+    dbg;
+    inline = apply.inline;
+    specialise = apply.specialise;
+  }
+  in
+  apply, r
+
+and simplify_function_application env r (apply : Flambda.Apply.t)
+      (call : Flambda.Call_kind.function_call) : Expr.t * R.t =
+  let apply, r = simplify_apply_shared env r apply in
   let {
     Flambda.Apply. func = callee; args; call_kind; dbg;
     inline = inline_requested; specialise = specialise_requested;
-    continuation; kind;
+    continuation; exn_continuation;
   } = apply in
-  let dbg = E.add_inlined_debuginfo env ~dbg in
   let callee, callee_ty = E.simplify_name env callee in
-  let args_with_tys = E.simplify_simple_list env args in
   let unknown_closures () : Expr.t * R.t =
-    let call_kind : Flambda.Call_kind.t =
-      match call_kind with
+    let function_call : Flambda.Call_kind.function_call =
+      match call with
       | Indirect_unknown_arity
-      | Indirect_known_arity _ -> call_kind
+      | Indirect_known_arity _ -> call
       | Direct { return_arity; _ } ->
         let param_arity =
           (* Some types have regressed in precision.  Since this was a
@@ -788,8 +806,8 @@ and simplify_function_apply env r ~(apply : Flambda.Apply.t) : Expr.t * R.t =
              regressing?  (This should be ok because if it regresses it
              should still be conservative.) *)
           List.map (fun arg ->
-              let ty = E.find_exn env arg in
-              T.kind ~importer:(E.backend env) ty)
+              let ty = E.find_simple env arg in
+              (E.type_accessor env T.kind) ty)
             args
         in
         Indirect_known_arity {
@@ -797,11 +815,12 @@ and simplify_function_apply env r ~(apply : Flambda.Apply.t) : Expr.t * R.t =
           return_arity;
         }
     in
-    let return_arity = Flambda.Call_kind.return_arity call_kind in
+    let call_kind = Flambda.Call_kind.Function function_call in
+    let arity = Flambda.Call_kind.return_arity call_kind in
     let continuation, r =
       simplify_continuation_use_cannot_inline env r continuation ~arity
     in
-    Apply ({ kind; func = callee; args; call_kind; dbg;
+    Apply ({ func = callee; args; call_kind; dbg;
         inline = inline_requested; specialise = specialise_requested;
         continuation; exn_continuation; }),
       r
@@ -878,11 +897,14 @@ and simplify_function_apply env r ~(apply : Flambda.Apply.t) : Expr.t * R.t =
                 Flambda.Apply.print apply
           in
           wrap result, r
-        | Non_inlinable function_decl ->
-
+        | Non_inlinable _function_decl ->
+          (* CR mshinwell: I'm not sure this is right.  Shouldn't we store
+             enough information to do a direct call? *)
+          unknown_closures ()
         end
       | Proved Not_all_values_known -> unknown_closures ()
       | Invalid -> Expr.invalid ()
+      end
     end
   | Proved Not_all_values_known -> unknown_closures ()
   | Invalid -> Expr.invalid (), r
@@ -926,6 +948,22 @@ and simplify_function_apply env r ~(apply : Flambda.Apply.t) : Expr.t * R.t =
         surrogate_var, surrogate, value_set_of_closures, env, wrap
     in
 *)
+
+and simplify_method_call env r (apply : Flambda.Apply.t) ~kind ~obj
+      : Expr.t * R.t =
+  let apply, r = simplify_apply_shared env r apply in
+  let obj, _obj_ty = E.simplify_name env obj in
+  let apply : Flambda.Apply.t = {
+    apply with
+    call_kind = Method { kind; obj; };
+  }
+  in
+  Apply apply, r
+
+and simplify_c_call env r apply ~alloc ~param_arity ~return_arity
+      : Expr.t * R.t =
+  let apply, r = simplify_apply_shared env r apply in
+  Apply apply, r
 
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
@@ -1091,9 +1129,11 @@ and simplify_expr env r (tree : Expr.t) : Expr.t * R.t =
     named, r
   | Let_cont { body; handlers; } -> simplify_let_cont env r ~body ~handlers
   | Apply apply ->
-    begin match apply.kind with
-    | Function -> simplify_function_apply env r ~apply
+    begin match apply.call_kind with
+    | Function call -> simplify_function_application env r apply call
     | Method { kind; obj; } -> simplify_method_call env r ~apply ~kind ~obj
+    | C_call { alloc; param_arity; return_arity; } ->
+      simplify_c_call env r apply ~alloc ~param_arity ~return_arity
     end
   | Apply_cont (cont, trap_action, args) ->
     let args = freshen_and_squash_aliases_list env args in

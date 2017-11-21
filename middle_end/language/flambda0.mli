@@ -25,9 +25,7 @@
 
 (** Whether the callee in a function application is known at compile time. *)
 module Call_kind : sig
-  type method_kind = Self | Public | Cached
-
-  type t =
+  type function_call =
     | Direct of {
         closure_id : Closure_id.t;
         (* CR mshinwell: Should this arity really permit "bottom"? *)
@@ -41,6 +39,11 @@ module Call_kind : sig
         param_arity : Flambda_arity.t;
         return_arity : Flambda_arity.t;
       }
+
+  type method_kind = Self | Public | Cached
+
+  type t =
+    | Function of function_call
     | Method of { kind : method_kind; obj : Name.t; }
     | C_call of {
         alloc : bool;

@@ -135,6 +135,8 @@ module type Env = sig
       instead if you need to catch the failure case. *)
   val find_var : t -> Variable.t -> Flambda_type.t
 
+  val find_simple : t -> Simple.t -> Flambda_type.t
+
   val type_of_name : t -> Name.t -> Flambda_type.t option
 
   (** Like [find_exn], but for mutable variables. *)

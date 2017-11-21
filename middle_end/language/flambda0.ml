@@ -25,34 +25,23 @@ module Call_kind = struct
       (akin to [@@noalloc]) in order to be able to refine the computation of
       effects/coeffects for such functions. *)
 
-  type method_kind = Self | Public | Cached
-
-  let print_method_kind ppf kind =
-    let fprintf = Format.fprintf in
-    match kind with
-    | Self -> fprintf ppf "Self"
-    | Public -> fprintf ppf "Public"
-    | Cached -> fprintf ppf "Cached"
-
-  type t =
+  type function_call =
     | Direct of {
         closure_id : Closure_id.t;
+        (* CR mshinwell: Should this arity really permit "bottom"? *)
         return_arity : Flambda_arity.t;
+        (** [return_arity] describes what the callee returns.  It matches up
+            with the arity of [continuation] in the enclosing [apply]
+            record. *)
       }
     | Indirect_unknown_arity
     | Indirect_known_arity of {
         param_arity : Flambda_arity.t;
         return_arity : Flambda_arity.t;
       }
-    | Method of { kind : method_kind; obj : Name.t; }
-    | C_call of {
-        alloc : bool;
-        param_arity : Flambda_arity.t;
-        return_arity : Flambda_arity.t;
-      }
 
-  let equal t1 t2 =
-    match t1, t2 with
+  let equal_function_call call1 call2 =
+    match call1, call2 with
     | Direct { closure_id = closure_id1; return_arity = return_arity1; },
         Direct { closure_id = closure_id2; return_arity = return_arity2; } ->
       Closure_id.equal closure_id1 closure_id2
@@ -66,6 +55,51 @@ module Call_kind = struct
         } ->
       Flambda_arity.equal param_arity1 param_arity2
         && Flambda_arity.equal return_arity1 return_arity2
+    | Direct _, _
+    | Indirect_unknown_arity, _
+    | Indirect_known_arity _, _ -> false
+
+  let print_function_call ppf call =
+    match call with
+    | Direct { closure_id; return_arity; } ->
+      fprintf ppf "@[(Direct %a %a)@]"
+        Closure_id.print closure_id
+        Flambda_arity.print return_arity
+    | Indirect_unknown_arity ->
+      fprintf ppf "Indirect_unknown_arity"
+    | Indirect_known_arity { param_arity; return_arity; } ->
+      fprintf ppf "@[(Indirect_known_arity %a -> %a)@]"
+        Flambda_arity.print param_arity
+        Flambda_arity.print return_arity
+
+  let return_arity_function_call call : Flambda_arity.t =
+    match call with
+    | Direct { return_arity; _ }
+    | Indirect_known_arity { return_arity; _ } -> return_arity
+    | Indirect_unknown_arity -> [Flambda_kind.value Must_scan]
+
+  type method_kind = Self | Public | Cached
+
+  let print_method_kind ppf kind =
+    let fprintf = Format.fprintf in
+    match kind with
+    | Self -> fprintf ppf "Self"
+    | Public -> fprintf ppf "Public"
+    | Cached -> fprintf ppf "Cached"
+
+  type t =
+    | Function of function_call
+    | Method of { kind : method_kind; obj : Name.t; }
+    | C_call of {
+        alloc : bool;
+        param_arity : Flambda_arity.t;
+        return_arity : Flambda_arity.t;
+      }
+
+  let equal t1 t2 =
+    match t1, t2 with
+    | Function call1, Function call2 ->
+      equal_function_call call1 call2
     | Method { kind = kind1; obj = obj1; },
         Method { kind = kind2; obj = obj2; } ->
       Name.equal obj1 obj2
@@ -84,25 +118,14 @@ module Call_kind = struct
       Pervasives.compare alloc1 alloc2 = 0
         && Flambda_arity.equal param_arity1 param_arity2
         && Flambda_arity.equal return_arity1 return_arity2
-    | Direct _, _
-    | Indirect_unknown_arity, _
-    | Indirect_known_arity _, _
+    | Function _, _
     | Method _, _
     | C_call _, _ -> false
 
   let print ppf t =
     let fprintf = Format.fprintf in
     match t with
-    | Direct { closure_id; return_arity; } ->
-      fprintf ppf "@[(Direct %a %a)@]"
-        Closure_id.print closure_id
-        Flambda_arity.print return_arity
-    | Indirect_unknown_arity ->
-      fprintf ppf "Indirect_unknown_arity"
-    | Indirect_known_arity { param_arity; return_arity; } ->
-      fprintf ppf "@[(Indirect_known_arity %a -> %a)@]"
-        Flambda_arity.print param_arity
-        Flambda_arity.print return_arity
+    | Function call -> print_function_call ppf call
     | Method { kind; obj; } ->
       fprintf ppf "@[(Method %a : %a)@]"
         Name.print obj
@@ -115,9 +138,7 @@ module Call_kind = struct
 
   let return_arity t : Flambda_arity.t =
     match t with
-    | Direct { return_arity; _ }
-    | Indirect_known_arity { return_arity; _ } -> return_arity
-    | Indirect_unknown_arity
+    | Function call -> return_arity_function_call call
     | Method _ -> [Flambda_kind.value Must_scan]
     | C_call { return_arity; _ } -> return_arity
 end

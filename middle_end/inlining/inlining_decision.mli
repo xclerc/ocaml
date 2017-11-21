@@ -24,11 +24,11 @@
 val for_call_site
    : env:Simplify_env_and_result.Env.t
   -> r:Simplify_env_and_result.Result.t
-  -> callee:Variable.t
+  -> callee:Name.t
   -> callee's_closure_id:Closure_id.t
   -> function_decl:Flambda_type.inlinable_function_declaration
   -> set_of_closures:Flambda_type.set_of_closures
-  -> args:Variable.t list
+  -> args:Simple.t list
   -> arg_tys:Flambda_type.t list
   -> continuation:Continuation.t
   -> dbg:Debuginfo.t
