@@ -1131,7 +1131,9 @@ end = struct
 
   let to_type t =
     match t.set_of_closures_id_and_origin with
-    | Not_all_values_known -> any_value Must_scan Other
+    | Not_all_values_known ->
+      (* XXX we don't want this case though.  See Simplify_expr line 842 *)
+      any_value Must_scan Other
     | Exactly (set_of_closures_id, set_of_closures_origin) ->
       set_of_closures ~set_of_closures_id
         ~set_of_closures_origin

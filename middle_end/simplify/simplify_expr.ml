@@ -839,7 +839,6 @@ and simplify_function_application env r (apply : Flambda.Apply.t)
           T.Joined_sets_of_closures.function_decls joined
         in
         let set_of_closures =
-          (* XXX but this might not be possible to produce *)
           T.Joined_sets_of_closures.to_set_of_closures_type joined
         in
         begin match Closure_id.Map.find callee's_closure_id function_decls with
