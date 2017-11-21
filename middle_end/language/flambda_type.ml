@@ -1092,6 +1092,7 @@ module Joined_sets_of_closures : sig
   val closure_elements : t -> ty_value Var_within_closure.Map.t
   val type_for_closure_id : t -> Closure_id.t -> flambda_type
   val to_type : t -> flambda_type
+  val to_set_of_closures_type : t -> Set_of_closures.t
   val equal
      : equal_type:(flambda_type -> flambda_type -> bool)
     -> t

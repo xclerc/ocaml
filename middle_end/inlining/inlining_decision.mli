@@ -31,6 +31,7 @@ val for_call_site
   -> args:Simple.t list
   -> arg_tys:Flambda_type.t list
   -> continuation:Continuation.t
+  -> exn_continuation:Continuation.t
   -> dbg:Debuginfo.t
   -> inline_requested:Flambda.inline_attribute
   -> specialise_requested:Flambda.specialise_attribute

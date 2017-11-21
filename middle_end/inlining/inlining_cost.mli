@@ -76,7 +76,8 @@ module Benefit : sig
   val remove_prim : t -> t
   val remove_prims : t -> int -> t
   val remove_branch : t -> t
-  val direct_call_of_indirect : t -> t
+  val direct_call_of_indirect_unknown_arity : t -> t
+  val direct_call_of_indirect_known_arity : t -> t
   val requested_inline : t -> size_of:Flambda.Expr.t -> t
 
   val remove_code : Flambda.Expr.t -> t -> t

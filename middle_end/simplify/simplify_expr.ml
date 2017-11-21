@@ -568,10 +568,11 @@ and simplify_let_cont env r ~body
 
 and simplify_full_application env r ~callee
       ~callee's_closure_id ~function_decl ~set_of_closures ~args
-      ~arg_tys ~continuation ~dbg ~inline_requested ~specialise_requested =
-  Inlining_decision.for_call_site ~env ~r ~set_of_closures
-    ~callee ~callee's_closure_id ~function_decl
-    ~args ~arg_tys ~continuation ~dbg ~inline_requested ~specialise_requested
+      ~arg_tys ~continuation ~exn_continuation ~dbg ~inline_requested
+      ~specialise_requested =
+  Inlining_decision.for_call_site ~env ~r ~set_of_closures ~callee
+    ~callee's_closure_id ~function_decl ~args ~arg_tys ~continuation
+    ~exn_continuation ~dbg ~inline_requested ~specialise_requested
 
 and simplify_partial_application env r ~callee
       ~callee's_closure_id
@@ -734,8 +735,9 @@ and simplify_over_application env r ~args ~arg_tys ~continuation
     in
     simplify_full_application env r ~callee ~callee's_closure_id
       ~function_decl ~set_of_closures ~args:full_app_args
-      ~arg_tys:full_app_types ~continuation:after_full_application ~dbg
-      ~inline_requested ~specialise_requested
+      ~arg_tys:full_app_types ~continuation:after_full_application
+      (* CR mshinwell: check [exn_continuation] is correct *)
+      ~exn_continuation ~dbg ~inline_requested ~specialise_requested
   in
   (* CR mshinwell: Maybe it would be better just to build a proper term
      including the full application as a normal Apply node and call simplify
@@ -836,7 +838,11 @@ and simplify_function_application env r (apply : Flambda.Apply.t)
         let function_decls =
           T.Joined_sets_of_closures.function_decls joined
         in
-        begin match Closure_id.Map.find callee's_closure_id joined with
+        let set_of_closures =
+          (* XXX but this might not be possible to produce *)
+          T.Joined_sets_of_closures.to_set_of_closures_type joined
+        in
+        begin match Closure_id.Map.find callee's_closure_id function_decls with
         | exception Not_found ->
           Misc.fatal_errorf "Closure type specifies callee's closure ID as %a \
               but this closure ID does not occur in the joined set of \
@@ -847,9 +853,11 @@ and simplify_function_application env r (apply : Flambda.Apply.t)
           let arity_of_application =
             Flambda.Call_kind.return_arity apply.call_kind
           in
+          let result_arity =
+            List.map (E.type_accessor env T.kind) function_decl.result
+          in
           let arity_mismatch =
-            not (Flambda.Call_kind.equal arity_of_application
-              function_decl.return_arity)
+            not (Flambda_arity.equal arity_of_application result_arity)
           in
           if arity_mismatch then begin
             Misc.fatal_errorf "Application of %a (%a):@,function has return \
@@ -857,12 +865,12 @@ and simplify_function_application env r (apply : Flambda.Apply.t)
                 to have arity %a.  Function declaration is:@,%a"
               Name.print callee
               Simple.List.print args
-              Flambda_arity.print function_decl.return_arity
+              Flambda_arity.print result_arity
               Flambda_arity.print arity_of_application
               T.print_inlinable_function_declaration function_decl
           end;
           let r =
-            match call_kind with
+            match call with
             | Indirect_unknown_arity ->
               R.map_benefit r
                 Inlining_cost.Benefit.direct_call_of_indirect_unknown_arity

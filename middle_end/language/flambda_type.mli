@@ -70,7 +70,7 @@ end
 module Joined_closures : sig
   type t
 
-  val sets_of_closures : t -> t Closure_id.Map.t
+  val sets_of_closures : t -> flambda_type Closure_id.Map.t
 
   val to_type : t -> flambda_type
 end
@@ -86,6 +86,7 @@ module Joined_sets_of_closures : sig
   val type_for_closure_id : t -> Closure_id.t -> flambda_type
 
   val to_type : t -> flambda_type
+  val to_set_of_closures_type : t -> Set_of_closures.t  (* XXX *)
 end
 
 module Evaluated : sig
