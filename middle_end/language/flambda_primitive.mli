@@ -181,6 +181,7 @@ type ternary_primitive =
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
+  (* CR pchambart / mshinwell: Effects of Make_block? *)
   | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
   | Make_array of array_kind * mutable_or_immutable
   | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout

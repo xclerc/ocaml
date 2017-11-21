@@ -240,6 +240,11 @@ module type S = sig
 
   val print_ty_value_array : Format.formatter -> ty_value array -> unit
 
+  val print_inlinable_function_declaration
+     : Format.formatter
+    -> inlinable_function_declaration
+    -> unit
+
   (** Construction of top types. *)
   val unknown : Flambda_kind.t -> unknown_because_of -> t
   val any_value : Flambda_kind.scanning -> unknown_because_of -> t

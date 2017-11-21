@@ -1041,7 +1041,8 @@ end = struct
     Format.fprintf ppf "@[(sets_of_closures@ %a)@]"
       (Closure_id.Map.print print_ty_value) t.sets_of_closures
 
-  let sets_of_closures t = t.sets_of_closures
+  let sets_of_closures t =
+    Closure_id.Map.map t_of_ty_value t.sets_of_closures
 
   let is_bottom t = Closure_id.Map.is_empty t.sets_of_closures
 
