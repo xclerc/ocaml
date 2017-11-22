@@ -331,6 +331,13 @@ module type S = sig
 
   val closure : set_of_closures:t -> Closure_id.t -> t
 
+  val create_set_of_closures
+     : set_of_closures_id:Set_of_closures_id.t
+    -> set_of_closures_origin:Set_of_closures_origin.t
+    -> function_decls:function_declaration Closure_id.Map.t
+    -> closure_elements:ty_value Var_within_closure.Map.t
+    -> t
+
   val set_of_closures
      : set_of_closures_id:Set_of_closures_id.t
     -> set_of_closures_origin:Set_of_closures_origin.t

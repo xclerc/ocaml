@@ -78,15 +78,12 @@ end
 module Joined_sets_of_closures : sig
   type t
 
-  val function_decls : t -> function_declaration Closure_id.Map.t
-  val closure_elements : t -> ty_value Var_within_closure.Map.t
-
   (** Return the type of a given closure, specified by closure ID, selected
       from the given set of closures. *)
   val type_for_closure_id : t -> Closure_id.t -> flambda_type
 
   val to_type : t -> flambda_type
-  val to_set_of_closures_type : t -> Set_of_closures.t  (* XXX *)
+  val to_unique_set_of_closures : t -> Set_of_closures.t option
 end
 
 module Evaluated : sig

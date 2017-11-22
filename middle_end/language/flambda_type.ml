@@ -1088,11 +1088,9 @@ end
 module Joined_sets_of_closures : sig
   type t
   val create : (Set_of_closures.t list -> t) type_accessor
-  val function_decls : t -> function_declaration Closure_id.Map.t
-  val closure_elements : t -> ty_value Var_within_closure.Map.t
   val type_for_closure_id : t -> Closure_id.t -> flambda_type
   val to_type : t -> flambda_type
-  val to_set_of_closures_type : t -> Set_of_closures.t
+  val to_unique_set_of_closures : t -> Set_of_closures.t option
   val equal
      : equal_type:(flambda_type -> flambda_type -> bool)
     -> t
@@ -1107,9 +1105,6 @@ end = struct
     function_decls : function_declaration Closure_id.Map.t;
     closure_elements : ty_value Var_within_closure.Map.t;
   }
-
-  let function_decls t = t.function_decls
-  let closure_elements t = t.closure_elements
 
   let print ppf t =
     Format.fprintf ppf "@[((function_decls %a)@ (closure_elements %a))@]"
@@ -1132,13 +1127,24 @@ end = struct
   let to_type t =
     match t.set_of_closures_id_and_origin with
     | Not_all_values_known ->
-      (* XXX we don't want this case though.  See Simplify_expr line 842 *)
       any_value Must_scan Other
     | Exactly (set_of_closures_id, set_of_closures_origin) ->
       set_of_closures ~set_of_closures_id
         ~set_of_closures_origin
         ~function_decls:t.function_decls
         ~closure_elements:t.closure_elements
+
+  let to_unique_set_of_closures t =
+    match t.set_of_closures_id_and_origin with
+    | Not_all_values_known -> None
+    | Exactly (set_of_closures_id, set_of_closures_origin) ->
+      let set =
+        create_set_of_closures ~set_of_closures_id
+          ~set_of_closures_origin
+          ~function_decls:t.function_decls
+          ~closure_elements:t.closure_elements
+      in
+      Some set
 
   let make_non_inlinable_function_declaration (f : function_declaration)
         : function_declaration =

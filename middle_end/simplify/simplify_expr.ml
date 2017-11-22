@@ -576,8 +576,10 @@ and simplify_full_application env r ~callee
 
 and simplify_partial_application env r ~callee
       ~callee's_closure_id
-      ~(function_decl : Flambda_type.inlinable_function_declaration) ~args
-      ~continuation ~dbg ~inline_requested ~specialise_requested =
+      ~(function_decl : Flambda_type.inlinable_function_declaration)
+      ~(args : Simple.t list)
+      ~continuation ~exn_continuation ~dbg ~inline_requested
+      ~specialise_requested =
   let arity = List.length function_decl.params in
   assert (arity > List.length args);
   (* For simplicity, we disallow [@inline] attributes on partial
@@ -617,7 +619,6 @@ and simplify_partial_application env r ~callee
     List.map (E.type_accessor env T.kind) function_decl.result
   in
   let wrapper_continuation_param = Continuation.create () in
-  let wrapper_exn_continuation_param = Continuation.create () in
   let wrapper_taking_remaining_args =
     let args =
       List.map (fun (param, _ty) -> Simple.var (Parameter.var param))
@@ -626,7 +627,7 @@ and simplify_partial_application env r ~callee
     let body : Expr.t =
       Apply {
         continuation = wrapper_continuation_param;
-        exn_continuation = wrapper_exn_continuation_param;
+        exn_continuation;
         func = callee;
         args;
         call_kind = Function (Direct {
@@ -668,7 +669,7 @@ and simplify_partial_application env r ~callee
       ~return_arity
       ~stub:true
       ~continuation_param:wrapper_continuation_param
-      ~exn_continuation_param:wrapper_exn_continuation_param
+      ~exn_continuation_param:exn_continuation
       ~continuation
       ~dbg
   in
@@ -676,14 +677,13 @@ and simplify_partial_application env r ~callee
     List.map (fun ((param, param_ty), arg) ->
         let param_var = Parameter.var param in
         let param_kind = (E.type_accessor env T.kind) param_ty in
-        let arg = Flambda.Named.Simple (Simple.var arg) in
-        param_var, param_kind, arg)
+        param_var, param_kind, Named.Simple arg)
       applied_args
   in
   simplify_expr env r (Expr.bind ~bindings ~body:wrapper_taking_remaining_args)
 
 and simplify_over_application env r ~args ~arg_tys ~continuation
-      ~exn_continuation ~function_decls ~callee ~callee's_closure_id
+      ~exn_continuation ~callee ~callee's_closure_id
       ~(function_decl : Flambda_type.inlinable_function_declaration)
       ~set_of_closures ~dbg ~inline_requested ~specialise_requested =
   let return_arity =
@@ -761,9 +761,9 @@ and simplify_over_application env r ~args ~arg_tys ~continuation
   expr, r
 
 and simplify_apply_shared env r (apply : Flambda.Apply.t)
-      : Flambda.Apply.t * R.t =
-  let func, _func_ty = E.simplify_name env apply.func in
-  let args, _args_tys = List.split (E.simplify_simple_list env apply.args) in
+      : T.t * (T.t list) * Flambda.Apply.t * R.t =
+  let func, func_ty = E.simplify_name env apply.func in
+  let args, args_tys = List.split (E.simplify_simple_list env apply.args) in
   let continuation, r =
     simplify_continuation_use_cannot_inline env r apply.continuation
       ~arity:(Flambda.Call_kind.return_arity apply.call_kind)
@@ -783,17 +783,16 @@ and simplify_apply_shared env r (apply : Flambda.Apply.t)
     specialise = apply.specialise;
   }
   in
-  apply, r
+  func_ty, args_tys, apply, r
 
 and simplify_function_application env r (apply : Flambda.Apply.t)
       (call : Flambda.Call_kind.function_call) : Expr.t * R.t =
-  let apply, r = simplify_apply_shared env r apply in
+  let callee_ty, arg_tys, apply, r = simplify_apply_shared env r apply in
   let {
     Flambda.Apply. func = callee; args; call_kind; dbg;
     inline = inline_requested; specialise = specialise_requested;
     continuation; exn_continuation;
   } = apply in
-  let callee, callee_ty = E.simplify_name env callee in
   let unknown_closures () : Expr.t * R.t =
     let function_call : Flambda.Call_kind.function_call =
       match call with
@@ -822,95 +821,105 @@ and simplify_function_application env r (apply : Flambda.Apply.t)
     let continuation, r =
       simplify_continuation_use_cannot_inline env r continuation ~arity
     in
-    Apply ({ func = callee; args; call_kind; dbg;
-        inline = inline_requested; specialise = specialise_requested;
-        continuation; exn_continuation; }),
-      r
+    Apply ({
+      func = callee;
+      args;
+      call_kind;
+      dbg;
+      inline = inline_requested;
+      specialise = specialise_requested;
+      continuation;
+      exn_continuation;
+    }), r
   in
+  let module JC = T.Joined_closures in
+  let module JSC = T.Joined_sets_of_closures in
   match (E.type_accessor env T.prove_closures) callee_ty with
   | Proved (Exactly joined) ->
-    let sets_of_closures = T.Joined_closures.sets_of_closures joined in
+    let sets_of_closures = JC.sets_of_closures joined in
     begin match Closure_id.Map.get_singleton sets_of_closures with
     | None -> unknown_closures ()
     | Some (callee's_closure_id, sets) ->
       begin match (E.type_accessor env T.prove_sets_of_closures) sets with
       | Proved (Exactly joined) ->
-        let function_decls =
-          T.Joined_sets_of_closures.function_decls joined
-        in
-        let set_of_closures =
-          T.Joined_sets_of_closures.to_set_of_closures_type joined
-        in
-        begin match Closure_id.Map.find callee's_closure_id function_decls with
-        | exception Not_found ->
-          Misc.fatal_errorf "Closure type specifies callee's closure ID as %a \
-              but this closure ID does not occur in the joined set of \
-              closures.  Type of the callee: %a"
-            Closure_id.print callee's_closure_id
-            T.print callee_ty
-        | Inlinable function_decl ->
-          let arity_of_application =
-            Flambda.Call_kind.return_arity apply.call_kind
-          in
-          let result_arity =
-            List.map (E.type_accessor env T.kind) function_decl.result
-          in
-          let arity_mismatch =
-            not (Flambda_arity.equal arity_of_application result_arity)
-          in
-          if arity_mismatch then begin
-            Misc.fatal_errorf "Application of %a (%a):@,function has return \
-                arity %a but the application expression is expecting it \
-                to have arity %a.  Function declaration is:@,%a"
-              Name.print callee
-              Simple.List.print args
-              Flambda_arity.print result_arity
-              Flambda_arity.print arity_of_application
-              T.print_inlinable_function_declaration function_decl
-          end;
-          let r =
-            match call with
-            | Indirect_unknown_arity ->
-              R.map_benefit r
-                Inlining_cost.Benefit.direct_call_of_indirect_unknown_arity
-            | Indirect_known_arity _ ->
-              (* CR mshinwell: This should check that the [param_arity] inside
-                 the call kind is compatible with the kinds of [args]. *)
-              R.map_benefit r
-                Inlining_cost.Benefit.direct_call_of_indirect_known_arity
-            | Direct _ -> r
-          in
-          let nargs = List.length args in
-          let arity = List.length function_decl.params in
-          let result, r =
-            if nargs = arity then
-              simplify_full_application env r
-                ~callee ~callee's_closure_id ~function_decl ~set_of_closures
-                ~args ~arg_tys ~continuation ~exn_continuation ~dbg
-                ~inline_requested ~specialise_requested
-            else if nargs > arity then
-              simplify_over_application env r ~args ~arg_tys ~continuation
-                ~exn_continuation ~callee ~callee's_closure_id ~function_decl
-                ~value_set_of_closures ~dbg ~inline_requested
-                ~specialise_requested
-            else if nargs > 0 && nargs < arity then
-              simplify_partial_application env r ~callee ~callee's_closure_id
-                ~function_decl ~args ~continuation ~exn_continuation ~dbg
-                ~inline_requested ~specialise_requested
-            else
-              Misc.fatal_errorf "Function with arity %d when simplifying \
-                  application expression: %a"
-                arity
-                Flambda.Apply.print apply
-          in
-          wrap result, r
-        | Non_inlinable _function_decl ->
-          (* CR mshinwell: I'm not sure this is right.  Shouldn't we store
-             enough information to do a direct call? *)
-          unknown_closures ()
+        begin match JSC.to_unique_set_of_closures joined with
+        | None -> unknown_closures ()
+        | Some set_of_closures ->
+          let function_decls = set_of_closures.function_decls in
+          begin match
+            Closure_id.Map.find callee's_closure_id function_decls
+          with
+          | exception Not_found ->
+            Misc.fatal_errorf "Closure type specifies callee's closure ID as \
+                %a but this closure ID does not occur in the joined set of \
+                closures.  Type of the callee: %a"
+              Closure_id.print callee's_closure_id
+              T.print callee_ty
+          | Inlinable function_decl ->
+            let arity_of_application =
+              Flambda.Call_kind.return_arity apply.call_kind
+            in
+            let result_arity =
+              List.map (E.type_accessor env T.kind) function_decl.result
+            in
+            let arity_mismatch =
+              not (Flambda_arity.equal arity_of_application result_arity)
+            in
+            if arity_mismatch then begin
+              Misc.fatal_errorf "Application of %a (%a):@,function has return \
+                  arity %a but the application expression is expecting it \
+                  to have arity %a.  Function declaration is:@,%a"
+                Name.print callee
+                Simple.List.print args
+                Flambda_arity.print result_arity
+                Flambda_arity.print arity_of_application
+                T.print_inlinable_function_declaration function_decl
+            end;
+            let r =
+              match call with
+              | Indirect_unknown_arity ->
+                R.map_benefit r
+                  Inlining_cost.Benefit.direct_call_of_indirect_unknown_arity
+              | Indirect_known_arity _ ->
+                (* CR mshinwell: This should check that the [param_arity] inside
+                   the call kind is compatible with the kinds of [args]. *)
+                R.map_benefit r
+                  Inlining_cost.Benefit.direct_call_of_indirect_known_arity
+              | Direct _ -> r
+            in
+            let provided_num_args = List.length args in
+            let num_args = List.length function_decl.params in
+            let result, r =
+              if provided_num_args = num_args then
+                simplify_full_application env r
+                  ~callee ~callee's_closure_id ~function_decl ~set_of_closures
+                  ~args ~arg_tys ~continuation ~exn_continuation ~dbg
+                  ~inline_requested ~specialise_requested
+              else if provided_num_args > num_args then
+                simplify_over_application env r ~args ~arg_tys ~continuation
+                  ~exn_continuation ~callee ~callee's_closure_id ~function_decl
+                  ~set_of_closures ~dbg ~inline_requested
+                  ~specialise_requested
+              else if provided_num_args > 0 && provided_num_args < num_args then
+                simplify_partial_application env r ~callee ~callee's_closure_id
+                  ~function_decl ~args ~continuation ~exn_continuation ~dbg
+                  ~inline_requested ~specialise_requested
+              else
+                Misc.fatal_errorf "Function with %d/%d args when simplifying \
+                    application expression: %a"
+                  provided_num_args
+                  num_args
+                  Flambda.Apply.print apply
+            in
+            (* wrap <-- for direct call surrogates *) result, r
+          | Non_inlinable _function_decl ->
+            (* CR mshinwell: I'm not sure this is right.  Shouldn't we store
+               enough information to do a direct call? *)
+            unknown_closures ()
+          end
         end
       | Proved Not_all_values_known -> unknown_closures ()
-      | Invalid -> Expr.invalid ()
+      | Invalid -> Expr.invalid (), r
       end
     end
   | Proved Not_all_values_known -> unknown_closures ()
@@ -958,7 +967,13 @@ and simplify_function_application env r (apply : Flambda.Apply.t)
 
 and simplify_method_call env r (apply : Flambda.Apply.t) ~kind ~obj
       : Expr.t * R.t =
-  let apply, r = simplify_apply_shared env r apply in
+  let callee_ty, _args_tys, apply, r = simplify_apply_shared env r apply in
+  let callee_kind = (E.type_accessor env T.kind) callee_ty in
+  if not (Flambda_kind.is_value callee_kind) then begin
+    Misc.fatal_errorf "Method call with callee of wrong kind %a: %a"
+      Flambda_kind.print callee_kind
+      T.print callee_ty
+  end;
   let obj, _obj_ty = E.simplify_name env obj in
   let apply : Flambda.Apply.t = {
     apply with
@@ -969,7 +984,13 @@ and simplify_method_call env r (apply : Flambda.Apply.t) ~kind ~obj
 
 and simplify_c_call env r apply ~alloc ~param_arity ~return_arity
       : Expr.t * R.t =
-  let apply, r = simplify_apply_shared env r apply in
+  let callee_ty, _args_tys, apply, r = simplify_apply_shared env r apply in
+  let callee_kind = (E.type_accessor env T.kind) callee_ty in
+  if not (Flambda_kind.is_value callee_kind) then begin
+    Misc.fatal_errorf "C call with callee of wrong kind %a: %a"
+      Flambda_kind.print callee_kind
+      T.print callee_ty
+  end;
   Apply apply, r
 
 (** Simplify an application of a continuation. *)
@@ -987,14 +1008,14 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
         simplify_continuation_use_cannot_inline env r exn_handler
           ~arity:param_arity_of_exn_handler
       in
-      Flambda.Push { id; exn_handler; }, r
-    | Pop { id; exn_handler; } ->
+      Flambda.Trap_action.Push { id; exn_handler; }, r
+    | Pop { id; exn_handler; take_backtrace; } ->
       let id = Freshening.apply_trap (E.freshening env) id in
       let exn_handler, r =
         simplify_continuation_use_cannot_inline env r exn_handler
           ~arity:param_arity_of_exn_handler
       in
-      Flambda.Pop { id; exn_handler; }, r
+      Flambda.Trap_action.Pop { id; exn_handler; take_backtrace; }, r
   in
   match Continuation_approx.handlers cont_approx with
   | Some (Non_recursive handler) when handler.stub && trap_action = None ->
@@ -1009,12 +1030,12 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
     let env = E.disallow_continuation_specialisation env in
     let params, freshening =
       Freshening.add_variables' (E.freshening env)
-        (Parameter.List.vars handler.params)
+        (Typed_parameter.List.vars handler.params)
     in
     let params_and_types = List.combine params args_types in
     let env =
       List.fold_left (fun env (param, arg_type) ->
-          E.add env param arg_type)
+          E.add_var env param arg_type)
         (E.set_freshening env freshening)
         params_and_types
     in
