@@ -21,13 +21,17 @@ type tag = t
 
 include Identifiable.Make (Numbers.Int)
 
+let min_tag = 0
+let max_tag = 255
+
 let create_exn tag =
-  if tag < 0 || tag > 255 then
+  if tag < min_tag || tag > max_tag then
     Misc.fatal_error (Printf.sprintf "Tag.create_exn %d" tag)
   else
     tag
 
 let to_int t = t
+let to_targetint t = Targetint.of_int (to_int t)
 
 let zero = 0
 let string_tag = Obj.string_tag
@@ -36,13 +40,20 @@ let double_array_tag = Obj.double_array_tag
 let custom_tag = Obj.custom_tag
 let closure_tag = Obj.closure_tag
 
+let all_as_targetints =
+  let all = ref Targetint.Set.empty in
+  for tag = min_tag to max_tag do
+    all := Targetint.Set.add tag !all
+  done;
+  !all
+
 module Scannable = struct
   type nonrec t = t
 
   include Identifiable.Make (Numbers.Int)
 
   let create tag =
-    if tag < 0 || tag >= Obj.no_scan_tag then None
+    if tag < min_tag || tag >= Obj.no_scan_tag then None
     else Some tag
 
   let create_exn tag =
@@ -52,10 +63,11 @@ module Scannable = struct
       Misc.fatal_error (Printf.sprintf "Tag.Scannable.create_exn %d" tag)
 
   let to_int t = t
+  let to_targetint t = Targetint.of_int (to_int t)
   let to_tag t = t
 
   let of_tag tag =
-    if tag < 0 || tag >= Obj.no_scan_tag then None
+    if tag < min_tag || tag >= Obj.no_scan_tag then None
     else Some tag
 
   let zero = 0
@@ -81,6 +93,6 @@ module Non_scannable = struct
   let to_tag t = t
 
   let of_tag tag =
-    if tag < 0 || tag >= Obj.no_scan_tag then None
+    if tag < min_tag || tag >= Obj.no_scan_tag then None
     else Some tag
 end

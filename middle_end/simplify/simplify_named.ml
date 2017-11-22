@@ -211,7 +211,7 @@ end) = struct
         else Cannot_simplify
     in
     let op_lhs_unknown ~rhs : outcome_for_one_side_only =
-      let negate_lhs () : outcome_for_one_side_only =
+      let negate_the_other_side () : outcome_for_one_side_only =
         This_primitive (Unary (Int_arith Neg, arg1))
       in
       match op with
@@ -225,12 +225,12 @@ end) = struct
       | Mul ->
         if I.equal rhs I.zero then Exactly I.zero
         else if I.equal rhs I.one then The_other_side
-        else if I.equal rhs I.minus_one then negate_lhs ()
+        else if I.equal rhs I.minus_one then negate_the_other_side ()
         else Cannot_simplify
       | Div ->
         if I.equal rhs I.zero then Invalid
         else if I.equal rhs I.one then The_other_side
-        else if I.equal rhs I.minus_one then negate_lhs ()
+        else if I.equal rhs I.minus_one then negate_the_other_side ()
         else Cannot_simplify
       | Mod ->
         (* CR mshinwell: We could be more clever for Mod and And *)
@@ -240,7 +240,7 @@ end) = struct
         else Cannot_simplify
     in
     let op_rhs_unknown ~lhs : outcome_for_one_side_only =
-      let negate_rhs () : outcome_for_one_side_only =
+      let negate_the_other_side () : outcome_for_one_side_only =
         This_primitive (Unary (Int_arith Neg, arg2))
       in
       match op with
@@ -249,12 +249,12 @@ end) = struct
       | Or -> symmetric_op_one_side_unknown Or ~this_side:lhs
       | Xor -> symmetric_op_one_side_unknown Xor ~this_side:lhs
       | Sub ->
-        if I.equal lhs I.zero then negate_rhs ()
+        if I.equal lhs I.zero then negate_the_other_side ()
         else Cannot_simplify
       | Mul ->
         if I.equal lhs I.zero then Exactly I.zero
         else if I.equal lhs I.one then The_other_side
-        else if I.equal lhs I.minus_one then negate_rhs ()
+        else if I.equal lhs I.minus_one then negate_the_other_side ()
         else Cannot_simplify
       | Div | Mod -> Cannot_simplify
     in
@@ -348,7 +348,28 @@ let simplify_unary_primitive env r prim arg dbg =
       num_fields : int;
     }
   | Is_int
-  | Get_tag
+  | Get_tag ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let eval, _canonical_name = (E.type_accessor env T.Evaluated.create) arg in
+    let tags = T.Evaluated.tags eval in
+    begin match tags with
+    | Not_all_values_known ->
+      original_term (), T.these_tagged_immediates Tag.all_as_targetints
+    | Exactly tags ->
+      if Targetint.Set.is_empty tags then
+        Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+      else
+        begin match Targetint.Set.get_singleton tags with
+        | Some tag ->
+          (* CR mshinwell: Add [Named.this_tagged_immediate] etc? *)
+          let simple = Simple.const (Tagged_immediate tag) in
+          Flambda.Reachable.reachable (Simple simple),
+            T.this_tagged_immediate tag
+        | None ->
+          original_term (), T.these_tagged_immediates tags
+        end
+    end
   | String_length of string_or_bytes
   | Swap_byte_endianness of Flambda_kind.Standard_int.t
   | Int_as_pointer

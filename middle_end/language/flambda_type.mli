@@ -132,6 +132,9 @@ module Evaluated : sig
 
   (** The kind of the given evaluated type. *)
   val kind : t -> Flambda_kind.t
+
+  (* CR mshinwell: Maybe this should return Tag.Set.t? *)
+  val tags : t_values -> Targetint.Set.t Or_not_all_values_known.t
 end
 
 (** Whether the given type says that a term of that type can never be

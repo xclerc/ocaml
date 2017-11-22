@@ -25,6 +25,7 @@ type tag = t
 val create_exn : int -> t
 
 val to_int : t -> int
+val to_targetint : t -> Targetint.t
 
 val zero : t
 val string_tag : t
@@ -32,6 +33,8 @@ val closure_tag : t
 val double_tag : t
 val double_array_tag : t
 val custom_tag : t
+
+val all_as_targetints : Targetint.Set.t
 
 (* CR mshinwell: This name should be changed---all "value"s are scannable.
    "Structured"? *)
@@ -47,6 +50,7 @@ module Scannable : sig
   val of_tag : tag -> t option
 
   val to_int : t -> int
+  val to_targetint : t -> Targetint.t
   val to_tag : t -> tag
 
   val zero : t

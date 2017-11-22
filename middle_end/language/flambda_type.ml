@@ -374,6 +374,8 @@ module Blocks : sig
     -> t
     -> bool
 
+  val tags : t -> Tag.Scannable.Set.t
+
   val print : Format.formatter -> t -> unit
 end = struct
   type t = ty_value array Tag.Scannable.Map.t
@@ -452,6 +454,8 @@ end = struct
             print t
         end;
         Ok (t_of_ty_value ty)
+
+  let tags t = Tag.Scannable.Map.keys t
 
   let equal ~equal_type t1 t2 =
     Tag.Scannable.Map.equal (fun ty_values1 ty_values2 ->
@@ -1648,6 +1652,33 @@ module Evaluated = struct
     let t1 = create_ignore_name ~importer ~type_of_name type1 in
     let t2 = create_ignore_name ~importer ~type_of_name type2 in
     equal ~importer ~type_of_name t1 t2
+
+  let tags (t_values : t_values) : Targetint.Set.t Or_not_all_values_known.t =
+    let singleton tag : _ Or_not_all_values_known.t =
+      Exactly Targetint.Set.singleton (Tag.to_targetint tag)
+    in
+    match t_values with
+    | Unknown -> Not_all_values_known
+    | Bottom -> Exactly Targetint.Set.empty
+    | Blocks_and_tagged_immediates (blocks, imms) ->
+      assert (not (Blocks.is_empty blocks));
+      if not (Immediate.Set.is_empty imms) then Not_all_values_known
+      else
+        let tags =
+          Tag.Scannable.Set.fold (fun tag tags ->
+              Targetint.Set.add (Tag.Scannable.to_targetint tag) tags)
+            (Blocks.tags blocks)
+        in
+        Exactly tags
+    | Tagged_immediates_only _ -> Exactly Targetint.Set.empty
+    | Boxed_floats _ -> singleton Tag.double_tag
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _ -> singleton Tag.custom_tag
+    | Closures _ -> singleton Tag.closure_tag
+    | Sets_of_closures _ -> singleton Tag.closure_tag
+    | Strings _ -> singleton Tag.string_tag
+    | Float_arrays _ -> singleton Tag.double_array_tag
 end
 
 let equal ~importer ~type_of_name t1 t2 =
