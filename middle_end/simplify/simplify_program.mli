@@ -20,7 +20,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 val simplify_program
-   : Simplify_env.t
+   : Simplify_env_and_result.Env.t
   -> backend:(module Backend_intf.S)
   -> Flambda_static.Program.t
   -> Flambda_static.Program.t

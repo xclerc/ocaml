@@ -141,13 +141,9 @@ let simplify_static_part env (static_part : Static_part.t) : _ or_invalid =
     end
   | Boxed_float (Const f) -> Ok (static_part, T.this_boxed_float f)
   | Mutable_string { initial_value = Const str; } ->
-    Ok (static_part, T.mutable_string ~size:str.size)
+    Ok (static_part, T.mutable_string ~size:(String.length str))
   | Immutable_string (Const str) ->
-    let ty =
-      match str.contents with
-      | Unknown_or_mutable -> T.immutable_string ~size:str.size
-      | Contents str -> T.this_immutable_string str
-    in
+    let ty = T.this_immutable_string str in
     Ok (static_part, ty)
   | Boxed_float (Var var) ->
     let ty = E.find_var env var in
@@ -234,7 +230,11 @@ let simplify_static_part env (static_part : Static_part.t) : _ or_invalid =
       begin match T.String_info.Set.get_singleton strs with
       | Some str ->
         let ty = T.mutable_string ~size:str.size in
-        Ok (Static_part.Mutable_string { initial_value = Const str; }, ty)
+        begin match str.contents with
+        | Unknown_or_mutable -> Ok (static_part, ty)
+        | Contents str ->
+          Ok (Static_part.Mutable_string { initial_value = Const str; }, ty)
+        end
       | None -> Ok (static_part, T.any_value Must_scan Other)
       end
     | Proved Not_all_values_known ->
@@ -250,10 +250,10 @@ let simplify_static_part env (static_part : Static_part.t) : _ or_invalid =
         begin match str.contents with
         | Contents s ->
           let ty = T.this_immutable_string s in
-          Ok (Static_part.Immutable_string (Const str), ty)
+          Ok (Static_part.Immutable_string (Const s), ty)
         | Unknown_or_mutable ->
           let ty = T.immutable_string ~size:str.size in
-          Ok (Static_part.Immutable_string (Const str), ty)
+          Ok (static_part, ty)
         end
       | None -> Ok (static_part, T.any_value Must_scan Other)
       end
@@ -341,7 +341,8 @@ let simplify_define_symbol env (recursive : Flambda.recursive)
           Flambda_kind.equal kind1 kind2)
         computation.computed_values args_types);
       let env =
-        List.fold_left2 (fun env (var, _kind) ty -> E.add env var ty)
+        List.fold_left2 (fun env (var, _kind) ty ->
+            E.add_variable env var ty)
           env
           computation.computed_values args_types
       in
@@ -354,6 +355,7 @@ let simplify_define_symbol env (recursive : Flambda.recursive)
           Some ({
             expr;
             return_cont = computation.return_cont;
+            exception_cont = computation.exception_cont;
             computed_values = computation.computed_values;
           } : Program_body.computation)
       in
@@ -379,6 +381,7 @@ let simplify_define_symbol env (recursive : Flambda.recursive)
         let computation : Program_body.computation =
           { expr = Flambda.Expr.invalid ();
             return_cont = Continuation.create ();
+            exception_cont = Continuation.create ();
             computed_values = [];
           }
         in
@@ -411,6 +414,7 @@ let simplify_define_symbol env (recursive : Flambda.recursive)
         let computation : Program_body.computation =
           { expr;
             return_cont = new_return_cont;
+            exception_cont = computation.exception_cont;
             computed_values = [];
           }
         in

@@ -100,6 +100,8 @@ module Options = Main_args.Make_optcomp_options (struct
   let _nodynlink = option "-nodynlink"
   let _nolabels = option "-nolabels"
   let _nostdlib = option "-nostdlib"
+  let _no_treat_invalid_code_as_unreachable =
+    option "-no-treat-invalid-code-as-unreachable"
   let _no_unbox_free_vars_of_closures = option "-no-unbox-free-vars-of-closures"
   let _no_unbox_specialised_args = option "-no-unbox-specialised-args"
   let _o s = option_with_arg "-o" s
@@ -128,8 +130,8 @@ module Options = Main_args.Make_optcomp_options (struct
   let _no_strict_formats = option "-no-strict-formats"
   let _shared = option "-shared"
   let _thread = option "-thread"
-  let _treat_invalid_code_as_dead = option "-treat-invalid-code-as-dead"
-  let _no_treat_invalid_code_as_dead = option "-no-treat-invalid-code-as-dead"
+  let _treat_invalid_code_as_unreachable =
+    option "-treat-invalid-code-as-unreachable"
   let _unbox_closures = option "-unbox-closures"
   let _unbox_closures_factor = option_with_int "-unbox-closures"
   let _unboxed_types = option "-unboxed-types"
