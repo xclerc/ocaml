@@ -627,6 +627,7 @@ module Evaluated_first_stage = struct
         let closures =
           P.combine_or_not_all_values_known
             (fun closures1 closures2 : _ or_wrong ->
+              (* XXX this is not correct for "meet" *)
               Ok (closures1 @ closures2))
             closures1 closures2
         in
@@ -639,6 +640,7 @@ module Evaluated_first_stage = struct
         let sets_of_closures =
           P.combine_or_not_all_values_known
             (fun sets_of_closures1 sets_of_closures2 : _ or_wrong ->
+              (* XXX this is not correct for "meet" *)
               Ok (sets_of_closures1 @ sets_of_closures2))
             set1 set2
         in
@@ -1242,6 +1244,7 @@ end = struct
         closure_elements;
       }
     | Ok Not_all_values_known | Wrong ->
+      (* CR mshinwell: Wrong needs to do something else *)
       join_and_make_all_functions_non_inlinable ~importer ~type_of_name t1 t2
 
   let create ~importer ~type_of_name (sets : Set_of_closures.t list)
