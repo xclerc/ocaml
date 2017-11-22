@@ -94,20 +94,6 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     | Pasrbint kind when kind = I.kind && precond -> eval I.shift_right
     | _ -> expr, T.value_unknown Other, C.Benefit.zero
 end
-(*
-  val logand : t -> t -> t
-  val logor : t -> t -> t
-  val logxor : t -> t -> t
-  val shift_left : t -> int -> t
-  val shift_right : t -> int -> t
-  val shift_right_logical : t -> int -> t
-  val to_int : t -> int
-  val to_int32 : t -> Int32.t
-  val to_int64 : t -> Int64.t
-  val neg : t -> t
-  val swap : t -> t
-  val compare : t -> t -> int
-*)
 
 module Binary_int_arith (I : sig
   type t
@@ -141,6 +127,29 @@ module Binary_int_arith (I : sig
 
   val cross_product : Set.t -> Set.t -> Pair.Set.t
 end) = struct
+  module Possible_result = struct
+    type t =
+      | Var of Variable.t
+      | Prim of Flambda_primitive.t
+      | Exactly of I.t
+
+    include Identifiable.Make_no_hash (struct
+      type nonrec t = t
+
+      let compare t1 t2 =
+        match t1, t2 with
+        | Var var1, Var var2 -> Variable.compare var1 var2
+        | Prim prim1, Prim prim2 -> Flambda_primitive.compare prim1 prim2
+        | Exactly i1, Exactly i2 -> I.compare i1 i2
+        | Var _, (Prim _ | Exactly _) -> -1
+        | Prim _, Var _ -> 1
+        | Prim _, Exactly _ -> -1
+        | Exactly, (Var _ | Prim _) -> 1
+
+      let print _ppf _t = Misc.fatal_error "Not yet implemented"
+    end)
+  end
+
   type outcome_for_one_side_only =
     | Exactly of I.t
     | This_primitive of Flambda_primitive.t
@@ -148,7 +157,15 @@ end) = struct
     | Cannot_simplify
     | Invalid
 
+  type symmetric_op =
+    | Add
+    | Mul
+    | And
+    | Or
+    | Xor
+
   let simplify env r prim dbg op arg1 arg2 : Flambda.Named.t * R.t =
+    let module P = Possible_result in
     let arg1, ty1 = S.simplify_simple env arg1 in
     let arg2, ty2 = S.simplify_simple env arg2 in
     let proof1 = (E.type_accessor env T.prove_tagged_immediate) arg1 in
@@ -165,7 +182,8 @@ end) = struct
       | Or -> always_some I.or_
       | Xor -> always_some I.xor
     in
-    let op_lhs_unknown ~rhs : outcome_for_one_side_only =
+    let symmetric_op_one_side_unknown (op : symmetric_op) ~this_side
+          : outcome_for_one_side_only =
       let negate_lhs () : outcome_for_one_side_only =
         This_primitive (Unary (Int_arith Neg, arg1))
       in
@@ -173,6 +191,34 @@ end) = struct
       | Add ->
         if I.equal rhs I.zero then The_other_side
         else Cannot_simplify
+      | Mul ->
+        if I.equal rhs I.zero then Exactly I.zero
+        else if I.equal rhs I.one then The_other_side
+        else if I.equal rhs I.minus_one then negate_lhs ()
+        else Cannot_simplify
+      | And ->
+        if I.equal rhs I.minus_one then The_other_side
+        else if I.equal rhs I.zero then Exactly I.zero
+        else Cannot_simplify
+      | Or ->
+        if I.equal rhs I.minus_one then Exactly I.minus_one
+        else if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+      | Xor ->
+        if I.equal lhs I.zero then The_other_side
+        (* CR mshinwell: We don't have bitwise NOT
+        else if I.equal lhs I.minus_one then bitwise NOT of rhs *)
+        else Cannot_simplify
+    in
+    let op_lhs_unknown ~rhs : outcome_for_one_side_only =
+      let negate_lhs () : outcome_for_one_side_only =
+        This_primitive (Unary (Int_arith Neg, arg1))
+      in
+      match op with
+      | Add -> symmetric_op_one_side_unknown Add ~this_side:rhs
+      | And -> symmetric_op_one_side_unknown And ~this_side:rhs
+      | Or -> symmetric_op_one_side_unknown Or ~this_side:rhs
+      | Xor -> symmetric_op_one_side_unknown Xor ~this_side:rhs
       | Sub ->
         if I.equal rhs I.zero then The_other_side
         else Cannot_simplify
@@ -187,20 +233,10 @@ end) = struct
         else if I.equal rhs I.minus_one then negate_lhs ()
         else Cannot_simplify
       | Mod ->
+        (* CR mshinwell: We could be more clever for Mod and And *)
         if I.equal rhs I.zero then Invalid
         else if I.equal rhs I.one then Exactly I.zero
         else if I.equal rhs I.minus_one then Exactly I.zero
-        else Cannot_simplify
-      | And ->
-        if I.equal rhs I.minus_one then The_other_side
-        else if I.equal rhs I.zero then Exactly I.zero
-        else Cannot_simplify
-      | Or ->
-        if I.equal rhs I.minus_one then Exactly I.minus_one
-        else if I.equal rhs I.zero then The_other_side
-        else Cannot_simplify
-      | Xor ->
-        if I.equal rhs I.zero then The_other_side
         else Cannot_simplify
     in
     let op_rhs_unknown ~lhs : outcome_for_one_side_only =
@@ -208,9 +244,10 @@ end) = struct
         This_primitive (Unary (Int_arith Neg, arg2))
       in
       match op with
-      | Add ->
-        if I.equal lhs I.zero then The_other_side
-        else Cannot_simplify
+      | Add -> symmetric_op_one_side_unknown Add ~this_side:lhs
+      | And -> symmetric_op_one_side_unknown And ~this_side:lhs
+      | Or -> symmetric_op_one_side_unknown Or ~this_side:lhs
+      | Xor -> symmetric_op_one_side_unknown Xor ~this_side:lhs
       | Sub ->
         if I.equal lhs I.zero then negate_rhs ()
         else Cannot_simplify
@@ -220,22 +257,58 @@ end) = struct
         else if I.equal lhs I.minus_one then negate_rhs ()
         else Cannot_simplify
       | Div | Mod -> Cannot_simplify
-      | And ->
-        if I.equal lhs I.minus_one then The_other_side
-        else if I.equal lhs I.zero then Exactly I.zero
-        else Cannot_simplify
-      | Or ->
-        if I.equal lhs I.minus_one then Exactly I.minus_one
-        else if I.equal lhs I.zero then The_other_side
-        else Cannot_simplify
-      | Xor ->
-        if I.equal lhs I.zero then The_other_side
-        (* CR mshinwell: We don't have bitwise NOT
-        else if I.equal lhs I.minus_one then bitwise NOT of rhs *)
-        else Cannot_simplify
+    in
+    let only_one_side_known op ints ~other_side_var =
+      let possible_results =
+        I.Set.fold (fun i possible_results ->
+            match possible_results with
+            | None -> None
+            | Some possible_results ->
+              match op i with
+              | Exactly result ->
+                P.Set.add (Exactly result) possible_results
+              | This_primitive prim ->
+                P.Set.add (Prim prim) possible_results
+              | The_other_side ->
+                P.Set.add (Var other_side_var) possible_results
+              | Cannot_simplify -> None
+              | Invalid -> possible_results)
+          ints
+          Some (P.Set.empty)
+      in
+      begin match possible_results with
+      | Some results -> check_possible_results ~possible_results
+      | None -> result_unknown ()
+      end
     in
     let original_term () : Flambda.Named.t =
       Prim (Binary (prim, arg1, arg2), dbg)
+    in
+    let result_unknown () =
+      Flambda.Reachable.reachable (original_term ()),
+        T.unknown (K.Standard_int.to_kind I.kind) Other
+    in
+    let result_invalid () =
+      Flambda.Reachable.invalid (),
+        T.bottom (K.Standard_int.to_kind I.kind)
+    in
+    let check_possible_results ~possible_results =
+      (* CR mshinwell: We may want to bound the size of the set. *)
+      let named, ty =
+        if P.Set.is_empty possible_results then
+          result_invalid ()
+        else
+          let named =
+            match P.Set.get_singleton possible_results with
+            | Some (Exactly i) -> I.term i
+            | Some (Prim prim) -> Flambda.Named.Prim (prim, dbg)
+            | Some (Var var) -> Flambda.Named.Simple (Simple.var var)
+            | None -> original_term ()
+          in
+          let ty = T.these_tagged_immediates possible_results in
+          named, ty
+      in
+      Flambda.Reachable.reachable named, ty
     in
     begin match proof1, proof2 with
     | Proved (Exactly ints1), Proved (Exactly ints2) ->
@@ -244,29 +317,21 @@ end) = struct
         I.Pair.Set.fold (fun (i1, i2) possible_results ->
             match op i1 i2 with
             | None -> possible_results
-            | Some result -> I.Set.add result possible_results)
+            | Some result -> P.Set.add (Exactly result) possible_results)
           all_pairs
-          I.Set.empty
+          P.Set.empty
       in
-      let ty = T.these_tagged_immediates possible_results in
-      let named =
-        if I.Set.is_empty possible_results then
-          Flambda.Reachable.invalid ()
-        else
-          match I.Set.get_singleton possible_results with
-          | Some i -> I.term i
-          | None -> original_term ()
-      in
-      Flambda.Reachable.reachable named, ty
+      check_possible_results ~possible_results
     | Proved (Exactly ints1), Proved Not_all_values_known ->
-
+      only_one_side_known (fun i -> op_rhs_unknown ~lhs:i) ints1
+        ~other_side_var:arg2
     | Proved Not_all_values_known, Proved (Exactly ints2) ->
-
+      only_one_side_known (fun i -> op_lhs_unknown ~rhs:i) ints2
+        ~other_side_var:arg1
     | Proved Not_all_values_known, Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ())
-        ???
+      result_unknown ()
     | Invalid, _ | _, Invalid ->
-      Flambda.Reachable.invalid (), ???
+      result_invalid ()
 end
 
 module Binary_int_arith_tagged_immediate = Binary_int_arith (Targetint)
