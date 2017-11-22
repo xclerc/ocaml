@@ -21,615 +21,12 @@ module E = Simplify_env_and_result.Env
 module R = Simplify_env_and_result.Result
 module T = Flambda_type
 
+module Named = Flambda.Named
+module Reachable = Flambda.Reachable
+
 type named_simplifier =
-  (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t
+  (Variable.t * Named.t) list * Reachable.t
     * Flambda_type.t * R.t
-
-(* Simplification of operations on boxed integers (nativeint, Int32, Int64). *)
-module Simplify_boxed_integer_operator (I : sig
-  type t
-  val kind : Lambda.boxed_integer
-  val zero : t
-  val add : t -> t -> t
-  val sub : t -> t -> t
-  val mul : t -> t -> t
-  val div : t -> t -> t
-  val rem : t -> t -> t
-  val logand : t -> t -> t
-  val logor : t -> t -> t
-  val logxor : t -> t -> t
-  val shift_left : t -> int -> t
-  val shift_right : t -> int -> t
-  val shift_right_logical : t -> int -> t
-  val to_int : t -> int
-  val to_int32 : t -> Int32.t
-  val to_int64 : t -> Int64.t
-  val neg : t -> t
-  val swap : t -> t
-  val compare : t -> t -> int
-end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
-  module C = Inlining_cost
-  module S = Simplify_common
-  module T = Flambda_types
-
-  let simplify_unop (p : Lambda.primitive) (kind : I.t T.boxed_int)
-        expr (n : I.t) =
-    let eval op = S.const_boxed_int_expr expr kind (op n) in
-    let eval_conv kind op = S.const_boxed_int_expr expr kind (op n) in
-    let eval_unboxed op = S.const_int_expr expr (op n) in
-    match p with
-    | Pintofbint kind when kind = I.kind -> eval_unboxed I.to_int
-    | Pcvtbint (kind, Pint32) when kind = I.kind ->
-      eval_conv T.Int32 I.to_int32
-    | Pcvtbint (kind, Pint64) when kind = I.kind ->
-      eval_conv T.Int64 I.to_int64
-    | Pnegbint kind when kind = I.kind -> eval I.neg
-    | Pbbswap kind when kind = I.kind -> eval I.swap
-    | _ -> expr, T.value_unknown Other, C.Benefit.zero
-
-  let simplify_binop (p : Lambda.primitive) (kind : I.t T.boxed_int)
-        expr (n1 : I.t) (n2 : I.t) =
-    let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
-    let non_zero n = (I.compare I.zero n) <> 0 in
-    match p with
-    | Paddbint kind when kind = I.kind -> eval I.add
-    | Psubbint kind when kind = I.kind -> eval I.sub
-    | Pmulbint kind when kind = I.kind -> eval I.mul
-    | Pdivbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.div
-    | Pmodbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.rem
-    | Pandbint kind when kind = I.kind -> eval I.logand
-    | Porbint kind when kind = I.kind -> eval I.logor
-    | Pxorbint kind when kind = I.kind -> eval I.logxor
-    | Pbintcomp (kind, c) when kind = I.kind ->
-      S.const_comparison_expr expr c n1 n2
-    | _ -> expr, T.value_unknown Other, C.Benefit.zero
-
-  let simplify_binop_int (p : Lambda.primitive) (kind : I.t T.boxed_int)
-        expr (n1 : I.t) (n2 : int) ~size_int =
-    let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
-    let precond = 0 <= n2 && n2 < 8 * size_int in
-    match p with
-    | Plslbint kind when kind = I.kind && precond -> eval I.shift_left
-    | Plsrbint kind when kind = I.kind && precond -> eval I.shift_right_logical
-    | Pasrbint kind when kind = I.kind && precond -> eval I.shift_right
-    | _ -> expr, T.value_unknown Other, C.Benefit.zero
-end
-
-module Binary_int_arith (I : sig
-  type t
-
-  val kind : Flambda_kind.Standard_int.t
-  val term : t -> Flambda.Named.t
-
-  val zero : t
-  val one : t
-  val minus_one : t
-
-  val add : t -> t -> t
-  val sub : t -> t -> t
-  val mul : t -> t -> t
-  (* CR mshinwell: We should think very carefully to make sure this is right.
-     Also see whether unsafe division can be exposed to the user.  The
-     current assumption that division by zero reaching here is dead code. *)
-  val div : t -> t -> t option
-  val mod_ : t -> t -> t option
-  val and_ : t -> t -> t
-  val or_ : t -> t -> t
-  val xor : t -> t -> t
-
-  module Identifiable.S with type t := t
-
-  module Pair : sig
-    type nonrec t = t * t
-
-    module Identifiable.S with type t := t
-  end
-
-  val cross_product : Set.t -> Set.t -> Pair.Set.t
-end) = struct
-  module Possible_result = struct
-    type t =
-      | Var of Variable.t
-      | Prim of Flambda_primitive.t
-      | Exactly of I.t
-
-    include Identifiable.Make_no_hash (struct
-      type nonrec t = t
-
-      let compare t1 t2 =
-        match t1, t2 with
-        | Var var1, Var var2 -> Variable.compare var1 var2
-        | Prim prim1, Prim prim2 -> Flambda_primitive.compare prim1 prim2
-        | Exactly i1, Exactly i2 -> I.compare i1 i2
-        | Var _, (Prim _ | Exactly _) -> -1
-        | Prim _, Var _ -> 1
-        | Prim _, Exactly _ -> -1
-        | Exactly, (Var _ | Prim _) -> 1
-
-      let print _ppf _t = Misc.fatal_error "Not yet implemented"
-    end)
-  end
-
-  type outcome_for_one_side_only =
-    | Exactly of I.t
-    | This_primitive of Flambda_primitive.t
-    | The_other_side
-    | Cannot_simplify
-    | Invalid
-
-  type symmetric_op =
-    | Add
-    | Mul
-    | And
-    | Or
-    | Xor
-
-  let simplify env r prim dbg op arg1 arg2 : Flambda.Named.t * R.t =
-    let module P = Possible_result in
-    let arg1, ty1 = S.simplify_simple env arg1 in
-    let arg2, ty2 = S.simplify_simple env arg2 in
-    let proof1 = (E.type_accessor env T.prove_tagged_immediate) arg1 in
-    let proof2 = (E.type_accessor env T.prove_tagged_immediate) arg2 in
-    let op =
-      let always_some f x = Some (f x) in
-      match op with
-      | Add -> always_some I.add
-      | Sub -> always_some I.sub
-      | Mul -> always_some I.mul
-      | Div -> I.div
-      | Mod -> I.mod_
-      | And -> always_some I.and_
-      | Or -> always_some I.or_
-      | Xor -> always_some I.xor
-    in
-    let symmetric_op_one_side_unknown (op : symmetric_op) ~this_side
-          : outcome_for_one_side_only =
-      let negate_lhs () : outcome_for_one_side_only =
-        This_primitive (Unary (Int_arith Neg, arg1))
-      in
-      match op with
-      | Add ->
-        if I.equal rhs I.zero then The_other_side
-        else Cannot_simplify
-      | Mul ->
-        if I.equal rhs I.zero then Exactly I.zero
-        else if I.equal rhs I.one then The_other_side
-        else if I.equal rhs I.minus_one then negate_lhs ()
-        else Cannot_simplify
-      | And ->
-        if I.equal rhs I.minus_one then The_other_side
-        else if I.equal rhs I.zero then Exactly I.zero
-        else Cannot_simplify
-      | Or ->
-        if I.equal rhs I.minus_one then Exactly I.minus_one
-        else if I.equal rhs I.zero then The_other_side
-        else Cannot_simplify
-      | Xor ->
-        if I.equal lhs I.zero then The_other_side
-        (* CR mshinwell: We don't have bitwise NOT
-        else if I.equal lhs I.minus_one then bitwise NOT of rhs *)
-        else Cannot_simplify
-    in
-    let op_lhs_unknown ~rhs : outcome_for_one_side_only =
-      let negate_the_other_side () : outcome_for_one_side_only =
-        This_primitive (Unary (Int_arith Neg, arg1))
-      in
-      match op with
-      | Add -> symmetric_op_one_side_unknown Add ~this_side:rhs
-      | And -> symmetric_op_one_side_unknown And ~this_side:rhs
-      | Or -> symmetric_op_one_side_unknown Or ~this_side:rhs
-      | Xor -> symmetric_op_one_side_unknown Xor ~this_side:rhs
-      | Sub ->
-        if I.equal rhs I.zero then The_other_side
-        else Cannot_simplify
-      | Mul ->
-        if I.equal rhs I.zero then Exactly I.zero
-        else if I.equal rhs I.one then The_other_side
-        else if I.equal rhs I.minus_one then negate_the_other_side ()
-        else Cannot_simplify
-      | Div ->
-        if I.equal rhs I.zero then Invalid
-        else if I.equal rhs I.one then The_other_side
-        else if I.equal rhs I.minus_one then negate_the_other_side ()
-        else Cannot_simplify
-      | Mod ->
-        (* CR mshinwell: We could be more clever for Mod and And *)
-        if I.equal rhs I.zero then Invalid
-        else if I.equal rhs I.one then Exactly I.zero
-        else if I.equal rhs I.minus_one then Exactly I.zero
-        else Cannot_simplify
-    in
-    let op_rhs_unknown ~lhs : outcome_for_one_side_only =
-      let negate_the_other_side () : outcome_for_one_side_only =
-        This_primitive (Unary (Int_arith Neg, arg2))
-      in
-      match op with
-      | Add -> symmetric_op_one_side_unknown Add ~this_side:lhs
-      | And -> symmetric_op_one_side_unknown And ~this_side:lhs
-      | Or -> symmetric_op_one_side_unknown Or ~this_side:lhs
-      | Xor -> symmetric_op_one_side_unknown Xor ~this_side:lhs
-      | Sub ->
-        if I.equal lhs I.zero then negate_the_other_side ()
-        else Cannot_simplify
-      | Mul ->
-        if I.equal lhs I.zero then Exactly I.zero
-        else if I.equal lhs I.one then The_other_side
-        else if I.equal lhs I.minus_one then negate_the_other_side ()
-        else Cannot_simplify
-      | Div | Mod -> Cannot_simplify
-    in
-    let only_one_side_known op ints ~other_side_var =
-      let possible_results =
-        I.Set.fold (fun i possible_results ->
-            match possible_results with
-            | None -> None
-            | Some possible_results ->
-              match op i with
-              | Exactly result ->
-                P.Set.add (Exactly result) possible_results
-              | This_primitive prim ->
-                P.Set.add (Prim prim) possible_results
-              | The_other_side ->
-                P.Set.add (Var other_side_var) possible_results
-              | Cannot_simplify -> None
-              | Invalid -> possible_results)
-          ints
-          Some (P.Set.empty)
-      in
-      begin match possible_results with
-      | Some results -> check_possible_results ~possible_results
-      | None -> result_unknown ()
-      end
-    in
-    let original_term () : Flambda.Named.t =
-      Prim (Binary (prim, arg1, arg2), dbg)
-    in
-    let result_unknown () =
-      Flambda.Reachable.reachable (original_term ()),
-        T.unknown (K.Standard_int.to_kind I.kind) Other
-    in
-    let result_invalid () =
-      Flambda.Reachable.invalid (),
-        T.bottom (K.Standard_int.to_kind I.kind)
-    in
-    let check_possible_results ~possible_results =
-      (* CR mshinwell: We may want to bound the size of the set. *)
-      let named, ty =
-        if P.Set.is_empty possible_results then
-          result_invalid ()
-        else
-          let named =
-            match P.Set.get_singleton possible_results with
-            | Some (Exactly i) -> I.term i
-            | Some (Prim prim) -> Flambda.Named.Prim (prim, dbg)
-            | Some (Var var) -> Flambda.Named.Simple (Simple.var var)
-            | None -> original_term ()
-          in
-          let ty = T.these_tagged_immediates possible_results in
-          named, ty
-      in
-      Flambda.Reachable.reachable named, ty
-    in
-    begin match proof1, proof2 with
-    | Proved (Exactly ints1), Proved (Exactly ints2) ->
-      let all_pairs = I.cross_product ints1 ints2 in
-      let possible_results =
-        I.Pair.Set.fold (fun (i1, i2) possible_results ->
-            match op i1 i2 with
-            | None -> possible_results
-            | Some result -> P.Set.add (Exactly result) possible_results)
-          all_pairs
-          P.Set.empty
-      in
-      check_possible_results ~possible_results
-    | Proved (Exactly ints1), Proved Not_all_values_known ->
-      only_one_side_known (fun i -> op_rhs_unknown ~lhs:i) ints1
-        ~other_side_var:arg2
-    | Proved Not_all_values_known, Proved (Exactly ints2) ->
-      only_one_side_known (fun i -> op_lhs_unknown ~rhs:i) ints2
-        ~other_side_var:arg1
-    | Proved Not_all_values_known, Proved Not_all_values_known ->
-      result_unknown ()
-    | Invalid, _ | _, Invalid ->
-      result_invalid ()
-end
-
-module Binary_int_arith_tagged_immediate = Binary_int_arith (Targetint)
-module Binary_int_arith_naked_int32 = Binary_int_arith (Int32)
-module Binary_int_arith_naked_int64 = Binary_int_arith (Int64)
-module Binary_int_arith_naked_nativeint = Binary_int_arith (Targetint)
-
-let simplify_unary_primitive env r prim arg dbg =
-  match prim with
-  | Block_load of int * field_kind * mutable_or_immutable
-  | Duplicate_array of array_kind * mutable_or_immutable
-  | Duplicate_record of {
-      repr : record_representation;
-      num_fields : int;
-    }
-  | Is_int ->
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_is_tagged_immediate) arg in
-    begin match proof with
-    | Proved is_tagged_immediate ->
-      let simple =
-        if is_tagged_immediate then Simple.const_true else Simple.const_false
-      in
-      let imm =
-        if is_tagged_immediate then Immediate.bool_true
-        else Immediate.bool_false
-      in
-      (* CR mshinwell: naming inconsistency const_true / bool_true *)
-      Flambda.Reachable.reachable (Simple simple),
-        T.this_tagged_immediate imm
-    | Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ()),
-        T.these_tagged_immediates Immediate.all_bools
-    | Invalid -> 
-      Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
-    end
-  | Get_tag ->
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let eval, _canonical_name = (E.type_accessor env T.Evaluated.create) arg in
-    let tags = T.Evaluated.tags eval in
-    begin match tags with
-    | Not_all_values_known ->
-      original_term (), T.these_tagged_immediates Tag.all_as_targetints
-    | Exactly tags ->
-      if Targetint.Set.is_empty tags then
-        Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
-      else
-        begin match Targetint.Set.get_singleton tags with
-        | Some tag ->
-          (* CR mshinwell: Add [Named.this_tagged_immediate] etc? *)
-          let simple = Simple.const (Tagged_immediate tag) in
-          Flambda.Reachable.reachable (Simple simple),
-            T.this_tagged_immediate tag
-        | None ->
-          original_term (), T.these_tagged_immediates tags
-        end
-    end
-  | String_length of string_or_bytes
-  | Swap_byte_endianness of Flambda_kind.Standard_int.t
-  | Int_as_pointer
-  | Opaque_identity
-  | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
-  | Int_conv of {
-      src : Flambda_kind.Standard_int.t;
-      dst : Flambda_kind.Standard_int.t;
-    }
-  | Float_arith of unary_float_arith_op
-  | Int_of_float ->
-    (* CR mshinwell: We need to validate that the backend compiles
-       the [Int_of_float] primitive in the same way as
-       [Targetint.of_float].  Ditto for [Float_of_int].  (For the record,
-       [Pervasives.int_of_float] and [Nativeint.of_float] on [nan] produce
-       wildly different results). *)
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_naked_float) arg in
-    begin match proof with
-    | Proved fs ->
-      begin match Float.Set.get_singleton fs with
-      | Some f ->
-        let i =
-          (* It seems as if the various [float_of_int] functions never raise
-             an exception even in the case of NaN or infinity. *)
-          (* CR mshinwell: We should be sure this semantics is reasonable. *)
-          Immediate.int (Targetint.of_float f)
-        in
-        let simple = Simple.const (Tagged_immediate i) in
-        Flambda.Reachable.reachable (Simple simple),
-          T.this_tagged_immediate i
-      | None ->
-        let is =
-          Float.Set.fold (fun f is ->
-              let i = Immediate.int (Targetint.of_float f) in
-              Immediate.Set.add i is)
-            fs
-            Immediate.Set.empty
-        in
-        Flambda.Reachable.reachable (original_term ()),
-          T.these_tagged_immediates is
-      end
-    | Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ()),
-        T.unknown (Flambda_kind.value Can_scan) Other
-    | Invalid -> 
-      Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
-    end
-  | Float_of_int ->
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_tagged_immediate) arg in
-    begin match proof with
-    | Proved is ->
-      begin match Immediate.Set.get_singleton is with
-      | Some i ->
-        let f = Targetint.to_float (Immediate.to_targetint i) in
-        let simple = Simple.const (Naked_float f) in
-        Flambda.Reachable.reachable (Simple simple),
-          T.this_naked_float f
-      | None ->
-        let fs =
-          Float.Set.fold (fun i fs ->
-              let f = Targetint.to_float (Immediate.to_targetint i) in
-              Float.Set.add f fs)
-            is
-            Float.Set.empty
-        in
-        Flambda.Reachable.reachable (original_term ()),
-          T.these_naked_floats fs
-      end
-    | Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ()),
-        T.unknown (Flambda_kind.value Can_scan) Other
-    | Invalid -> 
-      Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
-    end
-  | Array_length array_kind ->
-
-  | Bigarray_length { dimension : int; } ->
-
-  | Unbox_number Naked_float ->
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_float) arg in
-    begin match proof with
-    | Proved fs ->
-      begin match Float.Set.get_singleton fs with
-      | Some f ->
-        let simple = Simple.const (Naked_float f) in
-        Flambda.Reachable.reachable (Simple simple), T.this_naked_float f
-      | None ->
-        Flambda.Reachable.reachable (original_term ()),
-          T.these_naked_floats fs
-      end
-    | Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ()),
-        T.unknown Naked_float Other
-    | Invalid -> 
-      Flambda.Reachable.invalid (), T.bottom Naked_float
-    end
-  | Unbox_number Naked_int32 ->
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_int32) arg in
-    begin match proof with
-    | Proved fs ->
-      begin match Int32.Set.get_singleton fs with
-      | Some f ->
-        let simple = Simple.const (Naked_int32 f) in
-        Flambda.Reachable.reachable (Simple simple), T.this_naked_int32 f
-      | None ->
-        Flambda.Reachable.reachable (original_term ()),
-          T.these_naked_int32s fs
-      end
-    | Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ()),
-        T.unknown Naked_int32 Other
-    | Invalid -> 
-      Flambda.Reachable.invalid (), T.bottom Naked_int32
-    end
-  | Unbox_number Naked_int64 ->
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_int64) arg in
-    begin match proof with
-    | Proved fs ->
-      begin match Int64.Set.get_singleton fs with
-      | Some f ->
-        let simple = Simple.const (Naked_int64 f) in
-        Flambda.Reachable.reachable (Simple simple), T.this_naked_int64 f
-      | None ->
-        Flambda.Reachable.reachable (original_term ()),
-          T.these_naked_int64s fs
-      end
-    | Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ()),
-        T.unknown Naked_int64 Other
-    | Invalid -> 
-      Flambda.Reachable.invalid (), T.bottom Naked_int64
-    end
-  | Unbox_number Naked_nativeint ->
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_nativeint) arg in
-    begin match proof with
-    | Proved fs ->
-      begin match Targetint.Set.get_singleton fs with
-      | Some f ->
-        let simple = Simple.const (Naked_nativeint f) in
-        Flambda.Reachable.reachable (Simple simple), T.this_naked_nativeint f
-      | None ->
-        Flambda.Reachable.reachable (original_term ()),
-          T.these_naked_nativeints fs
-      end
-    | Proved Not_all_values_known ->
-      Flambda.Reachable.reachable (original_term ()),
-        T.unknown Naked_nativeint Other
-    | Invalid -> 
-      Flambda.Reachable.invalid (), T.bottom Naked_nativeint
-    end
-  | Box_number of Flambda_kind.Boxable_number.t
-  | Project_closure of Closure_id.Set.t
-  | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
-  | Project_var of Var_within_closure.t Closure_id.Map.t
-
-let simplify_binary_primitive env r prim arg1 arg2 dbg =
-  match prim with
-  | Block_load_computed_index
-  | Block_set of int * block_set_kind * init_or_assign
-
-  | Int_arith (kind, op) ->
-    begin match kind with
-    | Tagged_immediate ->
-      Binary_int_arith_tagged_immediate.simplify env r op arg1 arg2
-    | Naked_int32 ->
-      Binary_int_arith_naked_int32.simplify env r op arg1 arg2
-    | Naked_int64 ->
-      Binary_int_arith_naked_int64.simplify env r op arg1 arg2
-    | Naked_nativeint ->
-      Binary_int_arith_naked_nativeint.simplify env r op arg1 arg2
-    end
-
-  | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
-  | Int_comp of Flambda_kind.Standard_int.t * comparison
-  | Int_comp_unsigned of comparison
-  | Float_arith of binary_float_arith_op
-  | Float_comp of comparison
-  | Bit_test
-  | Array_load of array_kind
-  | String_load of string_accessor_width
-  | Bigstring_load of bigstring_accessor_width
-
-let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =
-  match prim with
-  | Block_set_computed of Flambda_kind.scanning * init_or_assign
-  | Bytes_set of string_accessor_width
-  | Array_set of array_kind
-  | Bigstring_set of bigstring_accessor_width
-
-let simplify_variadic_primitive env r prim args dbg =
-  match prim with
-  | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
-  | Make_array of array_kind * mutable_or_immutable
-  | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
-  | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
-
-
-
-
-
-
-
-
-
-(*
-module Simplify_boxed_nativeint = Simplify_boxed_integer_operator (struct
-  include Nativeint
-  let to_int64 = Int64.of_nativeint
-  let swap = S.swapnative
-  let kind = Lambda.Pnativeint
-end)
-
-module Simplify_boxed_int32 = Simplify_boxed_integer_operator (struct
-  include Int32
-  let to_int32 i = i
-  let to_int64 = Int64.of_int32
-  let swap = S.swap32
-  let kind = Lambda.Pint32
-end)
-
-module Simplify_boxed_int64 = Simplify_boxed_integer_operator (struct
-  include Int64
-  let to_int64 i = i
-  let swap = S.swap64
-  let kind = Lambda.Pint64
-end)
-*)
 
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)
@@ -643,12 +40,12 @@ let simplify_project_closure env r
   match T.prove_set_of_closures ~importer set_of_closures_ty with
   | Wrong ->
     let ty = Flambda_type.bottom (Flambda_kind.value Must_scan) in
-    let term = Flambda.Reachable.invalid () in
+    let term = Reachable.invalid () in
     [], ty, term
   | Unknown ->
     let ty = Flambda_type.bottom (Flambda_kind.value Must_scan) in
     let term =
-      Flambda.Reachable.reachable (Project_closure {
+      Reachable.reachable (Project_closure {
         set_of_closures;
         closure_id;
       })
@@ -690,14 +87,14 @@ let simplify_project_closure env r
       let var, var_ty = freshen_and_squash_aliases env var in
       let r = R.map_benefit r (B.remove_projection projection) in
       if Flambda_type.is_bottom ~importer var_ty then
-        [], Flambda.Reachable.invalid (), r
+        [], Reachable.invalid (), r
       else
-        [], Flambda.Reachable.reachable (Var var), r
+        [], Reachable.reachable (Var var), r
     | None ->
       assert false
 (* XXX for pchambart to fix: 
       let if_not_reference_recursive_function_directly ()
-        : (Variable.t * Flambda.Named.t) list * Flambda.Named.t_reachable
+        : (Variable.t * Named.t) list * Named.t_reachable
             * R.t =
         let set_of_closures_var =
           match set_of_closures_var with
@@ -871,7 +268,7 @@ let simplify_move_within_set_of_closures env r
                   T.closure ~set_of_closures_var ~set_of_closures_symbol
                     (Closure_id.Map.singleton move_to value_set_of_closures)
                 in
-                let bindings : (Variable.t * Flambda.Named.t) list = [
+                let bindings : (Variable.t * Named.t) list = [
                   set_of_closures_var, Symbol set_of_closures_symbol;
                 ]
                 in
@@ -954,7 +351,7 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
         let r = R.map_benefit r (B.remove_projection projection) in
         [], Reachable (Var var), var_ty)
     | None ->
-      let expr : Flambda.Named.t =
+      let expr : Named.t =
         Project_var { closure; var = project_var_var; }
       in
       let expr =
@@ -971,10 +368,630 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
       simpler_equivalent_term env r expr ty
     end
   | Unknown ->
-    [], Flambda.Reachable.reachable (Project_var { project_var with closure }),
+    [], Reachable.reachable (Project_var { project_var with closure }),
       r
   | Wrong ->
-    [], Flambda.Reachable.invalid (), r
+    [], Reachable.invalid (), r
+
+(*
+module Simplify_boxed_integer_operator (I : sig
+  type t
+  val kind : Lambda.boxed_integer
+  val zero : t
+  val add : t -> t -> t
+  val sub : t -> t -> t
+  val mul : t -> t -> t
+  val div : t -> t -> t
+  val rem : t -> t -> t
+  val logand : t -> t -> t
+  val logor : t -> t -> t
+  val logxor : t -> t -> t
+  val shift_left : t -> int -> t
+  val shift_right : t -> int -> t
+  val shift_right_logical : t -> int -> t
+  val to_int : t -> int
+  val to_int32 : t -> Int32.t
+  val to_int64 : t -> Int64.t
+  val neg : t -> t
+  val swap : t -> t
+  val compare : t -> t -> int
+end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
+  module C = Inlining_cost
+  module S = Simplify_common
+  module T = Flambda_types
+
+  let simplify_unop (p : Lambda.primitive) (kind : I.t T.boxed_int)
+        expr (n : I.t) =
+    let eval op = S.const_boxed_int_expr expr kind (op n) in
+    let eval_conv kind op = S.const_boxed_int_expr expr kind (op n) in
+    let eval_unboxed op = S.const_int_expr expr (op n) in
+    match p with
+    | Pintofbint kind when kind = I.kind -> eval_unboxed I.to_int
+    | Pcvtbint (kind, Pint32) when kind = I.kind ->
+      eval_conv T.Int32 I.to_int32
+    | Pcvtbint (kind, Pint64) when kind = I.kind ->
+      eval_conv T.Int64 I.to_int64
+    | Pnegbint kind when kind = I.kind -> eval I.neg
+    | Pbbswap kind when kind = I.kind -> eval I.swap
+    | _ -> expr, T.value_unknown Other, C.Benefit.zero
+
+  let simplify_binop (p : Lambda.primitive) (kind : I.t T.boxed_int)
+        expr (n1 : I.t) (n2 : I.t) =
+    let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
+    let non_zero n = (I.compare I.zero n) <> 0 in
+    match p with
+    | Paddbint kind when kind = I.kind -> eval I.add
+    | Psubbint kind when kind = I.kind -> eval I.sub
+    | Pmulbint kind when kind = I.kind -> eval I.mul
+    | Pdivbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.div
+    | Pmodbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.rem
+    | Pandbint kind when kind = I.kind -> eval I.logand
+    | Porbint kind when kind = I.kind -> eval I.logor
+    | Pxorbint kind when kind = I.kind -> eval I.logxor
+    | Pbintcomp (kind, c) when kind = I.kind ->
+      S.const_comparison_expr expr c n1 n2
+    | _ -> expr, T.value_unknown Other, C.Benefit.zero
+
+  let simplify_binop_int (p : Lambda.primitive) (kind : I.t T.boxed_int)
+        expr (n1 : I.t) (n2 : int) ~size_int =
+    let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
+    let precond = 0 <= n2 && n2 < 8 * size_int in
+    match p with
+    | Plslbint kind when kind = I.kind && precond -> eval I.shift_left
+    | Plsrbint kind when kind = I.kind && precond -> eval I.shift_right_logical
+    | Pasrbint kind when kind = I.kind && precond -> eval I.shift_right
+    | _ -> expr, T.value_unknown Other, C.Benefit.zero
+end
+*)
+
+module Binary_int_arith (I : sig
+  type t
+
+  val kind : Flambda_kind.Standard_int.t
+  val term : t -> Named.t
+
+  val zero : t
+  val one : t
+  val minus_one : t
+
+  val add : t -> t -> t
+  val sub : t -> t -> t
+  val mul : t -> t -> t
+  (* CR mshinwell: We should think very carefully to make sure this is right.
+     Also see whether unsafe division can be exposed to the user.  The
+     current assumption that division by zero reaching here is dead code. *)
+  val div : t -> t -> t option
+  val mod_ : t -> t -> t option
+  val and_ : t -> t -> t
+  val or_ : t -> t -> t
+  val xor : t -> t -> t
+
+  module Identifiable.S with type t := t
+
+  module Pair : sig
+    type nonrec t = t * t
+
+    module Identifiable.S with type t := t
+  end
+
+  val cross_product : Set.t -> Set.t -> Pair.Set.t
+end) = struct
+  module Possible_result = struct
+    type t =
+      | Var of Variable.t
+      | Prim of Flambda_primitive.t
+      | Exactly of I.t
+
+    include Identifiable.Make_no_hash (struct
+      type nonrec t = t
+
+      let compare t1 t2 =
+        match t1, t2 with
+        | Var var1, Var var2 -> Variable.compare var1 var2
+        | Prim prim1, Prim prim2 -> Flambda_primitive.compare prim1 prim2
+        | Exactly i1, Exactly i2 -> I.compare i1 i2
+        | Var _, (Prim _ | Exactly _) -> -1
+        | Prim _, Var _ -> 1
+        | Prim _, Exactly _ -> -1
+        | Exactly, (Var _ | Prim _) -> 1
+
+      let print _ppf _t = Misc.fatal_error "Not yet implemented"
+    end)
+  end
+
+  type outcome_for_one_side_only =
+    | Exactly of I.t
+    | This_primitive of Flambda_primitive.t
+    | The_other_side
+    | Cannot_simplify
+    | Invalid
+
+  type symmetric_op =
+    | Add
+    | Mul
+    | And
+    | Or
+    | Xor
+
+  let simplify env r prim dbg op arg1 arg2 : Named.t * R.t =
+    let module P = Possible_result in
+    let arg1, ty1 = S.simplify_simple env arg1 in
+    let arg2, ty2 = S.simplify_simple env arg2 in
+    let proof1 = (E.type_accessor env T.prove_tagged_immediate) arg1 in
+    let proof2 = (E.type_accessor env T.prove_tagged_immediate) arg2 in
+    let op =
+      let always_some f x = Some (f x) in
+      match op with
+      | Add -> always_some I.add
+      | Sub -> always_some I.sub
+      | Mul -> always_some I.mul
+      | Div -> I.div
+      | Mod -> I.mod_
+      | And -> always_some I.and_
+      | Or -> always_some I.or_
+      | Xor -> always_some I.xor
+    in
+    let symmetric_op_one_side_unknown (op : symmetric_op) ~this_side
+          : outcome_for_one_side_only =
+      let negate_lhs () : outcome_for_one_side_only =
+        This_primitive (Unary (Int_arith Neg, arg1))
+      in
+      match op with
+      | Add ->
+        if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+      | Mul ->
+        if I.equal rhs I.zero then Exactly I.zero
+        else if I.equal rhs I.one then The_other_side
+        else if I.equal rhs I.minus_one then negate_lhs ()
+        else Cannot_simplify
+      | And ->
+        if I.equal rhs I.minus_one then The_other_side
+        else if I.equal rhs I.zero then Exactly I.zero
+        else Cannot_simplify
+      | Or ->
+        if I.equal rhs I.minus_one then Exactly I.minus_one
+        else if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+      | Xor ->
+        if I.equal lhs I.zero then The_other_side
+        (* CR mshinwell: We don't have bitwise NOT
+        else if I.equal lhs I.minus_one then bitwise NOT of rhs *)
+        else Cannot_simplify
+    in
+    let op_lhs_unknown ~rhs : outcome_for_one_side_only =
+      let negate_the_other_side () : outcome_for_one_side_only =
+        This_primitive (Unary (Int_arith Neg, arg1))
+      in
+      match op with
+      | Add -> symmetric_op_one_side_unknown Add ~this_side:rhs
+      | And -> symmetric_op_one_side_unknown And ~this_side:rhs
+      | Or -> symmetric_op_one_side_unknown Or ~this_side:rhs
+      | Xor -> symmetric_op_one_side_unknown Xor ~this_side:rhs
+      | Sub ->
+        if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+      | Mul ->
+        if I.equal rhs I.zero then Exactly I.zero
+        else if I.equal rhs I.one then The_other_side
+        else if I.equal rhs I.minus_one then negate_the_other_side ()
+        else Cannot_simplify
+      | Div ->
+        if I.equal rhs I.zero then Invalid
+        else if I.equal rhs I.one then The_other_side
+        else if I.equal rhs I.minus_one then negate_the_other_side ()
+        else Cannot_simplify
+      | Mod ->
+        (* CR mshinwell: We could be more clever for Mod and And *)
+        if I.equal rhs I.zero then Invalid
+        else if I.equal rhs I.one then Exactly I.zero
+        else if I.equal rhs I.minus_one then Exactly I.zero
+        else Cannot_simplify
+    in
+    let op_rhs_unknown ~lhs : outcome_for_one_side_only =
+      let negate_the_other_side () : outcome_for_one_side_only =
+        This_primitive (Unary (Int_arith Neg, arg2))
+      in
+      match op with
+      | Add -> symmetric_op_one_side_unknown Add ~this_side:lhs
+      | And -> symmetric_op_one_side_unknown And ~this_side:lhs
+      | Or -> symmetric_op_one_side_unknown Or ~this_side:lhs
+      | Xor -> symmetric_op_one_side_unknown Xor ~this_side:lhs
+      | Sub ->
+        if I.equal lhs I.zero then negate_the_other_side ()
+        else Cannot_simplify
+      | Mul ->
+        if I.equal lhs I.zero then Exactly I.zero
+        else if I.equal lhs I.one then The_other_side
+        else if I.equal lhs I.minus_one then negate_the_other_side ()
+        else Cannot_simplify
+      | Div | Mod -> Cannot_simplify
+    in
+    let only_one_side_known op ints ~other_side_var =
+      let possible_results =
+        I.Set.fold (fun i possible_results ->
+            match possible_results with
+            | None -> None
+            | Some possible_results ->
+              match op i with
+              | Exactly result ->
+                P.Set.add (Exactly result) possible_results
+              | This_primitive prim ->
+                P.Set.add (Prim prim) possible_results
+              | The_other_side ->
+                P.Set.add (Var other_side_var) possible_results
+              | Cannot_simplify -> None
+              | Invalid -> possible_results)
+          ints
+          Some (P.Set.empty)
+      in
+      begin match possible_results with
+      | Some results -> check_possible_results ~possible_results
+      | None -> result_unknown ()
+      end
+    in
+    let original_term () : Named.t =
+      Prim (Binary (prim, arg1, arg2), dbg)
+    in
+    let result_unknown () =
+      Reachable.reachable (original_term ()),
+        T.unknown (K.Standard_int.to_kind I.kind) Other
+    in
+    let result_invalid () =
+      Reachable.invalid (),
+        T.bottom (K.Standard_int.to_kind I.kind)
+    in
+    let check_possible_results ~possible_results =
+      (* CR mshinwell: We may want to bound the size of the set. *)
+      let named, ty =
+        if P.Set.is_empty possible_results then
+          result_invalid ()
+        else
+          let named =
+            match P.Set.get_singleton possible_results with
+            | Some (Exactly i) -> I.term i
+            | Some (Prim prim) -> Named.Prim (prim, dbg)
+            | Some (Var var) -> Named.Simple (Simple.var var)
+            | None -> original_term ()
+          in
+          let ty = T.these_tagged_immediates possible_results in
+          named, ty
+      in
+      Reachable.reachable named, ty
+    in
+    begin match proof1, proof2 with
+    | Proved (Exactly ints1), Proved (Exactly ints2) ->
+      let all_pairs = I.cross_product ints1 ints2 in
+      let possible_results =
+        I.Pair.Set.fold (fun (i1, i2) possible_results ->
+            match op i1 i2 with
+            | None -> possible_results
+            | Some result -> P.Set.add (Exactly result) possible_results)
+          all_pairs
+          P.Set.empty
+      in
+      check_possible_results ~possible_results
+    | Proved (Exactly ints1), Proved Not_all_values_known ->
+      only_one_side_known (fun i -> op_rhs_unknown ~lhs:i) ints1
+        ~other_side_var:arg2
+    | Proved Not_all_values_known, Proved (Exactly ints2) ->
+      only_one_side_known (fun i -> op_lhs_unknown ~rhs:i) ints2
+        ~other_side_var:arg1
+    | Proved Not_all_values_known, Proved Not_all_values_known ->
+      result_unknown ()
+    | Invalid, _ | _, Invalid ->
+      result_invalid ()
+end
+
+module Binary_int_arith_tagged_immediate = Binary_int_arith (Targetint)
+module Binary_int_arith_naked_int32 = Binary_int_arith (Int32)
+module Binary_int_arith_naked_int64 = Binary_int_arith (Int64)
+module Binary_int_arith_naked_nativeint = Binary_int_arith (Targetint)
+
+let simplify_unary_primitive env r prim arg dbg =
+  match prim with
+  | Block_load of int * field_kind * mutable_or_immutable
+  | Duplicate_array of array_kind * mutable_or_immutable
+  | Duplicate_record of {
+      repr : record_representation;
+      num_fields : int;
+    }
+  | Is_int ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_is_tagged_immediate) arg in
+    begin match proof with
+    | Proved is_tagged_immediate ->
+      let simple =
+        if is_tagged_immediate then Simple.const_true else Simple.const_false
+      in
+      let imm =
+        if is_tagged_immediate then Immediate.bool_true
+        else Immediate.bool_false
+      in
+      (* CR mshinwell: naming inconsistency const_true / bool_true *)
+      Reachable.reachable (Simple simple),
+        T.this_tagged_immediate imm
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.these_tagged_immediates Immediate.all_bools
+    | Invalid -> 
+      Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+    end
+  | Get_tag ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let eval, _canonical_name = (E.type_accessor env T.Evaluated.create) arg in
+    let tags = T.Evaluated.tags eval in
+    begin match tags with
+    | Not_all_values_known ->
+      original_term (), T.these_tagged_immediates Tag.all_as_targetints
+    | Exactly tags ->
+      if Targetint.Set.is_empty tags then
+        Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+      else
+        begin match Targetint.Set.get_singleton tags with
+        | Some tag ->
+          (* CR mshinwell: Add [Named.this_tagged_immediate] etc? *)
+          let simple = Simple.const (Tagged_immediate tag) in
+          Reachable.reachable (Simple simple),
+            T.this_tagged_immediate tag
+        | None ->
+          original_term (), T.these_tagged_immediates tags
+        end
+    end
+  | String_length string_or_bytes ->
+
+  | Swap_byte_endianness kind ->
+
+  | Int_as_pointer ->
+    let arg, _ty = S.simplify_simple env arg in
+    (* There is no check on the kind of [arg]: a fatal error resulting from
+       such could potentially be triggered by wrong user code. *)
+    Prim (Unary (prim, arg), dbg), T.unknown Flambda_kind.naked_immediate Other
+  | Opaque_identity ->
+    let arg, ty = S.simplify_simple env arg in
+    let kind = (E.type_accessor env T.kind) ty in
+    Prim (Unary (prim, arg), dbg), T.unknown kind Other
+  | Int_arith (kind, op) ->
+
+  | Int_conv { src; dst; } ->
+
+  | Float_arith op ->
+
+  | Int_of_float ->
+    (* CR mshinwell: We need to validate that the backend compiles
+       the [Int_of_float] primitive in the same way as
+       [Targetint.of_float].  Ditto for [Float_of_int].  (For the record,
+       [Pervasives.int_of_float] and [Nativeint.of_float] on [nan] produce
+       wildly different results). *)
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_naked_float) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Float.Set.get_singleton fs with
+      | Some f ->
+        let i =
+          (* It seems as if the various [float_of_int] functions never raise
+             an exception even in the case of NaN or infinity. *)
+          (* CR mshinwell: We should be sure this semantics is reasonable. *)
+          Immediate.int (Targetint.of_float f)
+        in
+        let simple = Simple.const (Tagged_immediate i) in
+        Reachable.reachable (Simple simple),
+          T.this_tagged_immediate i
+      | None ->
+        let is =
+          Float.Set.fold (fun f is ->
+              let i = Immediate.int (Targetint.of_float f) in
+              Immediate.Set.add i is)
+            fs
+            Immediate.Set.empty
+        in
+        Reachable.reachable (original_term ()),
+          T.these_tagged_immediates is
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.unknown (Flambda_kind.value Can_scan) Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+    end
+  | Float_of_int ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_tagged_immediate) arg in
+    begin match proof with
+    | Proved is ->
+      begin match Immediate.Set.get_singleton is with
+      | Some i ->
+        let f = Targetint.to_float (Immediate.to_targetint i) in
+        let simple = Simple.const (Naked_float f) in
+        Reachable.reachable (Simple simple),
+          T.this_naked_float f
+      | None ->
+        let fs =
+          Float.Set.fold (fun i fs ->
+              let f = Targetint.to_float (Immediate.to_targetint i) in
+              Float.Set.add f fs)
+            is
+            Float.Set.empty
+        in
+        Reachable.reachable (original_term ()),
+          T.these_naked_floats fs
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.unknown (Flambda_kind.value Can_scan) Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+    end
+  | Array_length array_kind ->
+
+  | Bigarray_length { dimension : int; } ->
+
+  | Unbox_number Naked_float ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_float) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Float.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_float f) in
+        Reachable.reachable (Simple simple), T.this_naked_float f
+      | None ->
+        Reachable.reachable (original_term ()),
+          T.these_naked_floats fs
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.unknown Naked_float Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom Naked_float
+    end
+  | Unbox_number Naked_int32 ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_int32) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Int32.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_int32 f) in
+        Reachable.reachable (Simple simple), T.this_naked_int32 f
+      | None ->
+        Reachable.reachable (original_term ()),
+          T.these_naked_int32s fs
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.unknown Naked_int32 Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom Naked_int32
+    end
+  | Unbox_number Naked_int64 ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_int64) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Int64.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_int64 f) in
+        Reachable.reachable (Simple simple), T.this_naked_int64 f
+      | None ->
+        Reachable.reachable (original_term ()),
+          T.these_naked_int64s fs
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.unknown Naked_int64 Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom Naked_int64
+    end
+  | Unbox_number Naked_nativeint ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_nativeint) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Targetint.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_nativeint f) in
+        Reachable.reachable (Simple simple), T.this_naked_nativeint f
+      | None ->
+        Reachable.reachable (original_term ()),
+          T.these_naked_nativeints fs
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.unknown Naked_nativeint Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom Naked_nativeint
+    end
+  | Box_number Naked_float ->
+
+  | Project_closure of Closure_id.Set.t
+
+  | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
+
+  | Project_var of Var_within_closure.t Closure_id.Map.t
+
+let simplify_binary_primitive env r prim arg1 arg2 dbg =
+  match prim with
+  | Block_load_computed_index
+  | Block_set of int * block_set_kind * init_or_assign
+
+  | Int_arith (kind, op) ->
+    begin match kind with
+    | Tagged_immediate ->
+      Binary_int_arith_tagged_immediate.simplify env r op arg1 arg2
+    | Naked_int32 ->
+      Binary_int_arith_naked_int32.simplify env r op arg1 arg2
+    | Naked_int64 ->
+      Binary_int_arith_naked_int64.simplify env r op arg1 arg2
+    | Naked_nativeint ->
+      Binary_int_arith_naked_nativeint.simplify env r op arg1 arg2
+    end
+
+  | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
+  | Int_comp of Flambda_kind.Standard_int.t * comparison
+  | Int_comp_unsigned of comparison
+  | Float_arith of binary_float_arith_op
+  | Float_comp of comparison
+  | Bit_test
+  | Array_load of array_kind
+  | String_load of string_accessor_width
+  | Bigstring_load of bigstring_accessor_width
+
+let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =
+  match prim with
+  | Block_set_computed of Flambda_kind.scanning * init_or_assign
+  | Bytes_set of string_accessor_width
+  | Array_set of array_kind
+  | Bigstring_set of bigstring_accessor_width
+
+let simplify_variadic_primitive env r prim args dbg =
+  match prim with
+  | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
+  | Make_array of array_kind * mutable_or_immutable
+  | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
+  | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
+
+
+
+
+
+
+
+
+
+(*
+module Simplify_boxed_nativeint = Simplify_boxed_integer_operator (struct
+  include Nativeint
+  let to_int64 = Int64.of_nativeint
+  let swap = S.swapnative
+  let kind = Lambda.Pnativeint
+end)
+
+module Simplify_boxed_int32 = Simplify_boxed_integer_operator (struct
+  include Int32
+  let to_int32 i = i
+  let to_int64 = Int64.of_int32
+  let swap = S.swap32
+  let kind = Lambda.Pint32
+end)
+
+module Simplify_boxed_int64 = Simplify_boxed_integer_operator (struct
+  include Int64
+  let to_int64 i = i
+  let swap = S.swap64
+  let kind = Lambda.Pint64
+end)
+*)
+
 
 let simplify_set_of_closures original_env r
       (set_of_closures : Flambda.Set_of_closures.t)
@@ -1129,7 +1146,7 @@ let simplify_set_of_closures original_env r
   set_of_closures, ty, r
 
 let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
-      ~size_int ~big_endian : Flambda.Named.t * T.t * Inlining_cost.Benefit.t =
+      ~size_int ~big_endian : Named.t * T.t * Inlining_cost.Benefit.t =
   let fpc = !Clflags.float_const_prop in
   match p with
   | Pmakeblock(tag_int, Flambda.Immutable, shape) ->
@@ -1401,8 +1418,8 @@ let simplify_primitive env r prim args dbg : named_simplifier =
     let r = R.map_benefit r (B.remove_projection projection) in
     [], Reachable (Var var), var_ty
   | None ->
-    let default () : (Variable.t * Flambda.Named.t) list
-          * Flambda.Named.t_reachable * R.t =
+    let default () : (Variable.t * Named.t) list
+          * Named.t_reachable * R.t =
       let named, ty, benefit =
         (* CR mshinwell: if the primitive is pure, add it to the environment
            so CSE will work.  Need to be careful if the variable being
@@ -1432,7 +1449,7 @@ let simplify_primitive env r prim args dbg : named_simplifier =
       | None ->
         begin match T.get_field arg_ty ~field_index with
         | Invalid _ ->
-          [], Flambda.Reachable.invalid (), r
+          [], Reachable.invalid (), r
         | Ok ty ->
           let tree, ty =
             match arg_ty.symbol with
@@ -1458,7 +1475,7 @@ let simplify_primitive env r prim args dbg : named_simplifier =
         [_block; _field; _value],
         [block_ty; field_ty; value_ty] ->
       if T.invalid_to_mutate block_ty then begin
-        [], Flambda.Reachable.invalid (), r
+        [], Reachable.invalid (), r
       end else begin
         let size = T.length_of_array block_ty in
         let index = T.reify_as_int field_ty in
@@ -1482,17 +1499,17 @@ let simplify_primitive env r prim args dbg : named_simplifier =
         if convert_to_raise then begin
           (* CR mshinwell: move to separate function *)
           let invalid_argument_var = Variable.create "invalid_argument" in
-          let invalid_argument : Flambda.Named.t =
+          let invalid_argument : Named.t =
             let module Backend = (val (E.backend env) : Backend_intf.S) in
             Symbol (Backend.symbol_for_global'
               Predef.ident_invalid_argument)
           in
           let msg_var = Variable.create "msg" in
-          let msg : Flambda.Named.t =
+          let msg : Named.t =
             Allocated_const (String "index out of bounds")
           in
           let exn_var = Variable.create "exn" in
-          let exn : Flambda.Named.t =
+          let exn : Named.t =
             Prim (Pmakeblock (0, Immutable, None),
               [invalid_argument_var; msg_var], dbg)
           in
@@ -1515,7 +1532,7 @@ let simplify_primitive env r prim args dbg : named_simplifier =
                 (* CR pchambart: Do a proper warning here *)
                 Misc.fatal_errorf "Assignment of a float to a specialised \
                                   non-float array: %a"
-                  Flambda.Named.print tree
+                  Named.print tree
               end;
               Lambda.Pfloatarray
               (* CR pchambart: This should be accounted by the benefit *)
@@ -1533,7 +1550,7 @@ let simplify_primitive env r prim args dbg : named_simplifier =
       end
     | Psetfield _, _block::_, block_ty::_ ->
       if T.invalid_to_mutate block_ty then begin
-        [], Flambda.Reachable.invalid (), r
+        [], Reachable.invalid (), r
       end else begin
         [], Reachable tree, ret r (T.unknown Other)
       end
@@ -1586,7 +1603,7 @@ let simplify_primitive env r prim args dbg : named_simplifier =
     - extra [Let]-bindings to be inserted prior to the one being simplified;
     - the simplified [named];
     - the new result structure. *)
-let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
+let simplify_named env r (tree : Named.t) : named_simplifier =
   match tree with
   | Var var ->
     let var, var_ty = freshen_and_squash_aliases env var in
@@ -1620,7 +1637,7 @@ let simplify_named env r (tree : Flambda.Named.t) : named_simplifier =
       let bindings, set_of_closures, r =
         let env = E.set_never_inline env in
         simplify_newly_introduced_let_bindings env r ~bindings
-          ~around:((Set_of_closures set_of_closures) : Flambda.Named.t)
+          ~around:((Set_of_closures set_of_closures) : Named.t)
       in
       let ty = R.inferred_type r in
       let value_set_of_closures =
