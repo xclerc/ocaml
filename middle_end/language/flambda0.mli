@@ -372,7 +372,7 @@ end and Let : sig
 end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
-    initial_value : Name.t;
+    initial_value : Simple.t;
     contents_type : Flambda_type.t;
     body : Expr.t;
   }

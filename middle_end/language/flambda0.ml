@@ -512,8 +512,8 @@ end = struct
           free_names free_names_of_defining_expr;
           free_names free_names_of_body
         end
-      | Let_mutable { initial_value = var; body; _ } ->
-        free_name var;
+      | Let_mutable { initial_value; body; _ } ->
+        free_names (Simple.free_names initial_value);
         aux body
       | Apply_cont (_, _, args) ->
         (* CR mshinwell: why two names? *)
@@ -784,7 +784,7 @@ end = struct
       fprintf ppf "@[<2>(let_mutable%a@ @[<2>%a@ %a@]@ %a)@]"
         Flambda_type.print contents_type
         Mutable_variable.print var
-        Name.print initial_value
+        Simple.print initial_value
         print body
     | Switch (scrutinee, sw) ->
       fprintf ppf
@@ -1036,7 +1036,7 @@ end = struct
 end and Let_mutable : sig
   type t = {
     var : Mutable_variable.t;
-    initial_value : Name.t;
+    initial_value : Simple.t;
     contents_type : Flambda_type.t;
     body : Expr.t;
   }
@@ -1060,7 +1060,7 @@ end = struct
           body = body2;
         } =
     Mutable_variable.equal var1 var2
-      && Name.equal initial_value1 initial_value2
+      && Simple.equal initial_value1 initial_value2
       && equal_type contents_type1 contents_type2
       && Expr.equal ~equal_type body1 body2
 end and Let_cont : sig

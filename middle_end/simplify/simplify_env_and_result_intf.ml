@@ -377,16 +377,16 @@ module type Result = sig
             (** Do not attempt to inline or specialise the continuation at this
                 use point. *)
           | Inlinable_and_specialisable of
-              (Variable.t * Flambda_type.t) list
+              (Simple.t * Flambda_type.t) list
             (** The continuation may be inlined or specialised at this
                 use point. *)
-          | Only_specialisable of (Variable.t * Flambda_type.t) list
+          | Only_specialisable of (Simple.t * Flambda_type.t) list
             (** The continuation may be specialised but not inlined at this use
                 point.  (Used for [Apply_cont] which have a [trap_action].) *)
 
         val is_specialisable
            : t
-          -> (Variable.t * Flambda_type.t) list option
+          -> (Simple.t * Flambda_type.t) list option
       end
 
       type t = private {

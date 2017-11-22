@@ -56,10 +56,15 @@ let simplify_exn_continuation env r cont =
   simplify_continuation_use_cannot_inline env r cont
     ~arity:[Flambda_kind.value Must_scan]
 
-let for_defining_expr_of_let (env, r) var defining_expr =
+let for_defining_expr_of_let (env, r) var kind defining_expr =
   let new_bindings, defining_expr, ty, r =
     Simplify_named.simplify_named env r defining_expr
   in
+  let new_kind = (E.type_accessor env T.kind) ty in
+  if not (Flambda_kind.compatible new_kind ~if_used_at:kind) then begin
+    Misc.fatal_errorf "Kind error during simplification of [Let] binding for %a"
+      Variable.print var
+  end;
   let defining_expr : Flambda.Reachable.t =
     match defining_expr with
     | Invalid _ -> defining_expr
@@ -70,8 +75,7 @@ let for_defining_expr_of_let (env, r) var defining_expr =
   let var, freshening = Freshening.add_variable (E.freshening env) var in
   let env = E.set_freshening env freshening in
   let env = E.add_variable env var ty in
-  let kind = (E.type_accessor env T.kind) ty in
-  (env, r), new_bindings, var, kind, defining_expr
+  (env, r), new_bindings, var, new_kind, defining_expr
 
 let filter_defining_expr_of_let r var (defining_expr : Named.t)
       free_names_of_body =
@@ -102,16 +106,16 @@ let filter_defining_expr_of_let r var (defining_expr : Named.t)
 
     (In this example, [bindings] would map [x0] through [xn].)
 *)
-let simplify_newly_introduced_let_bindings env r ~bindings
+let _simplify_newly_introduced_let_bindings env r ~bindings
       ~(around : Named.t) =
   let bindings, env, r, invalid_term_semantics =
     List.fold_left (fun ((bindings, env, r, stop) as acc)
-            (var, defining_expr) ->
+            (var, kind, defining_expr) ->
         match stop with
         | Some _ -> acc
         | None ->
           let (env, r), new_bindings, var, kind, defining_expr =
-            for_defining_expr_of_let (env, r) var defining_expr
+            for_defining_expr_of_let (env, r) var kind defining_expr
           in
           match (defining_expr : Flambda.Reachable.t) with
           | Reachable defining_expr ->
@@ -125,7 +129,7 @@ let simplify_newly_introduced_let_bindings env r ~bindings
       ([], env, r, None)
       bindings
   in
-  let new_bindings, around, ty, r =
+  let new_bindings, around, _ty, r =
     Simplify_named.simplify_named env r around
   in
   let around_free_names =
@@ -152,11 +156,12 @@ let simplify_newly_introduced_let_bindings env r ~bindings
   in
   bindings, around, invalid_term_semantics, r
 
-let rec simplify_let_cont_handler ~env ~r ~cont ~handler ~arg_tys =
-  let { Flambda.Continuation_handler. params; stub; is_exn_handler; handler; } =
-    handler
-  in
-  let freshened_vars, freshening =
+(* Prepare an environment for the simplification of the given continuation
+   handler when its parameters are being used at types [arg_tys]. *)
+let environment_for_let_cont_handler ~env cont
+      ~(handler : Flambda.Continuation_handler.t) ~arg_tys =
+  let params = handler.params in
+  let _freshened_vars, freshening =
     Freshening.add_variables' (E.freshening env)
       (Typed_parameter.List.vars params)
   in
@@ -181,7 +186,7 @@ let rec simplify_let_cont_handler ~env ~r ~cont ~handler ~arg_tys =
           then begin
             Misc.fatal_errorf "Parameter %a of continuation %a supplied \
                 with argument which has regressed in preciseness of type: %a"
-              Typed_parameter.print param
+              Typed_parameter.print unfreshened_param
               Continuation.print cont
               T.print arg_ty
           end
@@ -193,12 +198,16 @@ let rec simplify_let_cont_handler ~env ~r ~cont ~handler ~arg_tys =
         Typed_parameter.with_type param ty)
       (List.combine params arg_tys)
   in
-  let env =
-    List.fold_left (fun env param ->
-        E.add_variable env (Typed_parameter.var param)
-          (Typed_parameter.ty param))
-      (E.set_freshening env freshening)
-      params
+  List.fold_left (fun env param ->
+      E.add_variable env (Typed_parameter.var param)
+        (Typed_parameter.ty param))
+    (E.set_freshening env freshening)
+    params
+
+let rec simplify_let_cont_handler ~env ~r ~cont ~handler ~arg_tys =
+  let env = environment_for_let_cont_handler ~env cont ~handler ~arg_tys in
+  let { Flambda.Continuation_handler. params; stub; is_exn_handler; handler; } =
+    handler
   in
   let handler, r = simplify_expr (E.inside_branch env) r handler in
   let handler : Flambda.Continuation_handler.t =
@@ -302,7 +311,6 @@ and simplify_let_cont_handlers ~env ~r ~handlers
                 ((handler : Flambda.Continuation_handler.t), uses)
                 (r, handlers') ->
             let ty =
-              let num_params = List.length handler.params in
               let handlers : Continuation_approx.continuation_handlers =
                 match recursive with
                 | Non_recursive ->
@@ -443,8 +451,8 @@ and simplify_let_cont env r ~body
     in
     let simplify_one_handler env r ~name ~handler ~body
             : Expr.t * R.t =
-      (* CR mshinwell: Consider whether we should call [exit_scope_of_let_cont] for
-         non-recursive ones before simplifying their body.  I'm not sure we
+      (* CR mshinwell: Consider whether we should call [exit_scope_of_let_cont]
+         for non-recursive ones before simplifying their body.  I'm not sure we
          need to, since we already ensure such continuations aren't in the
          environment when simplifying the [handlers].
          ...except for stubs... *)
@@ -503,7 +511,6 @@ and simplify_let_cont env r ~body
       let args_types =
         Continuation.Map.mapi (fun cont
                   (handler : Flambda.Continuation_handler.t) ->
-            let num_params = List.length handler.params in
             let cont =
               Freshening.apply_continuation (E.freshening body_env) cont
             in
@@ -789,7 +796,7 @@ and simplify_function_application env r (apply : Flambda.Apply.t)
       (call : Flambda.Call_kind.function_call) : Expr.t * R.t =
   let callee_ty, arg_tys, apply, r = simplify_apply_shared env r apply in
   let {
-    Flambda.Apply. func = callee; args; call_kind; dbg;
+    Flambda.Apply. func = callee; args; call_kind = _; dbg;
     inline = inline_requested; specialise = specialise_requested;
     continuation; exn_continuation;
   } = apply in
@@ -982,7 +989,7 @@ and simplify_method_call env r (apply : Flambda.Apply.t) ~kind ~obj
   in
   Apply apply, r
 
-and simplify_c_call env r apply ~alloc ~param_arity ~return_arity
+and simplify_c_call env r apply ~alloc:_ ~param_arity:_ ~return_arity:_
       : Expr.t * R.t =
   let callee_ty, _args_tys, apply, r = simplify_apply_shared env r apply in
   let callee_kind = (E.type_accessor env T.kind) callee_ty in
@@ -995,10 +1002,12 @@ and simplify_c_call env r apply ~alloc ~param_arity ~return_arity
 
 (** Simplify an application of a continuation. *)
 and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
-      ~args ~args_types : Expr.t * R.t =
+      ~(args : Simple.t list) : Expr.t * R.t =
   let cont = freshen_continuation env cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
+  let args_and_types = E.simplify_simple_list env args in
+  let args, arg_tys = List.split args_and_types in
   let param_arity_of_exn_handler = [Flambda_kind.value Must_scan] in
   let freshen_trap_action env r (trap_action : Flambda.Trap_action.t) =
     match trap_action with
@@ -1028,17 +1037,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
     let env = E.activate_freshening env in
     let env = E.disallow_continuation_inlining (E.set_never_inline env) in
     let env = E.disallow_continuation_specialisation env in
-    let params, freshening =
-      Freshening.add_variables' (E.freshening env)
-        (Typed_parameter.List.vars handler.params)
-    in
-    let params_and_types = List.combine params args_types in
-    let env =
-      List.fold_left (fun env (param, arg_type) ->
-          E.add_var env param arg_type)
-        (E.set_freshening env freshening)
-        params_and_types
-    in
+    let env = environment_for_let_cont_handler ~env cont ~handler ~arg_tys in
     let stub's_body : Expr.t =
       match trap_action with
       | None -> handler.handler
@@ -1057,11 +1056,10 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
           };
         }
     in
-    simplify env r stub's_body
+    simplify_expr env r stub's_body
   | Some _ | None ->
     let r =
-      let kind : Simplify_aux.Continuation_uses.Use.Kind.t =
-        let args_and_types = List.combine args args_types in
+      let kind : R.Continuation_uses.Use.Kind.t =
         match trap_action with
         | None -> Inlinable_and_specialisable args_and_types
         | Some _ -> Only_specialisable args_and_types
@@ -1075,10 +1073,11 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
         let trap_action, r = freshen_trap_action env r trap_action in
         Some trap_action, r
     in
-    Apply_cont (cont, trap_action, args), ret r (T.unknown Other)
+    Apply_cont (cont, trap_action, args), r
 
-and simplify_switch env r arg sw : Expr.t * R.t =
-  let arg, arg_type = freshen_and_squash_aliases env arg in
+and simplify_switch env r ~(scrutinee : Name.t) ~arms : Expr.t * R.t =
+  let original_scrutinee = scrutinee in
+  let scrutinee, scrutinee_ty = E.simplify_name env scrutinee in
   let destination_is_unreachable cont =
     (* CR mshinwell: This unreachable thing should be tidied up and also
        done on [Apply_cont]. *)
@@ -1098,7 +1097,7 @@ and simplify_switch env r arg sw : Expr.t * R.t =
       if destination_is_unreachable cont then
         filter_branches filter branches compatible_branches
       else
-        match filter arg_type c with
+        match filter scrutinee_ty ~scrutinee:original_scrutinee c with
         | T.Cannot_be_taken ->
           filter_branches filter branches compatible_branches
         | T.Can_be_taken ->
@@ -1106,24 +1105,26 @@ and simplify_switch env r arg sw : Expr.t * R.t =
         | T.Must_be_taken ->
           Must_be_taken cont
   in
-  match filter_branches T.classify_switch_branch sw.arms [] with
+  let classify_switch_branch = E.type_accessor env T.classify_switch_branch in
+  let arms' = Targetint.Map.bindings arms in  (* CR mshinwell: improve this *)
+  match filter_branches classify_switch_branch arms' [] with
   | Must_be_taken cont ->
-    let expr, r =
-      simplify_apply_cont env r cont ~trap_action:None
-        ~args:[] ~args_types:[]
-    in
+    let expr, r = simplify_apply_cont env r cont ~trap_action:None ~args:[] in
     expr, R.map_benefit r B.remove_branch
   | Can_be_taken arms ->
     let env = E.inside_branch env in
-    let snapshot = R.snapshot_continuation_uses r in
-    let f (arms, r) (value, cont) =
-      let cont, r =
-        simplify_continuation_use_cannot_inline env r cont ~args_types:[]
-      in
-      Targetint.Map.add value cont arms, r
+    let arms, r =
+      List.fold_left (fun (arms, r) (value, cont) ->
+          let cont, r =
+            simplify_continuation_use_cannot_inline env r cont ~arity:[]
+          in
+          Targetint.Map.add value cont arms, r)
+        (Targetint.Map.empty, r)
+        arms
     in
-    let arms, r = Targetint.Map.fold f (Targetint.Set.empty, r) arms in
-    let switch, removed_branch = Expr.create_switch' ~scrutinee:arg ~arms in
+    let switch, removed_branch =
+      Expr.create_switch' ~scrutinee:scrutinee ~arms
+    in
     if removed_branch then switch, R.map_benefit r B.remove_branch
     else switch, r
 
@@ -1131,40 +1132,52 @@ and simplify_expr env r (tree : Expr.t) : Expr.t * R.t =
   match tree with
   | Let _ ->
     let for_last_body (env, r) body = simplify_expr env r body in
-    Flambda.fold_lets_option tree
+    Flambda.Expr.Folders.fold_lets_option tree
       ~init:(env, r)
       ~for_defining_expr:for_defining_expr_of_let
       ~for_last_body
       ~filter_defining_expr:filter_defining_expr_of_let
-  | Let_mutable { var = mut_var; initial_value = var; body; contents_kind } ->
-    (* CR-someday mshinwell: add the dead let elimination, as above. *)
-    let var, _var_type = freshen_and_squash_aliases env var in
-    let mut_var, sb =
-      Freshening.add_mutable_variable (E.freshening env) mut_var
+  | Let_mutable { var; initial_value; body; contents_type; } ->
+    (* We don't currently do dead [Let_mutable] elimination.  Work in this
+       area should concentrate on removing mutable variables entirely. *)
+    let initial_value, initial_value_ty = E.simplify_simple env initial_value in
+    let var, freshening =
+      Freshening.add_mutable_variable (E.freshening env) var
     in
-    let env = E.set_freshening env sb in
-    let body, r =
-      simplify_expr (E.add_mutable env mut_var (T.unknown Other)) r body
-    in
-    let named : Named.t =
+    let env = E.set_freshening env freshening in
+    let contents_kind = (E.type_accessor env T.kind) contents_type in
+    let ty = T.unknown contents_kind Other in
+    let body, r = simplify_expr (E.add_mutable env var ty) r body in
+    let initial_value_kind = (E.type_accessor env T.kind) initial_value_ty in
+    if not (Flambda_kind.compatible initial_value_kind
+        ~if_used_at:contents_kind)
+    then begin
+      Misc.fatal_errorf "Cannot put initial value %a of kind %a into \
+          mutable variable %a of kind %a"
+        Simple.print initial_value
+        Flambda_kind.print initial_value_kind
+        Mutable_variable.print var
+        Flambda_kind.print contents_kind
+    end;
+    let expr : Expr.t =
       Let_mutable {
-        var = mut_var;
-        initial_value = var;
+        var;
+        initial_value;
         body;
-        contents_kind;
+        contents_type;
       }
     in
-    named, r
+    expr, r
   | Let_cont { body; handlers; } -> simplify_let_cont env r ~body ~handlers
   | Apply apply ->
     begin match apply.call_kind with
     | Function call -> simplify_function_application env r apply call
-    | Method { kind; obj; } -> simplify_method_call env r ~apply ~kind ~obj
+    | Method { kind; obj; } -> simplify_method_call env r apply ~kind ~obj
     | C_call { alloc; param_arity; return_arity; } ->
       simplify_c_call env r apply ~alloc ~param_arity ~return_arity
     end
   | Apply_cont (cont, trap_action, args) ->
-    let args = freshen_and_squash_aliases_list env args in
-    simplify_apply_cont env r cont ~trap_action ~args ~args_types
-  | Switch (arg, sw) -> simplify_switch env r arg sw
+    simplify_apply_cont env r cont ~trap_action ~args
+  | Switch (scrutinee, switch) ->
+    simplify_switch env r ~scrutinee ~arms:switch.arms
   | Invalid _ -> tree, r
