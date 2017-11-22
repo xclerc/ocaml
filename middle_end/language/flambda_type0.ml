@@ -1504,14 +1504,19 @@ end) = struct
     Value (Normal (Resolved (Ok (
       Singleton (Closure { set_of_closures; closure_id; })))))
 
+  let create_set_of_closures ~set_of_closures_id ~set_of_closures_origin
+        ~function_decls ~closure_elements : set_of_closures =
+    { set_of_closures_id;
+      set_of_closures_origin;
+      function_decls;
+      closure_elements;
+    }
+
   let set_of_closures ~set_of_closures_id ~set_of_closures_origin
         ~function_decls ~closure_elements =
-    let set_of_closures : set_of_closures =
-      { set_of_closures_id;
-        set_of_closures_origin;
-        function_decls;
-        closure_elements;
-      }
+    let set_of_closures =
+      create_set_of_closures ~set_of_closures_id ~set_of_closures_origin
+        ~function_decls ~closure_elements
     in
     Value (Normal (Resolved (Ok (
       Singleton (Set_of_closures set_of_closures)))))
@@ -2167,17 +2172,70 @@ end) = struct
   let meet = Meet.combine
   let meet_ty_value = Meet.combine_ty_value
 
+  type 'a or_bottom =
+    | Ok of 'a
+    | Bottom
+
+  let generic_meet_list ~meet ~importer ~type_of_name ts t =
+    Misc.Stdlib.List.filter_map (fun t' ->
+        match meet ~importer ~type_of_name t t' with
+        | Ok meet -> Some meet
+        | Bottom -> None)
+      ts
+
+  let generic_meet_lists ~meet ~importer ~type_of_name ts1 ts2 =
+    List.fold_left (fun result t1 ->
+        generic_meet_list ~importer ~type_of_name ~meet result t1)
+      ts2
+      ts1
+
   module Closure = struct
     type t = closure
 
-    let meet_lists _list1 _list2 = assert false
+    let meet ~importer ~type_of_name (t1 : t) (t2 : t) : t or_bottom =
+      if not (Closure_id.equal t1.closure_id t2.closure_id) then
+        Bottom
+      else
+        let set_of_closures =
+          meet_ty_value ~importer ~type_of_name
+            t1.set_of_closures t2.set_of_closures
+        in
+        Ok {
+          set_of_closures;
+          closure_id = t1.closure_id;
+        }
+
+    let meet_lists = generic_meet_lists ~meet
+
     let print = print_closure
   end
 
   module Set_of_closures = struct
     type t = set_of_closures
 
-    let meet_lists _list1 _list2 = assert false
+    let meet ~importer ~type_of_name (t1 : t) (t2 : t) : t or_bottom =
+      let same_set =
+        Set_of_closures_id.equal t1.set_of_closures_id t2.set_of_closures_id
+          && Set_of_closures_origin.equal t1.set_of_closures_origin
+            t2.set_of_closures_origin
+      in
+      if not same_set then Bottom
+      else
+        let closure_elements =
+          Var_within_closure.Map.inter_merge (fun elt1 elt2 ->
+              join_ty_value ~importer ~type_of_name elt1 elt2)
+            t1.closure_elements
+            t2.closure_elements
+        in
+        Ok {
+          set_of_closures_id = t1.set_of_closures_id;
+          set_of_closures_origin = t1.set_of_closures_origin;
+          function_decls = t1.function_decls;
+          closure_elements;
+        }
+
+    let meet_lists = generic_meet_lists ~meet
+
     let print = print_set_of_closures
   end
 

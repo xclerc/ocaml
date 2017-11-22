@@ -18,7 +18,7 @@
 
 type thing_to_lift =
   | Let of Variable.t * Flambda.Named.t Flambda.With_free_names.t
-  | Let_mutable of Mutable_variable.t * Name.t * Flambda_type.t
+  | Let_mutable of Mutable_variable.t * Simple.t * Flambda_type.t
   | Let_cont of Flambda.Let_cont_handlers.t
 
 let bind_things_to_remain ~rev_things ~around =

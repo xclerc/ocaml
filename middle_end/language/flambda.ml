@@ -38,9 +38,9 @@ module Call_kind = struct
 
   let rename_variables t ~f =
     match t with
-    | Direct _
-    | Indirect_unknown_arity
-    | Indirect_known_arity _
+    | Function (Direct _)
+    | Function Indirect_unknown_arity
+    | Function (Indirect_known_arity _)
     | C_call _ -> t
     | Method { kind; obj; } ->
       Method {
@@ -683,7 +683,7 @@ end = struct
          [map_toplevel] below will deal with that. *)
       match expr with
       | Let_mutable mutable_let ->
-        let initial_value = Name.map_var mutable_let.initial_value ~f:sb in
+        let initial_value = Simple.map_var mutable_let.initial_value ~f:sb in
         Let_mutable { mutable_let with initial_value }
       | Apply apply ->
         Apply (Apply.rename_variables apply ~f:sb)
@@ -927,7 +927,7 @@ end = struct
         let env = E.add_variable env var ty in
         loop env body
       | Let_mutable { var; initial_value; body; contents_type; } ->
-        let initial_value_kind = E.kind_of_name env initial_value in
+        let initial_value_kind = E.kind_of_simple env initial_value in
         let contents_kind =
           Flambda_type.kind ~importer
             ~type_of_name:(fun name -> E.type_of_name_option env name)
@@ -1055,12 +1055,12 @@ end = struct
         let stack = E.current_continuation_stack env in
         E.check_name_is_bound_and_of_kind env func (K.value Must_scan);
         begin match call_kind with
-        | Direct { closure_id = _; return_arity = _; } ->
+        | Function (Direct { closure_id = _; return_arity = _; }) ->
           (* Note that [return_arity] is checked for all the cases below. *)
           E.check_simples_are_bound env args
-        | Indirect_unknown_arity ->
+        | Function Indirect_unknown_arity ->
           E.check_simples_are_bound_and_of_kind env args (K.value Must_scan)
-        | Indirect_known_arity { param_arity; return_arity = _; } ->
+        | Function (Indirect_known_arity { param_arity; return_arity = _; }) ->
           ignore (param_arity : Flambda_arity.t);
           E.check_simples_are_bound env args
         | Method { kind; obj; } ->

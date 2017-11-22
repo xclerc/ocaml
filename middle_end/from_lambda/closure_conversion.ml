@@ -59,10 +59,10 @@ let tupled_function_call_stub
         args = List.map Simple.var params;
         (* CR-someday mshinwell for mshinwell: investigate if there is some
            redundancy here (func is also unboxed_version) *)
-        call_kind = Direct {
+        call_kind = Function (Direct {
           closure_id = unboxed_version;
           return_arity = [Flambda_kind.value Must_scan];
-        };
+        });
         dbg = Debuginfo.none;
         inline = Default_inline;
         specialise = Default_specialise;

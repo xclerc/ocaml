@@ -483,9 +483,10 @@ end = struct
         | Some () -> ()
         end;
         begin match call_kind with
-        | Direct { closure_id = _; return_arity = _; }
-        | Indirect_unknown_arity
-        | Indirect_known_arity { param_arity = _; return_arity = _; } -> ()
+        | Function (Direct { closure_id = _; return_arity = _; })
+        | Function Indirect_unknown_arity
+        | Function (Indirect_known_arity {
+            param_arity = _; return_arity = _; }) -> ()
         | Method { kind = _; obj; } -> free_name obj
         | C_call { alloc = _; param_arity = _; return_arity = _; } -> ()
         end;
@@ -1651,6 +1652,7 @@ end and Typed_parameter : sig
   val create : (Parameter.t -> Flambda_type.t -> t) Flambda_type.type_accessor
   val create_from_kind : Parameter.t -> Flambda_kind.t -> t
   val var : t -> Variable.t
+  val simple : t -> Simple.t
   val ty : t -> Flambda_type.t
   val kind : t -> Flambda_kind.t
   val equalities : t -> Flambda_primitive.With_fixed_value.Set.t
@@ -1666,6 +1668,7 @@ end and Typed_parameter : sig
   module List : sig
     type nonrec t = t list
     val vars : t -> Variable.t list
+    val simples : t -> Simple.t list
     val var_set : t -> Variable.Set.t
     val name_set : t -> Name.Set.t
     val equal_vars : t -> Variable.t list -> bool

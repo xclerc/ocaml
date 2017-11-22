@@ -513,6 +513,16 @@ module Evaluated_first_stage = struct
       -> Blocks.t
       -> Blocks.t or_wrong) type_accessor
 
+    val combine_closures
+       : (Closure.t list
+      -> Closure.t list
+      -> Closure.t list) type_accessor
+
+    val combine_sets_of_closures
+       : (Set_of_closures.t list
+      -> Set_of_closures.t list
+      -> Set_of_closures.t list) type_accessor
+
     val combine_int_sets
        : Int.Set.t
       -> Int.Set.t
@@ -627,8 +637,8 @@ module Evaluated_first_stage = struct
         let closures =
           P.combine_or_not_all_values_known
             (fun closures1 closures2 : _ or_wrong ->
-              (* XXX this is not correct for "meet" *)
-              Ok (closures1 @ closures2))
+              Ok (P.combine_closures ~importer ~type_of_name
+                closures1 closures2))
             closures1 closures2
         in
         begin match closures with
@@ -640,8 +650,8 @@ module Evaluated_first_stage = struct
         let sets_of_closures =
           P.combine_or_not_all_values_known
             (fun sets_of_closures1 sets_of_closures2 : _ or_wrong ->
-              (* XXX this is not correct for "meet" *)
-              Ok (sets_of_closures1 @ sets_of_closures2))
+              Ok (P.combine_sets_of_closures ~importer ~type_of_name
+                sets_of_closures1 sets_of_closures2))
             set1 set2
         in
         begin match sets_of_closures with
@@ -762,6 +772,12 @@ module Evaluated_first_stage = struct
     let combine_int64_sets = Int64.Set.union
     let combine_targetint_sets = Targetint.Set.union
     let combine_string_info_sets = String_info.Set.union
+
+    let combine_closures ~importer:_ ~type_of_name:_ clos1 clos2 =
+      clos1 @ clos2
+
+    let combine_sets_of_closures ~importer:_ ~type_of_name:_ sets1 sets2 =
+      sets1 @ sets2
   end)
 
   module Meet = Join_or_meet (struct
@@ -776,6 +792,12 @@ module Evaluated_first_stage = struct
     let combine_int64_sets = Int64.Set.inter
     let combine_targetint_sets = Targetint.Set.inter
     let combine_string_info_sets = String_info.Set.inter
+
+    let combine_closures ~importer ~type_of_name clos1 clos2 =
+      Closure.meet_lists ~importer ~type_of_name clos1 clos2
+
+    let combine_sets_of_closures ~importer ~type_of_name sets1 sets2 =
+      Set_of_closures.meet_lists ~importer ~type_of_name sets1 sets2
   end)
 
   let evaluate_ty (type singleton) (type result) ~importer
@@ -1023,7 +1045,7 @@ module Joined_closures : sig
 
   val is_bottom : t -> bool
 
-  val sets_of_closures : t -> ty_value Closure_id.Map.t
+  val sets_of_closures : t -> flambda_type Closure_id.Map.t
 
   val print : Format.formatter -> t -> unit
 

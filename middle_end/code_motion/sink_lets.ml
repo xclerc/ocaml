@@ -242,11 +242,11 @@ let rec sink_expr (expr : Flambda.Expr.t) ~state : Flambda.Expr.t * State.t =
     let body, state = sink_expr body ~state in
     let state =
       match initial_value with
-      | Var initial_value ->
+      | Name (Var initial_value) ->
         State.add_candidates_to_sink state
           ~sink_into:[]
           ~candidates_to_sink:(Variable.Set.singleton initial_value)
-      | Symbol _ -> state
+      | Name (Symbol _) | Const _ -> state
     in
     Let_mutable { var; initial_value; contents_type; body; }, state
   | Let_cont { body; handlers = Recursive handlers; } ->

@@ -218,22 +218,6 @@ module type S = sig
   and of_kind_naked_nativeint =
     | Naked_nativeint of Targetint.t
 
-  module Closure : sig
-    type t = closure
-
-    val meet_lists : t list -> t list -> t list
-
-    val print : Format.formatter -> t -> unit
-  end
-
-  module Set_of_closures : sig
-    type t = set_of_closures
-
-    val meet_lists : t list -> t list -> t list
-
-    val print : Format.formatter -> t -> unit
-  end
-
   val print : Format.formatter -> t -> unit
 
   val print_ty_value : Format.formatter -> ty_value -> unit
@@ -336,7 +320,7 @@ module type S = sig
     -> set_of_closures_origin:Set_of_closures_origin.t
     -> function_decls:function_declaration Closure_id.Map.t
     -> closure_elements:ty_value Var_within_closure.Map.t
-    -> t
+    -> set_of_closures
 
   val set_of_closures
      : set_of_closures_id:Set_of_closures_id.t
@@ -511,4 +495,20 @@ module type S = sig
   val combination_component_to_ty
      : 'a singleton_or_combination or_alias
     -> ('a, _) ty
+
+  module Closure : sig
+    type t = closure
+
+    val meet_lists : (t list -> t list -> t list) type_accessor
+
+    val print : Format.formatter -> t -> unit
+  end
+
+  module Set_of_closures : sig
+    type t = set_of_closures
+
+    val meet_lists : (t list -> t list -> t list) type_accessor
+
+    val print : Format.formatter -> t -> unit
+  end
 end
