@@ -811,7 +811,7 @@ end = struct
     | Invalid _ -> fprintf ppf "unreachable"
 
   let print ppf t =
-    fprintf ppf "%a@." print t
+    fprintf ppf "%a" print t
 end and Named : sig
   type t =
     | Simple of Simple.t
@@ -1616,13 +1616,14 @@ end = struct
     in
     fprintf ppf
       "@[<2>(%a%s( return arity %a)%s%s%s(origin %a)@ =@ \
-        fun@[<2> <%a>%a@] ->@ @[<2>%a@])@]@ "
+        fun@[<2> <%a,%a>%a@] ->@ @[<2>%a@])@]@ "
       Closure_id.print closure_id
       stub
       Flambda_arity.print f.return_arity
       is_a_functor inline specialise
       Closure_origin.print f.closure_origin
       Continuation.print f.continuation_param
+      Continuation.print f.exn_continuation_param
       Typed_parameter.List.print f.params
       Expr.print f.body
 end and Typed_parameter : sig

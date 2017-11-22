@@ -773,6 +773,7 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   let computation : Flambda_static.Program_body.computation =
     { expr;
       return_cont = assign_continuation;
+      exception_cont = ilam.exception_continuation;
       computed_values = field_vars;
     }
   in

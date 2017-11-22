@@ -63,6 +63,8 @@ module Program_body : sig
         variables and call [return_cont] with its results. *)
     return_cont : Continuation.t;
     (** The return continuation of [expr]. *)
+    exception_cont : Continuation.t;
+    (** The uncaught exception continuation of [expr]. *)
     computed_values : (Variable.t * Flambda_kind.t) list;
     (** Variables, with their kinds, used to reference results of the
         computation [expr] inside the [static_structure] (see below).  This

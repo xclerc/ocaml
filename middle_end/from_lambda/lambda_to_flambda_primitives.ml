@@ -57,6 +57,8 @@ let convert (prim : Lambda.primitive) (args : Simple.t list) : P.t =
     Variadic (Make_block (Tag.Scannable.create_exn tag, flag, arity), args)
   | Pnegint, [arg] ->
     Unary (Int_arith (Flambda_kind.Standard_int.Tagged_immediate, Neg), arg)
+  | Paddint, [arg1; arg2] ->
+    Binary (Int_arith (Flambda_kind.Standard_int.Tagged_immediate, Add), arg1, arg2)
   | Pfield field, [arg] ->
     (* CR pchambart: every load is annotated as mutable we must be
        careful to update that when we know it is not. This should not
@@ -86,30 +88,31 @@ let convert (prim : Lambda.primitive) (args : Simple.t list) : P.t =
   | _ ->
     assert false
 
+(*
+[@@@ocaml.warning "-37"]
+
 type expr_primitive =
+  | Unary of P.unary_primitive * simple_or_prim
+  | Binary of P.binary_primitive * simple_or_prim * simple_or_prim
+  | Ternary of P.ternary_primitive * simple_or_prim * simple_or_prim * simple_or_prim
+  | Variadic of P.variadic_primitive * (simple_or_prim list)
+  | Checked of { validity_condition : expr_primitive;
+                 primitive : expr_primitive;
+                 failure : Symbol.t; (* Predefined exception *)
+                 dbg : Debuginfo.t }
+
+and simple_or_prim =
   | Simple of Simple.t
-  | Unary of P.unary_primitive * expr_primitive
-  | Binary of P.binary_primitive * expr_primitive * expr_primitive
-  | Ternary of P.ternary_primitive * expr_primitive * expr_primitive * expr_primitive
-  | Variadic of P.variadic_primitive * (expr_primitive list)
+  | Prim of expr_primitive
 
-type primitive =
-  | Unary of P.unary_primitive * expr_primitive
-  | Binary of P.binary_primitive * expr_primitive * expr_primitive
-  | Ternary of P.ternary_primitive * expr_primitive * expr_primitive * expr_primitive
-  | Variadic of P.variadic_primitive * (expr_primitive list)
-
-let rec bind_rec_primitive
+let rec bind_rec
+          (var : Variable.t)
           (prim : expr_primitive)
           (dbg : Debuginfo.t)
           (cont : Simple.t -> Flambda.Expr.t)
   : Flambda.Expr.t =
   match prim with
-  | Simple s ->
-    cont s
   | Unary (prim, arg) ->
-    (* CR pchambart: find a better name, and fix the other ones *)
-    let var = Variable.create "prim" in
     let cont arg =
       Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
         (Prim (Unary (prim, arg), dbg))
@@ -117,7 +120,6 @@ let rec bind_rec_primitive
     in
     bind_rec_primitive arg dbg cont
   | Binary (prim, arg1, arg2) ->
-    let var = Variable.create "prim" in
     let cont2 arg2 =
       let cont1 arg1 =
         Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
@@ -128,7 +130,6 @@ let rec bind_rec_primitive
     in
     bind_rec_primitive arg2 dbg cont2
   | Ternary (prim, arg1, arg2, arg3) ->
-    let var = Variable.create "prim" in
     let cont3 arg3 =
       let cont2 arg2 =
         let cont1 arg1 =
@@ -142,7 +143,6 @@ let rec bind_rec_primitive
     in
     bind_rec_primitive arg3 dbg cont3
   | Variadic (prim, args) ->
-    let var = Variable.create "prim" in
     let cont args =
       Flambda.Expr.create_let var (Flambda_kind.value Must_scan)
         (Prim (Variadic (prim, args), dbg))
@@ -159,6 +159,13 @@ let rec bind_rec_primitive
         bind_rec_primitive arg dbg cont
     in
     build_cont (List.rev args) []
+  | Checked { validity_condition; primitive; failure; dbg } ->
+    let exception_cont =
+      (* À changer bientot: raise devient apply_cont *)
+      let v = Variable.create "dummy" in
+      Flambda.Expr.create_let v (Flambda_kind.value Must_scan)
+        (Prim (Unary (Raise (Regular), Simple.symbol failure), dbg))
+        (Simple (Simple.var v))
 
 and bind_rec_primitive
       (prim : simple_or_prim)
@@ -179,4 +186,60 @@ let bind_primitive
   : Flambda.Expr.t =
   bind_rec var prim dbg (fun _ -> cont)
 
-let _ = bind_primitive
+let convert_lprim (prim : Lambda.primitive) (args : Simple.t list)
+      (exception_continuation : Continuation.t)
+  : expr_primitive =
+  let args = List.map (fun arg : simple_or_prim -> Simple arg) args in
+  match prim, args with
+  | Pmakeblock (tag, flag, shape), _ ->
+    let flag = convert_mutable_flag flag in
+    let arity = of_block_shape shape ~num_fields:(List.length args) in
+    Variadic (Make_block (Tag.Scannable.create_exn tag, flag, arity), args)
+  | Pnegint, [arg] ->
+    Unary (Int_arith (Flambda_kind.Standard_int.Tagged_immediate, Neg), arg)
+  | Pfield field, [arg] ->
+    (* CR pchambart: every load is annotated as mutable we must be
+       careful to update that when we know it is not. This should not
+       be an error.
+       We need more type propagations to be precise here *)
+    Unary (Block_load (field, Not_a_float, Mutable), arg)
+  | Psetfield (field, immediate_or_pointer, initialization_or_assignment),
+    [block; value] ->
+    let set_kind : P.block_set_kind =
+      match immediate_or_pointer with
+        | Immediate -> Immediate
+        | Pointer -> Pointer
+    in
+    let init_or_assign : P.init_or_assign =
+      match initialization_or_assignment with
+      | Assignment -> Assignment
+      | Heap_initialization -> Initialization
+      (* Root initialization cannot exist in lambda. This is
+         represented by the static part of expressions in flambda. *)
+      | Root_initialization -> assert false
+    in
+    Binary (Block_set (field, set_kind, init_or_assign), block, value)
+
+  (* Test checked *)
+
+  (* | Pdivint Safe, [arg] -> *)
+  (*   Binary (Int_arith (Flambda_kind.Standard_int.Tagged_immediate, Neg), arg) *)
+
+
+  | ( Pfield _ | Pnegint | Psetfield _ ), _ ->
+    Misc.fatal_errorf "Closure_conversion.convert_primitive: \
+                       Wrong arrity for %a: %i"
+      Printlambda.primitive prim (List.length args)
+  | _ ->
+    assert false
+
+let () =
+  ignore bind_primitive;
+  ignore convert_lprim
+
+(* let convert_and_bind *)
+(*       (var : Variable.t) *)
+(*       (prim : Lambda.primitive) *)
+(*       (args : Simple.t list) *)
+(*       (cont : Flambda.Expr.t) : Flambda.Expr.t = *)
+*)
