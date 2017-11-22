@@ -37,4 +37,6 @@ val bool_false : t
 val int : Targetint.t -> t
 val char : char -> t
 
+val to_targetint : t -> Targetint.t
+
 val set_to_targetint_set : Set.t -> Targetint.Set.t

@@ -360,16 +360,22 @@ let simplify_unary_primitive env r prim arg dbg =
     }
   | Float_arith of unary_float_arith_op
   | Int_of_float ->
+    (* CR mshinwell: We need to validate that the backend compiles
+       the [Int_of_float] primitive in the same way as
+       [Targetint.of_float].  Ditto for [Float_of_int].  (For the record,
+       [Pervasives.int_of_float] and [Nativeint.of_float] on [nan] produce
+       wildly different results). *)
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
     let proof = (E.type_accessor env T.prove_naked_float) arg in
     begin match proof with
     | Proved fs ->
-      begin match Immediate.Set.get_singleton fs with
+      begin match Float.Set.get_singleton fs with
       | Some f ->
         let i =
           (* It seems as if the various [float_of_int] functions never raise
              an exception even in the case of NaN or infinity. *)
+          (* CR mshinwell: We should be sure this semantics is reasonable. *)
           Immediate.int (Targetint.of_float f)
         in
         let simple = Simple.const (Tagged_immediate i) in
@@ -393,7 +399,34 @@ let simplify_unary_primitive env r prim arg dbg =
       Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
     end
   | Float_of_int ->
-
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_tagged_immediate) arg in
+    begin match proof with
+    | Proved is ->
+      begin match Immediate.Set.get_singleton is with
+      | Some i ->
+        let f = Targetint.to_float (Immediate.to_targetint i) in
+        let simple = Simple.const (Naked_float f) in
+        Flambda.Reachable.reachable (Simple simple),
+          T.this_naked_float f
+      | None ->
+        let fs =
+          Float.Set.fold (fun i fs ->
+              let f = Targetint.to_float (Immediate.to_targetint i) in
+              Float.Set.add f fs)
+            is
+            Float.Set.empty
+        in
+        Flambda.Reachable.reachable (original_term ()),
+          T.these_naked_floats fs
+      end
+    | Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ()),
+        T.unknown (Flambda_kind.value Can_scan) Other
+    | Invalid -> 
+      Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+    end
   | Array_length array_kind ->
 
   | Bigarray_length { dimension : int; } ->
