@@ -103,15 +103,6 @@ module type Env = sig
 
   val importer : t -> (module Flambda_type.Importer)
 
-  val simplify_name : t -> Name.t -> Name.t * Flambda_type.t
-
-  val simplify_simple : t -> Simple.t -> Simple.t * Flambda_type.t
-
-  val simplify_simple_list
-     : t
-    -> Simple.t list
-    -> (Simple.t * Flambda_type.t) list
-
   (** Which simplification round we are currently in. *)
   val round : t -> int
 

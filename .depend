@@ -2170,8 +2170,10 @@ middle_end/simplify/simplify.cmx : middle_end/base_types/variable.cmx \
     middle_end/base_types/closure_origin.cmx \
     middle_end/base_types/closure_id.cmx utils/clflags.cmx \
     middle_end/simplify/simplify.cmi
-middle_end/simplify/simplify.cmi : middle_end/language/flambda_static.cmi \
-    middle_end/language/flambda.cmi middle_end/base_types/continuation.cmi \
+middle_end/simplify/simplify.cmi : \
+    middle_end/simplify/simplify_env_and_result.cmi \
+    middle_end/language/flambda_static.cmi middle_end/language/flambda.cmi \
+    middle_end/base_types/continuation.cmi \
     middle_end/base_types/closure_id.cmi \
     middle_end/to_clambda/backend_intf.cmi
 middle_end/simplify/simplify_aux.cmo : middle_end/base_types/variable.cmi \
@@ -2248,6 +2250,7 @@ middle_end/simplify/simplify_env_and_result_intf.cmx : \
 middle_end/simplify/simplify_expr.cmo : utils/warnings.cmi \
     middle_end/base_types/variable.cmi \
     middle_end/unboxing/unbox_continuation_params.cmi utils/targetint.cmi \
+    middle_end/simplify/simplify_simple.cmi \
     middle_end/simplify/simplify_named.cmi \
     middle_end/simplify/simplify_env_and_result.cmi \
     middle_end/language/simple.cmi middle_end/base_types/parameter.cmi \
@@ -2265,6 +2268,7 @@ middle_end/simplify/simplify_expr.cmo : utils/warnings.cmi \
 middle_end/simplify/simplify_expr.cmx : utils/warnings.cmx \
     middle_end/base_types/variable.cmx \
     middle_end/unboxing/unbox_continuation_params.cmx utils/targetint.cmx \
+    middle_end/simplify/simplify_simple.cmx \
     middle_end/simplify/simplify_named.cmx \
     middle_end/simplify/simplify_env_and_result.cmx \
     middle_end/language/simple.cmx middle_end/base_types/parameter.cmx \
@@ -2357,17 +2361,23 @@ middle_end/simplify/simplify_program.cmx : utils/targetint.cmx \
     middle_end/to_clambda/backend_intf.cmi \
     middle_end/simplify/simplify_program.cmi
 middle_end/simplify/simplify_program.cmi : \
+    middle_end/simplify/simplify_env_and_result.cmi \
     middle_end/language/flambda_static.cmi \
     middle_end/to_clambda/backend_intf.cmi
-middle_end/simplify/simplify_simple.cmo : middle_end/base_types/variable.cmi \
+middle_end/simplify/simplify_simple.cmo : \
     middle_end/simplify/simplify_env_and_result.cmi \
-    middle_end/language/simple.cmi middle_end/language/flambda_type.cmi \
-    middle_end/language/flambda.cmi middle_end/simplify/simplify_simple.cmi
-middle_end/simplify/simplify_simple.cmx : middle_end/base_types/variable.cmx \
+    middle_end/language/simple.cmi middle_end/base_types/name.cmi \
+    utils/misc.cmi middle_end/language/flambda_type.cmi \
+    middle_end/simplify/simplify_simple.cmi
+middle_end/simplify/simplify_simple.cmx : \
     middle_end/simplify/simplify_env_and_result.cmx \
-    middle_end/language/simple.cmx middle_end/language/flambda_type.cmx \
-    middle_end/language/flambda.cmx middle_end/simplify/simplify_simple.cmi
-middle_end/simplify/simplify_simple.cmi :
+    middle_end/language/simple.cmx middle_end/base_types/name.cmx \
+    utils/misc.cmx middle_end/language/flambda_type.cmx \
+    middle_end/simplify/simplify_simple.cmi
+middle_end/simplify/simplify_simple.cmi : \
+    middle_end/simplify/simplify_env_and_result.cmi \
+    middle_end/language/simple.cmi middle_end/base_types/name.cmi \
+    middle_end/language/flambda_type.cmi
 middle_end/to_clambda/backend_intf.cmi : middle_end/base_types/symbol.cmi \
     typing/ident.cmi middle_end/language/flambda_type.cmi \
     middle_end/base_types/export_id.cmi middle_end/base_types/closure_id.cmi

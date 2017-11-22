@@ -19,6 +19,7 @@
 module B = Inlining_cost.Benefit
 module E = Simplify_env_and_result.Env
 module R = Simplify_env_and_result.Result
+module S = Simplify_simple
 module T = Flambda_type
 
 module Expr = Flambda.Expr
@@ -770,7 +771,7 @@ and simplify_over_application env r ~args ~arg_tys ~continuation
 and simplify_apply_shared env r (apply : Flambda.Apply.t)
       : T.t * (T.t list) * Flambda.Apply.t * R.t =
   let func, func_ty = E.simplify_name env apply.func in
-  let args, args_tys = List.split (E.simplify_simple_list env apply.args) in
+  let args, args_tys = List.split (S.simplify_simple_list env apply.args) in
   let continuation, r =
     simplify_continuation_use_cannot_inline env r apply.continuation
       ~arity:(Flambda.Call_kind.return_arity apply.call_kind)
@@ -1006,7 +1007,7 @@ and simplify_apply_cont env r cont ~(trap_action : Flambda.Trap_action.t option)
   let cont = freshen_continuation env cont in
   let cont_approx = E.find_continuation env cont in
   let cont = Continuation_approx.name cont_approx in
-  let args_and_types = E.simplify_simple_list env args in
+  let args_and_types = S.simplify_simple_list env args in
   let args, arg_tys = List.split args_and_types in
   let param_arity_of_exn_handler = [Flambda_kind.value Must_scan] in
   let freshen_trap_action env r (trap_action : Flambda.Trap_action.t) =
@@ -1140,7 +1141,7 @@ and simplify_expr env r (tree : Expr.t) : Expr.t * R.t =
   | Let_mutable { var; initial_value; body; contents_type; } ->
     (* We don't currently do dead [Let_mutable] elimination.  Work in this
        area should concentrate on removing mutable variables entirely. *)
-    let initial_value, initial_value_ty = E.simplify_simple env initial_value in
+    let initial_value, initial_value_ty = S.simplify_simple env initial_value in
     let var, freshening =
       Freshening.add_mutable_variable (E.freshening env) var
     in
