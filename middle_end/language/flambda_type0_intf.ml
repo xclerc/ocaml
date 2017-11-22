@@ -250,6 +250,7 @@ module type S = sig
   (** Building of types representing tagged / boxed values from specified
       constants. *)
   val this_tagged_immediate : Immediate.t -> t
+  val these_tagged_immediates : Immediate.Set.t -> t
   val this_boxed_float : float -> t
   val this_boxed_int32 : Int32.t -> t
   val this_boxed_int64 : Int64.t -> t

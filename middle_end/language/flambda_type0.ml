@@ -707,6 +707,16 @@ end) = struct
     in
     Value (Normal (Resolved (Ok (Singleton (Tagged_immediate i)))))
 
+  let these_tagged_immediates is : t =
+    match Immediate.Set.choose_opt is with
+    | None -> bottom (K.value Can_scan)
+    | Some i ->
+      let is = Immediate.Set.remove i is in
+      Immediate.Set.fold (fun i t ->
+          ...)
+        is
+        (this_tagged_immediate i)
+
   let this_boxed_float f =
     let f : ty_naked_float =
       let f : of_kind_naked_float = Naked_float f in

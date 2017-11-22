@@ -62,6 +62,14 @@ module type S = sig
   val max: t -> t -> t
 
   include Identifiable.S with type t := t
+
+  module Pair : sig
+    type nonrec t = t * t
+
+    include Identifiable.S with type t := t
+  end
+
+  val cross_product : Set.t -> Set.t -> Pair.Set.t
 end
 
 let size = Sys.word_size
@@ -102,6 +110,23 @@ module Int32 = struct
 
   let max t1 t2 =
     if compare t1 t2 <= 0 then t2 else t1
+
+  module Pair = struct
+    type nonrec t = t * t
+
+    module T_pair = Identifiable.Pair (T) (T)
+
+    include Identifiable.Make (T_pair)
+  end
+
+  let cross_product set1 set2 =
+    Set.fold (fun elt1 result ->
+        Set.fold (fun elt2 result ->
+            Pair.Set.add (elt1, elt2) result)
+          set2
+          result)
+      set1
+      Pair.Set.empty
 end
 
 module Int64 = struct
@@ -125,6 +150,23 @@ module Int64 = struct
 
   let max t1 t2 =
     if compare t1 t2 <= 0 then t2 else t1
+
+  module Pair = struct
+    type nonrec t = t * t
+
+    module T_pair = Identifiable.Pair (T) (T)
+
+    include Identifiable.Make (T_pair)
+  end
+
+  let cross_product set1 set2 =
+    Set.fold (fun elt1 result ->
+        Set.fold (fun elt2 result ->
+            Pair.Set.add (elt1, elt2) result)
+          set2
+          result)
+      set1
+      Pair.Set.empty
 end
 
 include (val

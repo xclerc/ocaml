@@ -191,3 +191,11 @@ val max : t -> t -> t
 (** Returns the larger integer. *)
 
 include Identifiable.S with type t := t
+
+module Pair : sig
+  type nonrec t = t * t
+
+  include Identifiable.S with type t := t
+end
+
+val cross_product : Set.t -> Set.t -> Pair.Set.t

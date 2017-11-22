@@ -94,6 +94,136 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     | Pasrbint kind when kind = I.kind && precond -> eval I.shift_right
     | _ -> expr, T.value_unknown Other, C.Benefit.zero
 end
+(*
+  val logand : t -> t -> t
+  val logor : t -> t -> t
+  val logxor : t -> t -> t
+  val shift_left : t -> int -> t
+  val shift_right : t -> int -> t
+  val shift_right_logical : t -> int -> t
+  val to_int : t -> int
+  val to_int32 : t -> Int32.t
+  val to_int64 : t -> Int64.t
+  val neg : t -> t
+  val swap : t -> t
+  val compare : t -> t -> int
+*)
+
+module Binary_int_arith (I : sig
+  type t
+
+  val kind : Flambda_kind.Standard_int.t
+  val term : t -> Flambda.Named.t
+
+  val zero : t
+
+  val add : t -> t -> t
+  val sub : t -> t -> t
+  val mul : t -> t -> t
+  (* CR mshinwell: We should think very carefully to make sure this is right.
+     Also see whether unsafe division can be exposed to the user.  The
+     current assumption that division by zero reaching here is dead code. *)
+  val div : t -> t -> t option
+  val mod_ : t -> t -> t option
+  val and_ : t -> t -> t
+  val or_ : t -> t -> t
+  val xor : t -> t -> t
+
+  module Set : Identifiable.Set with type t = t
+
+  module Pair : sig
+    type nonrec t = t * t
+
+    module Set : Identifiable.Set with type t = t
+  end
+
+  val cross_product : Set.t -> Set.t -> Pair.Set.t
+end) = struct
+  let simplify env r prim dbg op arg1 arg2 : Flambda.Named.t * R.t =
+    let op =
+      let always_some f x = Some (f x) in
+      match op with
+      | Add -> always_some I.add
+      | Sub -> always_some I.sub
+      | Mul -> always_some I.mul
+      | Div -> I.div
+      | Mod -> I.mod_
+      | And -> always_some I.and_
+      | Or -> always_some I.or_
+      | Xor -> always_some I.xor
+    in
+    let arg1, ty1 = S.simplify_simple env arg1 in
+    let arg2, ty2 = S.simplify_simple env arg2 in
+    let proof1 = (E.type_accessor env T.prove_tagged_immediate) arg1 in
+    let proof2 = (E.type_accessor env T.prove_tagged_immediate) arg2 in
+    let original_term () : Flambda.Named.t =
+      Prim (Binary (prim, arg1, arg2), dbg)
+    in
+    begin match proof1, proof2 with
+    | Proved (Exactly ints1), Proved (Exactly ints2) ->
+      let all_pairs = I.cross_product ints1 ints2 in
+      let possible_results =
+        I.Pair.Set.fold (fun (i1, i2) possible_results ->
+            match op i1 i2 with
+            | None -> possible_results
+            | Some result -> I.Set.add result possible_results)
+          all_pairs
+          I.Set.empty
+      in
+      let ty = T.these_tagged_immediates possible_results in
+      let named =
+        if I.Set.is_empty possible_results then
+          Flambda.Reachable.invalid ()
+        else
+          match I.Set.get_singleton possible_results with
+          | Some i -> I.term i
+          | None -> original_term ()
+      in
+      Flambda.Reachable.reachable named, ty
+    | Proved (Exactly ints1), Proved Not_all_values_known ->
+
+    | Proved Not_all_values_known, Proved (Exactly ints2) ->
+
+    | Proved Not_all_values_known, Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ())
+        ???
+    | Invalid, _ | _, Invalid ->
+      Flambda.Reachable.invalid (), ???
+end
+
+module Binary_int_arith_tagged_immediate = Binary_int_arith (Targetint)
+module Binary_int_arith_naked_int32 = Binary_int_arith (Int32)
+module Binary_int_arith_naked_int64 = Binary_int_arith (Int64)
+module Binary_int_arith_naked_nativeint = Binary_int_arith (Targetint)
+
+let simplify_binary_primitive env r prim dbg arg1 arg2 =
+  match prim with
+  | Block_load_computed_index
+  | Block_set of int * block_set_kind * init_or_assign
+
+  | Int_arith (kind, op) ->
+    begin match kind with
+    | Tagged_immediate ->
+      Binary_int_arith_tagged_immediate.simplify env r op arg1 arg2
+    | Naked_int32 ->
+      Binary_int_arith_naked_int32.simplify env r op arg1 arg2
+    | Naked_int64 ->
+      Binary_int_arith_naked_int64.simplify env r op arg1 arg2
+    | Naked_nativeint ->
+      Binary_int_arith_naked_nativeint.simplify env r op arg1 arg2
+    end
+
+  | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
+  | Int_comp of Flambda_kind.Standard_int.t * comparison
+  | Int_comp_unsigned of comparison
+  | Float_arith of binary_float_arith_op
+  | Float_comp of comparison
+  | Bit_test
+  | Array_load of array_kind
+  | String_load of string_accessor_width
+  | Bigstring_load of bigstring_accessor_width
+
+
 
 module Simplify_boxed_nativeint = Simplify_boxed_integer_operator (struct
   include Nativeint
