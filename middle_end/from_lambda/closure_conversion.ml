@@ -237,7 +237,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
     let body = close t (Env.add_mutable_var env id var) body in
     Let_mutable {
       var;
-      initial_value = initial_value;
+      initial_value = Simple.name initial_value;
       body;
       contents_type = flambda_type_of_lambda_value_kind contents_kind;
     }
@@ -357,7 +357,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       loc; should_be_tailcall = _; inlined; specialised; } ->
     let call_kind : Flambda.Call_kind.t =
       match kind with
-      | Function -> Indirect_unknown_arity
+      | Function -> Function Indirect_unknown_arity
       | Method { kind; obj; } ->
         let kind : Flambda.Call_kind.method_kind =
           match kind with
