@@ -46,6 +46,10 @@ val symbol : Symbol.t -> t
 
 val const : Const.t -> t
 
+val const_true : t
+
+val const_false : t
+
 val free_names : t -> Name.Set.t
 
 val map_var : t -> f:(Variable.t -> Variable.t) -> t

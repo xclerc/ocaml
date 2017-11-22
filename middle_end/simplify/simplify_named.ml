@@ -347,7 +347,28 @@ let simplify_unary_primitive env r prim arg dbg =
       repr : record_representation;
       num_fields : int;
     }
-  | Is_int
+  | Is_int ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_is_tagged_immediate) arg in
+    begin match proof with
+    | Proved is_tagged_immediate ->
+      let simple =
+        if is_tagged_immediate then Simple.const_true else Simple.const_false
+      in
+      let imm =
+        if is_tagged_immediate then Immediate.bool_true
+        else Immediate.bool_false
+      in
+      (* CR mshinwell: naming inconsistency const_true / bool_true *)
+      Flambda.Reachable.reachable (Simple simple),
+        T.this_tagged_immediate imm
+    | Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ()),
+        T.these_tagged_immediates Immediate.all_bools
+    | Invalid -> 
+      Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+    end
   | Get_tag ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in

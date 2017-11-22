@@ -25,6 +25,9 @@ module Const = struct
     | Naked_int64 of Int64.t
     | Naked_nativeint of Targetint.t
 
+  let const_true = Tagged_immediate (Immediate.bool_true)
+  let const_false = Tagged_immediate (Immediate.bool_false)
+
   include Identifiable.Make (struct
     type nonrec t = t
 
@@ -93,6 +96,9 @@ let name t = Name t
 let var t = Name (Name.var t)
 let symbol t = Name (Name.symbol t)
 let const t = Const t
+
+let const_true = Const Const.const_true
+let const_false = Const Const.const_false
 
 let free_names t =
   match t with

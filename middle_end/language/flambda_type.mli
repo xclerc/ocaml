@@ -290,6 +290,16 @@ type tagged_immediate_proof = private
 (** As for [prove_boxed_float] but for a tagged immediate. *)
 val prove_tagged_immediate : (t -> tagged_immediate_proof) type_accessor
 
+type is_tagged_immediate_proof = private
+  | Proved of bool Or_not_all_values_known.t
+  | Invalid
+
+(** Determine whether it is known that the given type either:
+    - may represent a tagged immediate; or
+    - can never represent a tagged immediate.
+*)
+val prove_is_tagged_immediate : (t -> is_tagged_immediate_proof) type_accessor
+
 type string_proof = private
   | Proved of String_info.Set.t Or_not_all_values_known.t
   | Invalid

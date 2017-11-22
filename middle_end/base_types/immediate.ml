@@ -99,3 +99,6 @@ let set_to_targetint_set set =
   Set.fold (fun t targetints -> Targetint.Set.add t.value targetints)
     set
     Targetint.Set.empty
+
+let all_bools =
+  Set.of_list [bool_true; bool_false]

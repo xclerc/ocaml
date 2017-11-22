@@ -40,3 +40,6 @@ val char : char -> t
 val to_targetint : t -> Targetint.t
 
 val set_to_targetint_set : Set.t -> Targetint.Set.t
+
+(** The set consisting of the representations of constant [true] and [false]. *)
+val all_bools : Set.t
