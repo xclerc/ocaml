@@ -2564,50 +2564,24 @@ middle_end/unboxing/unbox_specialised_args.cmx : \
 middle_end/unboxing/unbox_specialised_args.cmi : \
     middle_end/base_types/variable.cmi middle_end/inlining/inlining_cost.cmi \
     middle_end/language/flambda.cmi
-middle_end/middle_end.cmo : utils/warnings.cmi \
-    middle_end/base_types/variable.cmi middle_end/base_types/symbol.cmi \
-    middle_end/code_motion/sink_lets.cmi middle_end/simplify/simplify.cmi \
-    middle_end/code_motion/share_constants.cmi \
-    middle_end/removal/remove_unused_program_constructs.cmi \
-    middle_end/removal/remove_unused_continuation_params.cmi \
-    middle_end/removal/remove_unused_closure_vars.cmi \
-    middle_end/removal/ref_to_variables.cmi utils/profile.cmi \
+middle_end/middle_end.cmo : utils/warnings.cmi utils/profile.cmi \
     bytecomp/printlambda.cmi middle_end/from_lambda/prepare_lambda.cmi \
-    utils/misc.cmi parsing/location.cmi \
-    middle_end/code_motion/lift_to_toplevel.cmi \
-    middle_end/code_motion/lift_let_cont.cmi \
-    middle_end/code_motion/lift_constants.cmi \
-    middle_end/inlining/inlining_cost.cmi \
-    middle_end/removal/initialize_symbol_to_let_symbol.cmi \
-    middle_end/from_lambda/ilambda.cmi middle_end/language/flambda_static.cmi \
-    middle_end/language/flambda.cmi middle_end/base_types/debuginfo.cmi \
+    parsing/location.cmi middle_end/from_lambda/ilambda.cmi \
+    middle_end/language/flambda_static.cmi \
+    middle_end/base_types/debuginfo.cmi \
     middle_end/from_lambda/cps_conversion.cmi \
     middle_end/base_types/continuation.cmi \
-    middle_end/base_types/closure_id.cmi \
     middle_end/from_lambda/closure_conversion.cmi utils/clflags.cmi \
-    middle_end/to_clambda/backend_intf.cmi middle_end/middle_end.cmi
-middle_end/middle_end.cmx : utils/warnings.cmx \
-    middle_end/base_types/variable.cmx middle_end/base_types/symbol.cmx \
-    middle_end/code_motion/sink_lets.cmx middle_end/simplify/simplify.cmx \
-    middle_end/code_motion/share_constants.cmx \
-    middle_end/removal/remove_unused_program_constructs.cmx \
-    middle_end/removal/remove_unused_continuation_params.cmx \
-    middle_end/removal/remove_unused_closure_vars.cmx \
-    middle_end/removal/ref_to_variables.cmx utils/profile.cmx \
+    middle_end/middle_end.cmi
+middle_end/middle_end.cmx : utils/warnings.cmx utils/profile.cmx \
     bytecomp/printlambda.cmx middle_end/from_lambda/prepare_lambda.cmx \
-    utils/misc.cmx parsing/location.cmx \
-    middle_end/code_motion/lift_to_toplevel.cmx \
-    middle_end/code_motion/lift_let_cont.cmx \
-    middle_end/code_motion/lift_constants.cmx \
-    middle_end/inlining/inlining_cost.cmx \
-    middle_end/removal/initialize_symbol_to_let_symbol.cmx \
-    middle_end/from_lambda/ilambda.cmx middle_end/language/flambda_static.cmx \
-    middle_end/language/flambda.cmx middle_end/base_types/debuginfo.cmx \
+    parsing/location.cmx middle_end/from_lambda/ilambda.cmx \
+    middle_end/language/flambda_static.cmx \
+    middle_end/base_types/debuginfo.cmx \
     middle_end/from_lambda/cps_conversion.cmx \
     middle_end/base_types/continuation.cmx \
-    middle_end/base_types/closure_id.cmx \
     middle_end/from_lambda/closure_conversion.cmx utils/clflags.cmx \
-    middle_end/to_clambda/backend_intf.cmi middle_end/middle_end.cmi
+    middle_end/middle_end.cmi
 middle_end/middle_end.cmi : bytecomp/lambda.cmi typing/ident.cmi \
     middle_end/language/flambda_static.cmi \
     middle_end/to_clambda/backend_intf.cmi
@@ -2693,8 +2667,8 @@ driver/optcompile.cmo : utils/warnings.cmi typing/typemod.cmi \
     parsing/printast.cmi parsing/pprintast.cmi driver/pparse.cmi \
     utils/misc.cmi middle_end/middle_end.cmi bytecomp/lambda.cmi \
     typing/includemod.cmi typing/env.cmi utils/config.cmi driver/compmisc.cmi \
-    asmcomp/compilenv.cmi driver/compenv.cmi utils/clflags.cmi \
-    parsing/builtin_attributes.cmi asmcomp/asmgen.cmi driver/optcompile.cmi
+    driver/compenv.cmi utils/clflags.cmi parsing/builtin_attributes.cmi \
+    driver/optcompile.cmi
 driver/optcompile.cmx : utils/warnings.cmx typing/typemod.cmx \
     typing/typedtree.cmx typing/typecore.cmx bytecomp/translmod.cmx \
     typing/stypes.cmx bytecomp/simplif.cmx utils/profile.cmx \
@@ -2702,8 +2676,8 @@ driver/optcompile.cmx : utils/warnings.cmx typing/typemod.cmx \
     parsing/printast.cmx parsing/pprintast.cmx driver/pparse.cmx \
     utils/misc.cmx middle_end/middle_end.cmx bytecomp/lambda.cmx \
     typing/includemod.cmx typing/env.cmx utils/config.cmx driver/compmisc.cmx \
-    asmcomp/compilenv.cmx driver/compenv.cmx utils/clflags.cmx \
-    parsing/builtin_attributes.cmx asmcomp/asmgen.cmx driver/optcompile.cmi
+    driver/compenv.cmx utils/clflags.cmx parsing/builtin_attributes.cmx \
+    driver/optcompile.cmi
 driver/optcompile.cmi : middle_end/to_clambda/backend_intf.cmi
 driver/opterrors.cmo : parsing/location.cmi driver/opterrors.cmi
 driver/opterrors.cmx : parsing/location.cmx driver/opterrors.cmi
@@ -2712,18 +2686,14 @@ driver/optmain.cmo : utils/warnings.cmi utils/profile.cmi asmcomp/proc.cmi \
     asmcomp/printmach.cmi driver/optcompile.cmi utils/misc.cmi \
     driver/makedepend.cmi driver/main_args.cmi parsing/location.cmi \
     utils/config.cmi driver/compplugin.cmi driver/compmisc.cmi \
-    asmcomp/compilenv.cmi driver/compenv.cmi utils/clflags.cmi \
-    middle_end/to_clambda/backend_intf.cmi asmcomp/asmpackager.cmi \
-    asmcomp/asmlink.cmi asmcomp/asmlibrarian.cmi asmcomp/arch.cmo \
-    driver/optmain.cmi
+    driver/compenv.cmi utils/clflags.cmi \
+    middle_end/to_clambda/backend_intf.cmi driver/optmain.cmi
 driver/optmain.cmx : utils/warnings.cmx utils/profile.cmx asmcomp/proc.cmx \
     asmcomp/printmach.cmx driver/optcompile.cmx utils/misc.cmx \
     driver/makedepend.cmx driver/main_args.cmx parsing/location.cmx \
     utils/config.cmx driver/compplugin.cmx driver/compmisc.cmx \
-    asmcomp/compilenv.cmx driver/compenv.cmx utils/clflags.cmx \
-    middle_end/to_clambda/backend_intf.cmi asmcomp/asmpackager.cmx \
-    asmcomp/asmlink.cmx asmcomp/asmlibrarian.cmx asmcomp/arch.cmx \
-    driver/optmain.cmi
+    driver/compenv.cmx utils/clflags.cmx \
+    middle_end/to_clambda/backend_intf.cmi driver/optmain.cmi
 driver/optmain.cmi :
 driver/pparse.cmo : utils/profile.cmi parsing/parsetree.cmi \
     parsing/parse.cmi utils/misc.cmi parsing/location.cmi utils/config.cmi \

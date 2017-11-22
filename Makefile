@@ -189,19 +189,19 @@ endif
 
 MIDDLE_END_CMX_EARLY=\
   middle_end/cmx/export_info.cmo \
-  middle_end/cmx/export_info_for_pack.cmo
+  # middle_end/cmx/export_info_for_pack.cmo
 
 MIDDLE_END_CMX_LATE=\
-  middle_end/cmx/build_export_info.cmo
+  # middle_end/cmx/build_export_info.cmo
 
 MIDDLE_END_TO_CLAMBDA=\
-  middle_end/to_clambda/closure_offsets.cmo \
-  middle_end/to_clambda/flambda_to_clambda.cmo \
-  middle_end/to_clambda/un_anf.cmo \
-  middle_end/to_clambda/un_cps.cmo
+  # middle_end/to_clambda/closure_offsets.cmo \
+  # middle_end/to_clambda/flambda_to_clambda.cmo \
+  # middle_end/to_clambda/un_anf.cmo \
+  # middle_end/to_clambda/un_cps.cmo
 
-ASMCOMP=\
-  $(ARCH_SPECIFIC_ASMCOMP) \
+# ASMCOMP=\
+  # $(ARCH_SPECIFIC_ASMCOMP) \
   asmcomp/arch.cmo \
   asmcomp/cmm.cmo asmcomp/printcmm.cmo \
   asmcomp/reg.cmo asmcomp/mach.cmo asmcomp/proc.cmo \
@@ -232,21 +232,33 @@ ASMCOMP=\
   asmcomp/asmlink.cmo asmcomp/asmlibrarian.cmo asmcomp/asmpackager.cmo \
   driver/opterrors.cmo driver/optcompile.cmo
 
+ASMCOMP=\
+  $(ARCH_SPECIFIC_ASMCOMP) \
+  asmcomp/arch.cmo \
+  asmcomp/cmm.cmo asmcomp/printcmm.cmo \
+  asmcomp/reg.cmo asmcomp/mach.cmo asmcomp/proc.cmo \
+  asmcomp/clambda.cmo asmcomp/printclambda.cmo \
+  $(MIDDLE_END_CMX_EARLY) \
+  asmcomp/compilenv.cmo \
+  asmcomp/interval.cmo \
+  asmcomp/printmach.cmo \
+  driver/opterrors.cmo driver/optcompile.cmo
+
 MIDDLE_END_ANALYSIS=\
-  middle_end/analysis/alias_analysis.cmo \
-  middle_end/analysis/extract_projections.cmo \
-  middle_end/analysis/find_recursive_functions.cmo \
-  middle_end/analysis/inconstant_idents.cmo \
-  middle_end/analysis/invariant_params.cmo \
-  middle_end/analysis/place_continuations.cmo \
-  middle_end/analysis/reachability.cmo
+  # middle_end/analysis/alias_analysis.cmo \
+  # middle_end/analysis/extract_projections.cmo \
+  # middle_end/analysis/find_recursive_functions.cmo \
+  # middle_end/analysis/inconstant_idents.cmo \
+  # middle_end/analysis/invariant_params.cmo \
+  # middle_end/analysis/place_continuations.cmo \
+  # middle_end/analysis/reachability.cmo
 
 MIDDLE_END_BASE_TYPES=\
+  middle_end/base_types/id_types.cmo \
   middle_end/base_types/closure_element.cmo \
   middle_end/base_types/closure_id.cmo \
   middle_end/base_types/closure_origin.cmo \
   middle_end/base_types/export_id.cmo \
-  middle_end/base_types/id_types.cmo \
   middle_end/base_types/immediate.cmo \
   middle_end/base_types/mutable_variable.cmo \
   middle_end/base_types/num_continuation_uses.cmo \
@@ -258,7 +270,7 @@ MIDDLE_END_BASE_TYPES=\
   middle_end/base_types/name.cmo
 
 MIDDLE_END_CODE_MOTION=\
-  middle_end/code_motion/lift_constants.cmo \
+#  middle_end/code_motion/lift_constants.cmo \
   middle_end/code_motion/lift_let_cont.cmo \
   middle_end/code_motion/lift_to_toplevel.cmo \
   middle_end/code_motion/share_constants.cmo \
@@ -273,15 +285,15 @@ MIDDLE_END_FROM_LAMBDA=\
   middle_end/from_lambda/cps_conversion.cmo
 
 MIDDLE_END_INLINING=\
-  middle_end/inlining/continuation_approx.cmo \
-  middle_end/inlining/continuation_inlining.cmo \
-  middle_end/inlining/continuation_specialisation.cmo \
-  middle_end/inlining/continuation_with_specialised_args.cmo \
-  middle_end/inlining/inlining_cost.cmo \
-  middle_end/inlining/inlining_decision.cmo \
-  middle_end/inlining/inlining_stats.cmo \
-  middle_end/inlining/inlining_stats_types.cmo \
-  middle_end/inlining/inlining_transforms.cmo
+  # middle_end/inlining/continuation_approx.cmo \
+  # middle_end/inlining/continuation_inlining.cmo \
+  # middle_end/inlining/continuation_specialisation.cmo \
+  # middle_end/inlining/continuation_with_specialised_args.cmo \
+  # middle_end/inlining/inlining_cost.cmo \
+  # middle_end/inlining/inlining_decision.cmo \
+  # middle_end/inlining/inlining_stats.cmo \
+  # middle_end/inlining/inlining_stats_types.cmo \
+  # middle_end/inlining/inlining_transforms.cmo
 
 MIDDLE_END_LANGUAGE=\
   middle_end/language/flambda_kind.cmo \
@@ -300,17 +312,17 @@ MIDDLE_END_LANGUAGE=\
   middle_end/language/flambda_utils.cmo
 
 MIDDLE_END_REMOVAL=\
-  middle_end/removal/initialize_symbol_to_let_symbol.cmo \
-  middle_end/removal/ref_to_variables.cmo \
-  middle_end/removal/remove_free_vars_equal_to_args.cmo \
-  middle_end/removal/remove_unused_arguments.cmo \
-  middle_end/removal/remove_unused_closure_vars.cmo \
-  middle_end/removal/remove_unused_continuation_params.cmo \
-  middle_end/removal/remove_unused_program_constructs.cmo \
-  middle_end/removal/unrecursify.cmo
+  # middle_end/removal/initialize_symbol_to_let_symbol.cmo \
+  # middle_end/removal/ref_to_variables.cmo \
+  # middle_end/removal/remove_free_vars_equal_to_args.cmo \
+  # middle_end/removal/remove_unused_arguments.cmo \
+  # middle_end/removal/remove_unused_closure_vars.cmo \
+  # middle_end/removal/remove_unused_continuation_params.cmo \
+  # middle_end/removal/remove_unused_program_constructs.cmo \
+  # middle_end/removal/unrecursify.cmo
 
 MIDDLE_END_SIMPLIFY=\
-  middle_end/simplify/freshening.cmo \
+#  middle_end/simplify/freshening.cmo \
   middle_end/simplify/simplify_env_and_result.cmo \
   middle_end/simplify/simplify_aux.cmo \
   middle_end/simplify/simplify_simple.cmo \
@@ -320,13 +332,13 @@ MIDDLE_END_SIMPLIFY=\
   middle_end/simplify/simplify.cmo
 
 MIDDLE_END_UNBOXING=\
-  middle_end/unboxing/augment_specialised_args.cmo \
-  middle_end/unboxing/unbox_closures.cmo \
-  middle_end/unboxing/unbox_continuation_params.cmo \
-  middle_end/unboxing/unbox_free_vars_of_closures.cmo \
-  middle_end/unboxing/unbox_one_variable.cmo \
-  middle_end/unboxing/unbox_returns.cmo \
-  middle_end/unboxing/unbox_specialised_args.cmo
+  # middle_end/unboxing/augment_specialised_args.cmo \
+  # middle_end/unboxing/unbox_closures.cmo \
+  # middle_end/unboxing/unbox_continuation_params.cmo \
+  # middle_end/unboxing/unbox_free_vars_of_closures.cmo \
+  # middle_end/unboxing/unbox_one_variable.cmo \
+  # middle_end/unboxing/unbox_returns.cmo \
+  # middle_end/unboxing/unbox_specialised_args.cmo
 
 MIDDLE_END_TOPLEVEL=\
   middle_end/middle_end.cmo
