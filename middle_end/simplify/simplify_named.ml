@@ -339,7 +339,151 @@ module Binary_int_arith_naked_int32 = Binary_int_arith (Int32)
 module Binary_int_arith_naked_int64 = Binary_int_arith (Int64)
 module Binary_int_arith_naked_nativeint = Binary_int_arith (Targetint)
 
-let simplify_binary_primitive env r prim dbg arg1 arg2 =
+let simplify_unary_primitive env r prim arg dbg =
+  match prim with
+  | Block_load of int * field_kind * mutable_or_immutable
+  | Duplicate_array of array_kind * mutable_or_immutable
+  | Duplicate_record of {
+      repr : record_representation;
+      num_fields : int;
+    }
+  | Is_int
+  | Get_tag
+  | String_length of string_or_bytes
+  | Swap_byte_endianness of Flambda_kind.Standard_int.t
+  | Int_as_pointer
+  | Opaque_identity
+  | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
+  | Int_conv of {
+      src : Flambda_kind.Standard_int.t;
+      dst : Flambda_kind.Standard_int.t;
+    }
+  | Float_arith of unary_float_arith_op
+  | Int_of_float ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_naked_float) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Immediate.Set.get_singleton fs with
+      | Some f ->
+        let i =
+          (* It seems as if the various [float_of_int] functions never raise
+             an exception even in the case of NaN or infinity. *)
+          Immediate.int (Targetint.of_float f)
+        in
+        let simple = Simple.const (Tagged_immediate i) in
+        Flambda.Reachable.reachable (Simple simple),
+          T.this_tagged_immediate i
+      | None ->
+        let is =
+          Float.Set.fold (fun f is ->
+              let i = Immediate.int (Targetint.of_float f) in
+              Immediate.Set.add i is)
+            fs
+            Immediate.Set.empty
+        in
+        Flambda.Reachable.reachable (original_term ()),
+          T.these_tagged_immediates is
+      end
+    | Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ()),
+        T.unknown (Flambda_kind.value Can_scan) Other
+    | Invalid -> 
+      Flambda.Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+    end
+  | Float_of_int ->
+
+  | Array_length array_kind ->
+
+  | Bigarray_length { dimension : int; } ->
+
+  | Unbox_number Naked_float ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_float) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Float.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_float f) in
+        Flambda.Reachable.reachable (Simple simple), T.this_naked_float f
+      | None ->
+        Flambda.Reachable.reachable (original_term ()),
+          T.these_naked_floats fs
+      end
+    | Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ()),
+        T.unknown Naked_float Other
+    | Invalid -> 
+      Flambda.Reachable.invalid (), T.bottom Naked_float
+    end
+  | Unbox_number Naked_int32 ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_int32) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Int32.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_int32 f) in
+        Flambda.Reachable.reachable (Simple simple), T.this_naked_int32 f
+      | None ->
+        Flambda.Reachable.reachable (original_term ()),
+          T.these_naked_int32s fs
+      end
+    | Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ()),
+        T.unknown Naked_int32 Other
+    | Invalid -> 
+      Flambda.Reachable.invalid (), T.bottom Naked_int32
+    end
+  | Unbox_number Naked_int64 ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_int64) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Int64.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_int64 f) in
+        Flambda.Reachable.reachable (Simple simple), T.this_naked_int64 f
+      | None ->
+        Flambda.Reachable.reachable (original_term ()),
+          T.these_naked_int64s fs
+      end
+    | Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ()),
+        T.unknown Naked_int64 Other
+    | Invalid -> 
+      Flambda.Reachable.invalid (), T.bottom Naked_int64
+    end
+  | Unbox_number Naked_nativeint ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Flambda.Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_boxed_nativeint) arg in
+    begin match proof with
+    | Proved fs ->
+      begin match Targetint.Set.get_singleton fs with
+      | Some f ->
+        let simple = Simple.const (Naked_nativeint f) in
+        Flambda.Reachable.reachable (Simple simple), T.this_naked_nativeint f
+      | None ->
+        Flambda.Reachable.reachable (original_term ()),
+          T.these_naked_nativeints fs
+      end
+    | Proved Not_all_values_known ->
+      Flambda.Reachable.reachable (original_term ()),
+        T.unknown Naked_nativeint Other
+    | Invalid -> 
+      Flambda.Reachable.invalid (), T.bottom Naked_nativeint
+    end
+  | Box_number of Flambda_kind.Boxable_number.t
+  | Project_closure of Closure_id.Set.t
+  | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
+  | Project_var of Var_within_closure.t Closure_id.Map.t
+
+let simplify_binary_primitive env r prim arg1 arg2 dbg =
   match prim with
   | Block_load_computed_index
   | Block_set of int * block_set_kind * init_or_assign
@@ -366,8 +510,29 @@ let simplify_binary_primitive env r prim dbg arg1 arg2 =
   | String_load of string_accessor_width
   | Bigstring_load of bigstring_accessor_width
 
+let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =
+  match prim with
+  | Block_set_computed of Flambda_kind.scanning * init_or_assign
+  | Bytes_set of string_accessor_width
+  | Array_set of array_kind
+  | Bigstring_set of bigstring_accessor_width
+
+let simplify_variadic_primitive env r prim args dbg =
+  match prim with
+  | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
+  | Make_array of array_kind * mutable_or_immutable
+  | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
+  | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
 
 
+
+
+
+
+
+
+
+(*
 module Simplify_boxed_nativeint = Simplify_boxed_integer_operator (struct
   include Nativeint
   let to_int64 = Int64.of_nativeint
@@ -389,6 +554,7 @@ module Simplify_boxed_int64 = Simplify_boxed_integer_operator (struct
   let swap = S.swap64
   let kind = Lambda.Pint64
 end)
+*)
 
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)

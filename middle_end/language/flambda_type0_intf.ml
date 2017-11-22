@@ -262,9 +262,13 @@ module type S = sig
       specified constants. *)
   val this_naked_immediate : Immediate.t -> t
   val this_naked_float : float -> t
+  val these_naked_floats : Numbers.Float.Set.t -> t
   val this_naked_int32 : Int32.t -> t
+  val these_naked_int32s : Numbers.Int32.Set.t -> t
   val this_naked_int64 : Int64.t -> t
+  val these_naked_int64s : Numbers.Int64.Set.t -> t
   val this_naked_nativeint : Targetint.t -> t
+  val these_naked_nativeints : Targetint.Set.t -> t
 
   (** Building of types corresponding to immutable values given only the
       size of such values. *)
