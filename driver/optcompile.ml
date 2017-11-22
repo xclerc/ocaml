@@ -13,6 +13,8 @@
 (*                                                                        *)
 (**************************************************************************)
 
+[@@@ocaml.warning "-27"]
+
 (* The batch compiler *)
 
 open Misc
@@ -112,26 +114,29 @@ let implementation ~backend ppf sourcefile outputprefix =
                   ~module_ident
                   ~backend
                   ~module_initializer:lam)
-            ++ Asmgen.compile_implementation_flambda
-              outputprefix ~required_globals ~backend ppf;
-            Compilenv.save_unit_info cmxfile)
+            (* ++ Asmgen.compile_implementation_flambda *)
+            (*   outputprefix ~required_globals ~backend ppf; *)
+            (* Compilenv.save_unit_info cmxfile *)
+            ++ (fun _ -> ())
+            )
         end
-        else begin
-          Clflags.use_inlining_arguments_set Clflags.classic_arguments;
-          (typedtree, coercion)
-          ++ Profile.(record transl)
-              (Translmod.transl_store_implementation modulename)
-          ++ print_if ppf Clflags.dump_rawlambda Printlambda.program
-          ++ Profile.(record generate)
-              (fun program ->
-                { program with
-                  Lambda.code = Simplif.simplify_lambda sourcefile
-                    program.Lambda.code }
-                ++ print_if ppf Clflags.dump_lambda Printlambda.program
-                ++ Asmgen.compile_implementation_clambda
-                  outputprefix ppf;
-                Compilenv.save_unit_info cmxfile)
-        end
+        else (* begin *)
+        (*   Clflags.use_inlining_arguments_set Clflags.classic_arguments; *)
+        (*   (typedtree, coercion) *)
+        (*   ++ Profile.(record transl) *)
+        (*       (Translmod.transl_store_implementation modulename) *)
+        (*   ++ print_if ppf Clflags.dump_rawlambda Printlambda.program *)
+        (*   ++ Profile.(record generate) *)
+        (*       (fun program -> *)
+        (*         { program with *)
+        (*           Lambda.code = Simplif.simplify_lambda sourcefile *)
+        (*             program.Lambda.code } *)
+        (*         ++ print_if ppf Clflags.dump_lambda Printlambda.program *)
+        (*         ++ Asmgen.compile_implementation_clambda *)
+        (*           outputprefix ppf; *)
+        (*         Compilenv.save_unit_info cmxfile) *)
+          (* end *)
+          ()
       end;
       Warnings.check_fatal ();
       Stypes.dump (Some (outputprefix ^ ".annot"))

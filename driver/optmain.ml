@@ -13,24 +13,52 @@
 (*                                                                        *)
 (**************************************************************************)
 
+[@@@ocaml.warning "-60"]
+
 open Clflags
 open Compenv
 
 module Backend = struct
   (* See backend_intf.mli. *)
 
-  let symbol_for_global' = Compilenv.symbol_for_global'
-  let closure_symbol = Compilenv.closure_symbol
+  let symbol_for_global' =
+    Compilenv.symbol_for_global'
+  let closure_symbol =
+    (fun _ -> assert false)
+    (* Compilenv.closure_symbol *)
 
-  let really_import_approx = Import_approx.really_import_approx
-  let import_symbol = Import_approx.import_symbol
+  let import_symbol =
+    (fun _ -> assert false)
+    (* Import_approx.import_symbol *)
 
-  let size_int = Arch.size_int
-  let big_endian = Arch.big_endian
+  let size_int = 8
+    (* Arch.size_int *)
+  let big_endian = false
+    (* Arch.big_endian *)
 
   let max_sensible_number_of_arguments =
     (* The "-1" is to allow for a potential closure environment parameter. *)
     Proc.max_arguments_for_tailcalls - 1
+
+  let symbol_is_predefined_exception =
+    (fun _ -> assert false)
+  let import_export_id =
+    (fun _ -> assert false)
+  let all_predefined_exception_symbols = fun _ -> assert false
+
+  let import_value_type_as_resolved_ty_value _ = assert false
+  let import_naked_immediate_type_as_resolved_ty_naked_immediate _ = assert false
+  let import_naked_float_type_as_resolved_ty_naked_float _ = assert false
+  let import_naked_int32_type_as_resolved_ty_naked_int32 _ = assert false
+  let import_naked_int64_type_as_resolved_ty_naked_int64 _ = assert false
+  let import_naked_nativeint_type_as_resolved_ty_naked_nativeint _ = assert false
+  let import_value_type _ = assert false
+  let import_naked_immediate_type _ = assert false
+  let import_naked_float_type _ = assert false
+  let import_naked_int32_type _ = assert false
+  let import_naked_int64_type _ = assert false
+  let import_naked_nativeint_type _ = assert false
+
 end
 let backend = (module Backend : Backend_intf.S)
 
@@ -245,7 +273,8 @@ let main () =
   let ppf = Format.err_formatter in
   try
     readenv ppf Before_args;
-    Clflags.add_arguments __LOC__ (Arch.command_line_options @ Options.list);
+    (* Clflags.add_arguments __LOC__ (Arch.command_line_options @ Options.list); *)
+    Clflags.add_arguments __LOC__ Options.list;
     Clflags.add_arguments __LOC__
       ["-depend", Arg.Unit Makedepend.main_from_option,
        "<options> Compute dependencies (use 'ocamlopt -depend -help' for details)"];
@@ -268,51 +297,53 @@ let main () =
       end
     end;
     readenv ppf Before_link;
-    if
-      List.length (List.filter (fun x -> !x)
-                     [make_package; make_archive; shared;
-                      compile_only; output_c_object]) > 1
-    then
-      fatal "Please specify at most one of -pack, -a, -shared, -c, -output-obj";
-    if !make_archive then begin
-      Compmisc.init_path true;
-      let target = extract_output !output_name in
-      Asmlibrarian.create_archive (get_objfiles ~with_ocamlparam:false) target;
-      Warnings.check_fatal ();
-    end
-    else if !make_package then begin
-      Compmisc.init_path true;
-      let target = extract_output !output_name in
-      Asmpackager.package_files ppf (Compmisc.initial_env ())
-        (get_objfiles ~with_ocamlparam:false) target ~backend;
-      Warnings.check_fatal ();
-    end
-    else if !shared then begin
-      Compmisc.init_path true;
-      let target = extract_output !output_name in
-      Asmlink.link_shared ppf (get_objfiles ~with_ocamlparam:false) target;
-      Warnings.check_fatal ();
-    end
-    else if not !compile_only && !objfiles <> [] then begin
-      let target =
-        if !output_c_object then
-          let s = extract_output !output_name in
-          if (Filename.check_suffix s Config.ext_obj
-            || Filename.check_suffix s Config.ext_dll)
-          then s
-          else
-            fatal
-              (Printf.sprintf
-                 "The extension of the output file must be %s or %s"
-                 Config.ext_obj Config.ext_dll
-              )
-        else
-          default_output !output_name
-      in
-      Compmisc.init_path true;
-      Asmlink.link ppf (get_objfiles ~with_ocamlparam:true) target;
-      Warnings.check_fatal ();
-    end;
+
+    ()
+  (*   if *)
+  (*     List.length (List.filter (fun x -> !x) *)
+  (*                    [make_package; make_archive; shared; *)
+  (*                     compile_only; output_c_object]) > 1 *)
+  (*   then *)
+  (*     fatal "Please specify at most one of -pack, -a, -shared, -c, -output-obj"; *)
+  (*   if !make_archive then begin *)
+  (*     Compmisc.init_path true; *)
+  (*     let target = extract_output !output_name in *)
+  (*     Asmlibrarian.create_archive (get_objfiles ~with_ocamlparam:false) target; *)
+  (*     Warnings.check_fatal (); *)
+  (*   end *)
+  (*   else if !make_package then begin *)
+  (*     Compmisc.init_path true; *)
+  (*     let target = extract_output !output_name in *)
+  (*     Asmpackager.package_files ppf (Compmisc.initial_env ()) *)
+  (*       (get_objfiles ~with_ocamlparam:false) target ~backend; *)
+  (*     Warnings.check_fatal (); *)
+  (*   end *)
+  (*   else if !shared then begin *)
+  (*     Compmisc.init_path true; *)
+  (*     let target = extract_output !output_name in *)
+  (*     Asmlink.link_shared ppf (get_objfiles ~with_ocamlparam:false) target; *)
+  (*     Warnings.check_fatal (); *)
+  (*   end *)
+  (*   else if not !compile_only && !objfiles <> [] then begin *)
+  (*     let target = *)
+  (*       if !output_c_object then *)
+  (*         let s = extract_output !output_name in *)
+  (*         if (Filename.check_suffix s Config.ext_obj *)
+  (*           || Filename.check_suffix s Config.ext_dll) *)
+  (*         then s *)
+  (*         else *)
+  (*           fatal *)
+  (*             (Printf.sprintf *)
+  (*                "The extension of the output file must be %s or %s" *)
+  (*                Config.ext_obj Config.ext_dll *)
+  (*             ) *)
+  (*       else *)
+  (*         default_output !output_name *)
+  (*     in *)
+  (*     Compmisc.init_path true; *)
+  (*     Asmlink.link ppf (get_objfiles ~with_ocamlparam:true) target; *)
+  (*     Warnings.check_fatal (); *)
+  (*   end; *)
   with x ->
       Location.report_exception ppf x;
       exit 2

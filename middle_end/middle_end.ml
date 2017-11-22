@@ -15,20 +15,21 @@
 (**************************************************************************)
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
+[@@@ocaml.warning "-26"]
 
-let _dump_function_sizes flam ~backend =
-  let module Backend = (val backend : Backend_intf.S) in
-  let than = max_int in
-  Flambda_iterators.iter_on_set_of_closures_of_program flam
-    ~f:(fun ~constant:_ (set_of_closures : Flambda.Set_of_closures.t) ->
-      Variable.Map.iter (fun fun_var
-            (function_decl : Flambda.Function_declaration.t) ->
-          let closure_id = Closure_id.wrap fun_var in
-          let symbol = Backend.closure_symbol closure_id in
-          match Inlining_cost.lambda_smaller' function_decl.body ~than with
-          | Some size -> Format.eprintf "%a %d\n" Symbol.print symbol size
-          | None -> assert false)
-        set_of_closures.function_decls.funs)
+(* let _dump_function_sizes flam ~backend = *)
+(*   let module Backend = (val backend : Backend_intf.S) in *)
+(*   let than = max_int in *)
+(*   Flambda_iterators.iter_on_set_of_closures_of_program flam *)
+(*     ~f:(fun ~constant:_ (set_of_closures : Flambda.Set_of_closures.t) -> *)
+(*       Variable.Map.iter (fun fun_var *)
+(*             (function_decl : Flambda.Function_declaration.t) -> *)
+(*           let closure_id = Closure_id.wrap fun_var in *)
+(*           let symbol = Backend.closure_symbol closure_id in *)
+(*           match Inlining_cost.lambda_smaller' function_decl.body ~than with *)
+(*           | Some size -> Format.eprintf "%a %d\n" Symbol.print symbol size *)
+(*           | None -> assert false) *)
+(*         set_of_closures.function_decls.funs) *)
 
 let middle_end ppf ~prefixname ~backend
     ~size
@@ -39,13 +40,15 @@ let middle_end ppf ~prefixname ~backend
     let pass_number = ref 0 in
     let round_number = ref 0 in
     let check flam =
-      if !Clflags.flambda_invariant_checks then begin
-        try Flambda_invariants.check_exn flam
-        with exn ->
-          Misc.fatal_errorf "After Flambda pass %d, round %d:@.%s:@.%a"
-            !pass_number !round_number (Printexc.to_string exn)
-            Flambda_static.Program.print flam
-      end
+      (* if !Clflags.flambda_invariant_checks then begin *)
+      (*   try Flambda_invariants.check_exn flam *)
+      (*   with exn -> *)
+      (*     Misc.fatal_errorf "After Flambda pass %d, round %d:@.%s:@.%a" *)
+      (*       !pass_number !round_number (Printexc.to_string exn) *)
+      (*       Flambda_static.Program.print flam *)
+      (* end *)
+      ignore flam;
+      ignore prefixname
     in
     let print_prepared_lambda lam =
       if not !Clflags.dump_rawflambda then begin
@@ -55,15 +58,17 @@ let middle_end ppf ~prefixname ~backend
         lam
       end
     in
-    let print_ilambda (ilam, return_cont) =
+    let print_ilambda (ilam : Ilambda.program) =
       if not !Clflags.dump_rawflambda then begin
-        ilam, return_cont
+        ilam
       end else begin
         Format.fprintf ppf
-          "After CPS conversion (return continuation %a):@ %a@."
-          Continuation.print return_cont
-          Ilambda.print ilam;
-        ilam, return_cont
+          "After CPS conversion (return continuation %a) \
+           (exception continuation %a):@ %a@."
+          Continuation.print ilam.return_continuation
+          Continuation.print ilam.exception_continuation
+          Ilambda.print ilam.expr;
+        ilam
       end
     in
     let (+-+) flam (name, pass) =
@@ -99,27 +104,28 @@ let middle_end ppf ~prefixname ~backend
       check flam;
       let fast_mode flam =
         pass_number := 0;
-        let round = 0 in
+        (* let round = 0 in *)
         flam
-        +-+ ("Lift_let_cont 1", Lift_let_cont.run)
-        +-+ ("Sink_lets 1", Sink_lets.run)
-        +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
-        +-+ ("Share_constants", Share_constants.share_constants)
-        +-+ ("Lift_to_toplevel",
-             Lift_to_toplevel.lift ~backend)
-        +-+ ("Simplify",
-             Simplify.run ~never_inline:false
-               ~allow_continuation_inlining:true
-               ~allow_continuation_specialisation:false
-               ~backend ~prefixname ~round)
-        +-+ ("Remove_unused_closure_vars 2",
-             Remove_unused_closure_vars.remove_unused_closure_variables
-               ~remove_direct_call_surrogates:false)
-        +-+ ("Ref_to_variables",
-             Ref_to_variables.eliminate_ref)
-        +-+ ("Initialize_symbol_to_let_symbol",
-             Initialize_symbol_to_let_symbol.run)
+        (* +-+ ("Lift_let_cont 1", Lift_let_cont.run) *)
+        (* +-+ ("Sink_lets 1", Sink_lets.run) *)
+        (* +-+ ("Lift_constants", Lift_constants.lift_constants ~backend) *)
+        (* +-+ ("Share_constants", Share_constants.share_constants) *)
+        (* +-+ ("Lift_to_toplevel", *)
+        (*      Lift_to_toplevel.lift ~backend) *)
+        (* +-+ ("Simplify", *)
+        (*      Simplify.run ~never_inline:false *)
+        (*        ~allow_continuation_inlining:true *)
+        (*        ~allow_continuation_specialisation:false *)
+        (*        ~backend ~prefixname ~round) *)
+        (* +-+ ("Remove_unused_closure_vars 2", *)
+        (*      Remove_unused_closure_vars.remove_unused_closure_variables *)
+        (*        ~remove_direct_call_surrogates:false) *)
+        (* +-+ ("Ref_to_variables", *)
+        (*      Ref_to_variables.eliminate_ref) *)
+        (* +-+ ("Initialize_symbol_to_let_symbol", *)
+        (*      Initialize_symbol_to_let_symbol.run) *)
       in
+(*
       let rec loop flam =
         pass_number := 0;
         let round = !round_number in
@@ -174,21 +180,23 @@ let middle_end ppf ~prefixname ~backend
                Initialize_symbol_to_let_symbol.run)
           |> loop
       in
+*)
       let back_end flam =
         flam
-        +-+ ("Remove_unused_closure_vars",
-             Remove_unused_closure_vars.remove_unused_closure_variables
-               ~remove_direct_call_surrogates:true)
-        +-+ ("Lift_constants", Lift_constants.lift_constants ~backend)
-        +-+ ("Share_constants", Share_constants.share_constants)
-        +-+ ("Remove_unused_program_constructs",
-          Remove_unused_program_constructs.remove_unused_program_constructs)
+        (* +-+ ("Remove_unused_closure_vars", *)
+        (*      Remove_unused_closure_vars.remove_unused_closure_variables *)
+        (*        ~remove_direct_call_surrogates:true) *)
+        (* +-+ ("Lift_constants", Lift_constants.lift_constants ~backend) *)
+        (* +-+ ("Share_constants", Share_constants.share_constants) *)
+        (* +-+ ("Remove_unused_program_constructs", *)
+        (*   Remove_unused_program_constructs.remove_unused_program_constructs) *)
       in
       let flam =
-        if !Clflags.classic_inlining then
-          fast_mode flam
-        else
-          loop flam
+        (* if !Clflags.classic_inlining then *)
+        (*   fast_mode flam *)
+        (* else *)
+        (*   loop flam *)
+        fast_mode flam
       in
       let flam = back_end flam in
       (* Check that there aren't any unused "always inline" attributes. *)

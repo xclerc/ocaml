@@ -48,6 +48,7 @@ and let_mutable = {
 and function_declaration =
   { kind : L.function_kind;
     continuation_param : Continuation.t;
+    exn_continuation_param : Continuation.t;
     params : (Ident.t * Lambda.value_kind) list;
     return : Lambda.value_kind;
     body : t;
@@ -72,6 +73,7 @@ and apply =
     func : Ident.t;
     args : Ident.t list;
     continuation : Continuation.t;
+    exn_continuation : Continuation.t;
     loc : Location.t;
     should_be_tailcall : bool;
     inlined : L.inline_attribute;
@@ -86,6 +88,12 @@ and switch =
   { numconsts : int;
     consts : (int * Continuation.t) list;
     failaction : Continuation.t option;
+  }
+
+type program =
+  { expr : t;
+    return_continuation : Continuation.t;
+    exception_continuation : Continuation.t;
   }
 
 let rec print_function ppf

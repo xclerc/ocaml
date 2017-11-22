@@ -40,6 +40,7 @@ let tupled_function_call_stub
       (unboxed_version : Closure_id.t) ~(closure_bound_var : Closure_id.t)
       : Flambda.Function_declaration.t =
   let continuation_param = Continuation.create () in
+  let exn_continuation_param = Continuation.create () in
   let tuple_param_var =
     Variable.rename ~append:"tupled_stub_param"
       (Closure_id.unwrap unboxed_version)
@@ -55,6 +56,7 @@ let tupled_function_call_stub
   let call : Flambda.Expr.t =
     Apply ({
         continuation = continuation_param;
+        exn_continuation = exn_continuation_param;
         func = Name.var unboxed_version_var;
         args = List.map Simple.var params;
         (* CR-someday mshinwell for mshinwell: investigate if there is some
@@ -102,6 +104,7 @@ let tupled_function_call_stub
   Flambda.Function_declaration.create
     ~my_closure
     ~params:[tuple_param] ~continuation_param
+    ~exn_continuation_param
     ~return_arity:[Flambda_kind.value Must_scan]
     ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
     ~specialise:Default_specialise ~is_a_functor:false
@@ -219,12 +222,14 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
   match lam with
   | Let (id, defining_expr, body) ->
     let body_env, var = Env.add_var_like env id in
-    let defining_expr = close_named t env defining_expr in
-    let body = close t body_env body in
-    (* CR pchambart: Kind anntation on let should to go through Ilambda *)
-    Flambda.Expr.create_let var
-      (Flambda_kind.value Must_scan)
-      defining_expr body
+    let cont defining_expr =
+      let body = close t body_env body in
+      (* CR pchambart: Kind anntation on let should to go through Ilambda *)
+      Flambda.Expr.create_let var
+        (Flambda_kind.value Must_scan)
+        defining_expr body
+    in
+    close_named t env defining_expr cont
   | Let_mutable { id; initial_value; contents_kind; body; } ->
     (* See comment on [Pread_mutable] below. *)
     let var = Mutable_variable.of_ident id in
@@ -248,15 +253,17 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
          [let rec]. *)
       List.map (function
           | (let_rec_ident,
-              ({ kind; continuation_param; params; body; attr; loc; stub;
-                free_idents_of_body; } : Ilambda.function_declaration)) ->
+              ({ kind; continuation_param; exn_continuation_param;
+                 params; body; attr; loc; stub;
+                 free_idents_of_body; } : Ilambda.function_declaration)) ->
             let closure_bound_var =
               Closure_id.wrap
                 (Variable.create_with_same_name_as_ident let_rec_ident)
             in
             let function_declaration =
               Function_decl.create ~let_rec_ident:(Some let_rec_ident)
-                ~closure_bound_var ~kind ~params ~continuation_param ~body
+                ~closure_bound_var ~kind ~params ~continuation_param
+                ~exn_continuation_param ~body
                 ~attr ~loc ~free_idents_of_body ~stub
             in
             function_declaration)
@@ -308,11 +315,11 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
     if let_cont.is_exn_handler then begin
       assert (not let_cont.administrative);
       assert (List.length let_cont.params = 1);
-      assert (let_cont.recursive = Asttypes.Non_recursive);
+      assert (let_cont.recursive = Asttypes.Nonrecursive);
     end;
     (* Inline out administrative redexes. *)
     if let_cont.administrative then begin
-      assert (let_cont.recursive = Asttypes.Non_recursive);
+      assert (let_cont.recursive = Asttypes.Nonrecursive);
       let body_env =
         Env.add_administrative_redex env let_cont.name ~params:let_cont.params
           ~handler:let_cont.handler
@@ -336,7 +343,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       in
       let handlers : Flambda.Let_cont_handlers.t =
         match let_cont.recursive with
-        | Non_recursive -> Non_recursive { name = let_cont.name; handler; }
+        | Nonrecursive -> Non_recursive { name = let_cont.name; handler; }
         | Recursive ->
           Recursive (Continuation.Map.add let_cont.name handler
             Continuation.Map.empty)
@@ -346,8 +353,8 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
         handlers;
       };
     end
-  | Apply { kind; func; args; continuation; loc; should_be_tailcall = _;
-      inlined; specialised; } ->
+  | Apply { kind; func; args; continuation; exn_continuation;
+      loc; should_be_tailcall = _; inlined; specialised; } ->
     let call_kind : Flambda.Call_kind.t =
       match kind with
       | Function -> Indirect_unknown_arity
@@ -368,6 +375,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       func = Env.find_name env func;
       args = Env.find_simples env args;
       continuation;
+      exn_continuation;
       dbg = Debuginfo.from_location loc;
       inline = convert_inline_attribute_from_lambda inlined;
       specialise = convert_specialise_attribute_from_lambda specialised;
@@ -384,7 +392,8 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
                   : Flambda.Trap_action.t ->
             match trap_action with
             | Push { id; exn_handler; } -> Push { id; exn_handler; }
-            | Pop { id; exn_handler; } -> Pop { id; exn_handler; })
+            | Pop { id; exn_handler; } ->
+              Pop { id; exn_handler; take_backtrace = false; })
           trap_action
       in
       Apply_cont (cont, trap_action, List.map Simple.var args)
@@ -412,7 +421,7 @@ let rec close t env (lam : Ilambda.t) : Flambda.Expr.t =
       ~arms
   | Event (ilam, _) -> close t env ilam
 
-and close_named t env (named : Ilambda.named) : Flambda.Named.t =
+and close_named t env (named : Ilambda.named) (cont : Flambda.Named.t -> Flambda.Expr.t) : Flambda.Expr.t =
   match named with
   | Var id ->
     let simple =
@@ -424,33 +433,33 @@ and close_named t env (named : Ilambda.named) : Flambda.Named.t =
         Simple.var (Env.find_var env id)
       end
     in
-    Simple simple
+    cont (Simple simple)
   | Const cst ->
-    fst (close_const t cst)
+    cont (fst (close_const t cst))
   | Prim (Pread_mutable id, args, _) ->
     (* All occurrences of mutable variables bound by [Let_mutable] are
        identified by [Prim (Pread_mutable, ...)] in Ilambda. *)
     assert (args = []);
-    Read_mutable (Env.find_mutable_var env id)
+    cont (Read_mutable (Env.find_mutable_var env id))
   | Prim (Pgetglobal id, [], _) when Ident.is_predef_exn id ->
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    Simple (Simple.symbol symbol)
+    cont (Simple (Simple.symbol symbol))
   | Prim (Pgetglobal id, [], _) ->
     assert (not (Ident.same id t.current_unit_id));
     let symbol = t.symbol_for_global' id in
     t.imported_symbols <- Symbol.Set.add symbol t.imported_symbols;
-    Simple (Simple.symbol symbol)
+    cont (Simple (Simple.symbol symbol))
   | Prim (p, args, loc) ->
     let prim =
       Lambda_to_flambda_primitives.convert p (Env.find_simples env args)
     in
-    Prim (prim, Debuginfo.from_location loc)
+    cont (Prim (prim, Debuginfo.from_location loc))
   | Assign { being_assigned; new_value; } ->
-    Assign {
+    cont (Assign {
       being_assigned = Env.find_mutable_var env being_assigned;
       new_value = Env.find_simple env new_value;
-    }
+    })
 
 (** Perform closure conversion on a set of function declarations, returning a
     set of closures.  (The set will often only contain a single function;
@@ -624,6 +633,7 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
         ~my_closure
         ~params
         ~continuation_param:(Function_decl.continuation_param decl)
+        ~exn_continuation_param:(Function_decl.exn_continuation_param decl)
         ~return_arity:[Flambda_kind.value Must_scan]
         ~body ~stub ~dbg ~inline
         ~specialise
@@ -667,7 +677,7 @@ and close_functions t external_env function_declarations : Flambda.Named.t =
   Set_of_closures set_of_closures
 
 let ilambda_to_flambda ~backend ~module_ident ~size ~filename
-      (ilam, ilam_result_cont) : Flambda_static.Program.t =
+      (ilam : Ilambda.program): Flambda_static.Program.t =
   let module Backend = (val backend : Backend_intf.S) in
   let compilation_unit = Compilation_unit.get_current_exn () in
   let t =
@@ -755,13 +765,15 @@ let ilambda_to_flambda ~backend ~module_ident ~size ~filename
   let expr : Flambda.Expr.t =
     Let_cont
       { handlers =
-          Non_recursive { name = ilam_result_cont; handler = assign_cont_def };
-        body = close t Env.empty ilam; }
+          Non_recursive { name = ilam.return_continuation;
+                          handler = assign_cont_def };
+        body = close t Env.empty ilam.expr; }
   in
 
   let computation : Flambda_static.Program_body.computation =
     { expr;
       return_cont = assign_continuation;
+      exception_cont = ilam.exception_continuation;
       computed_values = field_vars;
     }
   in
