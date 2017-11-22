@@ -116,6 +116,8 @@ module Binary_int_arith (I : sig
   val term : t -> Flambda.Named.t
 
   val zero : t
+  val one : t
+  val minus_one : t
 
   val add : t -> t -> t
   val sub : t -> t -> t
@@ -129,17 +131,28 @@ module Binary_int_arith (I : sig
   val or_ : t -> t -> t
   val xor : t -> t -> t
 
-  module Set : Identifiable.Set with type t = t
+  module Identifiable.S with type t := t
 
   module Pair : sig
     type nonrec t = t * t
 
-    module Set : Identifiable.Set with type t = t
+    module Identifiable.S with type t := t
   end
 
   val cross_product : Set.t -> Set.t -> Pair.Set.t
 end) = struct
+  type outcome_for_one_side_only =
+    | Exactly of I.t
+    | This_primitive of Flambda_primitive.t
+    | The_other_side
+    | Cannot_simplify
+    | Invalid
+
   let simplify env r prim dbg op arg1 arg2 : Flambda.Named.t * R.t =
+    let arg1, ty1 = S.simplify_simple env arg1 in
+    let arg2, ty2 = S.simplify_simple env arg2 in
+    let proof1 = (E.type_accessor env T.prove_tagged_immediate) arg1 in
+    let proof2 = (E.type_accessor env T.prove_tagged_immediate) arg2 in
     let op =
       let always_some f x = Some (f x) in
       match op with
@@ -152,10 +165,75 @@ end) = struct
       | Or -> always_some I.or_
       | Xor -> always_some I.xor
     in
-    let arg1, ty1 = S.simplify_simple env arg1 in
-    let arg2, ty2 = S.simplify_simple env arg2 in
-    let proof1 = (E.type_accessor env T.prove_tagged_immediate) arg1 in
-    let proof2 = (E.type_accessor env T.prove_tagged_immediate) arg2 in
+    let op_lhs_unknown ~rhs : outcome_for_one_side_only =
+      let negate_lhs () : outcome_for_one_side_only =
+        This_primitive (Unary (Int_arith Neg, arg1))
+      in
+      match op with
+      | Add ->
+        if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+      | Sub ->
+        if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+      | Mul ->
+        if I.equal rhs I.zero then Exactly I.zero
+        else if I.equal rhs I.one then The_other_side
+        else if I.equal rhs I.minus_one then negate_lhs ()
+        else Cannot_simplify
+      | Div ->
+        if I.equal rhs I.zero then Invalid
+        else if I.equal rhs I.one then The_other_side
+        else if I.equal rhs I.minus_one then negate_lhs ()
+        else Cannot_simplify
+      | Mod ->
+        if I.equal rhs I.zero then Invalid
+        else if I.equal rhs I.one then Exactly I.zero
+        else if I.equal rhs I.minus_one then Exactly I.zero
+        else Cannot_simplify
+      | And ->
+        if I.equal rhs I.minus_one then The_other_side
+        else if I.equal rhs I.zero then Exactly I.zero
+        else Cannot_simplify
+      | Or ->
+        if I.equal rhs I.minus_one then Exactly I.minus_one
+        else if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+      | Xor ->
+        if I.equal rhs I.zero then The_other_side
+        else Cannot_simplify
+    in
+    let op_rhs_unknown ~lhs : outcome_for_one_side_only =
+      let negate_rhs () : outcome_for_one_side_only =
+        This_primitive (Unary (Int_arith Neg, arg2))
+      in
+      match op with
+      | Add ->
+        if I.equal lhs I.zero then The_other_side
+        else Cannot_simplify
+      | Sub ->
+        if I.equal lhs I.zero then negate_rhs ()
+        else Cannot_simplify
+      | Mul ->
+        if I.equal lhs I.zero then Exactly I.zero
+        else if I.equal lhs I.one then The_other_side
+        else if I.equal lhs I.minus_one then negate_rhs ()
+        else Cannot_simplify
+      | Div | Mod -> Cannot_simplify
+      | And ->
+        if I.equal lhs I.minus_one then The_other_side
+        else if I.equal lhs I.zero then Exactly I.zero
+        else Cannot_simplify
+      | Or ->
+        if I.equal lhs I.minus_one then Exactly I.minus_one
+        else if I.equal lhs I.zero then The_other_side
+        else Cannot_simplify
+      | Xor ->
+        if I.equal lhs I.zero then The_other_side
+        (* CR mshinwell: We don't have bitwise NOT
+        else if I.equal lhs I.minus_one then bitwise NOT of rhs *)
+        else Cannot_simplify
+    in
     let original_term () : Flambda.Named.t =
       Prim (Binary (prim, arg1, arg2), dbg)
     in
