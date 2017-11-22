@@ -17,12 +17,7 @@
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
 module E = Simplify_env_and_result.Env
-module R = Simplify_env_and_result.Result
 module T = Flambda_type
-
-type named_simplifier =
-  (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t
-    * Flambda_type.t * R.t
 
 let type_for_const (const : Simple.Const.t) =
   match const with
@@ -34,18 +29,33 @@ let type_for_const (const : Simple.Const.t) =
   | Naked_int64 n -> T.this_naked_int64 n
   | Naked_nativeint n -> T.this_naked_nativeint n
 
-let type_for_simple env (simple : Simple.t)
-      : (Flambda.Named.t * Flambda_type.t) Flambda.Or_invalid.t =
+let simplify_name env name =
+  match E.type_of_name env name with
+  | None ->
+    Misc.fatal_errorf "Unbound name %a" Name.print name
+  | Some ty ->
+    let ty, canonical_name = (E.type_accessor env T.resolve_aliases) ty in
+    match canonical_name with
+    | None -> name, ty
+    | Some canonical_name -> canonical_name, ty
+
+let simplify_simple env (simple : Simple.t) =
   match simple with
-  | Const c -> Ok (Simple (Const c), type_for_const c)
+  | Const c -> simple, type_for_const c
   | Name name ->
-    let ty = E.type_for_name env name in
-    let reified =
-      T.reify ~importer
-        ~type_for_name:(fun name -> E.type_for_name env name)
-        ty
-    in
-    match reified with
-    | Term (named, ty) -> Ok (named, ty)
-    | Cannot_reify -> Ok (Simple simple, ty)
-    | Invalid -> Invalid
+    match E.type_of_name env name with
+    | None ->
+      Misc.fatal_errorf "Unbound name %a" Name.print name
+    | Some ty ->
+      let reified =
+        (E.type_accessor env T.reify)
+          ~allow_free_variables:false
+          ty
+      in
+      match reified with
+      | Term (simple, ty) -> simple, ty
+      | Cannot_reify -> simple, ty
+      | Invalid -> simple, (E.type_accessor env T.bottom_like) ty
+
+let simplify_simples env simples =
+  List.map (fun simple -> simplify_simple env simple) simples

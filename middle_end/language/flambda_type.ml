@@ -32,6 +32,10 @@ include F0.Flambda_type
 let unknown_types_from_arity t =
   List.map (fun kind -> unknown kind Other) t
 
+let bottom_like ~importer ~type_of_name t =
+  let kind = kind ~importer ~type_of_name t in
+  bottom kind
+
 let unknown_like ~importer ~type_of_name t =
   let kind = kind ~importer ~type_of_name t in
   unknown kind Other
@@ -1669,7 +1673,7 @@ type reification_result =
   | Cannot_reify
   | Invalid
 
-let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
+let reify ~importer ~type_of_name ~allow_free_variables (* ~expected_kind *) t
       : reification_result =
   let original_t = t in
   let t, _canonical_name = resolve_aliases ~importer ~type_of_name t in
@@ -1737,6 +1741,7 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
     | Naked_int64s Not_all_values_known
     | Naked_nativeints Not_all_values_known -> try_name ()
   in
+(*
   let kind = Evaluated.kind t_evaluated in
   if not (Flambda_kind.compatible kind ~if_used_at:expected_kind) then begin
     Misc.fatal_errorf "Type %a, resolved to %a, cannot be used at kind %a"
@@ -1744,6 +1749,7 @@ let reify ~importer ~type_of_name ~allow_free_variables ~expected_kind t
       print t
       K.print expected_kind
   end;
+*)
   result
 
 let get_field ~importer ~type_of_name t ~field_index

@@ -414,6 +414,7 @@ let simplify_define_symbol env (recursive : Flambda.recursive)
         let computation : Program_body.computation =
           { expr;
             return_cont = new_return_cont;
+            (* CR mshinwell: Think more about exception continuations here *)
             exception_cont = computation.exception_cont;
             computed_values = [];
           }

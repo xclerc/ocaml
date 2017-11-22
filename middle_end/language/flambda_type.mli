@@ -31,6 +31,9 @@ val unresolved_symbol : Symbol.t -> t
     reason [Other]. *)
 val unknown_types_from_arity : Flambda_arity.t -> t list
 
+(** Create an "bottom" type with the same kind as the given type. *)
+val bottom_like : (t -> t) type_accessor
+
 (** Create an "unknown" type with the same kind as the given type. *)
 val unknown_like : (t -> t) type_accessor
 
@@ -200,7 +203,7 @@ type reification_result =
 *)
 val reify
    : (allow_free_variables:bool
-  -> expected_kind:Flambda_kind.t
+(*  -> expected_kind:Flambda_kind.t *)
   -> flambda_type
   -> reification_result) type_accessor
 

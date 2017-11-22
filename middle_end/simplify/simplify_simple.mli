@@ -14,4 +14,21 @@
 (*                                                                        *)
 (**************************************************************************)
 
+(** Basic simplification functions on [Simple.t], [Name.t], etc. *)
+
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
+
+val simplify_name
+   : Simplify_env_and_result.Env.t
+  -> Name.t
+  -> Name.t * Flambda_type.t
+
+val simplify_simple
+   : Simplify_env_and_result.Env.t
+  -> Simple.t
+  -> Simple.t * Flambda_type.t
+
+val simplify_simples
+   : Simplify_env_and_result.Env.t
+  -> Simple.t list
+  -> (Simple.t * Flambda_type.t) list
