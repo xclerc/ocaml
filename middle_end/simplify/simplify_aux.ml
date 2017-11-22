@@ -168,26 +168,3 @@ let const_comparison_expr expr (cmp : Flambda_primitive.comparison) x y =
      | Le -> x <= y
      | Ge -> x >= y)
 *)
-
-let freshen_and_squash_aliases env var =
-  let var = Freshening.apply_variable (E.freshening env) var in
-  let ty = E.find_exn env var in
-  (* CR mshinwell: Shouldn't the variable always be in the env now? *)
-  match T.follow_variable_equality ty ~is_present_in_env:(E.mem env) with
-  | None -> var, ty
-  | Some var -> var, ty
-
-let freshen_and_squash_aliases_list env vars =
-  List.map (fun var -> freshen_and_squash_aliases env var) vars
-
-let simpler_equivalent_term env r original_named ty
-      : (Variable.t * Flambda.Named.t) list * Flambda.Reachable.t * R.t =
-  if not (Effect_analysis.no_effects_named original_named) then
-    [], Flambda.Reachable.reachable original_named, r
-  else
-    let importer = E.importer env in
-    match T.reify_using_env ~importer ty ~is_present_in_env:(E.mem env) with
-    | None -> [], Flambda.Reachable.reachable original_named, r
-    | Some named ->
-      let r = R.map_benefit r (B.remove_code_named original_named) in
-      [], Flambda.Reachable.reachable named, r

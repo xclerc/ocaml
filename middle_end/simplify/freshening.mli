@@ -98,6 +98,7 @@ val does_not_freshen : t -> Variable.t list -> bool
 
 val print : Format.formatter -> t -> unit
 
+(*
 (** N.B. This does not freshen the domain of the supplied map, only the
     range. *)
 (* CR-someday mshinwell: consider fixing that *)
@@ -110,5 +111,6 @@ val freshen_free_vars_projection_relation'
    : (Flambda.Free_var.t * 'a) Variable.Map.t
   -> freshening:t
   -> (Flambda.Free_var.t * 'a) Variable.Map.t
+*)
 
 val range_of_continuation_freshening : t -> Continuation.Set.t

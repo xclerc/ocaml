@@ -262,6 +262,7 @@ let does_not_freshen t vars =
   | Active subst ->
     not (List.exists (fun var -> Variable.Map.mem var subst.sb_var) vars)
 
+(*
 let freshen_projection (projection : Projection.t) ~freshening : Projection.t =
   match projection with
   | Project_var project_var ->
@@ -307,6 +308,7 @@ let freshen_free_vars_projection_relation' relation ~freshening =
       in
       { spec_to with projection; }, data)
     relation
+*)
 
 let range_of_continuation_freshening t =
   match t with
