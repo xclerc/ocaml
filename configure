@@ -392,7 +392,7 @@ esac
 
 case "$ccfamily" in
   clang-*)
-    bytecccompopts="-O3 -fno-strict-aliasing -fwrapv";
+    bytecccompopts="-O2 -fno-strict-aliasing -fwrapv";
     byteccprivatecompopts="$gcc_warnings";;
   gcc-[012]-*)
     # Some versions known to miscompile OCaml, e,g, 2.7.2.1, some 2.96.
@@ -406,11 +406,11 @@ case "$ccfamily" in
     bytecccompopts="-std=gnu99 -O";
     byteccprivatecompopts="$gcc_warnings";;
   gcc-4-*)
-    bytecccompopts="-std=gnu99 -O3 -fno-strict-aliasing -fwrapv \
+    bytecccompopts="-std=gnu99 -O2 -fno-strict-aliasing -fwrapv \
 -fno-builtin-memcmp";
     byteccprivatecompopts="$gcc_warnings";;
   gcc-*)
-    bytecccompopts="-O3 -fno-strict-aliasing -fwrapv";
+    bytecccompopts="-O2 -fno-strict-aliasing -fwrapv";
     byteccprivatecompopts="$gcc_warnings";;
   *)
     bytecccompopts="-O";;
