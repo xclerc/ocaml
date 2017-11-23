@@ -19,8 +19,8 @@
 (** "Primitive" operations: those that perform computation but never affect
     control flow.
 
-    Primitives that accept int32, int64 or nativeint values always take (or
-    return) the unboxed versions.
+    Primitives that accept float, int32, int64 or nativeint values always
+    take (or return) the unboxed versions.
 
     No primitive raises an exception.  (Bounds checking is handled
     separately.)
@@ -96,10 +96,11 @@ type unary_float_arith_op = Abs | Neg
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
   | Block_load of int * field_kind * mutable_or_immutable
-  (* CR mshinwell: Clarify whether [array_kind] is the kind of the array
-     being duplicated or the new array, and check that the effect/coeffect
-     judgement is correct. *)
+  (* CR mshinwell: Check effect/coeffect judgement for [Duplicate_array] *)
   | Duplicate_array of array_kind * mutable_or_immutable
+  (** For [Duplicate_array], the argument must be an immutable array.
+      The arguments of [Duplicate_array] give the kind and mutability of the
+      array being *produced* by the duplication. *)
   | Duplicate_record of {
       repr : record_representation;
       num_fields : int;
