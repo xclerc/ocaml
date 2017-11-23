@@ -840,6 +840,12 @@ module Simplify_unbox_number_nativeint =
     let these = T.these_naked_nativeints
   end)
 
+(* CR mshinwell:
+   1. Overlap with Lift_constants?
+   2. Work out how to make use of the projection information, e.g. for
+      boxing/unboxing.
+*)
+
 module Make_simplify_box_number (P : sig
 
 end) = struct
