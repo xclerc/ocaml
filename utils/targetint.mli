@@ -199,3 +199,8 @@ module Pair : sig
 end
 
 val cross_product : Set.t -> Set.t -> Pair.Set.t
+
+(** Extract the least significant 16 bits from the given target integer,
+    exchange the order of the two bytes extracted, then form a new target
+    integer by zero-extending those two bytes. *)
+val get_least_significant_16_bits_then_byte_swap : t -> t

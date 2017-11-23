@@ -127,6 +127,14 @@ module Int32 = struct
           result)
       set1
       Pair.Set.empty
+
+  let get_least_significant_16_bits_then_byte_swap t =
+    let least_significant_byte = t land 0xffl in
+    let second_to_least_significant_byte =
+      shift_right_logical (t land 0xff00l) 8
+    in
+    second_to_least_significant_byte
+      lor (shift_left least_significant_byte 8)
 end
 
 module Int64 = struct
@@ -167,6 +175,14 @@ module Int64 = struct
           result)
       set1
       Pair.Set.empty
+
+  let get_least_significant_16_bits_then_byte_swap t =
+    let least_significant_byte = t land 0xffL in
+    let second_to_least_significant_byte =
+      shift_right_logical (t land 0xff00L) 8
+    in
+    second_to_least_significant_byte
+      lor (shift_left least_significant_byte 8)
 end
 
 include (val

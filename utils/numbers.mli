@@ -44,8 +44,20 @@ end
 
 module Float : Identifiable.S with type t = float
 
-module Int32 : Identifiable.S with type t = Int32.t
+module Int32 : sig
+  include Identifiable.S with type t = Int32.t
 
-module Int64 : Identifiable.S with type t = Int64.t
+  val byte_swap : t -> t
+end
 
-module Nativeint : Identifiable.S with type t = Nativeint.t
+module Int64 : sig
+  include Identifiable.S with type t = Int64.t
+
+  val byte_swap : t -> t
+end
+
+module Nativeint : sig
+  include Identifiable.S with type t = Nativeint.t
+
+  val byte_swap : t -> t
+end

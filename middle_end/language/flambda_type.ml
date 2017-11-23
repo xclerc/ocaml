@@ -434,7 +434,8 @@ end = struct
     | Some (tag, fields) -> Some (tag, Array.length fields)
 
   let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
-        : get_field_result =
+        ~field_is_mutable ~is_unknown : get_field_result =
+    let block_t = t in
     match Tag.Scannable.Map.get_singleton t with
     | None -> Invalid
     | Some (_tag, fields) ->
@@ -453,7 +454,17 @@ end = struct
             K.print actual_kind
             print t
         end;
-        Ok (t_of_ty_value ty)
+        let t = t_of_ty_value ty in
+        if field_is_mutable then begin
+          if not (is_unknown ~importer ~type_of_name t) then begin
+            Misc.fatal_errorf "Field %d of type %a in block with the following \
+                type is apparently mutable, yet its type is not unknown: %a"
+              field_index
+              print block_t
+              print t
+          end
+        end;
+        Ok t
 
   let tags t = Tag.Scannable.Map.keys t
 
@@ -1690,6 +1701,9 @@ let as_or_more_precise ~importer ~type_of_name t ~than =
 let is_bottom ~importer ~type_of_name t =
   Evaluated.is_bottom (Evaluated.create_ignore_name ~importer ~type_of_name t)
 
+let is_unknown ~importer ~type_of_name t =
+  Evaluated.is_unknown (Evaluated.create_ignore_name ~importer ~type_of_name t)
+
 let is_known ~importer ~type_of_name t =
   Evaluated.is_known (Evaluated.create_ignore_name ~importer ~type_of_name t)
 
@@ -1783,7 +1797,7 @@ let reify ~importer ~type_of_name ~allow_free_variables (* ~expected_kind *) t
 *)
   result
 
-let get_field ~importer ~type_of_name t ~field_index
+let get_field ~importer ~type_of_name t ~field_index ~field_is_mutable
       ~(field_kind : Flambda_primitive.field_kind) : get_field_result =
   let t_evaluated, _canonical_name =
     Evaluated.create ~importer ~type_of_name t
@@ -1804,7 +1818,7 @@ let get_field ~importer ~type_of_name t ~field_index
         Invalid
       else
         Blocks.get_field ~importer ~type_of_name blocks ~field_index
-          ~expected_result_kind
+          ~expected_result_kind ~field_is_mutable ~is_unknown
     | Float_arrays { lengths; } ->
       let if_used_at = Flambda_kind.naked_float () in
       (* CR mshinwell: If this check fails, maybe it's always a compiler bug?

@@ -420,14 +420,6 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
     let non_zero n = (I.compare I.zero n) <> 0 in
     match p with
-    | Paddbint kind when kind = I.kind -> eval I.add
-    | Psubbint kind when kind = I.kind -> eval I.sub
-    | Pmulbint kind when kind = I.kind -> eval I.mul
-    | Pdivbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.div
-    | Pmodbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.rem
-    | Pandbint kind when kind = I.kind -> eval I.logand
-    | Porbint kind when kind = I.kind -> eval I.logor
-    | Pxorbint kind when kind = I.kind -> eval I.logxor
     | Pbintcomp (kind, c) when kind = I.kind ->
       S.const_comparison_expr expr c n1 n2
     | _ -> expr, T.value_unknown Other, C.Benefit.zero
@@ -690,16 +682,36 @@ module Binary_int_arith_naked_nativeint = Binary_int_arith (Targetint)
 
 let simplify_unary_primitive env r prim arg dbg =
   match prim with
-  | Block_load of int * field_kind * mutable_or_immutable
-  | Duplicate_array of array_kind * mutable_or_immutable
-  | Duplicate_record of {
-      repr : record_representation;
-      num_fields : int;
-    }
+  | Block_load (field_index, field_kind, field_is_mutable) ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let kind = Flambda_primitive.kind_of_field_kind field_kind in
+    let get_field_result =
+      (E.type_accessor env T.get_field) ty
+        ~field_index ~field_is_mutable ~field_kind
+    in
+    begin match get_field_result with
+    | Ok field_ty ->
+      let reified =
+        (E.type_accessor env T.reify) ~allow_free_variables:true field_ty
+      in
+      begin match reified with
+      | Term (simple, ty) ->
+        (* XXX [reify] isn't preserving aliases at present. *)
+        Named.Simple simple, ty
+      | Cannot_reify -> original_term (), field_ty
+      | Invalid -> Reachable.invalid (), T.bottom kind
+      end
+    | Invalid -> Reachable.invalid (), T.bottom kind
+    end
+  | Duplicate_array (array_kind, mut) ->
+
+  | Duplicate_record { repr; num_fields; } ->
+
   | Is_int ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_is_tagged_immediate) arg in
+    let proof = (E.type_accessor env T.prove_is_tagged_immediate) ty in
     begin match proof with
     | Proved is_tagged_immediate ->
       let simple =
@@ -721,7 +733,7 @@ let simplify_unary_primitive env r prim arg dbg =
   | Get_tag ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let eval, _canonical_name = (E.type_accessor env T.Evaluated.create) arg in
+    let eval, _canonical_name = (E.type_accessor env T.Evaluated.create) ty in
     let tags = T.Evaluated.tags eval in
     begin match tags with
     | Not_all_values_known ->
@@ -742,12 +754,96 @@ let simplify_unary_primitive env r prim arg dbg =
     end
   | String_length string_or_bytes ->
 
-  | Swap_byte_endianness kind ->
-
+  | Swap_byte_endianness Tagged_immediate ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_tagged_immediate) ty in
+    begin match proof with
+    | Proved imms ->
+      let imms =
+        Immediate.Set.map (fun imm ->
+            Immediate.map (fun i ->
+                Targetint.get_least_significant_16_bits_then_byte_swap i)
+              imm)
+          imms
+      in
+      (* XXX in these various cases (and below) shouldn't we be seeing if the
+         [ty] has a canonical name associated with it? *)
+      begin match Immediate.Set.get_singleton imms with
+      | Some i ->
+        let simple = Simple.const (Tagged_immediate i) in
+        Reachable.reachable (Simple simple), T.this_tagged_immediate i
+      | None ->
+        Reachable.reachable (original_term ()), T.these_tagged_immediates imms
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.unknown (Flambda_kind.value Can_scan) Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom (Flambda_kind.value Can_scan)
+    end
+  | Swap_byte_endianness Naked_int32 ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_naked_int32) ty in
+    begin match proof with
+    | Proved is ->
+      let is = Int32.Set.map Int32.byte_swap is in
+      begin match Int32.Set.get_singleton is with
+      | Some i ->
+        let simple = Simple.const (Naked_int32 i) in
+        Reachable.reachable (Simple simple), T.this_naked_int32 i
+      | None ->
+        Reachable.reachable (original_term ()), T.these_naked_int32s is
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()), T.unknown Naked_int32 Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom Naked_int32
+    end
+  | Swap_byte_endianness Naked_int64 ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_naked_int64) ty in
+    begin match proof with
+    | Proved is ->
+      let is = Int64.Set.map Int64.byte_swap is in
+      begin match Int64.Set.get_singleton is with
+      | Some i ->
+        let simple = Simple.const (Naked_int64 i) in
+        Reachable.reachable (Simple simple), T.this_naked_int64 i
+      | None ->
+        Reachable.reachable (original_term ()), T.these_naked_int64s is
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()), T.unknown Naked_int64 Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom Naked_int64
+    end
+  | Swap_byte_endianness Naked_nativeint ->
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env T.prove_naked_nativeint) ty in
+    begin match proof with
+    | Proved is ->
+      let is = Nativeint.Set.map Nativeint.byte_swap is in
+      begin match Nativeint.Set.get_singleton is with
+      | Some i ->
+        let simple = Simple.const (Naked_nativeint i) in
+        Reachable.reachable (Simple simple), T.this_naked_nativeint i
+      | None ->
+        Reachable.reachable (original_term ()), T.these_naked_nativeints is
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()), T.unknown Naked_nativeint Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom Naked_nativeint
+    end
   | Int_as_pointer ->
     let arg, _ty = S.simplify_simple env arg in
     (* There is no check on the kind of [arg]: a fatal error resulting from
        such could potentially be triggered by wrong user code. *)
+    (* CR mshinwell: think about this some more *)
     Prim (Unary (prim, arg), dbg), T.unknown Flambda_kind.naked_immediate Other
   | Opaque_identity ->
     let arg, ty = S.simplify_simple env arg in
@@ -767,7 +863,7 @@ let simplify_unary_primitive env r prim arg dbg =
        wildly different results). *)
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_naked_float) arg in
+    let proof = (E.type_accessor env T.prove_naked_float) ty in
     begin match proof with
     | Proved fs ->
       begin match Float.Set.get_singleton fs with
@@ -801,7 +897,7 @@ let simplify_unary_primitive env r prim arg dbg =
   | Float_of_int ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_tagged_immediate) arg in
+    let proof = (E.type_accessor env T.prove_tagged_immediate) ty in
     begin match proof with
     | Proved is ->
       begin match Immediate.Set.get_singleton is with
@@ -834,8 +930,11 @@ let simplify_unary_primitive env r prim arg dbg =
   | Unbox_number Naked_float ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_float) arg in
+    let proof = (E.type_accessor env T.prove_boxed_float) ty in
     begin match proof with
+    (* CR mshinwell: To factorize the code here for the various kinds, change
+       the "proof" types in Flambda_type to use a single parameterised proof
+       type *)
     | Proved fs ->
       begin match Float.Set.get_singleton fs with
       | Some f ->
@@ -854,7 +953,7 @@ let simplify_unary_primitive env r prim arg dbg =
   | Unbox_number Naked_int32 ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_int32) arg in
+    let proof = (E.type_accessor env T.prove_boxed_int32) ty in
     begin match proof with
     | Proved fs ->
       begin match Int32.Set.get_singleton fs with
@@ -874,7 +973,7 @@ let simplify_unary_primitive env r prim arg dbg =
   | Unbox_number Naked_int64 ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_int64) arg in
+    let proof = (E.type_accessor env T.prove_boxed_int64) ty in
     begin match proof with
     | Proved fs ->
       begin match Int64.Set.get_singleton fs with
@@ -894,7 +993,7 @@ let simplify_unary_primitive env r prim arg dbg =
   | Unbox_number Naked_nativeint ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_nativeint) arg in
+    let proof = (E.type_accessor env T.prove_boxed_nativeint) ty in
     begin match proof with
     | Proved fs ->
       begin match Targetint.Set.get_singleton fs with
@@ -960,38 +1059,17 @@ let simplify_variadic_primitive env r prim args dbg =
   | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
   | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
 
-
-
-
-
-
-
-
-
-(*
-module Simplify_boxed_nativeint = Simplify_boxed_integer_operator (struct
-  include Nativeint
-  let to_int64 = Int64.of_nativeint
-  let swap = S.swapnative
-  let kind = Lambda.Pnativeint
-end)
-
-module Simplify_boxed_int32 = Simplify_boxed_integer_operator (struct
-  include Int32
-  let to_int32 i = i
-  let to_int64 = Int64.of_int32
-  let swap = S.swap32
-  let kind = Lambda.Pint32
-end)
-
-module Simplify_boxed_int64 = Simplify_boxed_integer_operator (struct
-  include Int64
-  let to_int64 i = i
-  let swap = S.swap64
-  let kind = Lambda.Pint64
-end)
-*)
-
+let simplify_primitive env r prim dbg =
+  (* CR mshinwell: Need to deal with [r] for benefits *)
+  match prim with
+  | Unary (prim, arg) ->
+    simplify_unary_primitive env r prim arg dbg
+  | Binary (prim, arg1, arg2) ->
+    simplify_binary_primitive env r prim arg1 arg2 dbg
+  | Ternary (prim, arg1, arg2, arg3) ->
+    simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg
+  | Variadic (prim, args) ->
+    simplify_variadic_primitive env r prim args dbg
 
 let simplify_set_of_closures original_env r
       (set_of_closures : Flambda.Set_of_closures.t)
@@ -1217,13 +1295,6 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
        be shared*)
   | _ ->
     match T.descrs approxs with
-    | [Union union] when p = Lambda.Pisint ->
-      begin match T.Unionable.flatten union with
-      | Ok (Int _ | Char _ | Constptr _) -> S.const_bool_expr expr true
-      | Ok (Block _) -> S.const_bool_expr expr false
-      | Ill_typed_code -> expr, T.value_bottom, C.Benefit.zero
-      | Anything -> expr, T.value_unknown Other, C.Benefit.zero
-      end
     | [Union union] ->
       begin match T.Unionable.flatten union with
       | Ok (Int x) ->
@@ -1247,20 +1318,6 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
         | Pidentity -> S.const_ptr_expr expr x
         | Pnot -> S.const_bool_expr expr (x = 0)
         | Poffsetint y -> S.const_ptr_expr expr (x + y)
-        | Pctconst c ->
-          begin match c with
-          | Big_endian -> S.const_bool_expr expr big_endian
-          | Word_size -> S.const_int_expr expr (8*size_int)
-          | Int_size -> S.const_int_expr expr (8*size_int - 1)
-          | Max_wosize ->
-            (* CR-someday mshinwell: this function should maybe not live here. *)
-            S.const_int_expr expr ((1 lsl ((8*size_int) - 10)) - 1)
-          | Ostype_unix -> S.const_bool_expr expr (Sys.os_type = "Unix")
-          | Ostype_win32 -> S.const_bool_expr expr (Sys.os_type = "Win32")
-          | Ostype_cygwin -> S.const_bool_expr expr (Sys.os_type = "Cygwin")
-          | Backend_type ->
-            S.const_ptr_expr expr 0 (* tag 0 is the same as Native *)
-          end
         | _ -> expr, T.value_unknown Other, C.Benefit.zero
         end
       | _ -> expr, T.value_unknown Other, C.Benefit.zero
@@ -1270,14 +1327,6 @@ let simplify_primitive0 (p : Lambda.primitive) (args, approxs) expr dbg
       | Ok (Int x | Constptr x), Ok (Int y | Constptr y) ->
         let shift_precond = 0 <= y && y < 8 * size_int in
         begin match p with
-        | Paddint -> S.const_int_expr expr (x + y)
-        | Psubint -> S.const_int_expr expr (x - y)
-        | Pmulint -> S.const_int_expr expr (x * y)
-        | Pdivint _ when y <> 0 -> S.const_int_expr expr (x / y)
-        | Pmodint _ when y <> 0 -> S.const_int_expr expr (x mod y)
-        | Pandint -> S.const_int_expr expr (x land y)
-        | Porint -> S.const_int_expr expr (x lor y)
-        | Pxorint -> S.const_int_expr expr (x lxor y)
         | Plslint when shift_precond -> S.const_int_expr expr (x lsl y)
         | Plsrint when shift_precond -> S.const_int_expr expr (x lsr y)
         | Pasrint when shift_precond -> S.const_int_expr expr (x asr y)
@@ -1618,12 +1667,16 @@ let simplify_named env r (tree : Named.t) : named_simplifier =
       Freshening.apply_mutable_variable (E.freshening env) mut_var
     in
     [], Reachable (Read_mutable mut_var), T.unknown Value Other
-  | Set_of_closures set_of_closures -> begin
+  | Set_of_closures set_of_closures ->
+(*
     let backend = E.backend env in
     let cont_usage_snapshot = R.snapshot_continuation_uses r in
-    let set_of_closures, r, first_freshening =
+*)
+    let set_of_closures, r =
       simplify_set_of_closures env r set_of_closures
     in
+    [], Reachable (Set_of_closures set_of_closures), r
+(* XXX Disabled just for the moment -- mshinwell
     let simplify env r ~bindings ~set_of_closures ~pass_name =
       (* If simplifying a set of closures more than once during any given round
          of simplification, the [Freshening.Project_var] substitutions arising
@@ -1703,7 +1756,7 @@ let simplify_named env r (tree : Named.t) : named_simplifier =
             simplify env r ~bindings:[] ~set_of_closures
               ~pass_name:"Remove_unused_arguments"
           | None -> [], Reachable (Set_of_closures set_of_closures), r
-    end
+    end *)
   | Prim (prim, dbg) -> simplify_primitive env r prim dbg
   | Assign { being_assigned; new_value; } ->
     (* No need to use something like [freshen_and_squash_aliases]: the

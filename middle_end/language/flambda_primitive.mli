@@ -41,6 +41,8 @@ type array_kind =
    Should it be called Any or something like that ? *)
 type field_kind = Not_a_float | Float
 
+val kind_of_field_kind : field_kind -> Flambda_kind.t
+
 type string_or_bytes = String | Bytes
 
 type mutable_or_immutable = Immutable | Mutable
@@ -105,6 +107,7 @@ type unary_primitive =
   | Is_int
   | Get_tag
   | String_length of string_or_bytes
+  (* CR mshinwell: Should Swap_byte_endianness go into Int_arith? *)
   | Swap_byte_endianness of Flambda_kind.Standard_int.t
   (** [Swap_byte_endianness] on a [Tagged_immediate] treats the immediate as
       encoding a 16-bit quantity (described in the least significant 16 bits

@@ -225,6 +225,7 @@ type get_field_result = private
 val get_field
    : (t
   -> field_index:int
+  -> field_is_mutable:bool
   -> field_kind:Flambda_primitive.field_kind
   -> get_field_result) type_accessor
 

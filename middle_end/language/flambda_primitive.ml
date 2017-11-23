@@ -47,6 +47,10 @@ let print_array_kind ppf k =
 
 type field_kind = Not_a_float | Float
 
+let kind_of_field_kind = function
+  | Not_a_float -> K.value Must_scan
+  | Float -> K.naked_float ()
+
 type string_or_bytes = String | Bytes
 
 type init_or_assign = Initialization | Assignment
