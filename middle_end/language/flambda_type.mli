@@ -37,6 +37,9 @@ val bottom_like : (t -> t) type_accessor
 (** Create an "unknown" type with the same kind as the given type. *)
 val unknown_like : (t -> t) type_accessor
 
+(** Like [unknown_like] but for a array of types. *)
+val unknown_like_array : (t array -> t array) type_accessor
+
 (** Rename free variables in a type. *)
 val rename_variables
    : (t
@@ -321,6 +324,14 @@ type lengths_of_arrays_or_blocks_proof = private
 val lengths_of_arrays_or_blocks
    : (t
   -> lengths_of_arrays_or_blocks_proof) type_accessor
+
+type block_with_unique_tag_and_size_proof = private
+  | Proved of (Tag.Scannable.t * (flambda_type array)) Or_not_all_values_known.t
+  | Invalid
+
+val prove_block_with_unique_tag_and_size
+   : (t
+  -> block_with_unique_tag_and_size_proof) type_accessor
 
 (*
 (** As for [reify] but only produces terms when the type describes a

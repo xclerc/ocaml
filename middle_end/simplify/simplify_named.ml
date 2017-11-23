@@ -474,12 +474,7 @@ let simplify_unary_primitive env r prim arg dbg =
         let type_of_new_array =
           match new_array_mut with
           | Immutable -> T.block tag fields
-          | Mutable ->
-            let fields =
-              Array.map (fun _field_ty -> T.unknown (K.value scanning) Other)
-                fields
-            in
-            T.block tag fields
+          | Mutable -> T.block tag (T.unknown_like_array fields)
         in
         Reachable.reachable (original_term ())
       | Proved Not_all_values_known ->

@@ -40,6 +40,9 @@ let unknown_like ~importer ~type_of_name t =
   let kind = kind ~importer ~type_of_name t in
   unknown kind Other
 
+let unknown_like_array ~importer ~type_of_name t_array =
+  Array.map (fun t -> unknown_like ~importer ~type_of_name t) t_array
+
 let rename_variables ~importer:_ _t ~f:_ =
   assert false
 (* XXX need to fix [Flambda_type0.clean]
