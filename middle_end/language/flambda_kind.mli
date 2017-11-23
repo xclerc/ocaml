@@ -85,6 +85,7 @@ module Boxable_number : sig
     | Naked_int64
     | Naked_nativeint
 
+  (** The kind of the _unboxed_ representation of the given [t]. *)
   val to_kind : t -> kind
 
   val print_lowercase : Format.formatter -> t -> unit

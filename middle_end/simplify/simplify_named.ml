@@ -760,7 +760,7 @@ module type For_unboxable_ints = sig
     val to_const : t -> Simple.Const.t
   end
 
-  val kind : K.Standard_int.t
+  val kind : K.Boxable_number.t
   val prover : (T.t -> Num.Set.t proof) T.type_accessor
   val this : Num.t -> T.t
   val these : Num.Set.t -> T.t
@@ -771,7 +771,7 @@ module Make_simplify_unbox_number (P : For_unboxable_ints) = struct
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
     let proof = (E.type_accessor env P.prover) ty in
-    let kind = K.Standard_int.to_kind P.kind in
+    let kind = K.Boxable_number.to_kind P.kind in
     begin match proof with
     | Proved nums ->
       begin match P.Num.Set.get_singleton nums with
@@ -795,7 +795,7 @@ module Simplify_unbox_number_float =
       let to_const t = Simple.Const.Naked_float t
     end
 
-    let kind : K.Standard_int.t = Naked_float
+    let kind : K.Boxable_number.t = Naked_float
     let prover = T.prove_boxed_float
     let this = T.this_naked_float
     let these = T.these_naked_floats
@@ -808,7 +808,7 @@ module Simplify_unbox_number_int32 =
       let to_const t = Simple.Const.Naked_int32 t
     end
 
-    let kind : K.Standard_int.t = Naked_int32
+    let kind : K.Boxable_number.t = Naked_int32
     let prover = T.prove_boxed_int32
     let this = T.this_naked_int32
     let these = T.these_naked_int32s
@@ -821,7 +821,7 @@ module Simplify_unbox_number_int64 =
       let to_const t = Simple.Const.Naked_int64 t
     end
 
-    let kind : K.Standard_int.t = Naked_int64
+    let kind : K.Boxable_number.t = Naked_int64
     let prover = T.prove_boxed_int64
     let this = T.this_naked_int64
     let these = T.these_naked_int64s
@@ -834,7 +834,7 @@ module Simplify_unbox_number_nativeint =
       let to_const t = Simple.Const.Naked_nativeint t
     end
 
-    let kind : K.Standard_int.t = Naked_nativeint
+    let kind : K.Boxable_number.t = Naked_nativeint
     let prover = T.prove_boxed_nativeint
     let this = T.this_naked_nativeint
     let these = T.these_naked_nativeints
@@ -844,8 +844,41 @@ module Make_simplify_box_number (P : sig
 
 end) = struct
   let simplify env r prim arg dbg =
-    ...
+    (* CR mshinwell: If [arg] is already a [Const] we shouldn't have to do
+       much work... *)
+    let arg, ty = S.simplify_simple env arg in
+    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+    let proof = (E.type_accessor env P.prover) ty in
+    let kind = K.Boxable_number.to_kind P.kind in
+    begin match proof with
+    | Proved nums ->
+      begin match P.Num.Set.get_singleton nums with
+      | Some n ->
+        let simple = Simple.const (P.Num.to_const n) in
+        let named : Named.t = Prim (Unary (Box_number P.kind, simple), dbg) in
+        Reachable.reachable named, P.this n
+      | None ->
+        Reachable.reachable (original_term ()), P.these nums
+      end
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()), T.unknown kind Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom kind
+    end
 end
+
+module Simplify_box_number_float =
+  Make_simplify_box_number (struct
+    module Num = struct
+      include Float
+      let to_const t = Simple.Const.Naked_float t
+    end
+
+    let kind : K.Boxable_number.t = Naked_float
+    let prover = T.prove_naked_float
+    let this = T.this_boxed_float
+    let these = T.these_boxed_floats
+  end)
 
 let simplify_unary_primitive env r prim arg dbg =
   match prim with
