@@ -583,7 +583,7 @@ let simplify_get_tag env r prim arg dbg =
         end
     end
 
-module Make_simplify_swap_byte_endianness (P : sig
+module type For_standard_ints = sig
   module Num : sig
     include Identifiable.S
 
@@ -595,7 +595,9 @@ module Make_simplify_swap_byte_endianness (P : sig
   val prover : (T.t -> Num.Set.t proof) T.type_accessor
   val this : Num.t -> T.t
   val these : Num.Set.t -> T.t
-end) = struct
+end
+
+module Make_simplify_swap_byte_endianness (P : For_standard_ints) = struct
   let simplify env r prim arg dbg =
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
@@ -750,33 +752,93 @@ let simplify_float_of_int env r prim arg dbg =
     Reachable.invalid (), T.bottom (K.value Can_scan)
   end
 
-module Make_simplify_unbox_number (P : sig
+module type For_unboxable_ints = sig
+  module Num : sig
+    include Identifiable.S
 
-end) = struct
+    val swap_byte_endianness : t -> t
+    val to_const : t -> Simple.Const.t
+  end
+
+  val kind : K.Standard_int.t
+  val prover : (T.t -> Num.Set.t proof) T.type_accessor
+  val this : Num.t -> T.t
+  val these : Num.Set.t -> T.t
+end
+
+module Make_simplify_unbox_number (P : For_unboxable_ints) = struct
   let simplify env r prim arg dbg =
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env T.prove_boxed_float) ty in
+    let proof = (E.type_accessor env P.prover) ty in
+    let kind = K.Standard_int.to_kind P.kind in
     begin match proof with
-    (* CR mshinwell: To factorize the code here for the various kinds, change
-       the "proof" types in Flambda_type to use a single parameterised proof
-       type *)
-    | Proved fs ->
-      begin match Float.Set.get_singleton fs with
-      | Some f ->
-        let simple = Simple.const (Naked_float f) in
-        Reachable.reachable (Simple simple), T.this_naked_float f
+    | Proved nums ->
+      begin match P.Num.Set.get_singleton nums with
+      | Some n ->
+        let simple = Simple.const (P.Num.to_const n) in
+        Reachable.reachable (Simple simple), P.this n
       | None ->
-        Reachable.reachable (original_term ()),
-          T.these_naked_floats fs
+        Reachable.reachable (original_term ()), P.these nums
       end
     | Proved Not_all_values_known ->
-      Reachable.reachable (original_term ()),
-        T.unknown Naked_float Other
+      Reachable.reachable (original_term ()), T.unknown kind Other
     | Invalid -> 
-      Reachable.invalid (), T.bottom Naked_float
+      Reachable.invalid (), T.bottom kind
     end
 end
+
+module Simplify_unbox_number_float =
+  Make_simplify_unbox_number (struct
+    module Num = struct
+      include Float
+      let to_const t = Simple.Const.Naked_float t
+    end
+
+    let kind : K.Standard_int.t = Naked_float
+    let prover = T.prove_boxed_float
+    let this = T.this_naked_float
+    let these = T.these_naked_floats
+  end)
+
+module Simplify_unbox_number_int32 =
+  Make_simplify_unbox_number (struct
+    module Num = struct
+      include Int32
+      let to_const t = Simple.Const.Naked_int32 t
+    end
+
+    let kind : K.Standard_int.t = Naked_int32
+    let prover = T.prove_boxed_int32
+    let this = T.this_naked_int32
+    let these = T.these_naked_int32s
+  end)
+
+module Simplify_unbox_number_int64 =
+  Make_simplify_unbox_number (struct
+    module Num = struct
+      include Int64
+      let to_const t = Simple.Const.Naked_int64 t
+    end
+
+    let kind : K.Standard_int.t = Naked_int64
+    let prover = T.prove_boxed_int64
+    let this = T.this_naked_int64
+    let these = T.these_naked_int64s
+  end)
+
+module Simplify_unbox_number_nativeint =
+  Make_simplify_unbox_number (struct
+    module Num = struct
+      include Nativeint
+      let to_const t = Simple.Const.Naked_nativeint t
+    end
+
+    let kind : K.Standard_int.t = Naked_nativeint
+    let prover = T.prove_boxed_nativeint
+    let this = T.this_naked_nativeint
+    let these = T.these_naked_nativeints
+  end)
 
 module Make_simplify_box_number (P : sig
 
