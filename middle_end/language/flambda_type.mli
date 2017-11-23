@@ -206,6 +206,10 @@ type reification_result =
     This function may be used to turn the types of [Simple] terms into their
     canonical representative terms (as it follows aliases in the environment).
 
+    The returned type will not be an alias type in the case where the type
+    completely describes the reified value.  In other cases, aliases will be
+    preserved, in case the types in question get refined later.
+
     If [expected_kind] does not match the kind of the term / type being
     returned then a fatal error will be produced.
 *)
@@ -234,9 +238,11 @@ val get_field
   -> field_kind:Flambda_primitive.field_kind
   -> get_field_result) type_accessor
 
-type boxed_float_proof = private
-  | Proved of Numbers.Float.Set.t Or_not_all_values_known.t
+type 'a proof = private
+  | Proved of 'a Or_not_all_values_known.t
   | Invalid
+
+type boxed_float_proof = Numbers.Float.Set.t proof
 
 (** Prove that the given type represents:
     - one or more known boxed floats ([Proved (Ok ...)]);
@@ -247,37 +253,27 @@ type boxed_float_proof = private
 *)
 val prove_boxed_float : (t -> boxed_float_proof) type_accessor
 
-type boxed_int32_proof = private
-  | Proved of Numbers.Int32.Set.t Or_not_all_values_known.t
-  | Invalid
+type boxed_int32_proof = Numbers.Int32.Set.t proof
 
 (** As for [prove_boxed_float] but for [Int32]. *)
 val prove_boxed_int32 : (t -> boxed_int32_proof) type_accessor
 
-type boxed_int64_proof = private
-  | Proved of Numbers.Int64.Set.t Or_not_all_values_known.t
-  | Invalid
+type boxed_int64_proof = Numbers.Int64.Set.t proof
 
 (** As for [prove_boxed_float] but for [Int64]. *)
 val prove_boxed_int64 : (t -> boxed_int64_proof) type_accessor
 
-type boxed_nativeint_proof = private
-  | Proved of Targetint.Set.t Or_not_all_values_known.t
-  | Invalid
+type boxed_nativeint_proof = Numbers.Nativeint.Set.t proof
 
 (** As for [prove_boxed_float] but for [Nativeint]. *)
 val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
 
-type closures_proof =
-  | Proved of Joined_closures.t Or_not_all_values_known.t
-  | Invalid
+type closures_proof = Joined_closures.t proof
 
 (** As for [proved_boxed_float] but for closures. *)
 val prove_closures : (t -> closures_proof) type_accessor
 
-type sets_of_closures_proof = private
-  | Proved of Joined_sets_of_closures.t Or_not_all_values_known.t
-  | Invalid
+type sets_of_closures_proof = Joined_sets_of_closures.t proof
 
 (** As for [proved_boxed_float] but for sets of closures. *)
 val prove_sets_of_closures : (t -> sets_of_closures_proof) type_accessor
@@ -289,16 +285,12 @@ val prove_naked_float
    : (t
   -> Numbers.Float.Set.t Or_not_all_values_known.t) type_accessor
 
-type tagged_immediate_proof = private
-  | Proved of Immediate.Set.t Or_not_all_values_known.t
-  | Invalid
+type tagged_immediate_proof = Immediate.Set.t proof
 
 (** As for [prove_boxed_float] but for a tagged immediate. *)
 val prove_tagged_immediate : (t -> tagged_immediate_proof) type_accessor
 
-type is_tagged_immediate_proof = private
-  | Proved of bool Or_not_all_values_known.t
-  | Invalid
+type is_tagged_immediate_proof = bool proof
 
 (** Determine whether it is known that the given type either:
     - may represent a tagged immediate; or
@@ -306,16 +298,12 @@ type is_tagged_immediate_proof = private
 *)
 val prove_is_tagged_immediate : (t -> is_tagged_immediate_proof) type_accessor
 
-type string_proof = private
-  | Proved of String_info.Set.t Or_not_all_values_known.t
-  | Invalid
+type string_proof = String_info.Set.t proof
 
 (** As for [prove_boxed_float] but for a tagged immediate. *)
 val prove_string : (t -> string_proof) type_accessor
 
-type lengths_of_arrays_or_blocks_proof = private
-  | Proved of Numbers.Int.Set.t Or_not_all_values_known.t
-  | Invalid
+type lengths_of_arrays_or_blocks_proof = Numbers.Int.Set.t proof
 
 (** Determine the known length(s) of the array(s) or structured block(s)
     (i.e. blocks with tag less than [No_scan_tag]) described by the given
@@ -327,9 +315,8 @@ val lengths_of_arrays_or_blocks
    : (t
   -> lengths_of_arrays_or_blocks_proof) type_accessor
 
-type block_with_unique_tag_and_size_proof = private
-  | Proved of (Tag.Scannable.t * (flambda_type array)) Or_not_all_values_known.t
-  | Invalid
+type block_with_unique_tag_and_size_proof =
+  (Tag.Scannable.t * (flambda_type array)) proof
 
 val prove_block_with_unique_tag_and_size
    : (t
