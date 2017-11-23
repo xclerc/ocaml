@@ -696,9 +696,7 @@ let simplify_unary_primitive env r prim arg dbg =
         (E.type_accessor env T.reify) ~allow_free_variables:true field_ty
       in
       begin match reified with
-      | Term (simple, ty) ->
-        (* XXX [reify] isn't preserving aliases at present. *)
-        Named.Simple simple, ty
+      | Term (simple, ty) -> Named.Simple simple, ty
       | Cannot_reify -> original_term (), field_ty
       | Invalid -> Reachable.invalid (), T.bottom kind
       end

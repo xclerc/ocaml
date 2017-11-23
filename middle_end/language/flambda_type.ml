@@ -1731,7 +1731,14 @@ let reify ~importer ~type_of_name ~allow_free_variables (* ~expected_kind *) t
     | Some name ->
       match name with
       | Var _ when not allow_free_variables -> Cannot_reify
-      | Var _ | Symbol _ -> Term (Simple.name name, t)
+      | Var _ | Symbol _ ->
+        (* This is the only case where we return [Term] with a term that
+           cannot be produced just from the type.  As such, we may wish to
+           make the type more precise later, so we return an alias type rather
+           than [t]. *)
+        let kind = kind ~importer ~type_of_name t in
+        let t = alias kind name in
+        Term (Simple.name name, t)
   in
   let result =
     match t_evaluated with
