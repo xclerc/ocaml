@@ -34,6 +34,40 @@ type array_kind =
   | Can_scan
   | Naked_float
 
+type duplicate_kind =
+  | Dynamic_must_scan_or_naked_float
+    (** A scannable block whose contents are either:
+        - of kind [Value Must_scan]; or
+        - of kind [Naked_float]. *)
+  | Must_scan
+    (** A scannable block whose contents are of kind [Value Must_scan]. *)
+  | Can_scan
+    (** A scannable block whose contents are of kind [Value Can_scan]
+        (for example an "int array"). *)
+  | Naked_float
+    (** A flat float array or all-float record. *)
+
+(* Notes for producing [duplicate_kind] / [Duplicate_scannable_block] from
+   [Pduparray] and [Pduprecord]:
+
+   - For Pduparray:
+     - Pgenarray --> Dynamic_must_scan_or_naked_float
+     - Paddrarray --> Must_scan
+     - Pintarray --> Can_scan
+     - Pfloatarray --> Naked_float
+
+   - For Pduprecord:
+
+     - Record_regular --> Must_scan (unless none of the contents need
+         scanning in which case, Can_scan)
+     - Record_float --> Naked_float
+     - Record_unboxed --> suspect this is never generated?
+     - Record_inlined --> Must_scan.  Pduprecord doesn't seem to ever change
+         the tag, so the new tag doesn't need specifying.
+     - Record_extension --> Must_scan, even if the record elements don't need
+         scanning (the first field is a block with tag [Object_tag]).
+*)
+
 (* CR mshinwell: "Float" -> "Naked_float"? *)
 (* CR mshinwell: Don't call this "kind".  Kind errors are errors in the
    compiler code, whereas a mismatch here may be due to invalid code. *)
@@ -80,13 +114,6 @@ type bigstring_accessor_width =
 
 type num_dimensions = int
 
-type record_representation =
-  | Regular
-  | Float
-  | Unboxed of { inlined : bool; }
-  | Inlined of Tag.Scannable.t
-  | Extension
-
 (** Untagged binary integer arithmetic operations. *)
 type unary_int_arith_op = Neg
 
@@ -94,16 +121,12 @@ type unary_int_arith_op = Neg
 type unary_float_arith_op = Abs | Neg
 
 (** Primitives taking exactly one argument. *)
-type unary_primitive =
+tye unary_primitive =
   | Block_load of int * field_kind * mutable_or_immutable
-  (* CR mshinwell: Check effect/coeffect judgement for [Duplicate_array] *)
-  | Duplicate_array of array_kind * mutable_or_immutable
-  (** For [Duplicate_array], the argument must be an immutable array.
-      The arguments of [Duplicate_array] give the kind and mutability of the
-      array being *produced* by the duplication. *)
-  | Duplicate_record of {
-      repr : record_representation;
-      num_fields : int;
+  | Duplicate_scannable_block of {
+      kind : duplicate_kind;
+      source_mutability : mutable_or_immutable; 
+      destination_mutability : mutable_or_immutable; 
     }
   | Is_int
   | Get_tag

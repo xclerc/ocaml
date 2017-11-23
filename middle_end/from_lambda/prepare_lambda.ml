@@ -115,7 +115,7 @@ let rec prepare_letrec recursive_set current_var (lam:Lambda.lambda) letrec =
     | T.Record_extension ->
       build_block current_var (size + 1) Normal lam letrec
     | T.Record_unboxed _ ->
-      assert false
+      assert false  (* CR mshinwell: this should have a proper error *)
     | T.Record_float ->
       build_block current_var size Boxed_float lam letrec
     end

@@ -277,6 +277,7 @@ module type S = sig
   (** Building of types corresponding to mutable values. *)
   val mutable_string : size:int -> t
   val mutable_float_array : size:int -> t
+  val mutable_float_arrays_of_various_sizes : sizes:Numbers.Int.Set.t -> t
 
   (** Building of types from other types.  These functions will fail with
       a fatal error if the supplied type is not of the correct kind. *)
@@ -424,6 +425,8 @@ module type S = sig
 
   (** Least upper bound of two types. *)
   val join : (t -> t -> t) type_accessor
+
+  val join_list : (Flambda_kind.t -> t list) type_accessor
 
   (** Like [join], but starts with a [ty_value], not a [t]. *)
   val join_ty_value : (ty_value -> ty_value -> ty_value) type_accessor

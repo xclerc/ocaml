@@ -18,6 +18,12 @@
 
 module P = Flambda_primitive
 
+
+(* *** Please see the top of flambda_primitive.mli for details on producing
+   the new Duplicate_scannable_block primitive *** *)
+
+
+
 (* CR mshinwell: Moved here from Flambda_kind
 
 

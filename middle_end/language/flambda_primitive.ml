@@ -45,6 +45,20 @@ let print_array_kind ppf k =
   | Can_scan -> fprintf ppf "can_scan"
   | Naked_float -> fprintf ppf "float"
 
+type duplicate_kind =
+  | Dynamic_must_scan_or_naked_float
+  | Must_scan
+  | Can_scan
+  | Naked_float
+
+let print_duplicate_kind ppf k =
+  match k with
+  | Dynamic_must_scan_or_naked_float ->
+    fprintf ppf "Dynamic_must_scan_or_naked_float"
+  | Must_scan -> fprintf ppf "Must_scan"
+  | Can_scan -> fprintf ppf "Can_scan"
+  | Naked_float -> fprintf ppf "Naked_float"
+
 type field_kind = Not_a_float | Float
 
 let kind_of_field_kind = function
@@ -204,23 +218,6 @@ type num_dimensions = int
 let print_num_dimesions ppf d =
   Format.fprintf ppf "%d" d
 
-type record_representation =
-  | Regular
-  | Float
-  | Unboxed of { inlined : bool; }
-  | Inlined of Tag.Scannable.t
-  | Extension
-
-let print_record_representation ppf repr =
-  let fprintf = Format.fprintf in
-  match repr with
-  | Regular -> fprintf ppf "regular"
-  | Inlined tag -> fprintf ppf "inlined(%a)" Tag.Scannable.print tag
-  | Unboxed { inlined = false; } -> fprintf ppf "unboxed"
-  | Unboxed { inlined = true; } -> fprintf ppf "inlined(unboxed)"
-  | Float -> fprintf ppf "float"
-  | Extension -> fprintf ppf "ext"
-
 type unary_int_arith_op = Neg
 
 let print_unary_int_arith_op ppf o =
@@ -247,10 +244,10 @@ type result_kind =
 
 type unary_primitive =
   | Block_load of int * field_kind * mutable_or_immutable
-  | Duplicate_array of array_kind * mutable_or_immutable
-  | Duplicate_record of {
-      repr : record_representation;
-      num_fields : int;
+  | Duplicate_scannable_block of {
+      kind : duplicate_kind;
+      source_mutability : mutable_or_immutable; 
+      destination_mutability : mutable_or_immutable; 
     }
   | Is_int
   | Get_tag
@@ -469,14 +466,21 @@ let effects_and_coeffects_of_unary_primitive p =
   | Block_load (_, _, Immutable) -> No_effects, No_coeffects
   | Block_load (_, _, Mutable) ->
     reading_from_an_array_like_thing
-  | Duplicate_array (_, Immutable) ->
-    (* Duplicate_array (_, Immutable) is allowed only on immutable arrays. *)
-    Only_generative_effects Immutable, No_coeffects
-  | Duplicate_array (_, Mutable)
-  | Duplicate_record { repr = _; num_fields = _; } ->
-    Only_generative_effects Mutable, Has_coeffects
+  | Duplicate_scannable_block {
+      source_mutability; destination_mutability; _ } ->
+    begin match source_mutability with
+    | Immutable ->
+      (* Beware: we still need to read the size of the block being duplicated,
+         which is a coeffect, unless [Config.ban_obj_dot_truncate] is on. *)
+      Only_generative_effects destination_mutability,
+        (if Config.ban_obj_dot_truncate then No_coeffects else Has_coeffects)
+    | Mutable ->
+      Only_generative_effects destination_mutability, Has_coeffects
+    end
   | Is_int -> No_effects, No_coeffects
-  | Get_tag -> No_effects, Has_coeffects
+  | Get_tag ->
+    if Config.ban_obj_dot_truncate then No_effects, No_coeffects
+    else No_effects, Has_coeffects
   | String_length _ -> reading_from_an_array_like_thing
   | Int_as_pointer
   | Opaque_identity -> Arbitrary_effects, Has_coeffects

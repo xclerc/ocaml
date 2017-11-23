@@ -2179,6 +2179,14 @@ end) = struct
   let join = Join.combine
   let join_ty_value = Join.combine_ty_value
 
+  let join_list ~importer ~type_of_name kind ts =
+    match ts with
+    | [] -> bottom kind
+    | t::ts ->
+      List.fold_left (fun result t -> join ~importer ~type_of_name result t)
+        t
+        ts
+
   let meet = Meet.combine
   let meet_ty_value = Meet.combine_ty_value
 

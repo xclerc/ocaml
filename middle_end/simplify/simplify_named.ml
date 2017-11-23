@@ -459,40 +459,83 @@ let simplify_unary_primitive env r prim arg dbg =
       end
     | Invalid -> Reachable.invalid (), T.bottom kind
     end
-  | Duplicate_array (new_array_kind, new_array_mut) ->
+  | Duplicate_scannable_block { kind; source_mutability;
+      destination_mutability; } ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let like_a_block (scanning : Flambda_kind.scanning) =
+    let like_a_block tag (scanning : Flambda_kind.scanning) =
       let proof =
         (E.type_accessor env T.prove_block_with_unique_tag_and_size) ty
       in
       match proof with
       | Proved (Ok (tag, fields)) ->
+        begin match source_mutability with
+        | Immutable -> ()
+        | Mutable ->
+          Array.iteri (fun field_index field_ty ->
+              (* CR-someday mshinwell: This will have to be adjusted if we
+                 start remembering things about immutable fields in records
+                 which also have mutable fields. *)
+              if not ((E.type_accessor env T.is_unknown) t) then begin
+                Misc.fatal_errorf "Field %d of type %a in block being \
+                    duplicated with the following type is apparently mutable, \
+                    yet its type is not unknown: %a"
+                  field_index
+                  print field_ty
+                  print ty
+              end)
+            fields
+        end;
         (* We could in some circumstances turn the [Duplicate_array] into
            [Make_array], but it isn't clear what value this has, so we don't
            yet do it. *)
-        let type_of_new_array =
-          match new_array_mut with
+        let type_of_new_block =
+          match destination_mutability with
           | Immutable -> T.block tag fields
           | Mutable -> T.block tag (T.unknown_like_array fields)
         in
-        Reachable.reachable (original_term ())
+        Reachable.reachable (original_term ()), type_of_new_block
       | Proved Not_all_values_known ->
         Reachable.reachable (original_term ()),
           T.unknown (K.value scanning) Other
       | Invalid ->
         Reachable.invalid (), T.bottom (K.value scanning)
     in
-    begin match new_array_kind with
+    begin match kind with
     | Dynamic_must_scan_or_naked_float ->
       original_term (), T.unknown (K.value Must_scan) Other
     | Must_scan -> like_a_block Must_scan
     | Can_scan -> like_a_block Can_scan
     | Naked_float ->
-
+      let proof = (E.type_accessor env T.prove_float_array) ty in
+      match proof with
+      | Proved { lengths = Exactly sizes; } ->
+        let type_of_new_block =
+          match destination_mutability with
+          | Immutable ->
+            let possible_types =
+              List.map (fun size ->
+                  let fields =
+                    Array.init size (fun _index ->
+                      unknown (K.naked_float ()) Other)
+                  in
+                  T.immutable_float_array fields)
+                (Numbers.Int.Set.to_list sizes)
+            in
+            (E.type_accessor env T.join_list) (K.value Must_scan)
+              possible_types
+          | Mutable -> T.mutable_float_arrays_of_various_sizes ~sizes
+        in
+        Reachable.reachable (original_term ()), type_of_new_block
+      | Proved { lengths = Not_all_values_known; } ->
+        (* CR mshinwell: Check all the cases below as well.  In some of these
+           cases maybe we should be propagating the type of [arg] through to
+           the output?  (It might be refined later.) *)
+        Reachable.reachable (original_term ()),
+          T.unknown (K.value Must_scan) Other
+      | Invalid ->
+        Reachable.invalid (), T.bottom (K.value Must_scan)
     end
-  | Duplicate_record { repr; num_fields; } ->
-
   | Is_int ->
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in

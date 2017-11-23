@@ -117,6 +117,8 @@ module Evaluated : sig
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Sets_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
+    (* CR mshinwell: We should support immutable float arrays, since these are
+       also used for all-float records. *)
     | Float_arrays of { lengths : Numbers.Int.Set.t Or_not_all_values_known.t; }
 
   type t = private
