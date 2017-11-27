@@ -846,9 +846,7 @@ module Simplify_unbox_number_nativeint =
       boxing/unboxing.
 *)
 
-module Make_simplify_box_number (P : sig
-
-end) = struct
+module Make_simplify_box_number (P : For_unboxable_ints) = struct
   let simplify env r prim arg dbg =
     (* CR mshinwell: If [arg] is already a [Const] we shouldn't have to do
        much work... *)
@@ -864,10 +862,16 @@ end) = struct
         let named : Named.t = Prim (Unary (Box_number P.kind, simple), dbg) in
         Reachable.reachable named, P.this n
       | None ->
+        (* XXX unless it's empty!  Maybe have a new [get_singleton] that
+           has "none", "one" or "many" return values.  Alternatively enforce
+           that the Proved set is always non-empty *)
         Reachable.reachable (original_term ()), P.these nums
       end
     | Proved Not_all_values_known ->
-      Reachable.reachable (original_term ()), T.unknown kind Other
+      let ty =
+
+      in
+      Reachable.reachable (original_term ()), ty
     | Invalid -> 
       Reachable.invalid (), T.bottom kind
     end
