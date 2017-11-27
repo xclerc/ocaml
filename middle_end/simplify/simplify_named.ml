@@ -980,16 +980,14 @@ module Unary_int_arith (I : sig
   val kind : K.Standard_int.t
   val term : t -> Named.t
 
-  val zero : t
-  val one : t
-  val minus_one : t
-
   val neg : t -> t
 
   include Identifiable.S with type t := t
+
+  val this : t -> flambda_type
+  val these : Set.t -> flambda_type
 end) = struct
   let simplify env r prim dbg op arg : Named.t * R.t =
-    let module P = Possible_result in
     let arg, ty = S.simplify_simple env arg in
     let proof = (E.type_accessor env T.prove_tagged_immediate) arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
@@ -998,42 +996,71 @@ end) = struct
          the operation that has happened, but we don't.  As such we cannot
          propagate [ty] and must return "unknown". *)
       Reachable.reachable (original_term ()),
-        T.unknown (K.value Can_scan) Other
+        T.unknown (K.Standard_int.to_kind I.kind) Other
     in
     let result_invalid () =
       Reachable.invalid (),
         T.bottom (K.Standard_int.to_kind I.kind)
     in
-    let check_possible_results ~possible_results =
-      (* CR mshinwell: We may want to bound the size of the set. *)
-      let named, ty =
-        if P.Set.is_empty possible_results then
-          result_invalid ()
-        else
-          let named =
-            match P.Set.get_singleton possible_results with
-            | Some (Exactly i) -> I.term i
-            | Some (Prim prim) -> Named.Prim (prim, dbg)
-            | Some (Var var) -> Named.Simple (Simple.var var)
-            | None -> original_term ()
-          in
-          let ty = T.these_tagged_immediates possible_results in
-          named, ty
-      in
-      Reachable.reachable named, ty
+    let term, ty =
+      match proof with
+      | Proved (Exactly ints) ->
+        assert (not (I.Set.is_empty ints));
+        begin match op with
+        | Neg ->
+          let possible_results = I.Set.map (fun i -> I.neg i) ints in
+          begin match I.Set.get_singleton possible_results with
+          | Some i ->
+            Reachable.reachable (I.term i), I.this i
+          | None ->
+            Reachable.reachable (original_term ()), I.these possible_results
+          end
+        end
+      | Proved Not_all_values_known -> result_unknown ()
+      | Invalid -> result_invalid ()
     in
-    begin match proof1, proof2 with
-    | Proved (Exactly ints) ->
-      assert (not (I.Set.is_empty ints));
-
-    | Proved Not_all_values_known -> result_unknown ()
-    | Invalid -> result_invalid ()
+    term, ty, r
 end
 
 module Unary_int_arith_tagged_immediate = Unary_int_arith (Targetint)
 module Unary_int_arith_naked_int32 = Unary_int_arith (Int32)
 module Unary_int_arith_naked_int64 = Unary_int_arith (Int64)
 module Unary_int_arith_naked_nativeint = Unary_int_arith (Targetint)
+
+let simplify_int_conv env r prim arg ~(src : Flambda_kind.Standard_int.t)
+      ~(dst : Flambda_kind.Standard_int.t) dbg =
+  let arg, ty = S.simplify_simple env arg in
+  let prover =
+    (* CR mshinwell: Move this to a function in [Flambda_type] taking a
+       kind *)
+    match src with
+    | Tagged_immediate -> T.prove_tagged_immediate
+    | Naked_int32 -> T.prove_naked_int32
+    | Naked_int64 -> T.prove_naked_int64
+    | Naked_nativeint -> T.prove_naked_nativeint
+  in
+  let proof = (E.type_accessor env prover) arg in
+  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+  match proof with
+  | Proved (Exactly is) ->
+    begin match dst with
+    | Tagged_immediate ->
+
+    | Naked_int32 ->
+
+    | Naked_int64 ->
+
+    | Naked_nativeint ->
+
+    end
+  | Proved Not_all_values_known ->
+    Reachable.reachable (original_term ()),
+      T.unknown (K.Standard_int.to_kind dst) Other
+  | Invalid ->
+    Reachable.invalid (), T.bottom (K.Standard_int.to_kind dst)
+
+let simplify_unary_float_arith_op env r prim op arg dbg =
+  ...
 
 let simplify_unary_primitive env r prim arg dbg =
   match prim with
@@ -1078,9 +1105,8 @@ let simplify_unary_primitive env r prim arg dbg =
       Unary_int_arith_naked_nativeint.simplify env r op arg
     end
   | Int_conv { src; dst; } ->
-
-  | Float_arith op ->
-
+    simplify_int_conv env r prim arg ~src ~dst dbg
+  | Float_arith op -> simplify_unary_float_arith_op env r prim op arg dbg
   | Int_of_float -> simplify_int_of_float env r prim arg dbg
   | Float_of_int -> simplify_float_of_int env r prim arg dbg
   | Array_length array_kind ->
@@ -1133,6 +1159,8 @@ module Binary_int_arith (I : sig
   val xor : t -> t -> t
 
   include Identifiable.S with type t := t
+
+  val these : Set.t -> flambda_type
 
   module Pair : sig
     type nonrec t = t * t
@@ -1297,14 +1325,12 @@ end) = struct
       end
     in
     let original_term () : Named.t = Prim (Binary (prim, arg1, arg2), dbg) in
+    let kind = K.Standard_int.to_kind I.kind in
     let result_unknown () =
       (* See comment above in the corresponding unary case. *)
-      Reachable.reachable (original_term ()),
-        T.unknown (K.value Can_scan) Other
+      Reachable.reachable (original_term ()), T.unknown kind Other
     in
-    let result_invalid () =
-      Reachable.invalid (), T.bottom (K.Standard_int.to_kind I.kind)
-    in
+    let result_invalid () = Reachable.invalid (), T.bottom kind in
     let check_possible_results ~possible_results =
       (* CR mshinwell: We may want to bound the size of the set. *)
       let named, ty =
@@ -1318,7 +1344,22 @@ end) = struct
             | Some (Var var) -> Named.Simple (Simple.var var)
             | None -> original_term ()
           in
-          let ty = T.these_tagged_immediates possible_results in
+          let ty =
+            let is =
+              List.filter_map (function
+                  | Exactly i -> Some i
+                  | Prim _ | Var _ -> None)
+                (P.Set.to_list possible_results)
+            in
+            if List.length is = P.Set.cardinal possible_results then
+              I.these (I.Set.of_list is)
+            else
+              match P.Set.get_singleton possible_results with
+              | Some (Var var) -> T.alias kind var
+              | Some (Exactly _)
+              | Some (Prim _)
+              | None -> T.unknown kind Other
+          in
           named, ty
       in
       Reachable.reachable named, ty
