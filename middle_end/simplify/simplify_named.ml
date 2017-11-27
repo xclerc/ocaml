@@ -610,7 +610,19 @@ module type For_standard_ints = sig
     include Identifiable.S
 
     val swap_byte_endianness : t -> t
+
     val to_const : t -> Simple.Const.t
+
+    (* Care: [to_tagged_immediate] has to perform some arithmetic to ensure
+       that the [Targetint.t] inside the [Immediate.t] represents the result
+       as it would be if the conversion were evaluated on the target machine
+       at type "int". *)
+    (* CR mshinwell: Should there be a new module, [OCaml_int_on_target]?
+       Then [Immediate.t] can use that. *)
+    val to_tagged_immediate : t -> Immediate.t
+    val to_naked_int32 : t -> Int32.t
+    val to_naked_int64 : t -> Int64.t
+    val to_naked_nativeint : t -> Targetint.t
   end
 
   val kind : K.Standard_int.t
@@ -649,63 +661,96 @@ module Make_simplify_swap_byte_endianness (P : For_standard_ints) = struct
     term, ty, r
 end
 
+module For_standard_ints_tagged_immediate : For_standard_ints = struct
+  module Num = struct
+    include Immediate
+
+    let swap_byte_endianness t =
+      Immediate.map (fun i ->
+          Targetint.get_least_significant_16_bits_then_byte_swap i)
+        t
+
+    let to_const t = Simple.Const.Tagged_immediate t
+
+    let to_tagged_immediate t = t
+    let to_naked_int32 t = Targetint.to_int32 (Immediate.to_targetint t)
+    let to_naked_int64 t = Targetint.to_int64 (Immediate.to_targetint t)
+    let to_naked_nativeint t = Immediate.to_targetint t
+  end
+
+  let kind : K.Standard_int.t = Tagged_immediate
+  let prover = T.prove_tagged_immediate
+  let this = T.this_tagged_immediate
+  let these = T.these_tagged_immediates
+end
+
+module For_standard_ints_naked_int32 : For_standard_ints = struct
+  module Num = struct
+    include Int32
+
+    let to_const t = Simple.Const.Naked_int32 t
+
+    let to_tagged_immediate t =
+      Immediate.int (Targetint.treat_as_int (Targetint.of_int32 t))
+    let to_naked_int32 t = t
+    let to_naked_int64 t = Int64.of_int32 t
+    let to_naked_nativeint t = Targetint.of_int64 t
+  end
+
+  let kind : K.Standard_int.t = Naked_int32
+  let prover = T.prove_naked_int32
+  let this = T.this_naked_int32
+  let these = T.these_naked_int32s
+end
+
+module For_standard_ints_naked_int64 : For_standard_ints = struct
+  module Num = struct
+    include Int64
+
+    let to_const t = Simple.Const.Naked_int64 t
+
+    let to_tagged_immediate t =
+      Immediate.int (Targetint.treat_as_int (Targetint.of_int64 t))
+    let to_naked_int32 t = Int64.to_int32 t
+    let to_naked_int64 t = t
+    let to_naked_nativeint t = Targetint.of_int64 t
+  end
+
+  let kind : K.Standard_int.t = Naked_int64
+  let prover = T.prove_naked_int64
+  let this = T.this_naked_int64
+  let these = T.these_naked_int64s
+end
+
+module For_standard_ints_naked_nativeint : For_standard_ints = struct
+  module Num = struct
+    include Targetint
+
+    let to_const t = Simple.Const.Naked_nativeint t
+
+    let to_tagged_immediate t = Immediate.int (Targetint.treat_as_int t)
+    let to_naked_int32 t = Targetint.to_int32
+    let to_naked_int64 t = Targetint.to_int64
+    let to_naked_nativeint t = t
+  end
+
+  let kind : K.Standard_int.t = Naked_nativeint
+  let prover = T.prove_naked_nativeint
+  let this = T.this_naked_nativeint
+  let these = T.these_naked_nativeints
+end
+
 module Simplify_swap_byte_endianness_tagged_immediate =
-  Make_simplify_swap_byte_endianness (struct
-    module Num = struct
-      include Immediate
+  Make_simplify_swap_byte_endianness (For_standard_ints_tagged_immediate)
 
-      let swap_byte_endianness t =
-        Immediate.map (fun i ->
-            Targetint.get_least_significant_16_bits_then_byte_swap i)
-          t
+module Simplify_swap_byte_endianness_naked_int32 =
+  Make_simplify_swap_byte_endianness (For_standard_ints_naked_int32)
 
-      let to_const t = Simple.Const.Tagged_immediate t
-    end
+module Simplify_swap_byte_endianness_naked_int64 =
+  Make_simplify_swap_byte_endianness (For_standard_ints_naked_int64)
 
-    let kind : K.Standard_int.t = Tagged_immediate
-    let prover = T.prove_tagged_immediate
-    let this = T.this_tagged_immediate
-    let these = T.these_tagged_immediates
-  end)
-
-module Simplify_swap_byte_endianness_tagged_immediate =
-  Make_simplify_swap_byte_endianness (struct
-    module Num = struct
-      include Int32
-      let to_const t = Simple.Const.Naked_int32 t
-    end
-
-    let kind : K.Standard_int.t = Naked_int32
-    let prover = T.prove_naked_int32
-    let this = T.this_naked_int32
-    let these = T.these_naked_int32s
-  end)
-
-module Simplify_swap_byte_endianness_tagged_immediate =
-  Make_simplify_swap_byte_endianness (struct
-    module Num = struct
-      include Int64
-      let to_const t = Simple.Const.Naked_int64 t
-    end
-
-    let kind : K.Standard_int.t = Naked_int64
-    let prover = T.prove_naked_int64
-    let this = T.this_naked_int64
-    let these = T.these_naked_int64s
-  end)
-
-module Simplify_swap_byte_endianness_tagged_immediate =
-  Make_simplify_swap_byte_endianness (struct
-    module Num = struct
-      include Nativeint
-      let to_const t = Simple.Const.Naked_nativeint t
-    end
-
-    let kind : K.Standard_int.t = Naked_nativeint
-    let prover = T.prove_naked_nativeint
-    let this = T.this_naked_nativeint
-    let these = T.these_naked_nativeints
-  end)
+module Simplify_swap_byte_endianness_naked_nativeint =
+  Make_simplify_swap_byte_endianness (For_standard_ints_naked_nativeint)
 
 let simplify_int_of_float env r prim arg dbg =
   (* CR mshinwell: We need to validate that the backend compiles
@@ -1027,37 +1072,102 @@ module Unary_int_arith_naked_int32 = Unary_int_arith (Int32)
 module Unary_int_arith_naked_int64 = Unary_int_arith (Int64)
 module Unary_int_arith_naked_nativeint = Unary_int_arith (Targetint)
 
-let simplify_int_conv env r prim arg ~(src : Flambda_kind.Standard_int.t)
-      ~(dst : Flambda_kind.Standard_int.t) dbg =
-  let arg, ty = S.simplify_simple env arg in
-  let prover =
-    (* CR mshinwell: Move this to a function in [Flambda_type] taking a
-       kind *)
-    match src with
-    | Tagged_immediate -> T.prove_tagged_immediate
-    | Naked_int32 -> T.prove_naked_int32
-    | Naked_int64 -> T.prove_naked_int64
-    | Naked_nativeint -> T.prove_naked_nativeint
-  in
-  let proof = (E.type_accessor env prover) arg in
-  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  match proof with
-  | Proved (Exactly is) ->
-    begin match dst with
-    | Tagged_immediate ->
+module Make_simplify_int_conv (I : For_standard_ints) = struct
+  let simplify env r prim arg ~(dst : Flambda_kind.Standard_int.t) dbg =
+    let arg, ty = S.simplify_simple env arg in
+    if Flambda_kind.Standard_int.equal I.kind dst then
+      if T.is_bottom ty then
+        Reachable.invalid (), T.bottom (K.Standard_int.to_kind dst), r
+      else
+        Reachable.reachable (Flambda.Named.Simple arg), ty, r
+    else
+      let proof = (E.type_accessor env I.prover) arg in
+      let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+      let module N = I.Num in
+      let term, ty =
+        match proof with
+        | Proved (Exactly is) ->
+          assert (N.Set.length is > 0);
+          begin match dst with
+          | Tagged_immediate ->
+            let imms =
+              N.Set.fold (fun i imms ->
+                  Immediate.Set.add (N.to_tagged_immediate i) imms)
+                is
+                Immediate.Set.empty
+            in
+            begin match Immediate.Set.get_singleton imms with
+            | Some imm ->
+              Reachable.reachable (
+                  Simple (Simple.const (Tagged_immediate imm))),
+                T.this_tagged_immediate imm
+            | None ->
+              Reachable.reachable (original_term ()),
+                T.these_tagged_immediates imms
+            end
+          | Naked_int32 ->
+            let is =
+              N.Set.fold (fun i is ->
+                  Naked_int32.Set.add (N.to_naked_int32 i) is)
+                is
+                Naked_int32.Set.empty
+            in
+            begin match Naked_int32.Set.get_singleton is with
+            | Some i ->
+              Reachable.reachable (Simple (Simple.const (Naked_int32 i))),
+                T.this_naked_int32 i
+            | None ->
+              Reachable.reachable (original_term ()),
+                T.these_naked_int32s is
+            end
+          | Naked_int64 ->
+            let is =
+              N.Set.fold (fun i is ->
+                  Naked_int64.Set.add (N.to_naked_int64 i) is)
+                is
+                Naked_int64.Set.empty
+            in
+            begin match Naked_int64.Set.get_singleton is with
+            | Some i ->
+              Reachable.reachable (Simple (Simple.const (Naked_int64 i))),
+                T.this_naked_int64 i
+            | None ->
+              Reachable.reachable (original_term ()),
+                T.these_naked_int64s is
+            end
+          | Naked_nativeint ->
+            let is =
+              N.Set.fold (fun i is ->
+                  Naked_nativeint.Set.add (N.to_naked_nativeint i) is)
+                is
+                Naked_nativeint.Set.empty
+            in
+            begin match Naked_nativeint.Set.get_singleton is with
+            | Some i ->
+              Reachable.reachable (Simple (Simple.const (Naked_nativeint i))),
+                T.this_naked_nativeint i
+            | None ->
+              Reachable.reachable (original_term ()),
+                T.these_naked_nativeints is
+            end
+          end
+        | Proved Not_all_values_known ->
+          Reachable.reachable (original_term ()),
+            T.unknown (K.Standard_int.to_kind dst) Other
+        | Invalid ->
+          Reachable.invalid (), T.bottom (K.Standard_int.to_kind dst)
+      in
+      term, ty, r
+end
 
-    | Naked_int32 ->
-
-    | Naked_int64 ->
-
-    | Naked_nativeint ->
-
-    end
-  | Proved Not_all_values_known ->
-    Reachable.reachable (original_term ()),
-      T.unknown (K.Standard_int.to_kind dst) Other
-  | Invalid ->
-    Reachable.invalid (), T.bottom (K.Standard_int.to_kind dst)
+module Simplify_int_conv_tagged_immediate =
+  Make_simplify_int_conv (For_standard_ints_tagged_immediate)
+module Simplify_int_conv_naked_int32 =
+  Make_simplify_int_conv (For_standard_ints_naked_int32)
+module Simplify_int_conv_naked_int64 =
+  Make_simplify_int_conv (For_standard_ints_naked_int64)
+module Simplify_int_conv_naked_nativeint =
+  Make_simplify_int_conv (For_standard_ints_naked_nativeint)
 
 let simplify_unary_float_arith_op env r prim op arg dbg =
   ...
@@ -1104,8 +1214,14 @@ let simplify_unary_primitive env r prim arg dbg =
     | Naked_nativeint ->
       Unary_int_arith_naked_nativeint.simplify env r op arg
     end
-  | Int_conv { src; dst; } ->
-    simplify_int_conv env r prim arg ~src ~dst dbg
+  | Int_conv { src = Tagged_immediate; dst; } ->
+    Simplify_int_conv_tagged_immediate.simplify env r prim arg ~dst dbg
+  | Int_conv { src = Naked_int32; dst; } ->
+    Simplify_int_conv_naked_int32.simplify env r prim arg ~dst dbg
+  | Int_conv { src = Naked_int64; dst; } ->
+    Simplify_int_conv_naked_int64.simplify env r prim arg ~dst dbg
+  | Int_conv { src = Naked_nativeint; dst; } ->
+    Simplify_int_conv_naked_nativeint.simplify env r prim arg ~dst dbg
   | Float_arith op -> simplify_unary_float_arith_op env r prim op arg dbg
   | Int_of_float -> simplify_int_of_float env r prim arg dbg
   | Float_of_int -> simplify_float_of_int env r prim arg dbg

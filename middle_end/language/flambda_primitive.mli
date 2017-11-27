@@ -121,7 +121,7 @@ type unary_int_arith_op = Neg
 type unary_float_arith_op = Abs | Neg
 
 (** Primitives taking exactly one argument. *)
-tye unary_primitive =
+type unary_primitive =
   | Block_load of int * field_kind * mutable_or_immutable
   | Duplicate_scannable_block of {
       kind : duplicate_kind;
