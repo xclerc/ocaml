@@ -183,7 +183,7 @@ type binary_float_arith_op = Add | Sub | Mul | Div
 
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
-  | Block_load_computed_index
+  | Block_load_computed_index of field_kind * mutable_or_immutable
   | Block_set of int * block_set_kind * init_or_assign
   | Int_arith of Flambda_kind.Standard_int.t * binary_int_arith_op
   | Int_shift of Flambda_kind.Standard_int.t * int_shift_op

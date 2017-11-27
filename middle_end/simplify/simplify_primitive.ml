@@ -1139,7 +1139,7 @@ let simplify_unary_float_arith_op env r prim
   let result_invalid () = Reachable.invalid (), T.bottom (K.naked_float ()) in
   let term, ty =
     match proof with
-    | Proved (Exactly fs) ->
+    | Proved (Exactly fs) when E.const_float_prop env ->
       assert (not (Float.Set.is_empty fs));
       let possible_results =
         match op with
@@ -1154,7 +1154,7 @@ let simplify_unary_float_arith_op env r prim
         Reachable.reachable (original_term ()),
           T.these_naked_floats possible_results
       end
-    | Proved Not_all_values_known -> result_unknown ()
+    | Proved (Exactly _ | Not_all_values_known) -> result_unknown ()
     | Invalid -> result_invalid ()
   in
   term, ty, r
@@ -1221,7 +1221,13 @@ let simplify_array_length env r prim arg ~array_kind dbg =
   term, ty, r
 
 let simplify_bigarray_length env r prim arg ~dimension dbg =
-
+  let arg, ty = S.simplify_simple env arg in
+  let result_kind = K.value Can_scan in
+  if (E.type_accessor env T.is_bottom) ty then
+    Reachable.invalid (), T.bottom result_kind
+  else
+    let named : Named.t = Prim (Unary (prim, arg), dbg) in
+    named, T.unknown result_kind Other
 
 let simplify_unary_primitive env r prim arg dbg =
   match prim with
@@ -1564,11 +1570,43 @@ module Binary_int_arith_naked_int32 = Binary_int_arith (Int32)
 module Binary_int_arith_naked_int64 = Binary_int_arith (Int64)
 module Binary_int_arith_naked_nativeint = Binary_int_arith (Targetint)
 
+let simplify_block_load_computed_index env r prim ~block ~index
+      ~field_kind ~field_is_mutable dbg =
+  let orig_block = block in
+  let index, index_ty = S.simplify_simple env index in
+  let block, block_ty = S.simplify_simple env block in
+  let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
+  let invalid () = Reachable.invalid (), T.bottom field_kind in
+  let proof = (E.type_accessor env T.prove_tagged_immediate) arg in
+  let unique_index_unknown () =
+    if (E.type_accessor env T.is_bottom) ty then
+      invalid ()
+    else
+      Reachable.reachable (original_term ()), T.unknown field_kind Other
+  in
+  let term, ty =
+    match proof with
+    | Proved (Exactly indexes) ->
+      begin match Immediate.Set.get_singleton indexes with
+      | Some field_index ->
+        simplify_block_load env r prim orig_block dbg ~field_index ~field_kind
+          ~field_is_mutable
+      | None -> unique_index_unknown ()
+      end
+    | Proved Not_all_values_known -> unique_index_unknown ()
+    | Invalid -> invalid ()
+  in
+  term, ty, r
+
+let simplify_block_set env r prim ~field ~kind ~init_or_assign arg1 arg2 dbg =
+
+
 let simplify_binary_primitive env r prim arg1 arg2 dbg =
   match prim with
-  | Block_load_computed_index
-  | Block_set of int * block_set_kind * init_or_assign
-
+  | Block_load_computed_index ->
+    simplify_block_load_computed_index env r prim ~block:arg1 ~index:arg2 dbg
+  | Block_set (field, kind, init_or_assign) ->
+    simplify_block_set env r prim ~field ~kind ~init_or_assign arg1 arg2 dbg
   | Int_arith (kind, op) ->
     begin match kind with
     | Tagged_immediate ->
