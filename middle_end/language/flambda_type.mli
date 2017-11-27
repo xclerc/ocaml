@@ -251,6 +251,9 @@ type boxed_float_proof = Numbers.Float.Set.t proof
       of such type, in a context where a boxed float is required, is invalid).
     The set returned in an [Proved (Ok ...)] result is guaranteed non-empty.
 *)
+(* CR mshinwell: Add unit tests to ensure the condition about the result
+   sets being non-empty always holds (or reformulate the interface somehow,
+   but this looks tricky) *)
 val prove_boxed_float : (t -> boxed_float_proof) type_accessor
 
 type boxed_int32_proof = Numbers.Int32.Set.t proof
