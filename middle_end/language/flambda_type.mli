@@ -310,7 +310,7 @@ type string_proof = String_info.Set.t proof
 
 val prove_string : (t -> string_proof) type_accessor
 
-type lengths_of_arrays_or_blocks_proof = Numbers.Int.Set.t proof
+type lengths_of_arrays_or_blocks_proof = Targetint.Set.t proof
 
 (** Determine the known length(s) of the array(s) or structured block(s)
     (i.e. blocks with tag less than [No_scan_tag]) described by the given
