@@ -135,6 +135,10 @@ module Int32 = struct
     in
     second_to_least_significant_byte
       lor (shift_left least_significant_byte 8)
+
+  (* CR mshinwell: Is this right? *)
+  let treat_as_int t =
+    t mod (logical_shift_left 1L 31)
 end
 
 module Int64 = struct
@@ -183,6 +187,10 @@ module Int64 = struct
     in
     second_to_least_significant_byte
       lor (shift_left least_significant_byte 8)
+
+  (* CR mshinwell: Is this right? *)
+  let treat_as_int t =
+    t mod (logical_shift_left 1L 63)
 end
 
 include (val

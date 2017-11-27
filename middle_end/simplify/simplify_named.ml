@@ -375,47 +375,6 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
     [], Reachable.invalid (), r
 
 (*
-module Simplify_boxed_integer_operator (I : sig
-  type t
-  val kind : Lambda.boxed_integer
-  val zero : t
-  val add : t -> t -> t
-  val sub : t -> t -> t
-  val mul : t -> t -> t
-  val div : t -> t -> t
-  val rem : t -> t -> t
-  val logand : t -> t -> t
-  val logor : t -> t -> t
-  val logxor : t -> t -> t
-  val shift_left : t -> int -> t
-  val shift_right : t -> int -> t
-  val shift_right_logical : t -> int -> t
-  val to_int : t -> int
-  val to_int32 : t -> Int32.t
-  val to_int64 : t -> Int64.t
-  val neg : t -> t
-  val swap : t -> t
-  val compare : t -> t -> int
-end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
-  module C = Inlining_cost
-  module S = Simplify_common
-  module T = Flambda_types
-
-  let simplify_unop (p : Lambda.primitive) (kind : I.t T.boxed_int)
-        expr (n : I.t) =
-    let eval op = S.const_boxed_int_expr expr kind (op n) in
-    let eval_conv kind op = S.const_boxed_int_expr expr kind (op n) in
-    let eval_unboxed op = S.const_int_expr expr (op n) in
-    match p with
-    | Pintofbint kind when kind = I.kind -> eval_unboxed I.to_int
-    | Pcvtbint (kind, Pint32) when kind = I.kind ->
-      eval_conv T.Int32 I.to_int32
-    | Pcvtbint (kind, Pint64) when kind = I.kind ->
-      eval_conv T.Int64 I.to_int64
-    | Pnegbint kind when kind = I.kind -> eval I.neg
-    | Pbbswap kind when kind = I.kind -> eval I.swap
-    | _ -> expr, T.value_unknown Other, C.Benefit.zero
-
   let simplify_binop (p : Lambda.primitive) (kind : I.t T.boxed_int)
         expr (n1 : I.t) (n2 : I.t) =
     let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
@@ -434,7 +393,6 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     | Plsrbint kind when kind = I.kind && precond -> eval I.shift_right_logical
     | Pasrbint kind when kind = I.kind && precond -> eval I.shift_right
     | _ -> expr, T.value_unknown Other, C.Benefit.zero
-end
 *)
 
 let simplify_block_load env r prim arg dbg ~field_index ~field_kind
@@ -449,6 +407,7 @@ let simplify_block_load env r prim arg dbg ~field_index ~field_kind
   let term, ty =
     match get_field_result with
     | Ok field_ty ->
+      assert ((not field_is_mutable) || T.is_unknown field_ty);
       let reified =
         (E.type_accessor env T.reify) ~allow_free_variables:true field_ty
       in
@@ -643,8 +602,6 @@ module Make_simplify_swap_byte_endianness (P : For_standard_ints) = struct
         let nums =
           P.Set.map (fun imm -> P.swap_byte_endianness imm) nums
         in
-        (* XXX in these various cases (and below) shouldn't we be seeing if the
-           [ty] has a canonical name associated with it? *)
         begin match P.Num.Set.get_singleton nums with
         | Some i ->
           let simple = Simple.const (P.Num.to_const i) in
@@ -935,6 +892,8 @@ module Simplify_unbox_number_nativeint =
    1. Overlap with Lift_constants?
    2. Work out how to make use of the projection information, e.g. for
       boxing/unboxing.
+   3. Where there are aliases e.g. x = 3 and x = 5, we don't emit a term
+      "x" even if we emit "3 union 5" as the type.
 *)
 
 module Make_simplify_box_number (P : For_unboxable_ints) = struct
@@ -1032,7 +991,7 @@ module Unary_int_arith (I : sig
   val this : t -> flambda_type
   val these : Set.t -> flambda_type
 end) = struct
-  let simplify env r prim dbg op arg : Named.t * R.t =
+  let simplify env r prim dbg (op : Flambda_primitive.unary_int_arith_op) arg =
     let arg, ty = S.simplify_simple env arg in
     let proof = (E.type_accessor env T.prove_tagged_immediate) arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
@@ -1169,8 +1128,66 @@ module Simplify_int_conv_naked_int64 =
 module Simplify_int_conv_naked_nativeint =
   Make_simplify_int_conv (For_standard_ints_naked_nativeint)
 
-let simplify_unary_float_arith_op env r prim op arg dbg =
-  ...
+let simplify_unary_float_arith_op env r prim
+      (op : Flambda_primitive.unary_float_arith_op) arg dbg =
+  let arg, ty = S.simplify_simple env arg in
+  let proof = (E.type_accessor env T.prove_naked_float) arg in
+  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+  let result_unknown () =
+    Reachable.reachable (original_term ()), T.unknown (K.naked_float ()) Other
+  in
+  let result_invalid () = Reachable.invalid (), T.bottom (K.naked_float ()) in
+  let term, ty =
+    match proof with
+    | Proved (Exactly fs) ->
+      assert (not (Float.Set.is_empty fs));
+      let possible_results =
+        match op with
+        | Abs -> Float.Set.map (fun f -> Float.abs f) fs
+        | Neg -> Float.Set.map (fun f -> Float.neg f) fs
+      in
+      begin match Float.Set.get_singleton possible_results with
+      | Some f ->
+        let simple = Simple.const (Naked_float f) in
+        Reachable.reachable (Simple simple), T.this_naked_float f
+      | None ->
+        Reachable.reachable (original_term ()),
+          T.these_naked_floats possible_results
+      end
+    | Proved Not_all_values_known -> result_unknown ()
+    | Invalid -> result_invalid ()
+  in
+  term, ty, r
+
+let simplify_string_length env r prim arg dbg =
+  let arg, ty = S.simplify_simple env arg in
+  let proof = (E.type_accessor env T.prove_string) arg in
+  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+  let result_kind = K.value Can_scan in
+  let result_invalid () = Reachable.invalid (), T.bottom result_kind in
+  let term, ty =
+    match proof with
+    | Proved (Exactly strs) ->
+      assert (T.String_info.Set.cardinal strs > 0);
+      let lengths =
+        T.String_info.Set.fold (fun str lengths ->
+            let size = Immediate.of_int str.size in
+            Immediate.Set.add size lengths)
+          strs
+          Immediate.Set.empty
+      in
+      begin match Immediate.Set.get_singleton lengths with
+      | Some length ->
+        let simple = Simple.const (Tagged_immediate length) in
+        Reachable (Simple simple), T.this_tagged_immediate length
+      | None ->
+        Reachable (original_term ()), T.these_tagged_immediates lengths
+      end
+    | Proved Not_all_values_known ->
+      Reachable (original_term ()), T.unknown result_kind Other
+    | Invalid -> result_invalid ()
+  in
+  term, ty, r
 
 let simplify_unary_primitive env r prim arg dbg =
   match prim with
@@ -1183,8 +1200,8 @@ let simplify_unary_primitive env r prim arg dbg =
       ~source_mutability ~destination_mutability
   | Is_int -> simplify_is_int env r prim arg dbg
   | Get_tag -> simplify_get_tag env r prim arg dbg
-  | String_length string_or_bytes ->
-
+  | String_length _string_or_bytes ->
+    simplify_string_length env r prim arg dbg
   | Swap_byte_endianness Tagged_immediate ->
     Simplify_swap_byte_endianness_tagged_immediate.simplify env r prim arg dbg
   | Swap_byte_endianness Naked_int32 ->
@@ -1555,7 +1572,6 @@ let simplify_variadic_primitive env r prim args dbg =
   | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
 
 let simplify_primitive env r prim dbg =
-  (* CR mshinwell: Need to deal with [r] for benefits *)
   match prim with
   | Unary (prim, arg) ->
     simplify_unary_primitive env r prim arg dbg

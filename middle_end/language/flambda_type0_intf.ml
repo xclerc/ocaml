@@ -57,7 +57,7 @@ module type S = sig
   module String_info : sig
     type t = private {
       contents : string_contents;
-      size : int;
+      size : Targetint.t;
     }
 
     include Identifiable.S with type t := t

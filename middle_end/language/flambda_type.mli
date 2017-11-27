@@ -308,7 +308,6 @@ val prove_is_tagged_immediate : (t -> is_tagged_immediate_proof) type_accessor
 
 type string_proof = String_info.Set.t proof
 
-(** As for [prove_boxed_float] but for a tagged immediate. *)
 val prove_string : (t -> string_proof) type_accessor
 
 type lengths_of_arrays_or_blocks_proof = Numbers.Int.Set.t proof
