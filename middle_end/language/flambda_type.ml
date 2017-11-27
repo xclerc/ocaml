@@ -496,10 +496,10 @@ module Evaluated_first_stage = struct
     | Bottom
     | Blocks_and_tagged_immediates of
         (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
-    | Boxed_floats of Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
+    | Boxed_floats of ty_naked_float Or_not_all_values_known.t
+    | Boxed_int32s of ty_naked_int32 Or_not_all_values_known.t
+    | Boxed_int64s of ty_naked_int64 Or_not_all_values_known.t
+    | Boxed_nativeints of ty_naked_nativeint Or_not_all_values_known.t
     | Closures of Closure.t list Or_not_all_values_known.t
     | Sets_of_closures of Set_of_closures.t list Or_not_all_values_known.t
     (* CR-someday mshinwell: Improve the [Float_array] case when we end up with

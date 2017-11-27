@@ -153,6 +153,7 @@ module type Env = sig
   val add_symbol
      : t
     -> Symbol.t
+    -> ?definition:Flambda_static.Program_body.definition
     -> Flambda_type.t
     -> t
 
@@ -166,10 +167,16 @@ module type Env = sig
   val redefine_symbol
      : t
     -> Symbol.t
+    -> ?definition:Flambda_static.Program_body.definition
     -> Flambda_type.t
     -> t
 
   val find_symbol : t -> Symbol.t -> Flambda_type.t
+
+  val find_symbol_by_definition
+     : t
+    -> Flambda_static.Program_body.definition
+    -> Symbol.t option
 
   (* XXX to be turned into equations (including to primitives)
   (** Note that the given [bound_to] holds the given [projection]. *)
@@ -554,4 +561,11 @@ module type Result = sig
 
   val seen_direct_application : t -> t
   val num_direct_applications : t -> int
+
+  (* XXX this must be in the snapshotted part. *)
+  val new_lifted_constant
+     : t
+    -> Env.t
+    -> Flambda_static.Static_part.t
+    -> Symbol.t * t
 end

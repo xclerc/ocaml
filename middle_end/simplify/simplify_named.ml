@@ -446,18 +446,20 @@ let simplify_block_load env r prim arg dbg ~field_index ~field_kind
     (E.type_accessor env T.get_field) ty
       ~field_index ~field_is_mutable ~field_kind
   in
-  begin match get_field_result with
-  | Ok field_ty ->
-    let reified =
-      (E.type_accessor env T.reify) ~allow_free_variables:true field_ty
-    in
-    begin match reified with
-    | Term (simple, ty) -> Named.Simple simple, ty
-    | Cannot_reify -> original_term (), field_ty
+  let term, ty =
+    match get_field_result with
+    | Ok field_ty ->
+      let reified =
+        (E.type_accessor env T.reify) ~allow_free_variables:true field_ty
+      in
+      begin match reified with
+      | Term (simple, ty) -> Named.Simple simple, ty
+      | Cannot_reify -> original_term (), field_ty
+      | Invalid -> Reachable.invalid (), T.bottom kind
+      end
     | Invalid -> Reachable.invalid (), T.bottom kind
-    end
-  | Invalid -> Reachable.invalid (), T.bottom kind
-  end
+  in
+  term, ty, r
 
 let simplify_duplicate_scannable_block env r prim arg dbg ~kind
       ~source_mutability ~destination_mutability =
@@ -509,76 +511,81 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
     | Invalid ->
       Reachable.invalid (), T.bottom (K.value scanning)
   in
-  begin match kind with
-  | Dynamic_must_scan_or_naked_float ->
-    let term = Reachable.reachable (original_term ()) in
-    begin match destination_mutability with
-    | Immutable -> term, ty
-    | Mutable -> term, T.unknown (K.value Must_scan) Other
-    end
-  | Must_scan -> like_a_block Must_scan
-  | Can_scan -> like_a_block Can_scan
-  | Naked_float ->
-    let proof = (E.type_accessor env T.prove_float_array) ty in
-    match proof with
-    | Proved { lengths = Exactly sizes; } ->
-      assert (not (Int.Set.is_empty sizes));
-      let type_of_new_block =
-        match destination_mutability with
-        | Immutable ->
-          let possible_types =
-            List.map (fun size ->
-                let fields =
-                  Array.init size (fun _index ->
-                    unknown (K.naked_float ()) Other)
-                in
-                T.immutable_float_array fields)
-              (Numbers.Int.Set.to_list sizes)
-          in
-          (E.type_accessor env T.join_list) (K.value Must_scan)
-            possible_types
-        | Mutable -> T.mutable_float_arrays_of_various_sizes ~sizes
-      in
-      Reachable.reachable (original_term ()), type_of_new_block
-    | Proved { lengths = Not_all_values_known; } ->
+  let term, ty =
+    match kind with
+    | Dynamic_must_scan_or_naked_float ->
       let term = Reachable.reachable (original_term ()) in
       begin match destination_mutability with
       | Immutable -> term, ty
       | Mutable -> term, T.unknown (K.value Must_scan) Other
       end
-    | Invalid ->
-      Reachable.invalid (), T.bottom (K.value Must_scan)
-  end
+    | Must_scan -> like_a_block Must_scan
+    | Can_scan -> like_a_block Can_scan
+    | Naked_float ->
+      let proof = (E.type_accessor env T.prove_float_array) ty in
+      match proof with
+      | Proved { lengths = Exactly sizes; } ->
+        assert (not (Int.Set.is_empty sizes));
+        let type_of_new_block =
+          match destination_mutability with
+          | Immutable ->
+            let possible_types =
+              List.map (fun size ->
+                  let fields =
+                    Array.init size (fun _index ->
+                      unknown (K.naked_float ()) Other)
+                  in
+                  T.immutable_float_array fields)
+                (Numbers.Int.Set.to_list sizes)
+            in
+            (E.type_accessor env T.join_list) (K.value Must_scan)
+              possible_types
+          | Mutable -> T.mutable_float_arrays_of_various_sizes ~sizes
+        in
+        Reachable.reachable (original_term ()), type_of_new_block
+      | Proved { lengths = Not_all_values_known; } ->
+        let term = Reachable.reachable (original_term ()) in
+        begin match destination_mutability with
+        | Immutable -> term, ty
+        | Mutable -> term, T.unknown (K.value Must_scan) Other
+        end
+      | Invalid ->
+        Reachable.invalid (), T.bottom (K.value Must_scan)
+  in
+  term, ty, r
 
 let simplify_is_int env r prim arg dbg =
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
   let proof = (E.type_accessor env T.prove_is_tagged_immediate) ty in
-  begin match proof with
-  | Proved is_tagged_immediate ->
-    let simple =
-      if is_tagged_immediate then Simple.const_true else Simple.const_false
-    in
-    let imm =
-      if is_tagged_immediate then Immediate.bool_true
-      else Immediate.bool_false
-    in
-    (* CR mshinwell: naming inconsistency const_true / bool_true *)
-    Reachable.reachable (Simple simple),
-      T.this_tagged_immediate imm
-  | Proved Not_all_values_known ->
-    Reachable.reachable (original_term ()),
-      T.these_tagged_immediates Immediate.all_bools
-  | Invalid -> 
-    Reachable.invalid (), T.bottom (K.value Can_scan)
-  end
+  let term, ty =
+    match proof with
+    | Proved is_tagged_immediate ->
+      let simple =
+        if is_tagged_immediate then Simple.const_true else Simple.const_false
+      in
+      let imm =
+        if is_tagged_immediate then Immediate.bool_true
+        else Immediate.bool_false
+      in
+      (* CR mshinwell: naming inconsistency const_true / bool_true *)
+      Reachable.reachable (Simple simple),
+        T.this_tagged_immediate imm
+    | Proved Not_all_values_known ->
+      Reachable.reachable (original_term ()),
+        T.these_tagged_immediates Immediate.all_bools
+    | Invalid -> 
+      Reachable.invalid (), T.bottom (K.value Can_scan)
+  in
+  term, ty, r
 
 let simplify_get_tag env r prim arg dbg =
-    let arg, ty = S.simplify_simple env arg in
-    let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let eval, _canonical_name = (E.type_accessor env T.Evaluated.create) ty in
-    let tags = T.Evaluated.tags eval in
-    begin match tags with
+  let arg, ty = S.simplify_simple env arg in
+  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+  let eval, _canonical_name = (E.type_accessor env T.Evaluated.create) ty in
+  let tags = T.Evaluated.tags eval in
+  let term, ty =
+    match tags with
     | Not_all_values_known ->
       original_term (), T.these_tagged_immediates Tag.all_as_targetints
     | Exactly tags ->
@@ -595,7 +602,8 @@ let simplify_get_tag env r prim arg dbg =
           assert (not (Targetint.Set.is_empty tags));
           original_term (), T.these_tagged_immediates tags
         end
-    end
+  in
+  term, ty, r
 
 module type For_standard_ints = sig
   module Num : sig
@@ -617,26 +625,28 @@ module Make_simplify_swap_byte_endianness (P : For_standard_ints) = struct
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
     let proof = (E.type_accessor env P.prover) ty in
     let kind = K.Standard_int.to_kind P.kind in
-    begin match proof with
-    | Proved nums ->
-      let nums =
-        P.Set.map (fun imm -> P.swap_byte_endianness imm) nums
-      in
-      (* XXX in these various cases (and below) shouldn't we be seeing if the
-         [ty] has a canonical name associated with it? *)
-      begin match P.Num.Set.get_singleton nums with
-      | Some i ->
-        let simple = Simple.const (P.Num.to_const i) in
-        Reachable.reachable (Simple simple), P.this i
-      | None ->
-        assert (not (P.Num.Set.is_empty nums));
-        Reachable.reachable (original_term ()), P.these nums
-      end
-    | Proved Not_all_values_known ->
-      Reachable.reachable (original_term ()), T.unknown kind Other
-    | Invalid ->
-      Reachable.invalid (), T.bottom kind
-    end
+    let term, ty =
+      match proof with
+      | Proved nums ->
+        let nums =
+          P.Set.map (fun imm -> P.swap_byte_endianness imm) nums
+        in
+        (* XXX in these various cases (and below) shouldn't we be seeing if the
+           [ty] has a canonical name associated with it? *)
+        begin match P.Num.Set.get_singleton nums with
+        | Some i ->
+          let simple = Simple.const (P.Num.to_const i) in
+          Reachable.reachable (Simple simple), P.this i
+        | None ->
+          assert (not (P.Num.Set.is_empty nums));
+          Reachable.reachable (original_term ()), P.these nums
+        end
+      | Proved Not_all_values_known ->
+        Reachable.reachable (original_term ()), T.unknown kind Other
+      | Invalid ->
+        Reachable.invalid (), T.bottom kind
+    in
+    term, ty, r
 end
 
 module Simplify_swap_byte_endianness_tagged_immediate =
@@ -706,68 +716,72 @@ let simplify_int_of_float env r prim arg dbg =
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
   let proof = (E.type_accessor env T.prove_naked_float) ty in
-  begin match proof with
-  | Proved fs ->
-    begin match Float.Set.get_singleton fs with
-    | Some f ->
-      let i =
-        (* It seems as if the various [float_of_int] functions never raise
-           an exception even in the case of NaN or infinity. *)
-        (* CR mshinwell: We should be sure this semantics is reasonable. *)
-        Immediate.int (Targetint.of_float f)
-      in
-      let simple = Simple.const (Tagged_immediate i) in
-      Reachable.reachable (Simple simple),
-        T.this_tagged_immediate i
-    | None ->
-      assert (not (Float.Set.is_empty fs));
-      let is =
-        Float.Set.fold (fun f is ->
-            let i = Immediate.int (Targetint.of_float f) in
-            Immediate.Set.add i is)
-          fs
-          Immediate.Set.empty
-      in
+  let term, ty =
+    match proof with
+    | Proved fs ->
+      begin match Float.Set.get_singleton fs with
+      | Some f ->
+        let i =
+          (* It seems as if the various [float_of_int] functions never raise
+             an exception even in the case of NaN or infinity. *)
+          (* CR mshinwell: We should be sure this semantics is reasonable. *)
+          Immediate.int (Targetint.of_float f)
+        in
+        let simple = Simple.const (Tagged_immediate i) in
+        Reachable.reachable (Simple simple),
+          T.this_tagged_immediate i
+      | None ->
+        assert (not (Float.Set.is_empty fs));
+        let is =
+          Float.Set.fold (fun f is ->
+              let i = Immediate.int (Targetint.of_float f) in
+              Immediate.Set.add i is)
+            fs
+            Immediate.Set.empty
+        in
+        Reachable.reachable (original_term ()),
+          T.these_tagged_immediates is
+      end
+    | Proved Not_all_values_known ->
       Reachable.reachable (original_term ()),
-        T.these_tagged_immediates is
-    end
-  | Proved Not_all_values_known ->
-    Reachable.reachable (original_term ()),
-      T.unknown (K.value Can_scan) Other
-  | Invalid -> 
-    Reachable.invalid (), T.bottom (K.value Can_scan)
-  end
+        T.unknown (K.value Can_scan) Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom (K.value Can_scan)
+  in
+  term, ty, r
 
 let simplify_float_of_int env r prim arg dbg =
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
   let proof = (E.type_accessor env T.prove_tagged_immediate) ty in
-  begin match proof with
-  | Proved is ->
-    begin match Immediate.Set.get_singleton is with
-    | Some i ->
-      let f = Targetint.to_float (Immediate.to_targetint i) in
-      let simple = Simple.const (Naked_float f) in
-      Reachable.reachable (Simple simple),
-        T.this_naked_float f
-    | None ->
-      assert (not (Immediate.Set.is_empty fs));
-      let fs =
-        Float.Set.fold (fun i fs ->
-            let f = Targetint.to_float (Immediate.to_targetint i) in
-            Float.Set.add f fs)
-          is
-          Float.Set.empty
-      in
+  let term, ty =
+    match proof with
+    | Proved is ->
+      begin match Immediate.Set.get_singleton is with
+      | Some i ->
+        let f = Targetint.to_float (Immediate.to_targetint i) in
+        let simple = Simple.const (Naked_float f) in
+        Reachable.reachable (Simple simple),
+          T.this_naked_float f
+      | None ->
+        assert (not (Immediate.Set.is_empty fs));
+        let fs =
+          Float.Set.fold (fun i fs ->
+              let f = Targetint.to_float (Immediate.to_targetint i) in
+              Float.Set.add f fs)
+            is
+            Float.Set.empty
+        in
+        Reachable.reachable (original_term ()),
+          T.these_naked_floats fs
+      end
+    | Proved Not_all_values_known ->
       Reachable.reachable (original_term ()),
-        T.these_naked_floats fs
-    end
-  | Proved Not_all_values_known ->
-    Reachable.reachable (original_term ()),
-      T.unknown (K.value Can_scan) Other
-  | Invalid -> 
-    Reachable.invalid (), T.bottom (K.value Can_scan)
-  end
+        T.unknown (K.value Can_scan) Other
+    | Invalid -> 
+      Reachable.invalid (), T.bottom (K.value Can_scan)
+  in
+  term, ty, r
 
 module type For_unboxable_ints = sig
   module Num : sig
@@ -789,23 +803,31 @@ module Make_simplify_unbox_number (P : For_unboxable_ints) = struct
   let simplify env r prim arg dbg =
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env P.prover) ty in
+    let proof = (E.type_accessor env P.boxed_prover) ty in
     let kind = K.Boxable_number.to_kind P.kind in
-    begin match proof with
-    | Proved nums ->
-      begin match P.Num.Set.get_singleton nums with
-      | Some n ->
-        let simple = Simple.const (P.Num.to_const n) in
-        Reachable.reachable (Simple simple), P.this n
-      | None ->
-        assert (not (P.Num.Set.is_empty nums));
-        Reachable.reachable (original_term ()), P.these nums
-      end
-    | Proved Not_all_values_known ->
-      Reachable.reachable (original_term ()), T.unknown kind Other
-    | Invalid -> 
-      Reachable.invalid (), T.bottom kind
-    end
+    let term, ty =
+      match proof with
+      | Proved unboxed_ty ->
+        let proof = (E.type_accessor env P.unboxed_prover) unboxed_ty in
+        begin match proof with
+        | Proved nums ->
+          begin match P.Num.Set.get_singleton nums with
+          | Some n ->
+            let simple = Simple.const (P.Num.to_const n) in
+            Reachable.reachable (Simple simple), P.this n
+          | None ->
+            assert (not (P.Num.Set.is_empty nums));
+            Reachable.reachable (original_term ()), P.these nums
+          end
+        | Proved Not_all_values_known ->
+          Reachable.reachable (original_term ()), unboxed_ty
+        | Invalid ->
+          Reachable.invalid (), T.bottom kind
+        end
+      | Invalid -> 
+        Reachable.invalid (), T.bottom kind
+    in
+    term, ty, r
 end
 
 module Simplify_unbox_number_float =
@@ -816,7 +838,8 @@ module Simplify_unbox_number_float =
     end
 
     let kind : K.Boxable_number.t = Naked_float
-    let prover = T.prove_boxed_float
+    let boxed_prover = T.prove_boxed_float
+    let unboxed_prover = T.prove_naked_float
     let this = T.this_naked_float
     let these = T.these_naked_floats
   end)
@@ -829,7 +852,8 @@ module Simplify_unbox_number_int32 =
     end
 
     let kind : K.Boxable_number.t = Naked_int32
-    let prover = T.prove_boxed_int32
+    let boxed_prover = T.prove_boxed_int32
+    let unboxed_prover = T.prove_naked_int32
     let this = T.this_naked_int32
     let these = T.these_naked_int32s
   end)
@@ -842,7 +866,8 @@ module Simplify_unbox_number_int64 =
     end
 
     let kind : K.Boxable_number.t = Naked_int64
-    let prover = T.prove_boxed_int64
+    let boxed_prover = T.prove_boxed_int64
+    let unboxed_prover = T.prove_naked_int64
     let this = T.this_naked_int64
     let these = T.these_naked_int64s
   end)
@@ -855,7 +880,8 @@ module Simplify_unbox_number_nativeint =
     end
 
     let kind : K.Boxable_number.t = Naked_nativeint
-    let prover = T.prove_boxed_nativeint
+    let boxed_prover = T.prove_boxed_nativeint
+    let unboxed_prover = T.prove_naked_nativeint
     let this = T.this_naked_nativeint
     let these = T.these_naked_nativeints
   end)
@@ -872,24 +898,24 @@ module Make_simplify_box_number (P : For_unboxable_ints) = struct
        much work... *)
     let arg, ty = S.simplify_simple env arg in
     let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-    let proof = (E.type_accessor env P.prover) ty in
+    let proof = (E.type_accessor env P.unboxed_prover) ty in
     let kind = K.Boxable_number.to_kind P.kind in
-    begin match proof with
+    match proof with
     | Proved nums ->
       begin match P.Num.Set.get_singleton nums with
       | Some n ->
-        let simple = Simple.const (P.Num.to_const n) in
-        let named : Named.t = Prim (Unary (Box_number P.kind, simple), dbg) in
-        Reachable.reachable named, P.this n
+        let symbol, r = R.new_lifted_constant r env (Boxed_float (Const n)) in
+        let r = R.map_benefit r (Inlining_cost.Benefit.remove_box P.kind) in
+        let named : Named.t = Simple (Simple.name (Name.symbol symbol)) in
+        Reachable.reachable named, P.this n, r
       | None ->
         assert (not (P.Num.Set.is_empty nums));
-        Reachable.reachable (original_term ()), P.these nums
+        Reachable.reachable (original_term ()), P.these nums, r
       end
     | Proved Not_all_values_known ->
-      Reachable.reachable (original_term ()), P.box ty
+      Reachable.reachable (original_term ()), P.box ty, r
     | Invalid -> 
-      Reachable.invalid (), T.bottom kind
-    end
+      Reachable.invalid (), T.bottom kind, r
 end
 
 module Simplify_box_number_float =

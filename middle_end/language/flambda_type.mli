@@ -110,10 +110,10 @@ module Evaluated : sig
         "blocks" portion is non-empty.  (Otherwise [Tagged_immediates_only]
         will be produced.) *)
     | Tagged_immediates_only of Immediate.Set.t Or_not_all_values_known.t
-    | Boxed_floats of Numbers.Float.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
+    | Boxed_floats of ty_naked_float Or_not_all_values_known.t
+    | Boxed_int32s of ty_naked_int32 Or_not_all_values_known.t
+    | Boxed_int64s of ty_naked_int64 Or_not_all_values_known.t
+    | Boxed_nativeints of ty_naked_nativeint Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Sets_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
@@ -242,8 +242,16 @@ type 'a proof = private
   | Proved of 'a Or_not_all_values_known.t
   | Invalid
 
-type boxed_float_proof = Numbers.Float.Set.t proof
+type 'a boxing_proof = private
+  | Proved of 'a
+  | Invalid
 
+type boxed_float_proof = ty_naked_float boxing_proof
+
+(* CR mshinwell: update comment *)
+(* CR mshinwell: Add unit tests to ensure the condition about the result
+   sets being non-empty always holds (or reformulate the interface somehow,
+   but this looks tricky) *)
 (** Prove that the given type represents:
     - one or more known boxed floats ([Proved (Ok ...)]);
     - one or more unknown boxed floats ([Proved Not_all_values_known]);
@@ -251,22 +259,19 @@ type boxed_float_proof = Numbers.Float.Set.t proof
       of such type, in a context where a boxed float is required, is invalid).
     The set returned in an [Proved (Ok ...)] result is guaranteed non-empty.
 *)
-(* CR mshinwell: Add unit tests to ensure the condition about the result
-   sets being non-empty always holds (or reformulate the interface somehow,
-   but this looks tricky) *)
 val prove_boxed_float : (t -> boxed_float_proof) type_accessor
 
-type boxed_int32_proof = Numbers.Int32.Set.t proof
+type boxed_int32_proof = ty_naked_int32 boxing_proof
 
 (** As for [prove_boxed_float] but for [Int32]. *)
 val prove_boxed_int32 : (t -> boxed_int32_proof) type_accessor
 
-type boxed_int64_proof = Numbers.Int64.Set.t proof
+type boxed_int64_proof = ty_naked_int64 boxing_proof
 
 (** As for [prove_boxed_float] but for [Int64]. *)
 val prove_boxed_int64 : (t -> boxed_int64_proof) type_accessor
 
-type boxed_nativeint_proof = Numbers.Nativeint.Set.t proof
+type boxed_nativeint_proof = ty_naked_nativeint boxing_proof
 
 (** As for [prove_boxed_float] but for [Nativeint]. *)
 val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
