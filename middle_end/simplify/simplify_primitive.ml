@@ -2032,9 +2032,6 @@ let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
     | Proved Not_all_values_known -> ok ()
     | Invalid -> invalid ()
 
-let simplify_array_load env r prim dbg array_kind arg1 arg2 =
-  ...
-
 let simplify_string_load env r prim dbg width arg1 arg2 =
   ...
 
@@ -2087,8 +2084,6 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
     Binary_float_arith.simplify env r prim dbg op arg1 arg2
   | Float_comp op ->
     Binary_float_comp.simplify env r prim dbg op arg1 arg2
-  | Array_load array_kind ->
-    simplify_array_load env r prim dbg array_kind arg1 arg2
   | String_load width ->
     simplify_string_load env r prim dbg width arg1 arg2
   | Bigstring_load width ->
@@ -2115,16 +2110,11 @@ let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =
       arg1 arg2 arg3
   | Bytes_set string_accessor_width ->
     simplify_bytes_set env r prim dbg ~string_accessor_width arg1 arg2 arg3
-  | Array_set array_kind ->
-    simplify_array_set env r prim dbg ~array_kind arg1 arg2 arg3
   | Bigstring_set bigstring_accessor_width ->
     simplify_bigstring_set env r prim dbg ~bigstring_accessor_width
       arg1 arg2 arg3
 
 let simplify_make_block env r prim dbg ~tag ~mutable_or_immutable ~arity args =
-  ...
-
-let simplify_make_array env r prim dbg ~array_kind ~mutable_or_immutable args =
   ...
 
 let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
@@ -2137,8 +2127,6 @@ let simplify_variadic_primitive env r prim args dbg =
   match prim with
   | Make_block (tag, mutable_or_immutable, arity) ->
     simplify_make_block env r prim dbg ~tag ~mutable_or_immutable ~arity args
-  | Make_array (array_kind, mutable_or_immutable) ->
-    simplify_make_array env r prim dbg ~array_kind ~mutable_or_immutable args
   | Bigarray_set (num_dims, kind, layout) ->
     simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args
   | Bigarray_load (num_dims, kind, layout) ->
