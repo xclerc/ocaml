@@ -54,6 +54,10 @@ val div : t -> t -> t
    argument is zero.  This division rounds the real quotient of
    its arguments towards zero, as specified for {!Pervasives.(/)}. *)
 
+val div_unsigned : t -> t -> t
+(** Same as [div], except that arguments and result are interpreted as {e
+    unsigned} 32-bit integers. *)
+
 val rem : t -> t -> t
 (** Integer remainder.  If [y] is not zero, the result
    of [Targetint.rem x y] satisfies the following properties:
@@ -61,6 +65,10 @@ val rem : t -> t -> t
    [x = Targetint.add (Targetint.mul (Targetint.div x y) y)
                       (Targetint.rem x y)].
    If [y = 0], [Targetint.rem x y] raises [Division_by_zero]. *)
+
+val rem_unsigned : t -> t -> t
+(** Same as [rem], except that arguments and result are interpreted as {e
+    unsigned} integers. *)
 
 val succ : t -> t
 (** Successor.
@@ -176,6 +184,10 @@ val compare: t -> t -> int
     {!Pervasives.compare}.  Along with the type [t], this function [compare]
     allows the module [Targetint] to be passed as argument to the functors
     {!Set.Make} and {!Map.Make}. *)
+
+val compare_unsigned: t -> t -> int
+(** Same as [compare], except that arguments are interpreted as {e unsigned}
+    integers. *)
 
 val equal: t -> t -> bool
 (** The equal function for target ints. *)
