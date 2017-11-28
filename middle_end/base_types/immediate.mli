@@ -21,7 +21,7 @@ type 'a or_wrong = private
   | Wrong
 
 type t = private {
-  value : Targetint.t;
+  value : Targetint.OCaml.t;
   print_as_char : bool;
 }
 

@@ -70,16 +70,59 @@ module Int16 = struct
   let to_int t = t
 end
 
-module Float = struct
-  type t = float
+module Float_by_bit_pattern = struct
+  type t = Int64.t
+
+  let create f = Int64.bits_of_float f
+
+  let to_float t = Int64.float_of_bits t
 
   include Identifiable.Make (struct
-    type t = float
+    type t = Int64.t
 
-    let compare x y = Pervasives.compare x y
+    let compare = Int64.compare
+    let equal = Int64.equal
     let hash f = Hashtbl.hash f
-    let equal (i : float) j = i = j
-    let print = Format.pp_print_float
+    let print ppf t = Format.pp_print_float ppf (Int64.float_of_bits f)
+  end)
+
+  let add t1 t2 = create (Pervasives.(+.) (to_float t1) (to_float t2))
+  let sub t1 t2 = create (Pervasives.(-.) (to_float t1) (to_float t2))
+  let mul t1 t2 = create (Pervasives.( *. ) (to_float t1) (to_float t2))
+  let div t1 t2 = create (Pervasives.(/.) (to_float t1) (to_float t2))
+
+  let neg t = create (Pervasives.(~-.) (to_float t))
+  let abs t = create (Pervasives.abs_float (to_float t))
+end
+
+module Float = struct
+  type t =
+    | As_float of float
+    | As_bits of Int64.t
+
+  let create f =
+    match Pervasives.classify_float f with
+    | FP_normal | FP_zero | FP_infinite -> As_float f
+    | FP_nan -> As_bits (Int64.bits_of_float f)
+
+  let to_float t =
+    match t with
+    | As_float f -> f
+    | As_bits bits -> Int64.float_of_bits bits
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let hash t = Hashtbl.hash t
+
+    let print ppf t = Format.pp_print_float ppf (to_float t)
+
+    let compare t1 t2 =
+      match t1, t2 with
+      | As_float _, As_bits _ -> -1
+      | As_bits _, As_float _ -> 1
+      | As_float f1, As_float f2 -> Pervasives.compare f1 f2
+      | As_bits i1, As_bits i2 -> Int64.compare i1 i2
   end)
 end
 

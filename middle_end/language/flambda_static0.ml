@@ -64,7 +64,7 @@ module Static_part = struct
         * (Of_kind_value.t list)
     | Set_of_closures of Flambda0.Set_of_closures.t
     | Closure of Symbol.t * Closure_id.t
-    | Boxed_float of float or_variable
+    | Boxed_float of Numbers.Float_by_bit_pattern.t or_variable
     | Boxed_int32 of Int32.t or_variable
     | Boxed_int64 of Int64.t or_variable
     | Boxed_nativeint of Targetint.t or_variable

@@ -206,3 +206,13 @@ val cross_product : Set.t -> Set.t -> Pair.Set.t
 val get_least_significant_16_bits_then_byte_swap : t -> t
 
 val treat_as_int : t -> t
+
+module OCaml : sig
+  (** Operations using the semantics of the type "int" on the target
+      machine.  That is to say, 31-bit arithmetic on 32-bit targets; and
+      63-bit arithmetic on 64-bit targets. *)
+
+  type t
+
+
+end

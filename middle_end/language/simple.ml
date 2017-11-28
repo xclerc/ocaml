@@ -20,7 +20,7 @@ module Const = struct
   type t =
     | Untagged_immediate of Immediate.t
     | Tagged_immediate of Immediate.t
-    | Naked_float of float
+    | Naked_float of Numbers.Float_by_bit_pattern.t
     | Naked_int32 of Int32.t
     | Naked_int64 of Int64.t
     | Naked_nativeint of Targetint.t
@@ -38,7 +38,7 @@ module Const = struct
       | Tagged_immediate i1, Tagged_immediate i2 ->
         Immediate.compare i1 i2
       | Naked_float f1, Naked_float f2 ->
-        Pervasives.compare f1 f2
+        Numbers.Float_by_bit_pattern.compare f1 f2
       | Naked_int32 n1, Naked_int32 n2 ->
         Int32.compare n1 n2
       | Naked_int64 n1, Naked_int64 n2 ->
@@ -62,7 +62,7 @@ module Const = struct
       match t with
       | Untagged_immediate n -> Immediate.hash n
       | Tagged_immediate n -> Immediate.hash n
-      | Naked_float n -> Hashtbl.hash n
+      | Naked_float n -> Numbers.Float_by_bit_pattern.hash n
       | Naked_int32 n -> Hashtbl.hash n
       | Naked_int64 n -> Hashtbl.hash n
       | Naked_nativeint n -> Targetint.hash n
@@ -71,7 +71,8 @@ module Const = struct
       match t with
       | Untagged_immediate i -> Format.fprintf ppf "%a!" Immediate.print i
       | Tagged_immediate i -> Format.fprintf ppf "%a" Immediate.print i
-      | Naked_float f -> Format.fprintf ppf "%f!" f
+      | Naked_float f ->
+        Format.fprintf ppf "%a!" Numbers.Float_by_bit_pattern.print f
       | Naked_int32 n -> Format.fprintf ppf "%ld!" n
       | Naked_int64 n -> Format.fprintf ppf "%Ld!" n
       | Naked_nativeint n -> Format.fprintf ppf "%a!" Targetint.print n

@@ -42,7 +42,38 @@ module Int16 : sig
   val to_int : t -> int
 end
 
-module Float : Identifiable.S with type t = float
+module type Float_ops = sig
+  type t
+
+  val add : t -> t -> t
+  val sub : t -> t -> t
+  val mul : t -> t -> t
+  val div : t -> t -> t
+
+  val neg : t -> t
+  val abs : t -> t
+end
+
+module Float_by_bit_pattern : sig
+  (** Floating point numbers whose comparison and equality relations are
+      the usual [Int64] relations on the bit patterns of the floats.  This
+      in particular means that different representations of NaN will be
+      distinguished, as will the two signed zeros. *)
+
+  include Identifiable.S
+
+  include Float_ops with type t := t
+
+  val of_float : float -> t
+end
+
+module Float : sig
+  include Identifiable.S
+
+  include Float_ops with type t := t
+
+  val of_float : float -> t
+end
 
 module Int32 : sig
   include Identifiable.S with type t = Int32.t

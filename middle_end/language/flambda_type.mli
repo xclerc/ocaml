@@ -124,7 +124,7 @@ module Evaluated : sig
   type t = private
     | Values of t_values
     | Naked_immediates of Immediate.Set.t Or_not_all_values_known.t
-    | Naked_floats of Numbers.Float.Set.t Or_not_all_values_known.t
+    | Naked_floats of Numbers.Float.By_bit_pattern.Set.t Or_not_all_values_known.t
     | Naked_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
     | Naked_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
     | Naked_nativeints of Targetint.Set.t Or_not_all_values_known.t
@@ -291,7 +291,7 @@ val prove_sets_of_closures : (t -> sets_of_closures_proof) type_accessor
     kind errors (which cause a fatal error). *)
 val prove_naked_float
    : (t
-  -> Numbers.Float.Set.t Or_not_all_values_known.t) type_accessor
+  -> Numbers.Float.By_bit_pattern.Set.t Or_not_all_values_known.t) type_accessor
 
 type tagged_immediate_proof = Immediate.Set.t proof
 

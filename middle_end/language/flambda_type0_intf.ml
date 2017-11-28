@@ -252,7 +252,7 @@ module type S = sig
   val this_tagged_immediate : Immediate.t -> t
   val these_tagged_immediates : Immediate.Set.t -> t
   val this_boxed_float : float -> t
-  val these_boxed_floats : Numbers.Float.Set.t -> t
+  val these_boxed_floats : Numbers.Float.By_bit_pattern.Set.t -> t
   val this_boxed_int32 : Int32.t -> t
   val these_boxed_int32s : Numbers.Int32.Set.t -> t
   val this_boxed_int64 : Int64.t -> t
@@ -266,7 +266,7 @@ module type S = sig
       specified constants. *)
   val this_naked_immediate : Immediate.t -> t
   val this_naked_float : float -> t
-  val these_naked_floats : Numbers.Float.Set.t -> t
+  val these_naked_floats : Numbers.Float.By_bit_pattern.Set.t -> t
   val this_naked_int32 : Int32.t -> t
   val these_naked_int32s : Numbers.Int32.Set.t -> t
   val this_naked_int64 : Int64.t -> t

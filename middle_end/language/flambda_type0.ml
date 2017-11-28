@@ -16,7 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Float = Numbers.Float
+module Float = Numbers.Float_by_bit_pattern
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 
