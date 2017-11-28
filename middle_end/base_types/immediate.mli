@@ -34,14 +34,14 @@ val join_set : Set.t -> Set.t -> Set.t
 
 val bool_true : t
 val bool_false : t
-val int : Targetint.t -> t
+val int : Targetint.OCaml.t -> t
 val char : char -> t
 
-val map : t -> f:(Targetint.t -> Targetint.t) -> t
+val map : t -> f:(Targetint.OCaml.t -> Targetint.OCaml.t) -> t
 
-val to_targetint : t -> Targetint.t
+val to_targetint : t -> Targetint.OCaml.t
 
-val set_to_targetint_set : Set.t -> Targetint.Set.t
+val set_to_targetint_set : Set.t -> Targetint.OCaml.Set.t
 
 (** The set consisting of the representations of constant [true] and [false]. *)
 val all_bools : Set.t

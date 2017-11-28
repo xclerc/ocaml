@@ -1319,36 +1319,46 @@ type 'a binary_arith_outcome_for_one_side_only =
   | Cannot_simplify
   | Invalid
 
-module type Binary_arith_sig = sig
-  type t
-
-  val kind : K.t
-  val term : t -> Named.t
-
-  include Identifiable.S with type t := t
-
-  val prover : (flambda_type -> Set.t) T.type_accessor
-
-  val these : Set.t -> flambda_type
-
-  type op
-
-  val op : op -> t -> t -> t option
-
-  val op_lhs_unknown : op -> rhs:t -> t binary_arith_outcome_for_one_side_only
-
-  val op_rhs_unknown : op -> lhs:t -> t binary_arith_outcome_for_one_side_only
+module type Binary_arith_like_sig = sig
+  module Lhs : Identifiable.S
+  module Rhs : Identifiable.S
 
   module Pair : sig
-    type nonrec t = t * t
+    type nonrec t = Lhs.t * Rhs.t
 
     include Identifiable.S with type t := t
   end
 
-  val cross_product : Set.t -> Set.t -> Pair.Set.t
+  module Result : sig
+    include Identifiable.S
+  end
+
+  val cross_product : Lhs.Set.t -> Rhs.Set.t -> Pair.Set.t
+
+  val kind : K.t
+  val term : Result.t -> Named.t
+
+  val prover_lhs : (flambda_type -> Lhs.Set.t) T.type_accessor
+  val prover_rhs : (flambda_type -> Rhs.Set.t) T.type_accessor
+
+  val these : Result.Set.t -> flambda_type
+
+  type op
+
+  val op : op -> Lhs.t -> Rhs.t -> Result.t option
+
+  val op_lhs_unknown
+     : op
+    -> rhs:Rhs.t
+    -> Result.t binary_arith_outcome_for_one_side_only
+
+  val op_rhs_unknown
+     : op
+    -> lhs:Lhs.t
+    -> Result.t binary_arith_outcome_for_one_side_only
 end
 
-module Binary_arith (N : Binary_arith_sig) : sig
+module Binary_arith_like (N : Binary_arith_like_sig) : sig
   val simplify
      : E.t
     -> R.t
@@ -1386,8 +1396,8 @@ end = struct
     let module P = Possible_result in
     let arg1, ty1 = S.simplify_simple env arg1 in
     let arg2, ty2 = S.simplify_simple env arg2 in
-    let proof1 = (E.type_accessor env N.prover) arg1 in
-    let proof2 = (E.type_accessor env N.prover) arg2 in
+    let proof1 = (E.type_accessor env N.prover_lhs) arg1 in
+    let proof2 = (E.type_accessor env N.prover_rhs) arg2 in
     let original_term () : Named.t = Prim (Binary (prim, arg1, arg2), dbg) in
     let result_unknown () =
       Reachable.reachable (original_term ()), T.unknown N.kind Other
@@ -1396,11 +1406,11 @@ end = struct
     let check_possible_results ~possible_results =
       (* CR mshinwell: We may want to bound the size of the set. *)
       let named, ty =
-        if N.Set.is_empty possible_results then
+        if N.Result.Set.is_empty possible_results then
           result_invalid ()
         else
           let named =
-            match N.Set.get_singleton possible_results with
+            match N.Result.Set.get_singleton possible_results with
             | Some (Exactly i) -> N.term i
             | Some (Prim prim) -> Named.Prim (prim, dbg)
             | Some (Var var) -> Named.Simple (Simple.var var)
@@ -1411,12 +1421,12 @@ end = struct
               List.filter_map (function
                   | Exactly i -> Some i
                   | Prim _ | Var _ -> None)
-                (N.Set.to_list possible_results)
+                (N.Result.Set.to_list possible_results)
             in
-            if List.length is = N.Set.cardinal possible_results then
-              N.these (N.Set.of_list is)
+            if List.length is = N.Result.Set.cardinal possible_results then
+              N.these (N.Result.Set.of_list is)
             else
-              match N.Set.get_singleton possible_results with
+              match N.Result.Set.get_singleton possible_results with
               | Some (Var var) -> T.alias kind var
               | Some (Exactly _)
               | Some (Prim _)
@@ -1426,9 +1436,9 @@ end = struct
       in
       Reachable.reachable named, ty
     in
-    let only_one_side_known op ints ~other_side_var =
+    let only_one_side_known op nums ~folder ~other_side_var =
       let possible_results =
-        I.Set.fold (fun i possible_results ->
+        folder (fun i possible_results ->
             match possible_results with
             | None -> None
             | Some possible_results ->
@@ -1441,8 +1451,8 @@ end = struct
                 P.Set.add (Var other_side_var) possible_results
               | Cannot_simplify -> None
               | Invalid -> possible_results)
-          ints
-          Some (P.Set.empty)
+          nums
+          Some (N.Result.Set.empty)
       in
       match possible_results with
       | Some results -> check_possible_results ~possible_results
@@ -1451,25 +1461,28 @@ end = struct
     let term, ty =
       match proof1, proof2 with
       | Proved (Exactly nums1), Proved (Exactly nums2) ->
-        assert (not (N.Set.is_empty nums1));
-        assert (not (N.Set.is_empty nums2));
+        assert (not (N.Lhs.Set.is_empty nums1));
+        assert (not (N.Rhs.Set.is_empty nums2));
         let all_pairs = N.cross_product nums1 nums2 in
         let possible_results =
           N.Pair.Set.fold (fun (i1, i2) possible_results ->
               match N.op op i1 i2 with
               | None -> possible_results
-              | Some result -> N.Set.add (Exactly result) possible_results)
+              | Some result ->
+                N.Result.Set.add (Exactly result) possible_results)
             all_pairs
-            N.Set.empty
+            N.Result.Set.empty
         in
         check_possible_results ~possible_results
       | Proved (Exactly nums1), Proved Not_all_values_known ->
-        assert (not (N.Set.is_empty nums1));
+        assert (not (N.Lhs.Set.is_empty nums1));
         only_one_side_known (fun i -> N.op_rhs_unknown op ~lhs:i) nums1
+          ~folder:N.Lhs.Set.fold
           ~other_side_var:arg2
       | Proved Not_all_values_known, Proved (Exactly nums2) ->
-        assert (not (N.Set.is_empty nums2));
+        assert (not (N.Rhs.Set.is_empty nums2));
         only_one_side_known (fun i -> N.op_lhs_unknown op ~rhs:i) nums2
+          ~folder:N.Rhs.Set.fold
           ~other_side_var:arg1
       | Proved Not_all_values_known, Proved Not_all_values_known ->
         result_unknown ()
@@ -1505,6 +1518,8 @@ module Int_ops_for_binary_arith (I : sig
 
   val these : Set.t -> flambda_type
 
+  val prover : (flambda_type -> Set.t) T.type_accessor
+
   module Pair : sig
     type nonrec t = t * t
 
@@ -1513,9 +1528,16 @@ module Int_ops_for_binary_arith (I : sig
 
   val cross_product : Set.t -> Set.t -> Pair.Set.t
 end) : sig
-  include Binary_arith_sig
+  include Binary_arith_like_sig
     with type op = binary_int_arith_op
 end = struct
+  module Lhs = I
+  module Rhs = I
+  module Result = I
+
+  let prover_lhs = I.prover
+  let prover_rhs = I.prover
+
   let op (op : binary_int_arith_op) n1 n2 =
     let always_some f = Some (f n1 n2) in
     match op with
@@ -1616,13 +1638,101 @@ module Int_ops_for_binary_arith_nativeint =
   Int_ops_for_binary_arith (Targetint)
 
 module Binary_int_arith_tagged_immediate =
-  Binary_arith (Int_ops_for_binary_arith_tagged_immediate)
+  Binary_arith_like (Int_ops_for_binary_arith_tagged_immediate)
 module Binary_int_arith_int32 =
-  Binary_arith (Int_ops_for_binary_arith_int32)
+  Binary_arith_like (Int_ops_for_binary_arith_int32)
 module Binary_int_arith_int64 =
-  Binary_arith (Int_ops_for_binary_arith_int64)
+  Binary_arith_like (Int_ops_for_binary_arith_int64)
 module Binary_int_arith_nativeint =
-  Binary_arith (Int_ops_for_binary_arith_nativeint)
+  Binary_arith_like (Int_ops_for_binary_arith_nativeint)
+
+module Int_ops_for_binary_shift (I : sig
+  type t
+
+  val kind : K.Standard_int.t
+  val term : t -> Named.t
+
+  val zero : t
+
+  val shift_left : t -> t -> t
+  (* [shift_right] is arithmetic shift right, matching [Int32], [Int64], etc. *)
+  val shift_right : t -> t -> t
+  val shift_right_logical : t -> t -> t
+
+  include Identifiable.S with type t := t
+
+  val these : Set.t -> flambda_type
+
+  val prover : (flambda_type -> Set.t) T.type_accessor
+
+  module Pair : sig
+    type nonrec t = t * t
+
+    include Identifiable.S with type t := t
+  end
+
+  val cross_product : Set.t -> Set.t -> Pair.Set.t
+end) : sig
+  include Binary_arith_sig
+    with type op = binary_int_arith_op
+end = struct
+  module Lhs = I
+  module Rhs = Immediate
+  module Result = I
+
+  let prover_lhs = I.prover
+  let prover_rhs = T.prove_tagged_immediate
+
+  let op (op : binary_int_arith_op) n1 n2 =
+    let always_some f = Some (f n1 n2) in
+    match op with
+    | Lsl -> always_some I.shift_left
+    | Lsr -> always_some I.shift_right_logical
+    | Asr -> always_some I.shift_right
+
+  let op_lhs_unknown ~rhs : N.t binary_arith_outcome_for_one_side_only =
+    let module O = Targetint.OCaml in
+    let rhs = Immediate.to_targetint rhs in
+    match op with
+    | Lsl | Lsr ->
+      if O.equal rhs O.zero then The_other_side
+      else if O.(>=) rhs O.size then Exactly I.zero
+      else Cannot_simplify  (* nothing said about negative shift amounts! *)
+    | Asr ->
+      if O.equal rhs O.zero then The_other_side
+      Cannot_simplify
+
+  let op_rhs_unknown ~lhs : N.t binary_arith_outcome_for_one_side_only =
+    match op with
+    | Lsl ->
+      if I.equal lhs I.zero then Exactly I.zero
+      else Cannot_simplify
+    | Lsr ->
+      if I.equal lhs I.zero then Exactly I.zero
+      else Cannot_simplify
+    | Asr ->
+      if I.equal lhs I.zero then Exactly I.zero
+      else if I.equal lhs I.minus_one then Exactly I.minus_one
+      else Cannot_simplify
+end
+
+module Int_ops_for_binary_shift_tagged_immediate =
+  Int_ops_for_binary_shift (Targetint.OCaml)
+module Int_ops_for_binary_shift_int32 =
+  Int_ops_for_binary_shift (Int32)
+module Int_ops_for_binary_shift_int64 =
+  Int_ops_for_binary_shift (Int64)
+module Int_ops_for_binary_shift_nativeint =
+  Int_ops_for_binary_shift (Targetint)
+
+module Binary_int_shift_tagged_immediate =
+  Binary_arith_like (Int_ops_for_binary_shift_tagged_immediate)
+module Binary_int_shift_int32 =
+  Binary_arith_like (Int_ops_for_binary_shift_int32)
+module Binary_int_shift_int64 =
+  Binary_arith_like (Int_ops_for_binary_shift_int64)
+module Binary_int_shift_nativeint =
+  Binary_arith_like (Int_ops_for_binary_shift_nativeint)
 
 module Float_ops_for_binary_arith : sig
   include Binary_arith_sig
@@ -1665,9 +1775,7 @@ end = struct
     match op with
     | Add -> symmetric_op_one_side_unknown Add ~this_side:rhs
     | Mul -> symmetric_op_one_side_unknown Mul ~this_side:rhs
-    | Sub ->
-      if I.equal rhs I.zero then The_other_side
-      else Cannot_simplify
+    | Sub -> Cannot_simplify
     | Div ->
       if I.equal rhs I.one then The_other_side
       else if I.equal rhs I.minus_one then negate_the_other_side ()
@@ -1680,9 +1788,7 @@ end = struct
     match op with
     | Add -> symmetric_op_one_side_unknown Add ~this_side:lhs
     | Mul -> symmetric_op_one_side_unknown Mul ~this_side:lhs
-    | Sub ->
-      if I.equal lhs I.zero then negate_the_other_side ()
-      else Cannot_simplify
+    | Sub -> Cannot_simplify
     | Div -> Cannot_simplify
 end
 
@@ -1732,16 +1838,25 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
   | Int_arith (kind, op) ->
     begin match kind with
     | Tagged_immediate ->
-      Binary_int_arith_tagged_immediate.simplify env r op arg1 arg2
+      Binary_int_arith_tagged_immediate.simplify env r prim dbg op arg1 arg2
     | Naked_int32 ->
-      Binary_int_arith_naked_int32.simplify env r op arg1 arg2
+      Binary_int_arith_naked_int32.simplify env r prim dbg op arg1 arg2
     | Naked_int64 ->
-      Binary_int_arith_naked_int64.simplify env r op arg1 arg2
+      Binary_int_arith_naked_int64.simplify env r prim dbg op arg1 arg2
     | Naked_nativeint ->
-      Binary_int_arith_naked_nativeint.simplify env r op arg1 arg2
+      Binary_int_arith_naked_nativeint.simplify env r prim dbg op arg1 arg2
     end
   | Int_shift (kind, op) ->
-
+    begin match kind with
+    | Tagged_immediate ->
+      Binary_int_shift_tagged_immediate.simplify env r prim dbg op arg1 arg2
+    | Naked_int32 ->
+      Binary_int_shift_naked_int32.simplify env r prim dbg op arg1 arg2
+    | Naked_int64 ->
+      Binary_int_shift_naked_int64.simplify env r prim dbg op arg1 arg2
+    | Naked_nativeint ->
+      Binary_int_shift_naked_nativeint.simplify env r prim dbg op arg1 arg2
+    end
   | Int_comp (kind, op) ->
 
   | Int_comp_unsigned op ->
