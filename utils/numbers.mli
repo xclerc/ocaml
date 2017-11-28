@@ -57,6 +57,7 @@ module type Float_ops = sig
   val abs : t -> t
 
   val is_either_zero : t -> t
+  val is_any_nan : t -> bool
 end
 
 module Float_by_bit_pattern : sig

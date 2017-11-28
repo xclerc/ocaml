@@ -1333,6 +1333,8 @@ module type Binary_arith_like_sig = sig
     include Identifiable.S
   end
 
+  val ok_to_evaluate : Env.t -> unit
+
   val cross_product : Lhs.Set.t -> Rhs.Set.t -> Pair.Set.t
 
   val kind : K.t
@@ -1460,7 +1462,8 @@ end = struct
     in
     let term, ty =
       match proof1, proof2 with
-      | Proved (Exactly nums1), Proved (Exactly nums2) ->
+      | (Proved (Exactly nums1), Proved (Exactly nums2))
+          when N.ok_to_evaluate env ->
         assert (not (N.Lhs.Set.is_empty nums1));
         assert (not (N.Rhs.Set.is_empty nums2));
         let all_pairs = N.cross_product nums1 nums2 in
@@ -1474,17 +1477,19 @@ end = struct
             N.Result.Set.empty
         in
         check_possible_results ~possible_results
-      | Proved (Exactly nums1), Proved Not_all_values_known ->
+      | (Proved (Exactly nums1), Proved Not_all_values_known)
+          when N.ok_to_evaluate env ->
         assert (not (N.Lhs.Set.is_empty nums1));
         only_one_side_known (fun i -> N.op_rhs_unknown op ~lhs:i) nums1
           ~folder:N.Lhs.Set.fold
           ~other_side_var:arg2
-      | Proved Not_all_values_known, Proved (Exactly nums2) ->
+      | (Proved Not_all_values_known, Proved (Exactly nums2))
+          when N.ok_to_evaluate env ->
         assert (not (N.Rhs.Set.is_empty nums2));
         only_one_side_known (fun i -> N.op_lhs_unknown op ~rhs:i) nums2
           ~folder:N.Rhs.Set.fold
           ~other_side_var:arg1
-      | Proved Not_all_values_known, Proved Not_all_values_known ->
+      | Proved _, Proved _ ->
         result_unknown ()
       | Invalid, _ | _, Invalid ->
         result_invalid ()
@@ -1534,6 +1539,8 @@ end = struct
   module Lhs = I
   module Rhs = I
   module Result = I
+
+  let ok_to_evaluate _env = true
 
   let prover_lhs = I.prover
   let prover_rhs = I.prover
@@ -1680,6 +1687,8 @@ end = struct
   module Rhs = Immediate
   module Result = I
 
+  let ok_to_evaluate _env = true
+
   let prover_lhs = I.prover
   let prover_rhs = T.prove_tagged_immediate
 
@@ -1694,20 +1703,15 @@ end = struct
     let module O = Targetint.OCaml in
     let rhs = Immediate.to_targetint rhs in
     match op with
-    | Lsl | Lsr ->
+    | Lsl | Lsr | Asr ->
       if O.equal rhs O.zero then The_other_side
-      else if O.(>=) rhs O.size then Exactly I.zero
-      else Cannot_simplify  (* nothing said about negative shift amounts! *)
-    | Asr ->
-      if O.equal rhs O.zero then The_other_side
-      Cannot_simplify
+      else if O.(>=) rhs O.size then Invalid  (* aggressive! *)
+      else if O.(<) rhs O.zero then Invalid
+      else Cannot_simplify
 
   let op_rhs_unknown ~lhs : N.t binary_arith_outcome_for_one_side_only =
     match op with
-    | Lsl ->
-      if I.equal lhs I.zero then Exactly I.zero
-      else Cannot_simplify
-    | Lsr ->
+    | Lsl | Lsr ->
       if I.equal lhs I.zero then Exactly I.zero
       else Cannot_simplify
     | Asr ->
@@ -1734,11 +1738,84 @@ module Binary_int_shift_int64 =
 module Binary_int_shift_nativeint =
   Binary_arith_like (Int_ops_for_binary_shift_nativeint)
 
+module Int_ops_for_binary_comp (I : sig
+  type t
+
+  val kind : K.Standard_int.t
+  val term : t -> Named.t
+
+  val zero : t
+
+  val compare : t -> t -> int
+
+  include Identifiable.S with type t := t
+
+  val these : Set.t -> flambda_type
+
+  val prover : (flambda_type -> Set.t) T.type_accessor
+
+  module Pair : sig
+    type nonrec t = t * t
+
+    include Identifiable.S with type t := t
+  end
+
+  val cross_product : Set.t -> Set.t -> Pair.Set.t
+end) : sig
+  include Binary_arith_sig
+    with type op = binary_int_arith_op
+end = struct
+  module Lhs = I
+  module Rhs = I
+  module Result = Immediate
+
+  let ok_to_evaluate _env = true
+
+  let prover_lhs = I.prover
+  let prover_rhs = I.prover
+
+  let op (op : Flambda_primitive.comparison) n1 n2 =
+    let always_some f = Some (f n1 n2) in
+    match op with
+    | Eq ->
+    | Neq ->
+    | Lt ->
+    | Gt ->
+    | Le ->
+    | Ge ->
+
+  let op_lhs_unknown ~rhs:_ : N.t binary_arith_outcome_for_one_side_only =
+    Cannot_simplify
+
+  let op_rhs_unknown ~lhs:_ : N.t binary_arith_outcome_for_one_side_only =
+    Cannot_simplify
+end
+
+module Int_ops_for_binary_comp_tagged_immediate =
+  Int_ops_for_binary_comp (Targetint.OCaml)
+module Int_ops_for_binary_comp_int32 =
+  Int_ops_for_binary_comp (Int32)
+module Int_ops_for_binary_comp_int64 =
+  Int_ops_for_binary_comp (Int64)
+module Int_ops_for_binary_comp_nativeint =
+  Int_ops_for_binary_comp (Targetint)
+
+module Binary_int_comp_tagged_immediate =
+  Binary_arith_like (Int_ops_for_binary_comp_tagged_immediate)
+module Binary_int_comp_int32 =
+  Binary_arith_like (Int_ops_for_binary_comp_int32)
+module Binary_int_comp_int64 =
+  Binary_arith_like (Int_ops_for_binary_comp_int64)
+module Binary_int_comp_nativeint =
+  Binary_arith_like (Int_ops_for_binary_comp_nativeint)
+
 module Float_ops_for_binary_arith : sig
   include Binary_arith_sig
     with type op = binary_float_arith_op
 end = struct
   module F = Numbers.Float_by_bit_pattern
+
+  let ok_to_evaluate env = E.float_const_prop env
 
   let op op n1 n2 =
     let always_some f = Some (f n1 n2) in
@@ -1792,7 +1869,56 @@ end = struct
     | Div -> Cannot_simplify
 end
 
-module Binary_float_arith = Binary_arith (Float_ops_for_binary_arith)
+module Binary_float_arith = Binary_arith_like (Float_ops_for_binary_arith)
+
+module Float_ops_for_binary_comp : sig
+  include Binary_arith_like_sig
+    with type op = binary_float_comp_op
+end = struct
+  module Lhs = I
+  module Rhs = I
+  module Result = Immediate
+
+  let ok_to_evaluate _env = true
+
+  let prover_lhs = I.prover
+  let prover_rhs = I.prover
+
+  let ok_to_evaluate env = E.float_const_prop env
+
+  module F = Numbers.Float_by_bit_pattern
+
+  let op (op : Flambda_primitive.comparison) n1 n2 =
+    let bool b =
+      if b then Immediate.const_true else Immediate.const_false
+    in
+    match op with
+    | Eq -> Some (bool (I.equal n1 n2))
+    | Neq -> Some (bool (not (I.equal n1 n2)))
+    | Lt -> Some (bool (I.compare n1 n2 < 0))
+    | Gt -> Some (bool (I.compare n1 n2 > 0))
+    | Le -> Some (bool (I.compare n1 n2 <= 0))
+    | Ge -> Some (bool (I.compare n1 n2 >= 0))
+
+  let result_of_comparison_with_nan op =
+    match op with
+    | Neq -> Immediate.const_true
+    | Eq ->
+    | Lt ->
+    | Gt ->
+    | Le ->
+    | Ge -> Immediate.const_false
+
+  let op_lhs_unknown op ~rhs : N.t binary_arith_outcome_for_one_side_only =
+    if F.is_any_nan rhs then result_of_comparison_with_nan op
+    else Cannot_simplify
+
+  let op_rhs_unknown op ~lhs : N.t binary_arith_outcome_for_one_side_only =
+    if F.is_any_nan lhs then result_of_comparison_with_nan op
+    else Cannot_simplify
+end
+
+module Binary_float_comp = Binary_arith_like (Float_ops_for_binary_comp)
 
 let simplify_block_load_computed_index env r prim ~block ~index
       ~field_kind ~field_is_mutable dbg =
@@ -1858,13 +1984,22 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
       Binary_int_shift_naked_nativeint.simplify env r prim dbg op arg1 arg2
     end
   | Int_comp (kind, op) ->
-
+    begin match kind with
+    | Tagged_immediate ->
+      Binary_int_comp_tagged_immediate.simplify env r prim dbg op arg1 arg2
+    | Naked_int32 ->
+      Binary_int_comp_naked_int32.simplify env r prim dbg op arg1 arg2
+    | Naked_int64 ->
+      Binary_int_comp_naked_int64.simplify env r prim dbg op arg1 arg2
+    | Naked_nativeint ->
+      Binary_int_comp_naked_nativeint.simplify env r prim dbg op arg1 arg2
+    end
   | Int_comp_unsigned op ->
 
   | Float_arith op ->
     Binary_float_arith.simplify env r prim dbg op arg1 arg2
   | Float_comp op ->
-
+    Binary_float_comp.simplify env r prim dbg op arg1 arg2
   | Bit_test ->
 
   | Array_load array_kind ->
