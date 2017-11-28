@@ -214,10 +214,8 @@ type ternary_primitive =
   | Bigstring_set of bigstring_accessor_width
 
 type make_block_kind =
-  | With_tag of Tag.Scannable.t * Flambda_arity.t
-    (** If the arity specifies an array entirely consisting of naked floats
-        then [Float_array] must be used, not [Normal]. *)
-  | With_double_array_tag
+  | Full_of_values of Tag.Scannable.t * (Flambda_kind.scanning list)
+  | Full_of_naked_floats
   | Choose_tag_at_runtime
 
 (** Primitives taking zero or more arguments. *)
