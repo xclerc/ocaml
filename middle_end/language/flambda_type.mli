@@ -286,6 +286,10 @@ type sets_of_closures_proof = Joined_sets_of_closures.t proof
 (** As for [proved_boxed_float] but for sets of closures. *)
 val prove_sets_of_closures : (t -> sets_of_closures_proof) type_accessor
 
+val prove_naked_immediate
+   : (t
+  -> Targetint.Set.t Or_not_all_values_known.t) type_accessor
+
 (** As for [proved_boxed_float] but for naked floats.  Note that there is
     no [Invalid] case returned---no such cases are possible that are not
     kind errors (which cause a fatal error). *)

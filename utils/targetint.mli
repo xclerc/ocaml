@@ -207,6 +207,8 @@ val get_least_significant_16_bits_then_byte_swap : t -> t
 
 val treat_as_int : t -> t
 
+val compare_unsigned : t -> t -> int
+
 module OCaml : sig
   (** Operations using the semantics of the type "int" on the target
       machine.  That is to say, 31-bit arithmetic on 32-bit targets; and

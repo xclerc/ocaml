@@ -1704,9 +1704,12 @@ end = struct
     let rhs = Immediate.to_targetint rhs in
     match op with
     | Lsl | Lsr | Asr ->
+      (* Shifting either way by [Targetint.size] or above is undefined.
+         However note that we cannot produce [Invalid] unless the code is
+         type unsafe, which it is not here.  (Otherwise a GADT match might
+         be reduced to only one possible case which it would be wrong to
+         take.) *)
       if O.equal rhs O.zero then The_other_side
-      else if O.(>=) rhs O.size then Invalid  (* aggressive! *)
-      else if O.(<) rhs O.zero then Invalid
       else Cannot_simplify
 
   let op_rhs_unknown ~lhs : N.t binary_arith_outcome_for_one_side_only =
@@ -1763,7 +1766,7 @@ module Int_ops_for_binary_comp (I : sig
   val cross_product : Set.t -> Set.t -> Pair.Set.t
 end) : sig
   include Binary_arith_sig
-    with type op = binary_int_arith_op
+    with type op = Flambda_primitive.comparison
 end = struct
   module Lhs = I
   module Rhs = I
@@ -1810,6 +1813,41 @@ module Binary_int_comp_int64 =
   Binary_arith_like (Int_ops_for_binary_comp_int64)
 module Binary_int_comp_nativeint =
   Binary_arith_like (Int_ops_for_binary_comp_nativeint)
+
+module Int_ops_for_binary_comp_unsigned : sig
+  include Binary_arith_sig
+    with type op = Flambda_primitive.comparison
+end = struct
+  module Lhs = Targetint
+  module Rhs = Targetint
+  module Result = Immediate
+
+  let ok_to_evaluate _env = true
+
+  let prover_lhs = T.prove_naked_immediate
+  let prover_rhs = T.prove_naked_immediate
+
+  let op (op : Flambda_primitive.comparison) n1 n2 =
+    let bool b =
+      if b then Immediate.const_true else Immediate.const_false
+    in
+    match op with
+    | Eq -> Some (bool (Targetint.equal n1 n2))
+    | Neq -> Some (bool (not (Targetint.equal n1 n2)))
+    | Lt -> Some (bool (Targetint.compare_unsigned n1 n2 < 0))
+    | Gt -> Some (bool (Targetint.compare_unsigned n1 n2 > 0))
+    | Le -> Some (bool (Targetint.compare_unsigned n1 n2 <= 0))
+    | Ge -> Some (bool (Targetint.compare_unsigned n1 n2 >= 0))
+
+  let op_lhs_unknown _op ~rhs:_ : N.t binary_arith_outcome_for_one_side_only =
+    Cannot_simplify
+
+  let op_rhs_unknown _op ~lhs:_ : N.t binary_arith_outcome_for_one_side_only =
+    Cannot_simplify
+end
+
+module Binary_int_comp_unsigned =
+  Binary_arith_like (Int_ops_for_binary_comp_unsigned)
 
 module Float_ops_for_binary_arith : sig
   include Binary_arith_sig
@@ -1954,6 +1992,18 @@ let simplify_block_set env r prim ~field ~kind ~init_or_assign
       ~block ~new_value dbg =
   ...
 
+let simplify_bit_test env r prim dbg arg1 arg2 =
+  ...
+
+let simplify_array_load env r prim dbg array_kind arg1 arg2 =
+  ...
+
+let simplify_string_load env r prim dbg width arg1 arg2 =
+  ...
+
+let simplify_bigstring_load env r prim dbg width arg1 arg2 =
+  ...
+
 let simplify_binary_primitive env r prim arg1 arg2 dbg =
   match prim with
   | Block_load_computed_index ->
@@ -1995,41 +2045,69 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
       Binary_int_comp_naked_nativeint.simplify env r prim dbg op arg1 arg2
     end
   | Int_comp_unsigned op ->
-
+    Binary_int_comp_unsigned.simplify env r prim dbg op arg1 arg2
   | Float_arith op ->
     Binary_float_arith.simplify env r prim dbg op arg1 arg2
   | Float_comp op ->
     Binary_float_comp.simplify env r prim dbg op arg1 arg2
   | Bit_test ->
-
+    simplify_bit_test env r prim dbg arg1 arg2
   | Array_load array_kind ->
-
+    simplify_array_load env r prim dbg array_kind arg1 arg2
   | String_load width ->
-
+    simplify_string_load env r prim dbg width arg1 arg2
   | Bigstring_load width ->
+    simplify_bigstring_load env r prim dbg width arg1 arg2
 
+let simplify_block_set_computed env r prim dbg ~scanning ~init_or_assign
+      arg1 arg2 arg3 =
+  ...
+
+let simplify_bytes_set env r prim dbg ~string_accessor_width arg1 arg2 arg3 =
+  ...
+
+let simplify_array_set env r prim dbg ~array_kind arg1 arg2 arg3 =
+  ...
+
+let simplify_bigstring_set env r prim dbg ~bigstring_accessor_width
+      arg1 arg2 arg3 =
+  ...
 
 let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =
   match prim with
   | Block_set_computed (scanning, init_or_assign) ->
-
+    simplify_block_set_computed env r prim dbg ~scanning ~init_or_assign
+      arg1 arg2 arg3
   | Bytes_set string_accessor_width ->
-
+    simplify_bytes_set env r prim dbg ~string_accessor_width arg1 arg2 arg3
   | Array_set array_kind ->
-
+    simplify_array_set env r prim dbg ~array_kind arg1 arg2 arg3
   | Bigstring_set bigstring_accessor_width ->
+    simplify_bigstring_set env r prim dbg ~bigstring_accessor_width
+      arg1 arg2 arg3
 
+let simplify_make_block env r prim dbg ~tag ~mutable_or_immutable ~arity args =
+  ...
+
+let simplify_make_array env r prim dbg ~array_kind ~mutable_or_immutable args =
+  ...
+
+let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
+  ...
+
+let simplify_bigarray_load env r prim dbg ~num_dims ~kind ~layout args =
+  ...
 
 let simplify_variadic_primitive env r prim args dbg =
   match prim with
   | Make_block (tag, mutable_or_immutable, arity) ->
-
+    simplify_make_block env r prim dbg ~tag ~mutable_or_immutable ~arity args
   | Make_array (array_kind, mutable_or_immutable) ->
-
+    simplify_make_array env r prim dbg ~array_kind ~mutable_or_immutable args
   | Bigarray_set (num_dims, kind, layout) ->
-
+    simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args
   | Bigarray_load (num_dims, kind, layout) ->
-
+    simplify_bigarray_load env r prim dbg ~num_dims ~kind ~layout args
 
 let simplify_primitive env r prim dbg =
   match prim with
