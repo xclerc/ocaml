@@ -101,6 +101,8 @@ type block_set_kind =
   | Pointer
   | Float
 
+val kind_of_block_set_kind : block_set_kind -> Flambda_kind.t
+
 type string_accessor_width =
   | Eight
   | Sixteen

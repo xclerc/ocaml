@@ -439,6 +439,7 @@ end = struct
   let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
         ~field_is_mutable ~is_unknown : get_field_result =
     let block_t = t in
+    (* XXX not sure this is right -- see comment below *)
     match Tag.Scannable.Map.get_singleton t with
     | None -> Invalid
     | Some (_tag, fields) ->
@@ -1824,9 +1825,14 @@ let get_field ~importer ~type_of_name t ~field_index ~field_is_mutable
     begin match values with
     | Unknown -> Ok (unknown expected_result_kind Other)
     | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
+      (* XXX this needs reviewing again in the light of the work in
+         Simplify_primitive (for block set).  I suspect this next conditional
+         should go *)
       if not (Immediate.Set.is_empty imms) then
         Invalid
       else
+        (* XXX we shouldn't be doing this if [field_kind] is [Float] -- and
+           vice-versa in the float array case *)
         Blocks.get_field ~importer ~type_of_name blocks ~field_index
           ~expected_result_kind ~field_is_mutable ~is_unknown
     | Float_arrays { lengths; } ->

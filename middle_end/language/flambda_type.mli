@@ -326,12 +326,21 @@ val lengths_of_arrays_or_blocks
    : (t
   -> lengths_of_arrays_or_blocks_proof) type_accessor
 
+val prove_blocks_and_immediates
+   : (t
+  -> (Blocks.t * Immediate.Set.t) proof) type_accessor
+
 type block_with_unique_tag_and_size_proof =
   (Tag.Scannable.t * (flambda_type array)) proof
 
 val prove_block_with_unique_tag_and_size
    : (t
   -> block_with_unique_tag_and_size_proof) type_accessor
+
+(** Proof of a value being a float array of one of the given lengths. *)
+type float_array_proof = Numbers.Int.Set.t proof
+
+val prove_float_array : (t -> float_array_proof) type_accessor
 
 (*
 (** As for [reify] but only produces terms when the type describes a

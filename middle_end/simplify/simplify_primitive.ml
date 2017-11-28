@@ -483,7 +483,7 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
     | Naked_float ->
       let proof = (E.type_accessor env T.prove_float_array) ty in
       match proof with
-      | Proved { lengths = Exactly sizes; } ->
+      | Proved (Exactly sizes) ->
         assert (not (Int.Set.is_empty sizes));
         let type_of_new_block =
           match destination_mutability with
@@ -502,7 +502,7 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
           | Mutable -> T.mutable_float_arrays_of_various_sizes ~sizes
         in
         Reachable.reachable (original_term ()), type_of_new_block
-      | Proved { lengths = Not_all_values_known; } ->
+      | Proved Not_all_values_known ->
         let term = Reachable.reachable (original_term ()) in
         begin match destination_mutability with
         | Immutable -> term, ty
@@ -1988,9 +1988,54 @@ let simplify_block_load_computed_index env r prim ~block ~index
   in
   term, ty, r
 
-let simplify_block_set env r prim ~field ~kind ~init_or_assign
+let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
       ~block ~new_value dbg =
-  ...
+  if field < 0 then begin
+    Misc.fatal_errorf "[Block_set] with bad field index %d: %a"
+      field
+      Flambda_primitive.print prim
+  end;
+  let field_kind' = Flambda_primitive.kind_of_block_set_kind field_kind in
+  let block, block_ty = S.simplify_simple env block in
+  let new_value, new_value_ty = S.simplify_simple env new_value in
+  let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
+  let result_kind = Flambda_kind.value Can_scan in
+  let ok () =
+    Reachable.reachable (original_term ()), T.unknown result_kind Other
+  in
+  let invalid () = Reachable.invalid (), T.bottom result_kind in
+  match field_kind with
+  | Immediate | Pointer ->
+    let proof = (E.type_accessor env T.prove_blocks_and_immediates) block_ty in
+    begin match proof with
+    | Proved (Exactly (blocks, imms)) ->
+
+    | Proved Not_all_values_known ->
+
+    | Invalid -> invalid ()
+    end
+  | Float ->
+    let block_proof =
+      (E.type_accessor env T.prove_float_array) block_ty
+    in
+    let new_value_proof =
+      (E.type_accessor env T.prove_naked_float) new_value_ty
+    in
+    match block_proof with
+    | Proved (Exactly sizes) ->
+      if not (Numbers.Int.Set.exists (fun size -> size > field) sizes) then
+        invalid ()
+      else
+        begin match new_value_proof with
+        | Proved _ -> ok ()
+        | Invalid -> invalid ()
+        end
+    | Proved Not_all_values_known ->
+      begin match new_value_proof with
+      | Proved _ -> ok ()
+      | Invalid -> invalid ()
+      end
+    | Invalid -> invalid ()
 
 let simplify_bit_test env r prim dbg arg1 arg2 =
   ...
@@ -2008,8 +2053,8 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
   match prim with
   | Block_load_computed_index ->
     simplify_block_load_computed_index env r prim ~block:arg1 ~index:arg2 dbg
-  | Block_set (field, kind, init_or_assign) ->
-    simplify_block_set env r prim ~field ~kind ~init_or_assign
+  | Block_set (field, field_kind, init_or_assign) ->
+    simplify_block_set env r prim ~field ~field_kind ~init_or_assign
       ~block:arg1 ~new_value:arg2 dbg
   | Int_arith (kind, op) ->
     begin match kind with
