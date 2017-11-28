@@ -1638,11 +1638,50 @@ end = struct
     | Mul -> always_some F.mul
     | Div -> always_some F.div
 
-  let op_lhs_unknown ~rhs : N.t binary_arith_outcome_for_one_side_only =
+  type symmetric_op =
+    | Add
+    | Mul
 
+  let symmetric_op_one_side_unknown (op : symmetric_op) ~this_side
+        : N.t binary_arith_outcome_for_one_side_only =
+    let negate_lhs () : N.t binary_arith_outcome_for_one_side_only =
+      This_primitive (Unary (Float_arith Neg, arg1))
+    in
+    match op with
+    | Add ->
+      if F.is_either_zero rhs then The_other_side
+      else Cannot_simplify
+    | Mul ->
+      if I.equal rhs I.one then The_other_side
+      else if I.equal rhs I.minus_one then negate_lhs ()
+      else Cannot_simplify
+
+  let op_lhs_unknown ~rhs : N.t binary_arith_outcome_for_one_side_only =
+    let negate_the_other_side () : N.t binary_arith_outcome_for_one_side_only =
+      This_primitive (Unary (Float_arith Neg, arg1))
+    in
+    match op with
+    | Add -> symmetric_op_one_side_unknown Add ~this_side:rhs
+    | Mul -> symmetric_op_one_side_unknown Mul ~this_side:rhs
+    | Sub ->
+      if I.equal rhs I.zero then The_other_side
+      else Cannot_simplify
+    | Div ->
+      if I.equal rhs I.one then The_other_side
+      else if I.equal rhs I.minus_one then negate_the_other_side ()
+      else Cannot_simplify
 
   let op_rhs_unknown ~lhs : N.t binary_arith_outcome_for_one_side_only =
-
+    let negate_the_other_side () : N.t binary_arith_outcome_for_one_side_only =
+      This_primitive (Unary (Float_arith Neg, arg2))
+    in
+    match op with
+    | Add -> symmetric_op_one_side_unknown Add ~this_side:lhs
+    | Mul -> symmetric_op_one_side_unknown Mul ~this_side:lhs
+    | Sub ->
+      if I.equal lhs I.zero then negate_the_other_side ()
+      else Cannot_simplify
+    | Div | Mod -> Cannot_simplify
 end
 
 module Binary_float_arith = Binary_arith (Float_ops_for_binary_arith)
@@ -1706,10 +1745,10 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
   | Int_comp_unsigned op ->
 
   | Float_arith op ->
-
+    Binary_float_arith.simplify env r prim dbg op arg1 arg2
   | Float_comp op ->
 
-  | Bit_test
+  | Bit_test ->
 
   | Array_load array_kind ->
 

@@ -45,6 +45,9 @@ end
 module type Float_ops = sig
   type t
 
+  val one : t
+  val minus_one : t
+
   val add : t -> t -> t
   val sub : t -> t -> t
   val mul : t -> t -> t
@@ -52,6 +55,8 @@ module type Float_ops = sig
 
   val neg : t -> t
   val abs : t -> t
+
+  val is_either_zero : t -> t
 end
 
 module Float_by_bit_pattern : sig
