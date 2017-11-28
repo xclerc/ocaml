@@ -474,6 +474,8 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
   let term, ty =
     match kind with
     | Dynamic_must_scan_or_naked_float ->
+      (* XXX Shouldn't this prove that the value is either a
+         Blocks-and-immediates or a float array? *)
       let term = Reachable.reachable (original_term ()) in
       begin match destination_mutability with
       | Immutable -> term, ty

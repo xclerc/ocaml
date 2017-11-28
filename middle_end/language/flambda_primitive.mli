@@ -28,6 +28,7 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
+(* XXX rename array_kind and squash into duplicate_kind *)
 type array_kind =
   | Dynamic_must_scan_or_naked_float
   | Must_scan
@@ -101,12 +102,14 @@ type bigarray_kind =
 
 type bigarray_layout = Unknown | C | Fortran
 
+(* We can use array_kind instead
 type block_set_kind =
   | Immediate
   | Pointer
   | Float
 
 val kind_of_block_set_kind : block_set_kind -> Flambda_kind.t
+*)
 
 type string_accessor_width =
   | Eight
@@ -129,7 +132,7 @@ type unary_float_arith_op = Abs | Neg
 
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
-  | Block_load of int * field_kind * mutable_or_immutable
+  | Block_load of int * array_kind * mutable_or_immutable
   | Duplicate_scannable_block of {
       kind : duplicate_kind;
       source_mutability : mutable_or_immutable; 
@@ -190,15 +193,14 @@ type binary_float_arith_op = Add | Sub | Mul | Div
 
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
-  | Block_load_computed_index of field_kind * mutable_or_immutable
-  | Block_set of int * block_set_kind * init_or_assign
+  | Block_load_computed_index of array_kind * mutable_or_immutable
+  | Block_set of int * array_kind * init_or_assign
   | Int_arith of Flambda_kind.Standard_int.t * binary_int_arith_op
   | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
   | Int_comp of Flambda_kind.Standard_int.t * comparison
   | Int_comp_unsigned of comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
-  | Array_load of array_kind
   | String_load of string_accessor_width
   (* CR-someday mshinwell: It seems as if [Cmmgen]'s handling of the
      bigstring accessors could be tidied up so as to integrate it with the
@@ -207,16 +209,21 @@ type binary_primitive =
 
 (** Primitives taking exactly three arguments. *)
 type ternary_primitive =
-  | Block_set_computed of Flambda_kind.scanning * init_or_assign
+  | Block_set_computed of array_kind * init_or_assign
   | Bytes_set of string_accessor_width
-  | Array_set of array_kind
   | Bigstring_set of bigstring_accessor_width
+
+type make_block_kind =
+  | With_tag of Tag.Scannable.t * Flambda_arity.t
+    (** If the arity specifies an array entirely consisting of naked floats
+        then [Float_array] must be used, not [Normal]. *)
+  | With_double_array_tag
+  | Choose_tag_at_runtime
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
   (* CR pchambart / mshinwell: Effects of Make_block? *)
-  | Make_block of Tag.Scannable.t * mutable_or_immutable * Flambda_arity.t
-  | Make_array of array_kind * mutable_or_immutable
+  | Make_block of make_block_kind * mutable_or_immutable
   | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
   | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
 
