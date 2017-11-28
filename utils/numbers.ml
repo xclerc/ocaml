@@ -98,7 +98,8 @@ module Float_by_bit_pattern = struct
     Pervasives.compare (to_float t1) (to_float t2)
 
   let equal_ieee t1 t2 = 
-    compare_ieee t1 t2 = 0
+    (* N.B. This can't just be defined in terms of [compare_ieee]! *)
+    Pervasives.(=) (to_float t1) (to_float t2)
 end
 
 module Int32 = struct
