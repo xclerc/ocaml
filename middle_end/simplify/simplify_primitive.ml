@@ -2030,9 +2030,6 @@ let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
     | Proved Not_all_values_known -> ok ()
     | Invalid -> invalid ()
 
-let simplify_bit_test env r prim dbg arg1 arg2 =
-  ...
-
 let simplify_array_load env r prim dbg array_kind arg1 arg2 =
   ...
 
@@ -2088,8 +2085,6 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
     Binary_float_arith.simplify env r prim dbg op arg1 arg2
   | Float_comp op ->
     Binary_float_comp.simplify env r prim dbg op arg1 arg2
-  | Bit_test ->
-    simplify_bit_test env r prim dbg arg1 arg2
   | Array_load array_kind ->
     simplify_array_load env r prim dbg array_kind arg1 arg2
   | String_load width ->

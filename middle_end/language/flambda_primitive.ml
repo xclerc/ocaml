@@ -545,7 +545,6 @@ type binary_primitive =
   | Int_comp_unsigned of comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
-  | Bit_test
   | Array_load of array_kind
   | String_load of string_accessor_width
   | Bigstring_load of bigstring_accessor_width
@@ -561,10 +560,9 @@ let compare_binary_primitive p1 p2 =
     | Int_comp_unsigned _ -> 5
     | Float_arith _ -> 6
     | Float_comp _ -> 7
-    | Bit_test -> 8
-    | Array_load _ -> 9
-    | String_load _ -> 10
-    | Bigstring_load _ -> 11
+    | Array_load _ -> 8
+    | String_load _ -> 9
+    | Bigstring_load _ -> 10
   in
   match p1, p2 with
   | Block_set (field1, kind1, init_or_assign1),
@@ -607,7 +605,6 @@ let compare_binary_primitive p1 p2 =
     | Int_comp_unsigned _
     | Float_arith _
     | Float_comp _
-    | Bit_test
     | Array_load _
     | String_load _
     | Bigstring_load _), _ ->
@@ -630,7 +627,6 @@ let print_binary_primitive ppf p =
   | Int_comp_unsigned c -> fprintf ppf "%a[u]" print_comparison c
   | Float_arith op -> print_binary_float_arith_op ppf op
   | Float_comp c -> print_comparison ppf c; fprintf ppf "."
-  | Bit_test -> fprintf ppf "bit_test"
   | Array_load array_kind ->
     fprintf ppf "array_load[%a]"
       print_array_kind array_kind
@@ -658,7 +654,6 @@ let args_kind_of_binary_primitive p =
   | Int_comp_unsigned _ -> K.naked_immediate (), K.naked_immediate ()
   | Float_arith _
   | Float_comp _ -> K.naked_float (), K.naked_float ()
-  | Bit_test -> string_or_bytes_kind, array_like_thing_index_kind
   | Array_load _ -> array_kind, array_like_thing_index_kind
   | String_load _ -> string_or_bytes_kind, array_like_thing_index_kind
   | Bigstring_load _ -> bigstring_kind, array_like_thing_index_kind
@@ -673,7 +668,6 @@ let result_kind_of_binary_primitive p : result_kind =
   | Int_comp _
   | Float_comp _
   | Int_comp_unsigned _ -> Singleton (K.value Can_scan)
-  | Bit_test -> Singleton (K.value Can_scan)
   | Array_load (Dynamic_must_scan_or_naked_float | Must_scan) ->
     Singleton (K.value Must_scan)
   | Array_load Can_scan -> Singleton (K.value Can_scan)
@@ -694,7 +688,6 @@ let effects_and_coeffects_of_binary_primitive p =
   | Int_comp _ | Int_comp_unsigned _ -> No_effects, No_coeffects
   | Float_arith (Add | Sub | Mul | Div) -> No_effects, No_coeffects
   | Float_comp _ -> No_effects, No_coeffects
-  | Bit_test -> No_effects, No_coeffects
   | Array_load _
   | String_load _
   | Bigstring_load _ -> reading_from_an_array_like_thing

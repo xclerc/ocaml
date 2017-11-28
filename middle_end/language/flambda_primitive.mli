@@ -66,6 +66,11 @@ type duplicate_kind =
          the tag, so the new tag doesn't need specifying.
      - Record_extension --> Must_scan, even if the record elements don't need
          scanning (the first field is a block with tag [Object_tag]).
+
+  * Another note: the "bit test" primitive now needs to be compiled out in
+    Prepare_lambda.  It indexes into a string using a number of bits.
+    (See cmmgen.ml)  Something that is odd about this primitive is that it
+    does not appear to have a bounds check.  Maybe it should?
 *)
 
 (* CR mshinwell: "Float" -> "Naked_float"? *)
@@ -193,7 +198,6 @@ type binary_primitive =
   | Int_comp_unsigned of comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
-  | Bit_test
   | Array_load of array_kind
   | String_load of string_accessor_width
   (* CR-someday mshinwell: It seems as if [Cmmgen]'s handling of the
