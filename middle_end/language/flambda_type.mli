@@ -71,6 +71,8 @@ end
 
 module Blocks : sig
   type t
+
+  val valid_field_access : t -> field:int -> bool
 end
 
 module Joined_closures : sig
@@ -231,6 +233,7 @@ type get_field_result = private
     Note that this will return [Invalid] if a use is detected of a variant-like
     type (union of blocks and immediates).
 *)
+(* XXX this shouldn't fail in the variant case *)
 val get_field
    : (t
   -> field_index:int

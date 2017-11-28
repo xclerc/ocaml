@@ -22,6 +22,7 @@ module K = Flambda_kind
 module R = Simplify_env_and_result.Result
 module T = Flambda_type
 
+module Int = Numbers.Int
 module Named = Flambda.Named
 module Reachable = Flambda.Reachable
 
@@ -2000,41 +2001,33 @@ let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
   let new_value, new_value_ty = S.simplify_simple env new_value in
   let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
   let result_kind = Flambda_kind.value Can_scan in
-  let ok () =
-    Reachable.reachable (original_term ()), T.unknown result_kind Other
-  in
   let invalid () = Reachable.invalid (), T.bottom result_kind in
+  let ok () =
+    match new_value_proof with
+    | Proved _ ->
+      Reachable.reachable (original_term ()), T.unknown result_kind Other
+    | Invalid -> invalid ()
+  in
   match field_kind with
   | Immediate | Pointer ->
     let proof = (E.type_accessor env T.prove_blocks_and_immediates) block_ty in
     begin match proof with
-    | Proved (Exactly (blocks, imms)) ->
-
-    | Proved Not_all_values_known ->
-
+    | Proved (Exactly (blocks, _imms)) ->
+      if not (T.Blocks.valid_field_access blocks ~field) then invalid ()
+      else ok ()
+    | Proved Not_all_values_known -> ok ()
     | Invalid -> invalid ()
     end
   | Float ->
-    let block_proof =
-      (E.type_accessor env T.prove_float_array) block_ty
-    in
+    let block_proof = (E.type_accessor env T.prove_float_array) block_ty in
     let new_value_proof =
       (E.type_accessor env T.prove_naked_float) new_value_ty
     in
     match block_proof with
     | Proved (Exactly sizes) ->
-      if not (Numbers.Int.Set.exists (fun size -> size > field) sizes) then
-        invalid ()
-      else
-        begin match new_value_proof with
-        | Proved _ -> ok ()
-        | Invalid -> invalid ()
-        end
-    | Proved Not_all_values_known ->
-      begin match new_value_proof with
-      | Proved _ -> ok ()
-      | Invalid -> invalid ()
-      end
+      if not (Int.Set.exists (fun size -> size > field) sizes) then invalid ()
+      else ok ()
+    | Proved Not_all_values_known -> ok ()
     | Invalid -> invalid ()
 
 let simplify_bit_test env r prim dbg arg1 arg2 =
