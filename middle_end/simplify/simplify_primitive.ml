@@ -1649,8 +1649,10 @@ end = struct
     in
     match op with
     | Add ->
-      if F.is_either_zero rhs then The_other_side
-      else Cannot_simplify
+      (* You might think that "x + 0" has the same representation as "x".
+         However it doesn't in the case where that constant zero is +0 and
+         x is equal to -0. *)
+      Cannot_simplify
     | Mul ->
       if I.equal rhs I.one then The_other_side
       else if I.equal rhs I.minus_one then negate_lhs ()
@@ -1681,7 +1683,7 @@ end = struct
     | Sub ->
       if I.equal lhs I.zero then negate_the_other_side ()
       else Cannot_simplify
-    | Div | Mod -> Cannot_simplify
+    | Div -> Cannot_simplify
 end
 
 module Binary_float_arith = Binary_arith (Float_ops_for_binary_arith)
