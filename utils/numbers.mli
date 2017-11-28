@@ -64,21 +64,24 @@ module Float_by_bit_pattern : sig
   (** Floating point numbers whose comparison and equality relations are
       the usual [Int64] relations on the bit patterns of the floats.  This
       in particular means that different representations of NaN will be
-      distinguished, as will the two signed zeros. *)
+      distinguished, as will the two signed zeros.
+
+      Never use [Pervasives.compare] on values of type [t].  Use either
+      [compare] or [compare_ieee] depending on which semantics you want.
+      Likewise for equality.
+  *)
 
   include Identifiable.S
 
   include Float_ops with type t := t
 
   val of_float : float -> t
-end
 
-module Float : sig
-  include Identifiable.S
+  (** Comparison of floating-point values as defined by IEEE 754. *)
+  val compare_ieee : t -> t -> int
 
-  include Float_ops with type t := t
-
-  val of_float : float -> t
+  (** Equality on floating-point values as defined by IEEE 754. *)
+  val equal_ieee : t -> t -> bool
 end
 
 module Int32 : sig

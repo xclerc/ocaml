@@ -1775,19 +1775,21 @@ end = struct
   let prover_rhs = I.prover
 
   let op (op : Flambda_primitive.comparison) n1 n2 =
-    let always_some f = Some (f n1 n2) in
+    let bool b =
+      if b then Immediate.const_true else Immediate.const_false
+    in
     match op with
-    | Eq ->
-    | Neq ->
-    | Lt ->
-    | Gt ->
-    | Le ->
-    | Ge ->
+    | Eq -> Some (bool (I.equal n1 n2))
+    | Neq -> Some (bool (not (I.equal n1 n2)))
+    | Lt -> Some (bool (I.compare n1 n2 < 0))
+    | Gt -> Some (bool (I.compare n1 n2 > 0))
+    | Le -> Some (bool (I.compare n1 n2 <= 0))
+    | Ge -> Some (bool (I.compare n1 n2 >= 0))
 
-  let op_lhs_unknown ~rhs:_ : N.t binary_arith_outcome_for_one_side_only =
+  let op_lhs_unknown _op ~rhs:_ : N.t binary_arith_outcome_for_one_side_only =
     Cannot_simplify
 
-  let op_rhs_unknown ~lhs:_ : N.t binary_arith_outcome_for_one_side_only =
+  let op_rhs_unknown _op ~lhs:_ : N.t binary_arith_outcome_for_one_side_only =
     Cannot_simplify
 end
 
@@ -1879,8 +1881,6 @@ end = struct
   module Rhs = I
   module Result = Immediate
 
-  let ok_to_evaluate _env = true
-
   let prover_lhs = I.prover
   let prover_rhs = I.prover
 
@@ -1893,12 +1893,12 @@ end = struct
       if b then Immediate.const_true else Immediate.const_false
     in
     match op with
-    | Eq -> Some (bool (I.equal n1 n2))
-    | Neq -> Some (bool (not (I.equal n1 n2)))
-    | Lt -> Some (bool (I.compare n1 n2 < 0))
-    | Gt -> Some (bool (I.compare n1 n2 > 0))
-    | Le -> Some (bool (I.compare n1 n2 <= 0))
-    | Ge -> Some (bool (I.compare n1 n2 >= 0))
+    | Eq -> Some (bool (F.equal_ieee n1 n2))
+    | Neq -> Some (bool (not (F.equal_ieee n1 n2)))
+    | Lt -> Some (bool (F.compare_ieee n1 n2 < 0))
+    | Gt -> Some (bool (F.compare_ieee n1 n2 > 0))
+    | Le -> Some (bool (F.compare_ieee n1 n2 <= 0))
+    | Ge -> Some (bool (F.compare_ieee n1 n2 >= 0))
 
   let result_of_comparison_with_nan op =
     match op with
