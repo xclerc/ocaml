@@ -143,9 +143,10 @@ external to_int : nativeint -> int = "%nativeint_to_int"
    integer (type [int]).  The high-order bit is lost during
    the conversion. *)
 
-val unsigned_to_int : nativeint -> int
-(** Same as [to_int], but interpret argument and result as {e unsigned}
-    integers.
+val unsigned_to_int : nativeint -> int option
+(** Same as [to_int], but interprets the argument as an {e unsigned} integer.
+    Returns [None] if the unsigned value of the argument cannot fit into an
+    [int].
 
     @since 4.07.0 *)
 

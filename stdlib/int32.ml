@@ -56,10 +56,14 @@ let unsigned_to_int =
   match Sys.word_size with
   | 32 ->
       let max_int = of_int Pervasives.max_int in
-      fun n -> to_int (logand n max_int)
+      fun n ->
+        if compare zero n <= 0 && compare n max_int <= 0 then
+          Some (to_int n)
+        else
+          None
   | 64 ->
       let move = int_of_string "0x1_0000_0000" in (* So that it compiles in 32-bit *)
-      fun n -> let i = to_int n in if i < 0 then i + move else i
+      fun n -> let i = to_int n in Some (if i < 0 then i + move else i)
   | _ ->
       assert false
 

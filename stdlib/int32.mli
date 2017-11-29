@@ -125,9 +125,10 @@ external to_int : int32 -> int = "%int32_to_int"
    during the conversion.  On 64-bit platforms, the conversion
    is exact. *)
 
-val unsigned_to_int : int32 -> int
-(** Same as [to_int], but interpret argument and result as {e unsigned}
-    integers.
+val unsigned_to_int : int32 -> int option
+(** Same as [to_int], but interprets the argument as an {e unsigned} integer.
+    Returns [None] if the unsigned value of the argument cannot fit into an
+    [int].
 
     @since 4.07.0 *)
 

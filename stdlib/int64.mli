@@ -126,9 +126,10 @@ external to_int : int64 -> int = "%int64_to_int"
    is taken modulo 2{^31}, i.e. the top 33 bits are lost
    during the conversion. *)
 
-val unsigned_to_int : int64 -> int
-(** Same as [to_int], but interpret argument and result as {e unsigned}
-    integers.
+val unsigned_to_int : int64 -> int option
+(** Same as [to_int], but interprets the argument as an {e unsigned} integer.
+    Returns [None] if the unsigned value of the argument cannot fit into an
+    [int].
 
     @since 4.07.0 *)
 

@@ -52,7 +52,11 @@ let lognot n = logxor n (-1L)
 
 let unsigned_to_int =
   let max_int = of_int Pervasives.max_int in
-  fun n -> to_int (logand n max_int)
+  fun n ->
+    if compare zero n <= 0 && compare n max_int <= 0 then
+      Some (to_int n)
+    else
+      None
 
 external format : string -> int64 -> string = "caml_int64_format"
 let to_string n = format "%d" n
