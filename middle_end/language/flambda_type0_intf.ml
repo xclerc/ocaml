@@ -290,6 +290,8 @@ module type S = sig
   val box_int32 : t -> t
   val box_int64 : t -> t
   val box_nativeint : t -> t
+  (* XXX Shouldn't this just take [ty_value array]?  Then there won't be an
+     exception *)
   val block : Tag.Scannable.t -> t array -> t
   val immutable_float_array : t array -> t
 

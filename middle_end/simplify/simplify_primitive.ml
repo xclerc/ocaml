@@ -2157,7 +2157,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
       in
       let (at_least_one_boxed_float : _ or_invalid), field_tys_rev =
         (* [field_tys_rev] gives the types of the fields, in reverse order,
-           on the presumption (which may be proved false) that the
+           _on the presumption_ (which may be proved false) that the
            [Make_block] is going to produce a float array. *)
         List.fold_left (fun (at_least_one_boxed_float, field_tys) proof ->
             match proof with
