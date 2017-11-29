@@ -2116,13 +2116,34 @@ type 'a or_invalid = Ok of 'a | Invalid
 
 let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
       args =
+  let original_args = args in
   let args_with_tys = S.simplify_simple env args in
+  let args, arg_tys = List.split args_with_tys in
   let original_term () : Named.t = Prim (Variadic (prim, args), dbg) in
   let invalid () = Reachable.invalid (), T.bottom (K.value Must_scan) in
   let term, ty =
     match make_block_kind with
     | Full_of_values (tag, scannings) ->
-
+      if List.length scannings <> List.length args then begin
+        Misc.fatal_errorf "GC scanning indications in [Make_block] don't \
+            match up 1:1 with arguments: %a (%a)"
+          Flambda_primitive.print prim
+          Simple.List.print original_args
+      end;
+      let invalid =
+        List.fold_left2 (fun invalid arg_ty scanning : _ or_invalid ->
+            let kind = K.value scanning in
+            let proof = (E.type_accessor env T.prove_of_kind kind) arg_ty in
+            match proof with
+            | Proved () | Unknown -> invalid
+            | Invalid -> Invalid)
+          (Ok ())
+          arg_tys scannings
+      in
+      if invalid then invalid ()
+      else
+        let ty = T.block tag arg_tys in
+        Reachable.reachable (original_term ()), ty
     | Full_of_naked_floats ->
 
     | Generic_array ->
@@ -2140,7 +2161,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
            [Make_block] is going to produce a float array. *)
         List.fold_left (fun (at_least_one_boxed_float, field_tys) proof ->
             match proof with
-            | Proved (Ok field_ty) ->
+            | Proved field_ty ->
               begin match at_least_one_boxed_float with
               | Invalid -> Invalid, []
               | Ok at_least_one_boxed_float ->
@@ -2150,7 +2171,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
                 let field_ty = T.t_of_ty_naked_float field_ty in
                 Ok at_least_one_boxed_float, field_ty :: field_tys
               end
-            | Proved Not_all_values_known ->
+            | Unknown ->
               at_least_one_boxed_float, T.any_naked_float () :: field_tys
             | Invalid -> Invalid)
           (Some false, [])
@@ -2173,7 +2194,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
           | Mutable ->
             T.mutable_float_array ~size:(List.length field_tys_rev)
         in
-        term, ty
+        Reachable.reachable term, ty
       | Ok false ->
         (* From above, [field_tys] is invalid in this branch. *)
         let all_immediates : _ or_invalid =

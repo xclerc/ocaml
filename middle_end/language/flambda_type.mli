@@ -253,7 +253,7 @@ type boxed_float_proof = ty_naked_float or_invalid
 
 (* CR mshinwell: update comment.
    Maybe change this Not_all_values_known in these proof types to something
-   more descriptive?
+   more descriptive?  It should probably just be Proved/Unknown/Invalid.
 *)
 (* CR mshinwell: Add unit tests to ensure the condition about the result
    sets being non-empty always holds (or reformulate the interface somehow,
