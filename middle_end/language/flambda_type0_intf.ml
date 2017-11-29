@@ -491,6 +491,8 @@ module type S = sig
 
   val t_of_ty_value : ty_value -> t
 
+  val t_of_ty_naked_float : ty_naked_float -> t
+
 (*
   type cleaning_spec =
     | Available

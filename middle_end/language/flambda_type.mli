@@ -245,36 +245,45 @@ type 'a proof = private
   | Proved of 'a Or_not_all_values_known.t
   | Invalid
 
-type 'a boxing_proof = private
+type 'a or_invalid = private
   | Proved of 'a
   | Invalid
 
-type boxed_float_proof = ty_naked_float boxing_proof
+type boxed_float_proof = ty_naked_float or_invalid
 
-(* CR mshinwell: update comment *)
+(* CR mshinwell: update comment.
+   Maybe change this Not_all_values_known in these proof types to something
+   more descriptive?
+*)
 (* CR mshinwell: Add unit tests to ensure the condition about the result
    sets being non-empty always holds (or reformulate the interface somehow,
    but this looks tricky) *)
 (** Prove that the given type represents:
-    - one or more known boxed floats ([Proved (Ok ...)]);
-    - one or more unknown boxed floats ([Proved Not_all_values_known]);
-    - value(s) that are not boxed floats (meaning that code computing a value
+    - one or more boxed floats (whose contents may or may not be known)
+      ([Proved (Ok ...)]);
+    - a value that might be one or more boxed floats
+      ([Proved Not_all_values_known])
+    - value(s) that are definitely not boxed floats
+      (meaning that code computing a value
       of such type, in a context where a boxed float is required, is invalid).
     The set returned in an [Proved (Ok ...)] result is guaranteed non-empty.
 *)
 val prove_boxed_float : (t -> boxed_float_proof) type_accessor
 
-type boxed_int32_proof = ty_naked_int32 boxing_proof
+(* CR mshinwell: rename or_invalid *)
+val is_boxed_float : (t -> bool or_invalid) type_accessor
+
+type boxed_int32_proof = ty_naked_int32 or_invalid
 
 (** As for [prove_boxed_float] but for [Int32]. *)
 val prove_boxed_int32 : (t -> boxed_int32_proof) type_accessor
 
-type boxed_int64_proof = ty_naked_int64 boxing_proof
+type boxed_int64_proof = ty_naked_int64 or_invalid
 
 (** As for [prove_boxed_float] but for [Int64]. *)
 val prove_boxed_int64 : (t -> boxed_int64_proof) type_accessor
 
-type boxed_nativeint_proof = ty_naked_nativeint boxing_proof
+type boxed_nativeint_proof = ty_naked_nativeint or_invalid
 
 (** As for [prove_boxed_float] but for [Nativeint]. *)
 val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
@@ -312,6 +321,8 @@ type is_tagged_immediate_proof = bool proof
     - can never represent a tagged immediate.
 *)
 val prove_is_tagged_immediate : (t -> is_tagged_immediate_proof) type_accessor
+
+val is_tagged_immediate : (t -> bool or_invalid) type_accessor
 
 type string_proof = String_info.Set.t proof
 

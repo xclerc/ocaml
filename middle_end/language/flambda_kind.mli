@@ -75,6 +75,22 @@ module Standard_int : sig
   include Identifiable.S with type t := t
 end
 
+module Standard_int_or_float : sig
+  (** The same as [Standard_int], but also permitting naked floats. *)
+  type t =
+    | Tagged_immediate
+    | Naked_float
+    | Naked_int32
+    | Naked_int64
+    | Naked_nativeint
+
+  val to_kind : t -> kind
+
+  val print_lowercase : Format.formatter -> t -> unit
+
+  include Identifiable.S with type t := t
+end
+
 module Boxable_number : sig
   (** These kinds are those of the numbers for which a tailored boxed
       representation exists. *)

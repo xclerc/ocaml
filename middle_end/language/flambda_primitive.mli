@@ -28,34 +28,27 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
-(* XXX rename array_kind and squash into duplicate_kind *)
-type array_kind =
-  | Dynamic_must_scan_or_naked_float
+type make_block_kind =
+  | Full_of_values of Tag.Scannable.t * (Flambda_kind.scanning list)
+  | Full_of_naked_floats
+  | Generic_array
+
+type block_access_kind =
   | Must_scan
   | Can_scan
   | Naked_float
+  | Generic_array
 
-type duplicate_kind =
-  | Dynamic_must_scan_or_naked_float
-    (** A scannable block whose contents are either:
-        - of kind [Value Must_scan]; or
-        - of kind [Naked_float]. *)
-  | Must_scan
-    (** A scannable block whose contents are of kind [Value Must_scan]. *)
-  | Can_scan
-    (** A scannable block whose contents are of kind [Value Can_scan]
-        (for example an "int array"). *)
-  | Naked_float
-    (** A flat float array or all-float record. *)
+val kind_of_block_access_kind : block_access_kind -> Flambda_kind.t
 
-(* Notes for producing [duplicate_kind] / [Duplicate_scannable_block] from
+(* Notes for producing [make_block_kind] / [Duplicate_scannable_block] from
    [Pduparray] and [Pduprecord]:
 
    - For Pduparray:
-     - Pgenarray --> Dynamic_must_scan_or_naked_float
-     - Paddrarray --> Must_scan
-     - Pintarray --> Can_scan
-     - Pfloatarray --> Naked_float
+     - Pgenarray --> Choose_tag_at_runtime
+     - Paddrarray --> Full_of_values (tag zero, [Must_scan, ...])
+     - Pintarray --> Full_of_values (tag_zero, [Can_scan, ...])
+     - Pfloatarray --> Full_of_naked_floats
 
    - For Pduprecord:
 
@@ -68,20 +61,14 @@ type duplicate_kind =
      - Record_extension --> Must_scan, even if the record elements don't need
          scanning (the first field is a block with tag [Object_tag]).
 
+  * We should check Pgenarray doesn't occur when the float array optimization
+    is disabled.
+
   * Another note: the "bit test" primitive now needs to be compiled out in
     Prepare_lambda.  It indexes into a string using a number of bits.
     (See cmmgen.ml)  Something that is odd about this primitive is that it
     does not appear to have a bounds check.  Maybe it should?
 *)
-
-(* CR mshinwell: "Float" -> "Naked_float"? *)
-(* CR mshinwell: Don't call this "kind".  Kind errors are errors in the
-   compiler code, whereas a mismatch here may be due to invalid code. *)
-(* CR pchambart: Not_a_float can be a float
-   Should it be called Any or something like that ? *)
-type field_kind = Not_a_float | Float
-
-val kind_of_field_kind : field_kind -> Flambda_kind.t
 
 type string_or_bytes = String | Bytes
 
@@ -132,9 +119,9 @@ type unary_float_arith_op = Abs | Neg
 
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
-  | Block_load of int * array_kind * mutable_or_immutable
+  | Block_load of int * block_access_kind * mutable_or_immutable
   | Duplicate_scannable_block of {
-      kind : duplicate_kind;
+      kind : make_block_kind;
       source_mutability : mutable_or_immutable; 
       destination_mutability : mutable_or_immutable; 
     }
@@ -152,17 +139,15 @@ type unary_primitive =
       that the result _cannot_ be scanned by the GC. *)
   | Opaque_identity
   | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
-  | Int_conv of {
-      src : Flambda_kind.Standard_int.t;
-      dst : Flambda_kind.Standard_int.t;
-    }
   | Float_arith of unary_float_arith_op
+  | Num_conv of {
+      src : Flambda_kind.Standard_int_or_float.t;
+      dst : Flambda_kind.Standard_int_or_float.t;
+    }
   (* CR-someday mshinwell: We should maybe change int32.ml and friends to
      use a %-primitive instead of directly calling C stubs for conversions;
      then we could have a single primitive here taking two
      [Flambda_kind.Of_naked_number.t] arguments (one input, one output). *)
-  | Int_of_float
-  | Float_of_int
   | Array_length of array_kind
   | Bigarray_length of { dimension : int; }
   | Unbox_number of Flambda_kind.Boxable_number.t
@@ -193,15 +178,15 @@ type binary_float_arith_op = Add | Sub | Mul | Div
 
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
-  | Block_load_computed_index of array_kind * mutable_or_immutable
-  | Block_set of int * array_kind * init_or_assign
+  | Block_load_computed_index of block_access_kind * mutable_or_immutable
+  | Block_set of int * block_access_kind * init_or_assign
   | Int_arith of Flambda_kind.Standard_int.t * binary_int_arith_op
   | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
   | Int_comp of Flambda_kind.Standard_int.t * comparison
   | Int_comp_unsigned of comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
-  | String_load of string_accessor_width
+  | String_load of string_or_bytes * string_accessor_width
   (* CR-someday mshinwell: It seems as if [Cmmgen]'s handling of the
      bigstring accessors could be tidied up so as to integrate it with the
      (older) bigarray accessor (Pbigarrayref). *)
@@ -209,14 +194,9 @@ type binary_primitive =
 
 (** Primitives taking exactly three arguments. *)
 type ternary_primitive =
-  | Block_set_computed of array_kind * init_or_assign
+  | Block_set_computed of block_access_kind * init_or_assign
   | Bytes_set of string_accessor_width
   | Bigstring_set of bigstring_accessor_width
-
-type make_block_kind =
-  | Full_of_values of Tag.Scannable.t * (Flambda_kind.scanning list)
-  | Full_of_naked_floats
-  | Choose_tag_at_runtime
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =

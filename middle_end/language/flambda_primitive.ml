@@ -31,39 +31,23 @@ type coeffects = No_coeffects | Has_coeffects
 
 (* CR mshinwell: These types should probably go in their own modules with
    a comparison function next to each. *)
-type array_kind =
+
+type make_block_kind =
+  | Full_of_values of Tag.Scannable.t * (Flambda_kind.scanning list)
+  | Full_of_naked_floats
+  | Choose_tag_at_runtime
+
+type block_access_kind =
   | Dynamic_must_scan_or_naked_float
   | Must_scan
   | Can_scan
   | Naked_float
 
-let print_array_kind ppf k =
-  let fprintf = Format.fprintf in
-  match k with
-  | Dynamic_must_scan_or_naked_float -> fprintf ppf "dynamic"
-  | Must_scan -> fprintf ppf "must_scan"
-  | Can_scan -> fprintf ppf "can_scan"
-  | Naked_float -> fprintf ppf "float"
-
-type duplicate_kind =
-  | Dynamic_must_scan_or_naked_float
-  | Must_scan
-  | Can_scan
-  | Naked_float
-
-let print_duplicate_kind ppf k =
-  match k with
-  | Dynamic_must_scan_or_naked_float ->
-    fprintf ppf "Dynamic_must_scan_or_naked_float"
-  | Must_scan -> fprintf ppf "Must_scan"
-  | Can_scan -> fprintf ppf "Can_scan"
-  | Naked_float -> fprintf ppf "Naked_float"
-
-type field_kind = Not_a_float | Float
-
-let kind_of_field_kind = function
-  | Not_a_float -> K.value Must_scan
-  | Float -> K.naked_float ()
+let kind_of_block_access_kind (kind : block_access_kind) =
+  match kind with
+  | Generic_array | Must_scan -> K.value Must_scan
+  | Can_scan -> K.value Can_scan
+  | Naked_float -> K.value Naked_float
 
 type string_or_bytes = String | Bytes
 

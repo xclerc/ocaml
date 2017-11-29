@@ -22,6 +22,7 @@ module K = Flambda_kind
 module R = Simplify_env_and_result.Result
 module T = Flambda_type
 
+module Float_by_bit_pattern = Numbers.Float_by_bit_pattern
 module Int = Numbers.Int
 module Named = Flambda.Named
 module Reachable = Flambda.Reachable
@@ -375,35 +376,14 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
   | Wrong ->
     [], Reachable.invalid (), r
 
-(*
-  let simplify_binop (p : Lambda.primitive) (kind : I.t T.boxed_int)
-        expr (n1 : I.t) (n2 : I.t) =
-    let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
-    let non_zero n = (I.compare I.zero n) <> 0 in
-    match p with
-    | Pbintcomp (kind, c) when kind = I.kind ->
-      S.const_comparison_expr expr c n1 n2
-    | _ -> expr, T.value_unknown Other, C.Benefit.zero
-
-  let simplify_binop_int (p : Lambda.primitive) (kind : I.t T.boxed_int)
-        expr (n1 : I.t) (n2 : int) ~size_int =
-    let eval op = S.const_boxed_int_expr expr kind (op n1 n2) in
-    let precond = 0 <= n2 && n2 < 8 * size_int in
-    match p with
-    | Plslbint kind when kind = I.kind && precond -> eval I.shift_left
-    | Plsrbint kind when kind = I.kind && precond -> eval I.shift_right_logical
-    | Pasrbint kind when kind = I.kind && precond -> eval I.shift_right
-    | _ -> expr, T.value_unknown Other, C.Benefit.zero
-*)
-
-let simplify_block_load env r prim arg dbg ~field_index ~field_kind
+let simplify_block_load env r prim arg dbg ~field_index ~block_access_kind
       ~field_is_mutable =
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
   let kind = Flambda_primitive.kind_of_field_kind field_kind in
   let get_field_result =
     (E.type_accessor env T.get_field) ty
-      ~field_index ~field_is_mutable ~field_kind
+      ~field_index ~field_is_mutable ~block_access_kind
   in
   let term, ty =
     match get_field_result with
@@ -425,7 +405,7 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
       ~source_mutability ~destination_mutability =
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let like_a_block tag (scanning : Flambda_kind.scanning) =
+  let like_a_block tag (scanning : K.scanning) =
     let proof =
       (E.type_accessor env T.prove_block_with_unique_tag_and_size) ty
     in
@@ -575,12 +555,9 @@ module type For_standard_ints = sig
 
     val to_const : t -> Simple.Const.t
 
-    (* Care: [to_tagged_immediate] has to perform some arithmetic to ensure
-       that the [Targetint.t] inside the [Immediate.t] represents the result
-       as it would be if the conversion were evaluated on the target machine
-       at type "int". *)
     (* CR mshinwell: Should there be a new module, [OCaml_int_on_target]?
-       Then [Immediate.t] can use that. *)
+       Then [Immediate.t] can use that.
+       ...yes! *)
     val to_tagged_immediate : t -> Immediate.t
     val to_naked_int32 : t -> Int32.t
     val to_naked_int64 : t -> Int64.t
@@ -633,12 +610,20 @@ module For_standard_ints_tagged_immediate : For_standard_ints = struct
     let to_const t = Simple.Const.Tagged_immediate t
 
     let to_tagged_immediate t = t
+
     let to_naked_int32 t = Targetint.to_int32 (Immediate.to_targetint t)
     let to_naked_int64 t = Targetint.to_int64 (Immediate.to_targetint t)
     let to_naked_nativeint t = Immediate.to_targetint t
+
+    (* It seems as if the various [float_of_int] functions never raise
+       an exception even in the case of NaN or infinity. *)
+    (* CR mshinwell: We should be sure this semantics is reasonable. *)
+    let to_naked_float t =
+      Float_by_bit_pattern.of_bits (to_naked_int64 t)
   end
 
   let kind : K.Standard_int.t = Tagged_immediate
+  let or_float_kind : K.Standard_int_or_float.t = Tagged_immediate
   let prover = T.prove_tagged_immediate
   let this = T.this_tagged_immediate
   let these = T.these_tagged_immediates
@@ -658,6 +643,7 @@ module For_standard_ints_naked_int32 : For_standard_ints = struct
   end
 
   let kind : K.Standard_int.t = Naked_int32
+  let or_float_kind : K.Standard_int_or_float.t = Naked_int32
   let prover = T.prove_naked_int32
   let this = T.this_naked_int32
   let these = T.these_naked_int32s
@@ -677,6 +663,7 @@ module For_standard_ints_naked_int64 : For_standard_ints = struct
   end
 
   let kind : K.Standard_int.t = Naked_int64
+  let or_float_kind : K.Standard_int_or_float.t = Naked_int64
   let prover = T.prove_naked_int64
   let this = T.this_naked_int64
   let these = T.these_naked_int64s
@@ -695,6 +682,7 @@ module For_standard_ints_naked_nativeint : For_standard_ints = struct
   end
 
   let kind : K.Standard_int.t = Naked_nativeint
+  let or_float_kind : K.Standard_int_or_float.t = Naked_nativeint
   let prover = T.prove_naked_nativeint
   let this = T.this_naked_nativeint
   let these = T.these_naked_nativeints
@@ -711,84 +699,6 @@ module Simplify_swap_byte_endianness_naked_int64 =
 
 module Simplify_swap_byte_endianness_naked_nativeint =
   Make_simplify_swap_byte_endianness (For_standard_ints_naked_nativeint)
-
-let simplify_int_of_float env r prim arg dbg =
-  (* CR mshinwell: We need to validate that the backend compiles
-     the [Int_of_float] primitive in the same way as
-     [Targetint.of_float].  Ditto for [Float_of_int].  (For the record,
-     [Pervasives.int_of_float] and [Nativeint.of_float] on [nan] produce
-     wildly different results). *)
-  let module F = Numbers.Float_by_bit_pattern in
-  let arg, ty = S.simplify_simple env arg in
-  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let proof = (E.type_accessor env T.prove_naked_float) ty in
-  let term, ty =
-    match proof with
-    | Proved fs ->
-      begin match F.Set.get_singleton fs with
-      | Some f ->
-        let i =
-          (* It seems as if the various [float_of_int] functions never raise
-             an exception even in the case of NaN or infinity. *)
-          (* CR mshinwell: We should be sure this semantics is reasonable. *)
-          Immediate.int (Targetint.of_float (F.to_float f))
-        in
-        let simple = Simple.const (Tagged_immediate i) in
-        Reachable.reachable (Simple simple),
-          T.this_tagged_immediate i
-      | None ->
-        assert (not (F.Set.is_empty fs));
-        let is =
-          F.Set.fold (fun f is ->
-              let i = Immediate.int (Targetint.of_float (F.to_float f)) in
-              Immediate.Set.add i is)
-            fs
-            Immediate.Set.empty
-        in
-        Reachable.reachable (original_term ()),
-          T.these_tagged_immediates is
-      end
-    | Proved Not_all_values_known ->
-      Reachable.reachable (original_term ()),
-        T.unknown (K.value Can_scan) Other
-    | Invalid -> 
-      Reachable.invalid (), T.bottom (K.value Can_scan)
-  in
-  term, ty, r
-
-let simplify_float_of_int env r prim arg dbg =
-  let module F = Numbers.Float_by_bit_pattern in
-  let arg, ty = S.simplify_simple env arg in
-  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let proof = (E.type_accessor env T.prove_tagged_immediate) ty in
-  let term, ty =
-    match proof with
-    | Proved is ->
-      begin match Immediate.Set.get_singleton is with
-      | Some i ->
-        let f = Targetint.to_float (Immediate.to_targetint i) in
-        let simple = Simple.const (Naked_float f) in
-        Reachable.reachable (Simple simple),
-          T.this_naked_float f
-      | None ->
-        assert (not (Immediate.Set.is_empty fs));
-        let fs =
-          F.Set.fold (fun i fs ->
-              let f = Targetint.to_float (Immediate.to_targetint i) in
-              F.Set.add (F.create f) fs)
-            is
-            F.Set.empty
-        in
-        Reachable.reachable (original_term ()),
-          T.these_naked_floats fs
-      end
-    | Proved Not_all_values_known ->
-      Reachable.reachable (original_term ()),
-        T.unknown (K.value Can_scan) Other
-    | Invalid -> 
-      Reachable.invalid (), T.bottom (K.value Can_scan)
-  in
-  term, ty, r
 
 module type For_unboxable_ints = sig
   module Num : sig
@@ -1036,18 +946,71 @@ module Unary_int_arith_naked_int32 = Unary_int_arith (Int32)
 module Unary_int_arith_naked_int64 = Unary_int_arith (Int64)
 module Unary_int_arith_naked_nativeint = Unary_int_arith (Targetint)
 
-module Make_simplify_int_conv (I : For_standard_ints) = struct
-  let simplify env r prim arg ~(dst : Flambda_kind.Standard_int.t) dbg =
+module type For_standard_int_or_float = sig
+  module Num : sig
+    include Identifiable.S
+
+    val to_const : t -> Simple.Const.t
+
+    val to_tagged_immediate : t -> Immediate.t
+    val to_naked_float : t -> Float_by_bit_pattern.t
+    val to_naked_int32 : t -> Int32.t
+    val to_naked_int64 : t -> Int64.t
+    val to_naked_nativeint : t -> Targetint.t
+  end
+
+  val or_float_kind : K.Standard_int_or_float.t
+  val prover : (T.t -> Num.Set.t proof) T.type_accessor
+  val this : Num.t -> T.t
+  val these : Num.Set.t -> T.t
+end
+
+module For_standard_ints_naked_float : For_standard_int_or_float = struct
+  module Num = struct
+    include Float_by_bit_pattern
+
+    let to_const t = Simple.Const.Naked_float t
+
+    (* CR mshinwell: We need to validate that the backend compiles
+       the [Int_of_float] primitive in the same way as
+       [Targetint.of_float].  Ditto for [Float_of_int].  (For the record,
+       [Pervasives.int_of_float] and [Nativeint.of_float] on [nan] produce
+       wildly different results). *)
+    let to_tagged_immediate t =
+      let f = Float_by_bit_pattern.to_float t in
+      Immediate.int (Targetint.OCaml.of_float f)
+
+    let to_naked_float t = t
+
+    let to_naked_int32 t = Int32.of_float (Float_by_bit_pattern.to_float t)
+
+    let to_naked_int64 t = Int64.of_float (Float_by_bit_pattern.to_float t)
+
+    let to_naked_nativeint t =
+      Targetint.of_float (Float_by_bit_pattern.to_float t)
+  end
+
+  let or_float_kind : K.Standard_int_or_float.t = Naked_float
+  let prover = T.prove_naked_float
+  let this = T.this_naked_float
+  let these = T.these_naked_floats
+end
+
+module Make_simplify_int_conv (N : For_standard_int_or_float) = struct
+  module F = Float_by_bit_pattern
+
+  let simplify env r prim arg ~(dst : K.Standard_int_or_float.t) dbg =
     let arg, ty = S.simplify_simple env arg in
-    if Flambda_kind.Standard_int.equal I.kind dst then
+    if K.Standard_int_or_float.equal N.kind dst then
       if T.is_bottom ty then
-        Reachable.invalid (), T.bottom (K.Standard_int.to_kind dst), r
+        Reachable.invalid (),
+          T.bottom (K.Standard_int_or_float.to_kind dst), r
       else
         Reachable.reachable (Flambda.Named.Simple arg), ty, r
     else
-      let proof = (E.type_accessor env I.prover) arg in
+      let proof = (E.type_accessor env N.prover) arg in
       let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-      let module N = I.Num in
+      let module N = N.Num in
       let term, ty =
         match proof with
         | Proved (Exactly is) ->
@@ -1068,6 +1031,21 @@ module Make_simplify_int_conv (I : For_standard_ints) = struct
             | None ->
               Reachable.reachable (original_term ()),
                 T.these_tagged_immediates imms
+            end
+          | Naked_float ->
+            let is =
+              N.Set.fold (fun i is ->
+                  F.Set.add (N.to_naked_float i) is)
+                is
+                F.Set.empty
+            in
+            begin match F.Set.get_singleton is with
+            | Some i ->
+              Reachable.reachable (Simple (Simple.const (Float i))),
+                T.this_naked_float i
+            | None ->
+              Reachable.reachable (original_term ()),
+                T.these_naked_floats is
             end
           | Naked_int32 ->
             let is =
@@ -1126,6 +1104,8 @@ end
 
 module Simplify_int_conv_tagged_immediate =
   Make_simplify_int_conv (For_standard_ints_tagged_immediate)
+module Simplify_int_conv_naked_float =
+  Make_simplify_int_conv (For_standard_ints_naked_float)
 module Simplify_int_conv_naked_int32 =
   Make_simplify_int_conv (For_standard_ints_naked_int32)
 module Simplify_int_conv_naked_int64 =
@@ -1277,17 +1257,15 @@ let simplify_unary_primitive env r prim arg dbg =
     | Naked_nativeint ->
       Unary_int_arith_naked_nativeint.simplify env r op arg
     end
-  | Int_conv { src = Tagged_immediate; dst; } ->
+  | Num_conv { src = Tagged_immediate; dst; } ->
     Simplify_int_conv_tagged_immediate.simplify env r prim arg ~dst dbg
-  | Int_conv { src = Naked_int32; dst; } ->
+  | Num_conv { src = Naked_int32; dst; } ->
     Simplify_int_conv_naked_int32.simplify env r prim arg ~dst dbg
-  | Int_conv { src = Naked_int64; dst; } ->
+  | Num_conv { src = Naked_int64; dst; } ->
     Simplify_int_conv_naked_int64.simplify env r prim arg ~dst dbg
-  | Int_conv { src = Naked_nativeint; dst; } ->
+  | Num_conv { src = Naked_nativeint; dst; } ->
     Simplify_int_conv_naked_nativeint.simplify env r prim arg ~dst dbg
   | Float_arith op -> simplify_unary_float_arith_op env r prim op arg dbg
-  | Int_of_float -> simplify_int_of_float env r prim arg dbg
-  | Float_of_int -> simplify_float_of_int env r prim arg dbg
   | Array_length array_kind ->
     simplify_array_length env r prim arg ~array_kind dbg
   | Bigarray_length { dimension : int; } ->
@@ -1707,7 +1685,8 @@ end = struct
     let rhs = Immediate.to_targetint rhs in
     match op with
     | Lsl | Lsr | Asr ->
-      (* Shifting either way by [Targetint.size] or above is undefined.
+      (* Shifting either way by [Targetint.size] or above, or by a negative
+         amount, is undefined.
          However note that we cannot produce [Invalid] unless the code is
          type unsafe, which it is not here.  (Otherwise a GADT match might
          be reduced to only one possible case which it would be wrong to
@@ -1716,6 +1695,13 @@ end = struct
       else Cannot_simplify
 
   let op_rhs_unknown ~lhs : N.t binary_arith_outcome_for_one_side_only =
+    (* In these cases we are giving a semantics for some cases where the
+       right-hand side may be less than zero or greater than or equal to
+       [Targetint.size].  These cases have undefined semantics, as above;
+       however, it seems fine to give them a semantics since there is benefit
+       to doing so in this particular case.  (This is not the case for
+       the situation in [op_lhs_unknown], above, where there would be no
+       such benefit.) *)
     match op with
     | Lsl | Lsr ->
       if I.equal lhs I.zero then Exactly I.zero
@@ -1874,7 +1860,7 @@ end = struct
 
   let symmetric_op_one_side_unknown (op : symmetric_op) ~this_side
         : N.t binary_arith_outcome_for_one_side_only =
-    let negate_lhs () : N.t binary_arith_outcome_for_one_side_only =
+    let negate_the_other_side () : N.t binary_arith_outcome_for_one_side_only =
       This_primitive (Unary (Float_arith Neg, arg1))
     in
     match op with
@@ -1884,9 +1870,16 @@ end = struct
          x is equal to -0. *)
       Cannot_simplify
     | Mul ->
-      if I.equal rhs I.one then The_other_side
-      else if I.equal rhs I.minus_one then negate_lhs ()
-      else Cannot_simplify
+      if F.equal this_side F.one then
+        The_other_side
+        [@z3 check_float_binary_neutral `Mul (+1.0) `Right]
+        [@z3 check_float_binary_neutral `Mul (+1.0) `Left]
+      else if F.equal this_side F.minus_one then
+        negate_the_other_side ()
+        [@z3 check_float_binary_opposite `Mul (-1.0) `Left]
+        [@z3 check_float_binary_opposite `Mul (-1.0) `Right]
+      else
+        Cannot_simplify
 
   let op_lhs_unknown ~rhs : N.t binary_arith_outcome_for_one_side_only =
     let negate_the_other_side () : N.t binary_arith_outcome_for_one_side_only =
@@ -1897,14 +1890,16 @@ end = struct
     | Mul -> symmetric_op_one_side_unknown Mul ~this_side:rhs
     | Sub -> Cannot_simplify
     | Div ->
-      if I.equal rhs I.one then The_other_side
-      else if I.equal rhs I.minus_one then negate_the_other_side ()
-      else Cannot_simplify
+      if F.equal rhs F.one then
+        The_other_side
+        [@z3 check_float_binary_neutral `Div (+1.0) `Right]
+      else if F.equal rhs F.minus_one then
+        negate_the_other_side ()
+        [@z3 check_float_binary_opposite `Div (-1.0) `Right]
+      else
+        Cannot_simplify
 
   let op_rhs_unknown ~lhs : N.t binary_arith_outcome_for_one_side_only =
-    let negate_the_other_side () : N.t binary_arith_outcome_for_one_side_only =
-      This_primitive (Unary (Float_arith Neg, arg2))
-    in
     match op with
     | Add -> symmetric_op_one_side_unknown Add ~this_side:lhs
     | Mul -> symmetric_op_one_side_unknown Mul ~this_side:lhs
@@ -1991,7 +1986,7 @@ let simplify_block_load_computed_index env r prim ~block ~index
   in
   term, ty, r
 
-let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
+let simplify_block_set env r prim ~field ~block_access_kind ~init_or_assign
       ~block ~new_value dbg =
   if field < 0 then begin
     Misc.fatal_errorf "[Block_set] with bad field index %d: %a"
@@ -2002,7 +1997,7 @@ let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
   let block, block_ty = S.simplify_simple env block in
   let new_value, new_value_ty = S.simplify_simple env new_value in
   let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
-  let result_kind = Flambda_kind.value Can_scan in
+  let result_kind = K.value Can_scan in
   let invalid () = Reachable.invalid (), T.bottom result_kind in
   let ok () =
     match new_value_proof with
@@ -2010,8 +2005,8 @@ let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
       Reachable.reachable (original_term ()), T.unknown result_kind Other
     | Invalid -> invalid ()
   in
-  match field_kind with
-  | Immediate | Pointer ->
+  match block_access_kind with
+  | Can_scan | Must_scan ->
     let proof = (E.type_accessor env T.prove_blocks_and_immediates) block_ty in
     begin match proof with
     | Proved (Exactly (blocks, _imms)) ->
@@ -2020,17 +2015,20 @@ let simplify_block_set env r prim ~field ~field_kind ~init_or_assign
     | Proved Not_all_values_known -> ok ()
     | Invalid -> invalid ()
     end
-  | Float ->
+  | Naked_float ->
     let block_proof = (E.type_accessor env T.prove_float_array) block_ty in
     let new_value_proof =
       (E.type_accessor env T.prove_naked_float) new_value_ty
     in
-    match block_proof with
+    begin match block_proof with
     | Proved (Exactly sizes) ->
       if not (Int.Set.exists (fun size -> size > field) sizes) then invalid ()
       else ok ()
     | Proved Not_all_values_known -> ok ()
     | Invalid -> invalid ()
+    end
+  | Generic_array ->
+
 
 let simplify_string_load env r prim dbg width arg1 arg2 =
   ...
@@ -2114,8 +2112,86 @@ let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =
     simplify_bigstring_set env r prim dbg ~bigstring_accessor_width
       arg1 arg2 arg3
 
-let simplify_make_block env r prim dbg ~tag ~mutable_or_immutable ~arity args =
-  ...
+type 'a or_invalid = Ok of 'a | Invalid
+
+let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
+      args =
+  let args_with_tys = S.simplify_simple env args in
+  let original_term () : Named.t = Prim (Variadic (prim, args), dbg) in
+  let invalid () = Reachable.invalid (), T.bottom (K.value Must_scan) in
+  let term, ty =
+    match make_block_kind with
+    | Full_of_values (tag, scannings) ->
+
+    | Full_of_naked_floats ->
+
+    | Generic_array ->
+      (* First try to specialise the generic array to a float array.  If that
+         fails then try to specialise it to an array of [Value Can_scan] or
+         [Value Must_scan]. *)
+      let boxed_float_proofs =
+        List.map (fun arg ->
+            (E.type_accessor env T.prove_boxed_float) arg)
+          args
+      in
+      let (at_least_one_boxed_float : _ or_invalid), field_tys_rev =
+        (* [field_tys_rev] gives the types of the fields, in reverse order,
+           on the presumption (which may be proved false) that the
+           [Make_block] is going to produce a float array. *)
+        List.fold_left (fun (at_least_one_boxed_float, field_tys) proof ->
+            match proof with
+            | Proved (Ok field_ty) ->
+              begin match at_least_one_boxed_float with
+              | Invalid -> Invalid, []
+              | Ok at_least_one_boxed_float ->
+                let at_least_one_boxed_float =
+                  is_boxed_float || at_least_one_boxed_float
+                in
+                let field_ty = T.t_of_ty_naked_float field_ty in
+                Ok at_least_one_boxed_float, field_ty :: field_tys
+              end
+            | Proved Not_all_values_known ->
+              at_least_one_boxed_float, T.any_naked_float () :: field_tys
+            | Invalid -> Invalid)
+          (Some false, [])
+          boxed_float_proofs
+      in
+      match at_least_one_boxed_float with
+      | Invalid -> invalid ()
+      | Ok true ->
+        assert (List.compare_lengths boxed_float_proofs field_tys_rev = 0);
+        let term : Named.t =
+          Prim (Variadic (
+            Make_block (Full_of_naked_floats, mutable_or_immutable),
+            args))
+        in
+        let ty =
+          match mutable_or_immutable with
+          | Immutable ->
+            let field_tys = Array.of_list (List.rev field_tys_rev) in
+            T.immutable_float_array field_tys
+          | Mutable ->
+            T.mutable_float_array ~size:(List.length field_tys_rev)
+        in
+        term, ty
+      | Ok false ->
+        (* From above, [field_tys] is invalid in this branch. *)
+        let all_immediates : _ or_invalid =
+          List.fold_left (fun at_least_one_boxed_float arg ->
+              match (E.type_accessor env T.is_boxed_float) arg with
+              | Proved is_boxed_float ->
+                begin match at_least_one_boxed_float with
+                | Invalid -> Invalid
+                | Ok at_least_one_boxed_float ->
+                  Ok (is_boxed_float || at_least_one_boxed_float)
+                end
+              | Invalid -> Invalid)
+            (Some false)
+            args
+        in
+  in
+  term, ty, r
+
 
 let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
   ...
@@ -2125,8 +2201,9 @@ let simplify_bigarray_load env r prim dbg ~num_dims ~kind ~layout args =
 
 let simplify_variadic_primitive env r prim args dbg =
   match prim with
-  | Make_block (tag, mutable_or_immutable, arity) ->
-    simplify_make_block env r prim dbg ~tag ~mutable_or_immutable ~arity args
+  | Make_block (make_block_kind, mutable_or_immutable)
+    simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
+      args
   | Bigarray_set (num_dims, kind, layout) ->
     simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args
   | Bigarray_load (num_dims, kind, layout) ->

@@ -1809,16 +1809,17 @@ let reify ~importer ~type_of_name ~allow_free_variables (* ~expected_kind *) t
   result
 
 let get_field ~importer ~type_of_name t ~field_index ~field_is_mutable
-      ~(field_kind : Flambda_primitive.field_kind) : get_field_result =
+      ~(block_access_kind : Flambda_primitive.block_access_kind)
+      : get_field_result =
   let t_evaluated, _canonical_name =
     Evaluated.create ~importer ~type_of_name t
   in
   let expected_result_kind =
-    (* CR mshinwell: This should move to a new module called
-       [Flambda_primitive.Field_kind] *)
-    match field_kind with
-    | Not_a_float -> K.value Must_scan
-    | Float -> K.naked_float ()
+    match block_access_kind with
+    | Dynamic_must_scan_or_naked_float -> K.value Must_scan
+    | Must_scan -> K.value Must_scan
+    | Can_scan -> K.value Can_scan
+    | Naked_float -> K.naked_float ()
   in
   match t_evaluated with
   | Values values ->
