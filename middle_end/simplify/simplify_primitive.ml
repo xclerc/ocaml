@@ -2028,7 +2028,12 @@ let simplify_block_set env r prim ~field ~block_access_kind ~init_or_assign
     | Invalid -> invalid ()
     end
   | Generic_array ->
+    (* Try to specialise the access based on the type of the array. *)
+    let block_proof = (E.type_accessor env T.prove_float_array) block_ty in
+    match block_proof with
+    | Proved 
 
+    | Proved Not_all_values_known | Invalid ->
 
 let simplify_string_load env r prim dbg width arg1 arg2 =
   ...
@@ -2182,7 +2187,8 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
         [], Reachable.reachable term, ty
       | Invalid -> invalid ()
       end
-    | Full_of_naked_floats ->
+    | Full_of_naked_floats
+    | Generic_array Full_of_naked_floats ->
       let proof =
         (E.type_accessor env T.prove_of_kind_naked_float_list) arg_tys
       in
@@ -2198,7 +2204,22 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
         [], Reachable.reachable term, ty
       | Invalid -> invalid ()
       end
-    | Generic_array ->
+    | Generic_array Full_of_immediates ->
+      let proof =
+        (E.type_accessor env T.prove_tagged_immediate_list) arg_tys
+      in
+      begin match proof with
+      | Proved arg_tys ->
+        let ty =
+          ...
+        in
+        [], Reachable.reachable term, ty
+      | Invalid -> invalid ()
+      end
+    | Generic_array Full_of_arbitrary_values_but_not_floats ->
+
+
+    | Generic_array No_specialisation ->
       (* CR mshinwell: We should improve the efficiency of this code once we
          are sure the semantics are correct *)
       (* First try to specialise the generic array to a float array.  If that
@@ -2242,7 +2263,8 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
         let unboxed_args, _bindings = List.split unboxed_args_with_bindings in
         let term : Named.t =
           Prim (Variadic (
-            Make_block (Full_of_naked_floats, mutable_or_immutable),
+            Make_block (
+              Generic_array Full_of_naked_floats, mutable_or_immutable),
             unboxed_args))
         in
         assert (List.compare_lengths boxed_float_proofs unboxed_args = 0);

@@ -28,10 +28,16 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
+type generic_array_specialisation =
+  | No_specialisation
+  | Full_of_naked_floats
+  | Full_of_immediates
+  | Full_of_arbitrary_values_but_not_floats
+
 type make_block_kind =
   | Full_of_values of Tag.Scannable.t * (Flambda_kind.value_kind list)
   | Full_of_naked_floats
-  | Generic_array
+  | Generic_array of generic_array_specialisation
 
 (* CR-someday mshinwell: We should have unboxed arrays of int32, int64 and
    nativeint. *)
@@ -40,7 +46,7 @@ type block_access_kind =
   | Any_value
   | Definitely_immediate
   | Naked_float
-  | Generic_array
+  | Generic_array of generic_array_specialisation
 
 val kind_of_block_access_kind : block_access_kind -> Flambda_kind.t
 
