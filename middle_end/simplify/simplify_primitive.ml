@@ -2165,6 +2165,8 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
       | Invalid -> invalid ()
       end
     | Generic_array ->
+      (* CR mshinwell: We should improve the efficiency of this code once we
+         are sure the semantics are correct *)
       (* First try to specialise the generic array to a float array.  If that
          fails then try to specialise it to an array of element kind
          [Value Can_scan] or [Value Must_scan]. *)
@@ -2288,8 +2290,39 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
             turn_into_full_of_values ~proofs:must_scan_proofs
               ~scanning:must_scan
           else begin
-            [], Reachable.reachable (original_term ()),
-              T.unknown Must_scan Other
+            let invalid =
+              List.exists (fun (proof : _ or_invalid) ->
+                  match proof with
+                  | Proved _ -> false
+                  | Invalid -> true)
+                must_scan_proofs
+            in
+            if invalid then invalid ()
+            else
+              let type_if_normal_array =
+                let field_tys =
+                  List.map (fun arg ->
+                      T.alias (K.value Must_scan) arg)
+                    args
+                in
+                T.block tag (Array.of_list field_tys)
+              in
+              let type_if_float_array =
+                match mutable_or_immutable with
+                | Immutable ->
+                  let field_tys =
+                    List.map (fun _arg -> T.any_naked_float ()) args
+                  in
+                  T.immutable_float_array (Array.of_list field_tys)
+                | Mutable ->
+                  T.mutable_float_array ~size:(List.length args)
+              in
+              let ty =
+                (E.type_accessor env T.join)
+                  type_if_normal_array
+                  type_if_float_array
+              in
+              [], Reachable.reachable (original_term ()), ty
           end
         end
       end
