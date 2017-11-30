@@ -242,14 +242,11 @@ val get_field
   -> get_field_result) type_accessor
 
 type 'a proof = private
-  | Proved of 'a Or_not_all_values_known.t
-  | Invalid
-
-type 'a or_invalid = private
   | Proved of 'a
+  | Unknown
   | Invalid
 
-type boxed_float_proof = ty_naked_float or_invalid
+type boxed_float_proof = ty_naked_float proof
 
 (* CR mshinwell: update comment.
    Maybe change this Not_all_values_known in these proof types to something

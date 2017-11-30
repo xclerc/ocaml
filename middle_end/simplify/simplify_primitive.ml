@@ -2132,12 +2132,15 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
       end;
       let of_kind_value_proofs =
         List.map2 (fun arg_ty scanning ->
-            (E.type_accessor env (T.prove_of_kind_value scanning)) arg_ty)
+            let proof =
+              (E.type_accessor env (T.prove_of_kind_value scanning)) arg_ty
+            in
+            proof, arg_ty)
           arg_tys scannings
       in
       let field_tys_rev =
         List.fold_left2
-          (fun field_tys_rev (proof : T.of_kind_value_proof) scanning
+          (fun field_tys_rev ((proof : T.of_kind_value_proof), ty) scanning
                 : _ or_invalid ->
             match proof with
             | Proved ty_value ->
@@ -2146,7 +2149,6 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
               | Invalid -> Invalid
               end
             | Unknown ->
-              let ty_value = T.unknown (K.value scanning) Other in
               begin match field_tys_rev with
               | Ok field_tys_rev -> Ok (ty_value :: field_tys_rev)
               | Invalid -> Invalid
@@ -2168,25 +2170,15 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
          primitive are still boxed. *)
       (* CR mshinwell: Shouldn't we change this? *)
       let boxed_float_proofs =
-        List.map (fun arg ->
-            (E.type_accessor env T.prove_boxed_float) arg)
-          args
+        List.map (fun arg_ty ->
+            (E.type_accessor env T.prove_boxed_float) arg_ty)
+          arg_tys
       in
       let field_tys_rev =
-        (* CR mshinwell: Code here and above could be simplified by functions
-           in [T] which return only Proved or Invalid, with Unknown correctly
-           populated inside Proved instead of a distinguished Unknown case at
-           the top level *)
         List.fold_left
           (fun field_tys_rev (proof : T.boxed_float_proof) : _ or_invalid ->
             match proof with
-            | Proved ty_naked_float ->
-              begin match field_tys_rev with
-              | Ok field_tys_rev -> Ok (ty_naked_float :: field_tys_rev)
-              | Invalid -> Invalid
-              end
-            | Unknown ->
-              let ty_naked_float = T.any_naked_float_as_ty_naked_float () in
+            | Proved ty_naked_float | Unknown ty_naked_float ->
               begin match field_tys_rev with
               | Ok field_tys_rev -> Ok (ty_naked_float :: field_tys_rev)
               | Invalid -> Invalid
@@ -2224,7 +2216,6 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
                 let at_least_one_boxed_float =
                   is_boxed_float || at_least_one_boxed_float
                 in
-                let field_ty = T.t_of_ty_naked_float field_ty in
                 Ok at_least_one_boxed_float, field_ty :: field_tys
               end
             | Unknown ->
