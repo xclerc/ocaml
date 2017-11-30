@@ -2120,79 +2120,49 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
   let args_with_tys = S.simplify_simple env args in
   let args, arg_tys = List.split args_with_tys in
   let original_term () : Named.t = Prim (Variadic (prim, args), dbg) in
-  let invalid () = Reachable.invalid (), T.bottom (K.value Must_scan) in
-  let term, ty =
+  let invalid () = [], Reachable.invalid (), T.bottom (K.value Must_scan) in
+  let new_bindings, term, ty =
     match make_block_kind with
     | Full_of_values (tag, scannings) ->
-      if List.length scannings <> List.length args then begin
+      if List.compare_lengths scannings args <> 0 then begin
         Misc.fatal_errorf "GC scanning indications in [Make_block] don't \
             match up 1:1 with arguments: %a (%a)"
           Flambda_primitive.print prim
           Simple.List.print original_args
       end;
-      let of_kind_value_proofs =
-        List.map2 (fun arg_ty scanning ->
-            let proof =
-              (E.type_accessor env (T.prove_of_kind_value scanning)) arg_ty
-            in
-            proof, arg_ty)
-          arg_tys scannings
+      assert (List.compare_lengths scannings arg_tys = 0);
+      let proof =
+        (E.type_accessor env T.prove_of_kind_value_with_expected_scannings_list)
+          (List.combine arg_tys scannings)
       in
-      let field_tys_rev =
-        List.fold_left2
-          (fun field_tys_rev ((proof : T.of_kind_value_proof), ty) scanning
-                : _ or_invalid ->
-            match proof with
-            | Proved ty_value ->
-              begin match field_tys_rev with
-              | Ok field_tys_rev -> Ok (ty_value :: field_tys_rev)
-              | Invalid -> Invalid
-              end
-            | Unknown ->
-              begin match field_tys_rev with
-              | Ok field_tys_rev -> Ok (ty_value :: field_tys_rev)
-              | Invalid -> Invalid
-              end
-            | Invalid -> Invalid)
-          (Ok [])
-          of_kind_value_proofs scannings
-      in
-      begin match field_tys_rev with
+      begin match proof with
+      | Proved arg_tys ->
+        let ty =
+          match mutable_or_immutable with
+          | Immutable ->
+            T.block tag arg_tys
+          | Mutable ->
+            let arg_tys = (E.type_accessor env T.unknown_like) arg_tys
+            T.block tag arg_tys
+        in
+        [], Reachable.reachable term, ty
       | Invalid -> invalid ()
-      | Ok field_tys_rev ->
-        let field_tys = Array.of_list (List.rev field_tys_rev) in
-        let ty = T.block tag field_tys in
-        Reachable.reachable (original_term ()), ty
       end
     | Full_of_naked_floats ->
-      (* Even though the new block is going to have tag [Double_array_tag] and
-         be filled with naked floats, the arguments to the [Make_block]
-         primitive are still boxed. *)
-      (* CR mshinwell: Shouldn't we change this? *)
-      let boxed_float_proofs =
-        List.map (fun arg_ty ->
-            (E.type_accessor env T.prove_boxed_float) arg_ty)
-          arg_tys
+      let proof =
+        (E.type_accessor env T.prove_of_kind_naked_float_list) arg_tys
       in
-      let field_tys_rev =
-        List.fold_left
-          (fun field_tys_rev (proof : T.boxed_float_proof) : _ or_invalid ->
-            match proof with
-            | Proved ty_naked_float | Unknown ty_naked_float ->
-              begin match field_tys_rev with
-              | Ok field_tys_rev -> Ok (ty_naked_float :: field_tys_rev)
-              | Invalid -> Invalid
-              end
-            | Invalid -> Invalid)
-          (Ok [])
-          of_kind_value_proofs
-      in
-      begin match field_tys_rev with
+      begin match proof with
+      | Proved arg_tys ->
+        let ty =
+          match mutable_or_immutable with
+          | Immutable ->
+            T.immutable_float_array arg_tys
+          | Mutable ->
+            T.mutable_float_array ~size:(List.length arg_tys)
+        in
+        [], Reachable.reachable term, ty
       | Invalid -> invalid ()
-      | Ok field_tys_rev ->
-        let field_tys = Array.of_list (List.rev field_tys_rev) in
-        let ty = T.block tag field_tys in
-        Reachable.reachable (original_term ()), ty
       end
     | Generic_array ->
       (* First try to specialise the generic array to a float array.  If that
@@ -2203,64 +2173,128 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
             (E.type_accessor env T.prove_boxed_float) arg)
           args
       in
-      let (at_least_one_boxed_float : _ or_invalid), field_tys_rev =
-        (* [field_tys_rev] gives the types of the fields, in reverse order,
-           _on the presumption_ (which may be proved false) that the
-           [Make_block] is going to produce a float array. *)
-        List.fold_left (fun (at_least_one_boxed_float, field_tys) proof ->
+      let invalid =
+        List.exists (fun (proof : T.boxed_float_proof) ->
             match proof with
-            | Proved field_ty ->
-              begin match at_least_one_boxed_float with
-              | Invalid -> Invalid, []
-              | Ok at_least_one_boxed_float ->
-                let at_least_one_boxed_float =
-                  is_boxed_float || at_least_one_boxed_float
-                in
-                Ok at_least_one_boxed_float, field_ty :: field_tys
-              end
-            | Unknown ->
-              let ty_naked_float = T.any_naked_float_as_ty_naked_float () in
-              at_least_one_boxed_float, ty_naked_float :: field_tys
-            | Invalid -> Invalid)
-          (Some false, [])
+            | Invalid -> true
+            | Proved _ | Unknown -> false)
           boxed_float_proofs
       in
-      match at_least_one_boxed_float with
-      | Ok true ->
-        assert (List.compare_lengths boxed_float_proofs field_tys_rev = 0);
+      let at_least_one_boxed_float =
+        List.exists (fun (proof : T.boxed_float_proof) ->
+            match proof with
+            | Proved _ -> true
+            | Unknown | Invalid -> false)
+          boxed_float_proofs
+      in
+      let can_turn_into_float_array =
+        at_least_one_boxed_float && not invalid
+      in
+      if can_turn_into_float_array then begin
+        (* The arguments to the primitive must be unboxed, since we're going
+           to switch it to [Full_of_naked_floats]. *)
+        let unboxed_args_with_bindings =
+          List.map (fun arg ->
+              let unboxed_arg = Simple.fresh_variable arg in
+              let kind = Flambda_kind.naked_float () in
+              let defining_expr : Named.t =
+                Prim (Unary (Unbox_number Naked_float, arg), dbg)
+              in
+              unboxed_arg, defining_expr)
+            args
+        in
+        let unboxed_args, _bindings = List.split unboxed_args_with_bindings in
         let term : Named.t =
           Prim (Variadic (
             Make_block (Full_of_naked_floats, mutable_or_immutable),
-            args))
+            unboxed_args))
+        in
+        assert (List.compare_lengths boxed_float_proofs unboxed_args = 0);
+        let field_tys =
+          (* CR mshinwell: rewrite to avoid "assert false" *)
+          List.map2 (fun (proof : T.boxed_float_proof) unboxed_arg ->
+              match proof with
+              | Proved unboxed_arg_ty -> unboxed_arg_ty
+              | Unknown -> T.alias_as_ty_naked_float unboxed_arg
+              | Invalid -> assert false)
+            boxed_float_proofs
+            unboxed_args
         in
         let ty =
           match mutable_or_immutable with
           | Immutable ->
-            let field_tys = Array.of_list (List.rev field_tys_rev) in
-            T.immutable_float_array field_tys
+            T.immutable_float_array (Array.of_list field_tys)
           | Mutable ->
-            T.mutable_float_array ~size:(List.length field_tys_rev)
+            T.mutable_float_array ~size:(List.length field_tys)
         in
-        Reachable.reachable term, ty
-      | Ok false | Invalid ->
-        let all_immediates : _ or_invalid =
-          List.fold_left (fun at_least_one_boxed_float arg ->
-(* XXX Need to see if all of them are ok at [Can_scan].  If not, they must
-   all be ok at [Must_scan]. *)
-              match (E.type_accessor env T.is_boxed_float) arg with
-              | Proved is_boxed_float ->
-                begin match at_least_one_boxed_float with
-                | Invalid -> Invalid
-                | Ok at_least_one_boxed_float ->
-                  Ok (is_boxed_float || at_least_one_boxed_float)
-                end
-              | Invalid -> Invalid)
-            (Some false)
-            args
+        unboxed_args_with_bindings, Reachable.reachable term, ty
+      end else begin
+        let can_scan_proofs =
+          (E.type_accessor env T.prove_of_kind_value_can_scan_list)
+          arg_tys
         in
+        let all_can_scan =
+          List.exists (fun (proof : _ or_invalid) ->
+              match proof with
+              | Proved _ -> true
+              | Invalid -> false)
+            can_scan_proofs
+        in
+        let turn_into_full_of_values ~proofs ~scanning =
+          let tag = Tag.Scannable.zero in
+          let scanning =
+            List.init (List.length args)
+              (fun _index : K.scanning -> scanning)
+          in
+          let term : Named.t =
+            Prim (Variadic (
+              Make_block (Full_of_values (tag, scanning), mutable_or_immutable),
+              args))
+          in
+          let field_tys =
+            (* CR mshinwell: rewrite to avoid "assert false" *)
+            List.map2 (fun (proof : T.ty_value T.or_invalid) arg ->
+                match proof with
+                | Proved arg_ty -> arg_ty
+                | Invalid -> assert false)
+              proofs
+              args
+          in
+          let field_tys = Array.of_list field_tys in
+          let field_tys =
+            match mutable_or_immutable with
+            | Immutable -> field_tys
+            | Mutable -> T.unknown_like field_tys
+          in
+          [], Reachable.reachable term, T.block tag field_tys
+        in
+        if all_can_scan then begin
+          turn_into_full_of_values ~proofs:can_scan_proofs
+            ~scanning:Can_scan
+        end else begin
+          let must_scan_proofs =
+            (E.type_accessor env
+              T.prove_of_kind_value_must_scan_and_definitely_not_a_float_list)
+            arg_tys
+          in
+          let all_must_scan_and_definitely_no_floats =
+            List.exists (fun (proof : _ or_invalid) ->
+                match proof with
+                | Proved _ -> true
+                | Invalid -> false)
+              must_scan_proofs
+          in
+          if all_must_scan_and_definitely_no_floats then begin
+            turn_into_full_of_values ~proofs:must_scan_proofs
+              ~scanning:must_scan
+          else begin
+            [], Reachable.reachable (original_term ()),
+              T.unknown Must_scan Other
+          end
+        end
+      end
   in
-  term, ty, r
-
+  new_bindings, term, ty, r
 
 let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
   ...

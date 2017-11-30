@@ -285,15 +285,15 @@ module type S = sig
 
   (** Building of types from other types.  These functions will fail with
       a fatal error if the supplied type is not of the correct kind. *)
+  (* XXX maybe we should change all of these to the "ty_..." variants, so
+     we can avoid the exception case *)
   val tag_immediate : t -> t
   val box_float : t -> t
   val box_int32 : t -> t
   val box_int64 : t -> t
   val box_nativeint : t -> t
-  (* XXX Shouldn't this just take [ty_value array]?  Then there won't be an
-     exception *)
-  val block : Tag.Scannable.t -> t array -> t
-  val immutable_float_array : t array -> t
+  val block : Tag.Scannable.t -> ty_value array -> t
+  val immutable_float_array : ty_naked_float array -> t
 
   (** The bottom type for the given kind ("no value can flow to this point"). *)
   val bottom : Flambda_kind.t -> t

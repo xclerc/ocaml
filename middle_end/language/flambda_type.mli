@@ -246,6 +246,10 @@ type 'a proof = private
   | Unknown
   | Invalid
 
+type 'a or_invalid = private
+  | Proved of 'a
+  | Invalid
+
 type boxed_float_proof = ty_naked_float proof
 
 (* CR mshinwell: update comment.
@@ -305,6 +309,24 @@ val prove_naked_immediate
 val prove_naked_float
    : (t
   -> Numbers.Float.By_bit_pattern.Set.t Or_not_all_values_known.t) type_accessor
+
+val prove_of_kind_value_with_expected_scanning_list
+   : (t list
+  -> Flambda_kind.scanning
+  -> ty_value or_invalid) type_accessor
+
+(** Prove that the given types are all of kind [Value] and that, for each type,
+    its kind is compatible with the given [scanning] semantics. *)
+val prove_of_kind_value_with_expected_scannings_list
+   : ((t * Flambda_kind.scanning) list
+  -> ty_value or_invalid) type_accessor
+
+(** Prove that the given types are all of kind [Naked_float]. *)
+val prove_of_kind_naked_float_list
+   : (t list
+  -> ty_naked_float list or_invalid) type_accessor
+
+
 
 type tagged_immediate_proof = Immediate.Set.t proof
 
