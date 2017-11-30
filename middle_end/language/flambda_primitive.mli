@@ -29,13 +29,16 @@
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
 type make_block_kind =
-  | Full_of_values of Tag.Scannable.t * (Flambda_kind.scanning list)
+  | Full_of_values of Tag.Scannable.t * (Flambda_kind.value_kind list)
   | Full_of_naked_floats
   | Generic_array
 
+(* CR-someday mshinwell: We should have unboxed arrays of int32, int64 and
+   nativeint. *)
+
 type block_access_kind =
-  | Must_scan
-  | Can_scan
+  | Any_value
+  | Definitely_immediate
   | Naked_float
   | Generic_array
 
@@ -53,13 +56,13 @@ val kind_of_block_access_kind : block_access_kind -> Flambda_kind.t
    - For Pduprecord:
 
      - Record_regular --> Must_scan (unless none of the contents need
-         scanning in which case, Can_scan)
+         value_kind in which case, Can_scan)
      - Record_float --> Naked_float
      - Record_unboxed --> suspect this is never generated?
      - Record_inlined --> Must_scan.  Pduprecord doesn't seem to ever change
          the tag, so the new tag doesn't need specifying.
      - Record_extension --> Must_scan, even if the record elements don't need
-         scanning (the first field is a block with tag [Object_tag]).
+         value_kind (the first field is a block with tag [Object_tag]).
 
   * We should check Pgenarray doesn't occur when the float array optimization
     is disabled.

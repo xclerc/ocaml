@@ -405,7 +405,7 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
       ~source_mutability ~destination_mutability =
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let like_a_block tag (scanning : K.scanning) =
+  let like_a_block tag (value_kind : K.value_kind) =
     let proof =
       (E.type_accessor env T.prove_block_with_unique_tag_and_size) ty
     in
@@ -446,10 +446,10 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
          we don't lose that information. *)
       begin match destination_mutability with
       | Immutable -> term, ty
-      | Mutable -> term, T.unknown (K.value scanning) Other
+      | Mutable -> term, T.unknown (K.value value_kind) Other
       end
     | Invalid ->
-      Reachable.invalid (), T.bottom (K.value scanning)
+      Reachable.invalid (), T.bottom (K.value value_kind)
   in
   let term, ty =
     match kind with
@@ -462,7 +462,7 @@ let simplify_duplicate_scannable_block env r prim arg dbg ~kind
       | Mutable -> term, T.unknown (K.value Must_scan) Other
       end
     | Must_scan -> like_a_block Must_scan
-    | Can_scan -> like_a_block Can_scan
+    | Definitely_immediate -> like_a_block Definitely_immediate
     | Naked_float ->
       let proof = (E.type_accessor env T.prove_float_array) ty in
       match proof with
@@ -517,7 +517,7 @@ let simplify_is_int env r prim arg dbg =
       Reachable.reachable (original_term ()),
         T.these_tagged_immediates Immediate.all_bools
     | Invalid -> 
-      Reachable.invalid (), T.bottom (K.value Can_scan)
+      Reachable.invalid (), T.bottom (K.value Definitely_immediate)
   in
   term, ty, r
 
@@ -532,7 +532,7 @@ let simplify_get_tag env r prim arg dbg =
       original_term (), T.these_tagged_immediates Tag.all_as_targetints
     | Exactly tags ->
       if Targetint.Set.is_empty tags then
-        Reachable.invalid (), T.bottom (K.value Can_scan)
+        Reachable.invalid (), T.bottom (K.value Definitely_immediate)
       else
         begin match Targetint.Set.get_singleton tags with
         | Some tag ->
@@ -1149,7 +1149,7 @@ let simplify_string_length env r prim arg dbg =
   let arg, ty = S.simplify_simple env arg in
   let proof = (E.type_accessor env T.prove_string) arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let result_kind = K.value Can_scan in
+  let result_kind = K.value Definitely_immediate in
   let result_invalid () = Reachable.invalid (), T.bottom result_kind in
   let term, ty =
     match proof with
@@ -1180,7 +1180,7 @@ let simplify_array_length env r prim arg ~array_kind dbg =
   let arg, ty = S.simplify_simple env arg in
   let proof = (E.type_accessor env T.lengths_of_arrays_or_blocks) arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let result_kind = K.value Can_scan in
+  let result_kind = K.value Definitely_immediate in
   let result_invalid () = Reachable.invalid (), T.bottom result_kind in
   let term, ty =
     match proof with
@@ -1208,7 +1208,7 @@ let simplify_array_length env r prim arg ~array_kind dbg =
 
 let simplify_bigarray_length env r prim arg ~dimension dbg =
   let arg, ty = S.simplify_simple env arg in
-  let result_kind = K.value Can_scan in
+  let result_kind = K.value Definitely_immediate in
   if (E.type_accessor env T.is_bottom) ty then
     Reachable.invalid (), T.bottom result_kind
   else
@@ -1997,7 +1997,7 @@ let simplify_block_set env r prim ~field ~block_access_kind ~init_or_assign
   let block, block_ty = S.simplify_simple env block in
   let new_value, new_value_ty = S.simplify_simple env new_value in
   let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
-  let result_kind = K.value Can_scan in
+  let result_kind = K.value Definitely_immediate in
   let invalid () = Reachable.invalid (), T.bottom result_kind in
   let ok () =
     match new_value_proof with
@@ -2006,7 +2006,7 @@ let simplify_block_set env r prim ~field ~block_access_kind ~init_or_assign
     | Invalid -> invalid ()
   in
   match block_access_kind with
-  | Can_scan | Must_scan ->
+  | Definitely_immediate | Must_scan ->
     let proof = (E.type_accessor env T.prove_blocks_and_immediates) block_ty in
     begin match proof with
     | Proved (Exactly (blocks, _imms)) ->
@@ -2087,14 +2087,11 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
   | Bigstring_load width ->
     simplify_bigstring_load env r prim dbg width arg1 arg2
 
-let simplify_block_set_computed env r prim dbg ~scanning ~init_or_assign
+let simplify_block_set_computed env r prim dbg ~value_kind ~init_or_assign
       arg1 arg2 arg3 =
   ...
 
 let simplify_bytes_set env r prim dbg ~string_accessor_width arg1 arg2 arg3 =
-  ...
-
-let simplify_array_set env r prim dbg ~array_kind arg1 arg2 arg3 =
   ...
 
 let simplify_bigstring_set env r prim dbg ~bigstring_accessor_width
@@ -2103,8 +2100,8 @@ let simplify_bigstring_set env r prim dbg ~bigstring_accessor_width
 
 let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =
   match prim with
-  | Block_set_computed (scanning, init_or_assign) ->
-    simplify_block_set_computed env r prim dbg ~scanning ~init_or_assign
+  | Block_set_computed (value_kind, init_or_assign) ->
+    simplify_block_set_computed env r prim dbg ~value_kind ~init_or_assign
       arg1 arg2 arg3
   | Bytes_set string_accessor_width ->
     simplify_bytes_set env r prim dbg ~string_accessor_width arg1 arg2 arg3
@@ -2123,20 +2120,57 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
   let invalid () = [], Reachable.invalid (), T.bottom (K.value Must_scan) in
   let new_bindings, term, ty =
     match make_block_kind with
-    | Full_of_values (tag, scannings) ->
-      if List.compare_lengths scannings args <> 0 then begin
-        Misc.fatal_errorf "GC scanning indications in [Make_block] don't \
+    | Full_of_values (tag, value_kinds) ->
+      if List.compare_lengths value_kinds args <> 0 then begin
+        Misc.fatal_errorf "GC value_kind indications in [Make_block] don't \
             match up 1:1 with arguments: %a (%a)"
           Flambda_primitive.print prim
           Simple.List.print original_args
       end;
-      assert (List.compare_lengths scannings arg_tys = 0);
-      let proof =
-        (E.type_accessor env T.prove_of_kind_value_with_expected_scannings_list)
-          (List.combine arg_tys scannings)
+      let proofs =
+        (E.type_accessor env T.prove_of_kind_value) arg_tys
       in
-      begin match proof with
-      | Proved arg_tys ->
+      assert (List.compare_lengths value_kinds arg_tys = 0);
+      assert (List.compare_lengths proof arg_tys = 0);
+      let arg_ty_and_value_kinds_rev =
+        List.fold_left2 (fun (arg_ty_and_value_kinds_rev : _ or_invalid)
+              (arg, (declared_value_kind : K.value_kind))
+              (proof : T.of_kind_value T.or_invalid) : _ or_invalid ->
+            match proof with
+            | Invalid -> Invalid
+            | Proved arg_ty ->
+              begin match arg_tys_rev with
+              | Invalid -> Invalid
+              | Ok arg_tys_rev ->
+                let actual_value_kind =
+                  (E.type_accessor env T.value_kind_ty_value) arg_ty
+                in
+                let compatible =
+                  K.compatible_value_kind actual_value_kind
+                    ~if_used_at:declared_value_kind
+                in
+                let value_kind =
+                  K.meet_value_kind actual_value_kind declared_value_kind
+                in
+                if not compatible then Invalid
+                else Ok ((arg_ty, value_kind) :: arg_tys))
+          (Ok [])
+          proofs (List.combine args value_kinds)
+      in
+      begin match arg_ty_and_value_kinds_rev with
+      | Invalid -> invalid ()
+      | Ok arg_ty_and_value_kinds_rev ->
+        let arg_tys_rev, value_kinds_rev =
+          List.split arg_ty_and_value_kinds_rev
+        in
+        let arg_tys = Array.of_list (List.rev arg_tys_rev) in
+        let value_kinds = List.rev value_kinds_rev in
+        let term =
+          Prim (Variadic (
+            Make_block (Full_of_values (tag, value_kinds),
+              mutable_or_immutable),
+            args))
+        in
         let ty =
           match mutable_or_immutable with
           | Immutable ->
@@ -2169,7 +2203,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
          are sure the semantics are correct *)
       (* First try to specialise the generic array to a float array.  If that
          fails then try to specialise it to an array of element kind
-         [Value Can_scan] or [Value Must_scan]. *)
+         [Value Definitely_immediate] or [Value Unknown]. *)
       let boxed_float_proofs =
         List.map (fun arg ->
             (E.type_accessor env T.prove_boxed_float) arg)
@@ -2231,26 +2265,26 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
         in
         unboxed_args_with_bindings, Reachable.reachable term, ty
       end else begin
-        let can_scan_proofs =
-          (E.type_accessor env T.prove_of_kind_value_can_scan_list)
+        let definitely_immediate_proofs =
+          (E.type_accessor env T.prove_of_kind_value_definitely_immediate_list)
           arg_tys
         in
-        let all_can_scan =
+        let all_definitely_immediate =
           List.exists (fun (proof : _ or_invalid) ->
               match proof with
               | Proved _ -> true
               | Invalid -> false)
-            can_scan_proofs
+            definitely_immediate_proofs
         in
-        let turn_into_full_of_values ~proofs ~scanning =
+        let turn_into_full_of_values ~proofs ~value_kind =
           let tag = Tag.Scannable.zero in
-          let scanning =
+          let value_kind =
             List.init (List.length args)
-              (fun _index : K.scanning -> scanning)
+              (fun _index : K.value_kind -> value_kind)
           in
           let term : Named.t =
             Prim (Variadic (
-              Make_block (Full_of_values (tag, scanning), mutable_or_immutable),
+              Make_block (Full_of_values (tag, value_kind), mutable_or_immutable),
               args))
           in
           let field_tys =
@@ -2270,39 +2304,39 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
           in
           [], Reachable.reachable term, T.block tag field_tys
         in
-        if all_can_scan then begin
-          turn_into_full_of_values ~proofs:can_scan_proofs
-            ~scanning:Can_scan
+        if all_definitely_immediate then begin
+          turn_into_full_of_values ~proofs:definitely_immediate_proofs
+            ~value_kind:Definitely_immediate
         end else begin
-          let must_scan_proofs =
+          let not_a_float_proofs =
             (E.type_accessor env
-              T.prove_of_kind_value_must_scan_and_definitely_not_a_float_list)
+              T.prove_of_kind_value_and_definitely_not_a_float_list)
             arg_tys
           in
-          let all_must_scan_and_definitely_no_floats =
+          let all_not_a_float_and_definitely_no_floats =
             List.exists (fun (proof : _ or_invalid) ->
                 match proof with
                 | Proved _ -> true
                 | Invalid -> false)
-              must_scan_proofs
+              not_a_float_proofs
           in
-          if all_must_scan_and_definitely_no_floats then begin
-            turn_into_full_of_values ~proofs:must_scan_proofs
-              ~scanning:must_scan
+          if all_not_a_float_and_definitely_no_floats then begin
+            turn_into_full_of_values ~proofs:not_a_float_proofs
+              ~value_kind:not_a_float
           else begin
             let invalid =
               List.exists (fun (proof : _ or_invalid) ->
                   match proof with
                   | Proved _ -> false
                   | Invalid -> true)
-                must_scan_proofs
+                not_a_float_proofs
             in
             if invalid then invalid ()
             else
               let type_if_normal_array =
                 let field_tys =
                   List.map (fun arg ->
-                      T.alias (K.value Must_scan) arg)
+                      T.alias (K.value not_a_float) arg)
                     args
                 in
                 T.block tag (Array.of_list field_tys)

@@ -16,6 +16,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
+(*
 type scanning =
   | Must_scan
   | Can_scan
@@ -33,6 +34,19 @@ let meet_scanning s1 s2 =
   | Must_scan, Can_scan
   | Can_scan, Must_scan
   | Can_scan, Can_scan -> Can_scan
+
+let compatible_scanning s ~if_used_at =
+  match s, if_used_at with
+  | Must_scan, Must_scan
+  | Can_scan, Can_scan -> true
+  | Can_scan, Must_scan -> true
+  | Must_scan, Can_scan -> false
+*)
+
+type scanning =
+  | Unknown
+  | Definitely_pointer
+  | Definitely_immediate
 
 type t =
   | Value of scanning

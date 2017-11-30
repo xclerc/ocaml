@@ -21,15 +21,18 @@
     and/or differences in GC (non-) registration of roots.
 *)
 
-type scanning =
-  | Must_scan
-  | Can_scan
+type value_kind =
+  | Unknown
+  | Definitely_pointer
+  | Definitely_immediate
 
-val join_scanning : scanning -> scanning -> scanning
-val meet_scanning : scanning -> scanning -> scanning
+val join_value_kind : value_kind -> value_kind -> value_kind
+val meet_value_kind : value_kind -> value_kind -> value_kind
+val compatible_value_kind : value_kind -> if_used_at:value_kind -> bool
+val print_value_kind : Format.formatter -> value_kind -> unit
 
 type t = private
-  | Value of scanning
+  | Value of value_kind
   | Naked_immediate
   | Naked_float
   | Naked_int32
@@ -38,7 +41,7 @@ type t = private
 
 type kind = t
 
-val value : scanning -> t
+val value : value_kind -> t
 val naked_immediate : unit -> t
 val naked_float : unit -> t
 val naked_int32 : unit -> t
