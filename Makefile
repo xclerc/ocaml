@@ -326,6 +326,11 @@ MIDDLE_END_SIMPLIFY=\
   middle_end/simplify/simplify_env_and_result.cmo \
   middle_end/simplify/simplify_aux.cmo \
   middle_end/simplify/simplify_simple.cmo \
+  middle_end/simplify/simplify_generic_array.cmo \
+  middle_end/simplify/simplify_unary_primitive.cmo \
+  middle_end/simplify/simplify_binary_primitive.cmo \
+  middle_end/simplify/simplify_ternary_primitive.cmo \
+  middle_end/simplify/simplify_variadic_primitive.cmo \
   middle_end/simplify/simplify_primitive.cmo \
   middle_end/simplify/simplify_named.cmo \
   middle_end/simplify/simplify_expr.cmo \
