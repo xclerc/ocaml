@@ -28,11 +28,18 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
-type generic_array_specialisation =
-  | No_specialisation
-  | Full_of_naked_floats
-  | Full_of_immediates
-  | Full_of_arbitrary_values_but_not_floats
+module Generic_array_specialisation : sig
+  type t = private
+    | No_specialisation
+    | Full_of_naked_floats
+    | Full_of_immediates
+    | Full_of_arbitrary_values_but_not_floats
+
+  val no_specialisation : unit -> t
+  val full_of_naked_floats : unit -> t
+  val full_of_immediates : unit -> t
+  val full_of_arbitrary_values_but_not_floats : unit -> t
+end
 
 type make_block_kind =
   | Full_of_values of Tag.Scannable.t * (Flambda_kind.value_kind list)

@@ -20,6 +20,37 @@
 
 module K = Flambda_kind
 
+module Generic_array_specialisation = struct
+  type t =
+    | No_specialisation
+    | Full_of_naked_floats
+    | Full_of_immediates
+    | Full_of_arbitrary_values_but_not_floats
+
+  let check () =
+    if not !Config.flat_float_array then begin
+      Misc.fatal_errorf "Generic arrays cannot be used unless the \
+        float array optimisation has been enabled at compiler configuration \
+        time"
+    end
+
+  let no_specialisation () =
+    check ();
+    No_specialisation
+
+  let full_of_naked_floats () =
+    check ();
+    Full_of_naked_floats
+
+  let full_of_immediates () =
+    check ();
+    Full_of_immediates
+
+  let full_of_arbitrary_values_but_not_floats () =
+    check ();
+    Full_of_arbitrary_values_but_not_floats
+end
+
 type mutable_or_immutable = Immutable | Mutable
 
 type effects =
@@ -199,7 +230,7 @@ let print_bigstring_accessor_width ppf w =
 
 type num_dimensions = int
 
-let print_num_dimesions ppf d =
+let print_num_dimensions ppf d =
   Format.fprintf ppf "%d" d
 
 type unary_int_arith_op = Neg

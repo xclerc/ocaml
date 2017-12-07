@@ -766,8 +766,10 @@ let simplify_block_set env r prim ~field ~block_access_kind ~init_or_assign
     | Proved Not_all_values_known -> ok ()
     | Invalid -> invalid ()
     end
-  | Generic_array spec ->
+  | Generic_array _spec -> Misc.fatal_error "Not yet implemented"
+    (* CR mshinwell: Finish off
     Simplify_generic_array.simplify_block_set env r prim ~field spec args
+    *)
 
 let simplify_string_load env r prim dbg width arg1 arg2 =
   ...
