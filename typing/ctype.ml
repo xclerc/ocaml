@@ -699,7 +699,7 @@ let rec normalize_package_path env p =
           normalize_package_path env (Path.Pdot (p1', s, n))
       | _ -> p
 
-let rec update_level env level ty =
+let rec update_level env level expand ty =
   let ty = repr ty in
   if ty.level > level then begin
     begin match Env.gadt_instance_level env ty with
@@ -712,22 +712,30 @@ let rec update_level env level ty =
         begin try
           (* if is_newtype env p then raise Cannot_expand; *)
           link_type ty (!forward_try_expand_once env ty);
-          update_level env level ty
+          update_level env level expand ty
         with Cannot_expand ->
           (* +++ Levels should be restored... *)
           (* Format.printf "update_level: %i < %i@." level (get_level env p); *)
           if level < get_level env p then raise (Unify [(ty, newvar2 level)]);
-          iter_type_expr (update_level env level) ty
+          iter_type_expr (update_level env level expand) ty
         end
+    | Tconstr(_, _ :: _, _) when expand ->
+        begin try
+          link_type ty (!forward_try_expand_once env ty);
+          update_level env level expand ty
+        with Cannot_expand ->
+          set_level ty level;
+          iter_type_expr (update_level env level expand) ty
+        end          
     | Tpackage (p, nl, tl) when level < Path.binding_time p ->
         let p' = normalize_package_path env p in
         if Path.same p p' then raise (Unify [(ty, newvar2 level)]);
         log_type ty; ty.desc <- Tpackage (p', nl, tl);
-        update_level env level ty
+        update_level env level expand ty
     | Tobject(_, ({contents=Some(p, _tl)} as nm))
       when level < get_level env p ->
         set_name nm None;
-        update_level env level ty
+        update_level env level expand ty
     | Tvariant row ->
         let row = row_repr row in
         begin match row.row_name with
@@ -737,14 +745,27 @@ let rec update_level env level ty =
         | _ -> ()
         end;
         set_level ty level;
-        iter_type_expr (update_level env level) ty
+        iter_type_expr (update_level env level expand) ty
     | Tfield(lab, _, ty1, _)
       when lab = dummy_method && (repr ty1).level > level ->
         raise (Unify [(ty1, newvar2 level)])
     | _ ->
         set_level ty level;
         (* XXX what about abbreviations in Tconstr ? *)
-        iter_type_expr (update_level env level) ty
+        iter_type_expr (update_level env level expand) ty
+  end
+
+(* First try without expanding, then expand everything,
+   to avoid combinatorial blow-up *)
+let update_level env level ty =
+  let ty = repr ty in
+  if ty.level > level then begin
+    let snap = snapshot () in
+    try
+      update_level env level false ty
+    with Unify _ ->
+      backtrack snap;
+      update_level env level true ty
   end
 
 (* Generalize and lower levels of contravariant branches simultaneously *)
@@ -974,7 +995,7 @@ let rec copy ?env ?partial ?keep_names ty =
               Tlink ty2
           | _ ->
               (* If the row variable is not generic, we must keep it *)
-              let keep = more.level <> generic_level in
+              let keep = more.level <> generic_level && partial = None in
               let more' =
                 match more.desc with
                   Tsubst ty -> ty
@@ -1326,6 +1347,7 @@ let apply env params body args =
   with
     Unify _ -> raise Cannot_apply
 
+let () = Subst.ctype_apply_env_empty := apply Env.empty
 
                               (****************************)
                               (*  Abbreviation expansion  *)
@@ -1397,12 +1419,6 @@ let expand_abbrev_gen kind find_type_expansion env ty =
             (* prerr_endline
               ("add a "^string_of_kind kind^" expansion for "^Path.name path);*)
             let ty' = subst env level kind abbrev (Some ty) params args body in
-            (* Hack to name the variant type *)
-            begin match repr ty' with
-              {desc=Tvariant row} as ty when static_row row ->
-                ty.desc <- Tvariant { row with row_name = Some (path, args) }
-            | _ -> ()
-            end;
             (* For gadts, remember type as non exportable *)
             (* The ambiguous level registered for ty' should be the highest *)
             if !trace_gadt_instances then begin
@@ -2009,7 +2025,9 @@ let rec mcomp type_pairs env t1 t2 =
       with Not_found ->
         TypePairs.add type_pairs (t1', t2') ();
         match (t1'.desc, t2'.desc) with
-          (Tvar _, Tvar _) -> assert false
+        | (Tvar _, _)
+        | (_, Tvar _)  ->
+            ()
         | (Tarrow (l1, t1, u1, _), Tarrow (l2, t2, u2, _))
           when l1 = l2 || not (is_optional l1 || is_optional l2) ->
             mcomp type_pairs env t1 t2;
@@ -2669,7 +2687,7 @@ and unify_row env row1 row2 =
     end;
     (* The following test is not principal... should rather use Tnil *)
     let rm = row_more row in
-    if !trace_gadt_instances && rm.desc = Tnil then () else
+    (*if !trace_gadt_instances && rm.desc = Tnil then () else*)
     if !trace_gadt_instances then
       update_level !env rm.level (newgenty (Tvariant row));
     if row_fixed row then
@@ -2691,6 +2709,10 @@ and unify_row env row1 row2 =
           raise (Unify ((mkvariant [l,f1] true,
                          mkvariant [l,f2] true) :: trace)))
       pairs;
+    if static_row row1 then begin
+      let rm = row_more row1 in
+      if is_Tvar rm then link_type rm (newty2 rm.level Tnil)
+    end
   with exn ->
     log_type rm1; rm1.desc <- md1; log_type rm2; rm2.desc <- md2; raise exn
   end

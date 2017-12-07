@@ -67,6 +67,8 @@ type operation =
   | Ispecific of Arch.specific_operation
   | Imultiload of int
   | Imultistore
+  | Iname_for_debugger of { ident : Ident.t; which_parameter : int option;
+      provenance : unit option; is_assignment : bool; }
 
 type instruction =
   { desc: instruction_desc;
@@ -75,6 +77,8 @@ type instruction =
     res: Reg.t array;
     dbg: Debuginfo.t;
     mutable live: Reg.Set.t;
+    mutable available_before: Reg_availability_set.t;
+    mutable available_across: Reg_availability_set.t option;
   }
 
 and instruction_desc =
@@ -112,7 +116,10 @@ let rec dummy_instr =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty }
+    live = Reg.Set.empty;
+    available_before = Reg_availability_set.Ok Reg_with_debug_info.Set.empty;
+    available_across = None;
+  }
 
 let end_instr () =
   { desc = Iend;
@@ -120,14 +127,23 @@ let end_instr () =
     arg = [||];
     res = [||];
     dbg = Debuginfo.none;
-    live = Reg.Set.empty }
+    live = Reg.Set.empty;
+    available_before = Reg_availability_set.Ok Reg_with_debug_info.Set.empty;
+    available_across = None;
+  }
 
 let instr_cons d a r n =
   { desc = d; next = n; arg = a; res = r;
-    dbg = Debuginfo.none; live = Reg.Set.empty }
+    dbg = Debuginfo.none; live = Reg.Set.empty;
+    available_before = Reg_availability_set.Ok Reg_with_debug_info.Set.empty;
+    available_across = None;
+  }
 
 let instr_cons_debug d a r dbg n =
-  { desc = d; next = n; arg = a; res = r; dbg = dbg; live = Reg.Set.empty }
+  { desc = d; next = n; arg = a; res = r; dbg = dbg; live = Reg.Set.empty;
+    available_before = Reg_availability_set.Ok Reg_with_debug_info.Set.empty;
+    available_across = None;
+  }
 
 let rec instr_iter f i =
   match i.desc with
@@ -185,7 +201,15 @@ let spacetime_node_hole_pointer_is_live_before insn =
     | Iconst_symbol _ | Istackoffset _ | Iload _ | Istore _
     | Imultiload _ | Imultistore
     | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
-    | Ifloatofint | Iintoffloat | Ipushtrap _ | Ipoptrap _ -> false
+    | Ifloatofint | Iintoffloat | Ipushtrap _ | Ipoptrap _
+    | Iname_for_debugger _ -> false
     end
   | Iend | Ireturn | Iifthenelse _ | Iswitch _ | Iloop _ | Icatch _
-  | Iexit _ | Iraise _ | Iunreachable _ -> false
+  | Iexit _ | Itrywith _ | Iraise _ -> false
+
+let operation_can_raise op =
+  match op with
+  | Icall_ind _ | Icall_imm _ | Iextcall _
+  | Iintop (Icheckbound _) | Iintop_imm (Icheckbound _, _)
+  | Ialloc _ -> true
+  | _ -> false

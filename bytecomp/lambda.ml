@@ -521,12 +521,6 @@ let free_methods l =
 let next_raise_count () =
   Continuation.next_raise_count ()
 
-let negative_raise_count = ref 0
-
-let next_negative_raise_count () =
-  decr negative_raise_count ;
-  !negative_raise_count
-
 (* Anticipated staticraise, for guards *)
 let staticfail = Lstaticraise (0,[])
 
@@ -783,7 +777,7 @@ type rhs_kind =
   | RHS_block of int
   | RHS_floatblock of int
   | RHS_nonrec
-  | RHS_function of int * int * lfunction
+  | RHS_function of int * int
 ;;
 
 let rec check_recordwith_updates id e =
@@ -794,45 +788,46 @@ let rec check_recordwith_updates id e =
   | _ -> false
 ;;
 
-let rec size_of_lambda_ env lam =
-  let module T = Types in
-  match lam with
+let rec size_of_lambda env = function
   | Lvar id ->
       begin try Ident.find_same id env with Not_found -> RHS_nonrec end
-  | Lfunction ({params} as funct) ->
-      RHS_function (1 + IdentSet.cardinal(free_variables lam),
-                    List.length params, funct)
+  | Lfunction{params} as funct ->
+      RHS_function (1 + IdentSet.cardinal(free_variables funct),
+                    List.length params)
   | Llet (Strict, _k, id, Lprim (Pduprecord (kind, size), _, _), body)
     when check_recordwith_updates id body ->
       begin match kind with
-      | T.Record_regular | T.Record_inlined _ -> RHS_block size
-      | T.Record_unboxed _ -> assert false
-      | T.Record_float -> RHS_floatblock size
-      | T.Record_extension -> RHS_block (size + 1)
+      | Record_regular | Record_inlined _ -> RHS_block size
+      | Record_unboxed _ -> assert false
+      | Record_float -> RHS_floatblock size
+      | Record_extension -> RHS_block (size + 1)
       end
   | Llet(_str, _k, id, arg, body) ->
-      size_of_lambda_ (Ident.add id (size_of_lambda_ env arg) env) body
+      size_of_lambda (Ident.add id (size_of_lambda env arg) env) body
   | Lletrec(bindings, body) ->
       let env = List.fold_right
-        (fun (id, e) env -> Ident.add id (size_of_lambda_ env e) env)
+        (fun (id, e) env -> Ident.add id (size_of_lambda env e) env)
         bindings env
       in
-      size_of_lambda_ env body
+      size_of_lambda env body
   | Lprim(Pmakeblock _, args, _) -> RHS_block (List.length args)
   | Lprim (Pmakearray ((Paddrarray|Pintarray), _), args, _) ->
       RHS_block (List.length args)
   | Lprim (Pmakearray (Pfloatarray, _), args, _) ->
       RHS_floatblock (List.length args)
-  | Lprim (Pmakearray (Pgenarray, _), _, _) -> assert false
-  | Lprim (Pduprecord ((T.Record_regular | T.Record_inlined _), size), _, _) ->
+  | Lprim (Pmakearray (Pgenarray, _), _, _) ->
+     (* Pgenarray is excluded from recursive bindings by the
+        check in Translcore.check_recursive_lambda *)
+      RHS_nonrec
+  | Lprim (Pduprecord ((Record_regular | Record_inlined _), size), _, _) ->
       RHS_block size
-  | Lprim (Pduprecord (T.Record_unboxed _, _), _, _) ->
+  | Lprim (Pduprecord (Record_unboxed _, _), _, _) ->
       assert false
-  | Lprim (Pduprecord (T.Record_extension, size), _, _) ->
+  | Lprim (Pduprecord (Record_extension, size), _, _) ->
       RHS_block (size + 1)
-  | Lprim (Pduprecord (T.Record_float, size), _, _) -> RHS_floatblock size
-  | Levent (lam, _) -> size_of_lambda_ env lam
-  | Lsequence (_lam, lam') -> size_of_lambda_ env lam'
+  | Lprim (Pduprecord (Record_float, size), _, _) -> RHS_floatblock size
+  | Levent (lam, _) -> size_of_lambda env lam
+  | Lsequence (_lam, lam') -> size_of_lambda env lam'
   | _ -> RHS_nonrec
 
 let merge_inline_attributes attr1 attr2 =

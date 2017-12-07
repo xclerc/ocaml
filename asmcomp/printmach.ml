@@ -173,6 +173,13 @@ let operation op arg ppf res =
   | Iintoffloat -> fprintf ppf "intoffloat %a" reg arg.(0)
   | Ipushtrap cont -> fprintf ppf "pushtrap %d" cont
   | Ipoptrap cont -> fprintf ppf "poptrap %d" cont
+  | Iname_for_debugger { ident; which_parameter; } ->
+    fprintf ppf "name_for_debugger %a%s=%a"
+      Ident.print ident
+      (match which_parameter with
+        | None -> ""
+        | Some index -> sprintf "[P%d]" index)
+      reg arg.(0)
   | Ispecific op ->
       Arch.print_specific_operation reg op ppf arg
   | Imultistore -> fprintf ppf "multistore %a" regs arg
@@ -183,6 +190,16 @@ let rec instr ppf i =
     fprintf ppf "@[<1>{%a" regsetaddr i.live;
     if Array.length i.arg > 0 then fprintf ppf "@ +@ %a" regs i.arg;
     fprintf ppf "}@]@,";
+    if !Clflags.dump_avail then begin
+      let module RAS = Reg_availability_set in
+      fprintf ppf "@[<1>AB={%a}" (RAS.print ~print_reg:reg) i.available_before;
+      begin match i.available_across with
+      | None -> ()
+      | Some available_across ->
+        fprintf ppf ",AA={%a}" (RAS.print ~print_reg:reg) available_across
+      end;
+      fprintf ppf "@]@,"
+    end
   end;
   begin match i.desc with
   | Iend -> ()

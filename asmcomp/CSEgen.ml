@@ -234,6 +234,7 @@ method class_of_operation op =
   | Iintop_imm(_, _) -> Op_pure
   | Inegf | Iabsf | Iaddf | Isubf | Imulf | Idivf
   | Ifloatofint | Iintoffloat -> Op_pure
+  | Iname_for_debugger _ -> Op_pure
   | Imultiload _ | Imultistore
   | Ipushtrap _ | Ipoptrap _ | Ispecific _ -> Op_other
 
