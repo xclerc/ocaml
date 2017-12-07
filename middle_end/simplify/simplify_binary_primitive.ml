@@ -606,6 +606,7 @@ end = struct
       (* You might think that "x + 0" has the same representation as "x".
          However it doesn't in the case where that constant zero is +0 and
          x is equal to -0. *)
+      (* CR mshinwell: Shall we add a compiler flag to allow this? *)
       Cannot_simplify
     | Mul ->
       if F.equal this_side F.one then
@@ -745,9 +746,9 @@ let simplify_block_set env r prim ~field ~block_access_kind ~init_or_assign
   in
   match block_access_kind with
   | Definitely_immediate | Must_scan ->
-    let proof = (E.type_accessor env T.prove_blocks_and_immediates) block_ty in
+    let proof = (E.type_accessor env T.prove_blocks) block_ty in
     begin match proof with
-    | Proved (Exactly (blocks, _imms)) ->
+    | Proved (Exactly blocks) ->
       if not (T.Blocks.valid_field_access blocks ~field) then invalid ()
       else ok ()
     | Proved Not_all_values_known -> ok ()
