@@ -701,7 +701,6 @@ module Binary_float_comp = Binary_arith_like (Float_ops_for_binary_comp)
 
 let simplify_block_load_known_index env r prim arg dbg ~field_index
       ~block_access_kind ~field_is_mutable =
-  let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
   let kind = Flambda_primitive.kind_of_field_kind field_kind in
   let get_field_result =
@@ -724,9 +723,9 @@ let simplify_block_load_known_index env r prim arg dbg ~field_index
   in
   term, ty, r
 
+(* XXX this could maybe be shared with the equivalent [block_set] wrapper *)
 let simplify_block_load env r prim ~block ~index
       ~field_kind ~field_is_mutable dbg =
-  let orig_block = block in
   let index, index_ty = S.simplify_simple env index in
   let block, block_ty = S.simplify_simple env block in
   let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
@@ -745,7 +744,7 @@ let simplify_block_load env r prim ~block ~index
     | Proved (Exactly indexes) ->
       begin match Immediate.Set.get_singleton indexes with
       | Some field_index ->
-        simplify_block_load_known_index env r prim orig_block dbg
+        simplify_block_load_known_index env r prim block dbg
           ~field_index ~field_kind ~field_is_mutable
       | None -> unique_index_unknown ()
       end
@@ -912,7 +911,10 @@ let simplify_string_or_bigstring_load env r prim dbg
     in
     begin match tys with
     | [] -> invalid ()
-    | tys -> (E.type_accessor env T.join) tys
+    | tys ->
+      let ty = (E.type_accessor env T.join) tys in
+      (* CR mshinwell: add benefit to [r] *)
+      [], Reachable.reachable (original_term ()), ty, r
     end
   | Proved strs, Proved Not_all_values_known ->
     assert (not (T.String_info.Set.is_empty strs));
