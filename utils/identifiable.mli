@@ -133,6 +133,12 @@ end
 
 module Make (T : Thing) : S with type t := T.t
 
+module Make_pair (T0 : Thing) (T1 : Thing) : sig
+  include S with type t := T0.t * T1.t
+
+  val create_from_cross_product : T0.Set.t -> T1.Set.t -> Set.t
+end
+
 module type S_no_hash = sig
   type t
 

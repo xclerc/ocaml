@@ -84,6 +84,8 @@ module Stdlib : sig
     (** [split_at n l] returns the pair [before, after] where [before] is
         the [n] first elements of [l] and [after] the remaining ones.
         If [l] has less than [n] elements, raises Invalid_argument. *)
+
+    val cross_product : 'a t -> 'b t -> ('a * 'b) t
   end
 
   module Option : sig

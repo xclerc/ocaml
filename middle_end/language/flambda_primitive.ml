@@ -258,7 +258,6 @@ type result_kind =
   | Never_returns
 
 type unary_primitive =
-  | Block_load of int * field_kind * mutable_or_immutable
   | Duplicate_scannable_block of {
       kind : duplicate_kind;
       source_mutability : mutable_or_immutable; 
@@ -289,36 +288,28 @@ type unary_primitive =
 let compare_unary_primitive p1 p2 =
   let unary_primitive_numbering p =
     match p with
-    | Block_load _ -> 0
-    | Duplicate_array _ -> 1
-    | Duplicate_record _ -> 2
-    | Is_int -> 3
-    | Get_tag -> 4
-    | String_length _ -> 5
-    | Swap_byte_endianness _ -> 6
-    | Int_as_pointer -> 7
-    | Opaque_identity -> 8
-    | Int_arith _ -> 9
-    | Int_conv _ -> 10
-    | Float_arith _ -> 11
-    | Int_of_float -> 12
-    | Float_of_int -> 13
-    | Array_length _ -> 14
-    | Bigarray_length _ -> 15
-    | Unbox_number _ -> 16
-    | Box_number _ -> 17
-    | Project_closure _ -> 18 
-    | Move_within_set_of_closures _ -> 19
-    | Project_var _ -> 20
+    | Duplicate_array _ -> 0
+    | Duplicate_record _ -> 1
+    | Is_int -> 2
+    | Get_tag -> 3
+    | String_length _ -> 4
+    | Swap_byte_endianness _ -> 5
+    | Int_as_pointer -> 6
+    | Opaque_identity -> 7
+    | Int_arith _ -> 8
+    | Int_conv _ -> 9
+    | Float_arith _ -> 10
+    | Int_of_float -> 11
+    | Float_of_int -> 12
+    | Array_length _ -> 13
+    | Bigarray_length _ -> 14
+    | Unbox_number _ -> 15
+    | Box_number _ -> 16
+    | Project_closure _ -> 17
+    | Move_within_set_of_closures _ -> 18
+    | Project_var _ -> 19
   in
   match p1, p2 with
-  | Block_load (size1, kind1, mut1), Block_load (size2, kind2, mut2) ->
-    let c = Pervasives.compare size1 size2 in
-    if c <> 0 then c
-    else
-      let c = Pervasives.compare kind1 kind2 in
-      if c <> 0 then c
-      else Pervasives.compare mut1 mut2
   | Duplicate_array (kind1, mut1), Duplicate_array (kind2, mut2) ->
     let c = Pervasives.compare kind1 kind2 in
     if c <> 0 then c
@@ -358,8 +349,7 @@ let compare_unary_primitive p1 p2 =
     Closure_id.Map.compare Closure_id.compare map1 map2
   | Project_var map1, Project_var map2 ->
     Closure_id.Map.compare Var_within_closure.compare map1 map2
-  | (Block_load _
-    | Duplicate_array _
+  | (Duplicate_array _
     | Duplicate_record _
     | Is_int
     | Get_tag
@@ -385,8 +375,6 @@ let compare_unary_primitive p1 p2 =
 let print_unary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Block_load (n, _k, _mut) ->
-    fprintf ppf "block_load %i" n
   | Duplicate_array (k, Mutable) ->
     fprintf ppf "duplicate_array[%a]" print_array_kind k
   | Duplicate_array (k, Immutable) ->
@@ -428,8 +416,6 @@ let print_unary_primitive ppf p =
 
 let arg_kind_of_unary_primitive p =
   match p with
-  | Block_load (_, Not_a_float, _) -> K.value Must_scan
-  | Block_load (_, Float, _) -> K.naked_float ()
   | Duplicate_array _
   | Duplicate_record _
   | Is_int
@@ -453,8 +439,6 @@ let arg_kind_of_unary_primitive p =
 
 let result_kind_of_unary_primitive p : result_kind =
   match p with
-  | Block_load (_, Not_a_float, _) -> Singleton (K.value Must_scan)
-  | Block_load (_, Float, _) -> Singleton (K.naked_float ())
   | Duplicate_array _
   | Duplicate_record _ -> Singleton (K.value Must_scan)
   | Is_int
@@ -478,9 +462,6 @@ let result_kind_of_unary_primitive p : result_kind =
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
-  | Block_load (_, _, Immutable) -> No_effects, No_coeffects
-  | Block_load (_, _, Mutable) ->
-    reading_from_an_array_like_thing
   | Duplicate_scannable_block {
       source_mutability; destination_mutability; _ } ->
     begin match source_mutability with
@@ -552,8 +533,7 @@ let print_binary_float_arith_op ppf o =
   | Div -> fprintf ppf "/."
 
 type binary_primitive =
-  | Block_load_computed_index
-  | Block_set of int * block_set_kind * init_or_assign
+  | Block_load
   | Int_arith of K.Standard_int.t * binary_int_arith_op
   | Int_shift of K.Standard_int.t * int_shift_op
   | Int_comp of K.Standard_int.t * comparison
@@ -567,17 +547,16 @@ type binary_primitive =
 let compare_binary_primitive p1 p2 =
   let binary_primitive_numbering p =
     match p with
-    | Block_load_computed_index -> 0
-    | Block_set _ -> 1
-    | Int_arith _ -> 2
-    | Int_shift _ -> 3
-    | Int_comp _ -> 4
-    | Int_comp_unsigned _ -> 5
-    | Float_arith _ -> 6
-    | Float_comp _ -> 7
-    | Array_load _ -> 8
-    | String_load _ -> 9
-    | Bigstring_load _ -> 10
+    | Block_load -> 0
+    | Int_arith _ -> 1
+    | Int_shift _ -> 2
+    | Int_comp _ -> 3
+    | Int_comp_unsigned _ -> 4
+    | Float_arith _ -> 5
+    | Float_comp _ -> 6
+    | Array_load _ -> 7
+    | String_load _ -> 8
+    | Bigstring_load _ -> 9
   in
   match p1, p2 with
   | Block_set (field1, kind1, init_or_assign1),
@@ -612,7 +591,7 @@ let compare_binary_primitive p1 p2 =
     Pervasives.compare width1 width2
   | Bigstring_load width1, Bigstring_load width2 ->
     Pervasives.compare width1 width2
-  | (Block_load_computed_index
+  | (Block_load
     | Block_set _
     | Int_arith _
     | Int_shift _
@@ -629,8 +608,8 @@ let compare_binary_primitive p1 p2 =
 let print_binary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Block_load_computed_index ->
-    fprintf ppf "block_load_computed"
+  | Block_load ->
+    fprintf ppf "block_load"
   | Block_set (n, k, init) ->
     fprintf ppf "set_field_%a%a %i"
       print_block_set_kind k
@@ -654,10 +633,8 @@ let print_binary_primitive ppf p =
 
 let args_kind_of_binary_primitive p =
   match p with
-  | Block_load_computed_index ->
+  | Block_load ->
     block_kind, array_like_thing_index_kind
-  | Block_set _ ->
-    block_kind, block_element_kind
   | Int_arith (kind, _) ->
     let kind = K.Standard_int.to_kind kind in
     kind, kind
@@ -675,8 +652,7 @@ let args_kind_of_binary_primitive p =
 
 let result_kind_of_binary_primitive p : result_kind =
   match p with
-  | Block_load_computed_index -> Singleton (block_element_kind)
-  | Block_set _ -> Unit
+  | Block_load_ -> Singleton (block_element_kind)
   | Int_arith (kind, _)
   | Int_shift (kind, _) -> Singleton (K.Standard_int.to_kind kind)
   | Float_arith _ -> Singleton (K.naked_float ())
@@ -687,15 +663,15 @@ let result_kind_of_binary_primitive p : result_kind =
     Singleton (K.value Must_scan)
   | Array_load Can_scan -> Singleton (K.value Can_scan)
   | Array_load Naked_float -> Singleton (K.naked_float ())
-  | String_load _ -> Singleton (string_or_bytes_element_kind)
+  | String_load _ ->
+    (* XXX this is wrong, it needs to depend on the argument of the primitive *)
+    Singleton (string_or_bytes_element_kind)
   | Bigstring_load _ -> Singleton (bigstring_element_kind)
 
 let effects_and_coeffects_of_binary_primitive p =
   match p with
   | Block_load_computed_index ->
     reading_from_an_array_like_thing
-  | Block_set _ ->
-    writing_to_an_array_like_thing
   | Int_arith (_kind,
       (Add | Sub | Mul | Div | Mod | And | Or | Xor)) ->
     No_effects, No_coeffects
@@ -708,7 +684,7 @@ let effects_and_coeffects_of_binary_primitive p =
   | Bigstring_load _ -> reading_from_an_array_like_thing
 
 type ternary_primitive =
-  | Block_set_computed of Flambda_kind.scanning * init_or_assign
+  | Block_set of Flambda_kind.scanning * init_or_assign
   | Bytes_set of string_accessor_width
   | Array_set of array_kind
   | Bigstring_set of bigstring_accessor_width
@@ -722,8 +698,8 @@ let compare_ternary_primitive p1 p2 =
     | Bigstring_set _ -> 3
   in
   match p1, p2 with
-  | Block_set_computed (scan1, init_or_assign1),
-      Block_set_computed (scan2, init_or_assign2) ->
+  | Block_set (scan1, init_or_assign1),
+      Block_set (scan2, init_or_assign2) ->
     let c = Pervasives.compare scan1 scan2 in
     if c <> 0 then c
     else Pervasives.compare init_or_assign1 init_or_assign2
@@ -733,7 +709,7 @@ let compare_ternary_primitive p1 p2 =
     Pervasives.compare kind1 kind2
   | Bigstring_set width1, Bigstring_set width2 ->
     Pervasives.compare width1 width2
-  | (Block_set_computed _
+  | (Block_set _
     | Bytes_set _
     | Array_set _
     | Bigstring_set _), _ ->
@@ -743,8 +719,8 @@ let compare_ternary_primitive p1 p2 =
 let print_ternary_primitive ppf p =
   let fprintf = Format.fprintf in
   match p with
-  | Block_set_computed (_, init) ->
-    fprintf ppf "block_set_computed%a" print_init_or_assign init
+  | Block_set (_, init) ->
+    fprintf ppf "block_set%a" print_init_or_assign init
   | Bytes_set string_accessor_width ->
     fprintf ppf "bytes_set_%a"
       print_string_accessor_width string_accessor_width
@@ -757,25 +733,27 @@ let print_ternary_primitive ppf p =
 
 let args_kind_of_ternary_primitive p =
   match p with
-  | Block_set_computed _ ->
+  | Block_set _ ->
     block_kind, array_like_thing_index_kind, block_element_kind
   | Bytes_set _ ->
     string_or_bytes_kind, array_like_thing_index_kind, string_or_bytes_element_kind
   | Array_set _ ->
     array_kind, array_like_thing_index_kind, K.value Must_scan
   | Bigstring_set _ ->
+    (* XXX this last component is wrong.  It needs to vary according to the
+       kind of the set.  Also check "load" *)
     bigstring_kind, array_like_thing_index_kind, bigstring_element_kind
 
 let result_kind_of_ternary_primitive p : result_kind =
   match p with
-  | Block_set_computed _
+  | Block_set _
   | Bytes_set _
   | Array_set _
   | Bigstring_set _ -> Unit
 
 let effects_and_coeffects_of_ternary_primitive p =
   match p with
-  | Block_set_computed _ -> writing_to_an_array_like_thing
+  | Block_set _ -> writing_to_an_array_like_thing
   | Bytes_set _
   | Array_set _
   | Bigstring_set _ -> writing_to_an_array_like_thing

@@ -695,7 +695,32 @@ end
 
 module Binary_float_comp = Binary_arith_like (Float_ops_for_binary_comp)
 
-let simplify_block_load_computed_index env r prim ~block ~index
+let simplify_block_load_known_index env r prim arg dbg ~field_index
+      ~block_access_kind ~field_is_mutable =
+  let arg, ty = S.simplify_simple env arg in
+  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
+  let kind = Flambda_primitive.kind_of_field_kind field_kind in
+  let get_field_result =
+    (E.type_accessor env T.get_field) ty
+      ~field_index ~field_is_mutable ~block_access_kind
+  in
+  let term, ty =
+    match get_field_result with
+    | Ok field_ty ->
+      assert ((not field_is_mutable) || T.is_unknown field_ty);
+      let reified =
+        (E.type_accessor env T.reify) ~allow_free_variables:true field_ty
+      in
+      begin match reified with
+      | Term (simple, ty) -> Named.Simple simple, ty
+      | Cannot_reify -> original_term (), field_ty
+      | Invalid -> Reachable.invalid (), T.bottom kind
+      end
+    | Invalid -> Reachable.invalid (), T.bottom kind
+  in
+  term, ty, r
+
+let simplify_block_load env r prim ~block ~index
       ~field_kind ~field_is_mutable dbg =
   let orig_block = block in
   let index, index_ty = S.simplify_simple env index in
@@ -716,8 +741,8 @@ let simplify_block_load_computed_index env r prim ~block ~index
     | Proved (Exactly indexes) ->
       begin match Immediate.Set.get_singleton indexes with
       | Some field_index ->
-        simplify_block_load env r prim orig_block dbg ~field_index ~field_kind
-          ~field_is_mutable
+        simplify_block_load_known_index env r prim orig_block dbg
+          ~field_index ~field_kind ~field_is_mutable
       | None -> unique_index_unknown ()
       end
     | Proved Not_all_values_known -> unique_index_unknown ()
@@ -725,62 +750,99 @@ let simplify_block_load_computed_index env r prim ~block ~index
   in
   term, ty, r
 
-let simplify_block_set env r prim ~field ~block_access_kind ~init_or_assign
-      ~block ~new_value dbg =
-  if field < 0 then begin
-    Misc.fatal_errorf "[Block_set] with bad field index %d: %a"
-      field
-      Flambda_primitive.print prim
-  end;
-  let field_kind' = Flambda_primitive.kind_of_block_set_kind field_kind in
-  let block, block_ty = S.simplify_simple env block in
-  let new_value, new_value_ty = S.simplify_simple env new_value in
-  let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
+module String_info_and_immediate =
+  Identifiable.Make_pair (T.String_info) (Immediate)
+
+let simplify_string_load env r prim dbg width str index =
+  let str, str_ty = S.simplify_simple env str in
+  let index, index_ty = S.simplify_simple env index in
+  let original_term () : Named.t = Prim (Binary (prim, str, index), dbg) in
   let result_kind = K.value Definitely_immediate in
   let invalid () = Reachable.invalid (), T.bottom result_kind in
-  let ok () =
-    match new_value_proof with
-    | Proved _ ->
-      Reachable.reachable (original_term ()), T.unknown result_kind Other
-    | Invalid -> invalid ()
+  let unknown () =
+    Reachable.reachable (original_term ()), T.unknown result_kind Other
   in
-  match block_access_kind with
-  | Definitely_immediate | Must_scan ->
-    let proof = (E.type_accessor env T.prove_blocks) block_ty in
-    begin match proof with
-    | Proved (Exactly blocks) ->
-      if not (T.Blocks.valid_field_access blocks ~field) then invalid ()
-      else ok ()
-    | Proved Not_all_values_known -> ok ()
-    | Invalid -> invalid ()
-    end
-  | Naked_float ->
-    let block_proof = (E.type_accessor env T.prove_float_array) block_ty in
-    let new_value_proof =
-      (E.type_accessor env T.prove_naked_float) new_value_ty
+  let str_proof = (E.type_accessor env T.prove_string) str in
+  let index_proof = (E.type_accessor env T.prove_tagged_immediate) index in
+  let all_the_empty_string strs =
+    T.String_info.Set.for_all (fun (info : T.String_info.t) ->
+        info.size = 0)
+      strs
+  in
+  let all_indexes_out_of_range indexes ~max_string_length =
+    Immediate.Set.for_all (fun index ->
+        let index = Immediate.to_targetint index in
+        Targetint.OCaml.(<) index Targetint.OCaml.zero
+          && Targetint.OCaml.(>=) index max_string_length)
+      strs
+  in
+  match str_proof, index_proof with
+  | Proved (Exactly strs), Proved (Exactly indexes) ->
+    (* CR-someday mshinwell: Here, and also for block load cases etc., we
+       could actually refine the _container_ type (the string in this case)
+       based on the indexes. *)
+    assert (not (T.String_info.Set.is_empty strs));
+    assert (not (Immediate.Set.is_empty indexes));
+    let strs_and_indexes =
+      String_info_and_immediate.Set.create_from_cross_product strs indexes
     in
-    begin match block_proof with
-    | Proved (Exactly sizes) ->
-      if not (Int.Set.exists (fun size -> size > field) sizes) then invalid ()
-      else ok ()
-    | Proved Not_all_values_known -> ok ()
-    | Invalid -> invalid ()
+    (* XXX This needs to take into account the [width] *)
+    let char_tys =
+      String_info_and_immediate.Set.fold
+        (fun ((info : T.String_info.t), index) char_tys ->
+          let length = Targetint.OCaml.of_int info.size in
+          if Targetint.OCaml.(<) index Targetint.OCaml.zero
+           || Targetint.OCaml.(>=) index length
+          then
+            char_tys
+          else
+            match info.contents with
+            | Unknown_or_mutable -> T.any_char ()
+            | Contents str ->
+              match Targetint.OCaml.to_int index with
+              | None ->
+                (* The existence of [Contents str] and the checks done on
+                   [index] above form a proof that the [index] fits into
+                   type [int] on the host machine (in fact, below
+                   [Sys.max_string_length] on the host). *)
+                Misc.fatal_errorf "Inconsistent [String_info]: access at \
+                    index %a to %a"
+                  Targetint.OCaml.print index
+                  T.String_info.print info
+              | Some index ->
+                match String.get str index with
+                | exception _ -> assert false
+                | chr -> T.this_char chr)
+        strs_and_indexes
+        []
+    in
+    begin match char_tys with
+    | [] -> invalid ()
+    | char_tys -> (E.type_accessor env T.join) char_tys
     end
-  | Generic_array _spec -> Misc.fatal_error "Not yet implemented"
-    (* CR mshinwell: Finish off
-    Simplify_generic_array.simplify_block_set env r prim ~field spec args
-    *)
-
-let simplify_string_load env r prim dbg width arg1 arg2 =
-  ...
+  | Proved strs, Proved Not_all_values_known ->
+    assert (not (T.String_info.Set.is_empty strs));
+    (* CR-someday mshinwell: We could return the union of all the characters
+       in the strings, within reason... *)
+    if all_the_empty_string strs then invalid ()
+    else unknown ()
+  | Proved Not_all_values_known, Proved indexes ->
+    assert (not (Immediate.Set.is_empty indexes));
+    let all_indexes_out_of_range =
+      all_indexes_out_of_range indexes
+        ~max_string_length:Targetint.OCaml.max_string_length
+    in
+    if all_indexes_out_of_range indexes then invalid ()
+    else unknown ()
+  | Invalid _, _ | _, Invalid _ -> invalid ()
 
 let simplify_bigstring_load env r prim dbg width arg1 arg2 =
   ...
 
 let simplify_binary_primitive env r prim arg1 arg2 dbg =
   match prim with
-  | Block_load_computed_index ->
-    simplify_block_load_computed_index env r prim ~block:arg1 ~index:arg2 dbg
+  | Block_load ->
+    simplify_block_load env r prim ~block:arg1 ~index:arg2 dbg
   | Block_set (field, field_kind, init_or_assign) ->
     simplify_block_set env r prim ~field ~field_kind ~init_or_assign
       ~block:arg1 ~new_value:arg2 dbg

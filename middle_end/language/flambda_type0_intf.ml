@@ -51,13 +51,18 @@ module type S = sig
     | Symbol of Symbol.t
 
   type string_contents = private
+    (* Known strings are constrained to [Sys.max_string_length] on the machine
+       running the compiler. *)
     | Contents of string
     | Unknown_or_mutable
 
   module String_info : sig
     type t = private {
       contents : string_contents;
-      size : Targetint.t;
+      (* CR mshinwell: Enforce the invariant that the [size] really does not
+         exceed [Targetint.OCaml.max_string_length] when this structure is
+         created. *)
+      size : Targetint.OCaml.t;
     }
 
     include Identifiable.S with type t := t

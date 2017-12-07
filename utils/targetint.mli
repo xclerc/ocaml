@@ -216,5 +216,9 @@ module OCaml : sig
 
   type t
 
-
+  (* CR mshinwell: Maybe this should move somewhere else
+    let max_array_length = max_wosize ()
+    let max_string_length = word_size / 8 * max_array_length - 1
+  *)
+  val max_string_length : t
 end

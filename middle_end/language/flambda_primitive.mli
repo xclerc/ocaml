@@ -120,22 +120,34 @@ type string_accessor_width =
   | Thirty_two
   | Sixty_four
 
-type bigstring_accessor_width =
-  | Sixteen
-  | Thirty_two
-  | Sixty_four
+type string_like_value =
+  | String
+  | Bytes
+  | Bigstring
+
+type bytes_like_value =
+  | Bytes
+  | Bigstring
 
 type num_dimensions = int
 
-(** Untagged binary integer arithmetic operations. *)
-type unary_int_arith_op = Neg
+type signed_or_unsigned =
+  | Signed
+  | Unsigned
+
+(** Untagged binary integer arithmetic operations.
+
+    [Swap_byte_endianness] on a [Tagged_immediate] treats the immediate as
+    encoding a 16-bit quantity (described in the least significant 16 bits
+    of the immediate after untagging) and exchanges the two halves of the
+    16-bit quantity. *)
+type unary_int_arith_op = Neg | Swap_byte_endianness
 
 (** Naked float unary arithmetic operations. *)
 type unary_float_arith_op = Abs | Neg
 
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
-  | Block_load of int * block_access_kind * mutable_or_immutable
   | Duplicate_scannable_block of {
       kind : make_block_kind;
       source_mutability : mutable_or_immutable; 
@@ -143,16 +155,10 @@ type unary_primitive =
     }
   | Is_int
   | Get_tag
+  | Array_length of array_kind
+  | Bigarray_length of { dimension : int; }
   | String_length of string_or_bytes
-  (* CR mshinwell: Should Swap_byte_endianness go into Int_arith? *)
-  | Swap_byte_endianness of Flambda_kind.Standard_int.t
-  (** [Swap_byte_endianness] on a [Tagged_immediate] treats the immediate as
-      encoding a 16-bit quantity (described in the least significant 16 bits
-      of the immediate after untagging) and exchanges the two halves of the
-      16-bit quantity. *)
   | Int_as_pointer
-  (** [Int_as_pointer] is semantically the same as [Opaque_identity] except
-      that the result _cannot_ be scanned by the GC. *)
   | Opaque_identity
   | Int_arith of Flambda_kind.Standard_int.t * unary_int_arith_op
   | Float_arith of unary_float_arith_op
@@ -164,8 +170,6 @@ type unary_primitive =
      use a %-primitive instead of directly calling C stubs for conversions;
      then we could have a single primitive here taking two
      [Flambda_kind.Of_naked_number.t] arguments (one input, one output). *)
-  | Array_length of array_kind
-  | Bigarray_length of { dimension : int; }
   | Unbox_number of Flambda_kind.Boxable_number.t
   | Box_number of Flambda_kind.Boxable_number.t
   | Project_closure of Closure_id.Set.t
@@ -194,25 +198,18 @@ type binary_float_arith_op = Add | Sub | Mul | Div
 
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =
-  | Block_load_computed_index of block_access_kind * mutable_or_immutable
-  | Block_set of int * block_access_kind * init_or_assign
+  | Block_load of block_access_kind * mutable_or_immutable
+  | String_or_bigstring_load of string_like_value * string_accessor_width
   | Int_arith of Flambda_kind.Standard_int.t * binary_int_arith_op
   | Int_shift of Flambda_kind.Standard_int.t * int_shift_op
-  | Int_comp of Flambda_kind.Standard_int.t * comparison
-  | Int_comp_unsigned of comparison
+  | Int_comp of Flambda_kind.Standard_int.t * signed_or_unsigned * comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
-  | String_load of string_or_bytes * string_accessor_width
-  (* CR-someday mshinwell: It seems as if [Cmmgen]'s handling of the
-     bigstring accessors could be tidied up so as to integrate it with the
-     (older) bigarray accessor (Pbigarrayref). *)
-  | Bigstring_load of bigstring_accessor_width
 
 (** Primitives taking exactly three arguments. *)
 type ternary_primitive =
-  | Block_set_computed of block_access_kind * init_or_assign
-  | Bytes_set of string_accessor_width
-  | Bigstring_set of bigstring_accessor_width
+  | Block_set of block_access_kind * init_or_assign
+  | Bytes_or_bigstring_set of bytes_like_value * string_accessor_width
 
 (** Primitives taking zero or more arguments. *)
 type variadic_primitive =
