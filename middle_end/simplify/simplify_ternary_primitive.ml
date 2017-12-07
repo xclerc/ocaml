@@ -38,7 +38,7 @@ let simplify_block_set_known_index env r prim ~field ~block_access_kind
   let block, block_ty = S.simplify_simple env block in
   let new_value, new_value_ty = S.simplify_simple env new_value in
   let original_term () : Named.t = Prim (Binary (prim, block, index), dbg) in
-  let result_kind = K.value Definitely_immediate in
+  let result_kind = K.unit () in
   let invalid () = Reachable.invalid (), T.bottom result_kind in
   let ok () =
     match new_value_proof with
@@ -77,11 +77,8 @@ let simplify_block_set env r prim dbg ~value_kind ~init_or_assign
       arg1 arg2 arg3 =
   ...
 
-let simplify_bytes_set env r prim dbg ~string_accessor_width arg1 arg2 arg3 =
-  ...
-
-let simplify_bigstring_set env r prim dbg ~bigstring_accessor_width
-      arg1 arg2 arg3 =
+let simplify_bytes_or_bigstring_set env r prim dbg bytes_like_value
+      string_accessor_width ~str ~index ~new_value =
   ...
 
 let simplify_ternary_primitive env r prim arg1 arg2 arg3 dbg =

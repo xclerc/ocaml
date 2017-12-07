@@ -86,6 +86,8 @@ module Stdlib : sig
         If [l] has less than [n] elements, raises Invalid_argument. *)
 
     val cross_product : 'a t -> 'b t -> ('a * 'b) t
+
+    val first_n : 'a t -> int -> ('a t * 'a t) option
   end
 
   module Option : sig

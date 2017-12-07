@@ -103,6 +103,8 @@ type bigarray_kind =
   | Int_width_int | Targetint_width_int
   | Complex32 | Complex64
 
+val kind_of_bigarray_kind : bigarray_kind -> Flambda_kind.t
+
 type bigarray_layout = Unknown | C | Fortran
 
 (* We can use array_kind instead
@@ -222,6 +224,8 @@ type ternary_primitive =
 type variadic_primitive =
   (* CR pchambart / mshinwell: Effects of Make_block? *)
   | Make_block of make_block_kind * mutable_or_immutable
+  (* CR mshinwell: Invariant checks -- e.g. that the number of arguments
+     matches [num_dimensions] *)
   | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
   | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
 

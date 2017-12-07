@@ -124,11 +124,126 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
   in
   new_bindings, term, ty, r
 
-let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
-  ...
+(* CR mshinwell: Could use [unit or_invalid] rather than [bool] *)
+let bigarray_indexes_are_invalid env indexes =
+  let index_proofs =
+    List.map (fun index ->
+        (E.type_accessor env T.prove_tagged_immediate) index)
+      indexes
+  in
+  List.fold_left
+    (fun (index_proof : T.tagged_immediate_proof) invalid ->
+      if invalid then true
+      else
+        match index_proof with
+        | Proved indexes ->
+          List.fold_left (fun index invalid ->
+              if invalid then true
+              else
+                let index = Immediate.to_targetint index in
+                match layout with
+                | Unknown -> false
+                | C ->
+                  Targetint.OCaml.(<) index Targetint.OCaml.zero
+                | Fortran ->
+                  Targetint.OCaml.(<) index Targetint.OCaml.one)
+            indexes
+            false
+        | Proved Not_all_values_known -> false
+        | Invalid -> true)
+    index_proofs
+    false
 
-let simplify_bigarray_load env r prim dbg ~num_dims ~kind ~layout args =
-  ...
+let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
+  let args_with_tys = S.simplify_simple env args in
+  let args, _arg_tys = List.split args_with_tys in
+  let original_term () : Named.t = Prim (Variadic (prim, args), dbg) in
+  let element_kind = Flambda_primitive.kind_of_bigarray_kind kind in
+  let result_kind = Flambda_kind.unit () in
+  let invalid () = [], Reachable.invalid (), T.bottom result_kind, r in
+  let wrong_number_of_args () =
+    Misc.fatal_errorf "Wrong number of arguments for [Bigarray_set]: %a"
+      Flambda_primitive.print prim
+  in
+  match args_with_tys with
+  | (bigarray, bigarray_ty)::args_with_tys ->
+    begin match List.first_n args_with_tys num_dims with
+    | Some (indexes_with_tys, args_with_tys) ->
+      begin match args_with_tys with
+      | [new_value, new_value_ty] ->
+        let bigarray_proof =
+          (E.type_accessor env T.prove_of_kind_value_with_expected_scanning
+            Must_scan) bigarray
+        in
+        begin match proof with
+        | Proved _ ->
+          let index_proofs =
+            List.map (fun index ->
+                (E.type_accessor env T.prove_tagged_immediate) index)
+              indexes
+          in
+          let invalid = bigarray_indexes_are_invalid env indexes in
+          if invalid then invalid ()
+          else
+            let new_value_proof =
+              (E.type_accessor env T.prove_of_kind result_kind) new_value
+            in
+            begin match new_value_proof with
+            | Proved _ ->
+              [], Reachable.reachable (original_term ()),
+                T.unknown result_kind Other, r
+            | Invalid -> invalid ()
+            end
+        | Invalid -> invalid ()
+        end
+      | _ -> wrong_number_of_args ()
+      end
+    | None -> wrong_number_of_args ()
+    end
+  | [] -> wrong_number_of_args ()
+
+let simplify_bigarray_load env r prim dbg ~num_dims
+      ~(kind : Flambda_primitive.bigarray_kind)
+      ~(layout : Flambda_primitive.bigarray_layout)
+      args =
+  let args_with_tys = S.simplify_simple env args in
+  let args, arg_tys = List.split args_with_tys in
+  let original_term () : Named.t = Prim (Variadic (prim, args), dbg) in
+  let result_kind = Flambda_primitive.kind_of_bigarray_kind kind in
+  let invalid () = [], Reachable.invalid (), T.bottom result_kind in
+  let wrong_number_of_args () =
+    Misc.fatal_errorf "Wrong number of arguments: %a"
+      Flambda_primitive.print prim
+  in
+  match args_with_tys with
+  | (bigarray, bigarray_ty)::args_with_tys ->
+    begin match List.first_n args_with_tys num_dims with
+    | Some (indexes_with_tys, args_with_tys) ->
+      begin match args_with_tys with
+      | [] ->
+        let bigarray_proof =
+          (E.type_accessor env T.prove_of_kind_value_with_expected_scanning
+            Must_scan) bigarray
+        in
+        begin match proof with
+        | Proved _ ->
+          let index_proofs =
+            List.map (fun index ->
+                (E.type_accessor env T.prove_tagged_immediate) index)
+              indexes
+          in
+          let invalid = bigarray_indexes_are_invalid env indexes in
+          if invalid then invalid ()
+          else
+            [], Reachable.reachable (original_term ()),
+              T.unknown result_kind Other, r
+        | Invalid -> invalid ()
+        end
+      | _ -> wrong_number_of_args ()
+      end
+    | None -> wrong_number_of_args ()
+    end
+  | [] -> wrong_number_of_args ()
 
 let simplify_variadic_primitive env r prim args dbg =
   match prim with

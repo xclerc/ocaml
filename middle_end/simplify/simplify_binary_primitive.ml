@@ -532,6 +532,10 @@ module Int_ops_for_binary_comp_int64 =
 module Int_ops_for_binary_comp_nativeint =
   Int_ops_for_binary_comp (Targetint)
 
+(* CR mshinwell: The old code used to check inequality on types to simplify
+   comparisons.  What did this apply to though---are we misunderstanding
+   something about Pintcomp? *)
+
 module Binary_int_comp_tagged_immediate =
   Binary_arith_like (Int_ops_for_binary_comp_tagged_immediate)
 module Binary_int_comp_int32 =
@@ -757,6 +761,60 @@ type bounds_check_result =
   | In_range
   | Out_of_range
 
+(* CR mshinwell: This function will also be needed when producing the
+   bounds check code when compiling from [Lambda]. *)
+let bounds_check ~string_length_in_bytes ~index_in_bytes
+      ~result_size_in_bytes : bounds_check_result =
+  if Targetint.OCaml.(<) index_in_bytes Targetint.OCaml.zero else
+    Out_of_range
+  else
+    let string_length_in_bytes =
+      Targetint.OCaml.of_int string_length_in_bytes
+    in
+    let result_size_in_bytes =
+      Targetint.OCaml.of_int
+        (Flambda_primitive.byte_width_of_string_accessor_width width)
+    in
+    (* We are careful here to avoid overflow for ease of reasoning. *)
+    let highest_index_allowed =
+      Targetint.OCaml.(-) string_length_in_bytes result_size_in_bytes
+    in
+    if Targetint.OCaml.(>=) index_in_bytes highest_index_allowed then
+      Out_of_range
+    else
+      In_range
+
+let all_indexes_out_of_range indexes ~max_string_length
+      ~result_size_in_bytes =
+  Immediate.Set.for_all (fun index_in_bytes ->
+      let index_in_bytes = Immediate.to_targetint index_in_bytes in
+      let in_range =
+        bounds_check ~string_length_in_bytes:max_string_length
+          ~index_in_bytes ~result_size_in_bytes
+      in
+      match in_range with
+      | Out_of_range -> true
+      | In_range -> false)
+    strs
+
+external string_unsafe_get16
+   : string
+  -> int
+  -> int
+  = "%caml_string_get16u" [@@noalloc]
+
+external string_unsafe_get32
+   : string
+  -> int
+  -> Int32.t
+  = "%caml_string_get32u" [@@noalloc]
+
+external string_unsafe_get64
+   : string
+  -> int
+  -> Int64.t
+  = "%caml_string_get64u" [@@noalloc]
+
 let simplify_string_or_bigstring_load env r prim dbg
       (string_like_value : Flambda_primitive.string_like_value)
       (width : Flambda_primitive.string_accessor_width)
@@ -791,42 +849,8 @@ let simplify_string_or_bigstring_load env r prim dbg
         info.size = 0)
       strs
   in
-  let bounds_check ~string_length_in_bytes ~index_in_bytes
-        : bounds_check_result =
-    if Targetint.OCaml.(<) index_in_bytes Targetint.OCaml.zero else
-      Out_of_range
-    else
-      let string_length_in_bytes =
-        Targetint.OCaml.of_int string_length_in_bytes
-      in
-      let result_size_in_bytes =
-        Targetint.OCaml.of_int
-          (Flambda_primitive.byte_width_of_string_accessor_width width)
-      in
-      if string_length_in_bytes < result_size_in_bytes then
-        Out_of_range
-      else
-        (* We are careful here to avoid overflow or underflow for ease
-           of reasoning. *)
-        let highest_index_allowed =
-          Targetint.OCaml.(-) string_length_in_bytes result_size_in_bytes
-        in
-        if Targetint.OCaml.(>=) index_in_bytes highest_index_allowed then
-          Out_of_range
-        else
-          In_range
-  in
-  let all_indexes_out_of_range indexes ~max_string_length =
-    Immediate.Set.for_all (fun index_in_bytes ->
-        let index_in_bytes = Immediate.to_targetint index_in_bytes in
-        let in_range =
-          bounds_check ~string_length_in_bytes:max_string_length
-            ~index_in_bytes
-        in
-        match in_range with
-        | Out_of_range -> true
-        | In_range -> false)
-      strs
+  let result_size_in_bytes =
+    Flambda_primitive.byte_width_of_string_accessor_width width
   in
   match str_proof, index_proof with
   | Proved (Exactly strs), Proved (Exactly indexes) ->
@@ -843,6 +867,7 @@ let simplify_string_or_bigstring_load env r prim dbg
         (fun ((info : T.String_info.t), index_in_bytes) tys ->
           let in_range =
             bounds_check ~string_length_in_bytes:info.size ~index_in_bytes
+              ~result_size_in_bytes
           in
           match in_range with
           | Out_of_range -> tys
@@ -866,18 +891,22 @@ let simplify_string_or_bigstring_load env r prim dbg
                     index %a to %a"
                   Targetint.OCaml.print index
                   T.String_info.print info
-              | Some index ->
+              | Some index_in_bytes ->
                 (* Note that we cannot be in the [Bigstring] case here. *)
                 assert (string_like_value <> Bigstring);
+                (* XXX if the target endianness does not match the host
+                   endianness, we need to swap the bytes *)
                 match width with
                 | Eight ->
-                  T.this_tagged_immediate (string_get8 str index_in_bytes)
+                  T.this_tagged_immediate
+                    (String.unsafe_get str index_in_bytes)
                 | Sixteen ->
-                  T.this_tagged_immediate (string_get16 str index_in_bytes)
+                  T.this_tagged_immediate
+                    (string_unsafe_get16 str index_in_bytes)
                 | Thirty_two ->
-                  T.this_naked_int32 (string_get32 str index_in_bytes)
+                  T.this_naked_int32 (string_unsafe_get32 str index_in_bytes)
                 | Sixty_four ->
-                  T.this_naked_int64 (string_get64 str index_in_bytes))
+                  T.this_naked_int64 (string_unsafe_get64 str index_in_bytes))
         strs_and_indexes
         []
     in
@@ -900,13 +929,11 @@ let simplify_string_or_bigstring_load env r prim dbg
     in
     let all_indexes_out_of_range =
       all_indexes_out_of_range indexes ~max_string_length
+        ~result_size_in_bytes
     in
     if all_indexes_out_of_range indexes then invalid ()
     else unknown ()
   | Invalid _, _ | _, Invalid _ -> invalid ()
-
-let simplify_bigstring_load env r prim dbg width arg1 arg2 =
-  ...
 
 let simplify_binary_primitive env r prim arg1 arg2 dbg =
   match prim with
@@ -954,7 +981,6 @@ let simplify_binary_primitive env r prim arg1 arg2 dbg =
     Binary_float_arith.simplify env r prim dbg op arg1 arg2
   | Float_comp op ->
     Binary_float_comp.simplify env r prim dbg op arg1 arg2
-  | String_load width ->
-    simplify_string_load env r prim dbg width arg1 arg2
-  | Bigstring_load width ->
-    simplify_bigstring_load env r prim dbg width arg1 arg2
+  | String_or_bigstring_load (string_like_value, width) ->
+    simplify_string_load env r prim dbg string_like_value width
+      ~str:arg1 ~index:arg2
