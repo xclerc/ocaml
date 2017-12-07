@@ -376,31 +376,6 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
   | Wrong ->
     [], Reachable.invalid (), r
 
-let simplify_block_load env r prim arg dbg ~field_index ~block_access_kind
-      ~field_is_mutable =
-  let arg, ty = S.simplify_simple env arg in
-  let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let kind = Flambda_primitive.kind_of_field_kind field_kind in
-  let get_field_result =
-    (E.type_accessor env T.get_field) ty
-      ~field_index ~field_is_mutable ~block_access_kind
-  in
-  let term, ty =
-    match get_field_result with
-    | Ok field_ty ->
-      assert ((not field_is_mutable) || T.is_unknown field_ty);
-      let reified =
-        (E.type_accessor env T.reify) ~allow_free_variables:true field_ty
-      in
-      begin match reified with
-      | Term (simple, ty) -> Named.Simple simple, ty
-      | Cannot_reify -> original_term (), field_ty
-      | Invalid -> Reachable.invalid (), T.bottom kind
-      end
-    | Invalid -> Reachable.invalid (), T.bottom kind
-  in
-  term, ty, r
-
 let simplify_duplicate_scannable_block env r prim arg dbg ~kind
       ~source_mutability ~destination_mutability =
   let arg, ty = S.simplify_simple env arg in
@@ -1178,6 +1153,8 @@ let simplify_string_length env r prim arg dbg =
 (* CR mshinwell: Factorize out together with [simplify_string_length] *)
 let simplify_array_length env r prim arg ~array_kind dbg =
   let arg, ty = S.simplify_simple env arg in
+  (* XXX this may be wrong: for 32-bit platforms, arrays of floats have
+     lengths differing from the lengths of the blocks *)
   let proof = (E.type_accessor env T.lengths_of_arrays_or_blocks) arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
   let result_kind = K.value Definitely_immediate in

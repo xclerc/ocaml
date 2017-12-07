@@ -120,6 +120,10 @@ type string_accessor_width =
   | Thirty_two
   | Sixty_four
 
+val kind_of_string_accessor_width : string_accessor_width -> Flambda_kind.t
+
+val byte_width_of_string_accessor_width : string_accessor_width -> int
+
 type string_like_value =
   | String
   | Bytes
@@ -195,6 +199,9 @@ type int_shift_op = Lsl | Lsr | Asr
 
 (** Naked float binary arithmetic operations. *)
 type binary_float_arith_op = Add | Sub | Mul | Div
+
+(* CR mshinwell: Note that the backend primitives for string/bigstring
+   access will need a new flag to return (or take) unboxed numbers. *)
 
 (** Primitives taking exactly two arguments. *)
 type binary_primitive =

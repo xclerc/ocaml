@@ -753,27 +753,79 @@ let simplify_block_load env r prim ~block ~index
 module String_info_and_immediate =
   Identifiable.Make_pair (T.String_info) (Immediate)
 
-let simplify_string_load env r prim dbg width str index =
+type bounds_check_result =
+  | In_range
+  | Out_of_range
+
+let simplify_string_or_bigstring_load env r prim dbg
+      (string_like_value : Flambda_primitive.string_like_value)
+      (width : Flambda_primitive.string_accessor_width)
+      str index =
   let str, str_ty = S.simplify_simple env str in
   let index, index_ty = S.simplify_simple env index in
   let original_term () : Named.t = Prim (Binary (prim, str, index), dbg) in
-  let result_kind = K.value Definitely_immediate in
+  let result_kind = Flambda_primitive.kind_of_string_accessor_width width in
   let invalid () = Reachable.invalid (), T.bottom result_kind in
   let unknown () =
     Reachable.reachable (original_term ()), T.unknown result_kind Other
   in
-  let str_proof = (E.type_accessor env T.prove_string) str in
+  let str_proof : T.string_proof =
+    match string_like_value with
+    | String | Bytes -> (E.type_accessor env T.prove_string) str
+    | Bigstring ->
+      (* For the moment just check that the bigstring is of kind [Value]. *)
+      let proof =
+        (E.type_accessor env T.prove_of_kind_value_with_expected_scanning
+          Must_scan) str
+      in
+      match proof with
+      | Proved _ ->
+        (* At the moment we don't track anything in the type system about
+           bigarrays. *)
+        Proved Not_all_values_known
+      | Invalid -> Invalid
+  in
   let index_proof = (E.type_accessor env T.prove_tagged_immediate) index in
   let all_the_empty_string strs =
     T.String_info.Set.for_all (fun (info : T.String_info.t) ->
         info.size = 0)
       strs
   in
+  let bounds_check ~string_length_in_bytes ~index_in_bytes
+        : bounds_check_result =
+    if Targetint.OCaml.(<) index_in_bytes Targetint.OCaml.zero else
+      Out_of_range
+    else
+      let string_length_in_bytes =
+        Targetint.OCaml.of_int string_length_in_bytes
+      in
+      let result_size_in_bytes =
+        Targetint.OCaml.of_int
+          (Flambda_primitive.byte_width_of_string_accessor_width width)
+      in
+      if string_length_in_bytes < result_size_in_bytes then
+        Out_of_range
+      else
+        (* We are careful here to avoid overflow or underflow for ease
+           of reasoning. *)
+        let highest_index_allowed =
+          Targetint.OCaml.(-) string_length_in_bytes result_size_in_bytes
+        in
+        if Targetint.OCaml.(>=) index_in_bytes highest_index_allowed then
+          Out_of_range
+        else
+          In_range
+  in
   let all_indexes_out_of_range indexes ~max_string_length =
-    Immediate.Set.for_all (fun index ->
-        let index = Immediate.to_targetint index in
-        Targetint.OCaml.(<) index Targetint.OCaml.zero
-          && Targetint.OCaml.(>=) index max_string_length)
+    Immediate.Set.for_all (fun index_in_bytes ->
+        let index_in_bytes = Immediate.to_targetint index_in_bytes in
+        let in_range =
+          bounds_check ~string_length_in_bytes:max_string_length
+            ~index_in_bytes
+        in
+        match in_range with
+        | Out_of_range -> true
+        | In_range -> false)
       strs
   in
   match str_proof, index_proof with
@@ -786,18 +838,23 @@ let simplify_string_load env r prim dbg width str index =
     let strs_and_indexes =
       String_info_and_immediate.Set.create_from_cross_product strs indexes
     in
-    (* XXX This needs to take into account the [width] *)
-    let char_tys =
+    let tys =
       String_info_and_immediate.Set.fold
-        (fun ((info : T.String_info.t), index) char_tys ->
-          let length = Targetint.OCaml.of_int info.size in
-          if Targetint.OCaml.(<) index Targetint.OCaml.zero
-           || Targetint.OCaml.(>=) index length
-          then
-            char_tys
-          else
+        (fun ((info : T.String_info.t), index_in_bytes) tys ->
+          let in_range =
+            bounds_check ~string_length_in_bytes:info.size ~index_in_bytes
+          in
+          match in_range with
+          | Out_of_range -> tys
+          | In_range ->
             match info.contents with
-            | Unknown_or_mutable -> T.any_char ()
+            | Unknown_or_mutable ->
+              begin match width with
+              | Eight -> T.any_tagged_immediate ()
+              | Sixteen -> T.any_tagged_immediate ()
+              | Thirty_two -> T.any_naked_int32 ()
+              | Sixty_four -> T.any_naked_int64 ()
+              end
             | Contents str ->
               match Targetint.OCaml.to_int index with
               | None ->
@@ -810,15 +867,23 @@ let simplify_string_load env r prim dbg width str index =
                   Targetint.OCaml.print index
                   T.String_info.print info
               | Some index ->
-                match String.get str index with
-                | exception _ -> assert false
-                | chr -> T.this_char chr)
+                (* Note that we cannot be in the [Bigstring] case here. *)
+                assert (string_like_value <> Bigstring);
+                match width with
+                | Eight ->
+                  T.this_tagged_immediate (string_get8 str index_in_bytes)
+                | Sixteen ->
+                  T.this_tagged_immediate (string_get16 str index_in_bytes)
+                | Thirty_two ->
+                  T.this_naked_int32 (string_get32 str index_in_bytes)
+                | Sixty_four ->
+                  T.this_naked_int64 (string_get64 str index_in_bytes))
         strs_and_indexes
         []
     in
-    begin match char_tys with
+    begin match tys with
     | [] -> invalid ()
-    | char_tys -> (E.type_accessor env T.join) char_tys
+    | tys -> (E.type_accessor env T.join) tys
     end
   | Proved strs, Proved Not_all_values_known ->
     assert (not (T.String_info.Set.is_empty strs));
@@ -828,9 +893,13 @@ let simplify_string_load env r prim dbg width str index =
     else unknown ()
   | Proved Not_all_values_known, Proved indexes ->
     assert (not (Immediate.Set.is_empty indexes));
+    let max_string_length =
+      match string_like_value with
+      | String | Bytes -> Targetint.OCaml.max_string_length
+      | Bigstring -> Targetint.OCaml.max_int
+    in
     let all_indexes_out_of_range =
-      all_indexes_out_of_range indexes
-        ~max_string_length:Targetint.OCaml.max_string_length
+      all_indexes_out_of_range indexes ~max_string_length
     in
     if all_indexes_out_of_range indexes then invalid ()
     else unknown ()

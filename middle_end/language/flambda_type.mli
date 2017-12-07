@@ -310,6 +310,11 @@ val prove_naked_float
    : (t
   -> Numbers.Float.By_bit_pattern.Set.t Or_not_all_values_known.t) type_accessor
 
+val prove_of_kind_value_with_expected_scanning
+   : (t
+  -> Flambda_kind.scanning
+  -> ty_value or_invalid) type_accessor
+
 val prove_of_kind_value_with_expected_scanning_list
    : (t list
   -> Flambda_kind.scanning
