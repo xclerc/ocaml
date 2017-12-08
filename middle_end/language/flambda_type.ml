@@ -1688,7 +1688,7 @@ type reification_result =
   | Cannot_reify
   | Invalid
 
-let reify ~importer ~type_of_name ~allow_free_variables (* ~expected_kind *) t
+let reify ~importer ~type_of_name ~allow_free_variables t
       : reification_result =
   let original_t = t in
   let t, _canonical_name = resolve_aliases ~importer ~type_of_name t in
@@ -1713,142 +1713,155 @@ let reify ~importer ~type_of_name ~allow_free_variables (* ~expected_kind *) t
           let t = alias kind name in
           Term (Simple.name name, t)
     in
-    let result =
-      match t_evaluated with
-      | Values values ->
-        begin match values with
-        | Bottom -> Invalid
-        | Tagged_immediates_only (Exactly imms) ->
-          begin match Immediate.Set.get_singleton imms with
-          | Some imm -> Term (Simple.const (Tagged_immediate imm), t)
-          | None -> try_name ()
-          end
-        | Unknown
-        | Blocks_and_tagged_immediates _
-        | Tagged_immediates_only _
-        | Boxed_floats _
-        | Boxed_int32s _
-        | Boxed_int64s _
-        | Boxed_nativeints _
-        | Closures _
-        | Sets_of_closures _
-        | Strings _
-        | Float_arrays _ -> try_name ()
-        end
-      | Naked_immediates (Exactly is) ->
-        begin match Immediate.Set.get_singleton is with
-        | Some i -> Term (Simple.const (Untagged_immediate i), t)
+    match t_evaluated with
+    | Values values ->
+      begin match values with
+      | Bottom -> Invalid
+      | Tagged_immediates_only (Exactly imms) ->
+        begin match Immediate.Set.get_singleton imms with
+        | Some imm -> Term (Simple.const (Tagged_immediate imm), t)
         | None -> try_name ()
         end
-      | Naked_floats (Exactly fs) ->
-        begin match Float.By_bit_pattern.Set.get_singleton fs with
-        | Some f -> Term (Simple.const (Naked_float f), t)
-        | None -> try_name ()
-        end
-      | Naked_int32s (Exactly is) ->
-        begin match Int32.Set.get_singleton is with
-        | Some i -> Term (Simple.const (Naked_int32 i), t)
-        | None -> try_name ()
-        end
-      | Naked_int64s (Exactly is) ->
-        begin match Int64.Set.get_singleton is with
-        | Some i -> Term (Simple.const (Naked_int64 i), t)
-        | None -> try_name ()
-        end
-      | Naked_nativeints (Exactly is) ->
-        begin match Targetint.Set.get_singleton is with
-        | Some i -> Term (Simple.const (Naked_nativeint i), t)
-        | None -> try_name ()
-        end
-      | Naked_immediates Not_all_values_known
-      | Naked_floats Not_all_values_known
-      | Naked_int32s Not_all_values_known
-      | Naked_int64s Not_all_values_known
-      | Naked_nativeints Not_all_values_known -> try_name ()
-    in
-  (*
-    let kind = Evaluated.kind t_evaluated in
-    if not (Flambda_kind.compatible kind ~if_used_at:expected_kind) then begin
-      Misc.fatal_errorf "Type %a, resolved to %a, cannot be used at kind %a"
-        print original_t
-        print t
-        K.print expected_kind
-    end;
-  *)
-    result
+      | Unknown
+      | Blocks_and_tagged_immediates _
+      | Tagged_immediates_only _
+      | Boxed_floats _
+      | Boxed_int32s _
+      | Boxed_int64s _
+      | Boxed_nativeints _
+      | Closures _
+      | Sets_of_closures _
+      | Strings _
+      | Float_arrays _ -> try_name ()
+      end
+    | Naked_immediates (Exactly is) ->
+      begin match Immediate.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Untagged_immediate i), t)
+      | None -> try_name ()
+      end
+    | Naked_floats (Exactly fs) ->
+      begin match Float.By_bit_pattern.Set.get_singleton fs with
+      | Some f -> Term (Simple.const (Naked_float f), t)
+      | None -> try_name ()
+      end
+    | Naked_int32s (Exactly is) ->
+      begin match Int32.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Naked_int32 i), t)
+      | None -> try_name ()
+      end
+    | Naked_int64s (Exactly is) ->
+      begin match Int64.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Naked_int64 i), t)
+      | None -> try_name ()
+      end
+    | Naked_nativeints (Exactly is) ->
+      begin match Targetint.Set.get_singleton is with
+      | Some i -> Term (Simple.const (Naked_nativeint i), t)
+      | None -> try_name ()
+      end
+    | Naked_immediates Not_all_values_known
+    | Naked_floats Not_all_values_known
+    | Naked_int32s Not_all_values_known
+    | Naked_int64s Not_all_values_known
+    | Naked_nativeints Not_all_values_known -> try_name ()
 
-let get_field ~importer ~type_of_name t ~field_index ~field_is_mutable
-      ~(block_access_kind : Flambda_primitive.block_access_kind)
-      : get_field_result =
+type 'a proof =
+  | Proved of 'a
+  | Unknown
+  | Invalid
+
+type 'a known_values = 'a Or_not_all_values_known.t proof
+
+let prove_tagged_immediate ~importer ~type_of_name t
+      : Immediate.Set.t known_values =
   let t_evaluated, _canonical_name =
     Evaluated.create ~importer ~type_of_name t
-  in
-  let expected_result_kind =
-    match block_access_kind with
-    | Dynamic_must_scan_or_naked_float -> K.value Must_scan
-    | Must_scan -> K.value Must_scan
-    | Can_scan -> K.value Can_scan
-    | Naked_float -> K.naked_float ()
   in
   match t_evaluated with
   | Values values ->
     begin match values with
-    | Unknown -> Ok (unknown expected_result_kind Other)
-    | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
-      (* XXX this needs reviewing again in the light of the work in
-         Simplify_primitive (for block set).  I suspect this next conditional
-         should go *)
-      if not (Immediate.Set.is_empty imms) then
-        Invalid
-      else
-        (* XXX we shouldn't be doing this if [field_kind] is [Float] -- and
-           vice-versa in the float array case *)
-        Blocks.get_field ~importer ~type_of_name blocks ~field_index
-          ~expected_result_kind ~field_is_mutable ~is_unknown
-    | Float_arrays { lengths; } ->
-      let if_used_at = Flambda_kind.naked_float () in
-      (* CR mshinwell: If this check fails, maybe it's always a compiler bug?
-         We need to check how the kind for [Block_load] is set in the frontend
-         (i.e. Pfield / Pfloatfield). *)
-      if not (Flambda_kind.compatible expected_result_kind ~if_used_at) then
-        Invalid
-      else
-        let index_is_out_of_range_for_all_lengths =
-          match lengths with
-          | Not_all_values_known -> false
-          | Exactly lengths ->
-            Int.Set.for_all (fun length ->
-                field_index < 0 || field_index >= length)
-              lengths
-        in
-        if index_is_out_of_range_for_all_lengths then
-          Invalid
-        else
-          Ok (unknown (Flambda_kind.naked_float ()) Other)
-    | Bottom
-    | Blocks_and_tagged_immediates _
-    | Tagged_immediates_only _
+    | Unknown -> Unknown
+    | Tagged_immediates_only Not_all_values_known -> Proved true
     | Boxed_floats _
+    | Blocks_and_tagged_immediates _
+    | Bottom
     | Boxed_int32s _
     | Boxed_int64s _
     | Boxed_nativeints _
     | Closures _
     | Sets_of_closures _
-    | Strings _ -> Invalid
+    | Strings _
+    | Float_arrays _ -> Proved false
     end
   | Naked_immediates _
   | Naked_floats _
   | Naked_int32s _
   | Naked_int64s _
+  | Naked_nativeints _ -> Invalid
+
+let prove_naked_float ~importer ~type_of_name t
+      : Numbers.Float_by_bit_pattern.Set.t known_values0 =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Naked_floats fs -> fs
+  | Values _
+  | Naked_immediates _
+  | Naked_int32s _
+  | Naked_int64s _
   | Naked_nativeints _ ->
-    Misc.fatal_errorf "Cannot extract field %d from block with the following \
-        type (invalid kind): %a"
-      field_index
+    Misc.fatal_errorf "Wrong kind for something claimed to be a naked \
+        float: %a"
       print t
 
-type boxed_float_proof =
-  | Proved of Float.By_bit_pattern.Set.t Or_not_all_values_known.t
-  | Invalid
+let prove_naked_int32 ~importer ~type_of_name t
+      : Numbers.Int32.Set.t known_values0 =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Naked_int32s ns -> ns
+  | Values _
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a naked \
+        int32: %a"
+      print t
+
+let prove_naked_int64 ~importer ~type_of_name t
+      : Numbers.Int64.Set.t known_values0 =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Naked_int64s ns -> ns
+  | Values _
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a naked \
+        int64: %a"
+      print t
+
+let prove_naked_nativeint ~importer ~type_of_name t
+      : Numbers.Nativeint.Set.t known_values0 =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Naked_nativeints ns -> ns
+  | Values _
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a naked \
+        nativeint: %a"
+      print t
 
 let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
   let t_evaluated, _canonical_name =
@@ -2196,6 +2209,32 @@ let prove_sets_of_closures ~importer ~type_of_name t : sets_of_closures_proof =
     Misc.fatal_errorf "Wrong kind for something claimed to be a set of \
         closures: %a"
       print t
+
+let prove_is_tagged_immediate ~importer ~type_of_name t : bool proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown -> Unknown
+    | Tagged_immediates_only _ -> Proved true
+    | Boxed_floats _
+    | Blocks_and_tagged_immediates _
+    | Bottom
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _
+    | Float_arrays _ -> Proved false
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ -> Invalid
 
 (*
 type proved_scannable_block =

@@ -20,7 +20,7 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(** Basic definitions, constructors and accessors. *)
+(** Basic definitions and constructors. *)
 include module type of struct include Flambda0.Flambda_type end
 
 (** The type of a symbol that cannot be resolved (e.g. missing .cmx file).
@@ -110,7 +110,6 @@ end
 module Evaluated : sig
   (** A canonical form which can be used for the determination of properties
       of a type. *)
-
   type t
 
   (** Evaluate the given type to a canonical form, possibly with an associated
@@ -171,76 +170,40 @@ type 'a proof = private
   | Unknown
   | Invalid
 
+type 'a known_values = 'a Or_not_all_values_known.t proof
+
 (* CR mshinwell: Add unit tests to check that the condition about the result
    sets in [Proved] being non-empty holds. *)
 
-type 'a or_invalid = private
-  | Proved of 'a
-  | Invalid
-
-(** Prove that the given type:
-    - definitely represents one or more tagged immediates ("Proved true");
-    - definitely never represents any tagged immediates ("Proved false");
-    - may represent one or more tagged immediates ("Unknown");
-    - is of a kind other than [Value] ("Invalid").
-*)
-val prove_is_tagged_immediate : (t -> bool proof) type_accessor
-
-(** Prove that the given type is of kind [Value] and can assume the given
-    value kind.  If the proof cannot be given then [Invalid] is returned. *)
-val prove_of_kind_value_with_expected_value_kind
-   : (t
-  -> Flambda_kind.value_kind
-  -> ty_value or_invalid) type_accessor
-
-(** Like [prove_of_kind_value_with_expected_value_kind] but for a list of
-    types, all of which are checked against the given value kind. *)
-val prove_of_kind_value_with_expected_value_kinds
-   : (t list
-  -> Flambda_kind.value_kind
-  -> ty_value or_invalid) type_accessor
-
-(** Like [prove_of_kind_value_with_expected_value_kinds] but for a list of
-    types, each of which may be tested against a different value kind. *)
-val prove_of_kind_value_with_individual_expected_value_kinds
-   : ((t * Flambda_kind.value_kind) list
-  -> ty_value or_invalid) type_accessor
-
-(** Prove that the given types are all of kind [Naked_float].  If the proof
-    cannot be given then [Invalid] is returned. *)
-val prove_of_kind_naked_float_list
-   : (t list
-  -> ty_naked_float list or_invalid) type_accessor
-
 (** Prove that the given type represents exactly some particular set of
-    immediates.  The set is guaranteed to be non-empty.  If this proof
-    cannot be given then either [Unknown] (stating that the type may yet
-    represent one or more tagged immediates, but we cannot prove it) or
-    [Invalid] (stating that the type definitely cannot represent any
-    tagged immediate) is returned.
+    tagged immediates ("Proved (Exactly ...)").  The set is guaranteed to be
+    non-empty.  Alternatively, prove that the given type is known to represent
+    only tagged immediates, but it is not known which ones
+    ("Proved Not_all_values_known").  If neither of these proofs can be given
+    then either [Unknown] (stating that the type may yet represent one or more
+    tagged immediates, but we don't know) or [Invalid] (stating that the
+    type definitely cannot represent any tagged immediate) is returned.
 *)
-val prove_tagged_immediate : (t -> Immediate.Set.t proof) type_accessor
+val prove_tagged_immediate : (t -> Immediate.Set.t known_values) type_accessor
 
-(** As for [prove_tagged_immediate], but for naked immediate values. *)
-val prove_naked_immediate : (t -> Targetint.OCaml.Set.t proof) type_accessor
-
-(** As for [prove_tagged_immediate], but for naked float values. *)
-val prove_naked_float
-   : (t -> Numbers.Float_by_bit_pattern.Set.t proof) type_accessor
+(** Similar to [prove_tagged_immediate], but for naked float values: the
+    difference is that there are no [Unknown] or [Invalid] return values
+    possible.  ([Proved] is also implicit.) *)
+val prove_naked_float : (t -> Numbers.Float_by_bit_pattern.Set.t) type_accessor
 
 (** As for [prove_tagged_immediate], but for naked int32 values. *)
-val prove_naked_int32 : (t -> Numbers.Int32.Set.t proof) type_accessor
+val prove_naked_int32 : (t -> Numbers.Int32.Set.t) type_accessor
 
 (** As for [prove_tagged_immediate], but for naked int64 values. *)
-val prove_naked_int64 : (t -> Numbers.Int64.Set.t proof) type_accessor
+val prove_naked_int64 : (t -> Numbers.Int64.Set.t) type_accessor
 
 (** As for [prove_tagged_immediate], but for naked nativeint (target width
     integer) values. *)
-val prove_naked_nativeint : (t -> Targetint.Set.t proof) type_accessor
+val prove_naked_nativeint : (t -> Targetint.Set.t) type_accessor
 
 (** As for [prove_tagged_immediate], but for (structured, tag less than
     [No_scan_tag]) blocks. *)
-val prove_block : (t -> Blocks.t proof) type_accessor
+val prove_block : (t -> Blocks.t known_values) type_accessor
 
 (** Like [prove_block] except for handling values of variant types.
     The non-emptiness criterion on the result value is slightly different
@@ -248,14 +211,14 @@ val prove_block : (t -> Blocks.t proof) type_accessor
     [Immediate.Set.t] may be empty. *)
 val prove_blocks_and_immediates
    : (t
-  -> (Blocks.t * Immediate.Set.t) proof) type_accessor
+  -> (Blocks.t * Immediate.Set.t) known_values) type_accessor
 
 (** As for [prove_tagged_immediate], but for float arrays (with tag
     [Double_array_tag]). *)
-val prove_float_array : (t -> Float_array.t list proof) type_accessor
+val prove_float_array : (t -> Float_array.t list known_values) type_accessor
 
 (** As for [prove_tagged_immediate], but for strings. *)
-val prove_string : (t -> String_info.Set.t proof) type_accessor
+val prove_string : (t -> String_info.Set.t known_values) type_accessor
 
 (** Prove that the given type represents a boxed int32 value, returning the
     type of the unboxed number therein.  (That type may in itself specify
@@ -286,6 +249,41 @@ val prove_sets_of_closures
 *)
 val prove_lengths_of_arrays_or_blocks
    : (t -> Targetint.OCaml.Set.t proof) type_accessor
+
+(** Prove that the given type:
+    - only ever represents one or more tagged immediates ("Proved true");
+    - never represents any tagged immediates ("Proved false");
+    - may represent one or more tagged immediates ("Unknown");
+    - is bottom ("Invalid").
+*)
+val prove_is_tagged_immediate : (t -> bool proof) type_accessor
+
+(** Check that the given type is of kind [Value] and can assume the given
+    value kind.  A fatal error is raised if the check fails: kind errors are
+    always compiler bugs. *)
+val force_to_kind_value_with_expected_value_kind
+   : (t
+  -> Flambda_kind.value_kind
+  -> ty_value) type_accessor
+
+(** Like [prove_of_kind_value_with_expected_value_kind] but for a list of
+    types, all of which are checked against the given value kind. *)
+val force_to_kind_value_with_expected_value_kinds
+   : (t list
+  -> Flambda_kind.value_kind
+  -> ty_value) type_accessor
+
+(** Like [prove_of_kind_value_with_expected_value_kinds] but for a list of
+    types, each of which may be tested against a different value kind. *)
+val force_to_kind_value_with_individual_expected_value_kinds
+   : ((t * Flambda_kind.value_kind) list
+  -> ty_value) type_accessor
+
+(** Prove that the given types are all of kind [Naked_float].  If the proof
+    cannot be given then [Invalid] is returned. *)
+val force_to_kind_naked_float_list
+   : (t list
+  -> ty_naked_float list or_invalid) type_accessor
 
 type switch_branch_classification =
   | Cannot_be_taken

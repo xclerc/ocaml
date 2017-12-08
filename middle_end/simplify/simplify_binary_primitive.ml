@@ -728,6 +728,76 @@ let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
       end;
       Ok t
 
+let get_field ~importer ~type_of_name t ~field_index ~field_is_mutable
+      ~(block_access_kind : Flambda_primitive.block_access_kind)
+      : get_field_result =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  let expected_result_kind =
+    match block_access_kind with
+    | Dynamic_must_scan_or_naked_float -> K.value Must_scan
+    | Must_scan -> K.value Must_scan
+    | Can_scan -> K.value Can_scan
+    | Naked_float -> K.naked_float ()
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown -> Ok (unknown expected_result_kind Other)
+    | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
+      (* XXX this needs reviewing again in the light of the work in
+         Simplify_primitive (for block set).  I suspect this next conditional
+         should go *)
+      if not (Immediate.Set.is_empty imms) then
+        Invalid
+      else
+        (* XXX we shouldn't be doing this if [field_kind] is [Float] -- and
+           vice-versa in the float array case *)
+        Blocks.get_field ~importer ~type_of_name blocks ~field_index
+          ~expected_result_kind ~field_is_mutable ~is_unknown
+    | Float_arrays { lengths; } ->
+      let if_used_at = Flambda_kind.naked_float () in
+      (* CR mshinwell: If this check fails, maybe it's always a compiler bug?
+         We need to check how the kind for [Block_load] is set in the frontend
+         (i.e. Pfield / Pfloatfield). *)
+      if not (Flambda_kind.compatible expected_result_kind ~if_used_at) then
+        Invalid
+      else
+        let index_is_out_of_range_for_all_lengths =
+          match lengths with
+          | Not_all_values_known -> false
+          | Exactly lengths ->
+            Int.Set.for_all (fun length ->
+                field_index < 0 || field_index >= length)
+              lengths
+        in
+        if index_is_out_of_range_for_all_lengths then
+          Invalid
+        else
+          Ok (unknown (Flambda_kind.naked_float ()) Other)
+    | Bottom
+    | Blocks_and_tagged_immediates _
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Cannot extract field %d from block with the following \
+        type (invalid kind): %a"
+      field_index
+      print t
+
+
 let simplify_block_load_known_index env r prim arg dbg ~field_index
       ~block_access_kind ~field_is_mutable =
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
