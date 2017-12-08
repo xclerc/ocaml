@@ -185,18 +185,9 @@ val of_string : string -> t
 val to_string : t -> string
 (** Return the string representation of its argument, in decimal. *)
 
-val compare: t -> t -> int
-(** The comparison function for target integers, with the same specification as
-    {!Pervasives.compare}.  Along with the type [t], this function [compare]
-    allows the module [Targetint] to be passed as argument to the functors
-    {!Set.Make} and {!Map.Make}. *)
-
 val compare_unsigned: t -> t -> int
 (** Same as [compare], except that arguments are interpreted as {e unsigned}
     integers. *)
-
-val equal: t -> t -> bool
-(** The equal function for target ints. *)
 
 type repr =
   | Int32 of int32

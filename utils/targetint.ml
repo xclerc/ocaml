@@ -59,9 +59,7 @@ module type S = sig
   val to_int64 : t -> int64
   val of_string : string -> t
   val to_string : t -> string
-  val compare: t -> t -> int
   val compare_unsigned : t -> t -> int
-  val equal: t -> t -> bool
   val repr: t -> repr
   val min: t -> t -> t
   val max: t -> t -> t
