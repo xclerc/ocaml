@@ -2178,6 +2178,10 @@ end) = struct
 
   let join = Join.combine
   let join_ty_value = Join.combine_ty_value
+  let join_ty_naked_float = Join.combine_ty_naked_float
+  let join_ty_naked_int32 = Join.combine_ty_naked_int32
+  let join_ty_naked_int64 = Join.combine_ty_naked_int64
+  let join_ty_naked_nativeint = Join.combine_ty_naked_nativeint
 
   let join_list ~importer ~type_of_name kind ts =
     match ts with
@@ -2189,6 +2193,10 @@ end) = struct
 
   let meet = Meet.combine
   let meet_ty_value = Meet.combine_ty_value
+  let meet_ty_naked_float = Meet.combine_ty_naked_float
+  let meet_ty_naked_int32 = Meet.combine_ty_naked_int32
+  let meet_ty_naked_int64 = Meet.combine_ty_naked_int64
+  let meet_ty_naked_nativeint = Meet.combine_ty_naked_nativeint
 
   type 'a or_bottom =
     | Ok of 'a

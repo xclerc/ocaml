@@ -379,8 +379,12 @@ module Blocks : sig
 
   val tags : t -> Tag.Scannable.Set.t
 
+  val all_possible_sizes : t -> Targetint.OCaml.Set.t
+
   val print : Format.formatter -> t -> unit
 end = struct
+  (* CR-someday mshinwell: Random note: use of [array] here could in theory
+     cause trouble for 32-bit -> 64-bit cross compilation. *)
   type t = ty_value array Tag.Scannable.Map.t
 
   let print ppf t =
@@ -389,6 +393,13 @@ end = struct
   let empty = Tag.Scannable.Map.empty
 
   let is_empty t = Tag.Scannable.Map.is_empty t
+
+  let all_possible_sizes t =
+    Tag.Scannable.Map.fold (fun fields sizes ->
+        let size = Targetint.OCaml.of_int (Array.length fields) in
+        Targetint.OCaml.Set.add size sizes)
+      t
+      Targetint.OCaml.Set.empty
 
   let create_singleton tag fields =
     Tag.Scannable.Map.add tag fields Tag.Scannable.Map.empty
@@ -449,6 +460,21 @@ end = struct
       t1 t2
 end
 
+module Float_array = struct
+  type t = {
+    size : Targetint.OCaml.t;
+    fields : ty_naked_float array option;
+  }
+
+  let size t = t.size
+
+  let fields t =
+    match t.fields with
+    | Some fields -> fields
+    | None ->
+      Array.init t.size (fun _index -> T.any_naked_float_as_ty_naked_float ())
+end
+
 module Evaluated_first_stage = struct
   (* We use a set-theoretic model that enables us to keep track of joins
      right until the end (unlike meets, joins cannot be "evaluated early":
@@ -469,10 +495,8 @@ module Evaluated_first_stage = struct
     | Boxed_nativeints of ty_naked_nativeint Or_not_all_values_known.t
     | Closures of Closure.t list Or_not_all_values_known.t
     | Sets_of_closures of Set_of_closures.t list Or_not_all_values_known.t
-    (* CR-someday mshinwell: Improve the [Float_array] case when we end up with
-       immutable float arrays at the user level. *)
     | Strings of String_info.Set.t Or_not_all_values_known.t
-    | Float_arrays of { lengths : Int.Set.t Or_not_all_values_known.t; }
+    | Float_arrays of Float_array.t list Or_not_all_values_known.t
 
   type t_naked_immediates = Immediate.Set.t Or_not_all_values_known.t
   type t_naked_floats = Float.By_bit_pattern.Set.t Or_not_all_values_known.t
@@ -1303,7 +1327,7 @@ module Evaluated = struct
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Sets_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
-    | Float_arrays of { lengths : Int.Set.t Or_not_all_values_known.t; }
+    | Float_arrays of Float_array.t list Or_not_all_values_known.t
 
   type t =
     | Values of t_values
@@ -1923,7 +1947,35 @@ let prove_blocks_and_immediates ~importer ~type_of_name t
     Misc.fatal_errorf "Wrong kind for something claimed to be a variant: %a"
       print t
 
-
+let prove_float_array ~importer ~type_of_name t
+      : Float_array.t list known_values =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown -> Unknown
+    | Float_arrays float_arrays -> Proved float_arrays
+    | Strings _
+    | Tagged_immediates_only _
+    | Boxed_nativeints _
+    | Blocks_and_tagged_immediates _
+    | Bottom
+    | Boxed_floats _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Closures _
+    | Sets_of_closures _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a float \
+        array: %a"
+      print t
 
 let prove_string ~importer ~type_of_name t : String_info.Set.t known_values =
   let t_evaluated, _canonical_name =
@@ -2128,58 +2180,48 @@ let prove_sets_of_closures ~importer ~type_of_name t
         closures: %a"
       print t
 
-let lengths_of_arrays_or_blocks ~importer ~type_of_name t
-      : Targetint.OCaml.Set.t proof =
-  let result =
-    let t_evaluated, _canonical_name =
-      Evaluated.create ~importer ~type_of_name t
-    in
-    match t_evaluated with
-    | Values values ->
-      begin match values with
-      | Unknown
-      | Float_arrays { lengths =  Not_all_values_known; } ->
-        Proved Not_all_values_known
-      | Float_arrays { lengths = Exactly lengths; } ->
-        Proved (Exactly lengths)
-      | Blocks_and_tagged_immediates (Exactly (blocks, imms)) ->
-        if not (Immediate.Set.is_empty imms) then
-          Invalid
-        else
-          begin match Blocks.unique_tag_and_size blocks with
-          | None -> Invalid
-          | Some (_tag, size) -> Proved (Exactly (Int.Set.singleton size))
-          end
-      | Boxed_floats _
-      | Bottom
-      | Blocks_and_tagged_immediates _
-      | Tagged_immediates_only _
-      | Boxed_int32s _
-      | Boxed_int64s _
-      | Boxed_nativeints _
-      | Closures _
-      | Sets_of_closures _
-      | Strings _ -> Invalid
-      end
-    | Naked_immediates _
-    | Naked_floats _
-    | Naked_int32s _
-    | Naked_int64s _
-    | Naked_nativeints _ ->
-      Misc.fatal_errorf "Wrong kind for something claimed to be an array \
-          or structured block: %a"
-        print t
-  in
-  match result with
-  | Invalid -> Invalid
-  | Proved _ ->
-    (* XXX [Obj.truncate] can only make blocks shorter, which is a fact we
-       should be able to use *)
-    if Config.ban_obj_dot_truncate then result
-    else Proved Not_all_values_known
+(* XXX What about [Obj.truncate]?
+   In fact, what happens regarding this for block access too? *)
 
 (* XXX Lengths of strings: for this, I think we can assume that Obj.truncate
    is always illegal here *)
+
+let prove_lengths_of_arrays_or_blocks ~importer ~type_of_name t
+      : Targetint.OCaml.Set.t proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown -> Unknown
+    | Float_arrays Not_all_values_known -> Unknown
+    | Float_arrays (Exactly float_arrays) ->
+      let sizes = List.map Float_array.size float_arrays in
+      Proved (Targetint.OCaml.Set.of_list sizes)
+    | Blocks_and_tagged_immediates (blocks, _) ->
+      Proved (Blocks.all_possible_sizes blocks)
+    | Boxed_floats _
+    | Bottom
+    | Blocks_and_tagged_immediates _
+    | Tagged_immediates_only _
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be an array \
+        or structured block: %a"
+      print t
+  in
+  result
 
 let prove_is_tagged_immediate ~importer ~type_of_name t : bool proof =
   let t_evaluated, _canonical_name =
@@ -2206,6 +2248,32 @@ let prove_is_tagged_immediate ~importer ~type_of_name t : bool proof =
   | Naked_int32s _
   | Naked_int64s _
   | Naked_nativeints _ -> Invalid
+
+let force_to_kind_value_with_expected_value_kind ~importer ~type_of_name
+        t expected_kind =
+  let ty_value = force_to_kind_value t in
+  let actual_kind = value_kind ~importer ~type_of_name ty_value in
+  if not (Flambda_kind.compatible actual_kind ~if_used_at:expected_kind)
+  then begin
+    Misc.fatal_errorf "Type should be compatible with kind [Value %a] but \
+        is not: %a"
+      Flambda_kind.print_value_kind expected_kind
+      print t
+    end
+
+let force_to_kind_value_with_expected_value_kinds ~importer ~type_of_name
+        ts expected_kind =
+  List.iter (fun t ->
+      force_to_kind_value_with_expected_value_kind ~importer ~type_of_name
+        t expected_kind)
+    ts
+
+let force_to_kind_value_with_expected_value_kinds ~importer ~type_of_name
+        ts_and_expected_kinds =
+  List.iter (fun (t, expected_kind) ->
+      force_to_kind_value_with_expected_value_kind ~importer ~type_of_name
+        t expected_kind)
+    ts_and_expected_kinds
 
 type switch_branch_classification =
   | Cannot_be_taken

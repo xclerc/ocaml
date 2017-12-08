@@ -240,10 +240,10 @@ val prove_closures : (t -> Joined_closures.t known_values) type_accessor
 val prove_sets_of_closures
    : (t -> Joined_sets_of_closures.t known_values) type_accessor
 
-(** Determine the known length(s) of the array(s) or structured block(s)
-    (i.e. blocks with tag less than [No_scan_tag]) described by the given
-    type.  This function correctly handles float arrays (where the length of
-    the array, on 32-bit platforms, may differ from the size of the block).
+(** Determine the set of all possible length(s) of the array(s) or structured
+    block(s) (i.e. blocks with tag less than [No_scan_tag]) described by the
+    given type.  This function correctly handles float arrays (where the length
+    of the array, on 32-bit platforms, may differ from the size of the block).
     [Unknown] is returned if a proof cannot be given but the type may yet
     represent array(s) or block(s); [Invalid] is returned if that can never
     be the case.
