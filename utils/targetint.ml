@@ -32,7 +32,9 @@ module type S = sig
   val sub : t -> t -> t
   val mul : t -> t -> t
   val div : t -> t -> t
+  val div_unsigned : t -> t -> t
   val rem : t -> t -> t
+  val rem_unsigned : t -> t -> t
   val succ : t -> t
   val pred : t -> t
   val abs : t -> t
@@ -57,11 +59,13 @@ module type S = sig
   val to_int64 : t -> int64
   val of_string : string -> t
   val to_string : t -> string
+  val compare: t -> t -> int
+  val compare_unsigned : t -> t -> int
+  val equal: t -> t -> bool
   val repr: t -> repr
   val min: t -> t -> t
   val max: t -> t -> t
   val get_least_significant_16_bits_then_byte_swap : t -> t
-  val compare_unsigned : t -> t -> int
 
   include Identifiable.S with type t := t
 

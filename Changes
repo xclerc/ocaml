@@ -22,6 +22,10 @@ Working version
 
 ### Standard library:
 
+- GPR#????: Add unsigned operations div_unsigned, rem_unsigned,
+  and compare_unsigned to modules Int32, Int64, Nativeint.
+  (Nicolas Ojeda Bar, review by ....)
+
 ### Other libraries:
 
 * GPR#1406: Unix.isatty now returns true in the native Windows ports when
