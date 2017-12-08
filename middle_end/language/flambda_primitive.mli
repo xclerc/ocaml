@@ -110,8 +110,6 @@ type bigarray_kind =
   | Int_width_int | Targetint_width_int
   | Complex32 | Complex64
 
-val kind_of_bigarray_kind : bigarray_kind -> Flambda_kind.t
-
 type bigarray_layout = Unknown | C | Fortran
 
 (* We can use array_kind instead
@@ -172,6 +170,7 @@ type unary_primitive =
   | Get_tag
   | Array_length of block_access_kind
   | Bigarray_length of { dimension : int; }
+    (* CR mshinwell/xclerc: Invariant check: dimension >= 0 *)
   | String_length of string_or_bytes
   | Int_as_pointer
   | Opaque_identity

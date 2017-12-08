@@ -1190,14 +1190,19 @@ let simplify_array_length env r prim arg ~array_kind dbg =
   in
   term, ty, r
 
-let simplify_bigarray_length env r prim arg ~dimension dbg =
-  let arg, ty = S.simplify_simple env arg in
+let simplify_bigarray_length env r prim bigarray ~dimension dbg =
+  let bigarray, ty = S.simplify_simple env bigarray in
   let result_kind = K.value Definitely_immediate in
-  if (E.type_accessor env T.is_bottom) ty then
-    Reachable.invalid (), T.bottom result_kind
-  else
-    let named : Named.t = Prim (Unary (prim, arg), dbg) in
+  let bigarray_proof =
+    (E.type_accessor env T.prove_of_kind_value_with_expected_value_kind
+      Definitely_pointer) bigarray
+  in
+  begin match proof with
+  | Proved _ ->
+    let named : Named.t = Prim (Unary (prim, bigarray), dbg) in
     named, T.unknown result_kind Other
+  | Invalid ->
+    Reachable.invalid (), T.bottom result_kind
 
 let simplify_unary_primitive env r prim arg dbg =
   match prim with

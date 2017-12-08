@@ -125,7 +125,8 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
   new_bindings, term, ty, r
 
 (* CR mshinwell: Could use [unit or_invalid] rather than [bool] *)
-(* XXX this should be "for all" not "exists" *)
+(* XXX this should be "for all" not "exists".  Also, take care: when the list
+   is empty, this should return false *)
 let bigarray_indexes_are_invalid env indexes =
   let index_proofs =
     List.map (fun index ->
@@ -153,6 +154,8 @@ let bigarray_indexes_are_invalid env indexes =
         | Invalid -> true)
     index_proofs
     false
+
+(* XXX add "type_of_bigarray_kind" etc in this file. *)
 
 let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
   let args_with_tys = S.simplify_simple env args in
