@@ -2275,6 +2275,23 @@ let force_to_kind_value_with_expected_value_kinds ~importer ~type_of_name
         t expected_kind)
     ts_and_expected_kinds
 
+let force_to_kind_naked_float_list ts =
+  List.iter force_to_kind_naked_float ts
+
+let tags ~importer ~type_of_name t =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values -> Evaluated.tags values
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Type should be of kind [Value] but is not: %a"
+      print t
+
 type switch_branch_classification =
   | Cannot_be_taken
   | Can_be_taken

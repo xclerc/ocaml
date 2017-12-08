@@ -120,9 +120,6 @@ module Evaluated : sig
 
   (** The kind of the given evaluated type. *)
   val kind : t -> Flambda_kind.t
-
-  (* CR mshinwell: Maybe this should return Tag.Set.t? *)
-  val tags : t_values -> Targetint.Set.t Or_not_all_values_known.t
 end
 
 (** Whether the given type says that a term of that type can never be
@@ -282,9 +279,7 @@ val force_to_kind_value_with_individual_expected_value_kinds
 
 (** Prove that the given types are all of kind [Naked_float].  If the proof
     cannot be given then [Invalid] is returned. *)
-val force_to_kind_naked_float_list
-   : (t list
-  -> ty_naked_float list or_invalid) type_accessor
+val force_to_kind_naked_float_list : t list -> ty_naked_float list
 
 type switch_branch_classification =
   | Cannot_be_taken
@@ -299,6 +294,9 @@ val classify_switch_branch
   -> scrutinee:Name.t
   -> Targetint.t
   -> switch_branch_classification) type_accessor
+
+(* CR mshinwell: Maybe this should return Tag.Set.t? *)
+val tags : (t -> Targetint.Set.t Or_not_all_values_known.t) type_accessor
 
 (** Returns [true] iff the given type provides the same or strictly more
     information about the corresponding value than the supplied type [than]. *)

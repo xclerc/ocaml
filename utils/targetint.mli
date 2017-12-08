@@ -230,5 +230,13 @@ module OCaml : sig
   *)
   val max_string_length : t
 
+  val zero : t
+  val one : t
+  val hex_ff : t
+
+  val bottom_byte_to_int : t -> int
+
+  val of_char : char -> t
+
   include Identifiable.S with type t := t
 end

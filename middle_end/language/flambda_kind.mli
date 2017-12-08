@@ -21,15 +21,17 @@
     and/or differences in GC (non-) registration of roots.
 *)
 
-type value_kind =
-  | Unknown
-  | Definitely_pointer
-  | Definitely_immediate
+module Value_kind : sig
+  type t =
+    | Unknown
+    | Definitely_pointer
+    | Definitely_immediate
 
-val join_value_kind : value_kind -> value_kind -> value_kind
-val meet_value_kind : value_kind -> value_kind -> value_kind
-val compatible_value_kind : value_kind -> if_used_at:value_kind -> bool
-val print_value_kind : Format.formatter -> value_kind -> unit
+  val join : t -> t -> t
+  val meet : t -> t -> t
+  val compatible : t -> if_used_at:t -> bool
+  val print : Format.formatter -> t -> unit
+end
 
 type t = private
   | Value of value_kind

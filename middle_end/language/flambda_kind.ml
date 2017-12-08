@@ -16,40 +16,26 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-(*
-type scanning =
-  | Must_scan
-  | Can_scan
+module Value_kind = struct
+  type t =
+    | Unknown
+    | Definitely_pointer
+    | Definitely_immediate
 
-let join_scanning s1 s2 =
-  match s1, s2 with
-  | Must_scan, Must_scan
-  | Must_scan, Can_scan
-  | Can_scan, Must_scan -> Must_scan
-  | Can_scan, Can_scan -> Can_scan
+  let join t0 t1 =
+    match t0, t1 with
+    | Unknown, Unknown -> Unknown
 
-let meet_scanning s1 s2 =
-  match s1, s2 with
-  | Must_scan, Must_scan -> Must_scan
-  | Must_scan, Can_scan
-  | Can_scan, Must_scan
-  | Can_scan, Can_scan -> Can_scan
 
-let compatible_scanning s ~if_used_at =
-  match s, if_used_at with
-  | Must_scan, Must_scan
-  | Can_scan, Can_scan -> true
-  | Can_scan, Must_scan -> true
-  | Must_scan, Can_scan -> false
-*)
-
-type scanning =
-  | Unknown
-  | Definitely_pointer
-  | Definitely_immediate
+  let print ppf t =
+    match t with
+    | Unknown -> fprintf ppf "Unk"
+    | Definitely_pointer -> fprintf ppf "Ptr"
+    | Definitely_immediate -> fprintf ppf "Imm"
+end
 
 type t =
-  | Value of scanning
+  | Value of value_kind
   | Naked_immediate
   | Naked_float
   | Naked_int32
@@ -58,7 +44,7 @@ type t =
 
 type kind = t
 
-let value scanning = Value scanning
+let value value_kind = Value value_kind
 
 (* CR mshinwell: can remove lambdas now *)
 let naked_immediate () = Naked_immediate
@@ -81,8 +67,9 @@ include Identifiable.Make (struct
 
   let print ppf t =
     match t with
-    | Value Must_scan -> Format.pp_print_string ppf "value_must_scan"
-    | Value Can_scan -> Format.pp_print_string ppf "value_can_scan"
+    | Value value_kind ->
+      Format.pp_print_string ppf "value(%a)"
+        Value_kind.print value_kind
     | Naked_immediate -> Format.pp_print_string ppf "naked_immediate"
     | Naked_float -> Format.pp_print_string ppf "naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
