@@ -788,7 +788,9 @@ let rec check_recordwith_updates id e =
   | _ -> false
 ;;
 
-let rec size_of_lambda env = function
+let rec size_of_lambda' env lam =
+  let open Types in
+  match lam with
   | Lvar id ->
       begin try Ident.find_same id env with Not_found -> RHS_nonrec end
   | Lfunction{params} as funct ->
@@ -803,13 +805,13 @@ let rec size_of_lambda env = function
       | Record_extension -> RHS_block (size + 1)
       end
   | Llet(_str, _k, id, arg, body) ->
-      size_of_lambda (Ident.add id (size_of_lambda env arg) env) body
+      size_of_lambda' (Ident.add id (size_of_lambda' env arg) env) body
   | Lletrec(bindings, body) ->
       let env = List.fold_right
-        (fun (id, e) env -> Ident.add id (size_of_lambda env e) env)
+        (fun (id, e) env -> Ident.add id (size_of_lambda' env e) env)
         bindings env
       in
-      size_of_lambda env body
+      size_of_lambda' env body
   | Lprim(Pmakeblock _, args, _) -> RHS_block (List.length args)
   | Lprim (Pmakearray ((Paddrarray|Pintarray), _), args, _) ->
       RHS_block (List.length args)
@@ -826,8 +828,8 @@ let rec size_of_lambda env = function
   | Lprim (Pduprecord (Record_extension, size), _, _) ->
       RHS_block (size + 1)
   | Lprim (Pduprecord (Record_float, size), _, _) -> RHS_floatblock size
-  | Levent (lam, _) -> size_of_lambda env lam
-  | Lsequence (_lam, lam') -> size_of_lambda env lam'
+  | Levent (lam, _) -> size_of_lambda' env lam
+  | Lsequence (_lam, lam') -> size_of_lambda' env lam'
   | _ -> RHS_nonrec
 
 let merge_inline_attributes attr1 attr2 =
@@ -838,7 +840,7 @@ let merge_inline_attributes attr1 attr2 =
     if attr1 = attr2 then Some attr1
     else None
 
-let size_of_lambda lam = size_of_lambda_ Ident.empty lam
+let size_of_lambda lam = size_of_lambda' Ident.empty lam
 
 let reset () =
   Continuation.reset ()

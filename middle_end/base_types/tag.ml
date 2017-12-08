@@ -43,7 +43,7 @@ let closure_tag = Obj.closure_tag
 let all_as_targetints =
   let all = ref Targetint.Set.empty in
   for tag = min_tag to max_tag do
-    all := Targetint.Set.add tag !all
+    all := Targetint.Set.add (Targetint.of_int tag) !all
   done;
   !all
 

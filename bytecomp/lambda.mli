@@ -405,7 +405,7 @@ type rhs_kind =
   | RHS_block of int
   | RHS_floatblock of int
   | RHS_nonrec
-  | RHS_function of int * int * lfunction
+  | RHS_function of int * int
 
 val size_of_lambda : lambda -> rhs_kind
 
