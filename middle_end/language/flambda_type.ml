@@ -436,40 +436,6 @@ end = struct
     | None -> None
     | Some (tag, fields) -> Some (tag, Array.length fields)
 
-  let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
-        ~field_is_mutable ~is_unknown : get_field_result =
-    let block_t = t in
-    (* XXX not sure this is right -- see comment below *)
-    match Tag.Scannable.Map.get_singleton t with
-    | None -> Invalid
-    | Some (_tag, fields) ->
-      if field_index < 0 || field_index >= Array.length fields then
-        Invalid
-      else
-        let ty = fields.(field_index) in
-        let scanning = scanning_ty_value ~importer ~type_of_name ty in
-        let actual_kind = K.value scanning in
-        if not (K.compatible actual_kind ~if_used_at:expected_result_kind)
-        then begin
-          Misc.fatal_errorf "Expected field %d of block with the following \
-              type to have kind %a, but it has kind %a: %a"
-            field_index
-            K.print expected_result_kind
-            K.print actual_kind
-            print t
-        end;
-        let t = t_of_ty_value ty in
-        if field_is_mutable then begin
-          if not (is_unknown ~importer ~type_of_name t) then begin
-            Misc.fatal_errorf "Field %d of type %a in block with the following \
-                type is apparently mutable, yet its type is not unknown: %a"
-              field_index
-              print block_t
-              print t
-          end
-        end;
-        Ok t
-
   let tags t = Tag.Scannable.Map.keys t
 
   let equal ~equal_type t1 t2 =
@@ -1330,10 +1296,10 @@ module Evaluated = struct
     | Blocks_and_tagged_immediates of
         (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
     | Tagged_immediates_only of Immediate.Set.t Or_not_all_values_known.t
-    | Boxed_floats of Float.By_bit_pattern.Set.t Or_not_all_values_known.t
-    | Boxed_int32s of Int32.Set.t Or_not_all_values_known.t
-    | Boxed_int64s of Int64.Set.t Or_not_all_values_known.t
-    | Boxed_nativeints of Targetint.Set.t Or_not_all_values_known.t
+    | Boxed_floats of ty_naked_float Or_not_all_values_known.t
+    | Boxed_int32s of ty_naked_int32 Or_not_all_values_known.t
+    | Boxed_int64s of ty_naked_int64 Or_not_all_values_known.t
+    | Boxed_nativeints of ty_naked_nativeint Or_not_all_values_known.t
     | Closures of Joined_closures.t Or_not_all_values_known.t
     | Sets_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
     | Strings of String_info.Set.t Or_not_all_values_known.t
@@ -1729,84 +1695,87 @@ let reify ~importer ~type_of_name ~allow_free_variables (* ~expected_kind *) t
   let t_evaluated, canonical_name =
     Evaluated.create ~importer ~type_of_name t
   in
-  let try_name () : reification_result =
-    match canonical_name with
-    | None -> Cannot_reify
-    | Some name ->
-      match name with
-      | Var _ when not allow_free_variables -> Cannot_reify
-      | Var _ | Symbol _ ->
-        (* This is the only case where we return [Term] with a term that
-           cannot be produced just from the type.  As such, we may wish to
-           make the type more precise later, so we return an alias type rather
-           than [t]. *)
-        let kind = kind ~importer ~type_of_name t in
-        let t = alias kind name in
-        Term (Simple.name name, t)
-  in
-  let result =
-    match t_evaluated with
-    | Values values ->
-      begin match values with
-      | Bottom -> Invalid
-      | Tagged_immediates_only (Exactly imms) ->
-        begin match Immediate.Set.get_singleton imms with
-        | Some imm -> Term (Simple.const (Tagged_immediate imm), t)
+  if Evaluated.is_bottom t_evaluated then
+    Invalid
+  else
+    let try_name () : reification_result =
+      match canonical_name with
+      | None -> Cannot_reify
+      | Some name ->
+        match name with
+        | Var _ when not allow_free_variables -> Cannot_reify
+        | Var _ | Symbol _ ->
+          (* This is the only case where we return [Term] with a term that
+             cannot be produced just from the type.  As such, we may wish to
+             make the type more precise later, so we return an alias type rather
+             than [t]. *)
+          let kind = kind ~importer ~type_of_name t in
+          let t = alias kind name in
+          Term (Simple.name name, t)
+    in
+    let result =
+      match t_evaluated with
+      | Values values ->
+        begin match values with
+        | Bottom -> Invalid
+        | Tagged_immediates_only (Exactly imms) ->
+          begin match Immediate.Set.get_singleton imms with
+          | Some imm -> Term (Simple.const (Tagged_immediate imm), t)
+          | None -> try_name ()
+          end
+        | Unknown
+        | Blocks_and_tagged_immediates _
+        | Tagged_immediates_only _
+        | Boxed_floats _
+        | Boxed_int32s _
+        | Boxed_int64s _
+        | Boxed_nativeints _
+        | Closures _
+        | Sets_of_closures _
+        | Strings _
+        | Float_arrays _ -> try_name ()
+        end
+      | Naked_immediates (Exactly is) ->
+        begin match Immediate.Set.get_singleton is with
+        | Some i -> Term (Simple.const (Untagged_immediate i), t)
         | None -> try_name ()
         end
-      | Unknown
-      | Blocks_and_tagged_immediates _
-      | Tagged_immediates_only _
-      | Boxed_floats _
-      | Boxed_int32s _
-      | Boxed_int64s _
-      | Boxed_nativeints _
-      | Closures _
-      | Sets_of_closures _
-      | Strings _
-      | Float_arrays _ -> try_name ()
-      end
-    | Naked_immediates (Exactly is) ->
-      begin match Immediate.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Untagged_immediate i), t)
-      | None -> try_name ()
-      end
-    | Naked_floats (Exactly fs) ->
-      begin match Float.By_bit_pattern.Set.get_singleton fs with
-      | Some f -> Term (Simple.const (Naked_float f), t)
-      | None -> try_name ()
-      end
-    | Naked_int32s (Exactly is) ->
-      begin match Int32.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Naked_int32 i), t)
-      | None -> try_name ()
-      end
-    | Naked_int64s (Exactly is) ->
-      begin match Int64.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Naked_int64 i), t)
-      | None -> try_name ()
-      end
-    | Naked_nativeints (Exactly is) ->
-      begin match Targetint.Set.get_singleton is with
-      | Some i -> Term (Simple.const (Naked_nativeint i), t)
-      | None -> try_name ()
-      end
-    | Naked_immediates Not_all_values_known
-    | Naked_floats Not_all_values_known
-    | Naked_int32s Not_all_values_known
-    | Naked_int64s Not_all_values_known
-    | Naked_nativeints Not_all_values_known -> try_name ()
-  in
-(*
-  let kind = Evaluated.kind t_evaluated in
-  if not (Flambda_kind.compatible kind ~if_used_at:expected_kind) then begin
-    Misc.fatal_errorf "Type %a, resolved to %a, cannot be used at kind %a"
-      print original_t
-      print t
-      K.print expected_kind
-  end;
-*)
-  result
+      | Naked_floats (Exactly fs) ->
+        begin match Float.By_bit_pattern.Set.get_singleton fs with
+        | Some f -> Term (Simple.const (Naked_float f), t)
+        | None -> try_name ()
+        end
+      | Naked_int32s (Exactly is) ->
+        begin match Int32.Set.get_singleton is with
+        | Some i -> Term (Simple.const (Naked_int32 i), t)
+        | None -> try_name ()
+        end
+      | Naked_int64s (Exactly is) ->
+        begin match Int64.Set.get_singleton is with
+        | Some i -> Term (Simple.const (Naked_int64 i), t)
+        | None -> try_name ()
+        end
+      | Naked_nativeints (Exactly is) ->
+        begin match Targetint.Set.get_singleton is with
+        | Some i -> Term (Simple.const (Naked_nativeint i), t)
+        | None -> try_name ()
+        end
+      | Naked_immediates Not_all_values_known
+      | Naked_floats Not_all_values_known
+      | Naked_int32s Not_all_values_known
+      | Naked_int64s Not_all_values_known
+      | Naked_nativeints Not_all_values_known -> try_name ()
+    in
+  (*
+    let kind = Evaluated.kind t_evaluated in
+    if not (Flambda_kind.compatible kind ~if_used_at:expected_kind) then begin
+      Misc.fatal_errorf "Type %a, resolved to %a, cannot be used at kind %a"
+        print original_t
+        print t
+        K.print expected_kind
+    end;
+  *)
+    result
 
 let get_field ~importer ~type_of_name t ~field_index ~field_is_mutable
       ~(block_access_kind : Flambda_primitive.block_access_kind)

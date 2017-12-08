@@ -100,42 +100,18 @@ module Joined_sets_of_closures : sig
   val to_unique_set_of_closures : t -> Set_of_closures.t option
 end
 
+module Float_array : sig
+  type t
+
+  val size : t -> Targetint.OCaml.t
+  val fields : t -> ty_naked_float array
+end
+
 module Evaluated : sig
-  (** A straightforward canonical form which can be used easily for the
-      determination of properties of a type.
+  (** A canonical form which can be used for the determination of properties
+      of a type. *)
 
-      There are some subtleties concerning "unknown" and "bottom" types here.
-      For reliable determination of these two properties the [is_unknown]
-      and [is_bottom] functions should be used in preference to matching on
-      values of type [t].
-  *)
-  type t_values = private
-    | Unknown
-    | Bottom
-    | Blocks_and_tagged_immediates of
-        (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
-    (** For [Blocks_and_tagged_immediates] it is guaranteed that the
-        "blocks" portion is non-empty.  (Otherwise [Tagged_immediates_only]
-        will be produced.) *)
-    | Tagged_immediates_only of Immediate.Set.t Or_not_all_values_known.t
-    | Boxed_floats of ty_naked_float Or_not_all_values_known.t
-    | Boxed_int32s of ty_naked_int32 Or_not_all_values_known.t
-    | Boxed_int64s of ty_naked_int64 Or_not_all_values_known.t
-    | Boxed_nativeints of ty_naked_nativeint Or_not_all_values_known.t
-    | Closures of Joined_closures.t Or_not_all_values_known.t
-    | Sets_of_closures of Joined_sets_of_closures.t Or_not_all_values_known.t
-    | Strings of String_info.Set.t Or_not_all_values_known.t
-    (* CR mshinwell: We should support immutable float arrays, since these are
-       also used for all-float records. *)
-    | Float_arrays of { lengths : Numbers.Int.Set.t Or_not_all_values_known.t; }
-
-  type t = private
-    | Values of t_values
-    | Naked_immediates of Immediate.Set.t Or_not_all_values_known.t
-    | Naked_floats of Numbers.Float.By_bit_pattern.Set.t Or_not_all_values_known.t
-    | Naked_int32s of Numbers.Int32.Set.t Or_not_all_values_known.t
-    | Naked_int64s of Numbers.Int64.Set.t Or_not_all_values_known.t
-    | Naked_nativeints of Targetint.Set.t Or_not_all_values_known.t
+  type t
 
   (** Evaluate the given type to a canonical form, possibly with an associated
       name. *)
@@ -165,42 +141,6 @@ val is_useful : (t -> bool) type_accessor
 (** Whether all types in the given list do *not* satisfy [useful]. *)
 val all_not_useful : (t list -> bool) type_accessor
 
-(*
-(** XXX Something like this? *)
-type equation_rhs =
-  | Simple of Simple.t
-  | Type of t
-
-val equations_implied_by_type
-   : (t -> (equation_rhs Variable.Map.t)) type_accessor
-*)
-
-(*
-(** Whether the given type describes a float array. *)
-val is_float_array : t -> bool
-
-(** Whether code that mutates a value with the given type is to be
-    treated as invalid.  Cannot be called with an [Extern] or [Symbol]
-    type; these need to be resolved first. *)
-val invalid_to_mutate : t -> bool
-
-(** Find the type for a bound variable in a set-of-closures
-    type.  A fatal error is produced if the variable is not bound in
-    the given type. *)
-val type_for_bound_var : set_of_closures -> Var_within_closure.t -> t
-
-(** Returns [true] when it can be proved that the provided types identify a
-    unique value (with respect to physical equality) at runtime.  The input
-    list must have length two. *)
-val physically_same_values : t list -> bool
-
-(** Returns [true] when it can be proved that the provided types identify
-    different values (with respect to physical equality) at runtime.  The
-    input list must have length two. *)
-val physically_different_values : t list -> bool
-
-*)
-
 type reification_result =
   | Term of Simple.t * t
   | Cannot_reify
@@ -223,240 +163,130 @@ type reification_result =
 *)
 val reify
    : (allow_free_variables:bool
-(*  -> expected_kind:Flambda_kind.t *)
-  -> flambda_type
+  -> t
   -> reification_result) type_accessor
-
-type get_field_result = private
-  | Ok of t
-  | Invalid
-
-(** Given the type [t] of a value (expected to correspond to a block of kind
-    [Value]) and a field index then return an appropriate type for that field
-    of the block (or [Invalid]).  The expected kind of the field, as per
-    [Flambda_primitive.Block_load], must be provided.
-
-    Note that this will return [Invalid] if a use is detected of a variant-like
-    type (union of blocks and immediates).
-*)
-(* XXX this shouldn't fail in the variant case *)
-val get_field
-   : (t
-  -> field_index:int
-  -> field_is_mutable:bool
-  -> field_kind:Flambda_primitive.field_kind
-  -> get_field_result) type_accessor
 
 type 'a proof = private
   | Proved of 'a
   | Unknown
   | Invalid
 
+(* CR mshinwell: Add unit tests to check that the condition about the result
+   sets in [Proved] being non-empty holds. *)
+
 type 'a or_invalid = private
   | Proved of 'a
   | Invalid
 
-type boxed_float_proof = ty_naked_float proof
-
-(* CR mshinwell: update comment.
-   Maybe change this Not_all_values_known in these proof types to something
-   more descriptive?  It should probably just be Proved/Unknown/Invalid.
+(** Prove that the given type:
+    - definitely represents one or more tagged immediates ("Proved true");
+    - definitely never represents any tagged immediates ("Proved false");
+    - may represent one or more tagged immediates ("Unknown");
+    - is of a kind other than [Value] ("Invalid").
 *)
-(* CR mshinwell: Add unit tests to ensure the condition about the result
-   sets being non-empty always holds (or reformulate the interface somehow,
-   but this looks tricky) *)
-(** Prove that the given type represents:
-    - one or more boxed floats (whose contents may or may not be known)
-      ([Proved (Ok ...)]);
-    - a value that might be one or more boxed floats
-      ([Proved Not_all_values_known])
-    - value(s) that are definitely not boxed floats
-      (meaning that code computing a value
-      of such type, in a context where a boxed float is required, is invalid).
-    The set returned in an [Proved (Ok ...)] result is guaranteed non-empty.
-*)
-val prove_boxed_float : (t -> boxed_float_proof) type_accessor
+val prove_is_tagged_immediate : (t -> bool proof) type_accessor
 
-(* CR mshinwell: rename or_invalid *)
-val is_boxed_float : (t -> bool or_invalid) type_accessor
-
-type boxed_int32_proof = ty_naked_int32 or_invalid
-
-(** As for [prove_boxed_float] but for [Int32]. *)
-val prove_boxed_int32 : (t -> boxed_int32_proof) type_accessor
-
-type boxed_int64_proof = ty_naked_int64 or_invalid
-
-(** As for [prove_boxed_float] but for [Int64]. *)
-val prove_boxed_int64 : (t -> boxed_int64_proof) type_accessor
-
-type boxed_nativeint_proof = ty_naked_nativeint or_invalid
-
-(** As for [prove_boxed_float] but for [Nativeint]. *)
-val prove_boxed_nativeint : (t -> boxed_nativeint_proof) type_accessor
-
-type closures_proof = Joined_closures.t proof
-
-(** As for [proved_boxed_float] but for closures. *)
-val prove_closures : (t -> closures_proof) type_accessor
-
-type sets_of_closures_proof = Joined_sets_of_closures.t proof
-
-(** As for [proved_boxed_float] but for sets of closures. *)
-val prove_sets_of_closures : (t -> sets_of_closures_proof) type_accessor
-
-val prove_naked_immediate
-   : (t
-  -> Targetint.Set.t Or_not_all_values_known.t) type_accessor
-
-(** As for [proved_boxed_float] but for naked floats.  Note that there is
-    no [Invalid] case returned---no such cases are possible that are not
-    kind errors (which cause a fatal error). *)
-val prove_naked_float
-   : (t
-  -> Numbers.Float.By_bit_pattern.Set.t Or_not_all_values_known.t) type_accessor
-
-val prove_of_kind_value_with_expected_scanning
+(** Prove that the given type is of kind [Value] and can assume the given
+    value kind.  If the proof cannot be given then [Invalid] is returned. *)
+val prove_of_kind_value_with_expected_value_kind
    : (t
   -> Flambda_kind.value_kind
   -> ty_value or_invalid) type_accessor
 
-val prove_of_kind_value_with_expected_scanning_list
+(** Like [prove_of_kind_value_with_expected_value_kind] but for a list of
+    types, all of which are checked against the given value kind. *)
+val prove_of_kind_value_with_expected_value_kinds
    : (t list
   -> Flambda_kind.value_kind
   -> ty_value or_invalid) type_accessor
 
-(** Prove that the given types are all of kind [Value] and that, for each type,
-    its kind is compatible with the given [scanning] semantics. *)
-val prove_of_kind_value_with_expected_scannings_list
+(** Like [prove_of_kind_value_with_expected_value_kinds] but for a list of
+    types, each of which may be tested against a different value kind. *)
+val prove_of_kind_value_with_individual_expected_value_kinds
    : ((t * Flambda_kind.value_kind) list
   -> ty_value or_invalid) type_accessor
 
-(** Prove that the given types are all of kind [Naked_float]. *)
+(** Prove that the given types are all of kind [Naked_float].  If the proof
+    cannot be given then [Invalid] is returned. *)
 val prove_of_kind_naked_float_list
    : (t list
   -> ty_naked_float list or_invalid) type_accessor
 
-
-
-type tagged_immediate_proof = Immediate.Set.t proof
-
-(** As for [prove_boxed_float] but for a tagged immediate. *)
-val prove_tagged_immediate : (t -> tagged_immediate_proof) type_accessor
-
-type is_tagged_immediate_proof = bool proof
-
-(** Determine whether it is known that the given type either:
-    - may represent a tagged immediate; or
-    - can never represent a tagged immediate.
+(** Prove that the given type represents exactly some particular set of
+    immediates.  The set is guaranteed to be non-empty.  If this proof
+    cannot be given then either [Unknown] (stating that the type may yet
+    represent one or more tagged immediates, but we cannot prove it) or
+    [Invalid] (stating that the type definitely cannot represent any
+    tagged immediate) is returned.
 *)
-val prove_is_tagged_immediate : (t -> is_tagged_immediate_proof) type_accessor
+val prove_tagged_immediate : (t -> Immediate.Set.t proof) type_accessor
 
-val is_tagged_immediate : (t -> bool or_invalid) type_accessor
+(** As for [prove_tagged_immediate], but for naked immediate values. *)
+val prove_naked_immediate : (t -> Targetint.OCaml.Set.t proof) type_accessor
 
-type string_proof = String_info.Set.t proof
+(** As for [prove_tagged_immediate], but for naked float values. *)
+val prove_naked_float
+   : (t -> Numbers.Float_by_bit_pattern.Set.t proof) type_accessor
 
-val prove_string : (t -> string_proof) type_accessor
+(** As for [prove_tagged_immediate], but for naked int32 values. *)
+val prove_naked_int32 : (t -> Numbers.Int32.Set.t proof) type_accessor
 
-type lengths_of_arrays_or_blocks_proof = Targetint.Set.t proof
+(** As for [prove_tagged_immediate], but for naked int64 values. *)
+val prove_naked_int64 : (t -> Numbers.Int64.Set.t proof) type_accessor
 
-(** Determine the known length(s) of the array(s) or structured block(s)
-    (i.e. blocks with tag less than [No_scan_tag]) described by the given
-    type.
-    Note that this will return [Invalid] if a use is detected of a variant-like
-    type (union of blocks and immediates).
-*)
-val lengths_of_arrays_or_blocks
-   : (t
-  -> lengths_of_arrays_or_blocks_proof) type_accessor
+(** As for [prove_tagged_immediate], but for naked nativeint (target width
+    integer) values. *)
+val prove_naked_nativeint : (t -> Targetint.Set.t proof) type_accessor
 
+(** As for [prove_tagged_immediate], but for (structured, tag less than
+    [No_scan_tag]) blocks. *)
+val prove_block : (t -> Blocks.t proof) type_accessor
+
+(** Like [prove_block] except for handling values of variant types.
+    The non-emptiness criterion on the result value is slightly different
+    here: it is guaranteed that the [Blocks.t] will be non-empty, but the
+    [Immediate.Set.t] may be empty. *)
 val prove_blocks_and_immediates
    : (t
   -> (Blocks.t * Immediate.Set.t) proof) type_accessor
 
-type block_with_unique_tag_and_size_proof =
-  (Tag.Scannable.t * (flambda_type array)) proof
+(** As for [prove_tagged_immediate], but for float arrays (with tag
+    [Double_array_tag]). *)
+val prove_float_array : (t -> Float_array.t list proof) type_accessor
 
-val prove_block_with_unique_tag_and_size
-   : (t
-  -> block_with_unique_tag_and_size_proof) type_accessor
+(** As for [prove_tagged_immediate], but for strings. *)
+val prove_string : (t -> String_info.Set.t proof) type_accessor
 
-(** Proof of a value being a float array of one of the given lengths. *)
-(* XXX Wrong.  Needs to return something like a list of
-   [ty_naked_float array]s (populated as [Unknown] if we only know the
-   size) *)
-type float_array_proof = Numbers.Int.Set.t proof
+(** Prove that the given type represents a boxed int32 value, returning the
+    type of the unboxed number therein.  (That type may in itself specify
+    a union, etc.)  This function returns [Unknown] and [Invalid] in
+    equivalent situations as for [prove_tagged_immediate]. *)
+val prove_boxed_int32 : (t -> ty_naked_int32 proof) type_accessor
 
-val prove_float_array : (t -> float_array_proof) type_accessor
+(** As for [prove_boxed_int32], but for boxed int64 values. *)
+val prove_boxed_int64 : (t -> ty_naked_int64 proof) type_accessor
 
-(*
-(** As for [reify] but only produces terms when the type describes a
-    unique tagged immediate. *)
-val reify_as_tagged_immediate : t -> Immediate.t option
+(** As for [prove_boxed_int32], but for boxed nativeint values. *)
+val prove_boxed_nativeint : (t -> ty_naked_nativeint proof) type_accessor
 
-(** As for [reify_as_int], but for arrays of unboxed floats (corresponding
-    to values with tag [Double_array_tag]. *)
-val reify_as_unboxed_float_array : t -> float list option
+(** As for [prove_tagged_immediate] but for closures. *)
+val prove_closures : (t -> Joined_closures.t proof) type_accessor
 
-(** As for [reify_as_int], but for strings. *)
-val reify_as_string : t -> string option
+(** As for [prove_closures] but for sets of closures. *)
+val prove_sets_of_closures
+   : (t -> Joined_sets_of_closures.t proof) type_accessor
 
-type proved_scannable_block =
-  | Wrong
-  | Ok of Tag.Scannable.t * t array
-
-(** Try to prove that a value with the given type may be used as a block
-    that can be scanned by the GC.  (Note that there are cases of scannable
-    blocks, e.g. closures, that this function will return [Wrong] for.) *)
-val prove_scannable_block : t -> proved_scannable_block
-
-type reified_as_scannable_block_or_immediate =
-  | Wrong
-  | Immediate
-  | Scannable_block
-
-(** Try to prove that the given type is of the expected form to describe
-    either a GC-scannable block or an immediate. *)
-(* CR mshinwell: This doesn't actually produce a term, so doesn't reify *)
-val reify_as_scannable_block_or_immediate
-   : t
-  -> reified_as_scannable_block_or_immediate
-
+(** Determine the known length(s) of the array(s) or structured block(s)
+    (i.e. blocks with tag less than [No_scan_tag]) described by the given
+    type.  This function correctly handles float arrays (where the length of
+    the array, on 32-bit platforms, may differ from the size of the block).
+    [Unknown] is returned if a proof cannot be given but the type may yet
+    represent array(s) or block(s); [Invalid] is returned if that can never
+    be the case.
 *)
+val prove_lengths_of_arrays_or_blocks
+   : (t -> Targetint.OCaml.Set.t proof) type_accessor
 
-(*
-
-type strict_reified_as_closure =
-  | Wrong
-  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
-
-(** Try to prove that a value with the given type may be used as a
-    closure.  Values coming from external compilation units with unresolved
-    types are not permitted. *)
-val strict_reify_as_closure : t -> strict_reified_as_closure
-
-type strict_reified_as_closure_singleton =
-  | Wrong
-  | Ok of Closure_id.t * Variable.t option * Symbol.t option * set_of_closures
-
-(** As for [strict_reify_as_closure] but disallows situations where
-    multiple different closures flow to the same program point. *)
-val strict_reify_as_closure_singleton
-   : t
-  -> strict_reified_as_closure_singleton
-
-type reified_as_closure_allowing_unresolved =
-  | Wrong
-  | Unresolved of unresolved_value
-  | Unknown
-  | Ok of set_of_closures Closure_id.Map.t * Variable.t option * Symbol.t option
-
-(** As for [reify_as_closure], but values coming from external
-    compilation units with unresolved types are permitted. *)
-val reify_as_closure_allowing_unresolved
-   : t
-  -> reified_as_closure_allowing_unresolved
-*)
 type switch_branch_classification =
   | Cannot_be_taken
   | Can_be_taken

@@ -694,6 +694,40 @@ end
 
 module Binary_float_comp = Binary_arith_like (Float_ops_for_binary_comp)
 
+let get_field ~importer ~type_of_name t ~field_index ~expected_result_kind
+      ~field_is_mutable ~is_unknown : get_field_result =
+  let block_t = t in
+  (* XXX not sure this is right -- see comment below *)
+  match Tag.Scannable.Map.get_singleton t with
+  | None -> Invalid
+  | Some (_tag, fields) ->
+    if field_index < 0 || field_index >= Array.length fields then
+      Invalid
+    else
+      let ty = fields.(field_index) in
+      let scanning = scanning_ty_value ~importer ~type_of_name ty in
+      let actual_kind = K.value scanning in
+      if not (K.compatible actual_kind ~if_used_at:expected_result_kind)
+      then begin
+        Misc.fatal_errorf "Expected field %d of block with the following \
+            type to have kind %a, but it has kind %a: %a"
+          field_index
+          K.print expected_result_kind
+          K.print actual_kind
+          print t
+      end;
+      let t = t_of_ty_value ty in
+      if field_is_mutable then begin
+        if not (is_unknown ~importer ~type_of_name t) then begin
+          Misc.fatal_errorf "Field %d of type %a in block with the following \
+              type is apparently mutable, yet its type is not unknown: %a"
+            field_index
+            print block_t
+            print t
+        end
+      end;
+      Ok t
+
 let simplify_block_load_known_index env r prim arg dbg ~field_index
       ~block_access_kind ~field_is_mutable =
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in

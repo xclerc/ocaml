@@ -108,6 +108,7 @@ let writing_to_an_array_like_thing =
   (* Care: the bounds check may read a mutable place---namely the size of
      the block (for [Bytes_set] and [Array_set]) or the dimension of the
      bigarray.  As such these primitives have coeffects. *)
+  (* XXX But there are no bounds checks now *)
   effects, Has_coeffects
 
 let array_like_thing_index_kind = K.value Can_scan

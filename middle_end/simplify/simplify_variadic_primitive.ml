@@ -175,8 +175,8 @@ let simplify_bigarray_set env r prim dbg ~num_dims ~kind ~layout ~args =
       begin match args_with_tys with
       | [new_value, new_value_ty] ->
         let bigarray_proof =
-          (E.type_accessor env T.prove_of_kind_value_with_expected_scanning
-            Must_scan) bigarray
+          (E.type_accessor env T.prove_of_kind_value_with_expected_value_kind
+            Definitely_pointer) bigarray
         in
         begin match proof with
         | Proved _ ->

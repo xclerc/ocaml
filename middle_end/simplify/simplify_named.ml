@@ -287,7 +287,19 @@ let simplify_named env r (tree : Named.t) : named_simplifier =
           | None -> [], Reachable (Set_of_closures set_of_closures), r
     end *)
   | Prim (prim, dbg) ->
-    Simplify_primitive.simplify_primitive env r prim dbg
+    let new_bindings, term, ty, r =
+      Simplify_primitive.simplify_primitive env r prim dbg
+    in
+    (* CR mshinwell: Add benefit calculations *)
+    begin match (E.type_accessor env T.reify) ty with
+    | Reified (simple, ty) ->
+      let term : Named.t = Simple simple in
+      new_bindings, term, ty, r
+    | Cannot_reify -> new_bindings, term, ty, r
+    | Invalid ->
+      let ty = (E.type_accessor env T.bottom_like) ty in
+      [], Reachable.invalid (), ty, r
+    end
   | Assign { being_assigned; new_value; } ->
     (* No need to use something like [freshen_and_squash_aliases]: the
        Flambda type of [being_assigned] is always unknown. *)

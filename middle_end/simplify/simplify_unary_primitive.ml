@@ -520,15 +520,7 @@ let simplify_get_tag env r prim arg dbg =
       if Targetint.Set.is_empty tags then
         Reachable.invalid (), T.bottom (K.value Definitely_immediate)
       else
-        begin match Targetint.Set.get_singleton tags with
-        | Some tag ->
-          (* CR mshinwell: Add [Named.this_tagged_immediate] etc? *)
-          let simple = Simple.const (Tagged_immediate tag) in
-          Reachable.reachable (Simple simple), T.this_tagged_immediate tag
-        | None ->
-          assert (not (Targetint.Set.is_empty tags));
-          original_term (), T.these_tagged_immediates tags
-        end
+        original_term (), T.these_tagged_immediates tags
   in
   term, ty, r
 
@@ -564,14 +556,7 @@ module Make_simplify_swap_byte_endianness (P : For_standard_ints) = struct
         let nums =
           P.Set.map (fun imm -> P.swap_byte_endianness imm) nums
         in
-        begin match P.Num.Set.get_singleton nums with
-        | Some i ->
-          let simple = Simple.const (P.Num.to_const i) in
-          Reachable.reachable (Simple simple), P.this i
-        | None ->
-          assert (not (P.Num.Set.is_empty nums));
-          Reachable.reachable (original_term ()), P.these nums
-        end
+        Reachable.reachable (original_term ()), P.these nums
       | Proved Not_all_values_known ->
         Reachable.reachable (original_term ()), T.unknown kind Other
       | Invalid ->
@@ -710,15 +695,8 @@ module Make_simplify_unbox_number (P : For_unboxable_ints) = struct
         let proof = (E.type_accessor env P.unboxed_prover) unboxed_ty in
         begin match proof with
         | Proved nums ->
-          begin match P.Num.Set.get_singleton nums with
-          | Some n ->
-            let simple = Simple.const (P.Num.to_const n) in
-            Reachable.reachable (Simple simple), P.this n
-          | None ->
-            assert (not (P.Num.Set.is_empty nums));
-            Reachable.reachable (original_term ()), P.these nums
-          end
-        | Proved Not_all_values_known ->
+          Reachable.reachable (original_term ()), P.these nums
+        | Unknown ->
           Reachable.reachable (original_term ()), unboxed_ty
         | Invalid ->
           Reachable.invalid (), T.bottom kind
@@ -910,12 +888,7 @@ end) = struct
         begin match op with
         | Neg ->
           let possible_results = I.Set.map (fun i -> I.neg i) ints in
-          begin match I.Set.get_singleton possible_results with
-          | Some i ->
-            Reachable.reachable (I.term i), I.this i
-          | None ->
-            Reachable.reachable (original_term ()), I.these possible_results
-          end
+          Reachable.reachable (original_term ()), I.these possible_results
         end
       | Proved Not_all_values_known -> result_unknown ()
       | Invalid -> result_invalid ()
@@ -1005,15 +978,8 @@ module Make_simplify_int_conv (N : For_standard_int_or_float) = struct
                 is
                 Immediate.Set.empty
             in
-            begin match Immediate.Set.get_singleton imms with
-            | Some imm ->
-              Reachable.reachable (
-                  Simple (Simple.const (Tagged_immediate imm))),
-                T.this_tagged_immediate imm
-            | None ->
-              Reachable.reachable (original_term ()),
-                T.these_tagged_immediates imms
-            end
+            Reachable.reachable (original_term ()),
+              T.these_tagged_immediates imms
           | Naked_float ->
             let is =
               N.Set.fold (fun i is ->
@@ -1021,14 +987,7 @@ module Make_simplify_int_conv (N : For_standard_int_or_float) = struct
                 is
                 F.Set.empty
             in
-            begin match F.Set.get_singleton is with
-            | Some i ->
-              Reachable.reachable (Simple (Simple.const (Float i))),
-                T.this_naked_float i
-            | None ->
-              Reachable.reachable (original_term ()),
-                T.these_naked_floats is
-            end
+            Reachable.reachable (original_term ()), T.these_naked_floats is
           | Naked_int32 ->
             let is =
               N.Set.fold (fun i is ->
@@ -1036,14 +995,7 @@ module Make_simplify_int_conv (N : For_standard_int_or_float) = struct
                 is
                 Naked_int32.Set.empty
             in
-            begin match Naked_int32.Set.get_singleton is with
-            | Some i ->
-              Reachable.reachable (Simple (Simple.const (Naked_int32 i))),
-                T.this_naked_int32 i
-            | None ->
-              Reachable.reachable (original_term ()),
-                T.these_naked_int32s is
-            end
+            Reachable.reachable (original_term ()), T.these_naked_int32s is
           | Naked_int64 ->
             let is =
               N.Set.fold (fun i is ->
@@ -1051,14 +1003,7 @@ module Make_simplify_int_conv (N : For_standard_int_or_float) = struct
                 is
                 Naked_int64.Set.empty
             in
-            begin match Naked_int64.Set.get_singleton is with
-            | Some i ->
-              Reachable.reachable (Simple (Simple.const (Naked_int64 i))),
-                T.this_naked_int64 i
-            | None ->
-              Reachable.reachable (original_term ()),
-                T.these_naked_int64s is
-            end
+            Reachable.reachable (original_term ()), T.these_naked_int64s is
           | Naked_nativeint ->
             let is =
               N.Set.fold (fun i is ->
@@ -1066,14 +1011,7 @@ module Make_simplify_int_conv (N : For_standard_int_or_float) = struct
                 is
                 Naked_nativeint.Set.empty
             in
-            begin match Naked_nativeint.Set.get_singleton is with
-            | Some i ->
-              Reachable.reachable (Simple (Simple.const (Naked_nativeint i))),
-                T.this_naked_nativeint i
-            | None ->
-              Reachable.reachable (original_term ()),
-                T.these_naked_nativeints is
-            end
+            Reachable.reachable (original_term ()), T.these_naked_nativeints is
           end
         | Proved Not_all_values_known ->
           Reachable.reachable (original_term ()),
@@ -1114,14 +1052,8 @@ let simplify_unary_float_arith_op env r prim
         | Abs -> F.Set.map (fun f -> F.abs f) fs
         | Neg -> F.Set.map (fun f -> F.neg f) fs
       in
-      begin match F.Set.get_singleton possible_results with
-      | Some f ->
-        let simple = Simple.const (Naked_float f) in
-        Reachable.reachable (Simple simple), T.this_naked_float f
-      | None ->
-        Reachable.reachable (original_term ()),
-          T.these_naked_floats possible_results
-      end
+      Reachable.reachable (original_term ()),
+        T.these_naked_floats possible_results
     | Proved (Exactly _ | Not_all_values_known) -> result_unknown ()
     | Invalid -> result_invalid ()
   in
@@ -1144,13 +1076,7 @@ let simplify_string_length env r prim arg dbg =
           strs
           Immediate.Set.empty
       in
-      begin match Immediate.Set.get_singleton lengths with
-      | Some length ->
-        let simple = Simple.const (Tagged_immediate length) in
-        Reachable (Simple simple), T.this_tagged_immediate length
-      | None ->
-        Reachable (original_term ()), T.these_tagged_immediates lengths
-      end
+      Reachable (original_term ()), T.these_tagged_immediates lengths
     | Proved Not_all_values_known ->
       Reachable (original_term ()), T.unknown result_kind Other
     | Invalid -> result_invalid ()
@@ -1177,13 +1103,7 @@ let simplify_array_length env r prim arg ~array_kind dbg =
           lengths
           Immediate.Set.empty
       in
-      begin match Immediate.Set.get_singleton lengths with
-      | Some length ->
-        let simple = Simple.const (Tagged_immediate length) in
-        Reachable (Simple simple), T.this_tagged_immediate length
-      | None ->
-        Reachable (original_term ()), T.these_tagged_immediates lengths
-      end
+      Reachable (original_term ()), T.these_tagged_immediates lengths
     | Proved Not_all_values_known ->
       Reachable (original_term ()), T.unknown result_kind Other
     | Invalid -> result_invalid ()

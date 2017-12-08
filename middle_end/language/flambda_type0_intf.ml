@@ -260,7 +260,7 @@ module type S = sig
   val this_tagged_immediate : Immediate.t -> t
   val these_tagged_immediates : Immediate.Set.t -> t
   val this_boxed_float : float -> t
-  val these_boxed_floats : Numbers.Float.By_bit_pattern.Set.t -> t
+  val these_boxed_floats : Numbers.Float_by_bit_pattern.Set.t -> t
   val this_boxed_int32 : Int32.t -> t
   val these_boxed_int32s : Numbers.Int32.Set.t -> t
   val this_boxed_int64 : Int64.t -> t
@@ -268,13 +268,13 @@ module type S = sig
   val this_boxed_nativeint : Targetint.t -> t
   val these_boxed_nativeints : Targetint.Set.t -> t
   val this_immutable_string : string -> t
-  val this_immutable_float_array : Numbers.Float.By_bit_pattern.t array -> t
+  val this_immutable_float_array : Numbers.Float_by_bit_pattern.t array -> t
 
   (** Building of types representing untagged / unboxed values from
       specified constants. *)
   val this_naked_immediate : Immediate.t -> t
-  val this_naked_float : Numbers.Float.By_bit_pattern.t -> t
-  val these_naked_floats : Numbers.Float.By_bit_pattern.Set.t -> t
+  val this_naked_float : Numbers.Float_by_bit_pattern.t -> t
+  val these_naked_floats : Numbers.Float_by_bit_pattern.Set.t -> t
   val this_naked_int32 : Int32.t -> t
   val these_naked_int32s : Numbers.Int32.Set.t -> t
   val this_naked_int64 : Int64.t -> t
@@ -429,27 +429,65 @@ module type S = sig
        importer:(module Importer)
     -> 'a
 
-  (** Each type has a unique kind.  (This is mostly syntactic save for the
-      "Value" cases.) *)
+  (** Determine the (unique) kind of a type. *)
   val kind : (t -> Flambda_kind.t) type_accessor
 
-  (** Given a type of kind [Value] determine whether values of that type
-      have to be scanned by the GC. *)
-  val scanning_ty_value : (ty_value -> Flambda_kind.value_kind) type_accessor
+  (** Given a type known to be of kind [Value], determine the corresponding
+      value kind. *)
+  val value_kind : (ty_value -> Flambda_kind.value_kind) type_accessor
 
   (** Least upper bound of two types. *)
   val join : (t -> t -> t) type_accessor
 
+  (** Least upper bound of an arbitrary number of types. *)
   val join_list : (Flambda_kind.t -> t list) type_accessor
 
-  (** Like [join], but starts with a [ty_value], not a [t]. *)
+  (** Least upper bound of two types known to be of kind [Value]. *)
   val join_ty_value : (ty_value -> ty_value -> ty_value) type_accessor
+
+  (** Least upper bound of two types known to be of kind [Naked_float]. *)
+  val join_ty_naked_float
+     : (ty_naked_float -> ty_naked_float -> ty_naked_float) type_accessor
+
+  (** Least upper bound of two types known to be of kind [Naked_int32]. *)
+  val join_ty_naked_int32
+     : (ty_naked_int32 -> ty_naked_int32 -> ty_naked_int32) type_accessor
+
+  (** Least upper bound of two types known to be of kind [Naked_int64]. *)
+  val join_ty_naked_int64
+     : (ty_naked_int64 -> ty_naked_int64 -> ty_naked_int64) type_accessor
+
+  (** Least upper bound of two types known to be of kind [Naked_nativeint]. *)
+  val join_ty_naked_nativeint
+     : (ty_naked_nativeint -> ty_naked_nativeint -> ty_naked_nativeint)
+         type_accessor
 
   (** Greatest lower bound of two types. *)
   val meet : (t -> t -> t) type_accessor
 
-  (** Like [meet], but starts with a [ty_value], not a [t]. *)
+  (** Greatest lower bound of an arbitrary number of types. *)
+  val meet_list : (Flambda_kind.t -> t list) type_accessor
+
+  (** Greatest lower bound of two types known to be of kind [Value]. *)
   val meet_ty_value : (ty_value -> ty_value -> ty_value) type_accessor
+
+  (** Greatest lower bound of two types known to be of kind [Naked_float]. *)
+  val meet_ty_naked_float
+     : (ty_naked_float -> ty_naked_float -> ty_naked_float) type_accessor
+
+  (** Greatest lower bound of two types known to be of kind [Naked_int32]. *)
+  val meet_ty_naked_int32
+     : (ty_naked_int32 -> ty_naked_int32 -> ty_naked_int32) type_accessor
+
+  (** Greatest lower bound of two types known to be of kind [Naked_int64]. *)
+  val meet_ty_naked_int64
+     : (ty_naked_int64 -> ty_naked_int64 -> ty_naked_int64) type_accessor
+
+  (** Greatest lower bound of two types known to be of kind
+      [Naked_nativeint]. *)
+  val meet_ty_naked_nativeint
+     : (ty_naked_nativeint -> ty_naked_nativeint -> ty_naked_nativeint)
+         type_accessor
 
   (** Follow chains of [Alias]es, loading .cmx files as necessary, until
       either a [Normal] type is reached or a name cannot be resolved.
