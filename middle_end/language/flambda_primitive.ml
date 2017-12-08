@@ -64,7 +64,7 @@ type coeffects = No_coeffects | Has_coeffects
    a comparison function next to each. *)
 
 type make_block_kind =
-  | Full_of_values of Tag.Scannable.t * (Flambda_kind.scanning list)
+  | Full_of_values of Tag.Scannable.t * (Flambda_kind.value_kind list)
   | Full_of_naked_floats
   | Choose_tag_at_runtime
 
@@ -684,7 +684,7 @@ let effects_and_coeffects_of_binary_primitive p =
   | Bigstring_load _ -> reading_from_an_array_like_thing
 
 type ternary_primitive =
-  | Block_set of Flambda_kind.scanning * init_or_assign
+  | Block_set of Flambda_kind.value_kind * init_or_assign
   | Bytes_set of string_accessor_width
   | Array_set of array_kind
   | Bigstring_set of bigstring_accessor_width

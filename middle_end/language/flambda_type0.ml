@@ -216,7 +216,7 @@ end) = struct
 
   and flambda_type = t
 
-  and ty_value = (of_kind_value, Flambda_kind.scanning) ty
+  and ty_value = (of_kind_value, Flambda_kind.value_kind) ty
   and ty_naked_immediate = (of_kind_naked_immediate, unit) ty
   and ty_naked_float = (of_kind_naked_float, unit) ty
   and ty_naked_int32 = (of_kind_naked_int32, unit) ty
@@ -233,7 +233,7 @@ end) = struct
     | Naked_int64 of resolved_ty_naked_int64
     | Naked_nativeint of resolved_ty_naked_nativeint
 
-  and resolved_ty_value = (of_kind_value, Flambda_kind.scanning) resolved_ty
+  and resolved_ty_value = (of_kind_value, Flambda_kind.value_kind) resolved_ty
   and resolved_ty_naked_immediate = (of_kind_naked_immediate, unit) resolved_ty
   and resolved_ty_naked_float = (of_kind_naked_float, unit) resolved_ty
   and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty

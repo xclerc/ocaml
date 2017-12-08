@@ -318,18 +318,18 @@ val prove_naked_float
 
 val prove_of_kind_value_with_expected_scanning
    : (t
-  -> Flambda_kind.scanning
+  -> Flambda_kind.value_kind
   -> ty_value or_invalid) type_accessor
 
 val prove_of_kind_value_with_expected_scanning_list
    : (t list
-  -> Flambda_kind.scanning
+  -> Flambda_kind.value_kind
   -> ty_value or_invalid) type_accessor
 
 (** Prove that the given types are all of kind [Value] and that, for each type,
     its kind is compatible with the given [scanning] semantics. *)
 val prove_of_kind_value_with_expected_scannings_list
-   : ((t * Flambda_kind.scanning) list
+   : ((t * Flambda_kind.value_kind) list
   -> ty_value or_invalid) type_accessor
 
 (** Prove that the given types are all of kind [Naked_float]. *)
