@@ -462,7 +462,7 @@ module Evaluated_first_stage = struct
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
+        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
     | Boxed_floats of ty_naked_float Or_not_all_values_known.t
     | Boxed_int32s of ty_naked_int32 Or_not_all_values_known.t
     | Boxed_int64s of ty_naked_int64 Or_not_all_values_known.t
@@ -840,9 +840,9 @@ module Evaluated_first_stage = struct
         in
         begin match t_naked_immediates with
         | Exactly imms ->
-          Blocks_and_tagged_immediates (Exactly (Blocks.empty, imms))
+          Blocks_and_tagged_immediates (Blocks.empty, Exactly imms)
         | Not_all_values_known ->
-          Blocks_and_tagged_immediates Not_all_values_known
+          Blocks_and_tagged_immediates (Blocks.empty, Not_all_values_known)
         end
       | Boxed_float ty ->
         let t_naked_floats, _canonical_name =
@@ -866,7 +866,7 @@ module Evaluated_first_stage = struct
         Boxed_nativeints t_naked_nativeints
       | Block (tag, fields) ->
         let blocks = Blocks.create_singleton tag fields in
-        Blocks_and_tagged_immediates (Exactly (blocks, Immediate.Set.empty))
+        Blocks_and_tagged_immediates (blocks, Exactly Immediate.Set.empty)
       | Closure closure -> Closures (Exactly [closure])
       | Set_of_closures set -> Sets_of_closures (Exactly [set])
       | String str -> Strings (Exactly (String_info.Set.singleton str))
@@ -1294,7 +1294,7 @@ module Evaluated = struct
     | Unknown
     | Bottom
     | Blocks_and_tagged_immediates of
-        (Blocks.t * Immediate.Set.t) Or_not_all_values_known.t
+        Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)
     | Tagged_immediates_only of Immediate.Set.t Or_not_all_values_known.t
     | Boxed_floats of ty_naked_float Or_not_all_values_known.t
     | Boxed_int32s of ty_naked_int32 Or_not_all_values_known.t
@@ -1781,7 +1781,7 @@ let prove_tagged_immediate ~importer ~type_of_name t
   | Values values ->
     begin match values with
     | Unknown -> Unknown
-    | Tagged_immediates_only Not_all_values_known -> Proved true
+    | Tagged_immediates_only imms -> Proved imms
     | Boxed_floats _
     | Blocks_and_tagged_immediates _
     | Bottom
@@ -1791,13 +1791,16 @@ let prove_tagged_immediate ~importer ~type_of_name t
     | Closures _
     | Sets_of_closures _
     | Strings _
-    | Float_arrays _ -> Proved false
+    | Float_arrays _ -> Invalid
     end
   | Naked_immediates _
   | Naked_floats _
   | Naked_int32s _
   | Naked_int64s _
-  | Naked_nativeints _ -> Invalid
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a tagged \
+        immediate: %a"
+      print t
 
 let prove_naked_float ~importer ~type_of_name t
       : Numbers.Float_by_bit_pattern.Set.t known_values0 =
@@ -1862,6 +1865,64 @@ let prove_naked_nativeint ~importer ~type_of_name t
     Misc.fatal_errorf "Wrong kind for something claimed to be a naked \
         nativeint: %a"
       print t
+
+let prove_blocks ~importer ~type_of_name t : Blocks.t proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown -> Unknown
+    | Blocks_and_tagged_immediates (blocks, _imms) -> Proved blocks
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Bottom
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _
+    | Float_arrays _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a block: %a"
+      print t
+
+let prove_blocks_and_immediates ~importer ~type_of_name t
+      : (Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)) proof =
+  let t_evaluated, _canonical_name =
+    Evaluated.create ~importer ~type_of_name t
+  in
+  match t_evaluated with
+  | Values values ->
+    begin match values with
+    | Unknown -> Unknown
+    | Blocks_and_tagged_immediates (blocks, imms) -> Proved (blocks, imms)
+    | Tagged_immediates_only _
+    | Boxed_floats _
+    | Bottom
+    | Boxed_int32s _
+    | Boxed_int64s _
+    | Boxed_nativeints _
+    | Closures _
+    | Sets_of_closures _
+    | Strings _
+    | Float_arrays _ -> Invalid
+    end
+  | Naked_immediates _
+  | Naked_floats _
+  | Naked_int32s _
+  | Naked_int64s _
+  | Naked_nativeints _ ->
+    Misc.fatal_errorf "Wrong kind for something claimed to be a variant: %a"
+      print t
+
 
 let prove_boxed_float ~importer ~type_of_name t : boxed_float_proof =
   let t_evaluated, _canonical_name =

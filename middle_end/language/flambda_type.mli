@@ -203,15 +203,13 @@ val prove_naked_nativeint : (t -> Targetint.Set.t) type_accessor
 
 (** As for [prove_tagged_immediate], but for (structured, tag less than
     [No_scan_tag]) blocks. *)
-val prove_block : (t -> Blocks.t known_values) type_accessor
+val prove_block : (t -> Blocks.t proof) type_accessor
 
-(** Like [prove_block] except for handling values of variant types.
-    The non-emptiness criterion on the result value is slightly different
-    here: it is guaranteed that the [Blocks.t] will be non-empty, but the
-    [Immediate.Set.t] may be empty. *)
+(** Like [prove_block] except for handling values of variant types. *)
 val prove_blocks_and_immediates
    : (t
-  -> (Blocks.t * Immediate.Set.t) known_values) type_accessor
+  -> (Blocks.t * (Immediate.Set.t Or_not_all_values_known.t)) proof)
+       type_accessor
 
 (** As for [prove_tagged_immediate], but for float arrays (with tag
     [Double_array_tag]). *)
