@@ -77,6 +77,7 @@ module type S = sig
   module OCaml : sig
     type t
     val max_string_length : t
+    include Identifiable.S with type t := t
   end
 end
 
@@ -154,6 +155,16 @@ module Int32 = struct
 
     let max_string_length =
       Int32.sub (Int32.mul 4l max_array_length) 1l
+
+    let compare = compare
+    let equal = equal
+    let hash = hash
+    let print = print
+
+    module T = T
+    module Map = Map
+    module Set = Set
+    module Tbl = Tbl
   end
 end
 
@@ -211,6 +222,16 @@ module Int64 = struct
 
     let max_string_length =
       Int64.sub (Int64.mul 8L max_array_length) 1L
+
+    let compare = compare
+    let equal = equal
+    let hash = hash
+    let print = print
+
+    module T = T
+    module Map = Map
+    module Set = Set
+    module Tbl = Tbl
   end
 end
 

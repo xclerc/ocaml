@@ -44,14 +44,14 @@ end
 type make_block_kind =
   | Full_of_values of Tag.Scannable.t * (Flambda_kind.value_kind list)
   | Full_of_naked_floats
-  | Generic_array of generic_array_specialisation
+  | Generic_array of Generic_array_specialisation.t
 
 type duplicate_block_kind =
   | Full_of_values_known_length of
       Tag.Scannable.t * (Flambda_kind.value_kind list)
   | Full_of_values_unknown_length of Tag.Scannable.t * Flambda_kind.value_kind
   | Full_of_naked_floats of { length : Targetint.OCaml.t option; }
-  | Generic_array of generic_array_specialisation
+  | Generic_array of Generic_array_specialisation.t
 
 (* CR-someday mshinwell: We should have unboxed arrays of int32, int64 and
    nativeint. *)
@@ -60,12 +60,12 @@ type block_access_kind =
   | Any_value
   | Definitely_immediate
   | Naked_float
-  | Generic_array of generic_array_specialisation
+  | Generic_array of Generic_array_specialisation.t
 
 val kind_of_block_access_kind : block_access_kind -> Flambda_kind.t
 
 (* Notes for producing [make_block_kind] / [Duplicate_scannable_block] from
-   [Pduparray] and [Pduprecord]:
+   [Pduparray] and [Pduprecord]:  (Now out of date)
 
    - For Pduparray:
      - Pgenarray --> Choose_tag_at_runtime
@@ -170,7 +170,7 @@ type unary_primitive =
         a block. *)
   | Is_int
   | Get_tag
-  | Array_length of array_kind
+  | Array_length of block_access_kind
   | Bigarray_length of { dimension : int; }
   | String_length of string_or_bytes
   | Int_as_pointer

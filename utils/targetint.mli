@@ -229,4 +229,6 @@ module OCaml : sig
     let max_string_length = word_size / 8 * max_array_length - 1
   *)
   val max_string_length : t
+
+  include Identifiable.S with type t := t
 end

@@ -507,7 +507,7 @@ let rec comp_expr env exp sz cont =
               Kconst(Const_base(Const_int blocksize)) ::
               Kccall("caml_alloc_dummy", 1) :: Kpush ::
               comp_init (add_var id (sz+1) new_env) (sz+1) rem
-          | (id, _exp, RHS_function (blocksize,arity,_)) :: rem ->
+          | (id, _exp, RHS_function (blocksize,arity)) :: rem ->
               Kconst(Const_base(Const_int arity)) ::
               Kpush ::
               Kconst(Const_base(Const_int blocksize)) ::
