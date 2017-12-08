@@ -157,6 +157,8 @@ module type S = sig
     | Set_of_closures of set_of_closures
     | Closure of closure
     | String of String_info.t
+      (* CR mshinwell: maybe this should be ty_naked_float array option?
+         (May be more consistent with existing flambda) *)
     | Float_array of ty_naked_float array
 
   and inlinable_function_declaration = private {
@@ -248,6 +250,7 @@ module type S = sig
   val any_boxed_nativeint : unit -> t
   val any_naked_immediate : unit -> t
   val any_naked_float : unit -> t
+  val any_naked_float_as_ty_naked_float : unit -> ty_naked_float
   val any_naked_int32 : unit -> t
   val any_naked_int64 : unit -> t
   val any_naked_nativeint : unit -> t
@@ -265,12 +268,12 @@ module type S = sig
   val this_boxed_nativeint : Targetint.t -> t
   val these_boxed_nativeints : Targetint.Set.t -> t
   val this_immutable_string : string -> t
-  val this_immutable_float_array : float array -> t
+  val this_immutable_float_array : Numbers.Float.By_bit_pattern.t array -> t
 
   (** Building of types representing untagged / unboxed values from
       specified constants. *)
   val this_naked_immediate : Immediate.t -> t
-  val this_naked_float : float -> t
+  val this_naked_float : Numbers.Float.By_bit_pattern.t -> t
   val these_naked_floats : Numbers.Float.By_bit_pattern.Set.t -> t
   val this_naked_int32 : Int32.t -> t
   val these_naked_int32s : Numbers.Int32.Set.t -> t
@@ -281,11 +284,11 @@ module type S = sig
 
   (** Building of types corresponding to immutable values given only the
       size of such values. *)
-  val immutable_string : size:int -> t
+  val immutable_string : size:Targetint.OCaml.t -> t
 
   (** Building of types corresponding to mutable values. *)
-  val mutable_string : size:int -> t
-  val mutable_float_array : size:int -> t
+  val mutable_string : size:Targetint.OCaml.t -> t
+  val mutable_float_array : size:Targetint.OCaml.t -> t
   val mutable_float_arrays_of_various_sizes : sizes:Numbers.Int.Set.t -> t
 
   (** Building of types from other types.  These functions will fail with

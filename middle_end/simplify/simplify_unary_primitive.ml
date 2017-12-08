@@ -31,6 +31,8 @@ type named_simplifier =
   (Variable.t * Named.t) list * Reachable.t
     * Flambda_type.t * R.t
 
+(* To fix with Pierre
+
 (* Simplify an expression that takes a set of closures and projects an
    individual closure from it. *)
 let simplify_project_closure env r
@@ -376,98 +378,93 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
   | Wrong ->
     [], Reachable.invalid (), r
 
-let simplify_duplicate_scannable_block env r prim arg dbg ~kind
-      ~source_mutability ~destination_mutability =
+*)
+
+let simplify_duplicate_scannable_block env r prim arg dbg
+      (kind : Flambda_primitive.make_block_kind)
+      ~source_mutability:_ ~destination_mutability =
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
-  let like_a_block tag (value_kind : K.value_kind) =
-    let proof =
-      (E.type_accessor env T.prove_block_with_unique_tag_and_size) ty
-    in
+  let kind_of_block = K.value Definitely_pointer in
+  let full_of_values ~meet_with =
+    let proof = (E.type_accessor env T.prove_block) ty in
     match proof with
-    | Proved (Ok (tag, fields)) ->
-      begin match source_mutability with
-      | Immutable -> ()
-      | Mutable ->
-        Array.iteri (fun field_index field_ty ->
-            (* CR-someday mshinwell: This will have to be adjusted if we
-               start remembering things about immutable fields in records
-               which also have mutable fields. *)
-            if not ((E.type_accessor env T.is_unknown) t) then begin
-              Misc.fatal_errorf "Field %d of type %a in block being \
-                  duplicated with the following type is apparently mutable, \
-                  yet its type is not unknown: %a"
-                field_index
-                print field_ty
-                print ty
-            end)
-          fields
-      end;
-      (* We could in some circumstances turn the [Duplicate_array] into
-         [Make_array], but it isn't clear what value this has, so we don't
-         yet do it. *)
+    | Proved blocks ->
+      let new_block_tys =
+        T.Blocks.fold blocks
+          ~init:[]
+          ~f:(fun new_block_tys block ->
+            let module B = T.Blocks.Block in
+            let tag = B.tag block in
+            if not (Tag.Scannable.equal tag new_tag) then
+              new_block_tys
+            else
+              let ty =
+                match destination_mutability with
+                | Mutable ->
+                  let field_tys = B.fields block in
+                  T.block tag (T.unknown_like_array field_tys)
+                | Immutable ->
+                  B.to_type block
+              in
+              let ty = (E.type_accessor env T.meet) ty meet_with in
+              ty :: new_block_tys)
+      in
+      let type_of_new_block = (E.type_accessor env T.join) new_block_tys in
+      Reachable.reachable (original_term ()), type_of_new_block
+    | Unknown ->
       let type_of_new_block =
-        match destination_mutability with
-        | Immutable -> T.block tag fields
-        | Mutable -> T.block tag (T.unknown_like_array fields)
+        let ty =
+          match destination_mutability with
+          | Mutable -> T.unknown kind_of_block Other
+          | Immutable -> ty
+        in
+        (E.type_accessor env T.meet) ty meet_with
       in
       Reachable.reachable (original_term ()), type_of_new_block
-    | Proved Not_all_values_known ->
-      let term = Reachable.reachable (original_term ()) in
-      (* Here and below: when the type [ty] of the source array evaluates to
-         "unknown", we use [ty] as the type of the destination array, so long
-         as the latter is immutable.  This means that if [ty] contains some
-         complicated union, which may be later simplified by a meet, then
-         we don't lose that information. *)
-      begin match destination_mutability with
-      | Immutable -> term, ty
-      | Mutable -> term, T.unknown (K.value value_kind) Other
-      end
     | Invalid ->
-      Reachable.invalid (), T.bottom (K.value value_kind)
+      Reachable.invalid (), T.bottom kind_of_block
   in
   let term, ty =
     match kind with
-    | Dynamic_must_scan_or_naked_float ->
-      (* XXX Shouldn't this prove that the value is either a
-         Blocks-and-immediates or a float array? *)
-      let term = Reachable.reachable (original_term ()) in
-      begin match destination_mutability with
-      | Immutable -> term, ty
-      | Mutable -> term, T.unknown (K.value Must_scan) Other
-      end
-    | Must_scan -> like_a_block Must_scan
-    | Definitely_immediate -> like_a_block Definitely_immediate
-    | Naked_float ->
+    | Full_of_values_known_length (new_tag, new_value_kinds) ->
+      let unknown_fields_of_new_block =
+        T.unknowns_from_value_kinds new_value_kinds
+      in
+      let unknown_type_of_new_block =
+        T.block new_tag unknown_fields_of_new_block
+      in
+      full_of_values ~meet_with:unknown_type_of_new_block
+    | Full_of_values_unknown_length (new_tag, new_value_kind) ->
+      full_of_values ~meet_with:(T.unknown kind_of_block Other)
+    | Full_of_naked_floats { length; } ->
       let proof = (E.type_accessor env T.prove_float_array) ty in
-      match proof with
-      | Proved (Exactly sizes) ->
-        assert (not (Int.Set.is_empty sizes));
-        let type_of_new_block =
+      let type_of_new_block =
+        match length with
+        | None ->
+          begin match destination_mutability with
+          | Mutable -> T.unknown kind_of_block Other
+          | Immutable -> ty
+          end
+        | Some size ->
           match destination_mutability with
+          | Mutable -> T.mutable_float_array ~size
           | Immutable ->
-            let possible_types =
-              List.map (fun size ->
-                  let fields =
-                    Array.init size (fun _index ->
-                      unknown (K.naked_float ()) Other)
-                  in
-                  T.immutable_float_array fields)
-                (Numbers.Int.Set.to_list sizes)
+            let fields =
+              Array.init size (fun _index ->
+                T.any_naked_float_as_ty_naked_float ())
             in
-            (E.type_accessor env T.join_list) (K.value Must_scan)
-              possible_types
-          | Mutable -> T.mutable_float_arrays_of_various_sizes ~sizes
-        in
+            let unknown_type_of_new_block = T.immutable_float_array fields in
+            (E.type_accessor env T.meet) ty unknown_type_of_new_block
+      in
+      begin match proof with
+      | Proved _ | Unknown ->
         Reachable.reachable (original_term ()), type_of_new_block
-      | Proved Not_all_values_known ->
-        let term = Reachable.reachable (original_term ()) in
-        begin match destination_mutability with
-        | Immutable -> term, ty
-        | Mutable -> term, T.unknown (K.value Must_scan) Other
-        end
       | Invalid ->
-        Reachable.invalid (), T.bottom (K.value Must_scan)
+        Reachable.invalid (), T.bottom kind_of_block
+      end
+    | Generic_array _ -> assert false
+      (* To finish later.  (Also, evict to [Simplify_generic_array].) *)
   in
   term, ty, r
 
@@ -1263,9 +1260,18 @@ let simplify_unary_primitive env r prim arg dbg =
     Simplify_box_number_int64.simplify env r prim arg dbg
   | Box_number Naked_nativeint ->
     Simplify_box_number_nativeint.simplify env r prim arg dbg
-  | Project_closure closures ->
+  | Project_closure _closures ->
+    assert false
+(*
     simplify_project_closure env r closures
-  | Move_within_set_of_closures by_closure_id ->
+*)
+  | Move_within_set_of_closures _by_closure_id ->
+    assert false
+(*
     simplify_move_within_set_of_closures env r by_closure_id
-  | Project_var by_closure_id ->
+*)
+  | Project_var _by_closure_id ->
+    assert false
+(*
     simplify_project_var env r by_closure_id
+*)

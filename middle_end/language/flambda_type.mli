@@ -40,6 +40,12 @@ val unknown_like : (t -> t) type_accessor
 (** Like [unknown_like] but for a array of types. *)
 val unknown_like_array : (t array -> t array) type_accessor
 
+(** Create an array of "unknown" types of kind [Value], with the given
+    [value_kind]s. *)
+val unknowns_from_value_kinds : Flambda_kind.value_kind list -> t array
+
+val this_many_unknowns : Flambda_kind.t -> t array
+
 (** Rename free variables in a type. *)
 val rename_variables
    : (t

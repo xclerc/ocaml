@@ -46,6 +46,13 @@ type make_block_kind =
   | Full_of_naked_floats
   | Generic_array of generic_array_specialisation
 
+type duplicate_block_kind =
+  | Full_of_values_known_length of
+      Tag.Scannable.t * (Flambda_kind.value_kind list)
+  | Full_of_values_unknown_length of Tag.Scannable.t * Flambda_kind.value_kind
+  | Full_of_naked_floats of { length : Targetint.OCaml.t option; }
+  | Generic_array of generic_array_specialisation
+
 (* CR-someday mshinwell: We should have unboxed arrays of int32, int64 and
    nativeint. *)
 
@@ -159,6 +166,8 @@ type unary_primitive =
       source_mutability : mutable_or_immutable; 
       destination_mutability : mutable_or_immutable; 
     }
+    (** [Duplicate_scannable_block] may not be used to change the tag of
+        a block. *)
   | Is_int
   | Get_tag
   | Array_length of array_kind
