@@ -713,7 +713,7 @@ end) = struct
     | Some i ->
       let is = Immediate.Set.remove i is in
       Immediate.Set.fold (fun i t ->
-          ...)
+          assert false)
         is
         (this_tagged_immediate i)
 

@@ -351,7 +351,6 @@ end = struct
       if I.equal lhs I.zero then negate_the_other_side ()
       else Cannot_simplify
     | Div | Mod -> Cannot_simplify
-  in
 end
 
 module Int_ops_for_binary_arith_tagged_immediate =
@@ -682,11 +681,7 @@ end = struct
   let result_of_comparison_with_nan op =
     match op with
     | Neq -> Immediate.const_true
-    | Eq ->
-    | Lt ->
-    | Gt ->
-    | Le ->
-    | Ge -> Immediate.const_false
+    | Eq | Lt | Gt | Le | Ge -> Immediate.const_false
 
   let op_lhs_unknown op ~rhs : N.t binary_arith_outcome_for_one_side_only =
     if F.is_any_nan rhs then result_of_comparison_with_nan op
@@ -764,7 +759,7 @@ type bounds_check_result =
    bounds check code when compiling from [Lambda]. *)
 let bounds_check ~string_length_in_bytes ~index_in_bytes
       ~result_size_in_bytes : bounds_check_result =
-  if Targetint.OCaml.(<) index_in_bytes Targetint.OCaml.zero else
+  if Targetint.OCaml.(<) index_in_bytes Targetint.OCaml.zero then
     Out_of_range
   else
     let string_length_in_bytes =

@@ -57,7 +57,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
             match proof with
             | Invalid -> Invalid
             | Proved arg_ty ->
-              begin match arg_tys_rev with
+              match arg_tys_rev with
               | Invalid -> Invalid
               | Ok arg_tys_rev ->
                 let actual_value_kind =
@@ -94,7 +94,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
           | Immutable ->
             T.block tag arg_tys
           | Mutable ->
-            let arg_tys = (E.type_accessor env T.unknown_like) arg_tys
+            let arg_tys = (E.type_accessor env T.unknown_like) arg_tys in
             T.block tag arg_tys
         in
         [], Reachable.reachable term, ty
@@ -247,7 +247,7 @@ let simplify_bigarray_load env r prim dbg ~num_dims
 
 let simplify_variadic_primitive env r prim args dbg =
   match prim with
-  | Make_block (make_block_kind, mutable_or_immutable)
+  | Make_block (make_block_kind, mutable_or_immutable) ->
     simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
       args
   | Bigarray_set (num_dims, kind, layout) ->

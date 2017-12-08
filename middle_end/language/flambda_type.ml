@@ -1670,7 +1670,7 @@ module Evaluated = struct
 
   let tags (t_values : t_values) : Targetint.Set.t Or_not_all_values_known.t =
     let singleton tag : _ Or_not_all_values_known.t =
-      Exactly Targetint.Set.singleton (Tag.to_targetint tag)
+      Exactly (Targetint.Set.singleton (Tag.to_targetint tag))
     in
     match t_values with
     | Unknown -> Not_all_values_known
