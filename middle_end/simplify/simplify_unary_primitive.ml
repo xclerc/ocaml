@@ -386,7 +386,7 @@ let simplify_duplicate_scannable_block env r prim arg dbg
   let arg, ty = S.simplify_simple env arg in
   let original_term () : Named.t = Prim (Unary (prim, arg), dbg) in
   let kind_of_block = K.value Definitely_pointer in
-  let full_of_values ~meet_with =
+  let full_of_values ~template =
     let proof = (E.type_accessor env T.prove_block) ty in
     match proof with
     | Proved blocks ->
@@ -407,7 +407,7 @@ let simplify_duplicate_scannable_block env r prim arg dbg
                 | Immutable ->
                   B.to_type block
               in
-              let ty = (E.type_accessor env T.meet) ty meet_with in
+              let ty = (E.type_accessor env T.meet) ty template in
               ty :: new_block_tys)
       in
       let type_of_new_block = (E.type_accessor env T.join) new_block_tys in
@@ -419,7 +419,39 @@ let simplify_duplicate_scannable_block env r prim arg dbg
           | Mutable -> T.unknown kind_of_block Other
           | Immutable -> ty
         in
-        (E.type_accessor env T.meet) ty meet_with
+        (E.type_accessor env T.meet) ty template
+      in
+      Reachable.reachable (original_term ()), type_of_new_block
+    | Invalid ->
+      Reachable.invalid (), T.bottom kind_of_block
+  in
+  let full_of_naked_floats ~template =
+    let proof = (E.type_accessor env T.prove_float_array) ty in
+    match proof with
+    | Proved arrays ->
+      let new_block_tys =
+        Targetint.OCaml.Set.fold (fun fields new_block_tys ->
+            let size = Array.length fields in
+            let ty =
+              match destination_mutability with
+              | Mutable -> T.mutable_float_array ~size
+              | Immutable -> T.immutable_float_array fields
+            in
+            let ty = (E.type_accessor env T.meet) ty template in
+            ty :: new_block_tys)
+          arrays
+          []
+      in
+      let type_of_new_block = (E.type_accessor env T.join) new_block_tys in
+      Reachable.reachable (original_term ()), type_of_new_block
+    | Unknown ->
+      let type_of_new_block =
+        let ty =
+          match destination_mutability with
+          | Mutable -> T.unknown kind_of_block Other
+          | Immutable -> ty
+        in
+        (E.type_accessor env T.meet) ty template
       in
       Reachable.reachable (original_term ()), type_of_new_block
     | Invalid ->
@@ -434,18 +466,13 @@ let simplify_duplicate_scannable_block env r prim arg dbg
       let unknown_type_of_new_block =
         T.block new_tag unknown_fields_of_new_block
       in
-      full_of_values ~meet_with:unknown_type_of_new_block
+      full_of_values ~template:unknown_type_of_new_block
     | Full_of_values_unknown_length (new_tag, new_value_kind) ->
-      full_of_values ~meet_with:(T.unknown kind_of_block Other)
+      full_of_values ~template:(T.unknown kind_of_block Other)
     | Full_of_naked_floats { length; } ->
-      let proof = (E.type_accessor env T.prove_float_array) ty in
-      let type_of_new_block =
+      let size_constraint =
         match length with
-        | None ->
-          begin match destination_mutability with
-          | Mutable -> T.unknown kind_of_block Other
-          | Immutable -> ty
-          end
+        | None -> T.unknown kind_of_block Other
         | Some size ->
           match destination_mutability with
           | Mutable -> T.mutable_float_array ~size
@@ -454,15 +481,9 @@ let simplify_duplicate_scannable_block env r prim arg dbg
               Array.init size (fun _index ->
                 T.any_naked_float_as_ty_naked_float ())
             in
-            let unknown_type_of_new_block = T.immutable_float_array fields in
-            (E.type_accessor env T.meet) ty unknown_type_of_new_block
+            T.immutable_float_array fields
       in
-      begin match proof with
-      | Proved _ | Unknown ->
-        Reachable.reachable (original_term ()), type_of_new_block
-      | Invalid ->
-        Reachable.invalid (), T.bottom kind_of_block
-      end
+      full_of_naked_floats ~template:size_constraint
     | Generic_array _ -> assert false
       (* To finish later.  (Also, evict to [Simplify_generic_array].) *)
   in

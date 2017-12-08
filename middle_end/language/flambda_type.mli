@@ -382,6 +382,9 @@ val prove_block_with_unique_tag_and_size
   -> block_with_unique_tag_and_size_proof) type_accessor
 
 (** Proof of a value being a float array of one of the given lengths. *)
+(* XXX Wrong.  Needs to return something like a list of
+   [ty_naked_float array]s (populated as [Unknown] if we only know the
+   size) *)
 type float_array_proof = Numbers.Int.Set.t proof
 
 val prove_float_array : (t -> float_array_proof) type_accessor

@@ -125,6 +125,7 @@ let simplify_make_block env r prim dbg ~make_block_kind ~mutable_or_immutable
   new_bindings, term, ty, r
 
 (* CR mshinwell: Could use [unit or_invalid] rather than [bool] *)
+(* XXX this should be "for all" not "exists" *)
 let bigarray_indexes_are_invalid env indexes =
   let index_proofs =
     List.map (fun index ->
@@ -142,8 +143,7 @@ let bigarray_indexes_are_invalid env indexes =
               else
                 let index = Immediate.to_targetint index in
                 match layout with
-                | Unknown -> false
-                | C ->
+                | Unknown | C ->
                   Targetint.OCaml.(<) index Targetint.OCaml.zero
                 | Fortran ->
                   Targetint.OCaml.(<) index Targetint.OCaml.one)
