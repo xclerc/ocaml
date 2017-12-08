@@ -230,12 +230,15 @@ val prove_boxed_int64 : (t -> ty_naked_int64 proof) type_accessor
 (** As for [prove_boxed_int32], but for boxed nativeint values. *)
 val prove_boxed_nativeint : (t -> ty_naked_nativeint proof) type_accessor
 
+(** As for [prove_boxed_int32], but for boxed float values. *)
+val prove_boxed_float : (t -> ty_naked_float proof) type_accessor
+
 (** As for [prove_tagged_immediate] but for closures. *)
-val prove_closures : (t -> Joined_closures.t proof) type_accessor
+val prove_closures : (t -> Joined_closures.t known_values) type_accessor
 
 (** As for [prove_closures] but for sets of closures. *)
 val prove_sets_of_closures
-   : (t -> Joined_sets_of_closures.t proof) type_accessor
+   : (t -> Joined_sets_of_closures.t known_values) type_accessor
 
 (** Determine the known length(s) of the array(s) or structured block(s)
     (i.e. blocks with tag less than [No_scan_tag]) described by the given
