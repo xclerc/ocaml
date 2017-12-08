@@ -161,7 +161,7 @@ type unary_float_arith_op = Abs | Neg
 
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
-  | Duplicate_scannable_block of {
+  | Duplicate_block of {
       kind : make_block_kind;
       source_mutability : mutable_or_immutable; 
       destination_mutability : mutable_or_immutable; 

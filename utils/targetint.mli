@@ -205,8 +205,6 @@ val cross_product : Set.t -> Set.t -> Pair.Set.t
     integer by zero-extending those two bytes. *)
 val get_least_significant_16_bits_then_byte_swap : t -> t
 
-val treat_as_int : t -> t
-
 val compare_unsigned : t -> t -> int
 
 module OCaml : sig

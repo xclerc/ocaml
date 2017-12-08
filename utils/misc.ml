@@ -146,6 +146,25 @@ module Stdlib = struct
           | t::q -> aux (n-1) (t::acc) q
       in
       aux n [] l
+
+    let first_n t n =
+      let rec aux t n acc =
+        if n <= 0 then Some (List.rev acc, t)
+        else
+          match t with
+          | [] -> None
+          | elt::t -> aux t (n - 1) (elt :: acc)
+      in
+      aux t n []
+
+    let cross_product t0 t1 =
+      List.fold_left (fun result elt0 ->
+          List.fold_left (fun result elt1 ->
+              (elt0, elt1) :: result)
+            result
+            t1)
+        []
+        t0
   end
 
   module Option = struct

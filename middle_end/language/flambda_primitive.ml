@@ -258,7 +258,7 @@ type result_kind =
   | Never_returns
 
 type unary_primitive =
-  | Duplicate_scannable_block of {
+  | Duplicate_block of {
       kind : duplicate_kind;
       source_mutability : mutable_or_immutable; 
       destination_mutability : mutable_or_immutable; 
@@ -462,7 +462,7 @@ let result_kind_of_unary_primitive p : result_kind =
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
-  | Duplicate_scannable_block {
+  | Duplicate_block {
       source_mutability; destination_mutability; _ } ->
     begin match source_mutability with
     | Immutable ->

@@ -70,12 +70,31 @@ module Int16 = struct
   let to_int t = t
 end
 
+module Float = struct
+  type t = float
+
+  include Identifiable.Make (struct
+    type t = float
+
+    let compare x y = Pervasives.compare x y
+    let hash f = Hashtbl.hash f
+    let equal (i : float) j = i = j
+    let print = Format.pp_print_float
+  end)
+end
+
 module Float_by_bit_pattern = struct
   type t = Int64.t
 
   let create f = Int64.bits_of_float f
 
+  let of_string str = create (float_of_string str)
+
   let to_float t = Int64.float_of_bits t
+
+  let zero = create 0.
+  let one = create 1.
+  let minus_one = create (-1.)
 
   include Identifiable.Make (struct
     type t = Int64.t
@@ -83,23 +102,35 @@ module Float_by_bit_pattern = struct
     let compare = Int64.compare
     let equal = Int64.equal
     let hash f = Hashtbl.hash f
-    let print ppf t = Format.pp_print_float ppf (Int64.float_of_bits f)
+    let print ppf t = Format.pp_print_float ppf (Int64.float_of_bits t)
   end)
 
-  let add t1 t2 = create (Pervasives.(+.) (to_float t1) (to_float t2))
-  let sub t1 t2 = create (Pervasives.(-.) (to_float t1) (to_float t2))
-  let mul t1 t2 = create (Pervasives.( *. ) (to_float t1) (to_float t2))
-  let div t1 t2 = create (Pervasives.(/.) (to_float t1) (to_float t2))
+  module IEEE_semantics = struct
+    let add t1 t2 = create (Pervasives.(+.) (to_float t1) (to_float t2))
+    let sub t1 t2 = create (Pervasives.(-.) (to_float t1) (to_float t2))
+    let mul t1 t2 = create (Pervasives.( *. ) (to_float t1) (to_float t2))
+    let div t1 t2 = create (Pervasives.(/.) (to_float t1) (to_float t2))
 
-  let neg t = create (Pervasives.(~-.) (to_float t))
-  let abs t = create (Pervasives.abs_float (to_float t))
+    let neg t = create (Pervasives.(~-.) (to_float t))
+    let abs t = create (Pervasives.abs_float (to_float t))
 
-  let compare_ieee t1 t2 =
-    Pervasives.compare (to_float t1) (to_float t2)
+    let compare t1 t2 =
+      Pervasives.compare (to_float t1) (to_float t2)
 
-  let equal_ieee t1 t2 = 
-    (* N.B. This can't just be defined in terms of [compare_ieee]! *)
-    Pervasives.(=) (to_float t1) (to_float t2)
+    let equal t1 t2 = 
+      (* N.B. This can't just be defined in terms of [compare_ieee]! *)
+      Pervasives.(=) (to_float t1) (to_float t2)
+  end
+
+  let is_any_nan t =
+    match classify_float (to_float t) with
+    | FP_nan -> true
+    | FP_normal | FP_subnormal | FP_infinite | FP_zero -> false
+
+  let is_either_zero t =
+    match classify_float (to_float t) with
+    | FP_zero -> true
+    | FP_normal | FP_subnormal | FP_infinite | FP_nan -> false
 end
 
 module Int32 = struct

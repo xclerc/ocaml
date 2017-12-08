@@ -42,23 +42,7 @@ module Int16 : sig
   val to_int : t -> int
 end
 
-module type Float_ops = sig
-  type t
-
-  val one : t
-  val minus_one : t
-
-  val add : t -> t -> t
-  val sub : t -> t -> t
-  val mul : t -> t -> t
-  val div : t -> t -> t
-
-  val neg : t -> t
-  val abs : t -> t
-
-  val is_either_zero : t -> t
-  val is_any_nan : t -> bool
-end
+module Float : Identifiable.S with type t = float
 
 module Float_by_bit_pattern : sig
   (** Floating point numbers whose comparison and equality relations are
@@ -67,21 +51,35 @@ module Float_by_bit_pattern : sig
       distinguished, as will the two signed zeros.
 
       Never use [Pervasives.compare] on values of type [t].  Use either
-      [compare] or [compare_ieee] depending on which semantics you want.
-      Likewise for equality.
+      [compare] (comparison on bit patterns) or [IEEE_semantics.compare]
+      depending on which semantics you want.  Likewise for equality.
   *)
 
   include Identifiable.S
 
-  include Float_ops with type t := t
+  val create : float -> t
 
-  val of_float : float -> t
+  val of_string : string -> t
 
-  (** Comparison of floating-point values as defined by IEEE 754. *)
-  val compare_ieee : t -> t -> int
+  val one : t
+  val zero : t
+  val minus_one : t
 
-  (** Equality on floating-point values as defined by IEEE 754. *)
-  val equal_ieee : t -> t -> bool
+  val is_either_zero : t -> bool
+  val is_any_nan : t -> bool
+
+  module IEEE_semantics : sig
+    val add : t -> t -> t
+    val sub : t -> t -> t
+    val mul : t -> t -> t
+    val div : t -> t -> t
+
+    val neg : t -> t
+    val abs : t -> t
+
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+  end
 end
 
 module Int32 : sig

@@ -310,6 +310,40 @@ module Make (T : Thing) = struct
   module Tbl = Make_tbl (T)
 end
 
+module Make_pair (T0 : S) (T1 : S) = struct
+  module T = struct
+    type t = T0.t * T1.t
+
+    let compare (t0, t1) (t0', t1') =
+      let c = T0.compare t0 t0' in
+      if c <> 0 then c
+      else T1.compare t1 t1'
+
+    let equal (t0, t1) (t0', t1') =
+      T0.equal t0 t0' && T1.equal t1 t1'
+
+    let hash (t0, t1) = Hashtbl.hash (T0.hash t0, T1.hash t1)
+
+    let print ppf (t0, t1) =
+      Format.fprintf ppf "@[(%a, %a)@]" T0.print t0 T1.print t1
+  end
+
+  include T
+
+  module Set = Make_set (T)
+  module Map = Make_map (T)
+  module Tbl = Make_tbl (T)
+
+  let create_from_cross_product t0_set t1_set =
+    T0.Set.fold (fun t0 result ->
+        T1.Set.fold (fun t1 result ->
+            Set.add (t0, t1) result)
+          t1_set
+          result)
+      t0_set
+      Set.empty
+end
+
 module type S_no_hash = sig
   type t
 

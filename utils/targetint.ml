@@ -60,16 +60,22 @@ module type S = sig
   val repr: t -> repr
   val min: t -> t -> t
   val max: t -> t -> t
+  val get_least_significant_16_bits_then_byte_swap : t -> t
+  val compare_unsigned : t -> t -> int
 
   include Identifiable.S with type t := t
 
   module Pair : sig
     type nonrec t = t * t
-
     include Identifiable.S with type t := t
   end
 
   val cross_product : Set.t -> Set.t -> Pair.Set.t
+
+  module OCaml : sig
+    type t
+    val max_string_length : t
+  end
 end
 
 let size = Sys.word_size
@@ -129,16 +135,24 @@ module Int32 = struct
       Pair.Set.empty
 
   let get_least_significant_16_bits_then_byte_swap t =
-    let least_significant_byte = t land 0xffl in
+    let least_significant_byte = Int32.logand t 0xffl in
     let second_to_least_significant_byte =
-      shift_right_logical (t land 0xff00l) 8
+      shift_right_logical (Int32.logand t 0xff00l) 8
     in
-    second_to_least_significant_byte
-      lor (shift_left least_significant_byte 8)
+    Int32.logor second_to_least_significant_byte
+      (shift_left least_significant_byte 8)
 
-  (* CR mshinwell: Is this right? *)
-  let treat_as_int t =
-    t mod (logical_shift_left 1L 31)
+  module OCaml = struct
+    type nonrec t = t
+
+    (* XXX This needs to be retrieved properly.
+       Also, there are bugs in asmcomp/closure.ml and cmmgen.ml where max_wosize
+       is being calculated ignoring any PROFINFO_WIDTH *)
+    let max_array_length = Int32.sub (Int32.shift_left 1l 22) 1l
+
+    let max_string_length =
+      Int32.sub (Int32.mul 4l max_array_length) 1l
+  end
 end
 
 module Int64 = struct
@@ -181,16 +195,21 @@ module Int64 = struct
       Pair.Set.empty
 
   let get_least_significant_16_bits_then_byte_swap t =
-    let least_significant_byte = t land 0xffL in
+    let least_significant_byte = Int64.logand t 0xffL in
     let second_to_least_significant_byte =
-      shift_right_logical (t land 0xff00L) 8
+      Int64.shift_right_logical (Int64.logand t 0xff00L) 8
     in
-    second_to_least_significant_byte
-      lor (shift_left least_significant_byte 8)
+    Int64.logor second_to_least_significant_byte
+      (Int64.shift_left least_significant_byte 8)
 
-  (* CR mshinwell: Is this right? *)
-  let treat_as_int t =
-    t mod (logical_shift_left 1L 63)
+  module OCaml = struct
+    type nonrec t = t
+
+    let max_array_length = Int64.sub (Int64.shift_left 1L 54) 1L
+
+    let max_string_length =
+      Int64.sub (Int64.mul 8L max_array_length) 1L
+  end
 end
 
 include (val

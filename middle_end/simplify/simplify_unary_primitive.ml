@@ -380,7 +380,7 @@ let rec simplify_project_var env r ~(project_var : Projection.Project_var.t)
 
 *)
 
-let simplify_duplicate_scannable_block env r prim arg dbg
+let simplify_duplicate_block env r prim arg dbg
       (kind : Flambda_primitive.make_block_kind)
       ~source_mutability:_ ~destination_mutability =
   let arg, ty = S.simplify_simple env arg in
@@ -496,17 +496,10 @@ let simplify_is_int env r prim arg dbg =
   let term, ty =
     match proof with
     | Proved is_tagged_immediate ->
-      let simple =
-        if is_tagged_immediate then Simple.const_true else Simple.const_false
-      in
-      let imm =
-        if is_tagged_immediate then Immediate.bool_true
-        else Immediate.bool_false
-      in
-      (* CR mshinwell: naming inconsistency const_true / bool_true *)
-      Reachable.reachable (Simple simple),
-        T.this_tagged_immediate imm
-    | Proved Not_all_values_known ->
+      let simple = Simple.const_bool is_tagged_immediate in
+      let imm = Immediate.const_bool is_tagged_immediate in
+      Reachable.reachable (Simple simple), T.this_tagged_immediate imm
+    | Unknown ->
       Reachable.reachable (original_term ()),
         T.these_tagged_immediates Immediate.all_bools
     | Invalid -> 
@@ -531,8 +524,7 @@ let simplify_get_tag env r prim arg dbg =
         | Some tag ->
           (* CR mshinwell: Add [Named.this_tagged_immediate] etc? *)
           let simple = Simple.const (Tagged_immediate tag) in
-          Reachable.reachable (Simple simple),
-            T.this_tagged_immediate tag
+          Reachable.reachable (Simple simple), T.this_tagged_immediate tag
         | None ->
           assert (not (Targetint.Set.is_empty tags));
           original_term (), T.these_tagged_immediates tags
@@ -548,9 +540,6 @@ module type For_standard_ints = sig
 
     val to_const : t -> Simple.Const.t
 
-    (* CR mshinwell: Should there be a new module, [OCaml_int_on_target]?
-       Then [Immediate.t] can use that.
-       ...yes! *)
     val to_tagged_immediate : t -> Immediate.t
     val to_naked_int32 : t -> Int32.t
     val to_naked_int64 : t -> Int64.t
@@ -1215,9 +1204,9 @@ let simplify_unary_primitive env r prim arg dbg =
   | Block_load (field_index, field_kind, field_is_mutable) ->
     simplify_block_load env r prim arg dbg ~field_index ~field_kind
       ~field_is_mutable
-  | Duplicate_scannable_block { kind; source_mutability;
+  | Duplicate_block { kind; source_mutability;
       destination_mutability; } ->
-    simplify_duplicate_scannable_block env r prim arg dbg ~kind
+    simplify_duplicate_block env r prim arg dbg ~kind
       ~source_mutability ~destination_mutability
   | Is_int -> simplify_is_int env r prim arg dbg
   | Get_tag -> simplify_get_tag env r prim arg dbg
