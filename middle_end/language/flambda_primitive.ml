@@ -369,7 +369,9 @@ type unary_primitive =
       destination_mutability : mutable_or_immutable; 
     }
   | Is_int
-  | Get_tag
+  | Get_tag of {
+      possible_tags_and_sizes : int Tag.Map.t;
+    }
   | Array_length of block_access_kind
   | Bigarray_length of { dimension : int; }
   | String_length of string_or_bytes
@@ -392,7 +394,7 @@ let compare_unary_primitive p1 p2 =
     match p with
     | Duplicate_block _ -> 0
     | Is_int -> 1
-    | Get_tag -> 2
+    | Get_tag _ -> 2
     | Array_length _ -> 3
     | Bigarray_length _ -> 4
     | String_length _ -> 5
@@ -453,7 +455,7 @@ let compare_unary_primitive p1 p2 =
     Closure_id.Map.compare Var_within_closure.compare map1 map2
   | (Duplicate_block _
     | Is_int
-    | Get_tag
+    | Get_tag _
     | String_length _
     | Int_as_pointer
     | Opaque_identity
@@ -479,7 +481,7 @@ let print_unary_primitive ppf p =
       print_mutable_or_immutable source_mutability
       print_mutable_or_immutable destination_mutability
   | Is_int -> fprintf ppf "is_int"
-  | Get_tag -> fprintf ppf "get_tag"
+  | Get_tag _ -> fprintf ppf "get_tag"
   | String_length _ -> fprintf ppf "string_length"
   | Int_as_pointer -> fprintf ppf "int_as_pointer"
   | Opaque_identity -> fprintf ppf "opaque_identity"
@@ -510,7 +512,7 @@ let arg_kind_of_unary_primitive p =
   match p with
   | Duplicate_block _ -> K.value Definitely_pointer
   | Is_int -> K.value Unknown
-  | Get_tag -> K.value Definitely_pointer
+  | Get_tag _ -> K.value Definitely_pointer
   | String_length _ -> K.value Definitely_pointer
   | Int_as_pointer -> K.value Definitely_immediate
   | Opaque_identity -> K.value Unknown
@@ -529,7 +531,7 @@ let result_kind_of_unary_primitive p : result_kind =
   match p with
   | Duplicate_block _ -> Singleton (K.value Definitely_pointer)
   | Is_int
-  | Get_tag
+  | Get_tag _
   | String_length _ -> Singleton (K.value Definitely_immediate)
   | Int_as_pointer ->
     (* This primitive is *only* to be used when the resulting pointer points
@@ -563,7 +565,7 @@ let effects_and_coeffects_of_unary_primitive p =
       Only_generative_effects destination_mutability, Has_coeffects
     end
   | Is_int -> No_effects, No_coeffects
-  | Get_tag ->
+  | Get_tag _ ->
     if Config.ban_obj_dot_truncate then No_effects, No_coeffects
     else No_effects, Has_coeffects
   | String_length _ -> reading_from_an_array_like_thing
@@ -999,22 +1001,6 @@ let rename_variables t ~f =
       Simple.map_var x2 ~f)
   | Variadic (prim, xs) ->
     Variadic (prim, List.map (fun x -> Simple.map_var x ~f) xs)
-
-(* Probably not required
-let arg_kinds (t : t) : arg_kinds =
-  match t with
-  | Unary (prim, _) ->
-    let kind = arg_kind_of_unary_primitive prim in
-    Unary kind
-  | Binary (prim, _, _) ->
-    let kind0, kind1 = args_kind_of_binary_primitive prim in
-    Binary (kind0, kind1)
-  | Ternary (prim, _, _, _) ->
-    let kind0, kind1, kind2 = args_kind_of_ternary_primitive prim in
-    Ternary (kind0, kind1, kind2)
-  | Variadic (prim, _) ->
-    args_kind_of_variadic_primitive prim
-*)
 
 let result_kind (t : t) =
   match t with

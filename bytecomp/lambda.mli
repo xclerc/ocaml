@@ -314,6 +314,8 @@ and lambda_switch =
   { sw_numconsts: int;                  (* Number of integer cases *)
     sw_consts: (int * lambda) list;     (* Integer cases *)
     sw_numblocks: int;                  (* Number of tag block cases *)
+    (* CR mshinwell: [sw_block] needs to have the number of fields for each
+       constructor *)
     sw_blocks: (int * lambda) list;     (* Tag block cases *)
     sw_failaction : lambda option}      (* Action to take if failure *)
 and lambda_event =

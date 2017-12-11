@@ -216,7 +216,7 @@ end) = struct
 
   and flambda_type = t
 
-  and ty_value = (of_kind_value, Flambda_kind.value_kind) ty
+  and ty_value = (of_kind_value, Flambda_kind.Value_kind.t) ty
   and ty_naked_immediate = (of_kind_naked_immediate, unit) ty
   and ty_naked_float = (of_kind_naked_float, unit) ty
   and ty_naked_int32 = (of_kind_naked_int32, unit) ty
@@ -233,7 +233,7 @@ end) = struct
     | Naked_int64 of resolved_ty_naked_int64
     | Naked_nativeint of resolved_ty_naked_nativeint
 
-  and resolved_ty_value = (of_kind_value, Flambda_kind.value_kind) resolved_ty
+  and resolved_ty_value = (of_kind_value, Flambda_kind.Value_kind.t) resolved_ty
   and resolved_ty_naked_immediate = (of_kind_naked_immediate, unit) resolved_ty
   and resolved_ty_naked_float = (of_kind_naked_float, unit) resolved_ty
   and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
@@ -313,7 +313,7 @@ end) = struct
     | Naked_immediate of Immediate.t
 
   and of_kind_naked_float =
-    | Naked_float of float
+    | Naked_float of Numbers.Float_by_bit_pattern.t
 
   and of_kind_naked_int32 =
     | Naked_int32 of Int32.t
@@ -349,7 +349,8 @@ end) = struct
 
   let print_of_kind_naked_float ppf (o : of_kind_naked_float) =
     match o with
-    | Naked_float f -> Format.fprintf ppf "%f" f
+    | Naked_float f ->
+      Format.fprintf ppf "%a" Numbers.Float_by_bit_pattern.print f
 
   let print_of_kind_naked_int32 ppf (o : of_kind_naked_int32) =
     match o with
@@ -444,12 +445,7 @@ end) = struct
         (Array.to_list fields)
 
   and print_ty_value ppf (ty : ty_value) =
-    let print_scanning ppf (scanning : K.scanning) =
-      match scanning with
-      | Must_scan -> Format.fprintf ppf "*"
-      | Definitely_immediate -> ()
-    in
-    print_ty_generic print_of_kind_value print_scanning ppf ty
+    print_ty_generic print_of_kind_value K.Value_kind.print ppf ty
 
   and _unused = Expr.print
 
@@ -579,32 +575,32 @@ end) = struct
     | Naked_nativeint -> Naked_nativeint (Alias name)
 
 (*
-  let unknown_as_ty_value reason scanning : ty_value =
-    Normal (Resolved (Unknown (reason, scanning)))
+  let unknown_as_ty_value reason value_kind : ty_value =
+    Normal (Resolved (Unknown (reason, value_kind)))
 *)
 
-  let unknown_as_resolved_ty_value reason scanning : resolved_ty_value =
-    Normal (Unknown (reason, scanning))
+  let unknown_as_resolved_ty_value reason value_kind : resolved_ty_value =
+    Normal (Unknown (reason, value_kind))
 
-  let unknown_as_resolved_ty_naked_immediate reason scanning
+  let unknown_as_resolved_ty_naked_immediate reason value_kind
         : resolved_ty_naked_immediate =
-    Normal (Unknown (reason, scanning))
+    Normal (Unknown (reason, value_kind))
 
-  let unknown_as_resolved_ty_naked_float reason scanning
+  let unknown_as_resolved_ty_naked_float reason value_kind
         : resolved_ty_naked_float =
-    Normal (Unknown (reason, scanning))
+    Normal (Unknown (reason, value_kind))
 
-  let unknown_as_resolved_ty_naked_int32 reason scanning
+  let unknown_as_resolved_ty_naked_int32 reason value_kind
         : resolved_ty_naked_int32 =
-    Normal (Unknown (reason, scanning))
+    Normal (Unknown (reason, value_kind))
 
-  let unknown_as_resolved_ty_naked_int64 reason scanning
+  let unknown_as_resolved_ty_naked_int64 reason value_kind
         : resolved_ty_naked_int64 =
-    Normal (Unknown (reason, scanning))
+    Normal (Unknown (reason, value_kind))
 
-  let unknown_as_resolved_ty_naked_nativeint reason scanning
+  let unknown_as_resolved_ty_naked_nativeint reason value_kind
         : resolved_ty_naked_nativeint =
-    Normal (Unknown (reason, scanning))
+    Normal (Unknown (reason, value_kind))
 
   let bottom (kind : K.t) : t =
     match kind with
@@ -801,12 +797,16 @@ end) = struct
     in
     Value (Normal (Resolved (Ok (Singleton (Float_array fields)))))
 
-  let mutable_float_array ~size : t =
+  let mutable_float_array0 ~size : _ singleton_or_combination =
     let make_field () : ty_naked_float =
       Normal (Resolved (Unknown (Other, ())))
     in
     let fields = Array.init size (fun _ -> make_field ()) in
-    Value (Normal (Resolved (Ok (Singleton (Float_array fields)))))
+    Singleton (Float_array fields)
+
+  let mutable_float_array ~size : t =
+    let ty = mutable_float_array0 ~size in
+    Value (Normal (Resolved (Ok ty)))
 
   let block tag fields : t =
     let fields =
@@ -846,6 +846,9 @@ end) = struct
   let any_naked_float () : t =
     Naked_float (Normal (Resolved (Unknown (Other, ()))))
 
+  let any_naked_float_as_ty_naked_float () : ty_naked_float =
+    Normal (Resolved (Unknown (Other, ())))
+
   let any_naked_int32 () : t =
     Naked_int32 (Normal (Resolved (Unknown (Other, ()))))
 
@@ -855,15 +858,15 @@ end) = struct
   let any_naked_nativeint () : t =
     Naked_nativeint (Normal (Resolved (Unknown (Other, ()))))
 
-  let any_value_as_ty_value scanning unknown_because_of : ty_value =
-    Normal (Resolved (Unknown (unknown_because_of, scanning)))
+  let any_value_as_ty_value value_kind unknown_because_of : ty_value =
+    Normal (Resolved (Unknown (unknown_because_of, value_kind)))
 
-  let any_value scanning unknown_because_of : t =
-    Value (any_value_as_ty_value scanning unknown_because_of)
+  let any_value value_kind unknown_because_of : t =
+    Value (any_value_as_ty_value value_kind unknown_because_of)
 
   let unknown (kind : K.t) unknown_because_of =
     match kind with
-    | Value scanning -> any_value scanning unknown_because_of
+    | Value value_kind -> any_value value_kind unknown_because_of
     | Naked_immediate -> any_naked_immediate ()
     | Naked_float -> any_naked_float ()
     | Naked_int32 -> any_naked_int32 ()
@@ -1036,7 +1039,7 @@ end) = struct
         match result with
         | Have_resolved result -> result
         | Treat_as_unknown_must_scan reason ->
-          unknown_as_resolved_ty_value reason Must_scan
+          unknown_as_resolved_ty_value reason Unknown
 
     let import_value_type ty : resolved_t =
       Value (import_value_type_as_resolved_ty_value ty)
@@ -1253,6 +1256,11 @@ end) = struct
 
   let null_importer = (module Null_importer : Importer)
 
+  let with_null_importer f =
+    f ~importer:null_importer
+      ~type_of_name:(fun name ->
+        Misc.fatal_errorf "Unbound name %a in null importer" Name.print name)
+
   let force_to_kind_value t =
     match t with
     | Value ty_value -> ty_value
@@ -1320,6 +1328,8 @@ end) = struct
         print t
 
   let t_of_ty_value (ty : ty_value) : t = Value ty
+
+  let t_of_ty_naked_float (ty : ty_naked_float) : t = Naked_float ty
 
   let ty_of_resolved_ty (ty : _ resolved_ty) : _ ty =
     match ty with
@@ -1437,40 +1447,48 @@ end) = struct
       in
       Naked_nativeint (ty_of_resolved_ty resolved_ty), canonical_name
 
-  let scanning_ty_value ~importer ~type_of_name ty =
-    let rec scanning_ty_value (ty : ty_value) : K.scanning =
+  let value_kind_ty_value ~importer ~type_of_name ty =
+    let rec value_kind_ty_value (ty : ty_value) : K.Value_kind.t =
       let module I = (val importer : Importer) in
       let importer_this_kind = I.import_value_type_as_resolved_ty_value in
       let (ty : _ or_unknown_or_bottom), _canonical_name =
         resolve_aliases_and_squash_unresolved_names_on_ty ~importer_this_kind
           ~force_to_kind:force_to_kind_value
           ~type_of_name
-          ~unknown_payload:K.Must_scan
+          ~unknown_payload:K.Value_kind.Unknown
           ty
       in
       match ty with
-      | Unknown (_, scanning) -> scanning
+      | Unknown (_, value_kind) -> value_kind
       | Ok (Singleton (Tagged_immediate _)) -> Definitely_immediate
-      | Ok (Singleton _) -> Must_scan
+      | Ok (Singleton _) -> Unknown
       | Ok (Combination (Union, ty1, ty2)) ->
         let ty1 = ty_of_resolved_ok_ty ty1 in
         let ty2 = ty_of_resolved_ok_ty ty2 in
-        K.join_scanning (scanning_ty_value ty1)
-          (scanning_ty_value ty2)
+        K.Value_kind.join (value_kind_ty_value ty1)
+          (value_kind_ty_value ty2)
       | Ok (Combination (Intersection, ty1, ty2)) ->
         let ty1 = ty_of_resolved_ok_ty ty1 in
         let ty2 = ty_of_resolved_ok_ty ty2 in
-        K.meet_scanning (scanning_ty_value ty1)
-          (scanning_ty_value ty2)
+        (* CR mshinwell: Think more about the following two uses of
+           [Definitely_immediate] *)
+        let meet =
+          K.Value_kind.meet (value_kind_ty_value ty1)
+            (value_kind_ty_value ty2)
+        in
+        begin match meet with
+        | Ok value_kind -> value_kind
+        | Bottom -> Definitely_immediate
+        end
       | Bottom -> Definitely_immediate
     in
-    scanning_ty_value ty
+    value_kind_ty_value ty
 
   let kind_ty_value ~importer ~type_of_name (ty : ty_value) =
-    let scanning =
-      scanning_ty_value ~importer ~type_of_name ty
+    let value_kind =
+      value_kind_ty_value ~importer ~type_of_name ty
     in
-    K.value scanning
+    K.value value_kind
 
   let kind ~importer ~type_of_name (t : t) =
     match t with
@@ -1480,6 +1498,8 @@ end) = struct
     | Naked_int64 _ -> K.naked_int64 ()
     | Naked_nativeint _ -> K.naked_nativeint ()
     | Value ty -> kind_ty_value ~importer ~type_of_name ty
+
+  let value_kind = value_kind_ty_value
 
   let create_inlinable_function_declaration ~is_classic_mode ~closure_origin
         ~continuation_param ~params ~body ~result ~stub ~dbg ~inline
@@ -1871,17 +1891,22 @@ end) = struct
     val combining_op : combining_op
   end) = struct
     let combine_unknown_payload_for_value ~importer ~type_of_name
-          _ty_value1 scanning1 ty_value2 scanning2_opt =
-      let scanning2 : K.scanning =
-        match scanning2_opt with
-        | Some scanning2 -> scanning2
+          _ty_value1 value_kind1 ty_value2 value_kind2_opt =
+      let value_kind2 : K.Value_kind.t =
+        match value_kind2_opt with
+        | Some value_kind2 -> value_kind2
         | None ->
-          scanning_ty_value ~importer ~type_of_name
+          value_kind_ty_value ~importer ~type_of_name
             (Normal ((Resolved ty_value2) : _ maybe_unresolved))
       in
       match P.combining_op with
-      | Union -> K.join_scanning scanning1 scanning2
-      | Intersection -> K.meet_scanning scanning1 scanning2
+      | Union -> K.Value_kind.join value_kind1 value_kind2
+      | Intersection ->
+        (* CR mshinwell: Same comment as above re. Definitely_immediate *)
+        begin match K.Value_kind.meet value_kind1 value_kind2 with
+        | Ok value_kind -> value_kind
+        | Bottom -> K.Value_kind.Definitely_immediate
+        end
 
     let combine_unknown_payload_for_non_value _ty1 () _ty2 (_ : unit option) =
       ()
@@ -1970,7 +1995,7 @@ end) = struct
 
     let rec combine_of_kind_value ~importer ~type_of_name
           (t1 : of_kind_value) t2
-          : (of_kind_value, K.scanning) or_unknown_or_bottom or_combine =
+          : (of_kind_value, K.Value_kind.t) or_unknown_or_bottom or_combine =
       let singleton s : _ or_combine =
         Exactly ((Ok (Singleton s)) : _ or_unknown_or_bottom)
       in
@@ -2037,7 +2062,7 @@ end) = struct
           : (of_kind_naked_float, _) or_unknown_or_bottom or_combine =
       match t1, t2 with
       | Naked_float i1, Naked_float i2 ->
-        if not (Float.equal i1 i2) then
+        if not (Numbers.Float_by_bit_pattern.equal i1 i2) then
           Combine
         else
           Exactly (Ok (Singleton ((Naked_float i1) : of_kind_naked_float)))
@@ -2079,7 +2104,7 @@ end) = struct
       combine_ty ~importer ~type_of_name
         ~importer_this_kind:I.import_value_type_as_resolved_ty_value
         ~force_to_kind:force_to_kind_value
-        K.Must_scan
+        K.Value_kind.Unknown
         (combine_of_kind_value ~importer ~type_of_name)
         (combine_unknown_payload_for_value ~importer ~type_of_name)
         ty1 ty2
@@ -2198,6 +2223,14 @@ end) = struct
   let meet_ty_naked_int64 = Meet.combine_ty_naked_int64
   let meet_ty_naked_nativeint = Meet.combine_ty_naked_nativeint
 
+  let meet_list ~importer ~type_of_name kind ts =
+    match ts with
+    | [] -> bottom kind
+    | t::ts ->
+      List.fold_left (fun result t -> meet ~importer ~type_of_name result t)
+        t
+        ts
+
   type 'a or_bottom =
     | Ok of 'a
     | Bottom
@@ -2264,6 +2297,71 @@ end) = struct
 
     let print = print_set_of_closures
   end
+
+  (* CR mshinwell: Try to move these next ones to flambda_type.ml *)
+
+  let these_naked_floats fs =
+    let tys =
+      List.map (fun f -> this_naked_float f)
+        (Numbers.Float_by_bit_pattern.Set.elements fs)
+    in
+    (with_null_importer join_list) (K.naked_float ()) tys
+
+  let these_naked_int32s ns =
+    let tys =
+      List.map (fun n -> this_naked_int32 n)
+        (Int32.Set.elements ns)
+    in
+    (with_null_importer join_list) (K.naked_int32 ()) tys
+
+  let these_naked_int64s ns =
+    let tys =
+      List.map (fun n -> this_naked_int64 n)
+        (Int64.Set.elements ns)
+    in
+    (with_null_importer join_list) (K.naked_int64 ()) tys
+
+  let these_naked_nativeints ns =
+    let tys =
+      List.map (fun n -> this_naked_nativeint n)
+        (Targetint.Set.elements ns)
+    in
+    (with_null_importer join_list) (K.naked_nativeint ()) tys
+
+  let these_boxed_floats fs =
+    let tys =
+      List.map (fun f -> this_boxed_float f)
+        (Numbers.Float_by_bit_pattern.Set.elements fs)
+    in
+    (with_null_importer join_list) (K.value Definitely_pointer) tys
+
+  let these_boxed_int32s ns =
+    let tys =
+      List.map (fun f -> this_boxed_int32 f)
+        (Int32.Set.elements ns)
+    in
+    (with_null_importer join_list) (K.value Definitely_pointer) tys
+
+  let these_boxed_int64s ns =
+    let tys =
+      List.map (fun f -> this_boxed_int64 f)
+        (Int64.Set.elements ns)
+    in
+    (with_null_importer join_list) (K.value Definitely_pointer) tys
+
+  let these_boxed_nativeints ns =
+    let tys =
+      List.map (fun f -> this_boxed_nativeint f)
+        (Targetint.Set.elements ns)
+    in
+    (with_null_importer join_list) (K.value Definitely_pointer) tys
+
+  let mutable_float_arrays_of_various_sizes ~sizes : t =
+    let tys =
+      List.map (fun size -> mutable_float_array ~size)
+        (Numbers.Int.Set.elements sizes)
+    in
+    (with_null_importer join_list) (K.value Definitely_pointer) tys
 
   let combination_component_to_ty (type a)
         (ty : a singleton_or_combination or_alias)
