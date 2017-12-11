@@ -95,7 +95,7 @@ module type S = sig
   (** Types of kind [Value] are equipped with an extra piece of information
       such that when we are at the top element, [Unknown], we still know
       whether a root has to be registered. *)
-  and ty_value = (of_kind_value, Flambda_kind.value_kind) ty
+  and ty_value = (of_kind_value, Flambda_kind.Value_kind.t) ty
   and ty_naked_immediate = (of_kind_naked_immediate, unit) ty
   and ty_naked_float = (of_kind_naked_float, unit) ty
   and ty_naked_int32 = (of_kind_naked_int32, unit) ty
@@ -114,7 +114,7 @@ module type S = sig
     | Naked_int64 of resolved_ty_naked_int64
     | Naked_nativeint of resolved_ty_naked_nativeint
 
-  and resolved_ty_value = (of_kind_value, Flambda_kind.value_kind) resolved_ty
+  and resolved_ty_value = (of_kind_value, Flambda_kind.Value_kind.t) resolved_ty
   and resolved_ty_naked_immediate = (of_kind_naked_immediate, unit) resolved_ty
   and resolved_ty_naked_float = (of_kind_naked_float, unit) resolved_ty
   and resolved_ty_naked_int32 = (of_kind_naked_int32, unit) resolved_ty
@@ -238,9 +238,9 @@ module type S = sig
 
   (** Construction of top types. *)
   val unknown : Flambda_kind.t -> unknown_because_of -> t
-  val any_value : Flambda_kind.value_kind -> unknown_because_of -> t
+  val any_value : Flambda_kind.Value_kind.t -> unknown_because_of -> t
   val any_value_as_ty_value
-     : Flambda_kind.value_kind
+     : Flambda_kind.Value_kind.t
     -> unknown_because_of
     -> ty_value
   val any_tagged_immediate : unit -> t
@@ -434,7 +434,7 @@ module type S = sig
 
   (** Given a type known to be of kind [Value], determine the corresponding
       value kind. *)
-  val value_kind : (ty_value -> Flambda_kind.value_kind) type_accessor
+  val value_kind : (ty_value -> Flambda_kind.Value_kind.t) type_accessor
 
   (** Least upper bound of two types. *)
   val join : (t -> t -> t) type_accessor

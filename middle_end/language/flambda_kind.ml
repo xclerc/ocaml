@@ -22,20 +22,47 @@ module Value_kind = struct
     | Definitely_pointer
     | Definitely_immediate
 
+  (* [Unknown] is the top element.  [Definitely_pointer] and
+     [Definitely_immediate] are incomparable. *)
+
   let join t0 t1 =
     match t0, t1 with
-    | Unknown, Unknown -> Unknown
+    | Unknown, _
+    | _, Unknown
+    | Definitely_pointer, Definitely_immediate
+    | Definitely_immediate, Definitely_pointer -> Unknown
+    | Definitely_pointer, Definitely_pointer -> Definitely_pointer
+    | Definitely_immediate, Definitely_immediate -> Definitely_immediate
 
+  type 'a or_bottom = Ok of 'a | Bottom
+
+  let meet t0 t1 : _ or_bottom =
+    match t0, t1 with
+    | Unknown, t
+    | t, Unknown -> Ok t
+    | Definitely_pointer, Definitely_immediate
+    | Definitely_immediate, Definitely_pointer -> Bottom
+    | Definitely_pointer, Definitely_pointer -> Ok Definitely_pointer
+    | Definitely_immediate, Definitely_immediate -> Ok Definitely_immediate
+
+  let compatible t ~if_used_at =
+    match t, if_used_at with
+    | _, Unknown -> true
+    | Unknown, _ -> false
+    | Definitely_pointer, Definitely_immediate
+    | Definitely_immediate, Definitely_pointer -> false
+    | Definitely_pointer, Definitely_pointer -> true
+    | Definitely_immediate, Definitely_immediate -> true
 
   let print ppf t =
     match t with
-    | Unknown -> fprintf ppf "Unk"
-    | Definitely_pointer -> fprintf ppf "Ptr"
-    | Definitely_immediate -> fprintf ppf "Imm"
+    | Unknown -> Format.fprintf ppf "Unk"
+    | Definitely_pointer -> Format.fprintf ppf "Ptr"
+    | Definitely_immediate -> Format.fprintf ppf "Imm"
 end
 
 type t =
-  | Value of value_kind
+  | Value of Value_kind.t
   | Naked_immediate
   | Naked_float
   | Naked_int32
@@ -45,6 +72,8 @@ type t =
 type kind = t
 
 let value value_kind = Value value_kind
+
+let unit () = value Definitely_immediate
 
 (* CR mshinwell: can remove lambdas now *)
 let naked_immediate () = Naked_immediate
@@ -68,8 +97,7 @@ include Identifiable.Make (struct
   let print ppf t =
     match t with
     | Value value_kind ->
-      Format.pp_print_string ppf "value(%a)"
-        Value_kind.print value_kind
+      Format.fprintf ppf "value(%a)" Value_kind.print value_kind
     | Naked_immediate -> Format.pp_print_string ppf "naked_immediate"
     | Naked_float -> Format.pp_print_string ppf "naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
@@ -79,9 +107,8 @@ end)
 
 let compatible t ~if_used_at =
   match t, if_used_at with
-  (* The two important cases: *)
-  | Value Can_scan, Value Must_scan -> true
-  | Value Must_scan, Value Can_scan -> false
+  | Value value_kind, Value if_used_at ->
+    Value_kind.compatible value_kind ~if_used_at
   | _, _ -> equal t if_used_at
 
 let is_value t =
@@ -111,7 +138,7 @@ module Standard_int = struct
 
   let to_kind t : kind =
     match t with
-    | Tagged_immediate -> Value Can_scan
+    | Tagged_immediate -> Value Definitely_immediate
     | Naked_int32 -> Naked_int32
     | Naked_int64 -> Naked_int64
     | Naked_nativeint -> Naked_nativeint
@@ -134,6 +161,47 @@ module Standard_int = struct
   let print_lowercase ppf t =
     match t with
     | Tagged_immediate -> Format.pp_print_string ppf "tagged_immediate"
+    | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
+    | Naked_int64 -> Format.pp_print_string ppf "naked_int64"
+    | Naked_nativeint -> Format.pp_print_string ppf "naked_nativeint"
+end
+
+module Standard_int_or_float = struct
+  type t =
+    | Tagged_immediate
+    | Naked_float
+    | Naked_int32
+    | Naked_int64
+    | Naked_nativeint
+
+  let to_kind t : kind =
+    match t with
+    | Tagged_immediate -> Value Definitely_immediate
+    | Naked_float -> Naked_float
+    | Naked_int32 -> Naked_int32
+    | Naked_int64 -> Naked_int64
+    | Naked_nativeint -> Naked_nativeint
+
+  include Identifiable.Make (struct
+    type nonrec t = t
+
+    let print ppf t =
+      match t with
+      | Tagged_immediate -> Format.pp_print_string ppf "Tagged_immediate"
+      | Naked_float -> Format.pp_print_string ppf "Naked_float"
+      | Naked_int32 -> Format.pp_print_string ppf "Naked_int32"
+      | Naked_int64 -> Format.pp_print_string ppf "Naked_int64"
+      | Naked_nativeint -> Format.pp_print_string ppf "Naked_nativeint"
+
+    let compare = Pervasives.compare
+    let equal t1 t2 = (compare t1 t2 = 0)
+    let hash = Hashtbl.hash
+  end)
+
+  let print_lowercase ppf t =
+    match t with
+    | Tagged_immediate -> Format.pp_print_string ppf "tagged_immediate"
+    | Naked_float -> Format.pp_print_string ppf "naked_float"
     | Naked_int32 -> Format.pp_print_string ppf "naked_int32"
     | Naked_int64 -> Format.pp_print_string ppf "naked_int64"
     | Naked_nativeint -> Format.pp_print_string ppf "naked_nativeint"

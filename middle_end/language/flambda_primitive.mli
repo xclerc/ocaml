@@ -42,14 +42,14 @@ module Generic_array_specialisation : sig
 end
 
 type make_block_kind =
-  | Full_of_values of Tag.Scannable.t * (Flambda_kind.value_kind list)
+  | Full_of_values of Tag.Scannable.t * (Flambda_kind.Value_kind.t list)
   | Full_of_naked_floats
   | Generic_array of Generic_array_specialisation.t
 
 type duplicate_block_kind =
   | Full_of_values_known_length of
-      Tag.Scannable.t * (Flambda_kind.value_kind list)
-  | Full_of_values_unknown_length of Tag.Scannable.t * Flambda_kind.value_kind
+      Tag.Scannable.t * (Flambda_kind.Value_kind.t list)
+  | Full_of_values_unknown_length of Tag.Scannable.t * Flambda_kind.Value_kind.t
   | Full_of_naked_floats of { length : Targetint.OCaml.t option; }
   | Generic_array of Generic_array_specialisation.t
 

@@ -42,7 +42,7 @@ val unknown_like_array : (t array -> t array) type_accessor
 
 (** Create an array of "unknown" types of kind [Value], with the given
     [value_kind]s. *)
-val unknowns_from_value_kinds : Flambda_kind.value_kind list -> t array
+val unknowns_from_value_kinds : Flambda_kind.Value_kind.t list -> t array
 
 val this_many_unknowns : Flambda_kind.t -> t array
 
@@ -261,20 +261,20 @@ val prove_is_tagged_immediate : (t -> bool proof) type_accessor
     always compiler bugs. *)
 val force_to_kind_value_with_expected_value_kind
    : (t
-  -> Flambda_kind.value_kind
+  -> Flambda_kind.Value_kind.t
   -> ty_value) type_accessor
 
 (** Like [prove_of_kind_value_with_expected_value_kind] but for a list of
     types, all of which are checked against the given value kind. *)
 val force_to_kind_value_with_expected_value_kinds
    : (t list
-  -> Flambda_kind.value_kind
+  -> Flambda_kind.Value_kind.t
   -> ty_value) type_accessor
 
 (** Like [prove_of_kind_value_with_expected_value_kinds] but for a list of
     types, each of which may be tested against a different value kind. *)
 val force_to_kind_value_with_individual_expected_value_kinds
-   : ((t * Flambda_kind.value_kind) list
+   : ((t * Flambda_kind.Value_kind.t) list
   -> ty_value) type_accessor
 
 (** Prove that the given types are all of kind [Naked_float].  If the proof

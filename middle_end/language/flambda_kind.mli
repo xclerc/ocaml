@@ -28,13 +28,17 @@ module Value_kind : sig
     | Definitely_immediate
 
   val join : t -> t -> t
-  val meet : t -> t -> t
+
+  type 'a or_bottom = Ok of 'a | Bottom
+
+  val meet : t -> t -> t or_bottom
+
   val compatible : t -> if_used_at:t -> bool
   val print : Format.formatter -> t -> unit
 end
 
 type t = private
-  | Value of value_kind
+  | Value of Value_kind.t
   | Naked_immediate
   | Naked_float
   | Naked_int32
@@ -43,7 +47,7 @@ type t = private
 
 type kind = t
 
-val value : value_kind -> t
+val value : Value_kind.t -> t
 val naked_immediate : unit -> t
 val naked_float : unit -> t
 val naked_int32 : unit -> t
