@@ -27,13 +27,14 @@ module Value_kind : sig
     | Definitely_pointer
     | Definitely_immediate
 
-  val join : t -> t -> t
-
   type 'a or_bottom = Ok of 'a | Bottom
 
+  val join : t -> t -> t
   val meet : t -> t -> t or_bottom
-
   val compatible : t -> if_used_at:t -> bool
+
+  val compare : t -> t -> int
+
   val print : Format.formatter -> t -> unit
 end
 

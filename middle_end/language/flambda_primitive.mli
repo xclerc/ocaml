@@ -62,8 +62,6 @@ type block_access_kind =
   | Naked_float
   | Generic_array of Generic_array_specialisation.t
 
-val kind_of_block_access_kind : block_access_kind -> Flambda_kind.t
-
 (* Notes for producing [make_block_kind] / [Duplicate_scannable_block] from
    [Pduparray] and [Pduprecord]:  (Now out of date)
 
@@ -160,12 +158,11 @@ type unary_float_arith_op = Abs | Neg
 (** Primitives taking exactly one argument. *)
 type unary_primitive =
   | Duplicate_block of {
-      kind : make_block_kind;
+      kind : duplicate_block_kind;
       source_mutability : mutable_or_immutable; 
       destination_mutability : mutable_or_immutable; 
     }
-    (** [Duplicate_scannable_block] may not be used to change the tag of
-        a block. *)
+    (** [Duplicate_block] may not be used to change the tag of a block. *)
   | Is_int
   | Get_tag
   | Array_length of block_access_kind

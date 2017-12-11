@@ -163,7 +163,9 @@ type primitive =
   (* byte swap *)
   | Pbswap16
   | Pbbswap of boxed_integer
-  (* Integer to external pointer *)
+  (* Integer to external pointer.
+     The result of this primitive must always be a valid OCaml value, even
+     if that value lives outside the heap. *)
   | Pint_as_pointer
   (* Inhibition of optimisation *)
   | Popaque

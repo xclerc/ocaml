@@ -59,6 +59,8 @@ module Value_kind = struct
     | Unknown -> Format.fprintf ppf "Unk"
     | Definitely_pointer -> Format.fprintf ppf "Ptr"
     | Definitely_immediate -> Format.fprintf ppf "Imm"
+
+  let compare = Pervasives.compare
 end
 
 type t =
