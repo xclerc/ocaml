@@ -909,7 +909,7 @@ end = struct
         let named_kind =
           match Named.invariant env defining_expr with
           | Singleton kind -> Some kind
-          | Unit -> Some (K.value Can_scan)
+          | Unit -> Some (K.value Definitely_immediate)
           | Never_returns -> None
         in
         begin match named_kind with
@@ -1343,7 +1343,7 @@ end = struct
           Mutable_variable.print being_assigned
           K.print being_assigned_kind
       end;
-      Singleton (K.value Can_scan)
+      Singleton (K.value Definitely_immediate)
     | Set_of_closures set_of_closures ->
       Set_of_closures.invariant env set_of_closures;
       Singleton (K.value Must_scan)

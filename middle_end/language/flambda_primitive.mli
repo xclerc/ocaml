@@ -70,13 +70,13 @@ val kind_of_block_access_kind : block_access_kind -> Flambda_kind.t
    - For Pduparray:
      - Pgenarray --> Choose_tag_at_runtime
      - Paddrarray --> Full_of_values (tag zero, [Must_scan, ...])
-     - Pintarray --> Full_of_values (tag_zero, [Can_scan, ...])
+     - Pintarray --> Full_of_values (tag_zero, [Definitely_immediate, ...])
      - Pfloatarray --> Full_of_naked_floats
 
    - For Pduprecord:
 
      - Record_regular --> Must_scan (unless none of the contents need
-         value_kind in which case, Can_scan)
+         value_kind in which case, Definitely_immediate)
      - Record_float --> Naked_float
      - Record_unboxed --> suspect this is never generated?
      - Record_inlined --> Must_scan.  Pduprecord doesn't seem to ever change

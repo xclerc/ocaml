@@ -71,13 +71,13 @@ type make_block_kind =
 type block_access_kind =
   | Dynamic_must_scan_or_naked_float
   | Must_scan
-  | Can_scan
+  | Definitely_immediate
   | Naked_float
 
 let kind_of_block_access_kind (kind : block_access_kind) =
   match kind with
   | Generic_array | Must_scan -> K.value Must_scan
-  | Can_scan -> K.value Can_scan
+  | Definitely_immediate -> K.value Definitely_immediate
   | Naked_float -> K.value Naked_float
 
 type string_or_bytes = String | Bytes
@@ -111,7 +111,7 @@ let writing_to_an_array_like_thing =
   (* XXX But there are no bounds checks now *)
   effects, Has_coeffects
 
-let array_like_thing_index_kind = K.value Can_scan
+let array_like_thing_index_kind = K.value Definitely_immediate
 
 let array_kind = K.value Must_scan
 let bigarray_kind = K.value Must_scan
@@ -423,12 +423,12 @@ let arg_kind_of_unary_primitive p =
   | Get_tag
   | String_length _ -> K.value Must_scan
   | Swap_byte_endianness kind -> K.Standard_int.to_kind kind
-  | Int_as_pointer -> K.value Can_scan
+  | Int_as_pointer -> K.value Definitely_immediate
   | Opaque_identity -> K.value Must_scan
   | Int_arith (kind, _) -> K.Standard_int.to_kind kind
   | Int_conv { src; dst = _; } -> K.Standard_int.to_kind src
   | Float_arith _ -> K.naked_float ()
-  | Int_of_float -> K.value Can_scan
+  | Int_of_float -> K.value Definitely_immediate
   | Float_of_int -> K.naked_float ()
   | Array_length _
   | Bigarray_length _ -> K.value Must_scan
@@ -444,17 +444,17 @@ let result_kind_of_unary_primitive p : result_kind =
   | Duplicate_record _ -> Singleton (K.value Must_scan)
   | Is_int
   | Get_tag
-  | String_length _ -> Singleton (K.value Can_scan)
+  | String_length _ -> Singleton (K.value Definitely_immediate)
   | Swap_byte_endianness kind -> Singleton (K.Standard_int.to_kind kind)
   | Int_as_pointer -> Singleton (K.naked_immediate ())
   | Opaque_identity -> Singleton (K.value Must_scan)
   | Int_arith (kind, _) -> Singleton (K.Standard_int.to_kind kind)
   | Int_conv { src = _; dst; } -> Singleton (K.Standard_int.to_kind dst)
   | Float_arith _ -> Singleton (K.naked_float ())
-  | Int_of_float -> Singleton (K.value Can_scan)
+  | Int_of_float -> Singleton (K.value Definitely_immediate)
   | Float_of_int -> Singleton (K.naked_float ())
   | Array_length _
-  | Bigarray_length _ -> Singleton (K.value Can_scan)
+  | Bigarray_length _ -> Singleton (K.value Definitely_immediate)
   | Unbox_number kind -> Singleton (K.Boxable_number.to_kind kind)
   | Box_number _ -> Singleton (K.value Must_scan)
   | Project_closure _
@@ -659,10 +659,10 @@ let result_kind_of_binary_primitive p : result_kind =
   | Float_arith _ -> Singleton (K.naked_float ())
   | Int_comp _
   | Float_comp _
-  | Int_comp_unsigned _ -> Singleton (K.value Can_scan)
+  | Int_comp_unsigned _ -> Singleton (K.value Definitely_immediate)
   | Array_load (Dynamic_must_scan_or_naked_float | Must_scan) ->
     Singleton (K.value Must_scan)
-  | Array_load Can_scan -> Singleton (K.value Can_scan)
+  | Array_load Definitely_immediate -> Singleton (K.value Definitely_immediate)
   | Array_load Naked_float -> Singleton (K.naked_float ())
   | String_load _ ->
     (* XXX this is wrong, it needs to depend on the argument of the primitive *)
@@ -824,8 +824,8 @@ let args_kind_of_variadic_primitive p : arg_kinds =
   | Make_block (_tag, _mut, arity) -> Variadic arity
   | Make_array ((Dynamic_must_scan_or_naked_float | Must_scan), _) ->
     Variadic_all_of_kind (K.value Must_scan)
-  | Make_array (Can_scan, _) ->
-    Variadic_all_of_kind (K.value Can_scan)
+  | Make_array (Definitely_immediate, _) ->
+    Variadic_all_of_kind (K.value Definitely_immediate)
   | Make_array (Naked_float, _) ->
     Variadic_all_of_kind (K.naked_float ())
   | Bigarray_set (num_dims, kind, _) ->

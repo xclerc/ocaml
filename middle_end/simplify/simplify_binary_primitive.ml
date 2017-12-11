@@ -738,7 +738,7 @@ let get_field ~importer ~type_of_name t ~field_index ~field_is_mutable
     match block_access_kind with
     | Dynamic_must_scan_or_naked_float -> K.value Must_scan
     | Must_scan -> K.value Must_scan
-    | Can_scan -> K.value Can_scan
+    | Definitely_immediate -> K.value Definitely_immediate
     | Naked_float -> K.naked_float ()
   in
   match t_evaluated with

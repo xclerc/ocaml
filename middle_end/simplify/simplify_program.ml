@@ -78,9 +78,9 @@ let simplify_static_part env (static_part : Static_part.t) : _ or_invalid =
           match field with
           | Symbol sym ->
             let ty = E.find_symbol env sym in
-            field, or_unknown Can_scan ty
+            field, or_unknown Definitely_immediate ty
           | Tagged_immediate imm ->
-            field, or_unknown Can_scan (T.this_tagged_immediate imm)
+            field, or_unknown Definitely_immediate (T.this_tagged_immediate imm)
           | Dynamically_computed var ->
             let ty = E.find_var env var in
             let ty, canonical_name =
@@ -93,7 +93,7 @@ let simplify_static_part env (static_part : Static_part.t) : _ or_invalid =
             in
             begin match canonical_name with
             | Some (Symbol sym) ->
-              Of_kind_value.Symbol sym, or_unknown Can_scan ty
+              Of_kind_value.Symbol sym, or_unknown Definitely_immediate ty
             | (Some (Var _)) | None ->
               match T.prove_tagged_immediate ~importer ~type_of_name ty with
               | Proved (Exactly imms) ->
@@ -103,7 +103,7 @@ let simplify_static_part env (static_part : Static_part.t) : _ or_invalid =
                     or_unknown Must_scan ty
                 | Some imm ->
                   Of_kind_value.Tagged_immediate imm,
-                    or_unknown Can_scan (T.this_tagged_immediate imm)
+                    or_unknown Definitely_immediate (T.this_tagged_immediate imm)
                 end
               | Proved Not_all_values_known
               | Invalid ->

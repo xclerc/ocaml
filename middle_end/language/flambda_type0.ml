@@ -447,7 +447,7 @@ end) = struct
     let print_scanning ppf (scanning : K.scanning) =
       match scanning with
       | Must_scan -> Format.fprintf ppf "*"
-      | Can_scan -> ()
+      | Definitely_immediate -> ()
     in
     print_ty_generic print_of_kind_value print_scanning ppf ty
 
@@ -709,7 +709,7 @@ end) = struct
 
   let these_tagged_immediates is : t =
     match Immediate.Set.choose_opt is with
-    | None -> bottom (K.value Can_scan)
+    | None -> bottom (K.value Definitely_immediate)
     | Some i ->
       let is = Immediate.Set.remove i is in
       Immediate.Set.fold (fun i t ->
@@ -1450,7 +1450,7 @@ end) = struct
       in
       match ty with
       | Unknown (_, scanning) -> scanning
-      | Ok (Singleton (Tagged_immediate _)) -> Can_scan
+      | Ok (Singleton (Tagged_immediate _)) -> Definitely_immediate
       | Ok (Singleton _) -> Must_scan
       | Ok (Combination (Union, ty1, ty2)) ->
         let ty1 = ty_of_resolved_ok_ty ty1 in
@@ -1462,7 +1462,7 @@ end) = struct
         let ty2 = ty_of_resolved_ok_ty ty2 in
         K.meet_scanning (scanning_ty_value ty1)
           (scanning_ty_value ty2)
-      | Bottom -> Can_scan
+      | Bottom -> Definitely_immediate
     in
     scanning_ty_value ty
 

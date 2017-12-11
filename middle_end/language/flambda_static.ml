@@ -277,7 +277,7 @@ module Program_body = struct
       | Non_recursive -> env
       | Recursive ->
         List.fold_left (fun env (sym, _static_part) ->
-            let ty = Flambda_type.unknown (Flambda_kind.value Can_scan) Other in
+            let ty = Flambda_type.unknown (Flambda_kind.value Definitely_immediate) Other in
             E.add_symbol env sym ty)
           env
           defn.static_structure
@@ -307,7 +307,7 @@ module Program_body = struct
         Static_part.invariant env static_part)
       defn.static_structure;
     List.fold_left (fun env (sym, _static_part) ->
-        let ty = Flambda_type.unknown (Flambda_kind.value Can_scan) Other in
+        let ty = Flambda_type.unknown (Flambda_kind.value Definitely_immediate) Other in
         match recursive with
         | Non_recursive -> E.add_symbol env sym ty
         | Recursive ->
@@ -723,7 +723,7 @@ module Program = struct
     in
     let env =
       Symbol.Set.fold (fun symbol env ->
-          let ty = Flambda_type.unknown (Flambda_kind.value Can_scan) Other in
+          let ty = Flambda_type.unknown (Flambda_kind.value Definitely_immediate) Other in
           E.add_symbol env symbol ty)
         t.imported_symbols
         (E.create ())

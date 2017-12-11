@@ -50,7 +50,7 @@ let rename_variables ~importer:_ _t ~f:_ =
 *)
 
 let unresolved_symbol sym =
-  any_value Can_scan (Unresolved_value (Name (Name.symbol sym)))
+  any_value Definitely_immediate (Unresolved_value (Name (Name.symbol sym)))
 
 let this_tagged_immediate_named n : Named.t * t =
   Simple (Simple.const (Tagged_immediate n)), this_tagged_immediate n
@@ -1437,7 +1437,7 @@ module Evaluated = struct
     | Values values ->
       begin match values with
       | Bottom
-      | Tagged_immediates_only _ -> K.value Can_scan
+      | Tagged_immediates_only _ -> K.value Definitely_immediate
       | Unknown
       | Blocks_and_tagged_immediates _
       | Boxed_floats _
@@ -1450,7 +1450,7 @@ module Evaluated = struct
       | Float_arrays _ ->
         (* CR mshinwell: For something like a statically-allocated set of
            closures we may not need to scan it, and maybe in some cases it
-           might only be marked [Can_scan].  Are we at risk of this lub
+           might only be marked [Definitely_immediate].  Are we at risk of this lub
            check failing in that case? *)
         K.value Must_scan
       end
