@@ -16,7 +16,6 @@
 
 [@@@ocaml.warning "+a-4-9-30-40-41-42"]
 
-module Float = Numbers.Float_by_bit_pattern
 module Int32 = Numbers.Int32
 module Int64 = Numbers.Int64
 
@@ -174,7 +173,7 @@ end) = struct
   module String_info = struct
     type t = {
       contents : string_contents;
-      size : int;
+      size : Targetint.OCaml.t;
     }
 
     include Identifiable.Make (struct
@@ -430,13 +429,16 @@ end) = struct
     | Closure closure -> print_closure ppf closure
     | String { contents; size; } ->
       begin match contents with
-      | Unknown_or_mutable -> Format.fprintf ppf "string %i" size
+      | Unknown_or_mutable ->
+        Format.fprintf ppf "string %a" Targetint.OCaml.print size
       | Contents s ->
         let s =
-          if size > 10 then String.sub s 0 8 ^ "..."
+          let max_size = Targetint.OCaml.ten in
+          let long = Targetint.OCaml.compare size max_size > 0 in
+          if long then String.sub s 0 8 ^ "..."
           else s
         in
-        Format.fprintf ppf "string %i %S" size s
+        Format.fprintf ppf "string %a %S" Targetint.OCaml.print size s
       end
     | Float_array fields ->
       Format.fprintf ppf "@[(float_array %a)@]"
@@ -703,16 +705,6 @@ end) = struct
     in
     Value (Normal (Resolved (Ok (Singleton (Tagged_immediate i)))))
 
-  let these_tagged_immediates is : t =
-    match Immediate.Set.choose_opt is with
-    | None -> bottom (K.value Definitely_immediate)
-    | Some i ->
-      let is = Immediate.Set.remove i is in
-      Immediate.Set.fold (fun i t ->
-          assert false)
-        is
-        (this_tagged_immediate i)
-
   let this_boxed_float f =
     let f : ty_naked_float =
       let f : of_kind_naked_float = Naked_float f in
@@ -744,7 +736,8 @@ end) = struct
   let this_immutable_string_as_ty_value str : ty_value =
     let str : String_info.t =
       { contents = Contents str;
-        size = String.length str;
+        (* CR mshinwell: Possibility for exception? *)
+        size = Targetint.OCaml.of_int (String.length str);
       }
     in
     Normal (Resolved (Ok (Singleton (String str))))
@@ -784,6 +777,7 @@ end) = struct
     Value (Normal (Resolved (Ok (Singleton (Float_array fields)))))
 
   let immutable_float_array fields : t =
+(*
     let fields =
       Array.map (fun (field : t) ->
           match field with
@@ -795,12 +789,15 @@ end) = struct
               print field)
         fields
     in
+*)
     Value (Normal (Resolved (Ok (Singleton (Float_array fields)))))
 
   let mutable_float_array0 ~size : _ singleton_or_combination =
     let make_field () : ty_naked_float =
       Normal (Resolved (Unknown (Other, ())))
     in
+    (* CR mshinwell: dubious for cross compilation *)
+    let size = Targetint.OCaml.to_int size in
     let fields = Array.init size (fun _ -> make_field ()) in
     Singleton (Float_array fields)
 
@@ -809,6 +806,7 @@ end) = struct
     Value (Normal (Resolved (Ok ty)))
 
   let block tag fields : t =
+(*
     let fields =
       Array.map (fun (field : t) ->
           match field with
@@ -820,6 +818,7 @@ end) = struct
               print field)
         fields
     in
+*)
     Value (Normal (Resolved (Ok (Singleton (Block (tag, fields))))))
 
   let export_id_loaded_lazily (kind : K.t) export_id : t =
@@ -2328,6 +2327,13 @@ end) = struct
     in
     (with_null_importer join_list) (K.naked_nativeint ()) tys
 
+  let these_tagged_immediates imms =
+    let tys =
+      List.map (fun imm -> this_tagged_immediate imm)
+        (Immediate.Set.elements imms)
+    in
+    (with_null_importer join_list) (K.value Definitely_immediate) tys
+
   let these_boxed_floats fs =
     let tys =
       List.map (fun f -> this_boxed_float f)
@@ -2359,7 +2365,7 @@ end) = struct
   let mutable_float_arrays_of_various_sizes ~sizes : t =
     let tys =
       List.map (fun size -> mutable_float_array ~size)
-        (Numbers.Int.Set.elements sizes)
+        (Targetint.OCaml.Set.elements sizes)
     in
     (with_null_importer join_list) (K.value Definitely_pointer) tys
 

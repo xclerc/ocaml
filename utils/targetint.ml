@@ -79,9 +79,12 @@ module type S = sig
     val max_string_length : t
     val zero : t
     val one : t
+    val ten : t
     val hex_ff : t
     val bottom_byte_to_int : t -> int
     val of_char : char -> t
+    val of_int : int -> t  (* CR mshinwell: clarify semantics *)
+    val to_int : t -> int
     include Identifiable.S with type t := t
   end
 end
@@ -155,6 +158,7 @@ module Int32 = struct
 
     let zero = 0l
     let one = 1l
+    let ten = 10l
     let hex_ff = 0xffl
 
     let bottom_byte_to_int t =
@@ -162,6 +166,9 @@ module Int32 = struct
 
     let of_char c =
       Int32.of_int (Char.code c)
+
+    let of_int = Int32.of_int
+    let to_int = Int32.to_int
 
     (* XXX This needs to be retrieved properly.
        Also, there are bugs in asmcomp/closure.ml and cmmgen.ml where max_wosize
@@ -235,6 +242,7 @@ module Int64 = struct
 
     let zero = 0L
     let one = 1L
+    let ten = 10L
     let hex_ff = 0xffL
 
     let bottom_byte_to_int t =
@@ -242,6 +250,9 @@ module Int64 = struct
 
     let of_char c =
       Int64.of_int (Char.code c)
+
+    let of_int = Int64.of_int
+    let to_int = Int64.to_int
 
     let max_array_length = Int64.sub (Int64.shift_left 1L 54) 1L
 

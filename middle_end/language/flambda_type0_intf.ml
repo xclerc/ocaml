@@ -214,7 +214,7 @@ module type S = sig
     | Naked_immediate of Immediate.t
 
   and of_kind_naked_float =
-    | Naked_float of float
+    | Naked_float of Numbers.Float_by_bit_pattern.t
 
   and of_kind_naked_int32 =
     | Naked_int32 of Int32.t
@@ -259,7 +259,7 @@ module type S = sig
       constants. *)
   val this_tagged_immediate : Immediate.t -> t
   val these_tagged_immediates : Immediate.Set.t -> t
-  val this_boxed_float : float -> t
+  val this_boxed_float : Numbers.Float_by_bit_pattern.t -> t
   val these_boxed_floats : Numbers.Float_by_bit_pattern.Set.t -> t
   val this_boxed_int32 : Int32.t -> t
   val these_boxed_int32s : Numbers.Int32.Set.t -> t
@@ -289,7 +289,7 @@ module type S = sig
   (** Building of types corresponding to mutable values. *)
   val mutable_string : size:Targetint.OCaml.t -> t
   val mutable_float_array : size:Targetint.OCaml.t -> t
-  val mutable_float_arrays_of_various_sizes : sizes:Numbers.Int.Set.t -> t
+  val mutable_float_arrays_of_various_sizes : sizes:Targetint.OCaml.Set.t -> t
 
   (** Building of types from other types.  These functions will fail with
       a fatal error if the supplied type is not of the correct kind. *)
@@ -440,7 +440,7 @@ module type S = sig
   val join : (t -> t -> t) type_accessor
 
   (** Least upper bound of an arbitrary number of types. *)
-  val join_list : (Flambda_kind.t -> t list) type_accessor
+  val join_list : (Flambda_kind.t -> t list -> t) type_accessor
 
   (** Least upper bound of two types known to be of kind [Value]. *)
   val join_ty_value : (ty_value -> ty_value -> ty_value) type_accessor
@@ -466,7 +466,7 @@ module type S = sig
   val meet : (t -> t -> t) type_accessor
 
   (** Greatest lower bound of an arbitrary number of types. *)
-  val meet_list : (Flambda_kind.t -> t list) type_accessor
+  val meet_list : (Flambda_kind.t -> t list -> t) type_accessor
 
   (** Greatest lower bound of two types known to be of kind [Value]. *)
   val meet_ty_value : (ty_value -> ty_value -> ty_value) type_accessor

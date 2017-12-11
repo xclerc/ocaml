@@ -232,11 +232,14 @@ module OCaml : sig
 
   val zero : t
   val one : t
+  val ten : t
   val hex_ff : t
 
   val bottom_byte_to_int : t -> int
 
   val of_char : char -> t
+  val of_int : int -> t
+  val to_int : t -> int
 
   include Identifiable.S with type t := t
 end
