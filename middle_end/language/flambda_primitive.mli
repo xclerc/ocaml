@@ -150,7 +150,7 @@ type signed_or_unsigned =
     encoding a 16-bit quantity (described in the least significant 16 bits
     of the immediate after untagging) and exchanges the two halves of the
     16-bit quantity. *)
-type unary_int_arith_op = Neg | Swap_byte_endianness
+type unary_int_arith_op = Not | Neg | Swap_byte_endianness
 
 (** Naked float unary arithmetic operations. *)
 type unary_float_arith_op = Abs | Neg
@@ -159,8 +159,8 @@ type unary_float_arith_op = Abs | Neg
 type unary_primitive =
   | Duplicate_block of {
       kind : duplicate_block_kind;
-      source_mutability : mutable_or_immutable; 
-      destination_mutability : mutable_or_immutable; 
+      source_mutability : mutable_or_immutable;
+      destination_mutability : mutable_or_immutable;
     }
     (** [Duplicate_block] may not be used to change the tag of a block. *)
   | Is_int

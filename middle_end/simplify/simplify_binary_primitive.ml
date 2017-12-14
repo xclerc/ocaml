@@ -288,6 +288,9 @@ end = struct
     let negate_lhs () : N.t binary_arith_outcome_for_one_side_only =
       This_primitive (Unary (Int_arith Neg, arg1))
     in
+    let not_rhs () : N.t binary_arith_outcome_for_one_side_only =
+      This_primitive (Unary (Int_arith Not, arg2))
+    in
     match op with
     | Add ->
       if I.equal rhs I.zero then The_other_side
@@ -307,8 +310,7 @@ end = struct
       else Cannot_simplify
     | Xor ->
       if I.equal lhs I.zero then The_other_side
-      (* CR mshinwell: We don't have bitwise NOT
-      else if I.equal lhs I.minus_one then bitwise NOT of rhs *)
+      else if I.equal lhs I.minus_one then not_rhs ()
       else Cannot_simplify
 
   let op_lhs_unknown ~rhs : N.t binary_arith_outcome_for_one_side_only =

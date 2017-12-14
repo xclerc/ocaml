@@ -182,23 +182,48 @@ let reading_from_an_array_like_thing =
   let effects = effects_of_operation Reading in
   effects, Has_coeffects
 
-(* CR-someday mshinwell: Change this when [Obj.truncate] is removed (although
-   beware, bigarrays will still be resizable). *)
+let reading_from_an_immutable_array_like_thing =
+  let effects = effects_of_operation Reading in
+  effects, No_coeffects
+
+let length_from_an_array_like_thing =
+  if Config.ban_obj_dot_truncate then
+    No_effects, No_coeffects
+  else
+    No_effects, Has_coeffects
+
+let length_from_a_bigarray =
+  (* Even if truncate is banned, reshape can change the length for a
+     particular dimension (the overall size of the bigarray being
+     guaranteed to remain constant). *)
+  No_effects, Has_coeffects
+
 let writing_to_an_array_like_thing =
   let effects = effects_of_operation Writing in
-  (* Care: the bounds check may read a mutable place---namely the size of
-     the block (for [Bytes_set] and [Array_set]) or the dimension of the
-     bigarray.  As such these primitives have coeffects. *)
-  (* XXX But there are no bounds checks now *)
-  effects, Has_coeffects
+  (* no bound check should occur when executing the primitive,
+     hence no coeffects *)
+  effects, No_coeffects
 
 let array_like_thing_index_kind = K.value Definitely_immediate
 
 let bigarray_kind = K.value Definitely_pointer
 let bigstring_kind = K.value Definitely_pointer
 let block_kind = K.value Definitely_pointer
-let block_element_kind = K.value Unknown
+let array_kind = K.value Definitely_pointer
+let _block_element_kind = K.value Unknown (* CR xclerc: now unused *)
 let string_or_bytes_kind = K.value Definitely_pointer
+
+let float_kind = K.naked_float ()
+let int_kind = K.naked_immediate ()
+let bool_kind = K.naked_immediate ()
+let int32_kind = K.naked_int32 ()
+let int64_kind = K.naked_int64 ()
+let nativeint_kind = K.naked_nativeint ()
+let unknown_kind = K.value Unknown
+let complex_kind = K.value Definitely_pointer (* See [copy_two_doubles] in bigarray_stubs.c. *)
+
+let arithmetic_effects = No_effects, No_coeffects
+
 
 type signed_or_unsigned =
   | Signed
@@ -239,21 +264,19 @@ type bigarray_kind =
 
 let element_kind_of_bigarray_kind k =
   match k with
-  | Unknown -> K.value Unknown
+  | Unknown -> unknown_kind
   | Float32
-  | Float64 -> K.naked_float ()
+  | Float64 -> float_kind
   | Sint8
   | Uint8
   | Sint16
-  | Uint16 -> K.naked_immediate ()
-  | Int32 -> K.naked_int32 ()
-  | Int64 -> K.naked_int64 ()
-  | Int_width_int -> K.naked_immediate ()
-  | Targetint_width_int -> K.naked_nativeint ()
+  | Uint16 -> int_kind
+  | Int32 -> int32_kind
+  | Int64 -> int64_kind
+  | Int_width_int -> int_kind
+  | Targetint_width_int -> nativeint_kind
   | Complex32
-  | Complex64 ->
-    (* See [copy_two_doubles] in bigarray_stubs.c. *)
-    K.value Definitely_pointer
+  | Complex64 -> complex_kind
 
 (*
 let print_bigarray_kind ppf k =
@@ -328,21 +351,22 @@ let byte_width_of_string_accessor_width width =
 
 let kind_of_string_accessor_width width =
   match width with
-  | Eight | Sixteen -> K.value Definitely_immediate
-  | Thirty_two -> K.naked_int32 ()
-  | Sixty_four -> K.naked_int64 ()
+  | Eight | Sixteen -> int_kind
+  | Thirty_two -> int32_kind
+  | Sixty_four -> int64_kind
 
 type num_dimensions = int
 
 let print_num_dimensions ppf d =
   Format.fprintf ppf "%d" d
 
-type unary_int_arith_op = Neg | Swap_byte_endianness
+type unary_int_arith_op = Not | Neg | Swap_byte_endianness
 
 let print_unary_int_arith_op ppf o =
   let fprintf = Format.fprintf in
   match o with
-  | Neg -> fprintf ppf "~"
+  | Not -> fprintf ppf "~"
+  | Neg -> fprintf ppf "-"
   | Swap_byte_endianness -> fprintf ppf "bswap"
 
 type unary_float_arith_op = Abs | Neg
@@ -351,7 +375,7 @@ let print_unary_float_arith_op ppf o =
   let fprintf = Format.fprintf in
   match o with
   | Abs -> fprintf ppf "abs"
-  | Neg -> fprintf ppf "~"
+  | Neg -> fprintf ppf "-"
 
 type arg_kinds =
   | Variadic of K.t list
@@ -365,8 +389,8 @@ type result_kind =
 type unary_primitive =
   | Duplicate_block of {
       kind : duplicate_block_kind;
-      source_mutability : mutable_or_immutable; 
-      destination_mutability : mutable_or_immutable; 
+      source_mutability : mutable_or_immutable;
+      destination_mutability : mutable_or_immutable;
     }
   | Is_int
   | Get_tag of {
@@ -388,6 +412,23 @@ type unary_primitive =
   | Project_closure of Closure_id.Set.t
   | Move_within_set_of_closures of Closure_id.t Closure_id.Map.t
   | Project_var of Var_within_closure.t Closure_id.Map.t
+
+(* NOTE: when a sum type is modified, check calls of the associated ignore
+         function in order to ensure that the change has no semantic impact *)
+let ignore_duplicate_block_kind (_ : duplicate_block_kind) = ()
+let ignore_mutable_or_immutable (Immutable | Mutable : mutable_or_immutable) = ()
+let ignore_possible_tags_and_sizes (_ : int Tag.Map.t) = ()
+let ignore_string_or_bytes (String | Bytes : string_or_bytes) = ()
+let ignore_unary_int_arith_op (Not | Neg | Swap_byte_endianness : unary_int_arith_op) = ()
+let ignore_unary_float_arith_op (Abs | Neg : unary_float_arith_op) = ()
+let ignore_standard_int (_ : K.Standard_int.t ) = ()
+let ignore_standard_int_or_float (_ : K.Standard_int_or_float.t ) = ()
+let ignore_dimension (_ : int) = ()
+let ignore_block_access_kind (_ : block_access_kind) = ()
+let ignore_boxable_number (_ : K.Boxable_number.t) = ()
+let ignore_closure_id_set (_ : Closure_id.Set.t) = ()
+let ignore_closure_id_map (_ : Closure_id.t Closure_id.Map.t) = ()
+let ignore_var_closure_id_map (_ : Var_within_closure.t Closure_id.Map.t) = ()
 
 let compare_unary_primitive p1 p2 =
   let unary_primitive_numbering p =
@@ -508,83 +549,176 @@ let print_unary_primitive ppf p =
     Format.fprintf ppf "(project_var@ %a)"
       (Closure_id.Map.print Var_within_closure.print) by_closure
 
+(* CR xclerc: there is no dedicated way to read the length of a bigstring.
+   A bigstring is a bigarray_of dimension 1, so it seems plausible that we
+   should have no coeffects, as the coeffects from [length_from_a_bigarray]
+   are due to [reshape] (and [reshape] has no effect on a bigarray whose
+   dimension is 1, as [reshape] does not change the overall size). *)
 let arg_kind_of_unary_primitive p =
   match p with
-  | Duplicate_block _ -> K.value Definitely_pointer
-  | Is_int -> K.value Unknown
-  | Get_tag _ -> K.value Definitely_pointer
-  | String_length _ -> K.value Definitely_pointer
-  | Int_as_pointer -> K.value Definitely_immediate
-  | Opaque_identity -> K.value Unknown
-  | Int_arith (kind, _) -> K.Standard_int.to_kind kind
-  | Num_conv { src; dst = _; } -> K.Standard_int_or_float.to_kind src
-  | Float_arith _ -> K.naked_float ()
-  | Array_length _
-  | Bigarray_length _ -> K.value Definitely_pointer
-  | Unbox_number _ -> K.value Definitely_pointer
-  | Box_number kind -> K.Boxable_number.to_kind kind
-  | Project_closure _
-  | Move_within_set_of_closures _
-  | Project_var _ -> K.value Definitely_pointer
+  | Duplicate_block { kind; source_mutability; destination_mutability; } ->
+    ignore_duplicate_block_kind kind;
+    ignore_mutable_or_immutable source_mutability;
+    ignore_mutable_or_immutable destination_mutability;
+    block_kind
+  | Is_int ->
+    unknown_kind
+  | Get_tag { possible_tags_and_sizes; } ->
+    ignore_possible_tags_and_sizes possible_tags_and_sizes;
+    block_kind
+  | String_length sob ->
+    ignore_string_or_bytes sob;
+    string_or_bytes_kind
+  | Int_as_pointer ->
+    int_kind
+  | Opaque_identity ->
+    unknown_kind
+  | Int_arith (kind, op) ->
+    ignore_unary_int_arith_op op;
+    K.Standard_int.to_kind kind
+  | Num_conv { src; dst; } ->
+    ignore_standard_int_or_float dst;
+    K.Standard_int_or_float.to_kind src
+  | Float_arith op ->
+    ignore_unary_float_arith_op op;
+    float_kind
+  | Array_length bak ->
+    ignore_block_access_kind bak;
+    array_kind
+  | Bigarray_length { dimension; } ->
+    ignore_dimension dimension;
+    bigarray_kind
+  | Unbox_number bn ->
+    ignore_boxable_number bn;
+    block_kind
+  | Box_number kind ->
+    K.Boxable_number.to_kind kind
+  | Project_closure cis ->
+    ignore_closure_id_set cis;
+    block_kind
+  | Move_within_set_of_closures cim ->
+    ignore_closure_id_map cim;
+    block_kind
+  | Project_var vcim ->
+    ignore_var_closure_id_map vcim;
+    block_kind
 
 let result_kind_of_unary_primitive p : result_kind =
-  match p with
-  | Duplicate_block _ -> Singleton (K.value Definitely_pointer)
-  | Is_int
-  | Get_tag _
-  | String_length _ -> Singleton (K.value Definitely_immediate)
-  | Int_as_pointer ->
-    (* This primitive is *only* to be used when the resulting pointer points
-       at something which is a valid OCaml value (even if outside of the
-       heap). *)
-    Singleton (K.value Unknown)
-  | Opaque_identity -> Singleton (K.value Unknown)
-  | Int_arith (kind, _) -> Singleton (K.Standard_int.to_kind kind)
-  | Num_conv { src = _; dst; } ->
-    Singleton (K.Standard_int_or_float.to_kind dst)
-  | Float_arith _ -> Singleton (K.naked_float ())
-  | Array_length _
-  | Bigarray_length _ -> Singleton (K.value Definitely_immediate)
-  | Unbox_number kind -> Singleton (K.Boxable_number.to_kind kind)
-  | Box_number _
-  | Project_closure _
-  | Move_within_set_of_closures _ -> Singleton (K.value Definitely_pointer)
-  | Project_var _ -> Singleton (K.value Unknown)
+  Singleton (match p with
+    | Duplicate_block { kind; source_mutability; destination_mutability; } ->
+      ignore_duplicate_block_kind kind;
+      ignore_mutable_or_immutable source_mutability;
+      ignore_mutable_or_immutable destination_mutability;
+      block_kind
+    | Is_int ->
+      bool_kind
+    | Get_tag { possible_tags_and_sizes; } ->
+      ignore_possible_tags_and_sizes possible_tags_and_sizes;
+      int_kind
+    | String_length sob ->
+      ignore_string_or_bytes sob;
+      int_kind
+    | Int_as_pointer ->
+      (* This primitive is *only* to be used when the resulting pointer points
+         at something which is a valid OCaml value (even if outside of the
+         heap). *)
+      unknown_kind (* CR xclerc: could it be "Definitely_pointer"? *)
+    | Opaque_identity ->
+      unknown_kind
+    | Int_arith (kind, op) ->
+      ignore_unary_int_arith_op op;
+      K.Standard_int.to_kind kind
+    | Num_conv { src; dst; } ->
+      ignore_standard_int_or_float src;
+      K.Standard_int_or_float.to_kind dst
+    | Float_arith op ->
+      ignore_unary_float_arith_op op;
+      float_kind
+    | Array_length bak ->
+      ignore_block_access_kind bak;
+      int_kind
+    | Bigarray_length { dimension; } ->
+      ignore_dimension dimension;
+      int_kind
+    | Unbox_number kind ->
+      K.Boxable_number.to_kind kind
+    | Box_number bn ->
+      ignore_boxable_number bn;
+      block_kind
+    | Project_closure cis ->
+      ignore_closure_id_set cis;
+      block_kind
+    | Move_within_set_of_closures cim ->
+      ignore_closure_id_map cim;
+      block_kind
+    | Project_var vcim ->
+      ignore_var_closure_id_map vcim;
+      unknown_kind)
 
 let effects_and_coeffects_of_unary_primitive p =
   match p with
-  | Duplicate_block { kind = _;
-      source_mutability; destination_mutability; _ } ->
+  | Duplicate_block { kind; source_mutability; destination_mutability; } ->
+    ignore_duplicate_block_kind kind;
     begin match source_mutability with
     | Immutable ->
       (* Beware: we still need to read the size of the block being duplicated,
          which is a coeffect, unless [Config.ban_obj_dot_truncate] is on. *)
       Only_generative_effects destination_mutability,
-        (if Config.ban_obj_dot_truncate then No_coeffects else Has_coeffects)
+      (if Config.ban_obj_dot_truncate then No_coeffects else Has_coeffects)
     | Mutable ->
       Only_generative_effects destination_mutability, Has_coeffects
     end
-  | Is_int -> No_effects, No_coeffects
-  | Get_tag _ ->
+  | Is_int ->
+    No_effects, No_coeffects
+  | Get_tag { possible_tags_and_sizes; } ->
+    ignore_possible_tags_and_sizes possible_tags_and_sizes;
+    (* CR xclerc: isn't truncate only expected to change the tag (and hence
+       not the size)?  *)
     if Config.ban_obj_dot_truncate then No_effects, No_coeffects
     else No_effects, Has_coeffects
-  | String_length _ -> reading_from_an_array_like_thing
-  | Int_as_pointer
-  | Opaque_identity -> Arbitrary_effects, Has_coeffects
-  | Int_arith (_, (Neg | Swap_byte_endianness))
-  | Num_conv _
-  | Float_arith (Abs | Neg) -> No_effects, No_coeffects
-  | Array_length _ ->
-    reading_from_an_array_like_thing
-  | Bigarray_length { dimension = _; } ->
-    reading_from_an_array_like_thing
-  | Unbox_number _ ->
+  | String_length sob ->
+    ignore_string_or_bytes sob;
+    length_from_an_array_like_thing
+  | Int_as_pointer ->
+    (* CR xclerc: not sure about "Arbitrary_effects", why could it have more
+       effects than "Duplicate_block"? More: this one does not allocate.
+       Or maybe the couple "Arbitrary_effects, Has_coeffects" is used to
+       prevent any optimization. *)
+    Arbitrary_effects, Has_coeffects
+  | Opaque_identity ->
+    Arbitrary_effects, Has_coeffects
+  | Int_arith (kind, op) ->
+    ignore_standard_int kind;
+    ignore_unary_int_arith_op op;
+    arithmetic_effects
+  | Num_conv { src; dst; } ->
+    ignore_standard_int_or_float src;
+    ignore_standard_int_or_float dst;
+    arithmetic_effects
+  | Float_arith op ->
+    ignore_unary_float_arith_op op;
+    arithmetic_effects
+  | Array_length bak ->
+    ignore_block_access_kind bak;
+    length_from_an_array_like_thing
+  | Bigarray_length { dimension; } ->
+    ignore_dimension dimension;
+    length_from_a_bigarray
+  | Unbox_number bn ->
+    ignore_boxable_number bn;
     No_effects, No_coeffects
-  | Box_number _ ->
+  | Box_number bn ->
+    ignore_boxable_number bn;
     Only_generative_effects Immutable, No_coeffects
-  | Project_closure _
-  | Move_within_set_of_closures _
-  | Project_var _ -> No_effects, No_coeffects
+  | Project_closure cis ->
+    ignore_closure_id_set cis;
+    No_effects, No_coeffects
+  | Move_within_set_of_closures cim ->
+    ignore_closure_id_map cim;
+    No_effects, No_coeffects
+  | Project_var vcim ->
+    ignore_var_closure_id_map vcim;
+    No_effects, No_coeffects
 
 type binary_int_arith_op =
   | Add | Sub | Mul | Div | Mod | And | Or | Xor
@@ -628,6 +762,16 @@ type binary_primitive =
   | Int_comp of Flambda_kind.Standard_int.t * signed_or_unsigned * comparison
   | Float_arith of binary_float_arith_op
   | Float_comp of comparison
+
+(* NOTE: when a sum type is modified, check calls of the associated ignore
+         function in order to ensure that the change has no semantic impact *)
+let ignore_string_like_value (String | Bytes | Bigstring : string_like_value) = ()
+let ignore_string_accessor_width (Eight | Sixteen | Thirty_two | Sixty_four : string_accessor_width) = ()
+let ignore_binary_int_arith_op (Add | Sub | Mul | Div | Mod | And | Or | Xor : binary_int_arith_op) = ()
+let ignore_int_shift_op (Lsl | Lsr | Asr : int_shift_op) = ()
+let ignore_signed_or_unsigned (Signed | Unsigned : signed_or_unsigned) = ()
+let ignore_comparison (Eq | Neq | Lt | Gt | Le | Ge : comparison) = ()
+let ignore_binary_float_arith_op (Add | Sub | Mul | Div : binary_float_arith_op) = ()
 
 let compare_binary_primitive p1 p2 =
   let binary_primitive_numbering p =
@@ -694,65 +838,119 @@ let print_binary_primitive ppf p =
 
 let args_kind_of_binary_primitive p =
   match p with
-  | Block_load _ ->
+  | Block_load (bak, mut) ->
+    ignore_block_access_kind bak;
+    ignore_mutable_or_immutable mut;
     block_kind, array_like_thing_index_kind
-  | String_or_bigstring_load ((String | Bytes), _) ->
+  | String_or_bigstring_load ((String | Bytes), saw) ->
+    ignore_string_accessor_width saw;
     string_or_bytes_kind, array_like_thing_index_kind
-  | String_or_bigstring_load (Bigstring, _) ->
+  | String_or_bigstring_load (Bigstring, saw) ->
+    ignore_string_accessor_width saw;
     bigstring_kind, array_like_thing_index_kind
-  | Int_arith (kind, _) ->
+  | Int_arith (kind, op) ->
+    ignore_binary_int_arith_op op;
     let kind = K.Standard_int.to_kind kind in
     kind, kind
-  | Int_shift (kind, _) ->
-    K.Standard_int.to_kind kind, K.naked_immediate ()
-  | Int_comp (kind, _, _) ->
+  | Int_shift (kind, op) ->
+    ignore_int_shift_op op;
+    K.Standard_int.to_kind kind, int_kind
+  | Int_comp (kind, sou, cmp) ->
+    ignore_signed_or_unsigned sou;
+    ignore_comparison cmp;
     let kind = K.Standard_int.to_kind kind in
     kind, kind
-  | Float_arith _
-  | Float_comp _ -> K.naked_float (), K.naked_float ()
+  | Float_arith op ->
+    ignore_binary_float_arith_op op;
+    float_kind, float_kind
+  | Float_comp cmp ->
+    ignore_comparison cmp;
+    float_kind, float_kind
+
+let kind_of_block_access_kind = function
+  | Any_value ->
+    unknown_kind
+  | Definitely_immediate ->
+    int_kind
+  | Naked_float ->
+    float_kind
+  | Generic_array No_specialisation ->
+    unknown_kind
+  | Generic_array Full_of_naked_floats ->
+    float_kind
+  | Generic_array Full_of_immediates ->
+    int_kind
+  | Generic_array Full_of_arbitrary_values_but_not_floats ->
+    unknown_kind
 
 let result_kind_of_binary_primitive p : result_kind =
-  match p with
-  | Block_load (Any_value, _) ->
-    Singleton (K.value Unknown)
-  | Block_load (Definitely_immediate, _) ->
-    Singleton (K.value Definitely_immediate)
-  | Block_load (Naked_float, _) ->
-    Singleton (K.naked_float ())
-  | Block_load (Generic_array No_specialisation, _) ->
-    Singleton (K.value Unknown)
-  | Block_load (Generic_array Full_of_naked_floats, _) ->
-    Singleton (K.naked_float ())
-  | Block_load (Generic_array Full_of_immediates, _) ->
-    Singleton (K.value Definitely_immediate)
-  | Block_load (Generic_array Full_of_arbitrary_values_but_not_floats, _) ->
-    Singleton (K.value Unknown)
-  | String_or_bigstring_load (_, (Eight | Sixteen)) ->
-    Singleton (K.value Definitely_immediate)
-  | String_or_bigstring_load (_, Thirty_two) ->
-    Singleton (K.naked_int32 ())
-  | String_or_bigstring_load (_, Sixty_four) ->
-    Singleton (K.naked_int64 ())
-  | Int_arith (kind, _)
-  | Int_shift (kind, _) -> Singleton (K.Standard_int.to_kind kind)
-  | Float_arith _ -> Singleton (K.naked_float ())
-  | Int_comp _
-  | Float_comp _ -> Singleton (K.value Definitely_immediate)
+  Singleton (match p with
+    | Block_load (bak, mut) ->
+      ignore_mutable_or_immutable mut;
+      kind_of_block_access_kind bak
+    | String_or_bigstring_load (slv, width) ->
+      ignore_string_like_value slv;
+      kind_of_string_accessor_width width
+    | Int_arith (kind, op) ->
+      ignore_binary_int_arith_op op;
+      K.Standard_int.to_kind kind
+    | Int_shift (kind, op) ->
+      ignore_int_shift_op op;
+      K.Standard_int.to_kind kind
+    | Float_arith op ->
+      ignore_binary_float_arith_op op;
+      float_kind
+    | Int_comp (kind, sou, cmp) ->
+      ignore_standard_int kind;
+      ignore_signed_or_unsigned sou;
+      ignore_comparison cmp;
+      bool_kind
+    | Float_comp cmp ->
+      ignore_comparison cmp;
+      bool_kind)
 
 let effects_and_coeffects_of_binary_primitive p =
   match p with
-  | Block_load _ -> reading_from_an_array_like_thing
-  | Int_arith (_kind, (Add | Sub | Mul | Div | Mod | And | Or | Xor)) ->
-    No_effects, No_coeffects
-  | Int_shift _ -> No_effects, No_coeffects
-  | Int_comp _ -> No_effects, No_coeffects
-  | Float_arith (Add | Sub | Mul | Div) -> No_effects, No_coeffects
-  | Float_comp _ -> No_effects, No_coeffects
-  | String_or_bigstring_load _ -> reading_from_an_array_like_thing
+  | Block_load (bak, mut) ->
+    ignore_block_access_kind bak;
+    begin match mut with
+    | Mutable -> reading_from_an_array_like_thing
+    | Immutable -> reading_from_an_immutable_array_like_thing
+    end
+  | Int_arith (kind, op) ->
+    ignore_standard_int kind;
+    ignore_binary_int_arith_op op;
+    arithmetic_effects
+  | Int_shift (kind, op) ->
+    ignore_standard_int kind;
+    ignore_int_shift_op op;
+    arithmetic_effects
+  | Int_comp (kind, sou, cmp) ->
+    ignore_standard_int kind;
+    ignore_signed_or_unsigned sou;
+    ignore_comparison cmp;
+    arithmetic_effects
+  | Float_arith op ->
+    ignore_binary_float_arith_op op;
+    arithmetic_effects
+  | Float_comp cmp ->
+    ignore_comparison cmp;
+    arithmetic_effects
+  | String_or_bigstring_load (slv, saw) ->
+    ignore_string_accessor_width saw;
+    begin match slv with
+    | String -> reading_from_an_immutable_array_like_thing
+    | Bytes | Bigstring -> reading_from_an_array_like_thing
+    end
 
 type ternary_primitive =
   | Block_set of block_access_kind * init_or_assign
   | Bytes_or_bigstring_set of bytes_like_value * string_accessor_width
+
+(* NOTE: when a sum type is modified, check calls of the associated ignore
+         function in order to ensure that the change has no semantic impact *)
+let ignore_init_or_assign (Initialization | Assignment : init_or_assign) = ()
+let ignore_bytes_like_value (Bytes | Bigstring : bytes_like_value) = ()
 
 let compare_ternary_primitive p1 p2 =
   let ternary_primitive_numbering p =
@@ -790,41 +988,67 @@ let print_ternary_primitive ppf p =
 
 let args_kind_of_ternary_primitive p =
   match p with
-  | Block_set _ ->
-    block_kind, array_like_thing_index_kind, block_element_kind
-  | Bytes_or_bigstring_set (Bytes, (Eight | Sixteen)) ->
-    string_or_bytes_kind, array_like_thing_index_kind,
-      K.value Definitely_immediate
-  | Bytes_or_bigstring_set (Bytes, Thirty_two) ->
-    string_or_bytes_kind, array_like_thing_index_kind,
-      K.naked_int32 ()
-  | Bytes_or_bigstring_set (Bytes, Sixty_four) ->
-    string_or_bytes_kind, array_like_thing_index_kind,
-      K.naked_int64 ()
-  | Bytes_or_bigstring_set (Bigstring, (Eight | Sixteen)) ->
-    bigstring_kind, array_like_thing_index_kind,
-      K.value Definitely_immediate
-  | Bytes_or_bigstring_set (Bigstring, Thirty_two) ->
-    bigstring_kind, array_like_thing_index_kind,
-      K.naked_int32 ()
-  | Bytes_or_bigstring_set (Bigstring, Sixty_four) ->
-    bigstring_kind, array_like_thing_index_kind,
-      K.naked_int64 ()
+  | Block_set (bak, ioa) ->
+    ignore_init_or_assign ioa;
+    block_kind, array_like_thing_index_kind,
+      kind_of_block_access_kind bak
+  | Bytes_or_bigstring_set (blv, saw) ->
+    let bytes_or_bigstring_kind =
+      match blv with
+      | Bytes -> string_or_bytes_kind
+      | Bigstring -> bigstring_kind
+    in
+    bytes_or_bigstring_kind, array_like_thing_index_kind,
+      kind_of_string_accessor_width saw
 
 let result_kind_of_ternary_primitive p : result_kind =
   match p with
-  | Block_set _
-  | Bytes_or_bigstring_set _ -> Unit
+  | Block_set (bak, ioa) ->
+    ignore_block_access_kind bak;
+    ignore_init_or_assign ioa;
+    Unit
+  | Bytes_or_bigstring_set (blv, saw) ->
+    ignore_bytes_like_value blv;
+    ignore_string_accessor_width saw;
+    Unit
 
 let effects_and_coeffects_of_ternary_primitive p =
   match p with
-  | Block_set _
-  | Bytes_or_bigstring_set _ -> writing_to_an_array_like_thing
+  | Block_set (bak, ioa) ->
+    ignore_block_access_kind bak;
+    ignore_init_or_assign ioa;
+    writing_to_an_array_like_thing
+  | Bytes_or_bigstring_set (blv, saw) ->
+    ignore_bytes_like_value blv;
+    ignore_string_accessor_width saw;
+    writing_to_an_array_like_thing
 
 type variadic_primitive =
   | Make_block of make_block_kind * mutable_or_immutable
   | Bigarray_set of num_dimensions * bigarray_kind * bigarray_layout
   | Bigarray_load of num_dimensions * bigarray_kind * bigarray_layout
+
+(* NOTE: when a sum type is modified, check calls of the associated ignore
+         function in order to ensure that the change has no semantic impact *)
+let ignore_tag (_ : Tag.Scannable.t) = ()
+let ignore_make_block_kind (Full_of_values _
+                           | Full_of_naked_floats
+                           | Generic_array _: make_block_kind) = ()
+let ignore_num_dimensions (_ : num_dimensions) = ()
+let ignore_bigarray_kind (Unknown
+                          | Float32
+                          | Float64
+                          | Sint8
+                          | Uint8
+                          | Sint16
+                          | Uint16
+                          | Int32
+                          | Int64
+                          | Int_width_int
+                          | Targetint_width_int
+                          | Complex32
+                          | Complex64 : bigarray_kind) = ()
+let ignore_bigarray_layout (Unknown | C | Fortran : bigarray_layout) = ()
 
 let compare_variadic_primitive p1 p2 =
   let variadic_primitive_numbering p =
@@ -865,46 +1089,75 @@ let print_variadic_primitive ppf p =
 
 let args_kind_of_variadic_primitive p : arg_kinds =
   match p with
-  | Make_block (Full_of_values (_tag, value_kinds), _) ->
-    let kinds =
-      List.map (fun value_kind -> K.value value_kind) value_kinds
-    in
-    Variadic kinds
-  | Make_block (Full_of_naked_floats, _) ->
-    Variadic_all_of_kind (K.naked_float ())
-  | Make_block (Generic_array No_specialisation, _) ->
-    Variadic_all_of_kind (K.value Unknown)
-  | Make_block (Generic_array Full_of_naked_floats, _) ->
-    Variadic_all_of_kind (K.naked_float ())
-  | Make_block (Generic_array Full_of_immediates, _) ->
-    Variadic_all_of_kind (K.value Definitely_immediate)
-  | Make_block (Generic_array Full_of_arbitrary_values_but_not_floats, _) ->
-    Variadic_all_of_kind (K.value Unknown)
-  | Bigarray_set (num_dims, kind, _) ->
+  | Make_block (mbk, mut) ->
+    ignore_mutable_or_immutable mut;
+    begin match mbk with
+    | Full_of_values (tag, value_kinds) ->
+      ignore_tag tag;
+      let kinds =
+        List.map (fun value_kind -> K.value value_kind) value_kinds
+      in
+      Variadic kinds
+    | Full_of_naked_floats ->
+      Variadic_all_of_kind float_kind
+    | Generic_array No_specialisation ->
+      Variadic_all_of_kind unknown_kind
+    | Generic_array Full_of_naked_floats ->
+      Variadic_all_of_kind float_kind
+    | Generic_array Full_of_immediates ->
+      Variadic_all_of_kind int_kind
+    | Generic_array Full_of_arbitrary_values_but_not_floats ->
+      Variadic_all_of_kind unknown_kind
+    end
+  | Bigarray_set (num_dims, kind, layout) ->
+    ignore_bigarray_layout layout;
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     let new_value = element_kind_of_bigarray_kind kind in
     Variadic ([bigarray_kind] @ index @ [new_value])
-  | Bigarray_load (num_dims, _, _) ->
+  | Bigarray_load (num_dims, kind, layout) ->
+    ignore_bigarray_kind kind;
+    ignore_bigarray_layout layout;
     let index = List.init num_dims (fun _ -> array_like_thing_index_kind) in
     Variadic ([bigarray_kind] @ index)
 
 let result_kind_of_variadic_primitive p : result_kind =
   match p with
-  | Make_block _ -> Singleton block_kind
-  | Bigarray_set _ -> Unit
-  | Bigarray_load (_, kind, _) ->
+  | Make_block (mbk, mut) ->
+    ignore_make_block_kind mbk;
+    ignore_mutable_or_immutable mut;
+    Singleton block_kind
+  | Bigarray_set (dims, kind, layout) ->
+    ignore_num_dimensions dims;
+    ignore_bigarray_kind kind;
+    ignore_bigarray_layout layout;
+    Unit
+  | Bigarray_load (dims, kind, layout) ->
+    ignore_num_dimensions dims;
+    ignore_bigarray_layout layout;
     Singleton (element_kind_of_bigarray_kind kind)
 
 let effects_and_coeffects_of_variadic_primitive p =
   match p with
-  (* CR mshinwell: Arrays of size zero? *)
-  | Make_block (_, mut) ->
+  (* CR mshinwell: Arrays of size zero?
+     xclerc: maybe, but if the size is statically known to be zero
+     we can probably expect to produce the immediate 0 and never get
+     there. *)
+  | Make_block (mbk, mut) ->
+    ignore_make_block_kind mbk;
     Only_generative_effects mut, No_coeffects
-  | Bigarray_set (_, _, _) ->
+  | Bigarray_set (dims, kind, layout) ->
+    ignore_num_dimensions dims;
+    ignore_bigarray_kind kind;
+    ignore_bigarray_layout layout;
     writing_to_an_array_like_thing
-  | Bigarray_load (_, (Unknown | Complex32 | Complex64), _) ->
+  | Bigarray_load (dims, (Unknown | Complex32 | Complex64), layout) ->
+    ignore_num_dimensions dims;
+    ignore_bigarray_layout layout;
     Only_generative_effects Immutable, Has_coeffects
-  | Bigarray_load (_, _, _) ->
+  | Bigarray_load (dims, kind, layout) ->
+    ignore_num_dimensions dims;
+    ignore_bigarray_kind kind;
+    ignore_bigarray_layout layout;
     reading_from_an_array_like_thing
 
 type t =
