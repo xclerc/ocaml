@@ -1354,17 +1354,29 @@ and transl_match e arg pat_expr_list exn_pat_expr_list partial =
        (static_exception_id, val_ids),
        handler)
   in
-  match arg, exn_cases with
-  | {exp_desc = Texp_tuple argl}, [] ->
+  match arg, cases, exn_cases with
+  | { exp_type; exp_env; _ },
+    [({ pat_desc = Tpat_construct (_, constr_desc, []); _}, _) as case0;
+     case1],
+    []
+    when partial = Total && is_base_type exp_env exp_type Predef.path_bool ->
+    let (_, if_branch), (_, else_branch) =
+      if constr_desc.cstr_name = "true" then
+        case0, case1
+      else
+        case1, case0
+    in
+    Lifthenelse (transl_exp arg, if_branch, else_branch)
+  | {exp_desc = Texp_tuple argl}, _, [] ->
     Matching.for_multiple_match e.exp_loc (transl_list argl) cases partial
-  | {exp_desc = Texp_tuple argl}, _ :: _ ->
+  | {exp_desc = Texp_tuple argl}, _, _ :: _ ->
     let val_ids = List.map (fun _ -> Typecore.name_pattern "val" []) argl in
     let lvars = List.map (fun id -> Lvar id) val_ids in
     static_catch (transl_list argl) val_ids
       (Matching.for_multiple_match e.exp_loc lvars cases partial)
-  | arg, [] ->
+  | arg, _, [] ->
     Matching.for_function e.exp_loc None (transl_exp arg) cases partial
-  | arg, _ :: _ ->
+  | arg, _, _ :: _ ->
     let val_id = Typecore.name_pattern "val" pat_expr_list in
     static_catch [transl_exp arg] [val_id]
       (Matching.for_function e.exp_loc None (Lvar val_id) cases partial)
