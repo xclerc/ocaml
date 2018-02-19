@@ -329,7 +329,6 @@ let inline_by_copying_function_declaration
       ~make_closure_symbol:Backend.closure_symbol
       function_decls
   in
-  let original_function_decls = function_decls in
   (* step 2 - determine whether it is worth specialising *)
   let specialisation =
     let specialised_args_set = Variable.Map.keys specialised_args in
@@ -419,15 +418,13 @@ let inline_by_copying_function_declaration
                  being duplicated but not directly applied: %a -> %a.@ \
                  Closure ID being applied = %a.@ \
                  specialisable_args_with_aliases = %a@ \
-                 Original function declarations = %a@ \
-                 Filtered function declarations = %a@ \
+                 Function declarations = %a@ \
                  Original specialised args = %a"
                 Variable.print param
                 Flambda.print_specialised_to spec_to
                 Closure_id.print closure_id_being_applied
                 (Variable.Map.print Variable.print)
                 specialisable_args_with_aliases
-                Flambda.print_function_declarations original_function_decls
                 Flambda.print_function_declarations function_decls
                 (Variable.Map.print Flambda.print_specialised_to)
                 specialised_args
