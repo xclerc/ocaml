@@ -203,24 +203,38 @@ let inline_by_copying_function_body ~env ~r
   simplify env r expr
 
 type state = {
-  to_rewrite               : Variable.t list;
-  rewritten                : Flambda.function_declaration Variable.Map.t;
-  old_inside_to_new_inside : Variable.t Variable.Map.t;
-  free_vars                : Flambda.specialised_to Variable.Map.t;
-  let_bindings             : (Variable.t * Flambda.named) list;
-  specialised_args         : Flambda.specialised_to Variable.Map.t;
+  to_rewrite                 : Variable.t list;
+  rewritten                  : Flambda.function_declaration Variable.Map.t;
+  old_inside_to_new_inside   : Variable.t Variable.Map.t;
+  old_fun_var_to_new_fun_var : Variable.t Variable.Map.t;
+  free_vars                  : Flambda.specialised_to Variable.Map.t;
+  let_bindings               : (Variable.t * Flambda.named) list;
+  specialised_args           : Flambda.specialised_to Variable.Map.t;
 }
 
 let empty_state =
-  { to_rewrite               = [];
-    rewritten                = Variable.Map.empty;
-    old_inside_to_new_inside = Variable.Map.empty;
-    free_vars                = Variable.Map.empty;
-    let_bindings             = [];
-    specialised_args         = Variable.Map.empty; }
+  { to_rewrite                 = [];
+    rewritten                  = Variable.Map.empty;
+    old_inside_to_new_inside   = Variable.Map.empty;
+    old_fun_var_to_new_fun_var = Variable.Map.empty;
+    free_vars                  = Variable.Map.empty;
+    let_bindings               = [];
+    specialised_args           = Variable.Map.empty; }
 
 let make_state closure_id =
   { empty_state with to_rewrite = [Closure_id.unwrap closure_id]; }
+
+let get_new_fun_name
+      ({ old_fun_var_to_new_fun_var; _ } as state)
+      fun_var =
+  match Variable.Map.find_opt fun_var old_fun_var_to_new_fun_var with
+  | Some x -> state, x
+  | None ->
+    let new_fun_var = Variable.rename ~append:"_copied" fun_var in
+    let old_fun_var_to_new_fun_var =
+      Variable.Map.add fun_var new_fun_var old_fun_var_to_new_fun_var
+    in
+    { state with old_fun_var_to_new_fun_var; }, new_fun_var
 
 let add_fun_var
       ({ old_inside_to_new_inside; free_vars; let_bindings; _ } as state)
@@ -267,22 +281,17 @@ let add_free_var
 let add_fresh_params
       ({ old_inside_to_new_inside; _ } as state)
       params =
-  let old_inside_to_new_inside, new_params, old_params_to_new_params =
+  let old_inside_to_new_inside, new_params =
     List.fold_left
-      (fun
-        (old_inside_to_new_inside, new_params, old_params_to_new_params)
-        param ->
+      (fun (old_inside_to_new_inside, new_params) param ->
         let old_param = Parameter.var param in
         let new_param = Variable.rename ~append:"_param" old_param in
         Variable.Map.add old_param new_param old_inside_to_new_inside,
-        (Parameter.wrap new_param) :: new_params,
-        Variable.Map.add old_param new_param old_params_to_new_params)
-      (old_inside_to_new_inside, [], Variable.Map.empty)
+        (Parameter.wrap new_param) :: new_params)
+      (old_inside_to_new_inside, [])
       params
   in
-  { state with old_inside_to_new_inside; },
-  List.rev new_params,
-  old_params_to_new_params
+  { state with old_inside_to_new_inside; }, List.rev new_params
 
 let create_function_declaration_with_new_body
       { Flambda.params = _;
@@ -304,6 +313,25 @@ let create_function_declaration_with_new_body
     ~specialise
     ~is_a_functor
     ~body
+
+let add_specialised_arg
+      ({ specialised_args; _ } as state)
+      arg
+      param =
+  let specialised_args =
+    Variable.Map.add
+      arg
+      { Flambda.var = param; projection = None; }
+      specialised_args
+  in
+  { state with specialised_args; }
+
+let add_specialised_args state l =
+  List.fold_left
+    (fun state (arg, param) ->
+       add_specialised_arg state arg param)
+    state
+    l
 
 let add_rewritten_function
       ({ rewritten; _} as state)
@@ -333,26 +361,31 @@ let rewrite_surrogates rewritten direct_call_surrogates =
     Variable.Map.empty
 
 let rec rewrite_functions
-    ~(function_decls           : Flambda.function_declarations)
-    ~(lhs_of_application       : Variable.t)
-    ~(closure_id_being_applied : Closure_id.t)
-    ~old_params_to_new_outside
-    ({ to_rewrite; rewritten; _ } as state) =
-  match to_rewrite with
+    ~(function_decls             : Flambda.function_declarations)
+    ~(lhs_of_application         : Variable.t)
+    ~(closure_id_being_applied   : Closure_id.t)
+    ~(worth_specialising_args    : Variable.Set.t)
+    ~(old_params_to_new_outside  : Variable.t Variable.Map.t)
+    ~(old_outside_to_new_outside : Variable.t Variable.Map.t)
+    state =
+  match state.to_rewrite with
   | [] -> state
   | fun_to_rewrite :: others_to_rewrite ->
-    if Variable.Map.mem fun_to_rewrite rewritten then
+    if Variable.Map.mem fun_to_rewrite state.rewritten then
       rewrite_functions
         ~function_decls
         ~lhs_of_application
         ~closure_id_being_applied
+        ~worth_specialising_args
         ~old_params_to_new_outside
+        ~old_outside_to_new_outside
         { state with to_rewrite = others_to_rewrite; }
     else begin
       let fun_decl =
         Variable.Map.find fun_to_rewrite function_decls.funs
       in
-      let state, new_params, _XXX =
+      let state, _new_fun_var = get_new_fun_name state fun_to_rewrite in
+      let state, new_params =
         add_fresh_params state fun_decl.params in
       let state =
         Variable.Set.fold
@@ -371,87 +404,92 @@ let rec rewrite_functions
           fun_decl.free_variables
           state
       in
-      let body =
-        Flambda_utils.toplevel_substitution
-          state.old_inside_to_new_inside
-          fun_decl.body
-      in
       let to_rewrite = ref others_to_rewrite in
+      let state = ref state in
       let body =
-        let preserve_specialisation
-              (arg : Variable.t)
-              (param : Flambda_utils.specialised_to_same_as) =
-          let arg =
-            try
-              Variable.Map.find
-                arg
-                old_params_to_new_outside
-            with Not_found ->
-              arg
-          in
-          begin match param with
-          | Not_specialised ->
-            true
-          | Specialised_and_aliased_to aliases ->
-            Variable.Set.exists
-              (fun alias ->
-                 let alias =
-                   try
-                     Variable.Map.find
-                       alias
-                       state.old_inside_to_new_inside
-                   with Not_found ->
-                     alias
-                 in
-                 Variable.equal alias arg)
-              aliases
-          end
-        in
-        let functions'_specialised_params = Variable.Map.empty in (*XXX*)
-        (* XXX must distribute new closure identifiers;
-           will allow to move the substitution after this map *)
         Flambda_iterators.map_toplevel_expr
           (fun (expr : Flambda.t) ->
              match expr with
              | Apply ({ kind = Direct closure_id; args; } as apply) ->
                let closure_var = Closure_id.unwrap closure_id in
-               let specialised_parameters =
-                 Variable.Map.find_opt
-                   closure_var
-                   functions'_specialised_params
-               in
-               begin match specialised_parameters with
-               | Some parameters ->
-                 assert (List.length args = List.length parameters);
-                 let rewrite_call =
-                   List.for_all2
-                     preserve_specialisation
-                     args
-                     parameters
-                 in
-                 if rewrite_call then begin
-                   to_rewrite := closure_var :: !to_rewrite;
-                   Flambda.Apply { apply with func = closure_var; }
-                 end else
-                   expr
+               begin match
+                 Variable.Map.find_opt closure_var function_decls.funs
+               with
                | None -> expr
+               | Some { Flambda.params; _ } ->
+                 assert (List.length args = List.length params);
+                 let specialisation =
+                   List.fold_left2
+                     (fun specialisation arg param ->
+                        match specialisation with
+                        | None -> None
+                        | Some specialisation ->
+                          let param = Parameter.var param in
+                          begin match
+                            Variable.Map.find_opt param old_params_to_new_outside
+                          with
+                          | Some p ->
+                            begin match
+                              Variable.Map.find_opt arg old_params_to_new_outside
+                            with
+                            | Some p' when Variable.equal p p' ->
+                              let new_arg =
+                                Variable.Map.find
+                                  arg
+                                  !state.old_inside_to_new_inside
+                              in
+                              Some ((new_arg, p) :: specialisation)
+                            | _ ->
+                              None
+                            end
+                          | None ->
+                            if Variable.Set.mem arg worth_specialising_args then
+                              match Variable.Map.find_opt arg old_outside_to_new_outside with
+                              | Some x ->
+                                Some ((arg, x) :: specialisation)
+                              | None -> None
+                            else
+                              Some specialisation
+                          end)
+                     (Some [])
+                     args
+                     params
+                 in
+                 begin match specialisation with
+                 | Some specialisation ->
+                   to_rewrite := closure_var :: !to_rewrite;
+                   let new_state, new_var =
+                     get_new_fun_name !state closure_var
+                   in
+                   state := add_specialised_args new_state specialisation;
+                   Flambda.Apply { apply with
+                                   func = new_var;
+                                   kind = Direct (Closure_id.wrap new_var); }
+                 | None ->
+                   expr
+                 end
                end
              | _ -> expr)
-          body
+          fun_decl.body
       in
+      let state = !state in
       let state =
         add_rewritten_function
           state
           fun_to_rewrite
           fun_decl
           new_params
-          body
+          (Flambda_utils.toplevel_substitution
+             state.old_inside_to_new_inside
+             body)
       in
       rewrite_functions
         ~function_decls
         ~lhs_of_application
         ~closure_id_being_applied
+        ~worth_specialising_args
         ~old_params_to_new_outside
+        ~old_outside_to_new_outside
         { state with to_rewrite = !to_rewrite; }
     end
 
@@ -493,21 +531,43 @@ let inline_by_copying_function_declaration
             ~function_decls
             ~lhs_of_application
             ~closure_id_being_applied
+            ~worth_specialising_args
             ~old_params_to_new_outside
+            ~old_outside_to_new_outside
             (make_state closure_id_being_applied) with
     | { to_rewrite;
         rewritten;
-        old_inside_to_new_inside;
+        old_inside_to_new_inside = _;
+        old_fun_var_to_new_fun_var;
         free_vars;
         let_bindings;
         specialised_args; } ->
       assert (to_rewrite = []);
+      let new_fun_var_of_old_fun_var old_fun_var =
+        Variable.Map.find old_fun_var old_fun_var_to_new_fun_var
+      in
       let body =
+        let closure_id =
+          closure_id_being_applied
+          |> Closure_id.unwrap
+          |> new_fun_var_of_old_fun_var
+          |> Closure_id.wrap
+        in
+        let funs =
+          Variable.Map.fold
+            (fun fun_var fun_decl funs ->
+               Variable.Map.add
+                 (new_fun_var_of_old_fun_var fun_var)
+                 fun_decl
+                 funs)
+            rewritten
+            Variable.Map.empty
+        in
         let func = new_var "dup_func" in
         let set_of_closures = new_var "dup_set_of_closures" in
         let function_decls =
           Flambda.update_function_declarations
-            ~funs:rewritten
+            ~funs
             function_decls
         in
         let direct_call_surrogates =
@@ -527,7 +587,7 @@ let inline_by_copying_function_declaration
              func
              (Project_closure {
                 set_of_closures;
-                closure_id = closure_id_being_applied;
+                closure_id;
               })
              (Apply {
                 func;
