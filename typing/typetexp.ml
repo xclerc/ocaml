@@ -856,7 +856,12 @@ let spellcheck ppf fold env lid =
 let fold_descr fold get_name f = fold (fun descr acc -> f (get_name descr) acc)
 let fold_simple fold4 f = fold4 (fun name _path _descr acc -> f name acc)
 
-let fold_values = fold_simple Env.fold_values
+let fold_values f =
+  Env.fold_values
+    (fun name _path descr acc ->
+       match descr.val_kind with
+       | Val_unbound _ -> acc
+       | _ ->f name acc)
 let fold_types = fold_simple Env.fold_types
 let fold_modules = fold_simple Env.fold_modules
 let fold_constructors = fold_descr Env.fold_constructors (fun d -> d.cstr_name)

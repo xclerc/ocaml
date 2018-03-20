@@ -2724,7 +2724,19 @@ and type_expect_
             | Val_unbound Val_unbound_instance_variable ->
                 raise(Error(loc, env, Masked_instance_variable lid.txt))
             | Val_unbound Val_unbound_ghost_recursive ->
+                (* WAS:
                 raise(Error(loc, env, Unbound_value_missing_rec (lid.txt, desc.val_loc)))
+                *)
+               let rec is_arrow { desc; _ } =
+                 match desc with
+                 | Tarrow _ -> true
+                 | Tlink t | Tsubst t -> is_arrow t
+                 | _ -> false
+               in
+               if is_arrow desc.val_type then
+                 raise(Error(loc, env, Unbound_value_missing_rec (lid.txt, desc.val_loc)))
+               else
+                 raise Typetexp.(Error (loc, env, Unbound_value lid.txt))
             (*| Val_prim _ ->
                 let p = Env.normalize_path (Some loc) env path in
                 Env.add_required_global (Path.head p);
