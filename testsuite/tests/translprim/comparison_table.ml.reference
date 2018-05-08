@@ -1,230 +1,260 @@
 (setglobal Comparison_table!
   (let
-    (gen_cmp = (function x y (caml_compare x y))
-     int_cmp = (function x y (caml_int_compare x y))
+    (gen_cmp =
+       (function x y tepid (caml_compare x y))
+     int_cmp =
+       (function x y tepid (caml_int_compare x y))
      bool_cmp =
-       (function x y (caml_int_compare x y))
+       (function x y tepid (caml_int_compare x y))
      intlike_cmp =
-       (function x y (caml_int_compare x y))
+       (function x y tepid (caml_int_compare x y))
      float_cmp =
-       (function x y (caml_float_compare x y))
+       (function x y tepid (caml_float_compare x y))
      string_cmp =
-       (function x y (caml_string_compare x y))
+       (function x y tepid (caml_string_compare x y))
      int32_cmp =
-       (function x y (caml_int32_compare x y))
+       (function x y tepid (caml_int32_compare x y))
      int64_cmp =
-       (function x y (caml_int64_compare x y))
+       (function x y tepid (caml_int64_compare x y))
      nativeint_cmp =
-       (function x y (caml_nativeint_compare x y))
-     gen_eq = (function x y (caml_equal x y))
-     int_eq = (function x y (== x y))
-     bool_eq = (function x y (== x y))
-     intlike_eq = (function x y (== x y))
-     float_eq = (function x y (==. x y))
+       (function x y tepid (caml_nativeint_compare x y))
+     gen_eq = (function x y tepid (caml_equal x y))
+     int_eq = (function x y tepid (== x y))
+     bool_eq = (function x y tepid (== x y))
+     intlike_eq = (function x y tepid (== x y))
+     float_eq = (function x y tepid (==. x y))
      string_eq =
-       (function x y (caml_string_equal x y))
-     int32_eq = (function x y (Int32.== x y))
-     int64_eq = (function x y (Int64.== x y))
+       (function x y tepid (caml_string_equal x y))
+     int32_eq = (function x y tepid (Int32.== x y))
+     int64_eq = (function x y tepid (Int64.== x y))
      nativeint_eq =
-       (function x y (Nativeint.== x y))
-     gen_ne = (function x y (caml_notequal x y))
-     int_ne = (function x y (!= x y))
-     bool_ne = (function x y (!= x y))
-     intlike_ne = (function x y (!= x y))
-     float_ne = (function x y (!=. x y))
+       (function x y tepid (Nativeint.== x y))
+     gen_ne =
+       (function x y tepid (caml_notequal x y))
+     int_ne = (function x y tepid (!= x y))
+     bool_ne = (function x y tepid (!= x y))
+     intlike_ne = (function x y tepid (!= x y))
+     float_ne = (function x y tepid (!=. x y))
      string_ne =
-       (function x y (caml_string_notequal x y))
-     int32_ne = (function x y (Int32.!= x y))
-     int64_ne = (function x y (Int64.!= x y))
+       (function x y tepid (caml_string_notequal x y))
+     int32_ne = (function x y tepid (Int32.!= x y))
+     int64_ne = (function x y tepid (Int64.!= x y))
      nativeint_ne =
-       (function x y (Nativeint.!= x y))
-     gen_lt = (function x y (caml_lessthan x y))
-     int_lt = (function x y (< x y))
-     bool_lt = (function x y (< x y))
-     intlike_lt = (function x y (< x y))
-     float_lt = (function x y (<. x y))
+       (function x y tepid (Nativeint.!= x y))
+     gen_lt =
+       (function x y tepid (caml_lessthan x y))
+     int_lt = (function x y tepid (< x y))
+     bool_lt = (function x y tepid (< x y))
+     intlike_lt = (function x y tepid (< x y))
+     float_lt = (function x y tepid (<. x y))
      string_lt =
-       (function x y (caml_string_lessthan x y))
-     int32_lt = (function x y (Int32.< x y))
-     int64_lt = (function x y (Int64.< x y))
-     nativeint_lt = (function x y (Nativeint.< x y))
-     gen_gt = (function x y (caml_greaterthan x y))
-     int_gt = (function x y (> x y))
-     bool_gt = (function x y (> x y))
-     intlike_gt = (function x y (> x y))
-     float_gt = (function x y (>. x y))
+       (function x y tepid (caml_string_lessthan x y))
+     int32_lt = (function x y tepid (Int32.< x y))
+     int64_lt = (function x y tepid (Int64.< x y))
+     nativeint_lt =
+       (function x y tepid (Nativeint.< x y))
+     gen_gt =
+       (function x y tepid (caml_greaterthan x y))
+     int_gt = (function x y tepid (> x y))
+     bool_gt = (function x y tepid (> x y))
+     intlike_gt = (function x y tepid (> x y))
+     float_gt = (function x y tepid (>. x y))
      string_gt =
-       (function x y (caml_string_greaterthan x y))
-     int32_gt = (function x y (Int32.> x y))
-     int64_gt = (function x y (Int64.> x y))
-     nativeint_gt = (function x y (Nativeint.> x y))
-     gen_le = (function x y (caml_lessequal x y))
-     int_le = (function x y (<= x y))
-     bool_le = (function x y (<= x y))
-     intlike_le = (function x y (<= x y))
-     float_le = (function x y (<=. x y))
+       (function x y tepid (caml_string_greaterthan x y))
+     int32_gt = (function x y tepid (Int32.> x y))
+     int64_gt = (function x y tepid (Int64.> x y))
+     nativeint_gt =
+       (function x y tepid (Nativeint.> x y))
+     gen_le =
+       (function x y tepid (caml_lessequal x y))
+     int_le = (function x y tepid (<= x y))
+     bool_le = (function x y tepid (<= x y))
+     intlike_le = (function x y tepid (<= x y))
+     float_le = (function x y tepid (<=. x y))
      string_le =
-       (function x y (caml_string_lessequal x y))
-     int32_le = (function x y (Int32.<= x y))
-     int64_le = (function x y (Int64.<= x y))
+       (function x y tepid (caml_string_lessequal x y))
+     int32_le = (function x y tepid (Int32.<= x y))
+     int64_le = (function x y tepid (Int64.<= x y))
      nativeint_le =
-       (function x y (Nativeint.<= x y))
-     gen_ge = (function x y (caml_greaterequal x y))
-     int_ge = (function x y (>= x y))
-     bool_ge = (function x y (>= x y))
-     intlike_ge = (function x y (>= x y))
-     float_ge = (function x y (>=. x y))
+       (function x y tepid (Nativeint.<= x y))
+     gen_ge =
+       (function x y tepid (caml_greaterequal x y))
+     int_ge = (function x y tepid (>= x y))
+     bool_ge = (function x y tepid (>= x y))
+     intlike_ge = (function x y tepid (>= x y))
+     float_ge = (function x y tepid (>=. x y))
      string_ge =
-       (function x y (caml_string_greaterequal x y))
-     int32_ge = (function x y (Int32.>= x y))
-     int64_ge = (function x y (Int64.>= x y))
+       (function x y tepid
+         (caml_string_greaterequal x y))
+     int32_ge = (function x y tepid (Int32.>= x y))
+     int64_ge = (function x y tepid (Int64.>= x y))
      nativeint_ge =
-       (function x y (Nativeint.>= x y))
+       (function x y tepid (Nativeint.>= x y))
      eta_gen_cmp =
-       (function prim prim stub (caml_compare prim prim))
+       (function prim prim stub tepid
+         (caml_compare prim prim))
      eta_int_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_int_compare prim prim))
      eta_bool_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_int_compare prim prim))
      eta_intlike_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_int_compare prim prim))
      eta_float_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_float_compare prim prim))
      eta_string_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_string_compare prim prim))
      eta_int32_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_int32_compare prim prim))
      eta_int64_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_int64_compare prim prim))
      eta_nativeint_cmp =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_nativeint_compare prim prim))
      eta_gen_eq =
-       (function prim prim stub (caml_equal prim prim))
+       (function prim prim stub tepid
+         (caml_equal prim prim))
      eta_int_eq =
-       (function prim prim stub (== prim prim))
+       (function prim prim stub tepid (== prim prim))
      eta_bool_eq =
-       (function prim prim stub (== prim prim))
+       (function prim prim stub tepid (== prim prim))
      eta_intlike_eq =
-       (function prim prim stub (== prim prim))
+       (function prim prim stub tepid (== prim prim))
      eta_float_eq =
-       (function prim prim stub (==. prim prim))
+       (function prim prim stub tepid (==. prim prim))
      eta_string_eq =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_string_equal prim prim))
      eta_int32_eq =
-       (function prim prim stub (Int32.== prim prim))
+       (function prim prim stub tepid
+         (Int32.== prim prim))
      eta_int64_eq =
-       (function prim prim stub (Int64.== prim prim))
+       (function prim prim stub tepid
+         (Int64.== prim prim))
      eta_nativeint_eq =
-       (function prim prim stub (Nativeint.== prim prim))
+       (function prim prim stub tepid
+         (Nativeint.== prim prim))
      eta_gen_ne =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_notequal prim prim))
      eta_int_ne =
-       (function prim prim stub (!= prim prim))
+       (function prim prim stub tepid (!= prim prim))
      eta_bool_ne =
-       (function prim prim stub (!= prim prim))
+       (function prim prim stub tepid (!= prim prim))
      eta_intlike_ne =
-       (function prim prim stub (!= prim prim))
+       (function prim prim stub tepid (!= prim prim))
      eta_float_ne =
-       (function prim prim stub (!=. prim prim))
+       (function prim prim stub tepid (!=. prim prim))
      eta_string_ne =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_string_notequal prim prim))
      eta_int32_ne =
-       (function prim prim stub (Int32.!= prim prim))
+       (function prim prim stub tepid
+         (Int32.!= prim prim))
      eta_int64_ne =
-       (function prim prim stub (Int64.!= prim prim))
+       (function prim prim stub tepid
+         (Int64.!= prim prim))
      eta_nativeint_ne =
-       (function prim prim stub (Nativeint.!= prim prim))
+       (function prim prim stub tepid
+         (Nativeint.!= prim prim))
      eta_gen_lt =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_lessthan prim prim))
      eta_int_lt =
-       (function prim prim stub (< prim prim))
+       (function prim prim stub tepid (< prim prim))
      eta_bool_lt =
-       (function prim prim stub (< prim prim))
+       (function prim prim stub tepid (< prim prim))
      eta_intlike_lt =
-       (function prim prim stub (< prim prim))
+       (function prim prim stub tepid (< prim prim))
      eta_float_lt =
-       (function prim prim stub (<. prim prim))
+       (function prim prim stub tepid (<. prim prim))
      eta_string_lt =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_string_lessthan prim prim))
      eta_int32_lt =
-       (function prim prim stub (Int32.< prim prim))
+       (function prim prim stub tepid
+         (Int32.< prim prim))
      eta_int64_lt =
-       (function prim prim stub (Int64.< prim prim))
+       (function prim prim stub tepid
+         (Int64.< prim prim))
      eta_nativeint_lt =
-       (function prim prim stub (Nativeint.< prim prim))
+       (function prim prim stub tepid
+         (Nativeint.< prim prim))
      eta_gen_gt =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_greaterthan prim prim))
      eta_int_gt =
-       (function prim prim stub (> prim prim))
+       (function prim prim stub tepid (> prim prim))
      eta_bool_gt =
-       (function prim prim stub (> prim prim))
+       (function prim prim stub tepid (> prim prim))
      eta_intlike_gt =
-       (function prim prim stub (> prim prim))
+       (function prim prim stub tepid (> prim prim))
      eta_float_gt =
-       (function prim prim stub (>. prim prim))
+       (function prim prim stub tepid (>. prim prim))
      eta_string_gt =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_string_greaterthan prim prim))
      eta_int32_gt =
-       (function prim prim stub (Int32.> prim prim))
+       (function prim prim stub tepid
+         (Int32.> prim prim))
      eta_int64_gt =
-       (function prim prim stub (Int64.> prim prim))
+       (function prim prim stub tepid
+         (Int64.> prim prim))
      eta_nativeint_gt =
-       (function prim prim stub (Nativeint.> prim prim))
+       (function prim prim stub tepid
+         (Nativeint.> prim prim))
      eta_gen_le =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_lessequal prim prim))
      eta_int_le =
-       (function prim prim stub (<= prim prim))
+       (function prim prim stub tepid (<= prim prim))
      eta_bool_le =
-       (function prim prim stub (<= prim prim))
+       (function prim prim stub tepid (<= prim prim))
      eta_intlike_le =
-       (function prim prim stub (<= prim prim))
+       (function prim prim stub tepid (<= prim prim))
      eta_float_le =
-       (function prim prim stub (<=. prim prim))
+       (function prim prim stub tepid (<=. prim prim))
      eta_string_le =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_string_lessequal prim prim))
      eta_int32_le =
-       (function prim prim stub (Int32.<= prim prim))
+       (function prim prim stub tepid
+         (Int32.<= prim prim))
      eta_int64_le =
-       (function prim prim stub (Int64.<= prim prim))
+       (function prim prim stub tepid
+         (Int64.<= prim prim))
      eta_nativeint_le =
-       (function prim prim stub (Nativeint.<= prim prim))
+       (function prim prim stub tepid
+         (Nativeint.<= prim prim))
      eta_gen_ge =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_greaterequal prim prim))
      eta_int_ge =
-       (function prim prim stub (>= prim prim))
+       (function prim prim stub tepid (>= prim prim))
      eta_bool_ge =
-       (function prim prim stub (>= prim prim))
+       (function prim prim stub tepid (>= prim prim))
      eta_intlike_ge =
-       (function prim prim stub (>= prim prim))
+       (function prim prim stub tepid (>= prim prim))
      eta_float_ge =
-       (function prim prim stub (>=. prim prim))
+       (function prim prim stub tepid (>=. prim prim))
      eta_string_ge =
-       (function prim prim stub
+       (function prim prim stub tepid
          (caml_string_greaterequal prim prim))
      eta_int32_ge =
-       (function prim prim stub (Int32.>= prim prim))
+       (function prim prim stub tepid
+         (Int32.>= prim prim))
      eta_int64_ge =
-       (function prim prim stub (Int64.>= prim prim))
+       (function prim prim stub tepid
+         (Int64.>= prim prim))
      eta_nativeint_ge =
-       (function prim prim stub (Nativeint.>= prim prim))
+       (function prim prim stub tepid
+         (Nativeint.>= prim prim))
      int_vec = [0: [0: 1 1] [0: [0: 1 2] [0: [0: 2 1] 0a]]]
      bool_vec = [0: [0: 0a 0a] [0: [0: 0a 1a] [0: [0: 1a 0a] 0a]]]
      intlike_vec = [0: [0: 0a 0a] [0: [0: 0a 1a] [0: [0: 1a 0a] 0a]]]
@@ -236,20 +266,20 @@
      nativeint_vec = [0: [0: 1n 1n] [0: [0: 1n 2n] [0: [0: 2n 1n] 0a]]]
      test_vec =
        (function cmp eq ne lt gt le ge
-         vec
+         vec tepid
          (let
            (uncurry =
-              (function f param
+              (function f param tepid
                 (apply f (field 0 param) (field 1 param)))
             map =
-              (function f l
+              (function f l tepid
                 (apply (field 16 (global List!)) (apply uncurry f)
                   l)))
            (makeblock 0
              (makeblock 0 (apply map gen_cmp vec)
                (apply map cmp vec))
              (apply map
-               (function gen spec
+               (function gen spec tepid
                  (makeblock 0 (apply map gen vec)
                    (apply map spec vec)))
                (makeblock 0 (makeblock 0 gen_eq eq)
@@ -284,20 +314,20 @@
       (let
         (eta_test_vec =
            (function cmp eq ne lt gt le ge
-             vec
+             vec tepid
              (let
                (uncurry =
-                  (function f param
+                  (function f param tepid
                     (apply f (field 0 param) (field 1 param)))
                 map =
-                  (function f l
+                  (function f l tepid
                     (apply (field 16 (global List!))
                       (apply uncurry f) l)))
                (makeblock 0
                  (makeblock 0 (apply map eta_gen_cmp vec)
                    (apply map cmp vec))
                  (apply map
-                   (function gen spec
+                   (function gen spec tepid
                      (makeblock 0 (apply map gen vec)
                        (apply map spec vec)))
                    (makeblock 0 (makeblock 0 eta_gen_eq eq)

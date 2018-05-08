@@ -99,11 +99,11 @@ method private reload i =
         {i with arg = newarg; res = newres; next =
           (insert_moves newres i.res
             (self#reload i.next))}
-  | Iifthenelse(tst, ifso, ifnot) ->
+  | Iifthenelse(tst, temp, ifso, ifnot) ->
       let newarg = self#reload_test tst i.arg in
       insert_moves i.arg newarg
         (instr_cons
-          (Iifthenelse(tst, self#reload ifso, self#reload ifnot)) newarg [||]
+          (Iifthenelse(tst, temp, self#reload ifso, self#reload ifnot)) newarg [||]
           (self#reload i.next))
   | Iswitch(index, cases) ->
       let newarg = self#makeregs i.arg in
@@ -121,8 +121,8 @@ method private reload i =
         (self#reload i.next)
   | Iexit i ->
       instr_cons (Iexit i) [||] [||] dummy_instr
-  | Itrywith(body, handler) ->
-      instr_cons (Itrywith(self#reload body, self#reload handler)) [||] [||]
+  | Itrywith(body, temp, handler) ->
+      instr_cons (Itrywith(self#reload body, temp, self#reload handler)) [||] [||]
         (self#reload i.next)
 
 method fundecl f =
@@ -130,6 +130,7 @@ method fundecl f =
   let new_body = self#reload f.fun_body in
   ({fun_name = f.fun_name; fun_args = f.fun_args;
     fun_body = new_body; fun_fast = f.fun_fast;
-    fun_dbg  = f.fun_dbg; fun_spacetime_shape = f.fun_spacetime_shape},
+    fun_dbg  = f.fun_dbg; fun_spacetime_shape = f.fun_spacetime_shape;
+    fun_temperature = f.fun_temperature},
    redo_regalloc)
 end

@@ -76,7 +76,7 @@ let rec live i finally =
         i.live <- across;
         Reg.add_set_array across arg
       end
-  | Iifthenelse(_test, ifso, ifnot) ->
+  | Iifthenelse(_test, _temp, ifso, ifnot) ->
       let at_join = live i.next finally in
       let at_fork = Reg.Set.union (live ifso at_join) (live ifnot at_join) in
       i.live <- at_fork;
@@ -143,7 +143,7 @@ let rec live i finally =
       let this_live = find_live_at_exit nfail in
       i.live <- this_live ;
       this_live
-  | Itrywith(body, handler) ->
+  | Itrywith(body, _temp, handler) ->
       let at_join = live i.next finally in
       let before_handler = live handler at_join in
       let saved_live_at_raise = !live_at_raise in

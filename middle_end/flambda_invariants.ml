@@ -50,6 +50,7 @@ let ignore_var_within_closure (_ : Var_within_closure.t) = ()
 let ignore_tag (_ : Tag.t) = ()
 let ignore_inline_attribute (_ : Lambda.inline_attribute) = ()
 let ignore_specialise_attribute (_ : Lambda.specialise_attribute) = ()
+let ignore_temperature_attribute (_ : Lambda.temperature_attribute) = ()
 let ignore_value_kind (_ : Lambda.value_kind) = ()
 
 exception Binding_occurrence_not_from_current_compilation_unit of Variable.t
@@ -184,7 +185,8 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       ignore_static_exception static_exn;
       loop env body;
       loop (add_binding_occurrences env vars) handler
-    | Try_with (body, var, handler) ->
+    | Try_with (body, temp, var, handler) ->
+      ignore_temperature_attribute temp;
       loop env body;
       loop (add_binding_occurrence env var) handler
     (* Everything else: *)
@@ -205,7 +207,8 @@ let variable_and_symbol_invariants (program : Flambda.program) =
       check_variable_is_bound env obj;
       check_variables_are_bound env args;
       ignore_debuginfo dbg
-    | If_then_else (cond, ifso, ifnot) ->
+    | If_then_else (cond, temp, ifso, ifnot) ->
+      ignore_temperature_attribute temp;
       check_variable_is_bound env cond;
       loop env ifso;
       loop env ifnot

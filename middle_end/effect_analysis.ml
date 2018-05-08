@@ -31,7 +31,7 @@ let rec no_effects (flam : Flambda.t) =
   | Let_rec (defs, body) ->
     no_effects body
       && List.for_all (fun (_, def) -> no_effects_named def) defs
-  | If_then_else (_, ifso, ifnot) -> no_effects ifso && no_effects ifnot
+  | If_then_else (_, _, ifso, ifnot) -> no_effects ifso && no_effects ifnot
   | Switch (_, sw) ->
     let aux (_, flam) = no_effects flam in
     List.for_all aux sw.blocks
@@ -42,7 +42,7 @@ let rec no_effects (flam : Flambda.t) =
     List.for_all (fun (_, lam) -> no_effects lam) sw
       && Misc.Stdlib.Option.value_default no_effects def
         ~default:true
-  | Static_catch (_, _, body, _) | Try_with (body, _, _) ->
+  | Static_catch (_, _, body, _) | Try_with (body, _, _, _) ->
     (* If there is a [raise] in [body], the whole [Try_with] may have an
        effect, so there is no need to test the handler. *)
     no_effects body

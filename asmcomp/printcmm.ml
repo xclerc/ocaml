@@ -153,8 +153,10 @@ let rec expr ppf = function
       fprintf ppf ")@]"
   | Csequence(e1, e2) ->
       fprintf ppf "@[<2>(seq@ %a@ %a)@]" sequence e1 sequence e2
-  | Cifthenelse(e1, e2, e3) ->
-      fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" expr e1 expr e2 expr e3
+  | Cifthenelse(e1, temp, e2, e3) ->
+      fprintf ppf "@[<2>(if [%a]@ %a@ %a@ %a)@]"
+        Printlambda.temperature_attribute temp
+        expr e1 expr e2 expr e3
   | Cswitch(e1, index, cases, _dbg) ->
       let print_case i ppf =
         for j = 0 to Array.length index - 1 do
@@ -189,8 +191,9 @@ let rec expr ppf = function
       fprintf ppf "@[<2>(exit %d" i;
       List.iter (fun e -> fprintf ppf "@ %a" expr e) el;
       fprintf ppf ")@]"
-  | Ctrywith(e1, id, e2) ->
-      fprintf ppf "@[<2>(try@ %a@;<1 -2>with@ %a@ %a)@]"
+  | Ctrywith(e1, temp, id, e2) ->
+      fprintf ppf "@[<2>(try [%a]@ %a@;<1 -2>with@ %a@ %a)@]"
+             Printlambda.temperature_attribute temp
              sequence e1 Ident.print id sequence e2
 
 and sequence ppf = function
@@ -207,8 +210,9 @@ let fundecl ppf f =
        if !first then first := false else fprintf ppf "@ ";
        fprintf ppf "%a: %a" Ident.print id machtype ty)
      cases in
-  fprintf ppf "@[<1>(function%s %s@;<1 4>@[<1>(%a)@]@ @[%a@])@]@."
-         (Debuginfo.to_string f.fun_dbg) f.fun_name
+  fprintf ppf "@[<1>(function%s [%a] %s@;<1 4>@[<1>(%a)@]@ @[%a@])@]@."
+         (Debuginfo.to_string f.fun_dbg)
+         Printlambda.temperature_attribute f.fun_temperature f.fun_name
          print_cases f.fun_args sequence f.fun_body
 
 let data_item ppf = function

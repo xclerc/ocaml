@@ -67,10 +67,11 @@ let rec eliminate_ref id = function
       Lstaticraise (i,List.map (eliminate_ref id) args)
   | Lstaticcatch(e1, i, e2) ->
       Lstaticcatch(eliminate_ref id e1, i, eliminate_ref id e2)
-  | Ltrywith(e1, v, e2) ->
-      Ltrywith(eliminate_ref id e1, v, eliminate_ref id e2)
-  | Lifthenelse(e1, e2, e3) ->
+  | Ltrywith(e1, t, v, e2) ->
+      Ltrywith(eliminate_ref id e1, t, v, eliminate_ref id e2)
+  | Lifthenelse(e1, t, e2, e3) ->
       Lifthenelse(eliminate_ref id e1,
+                  t,
                   eliminate_ref id e2,
                   eliminate_ref id e3)
   | Lsequence(e1, e2) ->
@@ -151,8 +152,8 @@ let simplify_exits lam =
          l2 will be removed, so don't count its exits *)
       if count_exit i > 0 then
         count l2
-  | Ltrywith(l1, _v, l2) -> count l1; count l2
-  | Lifthenelse(l1, l2, l3) -> count l1; count l2; count l3
+  | Ltrywith(l1, _t, _v, l2) -> count l1; count l2
+  | Lifthenelse(l1, _t, l2, l3) -> count l1; count l2; count l3
   | Lsequence(l1, l2) -> count l1; count l2
   | Lwhile(l1, l2) -> count l1; count l2
   | Lfor(_, l1, l2, _dir, l3) -> count l1; count l2; count l3
@@ -281,8 +282,8 @@ let simplify_exits lam =
       | _ ->
           Lstaticcatch (simplif l1, (i,xs), simplif l2)
       end
-  | Ltrywith(l1, v, l2) -> Ltrywith(simplif l1, v, simplif l2)
-  | Lifthenelse(l1, l2, l3) -> Lifthenelse(simplif l1, simplif l2, simplif l3)
+  | Ltrywith(l1, t, v, l2) -> Ltrywith(simplif l1, t, v, simplif l2)
+  | Lifthenelse(l1, t, l2, l3) -> Lifthenelse(simplif l1, t, simplif l2, simplif l3)
   | Lsequence(l1, l2) -> Lsequence(simplif l1, simplif l2)
   | Lwhile(l1, l2) -> Lwhile(simplif l1, simplif l2)
   | Lfor(v, l1, l2, dir, l3) ->
@@ -399,8 +400,8 @@ let simplify_lets lam =
       end
   | Lstaticraise (_i,ls) -> List.iter (count bv) ls
   | Lstaticcatch(l1, _, l2) -> count bv l1; count bv l2
-  | Ltrywith(l1, _v, l2) -> count bv l1; count bv l2
-  | Lifthenelse(l1, l2, l3) -> count bv l1; count bv l2; count bv l3
+  | Ltrywith(l1, _t, _v, l2) -> count bv l1; count bv l2
+  | Lifthenelse(l1, _t, l2, l3) -> count bv l1; count bv l2; count bv l3
   | Lsequence(l1, l2) -> count bv l1; count bv l2
   | Lwhile(l1, l2) -> count Tbl.empty l1; count Tbl.empty l2
   | Lfor(_, l1, l2, _dir, l3) -> count bv l1; count bv l2; count Tbl.empty l3
@@ -518,8 +519,8 @@ let simplify_lets lam =
       Lstaticraise (i, List.map simplif ls)
   | Lstaticcatch(l1, (i,args), l2) ->
       Lstaticcatch (simplif l1, (i,args), simplif l2)
-  | Ltrywith(l1, v, l2) -> Ltrywith(simplif l1, v, simplif l2)
-  | Lifthenelse(l1, l2, l3) -> Lifthenelse(simplif l1, simplif l2, simplif l3)
+  | Ltrywith(l1, t, v, l2) -> Ltrywith(simplif l1, t, v, simplif l2)
+  | Lifthenelse(l1, t, l2, l3) -> Lifthenelse(simplif l1, t, simplif l2, simplif l3)
   | Lsequence(Lifused(v, l1), l2) ->
       if count_var v > 0
       then Lsequence(simplif l1, simplif l2)
@@ -593,10 +594,10 @@ let rec emit_tail_infos is_tail lambda =
   | Lstaticcatch (body, _, handler) ->
       emit_tail_infos is_tail body;
       emit_tail_infos is_tail handler
-  | Ltrywith (body, _, handler) ->
+  | Ltrywith (body, _, _, handler) ->
       emit_tail_infos false body;
       emit_tail_infos is_tail handler
-  | Lifthenelse (cond, ifso, ifno) ->
+  | Lifthenelse (cond, _, ifso, ifno) ->
       emit_tail_infos false cond;
       emit_tail_infos is_tail ifso;
       emit_tail_infos is_tail ifno
@@ -637,7 +638,7 @@ and list_emit_tail_infos is_tail =
 
 let split_default_wrapper ~id:fun_id ~kind ~params ~body ~attr ~loc =
   let rec aux map = function
-    | Llet(Strict, k, id, (Lifthenelse(Lvar optparam, _, _) as def), rest) when
+    | Llet(Strict, k, id, (Lifthenelse(Lvar optparam, _, _, _) as def), rest) when
         Ident.name optparam = "*opt*" && List.mem optparam params
           && not (List.mem_assoc optparam map)
       ->

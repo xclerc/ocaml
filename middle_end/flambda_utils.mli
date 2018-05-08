@@ -67,6 +67,7 @@ val make_closure_declaration
   -> body:Flambda.t
   -> params:Parameter.t list
   -> stub:bool
+  -> temperature:Lambda.temperature_attribute
   -> Flambda.t
 
 val toplevel_substitution

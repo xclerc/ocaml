@@ -52,7 +52,8 @@ let rec structured_constant ppf = function
       let idents ppf =
         List.iter (fprintf ppf "@ %a" Ident.print)in
       let one_fun ppf f =
-        fprintf ppf "(fun@ %s@ %d@ @[<2>%a@]@ @[<2>%a@])"
+        fprintf ppf "(fun [%a]@ %s@ %d@ @[<2>%a@]@ @[<2>%a@])"
+          Printlambda.temperature_attribute f.temperature
           f.label f.arity idents f.params lam f.body in
       let funs ppf =
         List.iter (fprintf ppf "@ %a" one_fun) in
@@ -165,11 +166,18 @@ and lam ppf = function
                 vars)
         vars
         lam lhandler
-  | Utrywith(lbody, param, lhandler) ->
-      fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"
-        lam lbody Ident.print param lam lhandler
-  | Uifthenelse(lcond, lif, lelse) ->
-      fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" lam lcond lam lif lam lelse
+  | Utrywith(lbody, temp, param, lhandler) ->
+      fprintf ppf "@[<2>(try [%a]@ %a@;<1 -1>with %a@ %a)@]"
+        lam lbody
+        Printlambda.temperature_attribute temp
+        Ident.print param
+        lam lhandler
+  | Uifthenelse(lcond, temp, lif, lelse) ->
+      fprintf ppf "@[<2>(if [%a]@ %a@ %a@ %a)@]"
+        lam lcond
+        Printlambda.temperature_attribute temp
+        lam lif
+        lam lelse
   | Usequence(l1, l2) ->
       fprintf ppf "@[<2>(seq@ %a@ %a)@]" lam l1 sequence l2
   | Uwhile(lcond, lbody) ->

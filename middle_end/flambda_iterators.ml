@@ -37,9 +37,9 @@ let apply_on_subexpressions f f_named (flam : Flambda.t) =
     Misc.may f def
   | Static_catch (_,_,f1,f2) ->
     f f1; f f2;
-  | Try_with (f1,_,f2) ->
+  | Try_with (f1,_,_,f2) ->
     f f1; f f2
-  | If_then_else (_,f1, f2) ->
+  | If_then_else (_,_,f1, f2) ->
     f f1;f f2
   | While (f1,f2) ->
     f f1; f f2
@@ -131,20 +131,20 @@ let map_subexpressions f f_named (tree:Flambda.t) : Flambda.t =
       tree
     else
       Static_catch (i, vars, new_body, new_handler)
-  | Try_with(body, id, handler) ->
+  | Try_with(body, temp, id, handler) ->
     let new_body = f body in
     let new_handler = f handler in
     if body == new_body && handler == new_handler then
       tree
     else
-      Try_with(new_body, id, new_handler)
-  | If_then_else(arg, ifso, ifnot) ->
+      Try_with(new_body, temp, id, new_handler)
+  | If_then_else(arg, temp, ifso, ifnot) ->
     let new_ifso = f ifso in
     let new_ifnot = f ifnot in
     if new_ifso == ifso && new_ifnot == ifnot then
       tree
     else
-      If_then_else(arg, new_ifso, new_ifnot)
+      If_then_else(arg, temp, new_ifso, new_ifnot)
   | While(cond, body) ->
     let new_cond = f cond in
     let new_body = f body in
@@ -355,20 +355,20 @@ let map_general ~toplevel f f_named tree =
             tree
           else
             Static_catch (i, vars, new_body, new_handler)
-        | Try_with(body, id, handler) ->
+        | Try_with(body, temp, id, handler) ->
           let new_body = aux body in
           let new_handler = aux handler in
           if new_body == body && new_handler == handler then
             tree
           else
-            Try_with (new_body, id, new_handler)
-        | If_then_else (arg, ifso, ifnot) ->
+            Try_with (new_body, temp, id, new_handler)
+        | If_then_else (arg, temp, ifso, ifnot) ->
           let new_ifso = aux ifso in
           let new_ifnot = aux ifnot in
           if new_ifso == ifso && new_ifnot == ifnot then
             tree
           else
-            If_then_else (arg, new_ifso, new_ifnot)
+            If_then_else (arg, temp, new_ifso, new_ifnot)
         | While (cond, body) ->
           let new_cond = aux cond in
           let new_body = aux body in
@@ -416,6 +416,7 @@ let map_general ~toplevel f f_named tree =
                     ~dbg:func_decl.dbg
                     ~inline:func_decl.inline
                     ~specialise:func_decl.specialise
+                    ~temperature:func_decl.temperature
                     ~is_a_functor:func_decl.is_a_functor
                 end)
               function_decls.funs
@@ -506,6 +507,7 @@ let map_symbols_on_set_of_closures
           ~dbg:func_decl.dbg
           ~inline:func_decl.inline
           ~specialise:func_decl.specialise
+          ~temperature:func_decl.temperature
           ~is_a_functor:func_decl.is_a_functor)
       function_decls.funs
   in
@@ -599,6 +601,7 @@ let map_function_bodies (set_of_closures : Flambda.set_of_closures) ~f =
             ~dbg:function_decl.dbg
             ~inline:function_decl.inline
             ~specialise:function_decl.specialise
+            ~temperature:function_decl.temperature
             ~is_a_functor:function_decl.is_a_functor
         end)
       set_of_closures.function_decls.funs
@@ -635,6 +638,7 @@ let map_sets_of_closures_of_program (program : Flambda.program)
                   ~dbg:function_decl.dbg
                   ~inline:function_decl.inline
                   ~specialise:function_decl.specialise
+                  ~temperature:function_decl.temperature
                   ~is_a_functor:function_decl.is_a_functor
               end)
             set_of_closures.function_decls.funs
@@ -736,6 +740,7 @@ let map_exprs_at_toplevel_of_program (program : Flambda.program)
                 ~dbg:function_decl.dbg
                 ~inline:function_decl.inline
                 ~specialise:function_decl.specialise
+                ~temperature:function_decl.temperature
                 ~is_a_functor:function_decl.is_a_functor
             end)
           set_of_closures.function_decls.funs

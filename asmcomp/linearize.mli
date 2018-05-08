@@ -23,7 +23,8 @@ type instruction =
     arg: Reg.t array;
     res: Reg.t array;
     dbg: Debuginfo.t;
-    live: Reg.Set.t }
+    live: Reg.Set.t;
+    mutable temperature: Lambda.temperature_attribute; }
 
 and instruction_desc =
     Lend
@@ -43,7 +44,7 @@ and instruction_desc =
 val has_fallthrough :  instruction_desc -> bool
 val end_instr: instruction
 val instr_cons:
-  instruction_desc -> Reg.t array -> Reg.t array -> instruction -> instruction
+  instruction_desc -> Reg.t array -> Reg.t array -> instruction -> Lambda.temperature_attribute -> instruction
 val invert_test: Mach.test -> Mach.test
 
 type fundecl =
@@ -52,6 +53,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : Mach.spacetime_shape option;
+    fun_temperature : Lambda.temperature_attribute;
   }
 
 val fundecl: Mach.fundecl -> fundecl

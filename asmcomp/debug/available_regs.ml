@@ -221,7 +221,7 @@ let rec available_regs (instr : M.instruction)
             avail_across
         in
         Some (ok avail_across), ok avail_after
-      | Iifthenelse (_, ifso, ifnot) -> join [ifso; ifnot] ~avail_before
+      | Iifthenelse (_, _, ifso, ifnot) -> join [ifso; ifnot] ~avail_before
       | Iswitch (_, cases) -> join (Array.to_list cases) ~avail_before
       | Iloop body ->
         let avail_after = ref (ok avail_before) in
@@ -310,7 +310,7 @@ let rec available_regs (instr : M.instruction)
         in
         Hashtbl.replace avail_at_exit nfail avail_at_top_of_handler;
         None, unreachable
-      | Itrywith (body, handler) ->
+      | Itrywith (body, _, handler) ->
         let saved_avail_at_raise = !avail_at_raise in
         avail_at_raise := unreachable;
         let avail_before = ok avail_before in

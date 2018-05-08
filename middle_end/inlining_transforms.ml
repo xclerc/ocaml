@@ -487,6 +487,7 @@ let inline_by_copying_function_declaration ~env ~r
         ~dbg:fun_decl.dbg
         ~inline:fun_decl.inline
         ~specialise:fun_decl.specialise
+        ~temperature:fun_decl.temperature
         ~is_a_functor:fun_decl.is_a_functor
         ~body
     in

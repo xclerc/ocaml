@@ -106,11 +106,19 @@ let lambda_smaller' lam ~than:threshold =
     | Static_raise _ -> ()
     | Static_catch (_, _, body, handler) ->
       incr size; lambda_size body; lambda_size handler
-    | Try_with (body, _, handler) ->
-      size := !size + 8; lambda_size body; lambda_size handler
-    | If_then_else (_, ifso, ifnot) ->
+    | Try_with (body, temp, _, handler) ->
+      size := !size + 8;
+      begin match temp with
+      | Cold _ | Tepid -> lambda_size body; lambda_size handler
+      | Hot _ -> lambda_size body
+      end
+    | If_then_else (_, temp, ifso, ifnot) ->
       size := !size + 2;
-      lambda_size ifso; lambda_size ifnot
+      begin match temp with
+      | Cold _ -> lambda_size ifnot
+      | Tepid -> lambda_size ifso; lambda_size ifnot
+      | Hot _ -> lambda_size ifso
+      end
     | While (cond, body) ->
       size := !size + 2; lambda_size cond; lambda_size body
     | For { body; _ } ->

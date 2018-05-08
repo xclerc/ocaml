@@ -96,7 +96,7 @@ let build_graph fundecl =
         add_interf_set i.res i.live;
         add_interf_self i.res;
         interf i.next
-    | Iifthenelse(_tst, ifso, ifnot) ->
+    | Iifthenelse(_tst, _temp, ifso, ifnot) ->
         interf ifso;
         interf ifnot;
         interf i.next
@@ -113,7 +113,7 @@ let build_graph fundecl =
         interf i.next
     | Iexit _ ->
         ()
-    | Itrywith(body, handler) ->
+    | Itrywith(body, _temp, handler) ->
         add_interf_set Proc.destroyed_at_raise handler.live;
         interf body; interf handler; interf i.next
     | Iraise _ -> () in
@@ -168,7 +168,7 @@ let build_graph fundecl =
     | Iop(Itailcall_imm _) -> ()
     | Iop _ ->
         prefer weight i.next
-    | Iifthenelse(_tst, ifso, ifnot) ->
+    | Iifthenelse(_tst, _temp, ifso, ifnot) ->
         prefer (weight / 2) ifso;
         prefer (weight / 2) ifnot;
         prefer weight i.next
@@ -195,7 +195,7 @@ let build_graph fundecl =
         prefer weight i.next
     | Iexit _ ->
         ()
-    | Itrywith(body, handler) ->
+    | Itrywith(body, _temp, handler) ->
         prefer weight body; prefer weight handler; prefer weight i.next
     | Iraise _ -> ()
   in

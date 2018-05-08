@@ -731,7 +731,7 @@ let rec comp_expr env exp sz cont =
           comp_expr env arg sz cont
       | _ -> comp_exit_args env args sz size cont
       end
-  | Ltrywith(body, id, handler) ->
+  | Ltrywith(body, _, id, handler) ->
       let (branch1, cont1) = make_branch cont in
       let lbl_handler = new_label() in
       let body_cont =
@@ -743,8 +743,8 @@ let rec comp_expr env exp sz cont =
       let l = comp_expr env body (sz+4) body_cont in
       try_blocks := List.tl !try_blocks;
       Kpushtrap lbl_handler :: l
-  | Lifthenelse(cond, ifso, ifnot) ->
-      comp_binary_test env cond ifso ifnot sz cont
+  | Lifthenelse(cond, temp, ifso, ifnot) ->
+      comp_binary_test env cond temp ifso ifnot sz cont
   | Lsequence(exp1, exp2) ->
       comp_expr env exp1 sz (comp_expr env exp2 sz cont)
   | Lwhile(cond, body) ->
@@ -902,7 +902,7 @@ and comp_expr_list_assign env exprl sz pos cont = match exprl with
 
 (* Compile an if-then-else test. *)
 
-and comp_binary_test env cond ifso ifnot sz cont =
+and comp_binary_test env cond temp ifso ifnot sz cont =
   let cont_cond =
     if ifnot = Lconst const_unit then begin
       let (lbl_end, cont1) = label_code cont in
@@ -919,9 +919,15 @@ and comp_binary_test env cond ifso ifnot sz cont =
             Kbranchifnot label :: cont
         | _ ->
             let (branch_end, cont1) = make_branch cont in
-            let (lbl_not, cont2) = label_code(comp_expr env ifnot sz cont1) in
-            Kbranchifnot lbl_not ::
-            comp_expr env ifso sz (branch_end :: cont2) in
+            match temp with
+            | Hot _ | Tepid ->
+              let (lbl_not, cont2) = label_code(comp_expr env ifnot sz cont1) in
+              Kbranchifnot lbl_not ::
+              comp_expr env ifso sz (branch_end :: cont2)
+            | Cold _ ->
+              let (lbl_so, cont2) = label_code(comp_expr env ifso sz cont1) in
+              Kbranchif lbl_so ::
+              comp_expr env ifnot sz (branch_end :: cont2) in
 
   comp_expr env cond sz cont_cond
 
