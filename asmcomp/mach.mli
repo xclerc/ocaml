@@ -93,12 +93,12 @@ and instruction_desc =
     Iend
   | Iop of operation
   | Ireturn
-  | Iifthenelse of test * instruction * instruction
+  | Iifthenelse of test * Lambda.temperature_attribute * instruction * instruction
   | Iswitch of int array * instruction array
   | Iloop of instruction
   | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
   | Iexit of int
-  | Itrywith of instruction * instruction
+  | Itrywith of instruction * Lambda.temperature_attribute * instruction
   | Iraise of Cmm.raise_kind
 
 type spacetime_part_of_shape =
@@ -121,6 +121,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
+    fun_temperature : Lambda.temperature_attribute;
   }
 
 val dummy_instr: instruction

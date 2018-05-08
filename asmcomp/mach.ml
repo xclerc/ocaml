@@ -77,12 +77,12 @@ and instruction_desc =
     Iend
   | Iop of operation
   | Ireturn
-  | Iifthenelse of test * instruction * instruction
+  | Iifthenelse of test * Lambda.temperature_attribute * instruction * instruction
   | Iswitch of int array * instruction array
   | Iloop of instruction
   | Icatch of Cmm.rec_flag * (int * instruction) list * instruction
   | Iexit of int
-  | Itrywith of instruction * instruction
+  | Itrywith of instruction * Lambda.temperature_attribute * instruction
   | Iraise of Cmm.raise_kind
 
 type spacetime_part_of_shape =
@@ -99,6 +99,7 @@ type fundecl =
     fun_fast: bool;
     fun_dbg : Debuginfo.t;
     fun_spacetime_shape : spacetime_shape option;
+    fun_temperature : Lambda.temperature_attribute;
   }
 
 let rec dummy_instr =
@@ -144,7 +145,7 @@ let rec instr_iter f i =
       match i.desc with
         Iend -> ()
       | Ireturn | Iop(Itailcall_ind _) | Iop(Itailcall_imm _) -> ()
-      | Iifthenelse(_tst, ifso, ifnot) ->
+      | Iifthenelse(_tst, _temp, ifso, ifnot) ->
           instr_iter f ifso; instr_iter f ifnot; instr_iter f i.next
       | Iswitch(_index, cases) ->
           for i = 0 to Array.length cases - 1 do
@@ -158,7 +159,7 @@ let rec instr_iter f i =
           List.iter (fun (_n, handler) -> instr_iter f handler) handlers;
           instr_iter f i.next
       | Iexit _ -> ()
-      | Itrywith(body, handler) ->
+      | Itrywith(body, _temp, handler) ->
           instr_iter f body; instr_iter f handler; instr_iter f i.next
       | Iraise _ -> ()
       | _ ->

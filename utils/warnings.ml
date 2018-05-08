@@ -89,6 +89,7 @@ type t =
   | Unused_module of string                 (* 60 *)
   | Unboxable_type_in_prim_decl of string   (* 61 *)
   | Constraint_on_gadt                      (* 62 *)
+  | Conflicting_attributes of string * string (* 63 *)
 ;;
 
 (* If you remove a warning, leave a hole in the numbering.  NEVER change
@@ -160,9 +161,10 @@ let number = function
   | Unused_module _ -> 60
   | Unboxable_type_in_prim_decl _ -> 61
   | Constraint_on_gadt -> 62
+  | Conflicting_attributes _ -> 63
 ;;
 
-let last_warning_number = 62
+let last_warning_number = 63
 ;;
 
 (* Must be the max number returned by the [number] function. *)
@@ -513,6 +515,9 @@ let message = function
          or [@@unboxed]." t t
   | Constraint_on_gadt ->
       "Type constraints do not apply to GADT cases of variant types."
+  | Conflicting_attributes (attr_name1, attr_name2) ->
+      Printf.sprintf "attributes %S and %S cannot be used at the same time"
+        attr_name1 attr_name2
 ;;
 
 let sub_locs = function
@@ -628,7 +633,8 @@ let descriptions =
    59, "Assignment to non-mutable value";
    60, "Unused module declaration";
    61, "Unboxable type in primitive declaration";
-   62, "Type constraint on GADT type declaration"
+   62, "Type constraint on GADT type declaration";
+   63, "Conflicting attributes";
   ]
 ;;
 

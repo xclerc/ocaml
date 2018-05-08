@@ -51,6 +51,9 @@ let register_name r =
 
 (* CFI directives *)
 
+let absolute_cfa = true
+let current_cfa = ref 0
+
 let cfi_startproc () =
   if Config.asm_cfi_supported then D.cfi_startproc ()
 
@@ -58,7 +61,13 @@ let cfi_endproc () =
   if Config.asm_cfi_supported then D.cfi_endproc ()
 
 let cfi_adjust_cfa_offset n =
-  if Config.asm_cfi_supported then D.cfi_adjust_cfa_offset n
+  current_cfa := !current_cfa + n;
+  if Config.asm_cfi_supported then begin
+    if absolute_cfa then
+      D.cfi_def_cfa_offset (!current_cfa)
+    else
+      D.cfi_adjust_cfa_offset n
+  end
 
 let emit_debug_info dbg =
   emit_debug_info_gen dbg D.file D.loc
@@ -465,6 +474,21 @@ let emit_global_label s =
   D.global lbl;
   _label lbl
 
+(* Temperature *)
+
+let current_temperature = ref Lambda.Tepid
+
+let section_of_temperature ?(force = false) ?(emit_cfi = true) temp =
+  if force || not (Lambda.same_temperature temp !current_temperature) then begin
+    current_temperature := temp;
+    if emit_cfi then cfi_endproc ();
+    begin match temp with
+    | Lambda.Cold _ -> D.section [ ".text.cold" ] None []
+    | Lambda.Tepid -> D.text ()
+    | Lambda.Hot _ -> D.section [ ".text.hot" ] None []
+    end;
+    if emit_cfi then cfi_startproc ();
+  end
 
 (* Output the assembly code for an instruction *)
 
@@ -473,8 +497,21 @@ let function_name = ref ""
 (* Entry point for tail recursive calls *)
 let tailrec_entry_point = ref 0
 
+let is_jump_needed ~from ~destination =
+  let rec first_with_same_temperature i =
+    if (i.desc = Lend)
+       || (Lambda.same_temperature from.temperature i.temperature) then
+      i
+    else
+      first_with_same_temperature i.next
+  in
+  match (first_with_same_temperature from.next).desc with
+  | Llabel lbl -> destination <> lbl
+  | _ -> true
+
 (* Emit an instruction *)
 let emit_instr fallthrough i =
+  section_of_temperature i.temperature;
   emit_debug_info i.dbg;
   match i.desc with
   | Lend -> ()
@@ -750,7 +787,8 @@ let emit_instr fallthrough i =
   | Llabel lbl ->
       emit_Llabel fallthrough lbl
   | Lbranch lbl ->
-      I.jmp (label lbl)
+      if is_jump_needed ~from:i ~destination:lbl then
+        I.jmp (label lbl)
   | Lcondbranch(tst, lbl) ->
       let lbl = label lbl in
       begin match tst with
@@ -822,9 +860,9 @@ let emit_instr fallthrough i =
         D.long (ConstSub (ConstLabel(emit_label jumptbl.(i)),
                          ConstLabel lbl))
       done;
-      D.text ()
+      section_of_temperature ~force:true ~emit_cfi:false i.temperature
   | Lsetuptrap lbl ->
-      I.call (label lbl)
+      I.push @@ mem64_rip QWORD (Printf.sprintf ".L%d@GOTPCREL" lbl)
   | Lpushtrap ->
       cfi_adjust_cfa_offset 8;
       I.push r14;
@@ -888,7 +926,7 @@ let fundecl fundecl =
   bound_error_sites := [];
   bound_error_call := 0;
   all_functions := fundecl :: !all_functions;
-  D.text ();
+  section_of_temperature ~force:true ~emit_cfi:false fundecl.fun_temperature;
   D.align 16;
   add_def_symbol fundecl.fun_name;
   if system = S_macosx
@@ -926,6 +964,7 @@ let fundecl fundecl =
       cfi_adjust_cfa_offset (-n);
     end;
   end;
+  section_of_temperature fundecl.fun_temperature;
   cfi_endproc ();
   begin match system with
   | S_gnu | S_linux ->
@@ -1001,7 +1040,8 @@ let begin_assembly() =
   D.data ();
   emit_global_label "data_begin";
 
-  D.text ();
+  section_of_temperature ~force:true ~emit_cfi:false
+    (Lambda.Hot { explicit = false; });
   emit_global_label "code_begin";
   if system = S_macosx then I.nop (); (* PR#4690 *)
   ()
@@ -1055,9 +1095,10 @@ let end_assembly() =
   if system = S_macosx then I.nop ();
   (* suppress "ld warning: atom sorting error" *)
 
-  emit_global_label "code_end";
-
   emit_imp_table();
+
+  D.section [ ".text.cold" ] None [];
+  emit_global_label "code_end";
 
   D.data ();
   D.qword (const 0);  (* PR#6329 *)

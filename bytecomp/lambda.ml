@@ -204,6 +204,23 @@ type specialise_attribute =
   | Never_specialise (* [@specialise never] *)
   | Default_specialise (* no [@specialise] attribute *)
 
+type temperature_attribute =
+  | Cold of { explicit : bool; }
+  | Tepid
+  | Hot of { explicit : bool; }
+
+let same_temperature t1 t2 =
+  match t1, t2 with
+  | Cold _, Cold _ -> true
+  | Tepid, Tepid -> true
+  | Hot _, Hot _ -> true
+  | (Cold _ | Tepid | Hot _) , _ -> false
+
+let invert_temperature = function
+  | Cold { explicit; } -> Hot { explicit; }
+  | Tepid -> Tepid
+  | Hot { explicit; } -> Cold { explicit; }
+
 type function_kind = Curried | Tupled
 
 type let_kind = Strict | Alias | StrictOpt | Variable
@@ -215,6 +232,7 @@ type shared_code = (int * int) list
 type function_attribute = {
   inline : inline_attribute;
   specialise : specialise_attribute;
+  temperature : temperature_attribute;
   is_a_functor: bool;
   stub: bool;
 }
@@ -232,8 +250,8 @@ type lambda =
       lambda * (string * lambda) list * lambda option * Location.t
   | Lstaticraise of int * lambda list
   | Lstaticcatch of lambda * (int * Ident.t list) * lambda
-  | Ltrywith of lambda * Ident.t * lambda
-  | Lifthenelse of lambda * lambda * lambda
+  | Ltrywith of lambda * temperature_attribute * Ident.t * lambda
+  | Lifthenelse of lambda * temperature_attribute * lambda * lambda
   | Lsequence of lambda * lambda
   | Lwhile of lambda * lambda
   | Lfor of Ident.t * lambda * lambda * direction_flag * lambda
@@ -290,6 +308,7 @@ let lambda_unit = Lconst const_unit
 let default_function_attribute = {
   inline = Default_inline;
   specialise = Default_specialise;
+  temperature = Tepid;
   is_a_functor = false;
   stub = false;
 }
@@ -352,10 +371,10 @@ let make_key e =
         Lstaticraise (i,tr_recs env es)
     | Lstaticcatch (e1,xs,e2) ->
         Lstaticcatch (tr_rec env e1,xs,tr_rec env e2)
-    | Ltrywith (e1,x,e2) ->
-        Ltrywith (tr_rec env e1,x,tr_rec env e2)
-    | Lifthenelse (cond,ifso,ifnot) ->
-        Lifthenelse (tr_rec env cond,tr_rec env ifso,tr_rec env ifnot)
+    | Ltrywith (e1,x,temp,e2) ->
+        Ltrywith (tr_rec env e1,x,temp,tr_rec env e2)
+    | Lifthenelse (cond,temp,ifso,ifnot) ->
+        Lifthenelse (tr_rec env cond,temp,tr_rec env ifso,tr_rec env ifnot)
     | Lsequence (e1,e2) ->
         Lsequence (tr_rec env e1,tr_rec env e2)
     | Lassign (x,e) ->
@@ -435,9 +454,9 @@ let iter f = function
       List.iter f args
   | Lstaticcatch(e1, _, e2) ->
       f e1; f e2
-  | Ltrywith(e1, _, e2) ->
+  | Ltrywith(e1, _, _, e2) ->
       f e1; f e2
-  | Lifthenelse(e1, e2, e3) ->
+  | Lifthenelse(e1, _, e2, e3) ->
       f e1; f e2; f e3
   | Lsequence(e1, e2) ->
       f e1; f e2
@@ -471,7 +490,7 @@ let free_ids get l =
         List.iter (fun (id, _exp) -> fv := IdentSet.remove id !fv) decl
     | Lstaticcatch(_e1, (_,vars), _e2) ->
         List.iter (fun id -> fv := IdentSet.remove id !fv) vars
-    | Ltrywith(_e1, exn, _e2) ->
+    | Ltrywith(_e1, _temp, exn, _e2) ->
         fv := IdentSet.remove exn !fv
     | Lfor(v, _e1, _e2, _dir, _e3) ->
         fv := IdentSet.remove v !fv
@@ -506,14 +525,14 @@ let next_negative_raise_count () =
 let staticfail = Lstaticraise (0,[])
 
 let rec is_guarded = function
-  | Lifthenelse(_cond, _body, Lstaticraise (0,[])) -> true
+  | Lifthenelse(_cond, _temp, _body, Lstaticraise (0,[])) -> true
   | Llet(_str, _k, _id, _lam, body) -> is_guarded body
   | Levent(lam, _ev) -> is_guarded lam
   | _ -> false
 
 let rec patch_guarded patch = function
-  | Lifthenelse (cond, body, Lstaticraise (0,[])) ->
-      Lifthenelse (cond, body, patch)
+  | Lifthenelse (cond, temp, body, Lstaticraise (0,[])) ->
+      Lifthenelse (cond, temp, body, patch)
   | Llet(str, k, id, lam, body) ->
       Llet (str, k, id, lam, patch_guarded patch body)
   | Levent(lam, ev) ->
@@ -584,8 +603,8 @@ let subst_lambda s lam =
         (subst arg,List.map subst_strcase cases,subst_opt default,loc)
   | Lstaticraise (i,args) ->  Lstaticraise (i, List.map subst args)
   | Lstaticcatch(e1, io, e2) -> Lstaticcatch(subst e1, io, subst e2)
-  | Ltrywith(e1, exn, e2) -> Ltrywith(subst e1, exn, subst e2)
-  | Lifthenelse(e1, e2, e3) -> Lifthenelse(subst e1, subst e2, subst e3)
+  | Ltrywith(e1, exn, temp, e2) -> Ltrywith(subst e1, exn, temp, subst e2)
+  | Lifthenelse(e1, temp, e2, e3) -> Lifthenelse(subst e1, temp, subst e2, subst e3)
   | Lsequence(e1, e2) -> Lsequence(subst e1, subst e2)
   | Lwhile(e1, e2) -> Lwhile(subst e1, subst e2)
   | Lfor(v, e1, e2, dir, e3) -> Lfor(v, subst e1, subst e2, dir, subst e3)
@@ -644,10 +663,10 @@ let rec map f lam =
         Lstaticraise (i, List.map (map f) args)
     | Lstaticcatch (body, id, handler) ->
         Lstaticcatch (map f body, id, map f handler)
-    | Ltrywith (e1, v, e2) ->
-        Ltrywith (map f e1, v, map f e2)
-    | Lifthenelse (e1, e2, e3) ->
-        Lifthenelse (map f e1, map f e2, map f e3)
+    | Ltrywith (e1, v, temp, e2) ->
+        Ltrywith (map f e1, v, temp, map f e2)
+    | Lifthenelse (e1, temp, e2, e3) ->
+        Lifthenelse (map f e1, temp, map f e2, map f e3)
     | Lsequence (e1, e2) ->
         Lsequence (map f e1, map f e2)
     | Lwhile (e1, e2) ->

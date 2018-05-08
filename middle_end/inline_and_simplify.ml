@@ -625,6 +625,7 @@ and simplify_set_of_closures original_env r
       Flambda.create_function_declaration ~params:function_decl.params
         ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
         ~inline ~specialise:function_decl.specialise
+        ~temperature:function_decl.temperature
         ~is_a_functor:function_decl.is_a_functor
     in
     let used_params' = Flambda.used_params function_decl in
@@ -833,6 +834,7 @@ and simplify_partial_application env r ~lhs_of_application
       ~body
       ~params:remaining_args
       ~stub:true
+      ~temperature:function_decl.Flambda.temperature
   in
   let with_known_args =
     Flambda_utils.bind
@@ -1198,14 +1200,14 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
               R.meet_approx r env approx
         end
     end
-  | Try_with (body, id, handler) ->
+  | Try_with (body, temp, id, handler) ->
     let body, r = simplify env r body in
     let id, sb = Freshening.add_variable (E.freshening env) id in
     let env = E.add (E.set_freshening env sb) id (A.value_unknown Other) in
     let env = E.inside_branch env in
     let handler, r = simplify env r handler in
-    Try_with (body, id, handler), ret r (A.value_unknown Other)
-  | If_then_else (arg, ifso, ifnot) ->
+    Try_with (body, temp, id, handler), ret r (A.value_unknown Other)
+  | If_then_else (arg, temp, ifso, ifnot) ->
     (* When arg is the constant false or true (or something considered
        as true), we can drop the if and replace it by a sequence.
        if arg is not effectful we can also drop it. *)
@@ -1223,7 +1225,7 @@ and simplify env r (tree : Flambda.t) : Flambda.t * R.t =
         let ifso, r = simplify env r ifso in
         let ifso_approx = R.approx r in
         let ifnot, r = simplify env r ifnot in
-        If_then_else (arg, ifso, ifnot),
+        If_then_else (arg, temp, ifso, ifnot),
           R.meet_approx r env ifso_approx
       end)
   | While (cond, body) ->
@@ -1423,6 +1425,7 @@ and duplicate_function ~env ~(set_of_closures : Flambda.set_of_closures)
     Flambda.create_function_declaration ~params:function_decl.params
       ~body ~stub:function_decl.stub ~dbg:function_decl.dbg
       ~inline:function_decl.inline ~specialise:function_decl.specialise
+      ~temperature:function_decl.temperature
       ~is_a_functor:function_decl.is_a_functor
   in
   function_decl, specialised_args

@@ -78,8 +78,8 @@ let occurs_var var u =
         (match d with None -> false | Some d -> occurs d)
     | Ustaticfail (_, args) -> List.exists occurs args
     | Ucatch(_, _, body, hdlr) -> occurs body || occurs hdlr
-    | Utrywith(body, _exn, hdlr) -> occurs body || occurs hdlr
-    | Uifthenelse(cond, ifso, ifnot) ->
+    | Utrywith(body, _temp, _exn, hdlr) -> occurs body || occurs hdlr
+    | Uifthenelse(cond, _temp, ifso, ifnot) ->
         occurs cond || occurs ifso || occurs ifnot
     | Usequence(u1, u2) -> occurs u1 || occurs u2
     | Uwhile(cond, body) -> occurs cond || occurs body
@@ -178,11 +178,20 @@ let lambda_smaller lam threshold =
     | Ustaticfail (_,args) -> lambda_list_size args
     | Ucatch(_, _, body, handler) ->
         incr size; lambda_size body; lambda_size handler
-    | Utrywith(body, _id, handler) ->
-        size := !size + 8; lambda_size body; lambda_size handler
-    | Uifthenelse(cond, ifso, ifnot) ->
+    | Utrywith(body, temp, _id, handler) ->
+        size := !size + 8;
+        begin match temp with
+        | Cold _ | Tepid -> lambda_size body; lambda_size handler
+        | Hot _ -> lambda_size body
+        end
+    | Uifthenelse(cond, temp, ifso, ifnot) ->
         size := !size + 2;
-        lambda_size cond; lambda_size ifso; lambda_size ifnot
+        lambda_size cond;
+        begin match temp with
+        | Cold _ -> lambda_size ifnot
+        | Tepid -> lambda_size ifso; lambda_size ifnot
+        | Hot _ -> lambda_size ifso
+        end
     | Usequence(lam1, lam2) ->
         lambda_size lam1; lambda_size lam2
     | Uwhile(cond, body) ->
@@ -631,18 +640,18 @@ let rec substitute loc fpc sb rn ulam =
           ids ids' sb
       in
       Ucatch(nfail, ids', substitute loc fpc sb rn u1, substitute loc fpc sb' rn u2)
-  | Utrywith(u1, id, u2) ->
+  | Utrywith(u1, temp, id, u2) ->
       let id' = Ident.rename id in
-      Utrywith(substitute loc fpc sb rn u1, id',
+      Utrywith(substitute loc fpc sb rn u1, temp, id',
                substitute loc fpc (Tbl.add id (Uvar id') sb) rn u2)
-  | Uifthenelse(u1, u2, u3) ->
+  | Uifthenelse(u1, temp, u2, u3) ->
       begin match substitute loc fpc sb rn u1 with
         Uconst (Uconst_ptr n) ->
           if n <> 0 then substitute loc fpc sb rn u2 else substitute loc fpc sb rn u3
       | Uprim(Pmakeblock _, _, _) ->
           substitute loc fpc sb rn u2
       | su1 ->
-          Uifthenelse(su1, substitute loc fpc sb rn u2, substitute loc fpc sb rn u3)
+          Uifthenelse(su1, temp, substitute loc fpc sb rn u2, substitute loc fpc sb rn u3)
       end
   | Usequence(u1, u2) ->
       Usequence(substitute loc fpc sb rn u1, substitute loc fpc sb rn u2)
@@ -1063,11 +1072,11 @@ let rec close fenv cenv = function
       let (ubody, _) = close fenv cenv body in
       let (uhandler, _) = close fenv cenv handler in
       (Ucatch(i, vars, ubody, uhandler), Value_unknown)
-  | Ltrywith(body, id, handler) ->
+  | Ltrywith(body, temp, id, handler) ->
       let (ubody, _) = close fenv cenv body in
       let (uhandler, _) = close fenv cenv handler in
-      (Utrywith(ubody, id, uhandler), Value_unknown)
-  | Lifthenelse(arg, ifso, ifnot) ->
+      (Utrywith(ubody, temp, id, uhandler), Value_unknown)
+  | Lifthenelse(arg, temp, ifso, ifnot) ->
       begin match close fenv cenv arg with
         (uarg, Value_const (Uconst_ptr n)) ->
           sequence_constant_expr arg uarg
@@ -1075,7 +1084,7 @@ let rec close fenv cenv = function
       | (uarg, _ ) ->
           let (uifso, _) = close fenv cenv ifso in
           let (uifnot, _) = close fenv cenv ifnot in
-          (Uifthenelse(uarg, uifso, uifnot), Value_unknown)
+          (Uifthenelse(uarg, temp, uifso, uifnot), Value_unknown)
       end
   | Lsequence(lam1, lam2) ->
       let (ulam1, _) = close fenv cenv lam1 in
@@ -1148,7 +1157,7 @@ and close_functions fenv cenv fun_defs =
   let uncurried_defs =
     List.map
       (function
-          (id, Lfunction{kind; params; body; loc}) ->
+          (id, Lfunction{kind; params; body; attr; loc}) ->
             let label = Compilenv.make_symbol (Some (Ident.unique_name id)) in
             let arity = List.length params in
             let fundesc =
@@ -1156,7 +1165,8 @@ and close_functions fenv cenv fun_defs =
                fun_arity = (if kind = Tupled then -arity else arity);
                fun_closed = initially_closed;
                fun_inline = None;
-               fun_float_const_prop = !Clflags.float_const_prop } in
+               fun_float_const_prop = !Clflags.float_const_prop;
+               fun_temperature = attr.temperature; } in
             let dbg = Debuginfo.from_location loc in
             (id, params, body, fundesc, dbg)
         | (_, _) -> fatal_error "Closure.close_functions")
@@ -1201,6 +1211,7 @@ and close_functions fenv cenv fun_defs =
         body   = ubody;
         dbg;
         env = Some env_param;
+        temperature = fundesc.fun_temperature;
       }
     in
     (* give more chance of function with default parameters (i.e.
@@ -1362,10 +1373,10 @@ let collect_exported_structured_constants a =
         Misc.may ulam d
     | Ustaticfail (_, ul) -> List.iter ulam ul
     | Ucatch (_, _, u1, u2)
-    | Utrywith (u1, _, u2)
+    | Utrywith (u1, _, _, u2)
     | Usequence (u1, u2)
     | Uwhile (u1, u2)  -> ulam u1; ulam u2
-    | Uifthenelse (u1, u2, u3)
+    | Uifthenelse (u1, _, u2, u3)
     | Ufor (_, u1, u2, _, u3) -> ulam u1; ulam u2; ulam u3
     | Uassign (_, u) -> ulam u
     | Usend (_, u1, u2, ul, _) -> ulam u1; ulam u2; List.iter ulam ul

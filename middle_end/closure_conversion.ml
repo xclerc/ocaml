@@ -99,7 +99,8 @@ let tupled_function_call_stub original_params unboxed_version
   let tuple_param = Parameter.wrap tuple_param_var in
   Flambda.create_function_declaration ~params:[tuple_param]
     ~body ~stub:true ~dbg:Debuginfo.none ~inline:Default_inline
-    ~specialise:Default_specialise ~is_a_functor:false
+    ~specialise:Default_specialise ~temperature:(Lambda.Hot { explicit = false; })
+    ~is_a_functor:false
 
 let register_const t (constant:Flambda.constant_defining_value) name
       : Flambda.constant_defining_value_block_field * string =
@@ -375,6 +376,7 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
             (Flambda.create_let is_zero
               (Prim (comparison, [zero; denominator], dbg))
                 (If_then_else (is_zero,
+                  Cold { explicit = false; },
                   name_expr (Prim (Praise Raise_regular, [exn], dbg))
                     ~name:"dummy",
                   (* CR-someday pchambart: find the right event.
@@ -397,7 +399,7 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
     let cond = Variable.create "cond_sequor" in
     Flambda.create_let const_true (Const (Const_pointer 1))
       (Flambda.create_let cond (Expr arg1)
-        (If_then_else (cond, Var const_true, arg2)))
+        (If_then_else (cond, Tepid, Var const_true, arg2)))
   | Lprim (Psequand, [arg1; arg2], _) ->
     let arg1 = close t env arg1 in
     let arg2 = close t env arg2 in
@@ -405,7 +407,7 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
     let cond = Variable.create "cond_sequand" in
     Flambda.create_let const_false (Const (Const_pointer 0))
       (Flambda.create_let cond (Expr arg1)
-        (If_then_else (cond, arg2, Var const_false)))
+        (If_then_else (cond, Tepid, arg2, Var const_false)))
   | Lprim ((Psequand | Psequor), _, _) ->
     Misc.fatal_error "Psequand / Psequor must have exactly two arguments"
   | Lprim (Pidentity, [arg], _) -> close t env arg
@@ -493,14 +495,14 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
     let vars = List.map (Variable.create_with_same_name_as_ident) ids in
     Static_catch (st_exn, vars, close t env body,
       close t (Env.add_vars env ids vars) handler)
-  | Ltrywith (body, id, handler) ->
+  | Ltrywith (body, temp, id, handler) ->
     let var = Variable.create_with_same_name_as_ident id in
-    Try_with (close t env body, var, close t (Env.add_var env id var) handler)
-  | Lifthenelse (cond, ifso, ifnot) ->
+    Try_with (close t env body, temp, var, close t (Env.add_var env id var) handler)
+  | Lifthenelse (cond, temp, ifso, ifnot) ->
     let cond = close t env cond in
     let cond_var = Variable.create "cond" in
     Flambda.create_let cond_var (Expr cond)
-      (If_then_else (cond_var, close t env ifso, close t env ifnot))
+      (If_then_else (cond_var, temp, close t env ifso, close t env ifnot))
   | Lsequence (lam1, lam2) ->
     let var = Variable.create "sequence" in
     let lam1 = Flambda.Expr (close t env lam1) in
@@ -572,6 +574,7 @@ and close_functions t external_env function_declarations : Flambda.named =
       Flambda.create_function_declaration ~params ~body ~stub ~dbg
         ~inline:(Function_decl.inline decl)
         ~specialise:(Function_decl.specialise decl)
+        ~temperature:(Function_decl.temperature decl)
         ~is_a_functor:(Function_decl.is_a_functor decl)
     in
     match Function_decl.kind decl with

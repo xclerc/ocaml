@@ -430,7 +430,14 @@ let name_of_primitive = function
   | Pint_as_pointer -> "Pint_as_pointer"
   | Popaque -> "Popaque"
 
-let function_attribute ppf { inline; specialise; is_a_functor; stub } =
+let temperature_attribute ppf = function
+  | Cold { explicit = true; } -> fprintf ppf "cold*"
+  | Cold { explicit = false; } -> fprintf ppf "cold"
+  | Tepid       -> fprintf ppf "tepid"
+  | Hot { explicit = true; } -> fprintf ppf "hot*"
+  | Hot { explicit = false; } -> fprintf ppf "hot"
+
+let function_attribute ppf { inline; specialise; temperature; is_a_functor; stub } =
   if is_a_functor then
     fprintf ppf "is_a_functor@ ";
   if stub then
@@ -445,7 +452,8 @@ let function_attribute ppf { inline; specialise; is_a_functor; stub } =
   | Default_specialise -> ()
   | Always_specialise -> fprintf ppf "always_specialise@ "
   | Never_specialise -> fprintf ppf "never_specialise@ "
-  end
+  end;
+  fprintf ppf "%a@ " temperature_attribute temperature
 
 let apply_tailcall_attribute ppf tailcall =
   if tailcall then
@@ -572,11 +580,12 @@ let rec lam ppf = function
                 vars)
         vars
         lam lhandler
-  | Ltrywith(lbody, param, lhandler) ->
-      fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"
-        lam lbody Ident.print param lam lhandler
-  | Lifthenelse(lcond, lif, lelse) ->
-      fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" lam lcond lam lif lam lelse
+  | Ltrywith(lbody, temp, param, lhandler) ->
+      fprintf ppf "@[<2>(try [%a]@ %a@;<1 -1>with %a@ %a)@]"
+        temperature_attribute temp lam lbody Ident.print param lam lhandler
+  | Lifthenelse(lcond, temp, lif, lelse) ->
+      fprintf ppf "@[<2>(if [%a]@ %a@ %a@ %a)@]"
+        lam lcond temperature_attribute temp lam lif lam lelse
   | Lsequence(l1, l2) ->
       fprintf ppf "@[<2>(seq@ %a@ %a)@]" lam l1 sequence l2
   | Lwhile(lcond, lbody) ->

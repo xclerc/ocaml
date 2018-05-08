@@ -246,7 +246,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
        bound variables as in NC also *)
     | Assign _ ->
       mark_curr curr
-    | Try_with (f1,id,f2) ->
+    | Try_with (f1,_,id,f2) ->
       mark_curr [Var id];
       mark_curr curr;
       mark_loop ~toplevel [] f1;
@@ -268,7 +268,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_curr curr;
       mark_loop ~toplevel [] f1;
       mark_loop ~toplevel:false [] body
-    | If_then_else (f1,f2,f3) ->
+    | If_then_else (f1,_,f2,f3) ->
       mark_curr curr;
       mark_curr [Var f1];
       mark_loop ~toplevel [] f2;

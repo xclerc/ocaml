@@ -17,6 +17,14 @@ open Typedtree
 open Lambda
 open Location
 
+let is_cold_attribute = function
+  | {txt=("cold"|"ocaml.cold")}, _ -> true
+  | _ -> false
+
+let is_hot_attribute = function
+  | {txt=("hot"|"ocaml.hot")}, _ -> true
+  | _ -> false
+
 let is_inline_attribute = function
   | {txt=("inline"|"ocaml.inline")}, _ -> true
   | _ -> false
@@ -26,12 +34,20 @@ let is_inlined_attribute = function
   | {txt=("unrolled"|"ocaml.unrolled")}, _ when Config.flambda -> true
   | _ -> false
 
+let is_likely_attribute = function
+  | {txt=("likely"|"ocaml.likely")}, _ -> true
+  | _ -> false
+
 let is_specialise_attribute = function
   | {txt=("specialise"|"ocaml.specialise")}, _ when Config.flambda -> true
   | _ -> false
 
 let is_specialised_attribute = function
   | {txt=("specialised"|"ocaml.specialised")}, _ when Config.flambda -> true
+  | _ -> false
+
+let is_unlikely_attribute = function
+  | {txt=("unlikely"|"ocaml.unlikely")}, _ -> true
   | _ -> false
 
 let find_attribute p attributes =
@@ -221,12 +237,65 @@ let get_tailcall_attribute e =
       end;
       true, { e with exp_attributes }
 
+let get_temperature_attribute name1 fun1 name2 fun2 l =
+  let attr1, l = find_attribute fun1 l in
+  let attr2, _ = find_attribute fun2 l in
+  match attr1, attr2 with
+  | None, None -> Tepid
+  | Some _, None -> Cold { explicit = true; }
+  | None, Some _ -> Hot { explicit = true; }
+  | Some _, Some ((other : string Location.loc), _) ->
+    Location.prerr_warning other.loc
+      (Warnings.Conflicting_attributes (name1, name2));
+    Tepid
+
+let get_temperature_attribute_for_function =
+  get_temperature_attribute
+    "cold" is_cold_attribute
+    "hot" is_hot_attribute
+
+let get_temperature_attribute_for_ifthenelse =
+  get_temperature_attribute
+    "unlikely" is_unlikely_attribute
+    "likely" is_likely_attribute
+
+let get_temperature_attribute_for_trywith =
+  get_temperature_attribute_for_ifthenelse
+
+let add_temperature_attribute expr loc attributes =
+  match expr, get_temperature_attribute_for_function attributes with
+  | expr, Tepid -> expr
+  | Lfunction ({ attr = { stub = false } as attr } as funct), temperature ->
+    begin match attr.temperature with
+    | Tepid -> ()
+    | Cold _ | Hot _ ->
+      Location.prerr_warning loc
+        (Warnings.Duplicated_attribute "temperature")
+    end;
+    let attr = { attr with temperature } in
+    Lfunction { funct with attr }
+  | expr, (Cold _ | Hot _) ->
+    Location.prerr_warning loc
+      (Warnings.Misplaced_attribute "temperature");
+    expr
+
+
 let check_attribute e ({ txt; loc }, _) =
   match txt with
+  | "cold" | "ocaml.cold"
+  | "hot" | "ocaml.hot"
   | "inline" | "ocaml.inline"
   | "specialise" | "ocaml.specialise" -> begin
       match e.exp_desc with
       | Texp_function _ -> ()
+      | _ ->
+          Location.prerr_warning loc
+            (Warnings.Misplaced_attribute txt)
+    end
+  | "likely" | "ocaml.likely"
+  | "unlikely" | "ocaml.unlikely" -> begin
+      match e.exp_desc with
+      | Texp_ifthenelse _ | Texp_try _ -> ()
       | _ ->
           Location.prerr_warning loc
             (Warnings.Misplaced_attribute txt)

@@ -62,11 +62,11 @@ let rec combine i allocstate =
   | Iop _ ->
       let (newnext, sz) = combine i.next allocstate in
       (instr_cons_debug i.desc i.arg i.res i.dbg newnext, sz)
-  | Iifthenelse(test, ifso, ifnot) ->
+  | Iifthenelse(test, temp, ifso, ifnot) ->
       let newifso = combine_restart ifso in
       let newifnot = combine_restart ifnot in
       let newnext = combine_restart i.next in
-      (instr_cons (Iifthenelse(test, newifso, newifnot)) i.arg i.res newnext,
+      (instr_cons (Iifthenelse(test, temp, newifso, newifnot)) i.arg i.res newnext,
        allocated_size allocstate)
   | Iswitch(table, cases) ->
       let newcases = Array.map combine_restart cases in
@@ -84,11 +84,11 @@ let rec combine i allocstate =
       let newnext = combine_restart i.next in
       (instr_cons (Icatch(rec_flag, newhandlers, newbody))
          i.arg i.res newnext, sz)
-  | Itrywith(body, handler) ->
+  | Itrywith(body, temp, handler) ->
       let (newbody, sz) = combine body allocstate in
       let newhandler = combine_restart handler in
       let newnext = combine_restart i.next in
-      (instr_cons (Itrywith(newbody, newhandler)) i.arg i.res newnext, sz)
+      (instr_cons (Itrywith(newbody, temp, newhandler)) i.arg i.res newnext, sz)
 
 and combine_restart i =
   let (newi, _) = combine i No_alloc in newi

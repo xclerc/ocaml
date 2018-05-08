@@ -339,9 +339,9 @@ method private cse n i =
       end
   (* For control structures, we set the numbering to empty at every
      join point, but propagate the current numbering across fork points. *)
-  | Iifthenelse(test, ifso, ifnot) ->
+  | Iifthenelse(test, temp, ifso, ifnot) ->
      let n1 = set_unknown_regs n (Proc.destroyed_at_oper i.desc) in
-      {i with desc = Iifthenelse(test, self#cse n1 ifso, self#cse n1 ifnot);
+      {i with desc = Iifthenelse(test, temp, self#cse n1 ifso, self#cse n1 ifnot);
               next = self#cse empty_numbering i.next}
   | Iswitch(index, cases) ->
      let n1 = set_unknown_regs n (Proc.destroyed_at_oper i.desc) in
@@ -356,8 +356,9 @@ method private cse n i =
       in
       {i with desc = Icatch(rec_flag, List.map aux handlers, self#cse n body);
               next = self#cse empty_numbering i.next}
-  | Itrywith(body, handler) ->
+  | Itrywith(body, temp, handler) ->
       {i with desc = Itrywith(self#cse n body,
+                              temp,
                               self#cse empty_numbering handler);
               next = self#cse empty_numbering i.next}
 

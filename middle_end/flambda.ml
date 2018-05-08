@@ -64,12 +64,12 @@ type t =
   | Apply of apply
   | Send of send
   | Assign of assign
-  | If_then_else of Variable.t * t * t
+  | If_then_else of Variable.t * Lambda.temperature_attribute * t * t
   | Switch of Variable.t * switch
   | String_switch of Variable.t * (string * t) list * t option
   | Static_raise of Static_exception.t * Variable.t list
   | Static_catch of Static_exception.t * Variable.t list * t * t
-  | Try_with of t * Variable.t * t
+  | Try_with of t * Lambda.temperature_attribute * Variable.t * t
   | While of t * t
   | For of for_loop
   | Proved_unreachable
@@ -124,6 +124,7 @@ and function_declaration = {
   dbg : Debuginfo.t;
   inline : Lambda.inline_attribute;
   specialise : Lambda.specialise_attribute;
+  temperature : Lambda.temperature_attribute;
   is_a_functor : bool;
 }
 
@@ -313,12 +314,16 @@ let rec lam ppf (flam : t) =
                  vars)
         vars
         lam lhandler
-  | Try_with(lbody, param, lhandler) ->
-      fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a@ %a)@]"
-        lam lbody Variable.print param lam lhandler
-  | If_then_else(lcond, lif, lelse) ->
-      fprintf ppf "@[<2>(if@ %a@ then begin@ %a@ end else begin@ %a@ end)@]"
+  | Try_with(lbody, temp, param, lhandler) ->
+      fprintf ppf "@[<2>(try [%a]@ %a@;<1 -1>with %a@ %a)@]"
+        lam lbody
+        Printlambda.temperature_attribute temp
+        Variable.print param
+        lam lhandler
+  | If_then_else(lcond, temp, lif, lelse) ->
+      fprintf ppf "@[<2>(if [%a]@ %a@ then begin@ %a@ end else begin@ %a@ end)@]"
         Variable.print lcond
+        Printlambda.temperature_attribute temp
         lam lif lam lelse
   | While(lcond, lbody) ->
       fprintf ppf "@[<2>(while@ %a@ %a)@]" lam lcond lam lbody
@@ -383,8 +388,9 @@ and print_function_declaration ppf var (f : function_declaration) =
     | Never_specialise -> " *never_specialise*"
     | Default_specialise -> ""
   in
-  fprintf ppf "@[<2>(%a%s%s%s%s@ =@ fun@[<2>%a@] ->@ @[<2>%a@])@]@ "
+  fprintf ppf "@[<2>(%a%s%s%s%s%a@ =@ fun@[<2>%a@] ->@ @[<2>%a@])@]@ "
     Variable.print var stub is_a_functor inline specialise
+    Printlambda.temperature_attribute f.temperature
     params f.params lam f.body
 
 and print_set_of_closures ppf (set_of_closures : set_of_closures) =
@@ -570,11 +576,11 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
         List.iter bound_variable vars;
         aux e1;
         aux e2
-      | Try_with (e1, var, e2) ->
+      | Try_with (e1, _, var, e2) ->
         aux e1;
         bound_variable var;
         aux e2
-      | If_then_else (var, e1, e2) ->
+      | If_then_else (var, _, e1, e2) ->
         free_variable var;
         aux e1;
         aux e2
@@ -773,12 +779,12 @@ let iter_general ~toplevel f f_named maybe_named =
       | Let_rec (defs, body) ->
         List.iter (fun (_,l) -> aux_named l) defs;
         aux body
-      | Try_with (f1,_,f2)
+      | Try_with (f1,_,_,f2)
       | While (f1,f2)
       | Static_catch (_,_,f1,f2) ->
         aux f1; aux f2
       | For { body; _ } -> aux body
-      | If_then_else (_, f1, f2) ->
+      | If_then_else (_, _, f1, f2) ->
         aux f1; aux f2
       | Switch (_, sw) ->
         List.iter (fun (_,l) -> aux l) sw.consts;
@@ -984,7 +990,9 @@ let free_symbols_program (program : program) =
 
 let create_function_declaration ~params ~body ~stub ~dbg
       ~(inline : Lambda.inline_attribute)
-      ~(specialise : Lambda.specialise_attribute) ~is_a_functor
+      ~(specialise : Lambda.specialise_attribute)
+      ~(temperature : Lambda.temperature_attribute)
+      ~is_a_functor
       : function_declaration =
   begin match stub, inline with
   | true, (Never_inline | Default_inline)
@@ -1010,6 +1018,7 @@ let create_function_declaration ~params ~body ~stub ~dbg
     dbg;
     inline;
     specialise;
+    temperature;
     is_a_functor;
   }
 

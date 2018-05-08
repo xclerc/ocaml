@@ -212,6 +212,14 @@ type specialise_attribute =
   | Never_specialise (* [@specialise never] *)
   | Default_specialise (* no [@specialise] attribute *)
 
+type temperature_attribute =
+  | Cold of { explicit : bool; }
+  | Tepid
+  | Hot of { explicit : bool; }
+
+val same_temperature : temperature_attribute -> temperature_attribute -> bool
+val invert_temperature : temperature_attribute -> temperature_attribute
+
 type function_kind = Curried | Tupled
 
 type let_kind = Strict | Alias | StrictOpt | Variable
@@ -233,6 +241,7 @@ type shared_code = (int * int) list     (* stack size -> code label *)
 type function_attribute = {
   inline : inline_attribute;
   specialise : specialise_attribute;
+  temperature : temperature_attribute;
   is_a_functor: bool;
   stub: bool;
 }
@@ -252,8 +261,8 @@ type lambda =
       lambda * (string * lambda) list * lambda option * Location.t
   | Lstaticraise of int * lambda list
   | Lstaticcatch of lambda * (int * Ident.t list) * lambda
-  | Ltrywith of lambda * Ident.t * lambda
-  | Lifthenelse of lambda * lambda * lambda
+  | Ltrywith of lambda * temperature_attribute * Ident.t * lambda
+  | Lifthenelse of lambda * temperature_attribute * lambda * lambda
   | Lsequence of lambda * lambda
   | Lwhile of lambda * lambda
   | Lfor of Ident.t * lambda * lambda * direction_flag * lambda

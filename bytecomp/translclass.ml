@@ -856,7 +856,10 @@ let transl_class ids cl_id pub_meths cl vflag =
          so that the program's behaviour does not change between runs *)
       lupdate_cache
     else
-      Lifthenelse(lfield cached 0, lambda_unit, lupdate_cache) in
+      Lifthenelse(lfield cached 0,
+                  Tepid,
+                  lambda_unit,
+                  lupdate_cache) in
   llets (
   lcache (
   Lsequence(lcheck_cache,

@@ -162,7 +162,7 @@ let rec reload i before =
       (add_reloads (Reg.inter_set_array new_before i.arg)
                    (instr_cons_debug i.desc i.arg i.res i.dbg new_next),
        finally)
-  | Iifthenelse(test, ifso, ifnot) ->
+  | Iifthenelse(test, temp, ifso, ifnot) ->
       let at_fork = Reg.diff_set_array before i.arg in
       let date_fork = !current_date in
       let (new_ifso, after_ifso) = reload ifso at_fork in
@@ -173,7 +173,7 @@ let rec reload i before =
       let (new_next, finally) =
         reload i.next (Reg.Set.union after_ifso after_ifnot) in
       let new_i =
-        instr_cons (Iifthenelse(test, new_ifso, new_ifnot))
+        instr_cons (Iifthenelse(test, temp, new_ifso, new_ifnot))
         i.arg i.res new_next in
       destroyed_at_fork := (new_i, at_fork) :: !destroyed_at_fork;
       (add_reloads (Reg.inter_set_array before i.arg) new_i,
@@ -260,7 +260,7 @@ let rec reload i before =
       let set = find_reload_at_exit nfail in
       set := Reg.Set.union !set before;
       (i, Reg.Set.empty)
-  | Itrywith(body, handler) ->
+  | Itrywith(body, temp, handler) ->
       let (new_body, after_body) = reload body before in
       (* All registers live at the beginning of the handler are destroyed,
          except the exception bucket *)
@@ -270,7 +270,7 @@ let rec reload i before =
       let (new_handler, after_handler) = reload handler before_handler in
       let (new_next, finally) =
         reload i.next (Reg.Set.union after_body after_handler) in
-      (instr_cons (Itrywith(new_body, new_handler)) i.arg i.res new_next,
+      (instr_cons (Itrywith(new_body, temp, new_handler)) i.arg i.res new_next,
        finally)
   | Iraise _ ->
       (add_reloads (Reg.inter_set_array before i.arg) i, Reg.Set.empty)
@@ -336,14 +336,14 @@ let rec spill i finally =
       (instr_cons_debug i.desc i.arg i.res i.dbg
                   (add_spills (Reg.inter_set_array after i.res) new_next),
        before)
-  | Iifthenelse(test, ifso, ifnot) ->
+  | Iifthenelse(test, temp, ifso, ifnot) ->
       let (new_next, at_join) = spill i.next finally in
       let (new_ifso, before_ifso) = spill ifso at_join in
       let (new_ifnot, before_ifnot) = spill ifnot at_join in
       if
         !inside_loop || !inside_arm || !inside_catch
       then
-        (instr_cons (Iifthenelse(test, new_ifso, new_ifnot))
+        (instr_cons (Iifthenelse(test, temp, new_ifso, new_ifnot))
                      i.arg i.res new_next,
          Reg.Set.union before_ifso before_ifnot)
       else begin
@@ -353,8 +353,10 @@ let rec spill i finally =
         and spill_ifnot_branch =
           Reg.Set.diff (Reg.Set.diff before_ifnot before_ifso) destroyed in
         (instr_cons
-            (Iifthenelse(test, add_spills spill_ifso_branch new_ifso,
-                               add_spills spill_ifnot_branch new_ifnot))
+            (Iifthenelse(test,
+                         temp,
+                         add_spills spill_ifso_branch new_ifso,
+                         add_spills spill_ifnot_branch new_ifnot))
             i.arg i.res new_next,
          Reg.Set.diff (Reg.Set.diff (Reg.Set.union before_ifso before_ifnot)
                                     spill_ifso_branch)
@@ -438,14 +440,14 @@ let rec spill i finally =
        before)
   | Iexit nfail ->
       (i, find_spill_at_exit nfail)
-  | Itrywith(body, handler) ->
+  | Itrywith(body, temp, handler) ->
       let (new_next, at_join) = spill i.next finally in
       let (new_handler, before_handler) = spill handler at_join in
       let saved_spill_at_raise = !spill_at_raise in
       spill_at_raise := before_handler;
       let (new_body, before_body) = spill body at_join in
       spill_at_raise := saved_spill_at_raise;
-      (instr_cons (Itrywith(new_body, new_handler)) i.arg i.res new_next,
+      (instr_cons (Itrywith(new_body, temp, new_handler)) i.arg i.res new_next,
        before_body)
   | Iraise _ ->
       (i, !spill_at_raise)
@@ -474,4 +476,5 @@ let fundecl f =
     fun_fast = f.fun_fast;
     fun_dbg  = f.fun_dbg;
     fun_spacetime_shape = f.fun_spacetime_shape;
+    fun_temperature = f.fun_temperature;
   }
