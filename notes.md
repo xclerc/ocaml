@@ -50,6 +50,7 @@ either `&&` or `||` as the top-most operator.
 
 If the expression is `if[@ifattr] (arg1 && arg2) ...`, then attributes are
 computed as follows:
+
 | ifattr   | arg1 attribute | arg2 attribute |
 |----------|----------------|----------------|
 | *none*   | *none*         | *none*         |
@@ -58,6 +59,7 @@ computed as follows:
 
 If the expression is `if[@ifattr] (arg1 || arg2) ...`, then attributes are
 computed as follows:
+
 | ifattr   | arg1 attribute | arg2 attribute |
 |----------|----------------|----------------|
 | *none*   | *none*         | *none*         |
@@ -86,6 +88,7 @@ is determined by applying the following rules:
   otherwise);
 - the temperature at the start of a module entry function is tepid;
 - `if`/`then`/`else`
+
   | attribute   | current temperature | then temperature | else temperature |
   |-------------|---------------------|------------------|------------------|
   | [@likely]   | cold                | cold             | cold             |
@@ -95,6 +98,7 @@ is determined by applying the following rules:
   | [@unlikely] | tepid               | cold             | tepid            |
   | [@unlikely] | hot                 | cold             | hot              |
 - `try`/`with`
+
   | attribute   | current temperature | try temperature | with temperature |
   |-------------|---------------------|-----------------|------------------|
   | [@likely]   | cold                | cold            | cold             |
