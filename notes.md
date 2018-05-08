@@ -51,7 +51,7 @@ either `&&` or `||` as the top-most operator.
 If the expression is `if[@ifattr] (arg1 && arg2) ...`, then attributes are
 computed as follows:
 | ifattr   | arg1 attribute | arg2 attribute |
-+----------|----------------|----------------+
+|----------|----------------|----------------|
 | *none*   | *none*         | *none*         |
 | likely   | likely         | likely         |
 | unlikely | *none*         | unlikely       |
@@ -59,7 +59,7 @@ computed as follows:
 If the expression is `if[@ifattr] (arg1 || arg2) ...`, then attributes are
 computed as follows:
 | ifattr   | arg1 attribute | arg2 attribute |
-+----------|----------------|----------------+
+|----------|----------------|----------------|
 | *none*   | *none*         | *none*         |
 | likely   | *none*         | likely         |
 | unlikely | unlikely       | unlikely       |
@@ -87,7 +87,7 @@ is determined by applying the following rules:
 - the temperature at the start of a module entry function is tepid;
 - `if`/`then`/`else`
   | attribute   | current temperature | then temperature | else temperature |
-  +-------------|---------------------|------------------|------------------+
+  |-------------|---------------------|------------------|------------------|
   | [@likely]   | cold                | cold             | cold             |
   | [@likely]   | tepid               | tepid            | cold             |
   | [@likely]   | hot                 | hot              | cold             |
@@ -96,7 +96,7 @@ is determined by applying the following rules:
   | [@unlikely] | hot                 | cold             | hot              |
 - `try`/`with`
   | attribute   | current temperature | try temperature | with temperature |
-  +-------------|---------------------|-----------------|------------------+
+  |-------------|---------------------|-----------------|------------------|
   | [@likely]   | cold                | cold            | cold             |
   | [@likely]   | tepid               | tepid           | cold             |
   | [@likely]   | hot                 | hot             | cold             |
