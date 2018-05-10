@@ -362,13 +362,19 @@ let rec linear curr_temp i n =
 (* Ensures that a label always has the same temperature as the following
    instructions *)
 let rec fix_label_temperatures i =
+  let rec get_temperature j =
+    match j.desc with
+    | Llabel _ -> get_temperature j.next
+    | _ -> j.temperature
+  in
   if i.desc <> Lend then begin
-    fix_label_temperatures i.next;
-    match i.desc with
+    begin match i.desc with
     | Llabel _ when i.next.desc <> Lend ->
-      i.temperature <- i.next.temperature
+      i.temperature <- get_temperature i.next
     | _ ->
       ()
+    end;
+    fix_label_temperatures i.next
   end
 
 let rec add_jump_for_temperature_changes (i : instruction) =
