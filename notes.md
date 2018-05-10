@@ -171,6 +171,9 @@ TODO
 ----
 - check whether [Linearize.fix_label_temperatures] is still needed;
 - check whether [Linearize.add_jump_for_temperature_changes] is still needed;
+- if both [Linearize.{fix_label_temperatures,add_jump_for_temperature_changes}]
+  are needed, merge them ([fix label_temperature] just avoiding dummy jumps
+  later on);
 - check whether the patch is OK under macOS;
   (note: LLVM uses ".section .text.cold" under Linux but
    ".section __TEXT,__text.cold,regular,pure_instructions" under Darwin);
