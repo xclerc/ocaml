@@ -63,7 +63,6 @@ let for_primitive (prim : Lambda.primitive) =
       Arbitrary_effects, No_coeffects
   | Poffsetint _ -> No_effects, No_coeffects
   | Poffsetref _ -> Arbitrary_effects, Has_coeffects
-  | Pidentityfloat
   | Pintoffloat
   | Pfloatofint
   | Pnegfloat
@@ -150,6 +149,7 @@ let for_primitive (prim : Lambda.primitive) =
   | Pbbswap _ -> No_effects, No_coeffects
   | Pint_as_pointer -> No_effects, No_coeffects
   | Popaque -> Arbitrary_effects, Has_coeffects
+  | Pvalue_kind _ -> No_effects, No_coeffects
   | Prevapply
   | Pdirapply ->
       (* Removed by [Simplif], but there is no reason to prevent using
@@ -158,7 +158,7 @@ let for_primitive (prim : Lambda.primitive) =
   | Psequand
   | Psequor ->
       (* Removed by [Closure_conversion] in the flambda pipeline. *)
-      No_effects, No_coeffects
+    No_effects, No_coeffects
 
 type return_type =
   | Float
@@ -166,7 +166,6 @@ type return_type =
 
 let return_type_of_primitive (prim:Lambda.primitive) =
   match prim with
-  | Pidentityfloat
   | Pfloatofint
   | Pnegfloat
   | Pabsfloat
@@ -176,7 +175,8 @@ let return_type_of_primitive (prim:Lambda.primitive) =
   | Pdivfloat
   | Pfloatfield _
   | Parrayrefu Pfloatarray
-  | Parrayrefs Pfloatarray ->
+  | Parrayrefs Pfloatarray
+  | Pvalue_kind Pfloatval ->
       Float
   | _ ->
       Other

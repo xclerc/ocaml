@@ -209,10 +209,10 @@ let primitive (p : Lambda.primitive) (args, approxs) expr dbg ~size_int
       end
     | [Value_float (Some x)] when fpc ->
       begin match p with
-      | Pidentityfloat -> S.const_float_expr expr x
       | Pintoffloat -> S.const_int_expr expr (int_of_float x)
       | Pnegfloat -> S.const_float_expr expr (-. x)
       | Pabsfloat -> S.const_float_expr expr (abs_float x)
+      | Pvalue_kind Pfloatval -> S.const_float_expr expr x
       | _ -> expr, A.value_unknown Other, C.Benefit.zero
       end
     | [Value_float (Some n1); Value_float (Some n2)] when fpc ->

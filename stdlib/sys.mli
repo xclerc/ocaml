@@ -333,3 +333,24 @@ external opaque_identity : 'a -> 'a = "%opaque"
 
     @since 4.03.0
 *)
+
+external float_identity : float -> float = "%value_kind_float"
+(** For the purposes of optimization, [float_identity] is used to indicate
+    that a given expression is of type [float], as an unboxing hint.
+
+    At runtime, [float_identity] disappears altogether.
+
+    Given the current heuristics for unboxing, [float_identity] is mainly
+    useful to indicate the return type of an inlined function.
+
+    @since 4.08.0
+*)
+
+external int32_identity : int32 -> int32 = "%value_kind_int32"
+(** Same as {!Sys.float_identity} for [int32] values. *)
+
+external int64_identity : int64 -> int64 = "%value_kind_int64"
+(** Same as {!Sys.float_identity} for [int64] values. *)
+
+external nativeint_identity : nativeint -> nativeint = "%value_kind_nativeint"
+(** Same as {!Sys.float_identity} for [nativeint] values. *)

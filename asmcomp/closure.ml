@@ -103,7 +103,7 @@ let occurs_var var u =
 
 let prim_size prim args =
   match prim with
-    Pidentity | Pidentityfloat | Pbytes_to_string | Pbytes_of_string -> 0
+    Pidentity | Pbytes_to_string | Pbytes_of_string | Pvalue_kind _ -> 0
   | Pgetglobal _ -> 1
   | Psetglobal _ -> 1
   | Pmakeblock _ -> 5 + List.length args
@@ -273,6 +273,7 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
       | Pbintofint Pint64 -> make_const_int64 (Int64.of_int n1)
       | Pbswap16 -> make_const_int (((n1 land 0xff) lsl 8)
                                     lor ((n1 land 0xff00) lsr 8))
+      | Pvalue_kind Pintval -> make_const_int n1
       | _ -> default
       end
   (* int (or enumerated type), int (or enumerated type) *)
@@ -301,10 +302,10 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
   (* float *)
   | [Value_const(Uconst_ref(_, Some (Uconst_float n1)))] when fpc ->
       begin match p with
-      | Pidentityfloat -> make_const_float n1
       | Pintoffloat -> make_const_int (int_of_float n1)
       | Pnegfloat -> make_const_float (-. n1)
       | Pabsfloat -> make_const_float (abs_float n1)
+      | Pvalue_kind Pfloatval -> make_const_float n1
       | _ -> default
       end
   (* float, float *)
@@ -325,6 +326,7 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
       | Pcvtbint(Pnativeint, Pint32) -> make_const_int32 (Nativeint.to_int32 n)
       | Pcvtbint(Pnativeint, Pint64) -> make_const_int64 (Int64.of_nativeint n)
       | Pnegbint Pnativeint -> make_const_natint (Nativeint.neg n)
+      | Pvalue_kind (Pboxedintval Pnativeint) -> make_const_natint n
       | _ -> default
       end
   (* nativeint, nativeint *)
@@ -363,6 +365,7 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
       | Pcvtbint(Pint32, Pnativeint) -> make_const_natint (Nativeint.of_int32 n)
       | Pcvtbint(Pint32, Pint64) -> make_const_int64 (Int64.of_int32 n)
       | Pnegbint Pint32 -> make_const_int32 (Int32.neg n)
+      | Pvalue_kind (Pboxedintval Pint32) -> make_const_int32 n
       | _ -> default
       end
   (* int32, int32 *)
@@ -401,6 +404,7 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
       | Pcvtbint(Pint64, Pint32) -> make_const_int32 (Int64.to_int32 n)
       | Pcvtbint(Pint64, Pnativeint) -> make_const_natint (Int64.to_nativeint n)
       | Pnegbint Pint64 -> make_const_int64 (Int64.neg n)
+      | Pvalue_kind (Pboxedintval Pint64) -> make_const_int64 n
       | _ -> default
       end
   (* int64, int64 *)

@@ -1616,7 +1616,6 @@ let rec is_unboxed_number ~strict env e =
   | Uprim(p, _, dbg) ->
       begin match simplif_primitive p with
         | Pccall p -> unboxed_number_kind_of_unbox dbg p.prim_native_repr_res
-        | Pidentityfloat
         | Pfloatfield _
         | Pfloatofint
         | Pnegfloat
@@ -1657,6 +1656,9 @@ let rec is_unboxed_number ~strict env e =
         | Pbigstring_load_32(_) -> Boxed (Boxed_integer (Pint32, dbg), false)
         | Pbigstring_load_64(_) -> Boxed (Boxed_integer (Pint64, dbg), false)
         | Praise _ -> No_result
+        | Pvalue_kind Pfloatval -> Boxed (Boxed_float dbg, false)
+        | Pvalue_kind (Pboxedintval bi) ->
+          Boxed (Boxed_integer (bi, dbg), false)
         | _ -> No_unboxing
       end
   | Ulet (_, _, _, _, e) | Uletrec (_, e) | Usequence (_, e) ->
@@ -2056,8 +2058,6 @@ and transl_prim_1 env p arg dbg =
                  (n lsl 1) dbg],
               dbg)))
   (* Floating-point operations *)
-  | Pidentityfloat ->
-      box_float dbg (transl_unbox_float dbg env arg)
   | Pfloatofint ->
       box_float dbg (Cop(Cfloatofint, [untag_int(transl env arg) dbg], dbg))
   | Pintoffloat ->
@@ -2119,6 +2119,13 @@ and transl_prim_1 env p arg dbg =
                    [untag_int (transl env arg) dbg],
                    dbg))
               dbg
+  (* Unboxing *)
+  | Pvalue_kind k ->
+    begin match k with
+    | Pgenval | Pintval -> transl env arg
+    | Pfloatval -> box_float dbg (transl_unbox_float dbg env arg)
+    | Pboxedintval bi -> box_int dbg bi (transl_unbox_int dbg env bi arg)
+    end
   | prim ->
       fatal_errorf "Cmmgen.transl_prim_1: %a" Printlambda.primitive prim
 

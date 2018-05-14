@@ -157,7 +157,6 @@ let primitives_table = create_hashtable 57 [
   "%geint", Primitive (Pintcomp Cge);
   "%incr", Primitive (Poffsetref(1));
   "%decr", Primitive (Poffsetref(-1));
-  "%identityfloat", Primitive Pidentityfloat;
   "%intoffloat", Primitive Pintoffloat;
   "%floatofint", Primitive Pfloatofint;
   "%negfloat", Primitive Pnegfloat;
@@ -326,6 +325,10 @@ let primitives_table = create_hashtable 57 [
   "%bswap_native", Primitive (Pbbswap(Pnativeint));
   "%int_as_pointer", Primitive Pint_as_pointer;
   "%opaque", Primitive Popaque;
+  "%value_kind_float", Primitive (Pvalue_kind Pfloatval);
+  "%value_kind_int32", Primitive (Pvalue_kind (Pboxedintval Pint32));
+  "%value_kind_int64", Primitive (Pvalue_kind (Pboxedintval Pint64));
+  "%value_kind_nativeint", Primitive (Pvalue_kind (Pboxedintval Pnativeint));
   "%send", Send;
   "%sendself", Send_self;
   "%sendcache", Send_cache;

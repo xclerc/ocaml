@@ -20,7 +20,7 @@
 
 let prim_size (prim : Lambda.primitive) args =
   match prim with
-  | Pidentity | Pidentityfloat -> 0
+  | Pidentity -> 0
   | Pgetglobal _ -> 1
   | Psetglobal _ -> 1
   | Pmakeblock _ -> 5 + List.length args
@@ -55,6 +55,7 @@ let prim_size (prim : Lambda.primitive) args =
   | Parraysets _ -> 10
   | Pbigarrayref (_, ndims, _, _) -> 4 + ndims * 6
   | Pbigarrayset (_, ndims, _, _) -> 4 + ndims * 6
+  | Pvalue_kind _ -> 0
   | Psequand | Psequor ->
     Misc.fatal_error "Psequand and Psequor are not allowed in Prim \
         expressions; translate out instead (cf. closure_conversion.ml)"

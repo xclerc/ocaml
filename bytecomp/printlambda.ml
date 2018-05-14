@@ -214,7 +214,6 @@ let primitive ppf = function
   | Pintcomp(cmp) -> integer_comparison ppf cmp
   | Poffsetint n -> fprintf ppf "%i+" n
   | Poffsetref n -> fprintf ppf "+:=%i"n
-  | Pidentityfloat -> fprintf ppf "id."
   | Pintoffloat -> fprintf ppf "int_of_float"
   | Pfloatofint -> fprintf ppf "float_of_int"
   | Pnegfloat -> fprintf ppf "~."
@@ -336,6 +335,7 @@ let primitive ppf = function
   | Pbbswap(bi) -> print_boxed_integer "bswap" ppf bi
   | Pint_as_pointer -> fprintf ppf "int_as_pointer"
   | Popaque -> fprintf ppf "opaque"
+  | Pvalue_kind k -> fprintf ppf "value_kind.%s" (field_kind k)
 
 let name_of_primitive = function
   | Pidentity -> "Pidentity"
@@ -374,7 +374,6 @@ let name_of_primitive = function
   | Pintcomp _ -> "Pintcomp"
   | Poffsetint _ -> "Poffsetint"
   | Poffsetref _ -> "Poffsetref"
-  | Pidentityfloat -> "Pidentityfloat"
   | Pintoffloat -> "Pintoffloat"
   | Pfloatofint -> "Pfloatofint"
   | Pnegfloat -> "Pnegfloat"
@@ -440,6 +439,7 @@ let name_of_primitive = function
   | Pbbswap _ -> "Pbbswap"
   | Pint_as_pointer -> "Pint_as_pointer"
   | Popaque -> "Popaque"
+  | Pvalue_kind _ -> "Pvalue_kind"
 
 let function_attribute ppf { inline; specialise; is_a_functor; stub } =
   if is_a_functor then

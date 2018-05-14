@@ -57,6 +57,7 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
       eval_conv A.Int64 I.to_int64
     | Pnegbint kind when kind = I.kind -> eval I.neg
     | Pbbswap kind when kind = I.kind -> eval I.swap
+    | Pvalue_kind (Pboxedintval bi) when bi = I.kind -> eval (fun x -> x)
     | _ -> expr, A.value_unknown Other, C.Benefit.zero
 
   let simplify_binop (p : Lambda.primitive) (kind : I.t A.boxed_int)

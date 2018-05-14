@@ -129,3 +129,11 @@ let ocaml_version = "%%VERSION%%"
 (* Optimization *)
 
 external opaque_identity : 'a -> 'a = "%opaque"
+
+external float_identity : float -> float = "%value_kind_float"
+
+external int32_identity : int32 -> int32 = "%value_kind_int32"
+
+external int64_identity : int64 -> int64 = "%value_kind_int64"
+
+external nativeint_identity : nativeint -> nativeint = "%value_kind_nativeint"

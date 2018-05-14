@@ -79,7 +79,6 @@ type primitive =
   | Poffsetint of int
   | Poffsetref of int
   (* Float operations *)
-  | Pidentityfloat
   | Pintoffloat | Pfloatofint
   | Pnegfloat | Pabsfloat
   | Paddfloat | Psubfloat | Pmulfloat | Pdivfloat
@@ -151,6 +150,8 @@ type primitive =
   | Pint_as_pointer
   (* Inhibition of optimisation *)
   | Popaque
+  (* Type information *)
+  | Pvalue_kind of value_kind
 
 and integer_comparison =
     Ceq | Cne | Clt | Cgt | Cle | Cge

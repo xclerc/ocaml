@@ -64,7 +64,6 @@ let new_value = "new_value"
 let numerator = "numerator"
 let obj = "obj"
 let offsetted = "offsetted"
-let pidentityfloat = "Pidentityfloat"
 let pabsfloat = "Pabsfloat"
 let paddbint = "Paddbint"
 let paddfloat = "Paddfloat"
@@ -167,9 +166,9 @@ let pstringrefu = "Pstringrefu"
 let psubbint = "Psubbint"
 let psubfloat = "Psubfloat"
 let psubint = "Psubint"
+let pvalue_kind = "Pvalue_kind"
 let pxorbint = "Pxorbint"
 let pxorint = "Pxorint"
-let pidentityfloat_arg = "Pidentityfloat_arg"
 let pabsfloat_arg = "Pabsfloat_arg"
 let paddbint_arg = "Paddbint_arg"
 let paddfloat_arg = "Paddfloat_arg"
@@ -270,6 +269,7 @@ let pstringrefu_arg = "Pstringrefu_arg"
 let psubbint_arg = "Psubbint_arg"
 let psubfloat_arg = "Psubfloat_arg"
 let psubint_arg = "Psubint_arg"
+let pvalue_kind_arg = "Pvalue_kind_arg"
 let pxorbint_arg = "Pxorbint_arg"
 let pxorint_arg = "Pxorint_arg"
 let raise = "raise"
@@ -336,7 +336,6 @@ let of_primitive : Lambda.primitive -> string = function
   | Pintcomp _ -> pintcomp
   | Poffsetint _ -> poffsetint
   | Poffsetref _ -> poffsetref
-  | Pidentityfloat -> pidentityfloat
   | Pintoffloat -> pintoffloat
   | Pfloatofint -> pfloatofint
   | Pnegfloat -> pnegfloat
@@ -402,6 +401,7 @@ let of_primitive : Lambda.primitive -> string = function
   | Pbbswap _ -> pbbswap
   | Pint_as_pointer -> pint_as_pointer
   | Popaque -> popaque
+  | Pvalue_kind _ -> pvalue_kind
 
 let of_primitive_arg : Lambda.primitive -> string = function
   | Pidentity -> pidentity_arg
@@ -440,7 +440,6 @@ let of_primitive_arg : Lambda.primitive -> string = function
   | Pintcomp _ -> pintcomp_arg
   | Poffsetint _ -> poffsetint_arg
   | Poffsetref _ -> poffsetref_arg
-  | Pidentityfloat -> pidentityfloat_arg
   | Pintoffloat -> pintoffloat_arg
   | Pfloatofint -> pfloatofint_arg
   | Pnegfloat -> pnegfloat_arg
@@ -506,3 +505,4 @@ let of_primitive_arg : Lambda.primitive -> string = function
   | Pbbswap _ -> pbbswap_arg
   | Pint_as_pointer -> pint_as_pointer_arg
   | Popaque -> popaque_arg
+  | Pvalue_kind _ -> pvalue_kind_arg
