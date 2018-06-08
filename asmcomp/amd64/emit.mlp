@@ -509,6 +509,10 @@ let is_jump_needed ~from ~destination =
   | Llabel lbl -> destination <> lbl
   | _ -> true
 
+let last_hot = ref Lend
+let last_cold = ref Lend
+let last_tepid = ref Lend
+
 (* Emit an instruction *)
 let emit_instr fallthrough i =
   section_of_temperature i.temperature;
@@ -789,6 +793,12 @@ let emit_instr fallthrough i =
   | Lbranch lbl ->
       if is_jump_needed ~from:i ~destination:lbl then
         I.jmp (label lbl)
+      else begin
+        match i.temperature with
+        | Lambda.Cold _ -> last_cold := Lend
+        | Lambda.Tepid -> last_tepid := Lend
+        | Lambda.Hot _ -> last_hot := Lend
+      end
   | Lcondbranch(tst, lbl) ->
       let lbl = label lbl in
       begin match tst with
@@ -892,12 +902,24 @@ let emit_instr fallthrough i =
           I.ret ()
       end
 
-let rec emit_all fallthrough i =
+let rec emit_all i =
   match i.desc with
   | Lend -> ()
   | _ ->
-      emit_instr fallthrough i;
-      emit_all (Linearize.has_fallthrough i.desc) i.next
+    let replace r v =
+      let curr = !r in
+      r := v;
+      curr
+    in
+    let last =
+      match i.temperature with
+      | Lambda.Cold _ -> replace last_cold i.desc
+      | Lambda.Tepid -> replace last_tepid i.desc
+      | Lambda.Hot _ -> replace last_hot i.desc
+    in
+    let fallthrough = Linearize.has_fallthrough last in
+    emit_instr fallthrough i;
+    emit_all i.next
 
 (* Emission of the profiling prelude *)
 
@@ -957,7 +979,15 @@ let fundecl fundecl =
     end;
   end;
   def_label !tailrec_entry_point;
-  emit_all true fundecl.fun_body;
+  last_hot := Lreturn;
+  last_cold := Lreturn;
+  last_tepid := Lreturn;
+  begin match fundecl.fun_temperature with
+  | Lambda.Cold _ -> last_cold := Lend
+  | Lambda.Tepid -> last_tepid := Lend
+  | Lambda.Hot _ -> last_hot := Lend
+  end;
+  emit_all fundecl.fun_body;
   List.iter emit_call_gc !call_gc_sites;
   emit_call_bound_errors ();
   if frame_required() then begin
