@@ -483,7 +483,7 @@ let section_of_temperature ?(force = false) ?(emit_cfi = true) temp =
     current_temperature := temp;
     if emit_cfi then cfi_endproc ();
     begin match temp with
-    | Lambda.Cold _ -> D.section [ ".text.cold" ] None []
+    | Lambda.Cold _ -> D.section [ ".text.unlikely" ] None []
     | Lambda.Tepid -> D.text ()
     | Lambda.Hot _ -> D.section [ ".text.hot" ] None []
     end;
@@ -1100,7 +1100,7 @@ let end_assembly() =
 
   emit_imp_table();
 
-  D.section [ ".text.cold" ] None [];
+  D.section [ ".text.unlikely" ] None [];
   emit_global_label "code_end";
 
   D.data ();
