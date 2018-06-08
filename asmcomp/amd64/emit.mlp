@@ -862,7 +862,10 @@ let emit_instr fallthrough i =
       done;
       section_of_temperature ~force:true ~emit_cfi:false i.temperature
   | Lsetuptrap lbl ->
-      I.push @@ mem64_rip QWORD (Printf.sprintf ".L%d@GOTPCREL" lbl)
+      if Config.trywith_optim then
+        I.push @@ mem64_rip QWORD (Printf.sprintf ".L%d@GOTPCREL" lbl)
+      else
+        I.call (label lbl)
   | Lpushtrap ->
       cfi_adjust_cfa_offset 8;
       I.push r14;

@@ -148,6 +148,8 @@ let systhread_supported = %%SYSTHREAD_SUPPORT%%;;
 
 let flexdll_dirs = [%%FLEXDLL_DIR%%];;
 
+let trywith_optim = true;;
+
 let print_config oc =
   let p name valu = Printf.fprintf oc "%s: %s\n" name valu in
   let p_int name valu = Printf.fprintf oc "%s: %d\n" name valu in
@@ -195,6 +197,8 @@ let print_config oc =
   p_bool "flat_float_array" flat_float_array;
   p_bool "afl_instrument" afl_instrument;
   p_bool "windows_unicode" windows_unicode;
+
+  p_bool "trywith_optim" trywith_optim;
 
   (* print the magic number *)
   p "exec_magic_number" exec_magic_number;

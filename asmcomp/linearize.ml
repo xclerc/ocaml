@@ -339,11 +339,12 @@ let rec linear curr_temp i n =
       in
       loop (add_branch lbl n1 curr_temp) !try_depth
   | Itrywith(body, temp, handler) ->
-      let temp_body, temp_handler =
-        combine_temperature_for_trywith
-          ~attribute:temp
-          ~current:curr_temp
-      in
+    let temp_body, temp_handler =
+      combine_temperature_for_trywith
+        ~attribute:temp
+        ~current:curr_temp
+    in
+    if Config.trywith_optim then begin
       let (lbl_join, n1) = get_label (linear curr_temp i.Mach.next n) in
       let (lbl_handler, n2) = get_label (linear temp_handler handler n1) in
       incr try_depth;
@@ -356,6 +357,18 @@ let rec linear curr_temp i n =
       in
       decr try_depth;
       instr_cons (Lsetuptrap lbl_handler) i.Mach.arg [||] n3 temp_body
+    end else begin
+      let (lbl_join, n1) = get_label (linear curr_temp i.Mach.next n) in
+      incr try_depth;
+      assert (i.Mach.arg = [| |] || Config.spacetime);
+      let (lbl_body, n2) =
+        get_label (instr_cons Lpushtrap i.Mach.arg [| |]
+                    (linear temp_body body (cons_instr Lpoptrap n1 temp_body)) temp_body) in
+      decr try_depth;
+      instr_cons (Lsetuptrap lbl_body) i.Mach.arg [| |]
+        (linear temp_handler handler (add_branch lbl_join n2 curr_temp))
+        curr_temp
+    end
   | Iraise k ->
     copy_instr (Lraise k) i (discard_dead_code n) curr_temp
 
