@@ -124,6 +124,12 @@ let add_reloads regset i =
     (fun r i -> instr_cons (Iop Ireload) [|spill_reg r|] [|r|] i)
     regset i
 
+let rec append_reloads regset i =
+  match i.desc with
+  | Iend -> add_reloads regset i
+  | _ ->
+    { i with next = append_reloads regset i.next; }
+
 let reload_at_exit = ref []
 
 let find_reload_at_exit k =
@@ -170,14 +176,31 @@ let rec reload i before =
       current_date := date_fork;
       let (new_ifnot, after_ifnot) = reload ifnot at_fork in
       current_date := max date_ifso !current_date;
-      let (new_next, finally) =
-        reload i.next (Reg.Set.union after_ifso after_ifnot) in
-      let new_i =
-        instr_cons (Iifthenelse(test, temp, new_ifso, new_ifnot))
-        i.arg i.res new_next in
-      destroyed_at_fork := (new_i, at_fork) :: !destroyed_at_fork;
-      (add_reloads (Reg.inter_set_array before i.arg) new_i,
-       finally)
+      begin match temp, Reg.Set.is_empty after_ifso, Reg.Set.is_empty after_ifnot with
+      | Lambda.Hot _, true, false ->
+        let new_ifnot_with_reloads = append_reloads after_ifnot new_ifnot in
+        let new_i =
+          instr_cons (Iifthenelse(test, temp, new_ifso, new_ifnot_with_reloads))
+            i.arg i.res i.next in
+        destroyed_at_fork := (new_i, at_fork) :: !destroyed_at_fork;
+        new_i, Reg.Set.empty
+      | Lambda.Cold _, false, true ->
+        let new_ifso_with_reloads = append_reloads after_ifso new_ifso in
+        let new_i =
+          instr_cons (Iifthenelse(test, temp, new_ifso_with_reloads, new_ifnot))
+            i.arg i.res i.next in
+        destroyed_at_fork := (new_i, at_fork) :: !destroyed_at_fork;
+        new_i, Reg.Set.empty
+      | _ ->
+        let (new_next, finally) =
+          reload i.next (Reg.Set.union after_ifso after_ifnot) in
+        let new_i =
+          instr_cons (Iifthenelse(test, temp, new_ifso, new_ifnot))
+            i.arg i.res new_next in
+        destroyed_at_fork := (new_i, at_fork) :: !destroyed_at_fork;
+        (add_reloads (Reg.inter_set_array before i.arg) new_i,
+         finally)
+      end
   | Iswitch(index, cases) ->
       let at_fork = Reg.diff_set_array before i.arg in
       let date_fork = !current_date in
