@@ -47,6 +47,7 @@ and instruction_desc =
 let has_fallthrough = function
   | Lreturn | Lbranch _ | Lswitch _ | Lraise _
   | Lop Itailcall_ind _ | Lop (Itailcall_imm _) -> false
+  (* XXX | Lsetuptrap _ -> Config.trywith_optim*)
   | _ -> true
 
 type fundecl =

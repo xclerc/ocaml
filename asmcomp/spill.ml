@@ -177,6 +177,11 @@ let rec reload i before =
       let (new_ifnot, after_ifnot) = reload ifnot at_fork in
       current_date := max date_ifso !current_date;
       begin match temp, Reg.Set.is_empty after_ifso, Reg.Set.is_empty after_ifnot with
+      (* if the likely branch does not spill while the unlikely one does,
+         then we push the spilling down the unlikely branch *)
+      (* Q? should we also handle the (general) case where the spilling in
+         the likely branch is a proper subset of the spilling in the unlikely
+         branch? *)
       | Lambda.Hot _, true, false ->
         let new_ifnot_with_reloads = append_reloads after_ifnot new_ifnot in
         let new_i =
