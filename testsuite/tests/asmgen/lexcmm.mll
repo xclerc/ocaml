@@ -56,6 +56,7 @@ let keyword_table =
     "store", STORE;
     "switch", SWITCH;
     "try", TRY;
+    "umod", UMODI;
     "unit", UNIT;
     "unsigned", UNSIGNED;
     "val", VAL;
@@ -138,6 +139,7 @@ rule token = parse
   | ":" { COLON }
   | "/f" { DIVF }
   | "/" { DIVI }
+  | "/u" { UDIVI }
   | eof { EOF }
   | "==a" { EQA }
   | "==f" { EQF }
@@ -238,4 +240,3 @@ and string = parse
   | _
       { store_string_char(Lexing.lexeme_char lexbuf 0);
         string lexbuf }
-

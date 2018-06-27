@@ -53,7 +53,7 @@ external div : int64 -> int64 -> int64 = "%int64_div"
    argument is zero.  This division rounds the real quotient of
    its arguments towards zero, as specified for {!Pervasives.(/)}. *)
 
-val div_unsigned : int64 -> int64 -> int64
+external div_unsigned : int64 -> int64 -> int64 = "%int64_udiv"
 (** Same as [div], except that arguments and result are interpreted as {e
     unsigned} 64-bit integers.
 
@@ -65,7 +65,7 @@ external rem : int64 -> int64 -> int64 = "%int64_mod"
    [x = Int64.add (Int64.mul (Int64.div x y) y) (Int64.rem x y)].
    If [y = 0], [Int64.rem x y] raises [Division_by_zero]. *)
 
-val rem_unsigned : int64 -> int64 -> int64
+external rem_unsigned : int64 -> int64 -> int64 = "%int64_umod"
 (** Same as [rem], except that arguments and result are interpreted as {e
     unsigned} 64-bit integers.
 

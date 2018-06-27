@@ -20,7 +20,9 @@ external add : int64 -> int64 -> int64 = "%int64_add"
 external sub : int64 -> int64 -> int64 = "%int64_sub"
 external mul : int64 -> int64 -> int64 = "%int64_mul"
 external div : int64 -> int64 -> int64 = "%int64_div"
+external div_unsigned : int64 -> int64 -> int64 = "%int64_udiv"
 external rem : int64 -> int64 -> int64 = "%int64_mod"
+external rem_unsigned : int64 -> int64 -> int64 = "%int64_umod"
 external logand : int64 -> int64 -> int64 = "%int64_and"
 external logor : int64 -> int64 -> int64 = "%int64_or"
 external logxor : int64 -> int64 -> int64 = "%int64_xor"
@@ -84,17 +86,3 @@ let equal (x: t) (y: t) = compare x y = 0
 
 let compare_unsigned n m =
   compare (sub n min_int) (sub m min_int)
-
-(* Unsigned division from signed division of the same
-   bitness. See Warren Jr., Henry S. (2013). Hacker's Delight (2 ed.), Sec 9-3.
-*)
-let div_unsigned n d =
-  if d < zero then
-    if compare_unsigned n d < 0 then zero else one
-  else
-    let q = shift_left (div (shift_right_logical n 1) d) 1 in
-    let r = sub n (mul q d) in
-    if compare_unsigned r d >= 0 then succ q else q
-
-let rem_unsigned n d =
-  sub n (mul (div_unsigned n d) d)

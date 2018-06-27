@@ -52,7 +52,7 @@ external div : int32 -> int32 -> int32 = "%int32_div"
    argument is zero.  This division rounds the real quotient of
    its arguments towards zero, as specified for {!Pervasives.(/)}. *)
 
-val div_unsigned : int32 -> int32 -> int32
+external div_unsigned : int32 -> int32 -> int32 = "%int32_udiv"
 (** Same as [div], except that arguments and result are interpreted as {e
     unsigned} 32-bit integers.
 
@@ -64,7 +64,7 @@ external rem : int32 -> int32 -> int32 = "%int32_mod"
    [x = Int32.add (Int32.mul (Int32.div x y) y) (Int32.rem x y)].
    If [y = 0], [Int32.rem x y] raises [Division_by_zero]. *)
 
-val rem_unsigned : int32 -> int32 -> int32
+external rem_unsigned : int32 -> int32 -> int32 = "%int32_umod"
 (** Same as [rem], except that arguments and result are interpreted as {e
     unsigned} 32-bit integers.
 

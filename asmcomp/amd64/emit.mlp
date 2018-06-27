@@ -688,9 +688,13 @@ let emit_instr fallthrough i =
       let lbl = bound_error_label ?label:label_after_error i.dbg ~spacetime in
       I.cmp (int n) (arg i 0);
       I.jbe (label lbl)
-  | Lop(Iintop(Idiv | Imod)) ->
+  | Lop(Iintop(Idiv { is_signed = true } | Imod { is_signed = true })) ->
       I.cqo ();
       I.idiv (arg i 1)
+  | Lop(Iintop(Idiv { is_signed = false } | Imod { is_signed = false })) ->
+      let rdx = reg (phys_reg 4) in
+      I.xor rdx rdx;
+      I.div (arg i 1)
   | Lop(Iintop(Ilsl | Ilsr | Iasr as op)) ->
       (* We have i.arg.(0) = i.res.(0) and i.arg.(1) = %rcx *)
       instr_for_intop op cl (res i 0)

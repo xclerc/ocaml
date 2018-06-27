@@ -318,10 +318,14 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
       | Paddbint Pnativeint -> make_const_natint (Nativeint.add n1 n2)
       | Psubbint Pnativeint -> make_const_natint (Nativeint.sub n1 n2)
       | Pmulbint Pnativeint -> make_const_natint (Nativeint.mul n1 n2)
-      | Pdivbint {size=Pnativeint} when n2 <> 0n ->
+      | Pdivbint {size=Pnativeint; is_signed=true} when n2 <> 0n ->
           make_const_natint (Nativeint.div n1 n2)
-      | Pmodbint {size=Pnativeint} when n2 <> 0n ->
+      | Pmodbint {size=Pnativeint; is_signed=true} when n2 <> 0n ->
           make_const_natint (Nativeint.rem n1 n2)
+      | Pdivbint {size=Pnativeint; is_signed=false} when n2 <> 0n ->
+          make_const_natint (Nativeint.div_unsigned n1 n2)
+      | Pmodbint {size=Pnativeint; is_signed=false} when n2 <> 0n ->
+          make_const_natint (Nativeint.rem_unsigned n1 n2)
       | Pandbint Pnativeint -> make_const_natint (Nativeint.logand n1 n2)
       | Porbint Pnativeint ->  make_const_natint (Nativeint.logor n1 n2)
       | Pxorbint Pnativeint -> make_const_natint (Nativeint.logxor n1 n2)
@@ -356,10 +360,14 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
       | Paddbint Pint32 -> make_const_int32 (Int32.add n1 n2)
       | Psubbint Pint32 -> make_const_int32 (Int32.sub n1 n2)
       | Pmulbint Pint32 -> make_const_int32 (Int32.mul n1 n2)
-      | Pdivbint {size=Pint32} when n2 <> 0l ->
+      | Pdivbint {size=Pint32; is_signed=true} when n2 <> 0l ->
           make_const_int32 (Int32.div n1 n2)
-      | Pmodbint {size=Pint32} when n2 <> 0l ->
+      | Pmodbint {size=Pint32; is_signed=true} when n2 <> 0l ->
           make_const_int32 (Int32.rem n1 n2)
+      | Pdivbint {size=Pint32; is_signed=false} when n2 <> 0l ->
+          make_const_int32 (Int32.div_unsigned n1 n2)
+      | Pmodbint {size=Pint32; is_signed=false} when n2 <> 0l ->
+          make_const_int32 (Int32.rem_unsigned n1 n2)
       | Pandbint Pint32 -> make_const_int32 (Int32.logand n1 n2)
       | Porbint Pint32 -> make_const_int32 (Int32.logor n1 n2)
       | Pxorbint Pint32 -> make_const_int32 (Int32.logxor n1 n2)
@@ -394,10 +402,14 @@ let simplif_arith_prim_pure fpc p (args, approxs) dbg =
       | Paddbint Pint64 -> make_const_int64 (Int64.add n1 n2)
       | Psubbint Pint64 -> make_const_int64 (Int64.sub n1 n2)
       | Pmulbint Pint64 -> make_const_int64 (Int64.mul n1 n2)
-      | Pdivbint {size=Pint64} when n2 <> 0L ->
+      | Pdivbint {size=Pint64; is_signed=true} when n2 <> 0L ->
           make_const_int64 (Int64.div n1 n2)
-      | Pmodbint {size=Pint64} when n2 <> 0L ->
+      | Pmodbint {size=Pint64; is_signed=true} when n2 <> 0L ->
           make_const_int64 (Int64.rem n1 n2)
+      | Pdivbint {size=Pint64; is_signed=false} when n2 <> 0L ->
+          make_const_int64 (Int64.div_unsigned n1 n2)
+      | Pmodbint {size=Pint64; is_signed=false} when n2 <> 0L ->
+          make_const_int64 (Int64.rem_unsigned n1 n2)
       | Pandbint Pint64 -> make_const_int64 (Int64.logand n1 n2)
       | Porbint Pint64 -> make_const_int64 (Int64.logor n1 n2)
       | Pxorbint Pint64 -> make_const_int64 (Int64.logxor n1 n2)

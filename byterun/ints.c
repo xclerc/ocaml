@@ -259,6 +259,20 @@ CAMLprim value caml_int32_mod(value v1, value v2)
   return caml_copy_int32(dividend % divisor);
 }
 
+CAMLprim value caml_int32_udiv(value v1, value v2)
+{
+  uint32_t divisor = Int32_uval(v2);
+  if (divisor == 0) caml_raise_zero_divide();
+  return caml_copy_int32(Int32_uval(v1) / divisor);
+}
+
+CAMLprim value caml_int32_umod(value v1, value v2)
+{
+  uint32_t divisor = Int32_uval(v2);
+  if (divisor == 0) caml_raise_zero_divide();
+  return caml_copy_int32(Int32_uval(v1) % divisor);
+}
+
 CAMLprim value caml_int32_and(value v1, value v2)
 { return caml_copy_int32(Int32_val(v1) & Int32_val(v2)); }
 
@@ -368,6 +382,14 @@ CAMLexport int64_t caml_Int64_val(value v)
   return buffer.j;
 }
 
+CAMLexport uint64_t caml_Int64_uval(value v)
+{
+  union { int32_t i[2]; uint64_t j; } buffer;
+  buffer.i[0] = ((int32_t *) Data_custom_val(v))[0];
+  buffer.i[1] = ((int32_t *) Data_custom_val(v))[1];
+  return buffer.j;
+}
+
 #endif
 
 static int int64_cmp(value v1, value v2)
@@ -464,6 +486,20 @@ CAMLprim value caml_int64_mod(value v1, value v2)
     return caml_copy_int64(0);
   }
   return caml_copy_int64(Int64_val(v1) % divisor);
+}
+
+CAMLprim value caml_int64_udiv(value v1, value v2)
+{
+  uint64_t divisor = Int64_uval(v2);
+  if (divisor == 0) caml_raise_zero_divide();
+  return caml_copy_int64(Int64_uval(v1) / divisor);
+}
+
+CAMLprim value caml_int64_umod(value v1, value v2)
+{
+  uint64_t divisor = Int64_uval(v2);
+  if (divisor == 0) caml_raise_zero_divide();
+  return caml_copy_int64(Int64_uval(v1) % divisor);
 }
 
 CAMLprim value caml_int64_and(value v1, value v2)
@@ -743,6 +779,20 @@ CAMLprim value caml_nativeint_mod(value v1, value v2)
     return caml_copy_nativeint(0);
   }
   return caml_copy_nativeint(dividend % divisor);
+}
+
+CAMLprim value caml_nativeint_udiv(value v1, value v2)
+{
+  uintnat divisor = Nativeint_uval(v2);
+  if (divisor == 0) caml_raise_zero_divide();
+  return caml_copy_nativeint(Nativeint_uval(v1) / divisor);
+}
+
+CAMLprim value caml_nativeint_umod(value v1, value v2)
+{
+  uintnat divisor = Nativeint_uval(v2);
+  if (divisor == 0) caml_raise_zero_divide();
+  return caml_copy_nativeint(Nativeint_uval(v1) % divisor);
 }
 
 CAMLprim value caml_nativeint_and(value v1, value v2)

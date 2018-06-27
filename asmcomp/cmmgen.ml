@@ -403,7 +403,7 @@ let raise_regular dbg exc =
 let raise_symbol dbg symb =
   raise_regular dbg (Cconst_symbol symb)
 
-let rec div_int c1 c2 is_safe dbg =
+let rec div_int c1 c2 is_safe is_signed dbg =
   match (c1, c2) with
     (c1, Cconst_int 0) ->
       Csequence(c1, raise_symbol dbg "caml_exn_Division_by_zero")
@@ -426,7 +426,7 @@ let rec div_int c1 c2 is_safe dbg =
                      add_int c1 t dbg);
                    Cconst_int l], dbg)
       else if n < 0 then
-        sub_int (Cconst_int 0) (div_int c1 (Cconst_int (-n)) is_safe dbg) dbg
+        sub_int (Cconst_int 0) (div_int c1 (Cconst_int (-n)) is_safe is_signed dbg) dbg
       else begin
         let (m, p) = divimm_parameters (Nativeint.of_int n) in
         (* Algorithm:
@@ -442,15 +442,15 @@ let rec div_int c1 c2 is_safe dbg =
           add_int t (lsr_int c1 (Cconst_int (Nativeint.size - 1)) dbg) dbg)
       end
   | (c1, c2) when !Clflags.fast || is_safe = Lambda.Unsafe ->
-      Cop(Cdivi, [c1; c2], dbg)
+      Cop(Cdivi { is_signed }, [c1; c2], dbg)
   | (c1, c2) ->
       bind "divisor" c2 (fun c2 ->
         bind "dividend" c1 (fun c1 ->
           Cifthenelse(c2,
-                      Cop(Cdivi, [c1; c2], dbg),
+                      Cop(Cdivi { is_signed }, [c1; c2], dbg),
                       raise_symbol dbg "caml_exn_Division_by_zero")))
 
-let mod_int c1 c2 is_safe dbg =
+let mod_int c1 c2 is_safe is_signed dbg =
   match (c1, c2) with
     (c1, Cconst_int 0) ->
       Csequence(c1, raise_symbol dbg "caml_exn_Division_by_zero")
@@ -476,15 +476,15 @@ let mod_int c1 c2 is_safe dbg =
           sub_int c1 t dbg)
       else
         bind "dividend" c1 (fun c1 ->
-          sub_int c1 (mul_int (div_int c1 c2 is_safe dbg) c2 dbg) dbg)
+          sub_int c1 (mul_int (div_int c1 c2 is_safe is_signed dbg) c2 dbg) dbg)
   | (c1, c2) when !Clflags.fast || is_safe = Lambda.Unsafe ->
       (* Flambda already generates that test *)
-      Cop(Cmodi, [c1; c2], dbg)
+      Cop(Cmodi { is_signed }, [c1; c2], dbg)
   | (c1, c2) ->
       bind "divisor" c2 (fun c2 ->
         bind "dividend" c1 (fun c1 ->
           Cifthenelse(c2,
-                      Cop(Cmodi, [c1; c2], dbg),
+                      Cop(Cmodi { is_signed }, [c1; c2], dbg),
                       raise_symbol dbg "caml_exn_Division_by_zero")))
 
 (* Division or modulo on boxed integers.  The overflow case min_int / -1
@@ -498,7 +498,7 @@ let is_different_from x = function
 let safe_divmod_bi mkop is_safe mkm1 c1 c2 bi dbg =
   bind "dividend" c1 (fun c1 ->
   bind "divisor" c2 (fun c2 ->
-    let c = mkop c1 c2 is_safe dbg in
+    let c = mkop c1 c2 is_safe true dbg in
     if Arch.division_crashes_on_overflow
     && (size_int = 4 || bi <> Pint32)
     && not (is_different_from (-1) c2)
@@ -511,6 +511,25 @@ let safe_div_bi is_safe =
 
 let safe_mod_bi is_safe =
   safe_divmod_bi mod_int is_safe (fun _ _ -> Cconst_int 0)
+
+let unsigned_div_mod_bi mkop is_safe c1 c2 bi dbg =
+  bind "dividend" c1 (fun c1 ->
+  bind "divisor" c2 (fun c2 ->
+    let lower32 x = Cop(Cand, [x; Cconst_natint 0xFFFFFFFFn], dbg) in
+    let c1, c2 =
+      if (size_int = 8 && bi = Pint32) then
+        lower32 c1, lower32 c2
+      else
+        c1, c2
+    in
+    mkop c1 c2 is_safe false dbg))
+
+let unsigned_div_bi is_safe =
+  unsigned_div_mod_bi div_int is_safe
+
+let unsigned_mod_bi is_safe =
+  unsigned_div_mod_bi mod_int is_safe
+
 
 (* Bool *)
 
@@ -1356,8 +1375,10 @@ let simplif_primitive_32bits = function
   | Paddbint Pint64 -> Pccall (default_prim "caml_int64_add")
   | Psubbint Pint64 -> Pccall (default_prim "caml_int64_sub")
   | Pmulbint Pint64 -> Pccall (default_prim "caml_int64_mul")
-  | Pdivbint {size=Pint64} -> Pccall (default_prim "caml_int64_div")
-  | Pmodbint {size=Pint64} -> Pccall (default_prim "caml_int64_mod")
+  | Pdivbint {size=Pint64; is_signed=true} -> Pccall (default_prim "caml_int64_div")
+  | Pmodbint {size=Pint64; is_signed=true} -> Pccall (default_prim "caml_int64_mod")
+  | Pdivbint {size=Pint64; is_signed=false} -> Pccall (default_prim "caml_int64_udiv")
+  | Pmodbint {size=Pint64; is_signed=false} -> Pccall (default_prim "caml_int64_umod")
   | Pandbint Pint64 -> Pccall (default_prim "caml_int64_and")
   | Porbint Pint64 ->  Pccall (default_prim "caml_int64_or")
   | Pxorbint Pint64 -> Pccall (default_prim "caml_int64_xor")
@@ -2178,10 +2199,10 @@ and transl_prim_2 env p arg1 arg2 dbg =
      end
   | Pdivint is_safe ->
       tag_int(div_int (untag_int(transl env arg1) dbg)
-        (untag_int(transl env arg2) dbg) is_safe dbg) dbg
+        (untag_int(transl env arg2) dbg) is_safe true dbg) dbg
   | Pmodint is_safe ->
       tag_int(mod_int (untag_int(transl env arg1) dbg)
-        (untag_int(transl env arg2) dbg) is_safe dbg) dbg
+        (untag_int(transl env arg2) dbg) is_safe true dbg) dbg
   | Pandint ->
       Cop(Cand, [transl env arg1; transl env arg2], dbg)
   | Porint ->
@@ -2382,16 +2403,26 @@ and transl_prim_2 env p arg1 arg2 dbg =
       box_int dbg bi (Cop(Cmuli,
                       [transl_unbox_int dbg env bi arg1;
                        transl_unbox_int dbg env bi arg2], dbg))
-  | Pdivbint { size = bi; is_safe } ->
+  | Pdivbint { size = bi; is_safe; is_signed = true } ->
       box_int dbg bi (safe_div_bi is_safe
                       (transl_unbox_int dbg env bi arg1)
                       (transl_unbox_int dbg env bi arg2)
                       bi dbg)
-  | Pmodbint { size = bi; is_safe } ->
+  | Pmodbint { size = bi; is_safe; is_signed = true } ->
       box_int dbg bi (safe_mod_bi is_safe
                       (transl_unbox_int dbg env bi arg1)
                       (transl_unbox_int dbg env bi arg2)
                       bi dbg)
+  | Pdivbint { size = bi; is_safe; is_signed = false } ->
+      box_int dbg bi (unsigned_div_bi is_safe
+                        (transl_unbox_int dbg env bi arg1)
+                        (transl_unbox_int dbg env bi arg2)
+                        bi dbg)
+  | Pmodbint { size = bi; is_safe; is_signed = false } ->
+      box_int dbg bi (unsigned_mod_bi is_safe
+                        (transl_unbox_int dbg env bi arg1)
+                        (transl_unbox_int dbg env bi arg2)
+                        bi dbg)
   | Pandbint bi ->
       box_int dbg bi (Cop(Cand,
                      [transl_unbox_int dbg env bi arg1;

@@ -56,7 +56,7 @@ external div : nativeint -> nativeint -> nativeint = "%nativeint_div"
    argument is zero.  This division rounds the real quotient of
    its arguments towards zero, as specified for {!Pervasives.(/)}. *)
 
-val div_unsigned : nativeint -> nativeint -> nativeint
+external div_unsigned : nativeint -> nativeint -> nativeint = "%nativeint_udiv"
 (** Same as [div], except that arguments and result are interpreted as {e
     unsigned} native integers.
 
@@ -70,7 +70,7 @@ external rem : nativeint -> nativeint -> nativeint = "%nativeint_mod"
                       (Nativeint.rem x y)].
    If [y = 0], [Nativeint.rem x y] raises [Division_by_zero]. *)
 
-val rem_unsigned : nativeint -> nativeint -> nativeint
+external rem_unsigned : nativeint -> nativeint -> nativeint = "%nativeint_umod"
 (** Same as [rem], except that arguments and result are interpreted as {e
     unsigned} native integers.
 

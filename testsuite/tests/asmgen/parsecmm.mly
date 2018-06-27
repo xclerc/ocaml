@@ -116,6 +116,8 @@ let access_array base numelt size =
 %token SUBI
 %token SWITCH
 %token TRY
+%token UDIVI
+%token UMODI
 %token UNIT
 %token UNSIGNED
 %token VAL
@@ -268,8 +270,10 @@ binaryop:
   | ADDI                        { Caddi }
   | SUBI                        { Csubi }
   | STAR                        { Cmuli }
-  | DIVI                        { Cdivi }
-  | MODI                        { Cmodi }
+  | DIVI                        { Cdivi { is_signed = true; } }
+  | MODI                        { Cmodi { is_signed = true; } }
+  | UDIVI                       { Cdivi { is_signed = false; } }
+  | UMODI                       { Cmodi { is_signed = false; } }
   | AND                         { Cand }
   | OR                          { Cor }
   | XOR                         { Cxor }

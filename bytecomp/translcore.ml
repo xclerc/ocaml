@@ -261,8 +261,10 @@ let primitives_table = create_hashtable 57 [
   "%nativeint_add", Paddbint Pnativeint;
   "%nativeint_sub", Psubbint Pnativeint;
   "%nativeint_mul", Pmulbint Pnativeint;
-  "%nativeint_div", Pdivbint { size = Pnativeint; is_safe = Safe };
-  "%nativeint_mod", Pmodbint { size = Pnativeint; is_safe = Safe };
+  "%nativeint_div", Pdivbint { size = Pnativeint; is_safe = Safe; is_signed = true };
+  "%nativeint_mod", Pmodbint { size = Pnativeint; is_safe = Safe; is_signed = true };
+  "%nativeint_udiv", Pdivbint { size = Pnativeint; is_safe = Safe; is_signed = false };
+  "%nativeint_umod", Pmodbint { size = Pnativeint; is_safe = Safe; is_signed = false };
   "%nativeint_and", Pandbint Pnativeint;
   "%nativeint_or",  Porbint Pnativeint;
   "%nativeint_xor", Pxorbint Pnativeint;
@@ -275,8 +277,10 @@ let primitives_table = create_hashtable 57 [
   "%int32_add", Paddbint Pint32;
   "%int32_sub", Psubbint Pint32;
   "%int32_mul", Pmulbint Pint32;
-  "%int32_div", Pdivbint { size = Pint32; is_safe = Safe };
-  "%int32_mod", Pmodbint { size = Pint32; is_safe = Safe };
+  "%int32_div", Pdivbint { size = Pint32; is_safe = Safe; is_signed = true };
+  "%int32_mod", Pmodbint { size = Pint32; is_safe = Safe; is_signed = true };
+  "%int32_udiv", Pdivbint { size = Pint32; is_safe = Safe; is_signed = false };
+  "%int32_umod", Pmodbint { size = Pint32; is_safe = Safe; is_signed = false };
   "%int32_and", Pandbint Pint32;
   "%int32_or",  Porbint Pint32;
   "%int32_xor", Pxorbint Pint32;
@@ -289,8 +293,10 @@ let primitives_table = create_hashtable 57 [
   "%int64_add", Paddbint Pint64;
   "%int64_sub", Psubbint Pint64;
   "%int64_mul", Pmulbint Pint64;
-  "%int64_div", Pdivbint { size = Pint64; is_safe = Safe };
-  "%int64_mod", Pmodbint { size = Pint64; is_safe = Safe };
+  "%int64_div", Pdivbint { size = Pint64; is_safe = Safe; is_signed = true };
+  "%int64_mod", Pmodbint { size = Pint64; is_safe = Safe; is_signed = true };
+  "%int64_udiv", Pdivbint { size = Pint64; is_safe = Safe; is_signed = false };
+  "%int64_umod", Pmodbint { size = Pint64; is_safe = Safe; is_signed = false };
   "%int64_and", Pandbint Pint64;
   "%int64_or",  Porbint Pint64;
   "%int64_xor", Pxorbint Pint64;
@@ -1021,7 +1027,7 @@ and transl_exp0 e =
       | `Constant_or_function ->
         (* a constant expr of type <> float gets compiled as itself *)
          transl_exp e
-      | `Float -> 
+      | `Float ->
           (* We don't need to wrap with Popaque: this forward
              block will never be shortcutted since it points to a float. *)
           Lprim(Pmakeblock(Obj.forward_tag, Immutable, None),

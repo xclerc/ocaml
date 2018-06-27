@@ -31,7 +31,7 @@ method oper_latency = function
   | Iconst_symbol _ -> 1
   | Iintop(Imul | Imulh) -> 9
   | Iintop_imm(Imul, _) -> 5
-  | Iintop(Idiv | Imod) -> 36
+  | Iintop(Idiv _ | Imod _) -> 36
   | Iaddf | Isubf -> 4
   | Imulf -> 5
   | Idivf -> 33
@@ -49,7 +49,7 @@ method oper_issue_cycles = function
   | Iload(_, Ibased(_, _)) -> 2
   | Istore(_, Ibased(_, _), _) -> 2
   | Ialloc _ -> 4
-  | Iintop(Imod) -> 40 (* assuming full stall *)
+  | Iintop(Imod _) -> 40 (* assuming full stall *)
   | Iintop(Icomp _) -> 4
   | Iintop_imm(Icomp _, _) -> 4
   | Ifloatofint -> 9
