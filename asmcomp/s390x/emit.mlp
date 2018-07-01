@@ -445,16 +445,18 @@ let emit_instr i =
         `	dsgr	%r0, {emit_reg i.arg.(1)}\n`;
         `	lgr	{emit_reg i.res.(0)}, %r0\n`
     | Lop(Iintop (Imod { is_signed = false })) ->
+        `	lhi	%r0, 0\n`;
         `	lgr	%r1, {emit_reg i.arg.(0)}\n`;
-        `	dlr	%r0, {emit_reg i.arg.(1)}\n`;
+        `	dlgr	%r0, {emit_reg i.arg.(1)}\n`;
         `	lgr	{emit_reg i.res.(0)}, %r0\n`
     | Lop(Iintop (Idiv { is_signed = true })) ->
         `	lgr	%r1, {emit_reg i.arg.(0)}\n`;
         `	dsgr	%r0, {emit_reg i.arg.(1)}\n`;
         `	lgr	{emit_reg i.res.(0)}, %r1\n`
     | Lop(Iintop (Idiv { is_signed = false })) ->
+        `	lhi	%r0, 0\n`;
         `	lgr	%r1, {emit_reg i.arg.(0)}\n`;
-        `	dlr	%r0, {emit_reg i.arg.(1)}\n`;
+        `	dlgr	%r0, {emit_reg i.arg.(1)}\n`;
         `	lgr	{emit_reg i.res.(0)}, %r1\n`
     | Lop(Iintop Ilsl) ->
         `	sllg	{emit_reg i.res.(0)}, {emit_reg i.arg.(0)}, 0({emit_reg i.arg.(1)})\n`
