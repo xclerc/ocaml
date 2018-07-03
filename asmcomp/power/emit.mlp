@@ -113,6 +113,7 @@ let cmplg = if ppc64 then "cmpld" else "cmplw"
 let datag = if ppc64 then ".quad" else ".long"
 let mullg = if ppc64 then "mulld" else "mullw"
 let divg = if ppc64 then "divd" else "divw"
+let divug = if ppc64 then "divdu" else "divwu"
 let tglle = if ppc64 then "tdlle" else "twlle"
 
 (* Output a processor register *)
@@ -349,7 +350,8 @@ let name_for_intop = function
     Iadd  -> "add"
   | Imul  -> if ppc64 then "mulld" else "mullw"
   | Imulh -> if ppc64 then "mulhd" else "mulhw"
-  | Idiv  -> if ppc64 then "divd" else "divw"
+  | Idiv  { is_signed = true } -> if ppc64 then "divd" else "divw"
+  | Idiv  { is_signed = false } -> if ppc64 then "divdu" else "divwu"
   | Iand  -> "and"
   | Ior   -> "or"
   | Ixor  -> "xor"
@@ -466,7 +468,7 @@ module BR = Branch_relaxation.Make (struct
     | Lop(Istore(_chunk, addr, _)) -> load_store_size addr
     | Lop(Ialloc _) -> 4
     | Lop(Ispecific(Ialloc_far _)) -> 5
-    | Lop(Iintop Imod) -> 3
+    | Lop(Iintop (Imod _)) -> 3
     | Lop(Iintop(Icomp _)) -> 4
     | Lop(Iintop _) -> 1
     | Lop(Iintop_imm(Icomp _, _)) -> 4
@@ -742,8 +744,12 @@ let emit_instr i =
         `{emit_label lbl}:	addi	{emit_reg i.res.(0)}, 31, {emit_int size_addr}\n`
     | Lop(Iintop Isub) ->               (* subfc has swapped arguments *)
         `	subfc	{emit_reg i.res.(0)}, {emit_reg i.arg.(1)}, {emit_reg i.arg.(0)}\n`
-    | Lop(Iintop Imod) ->
+    | Lop(Iintop (Imod { is_signed = true })) ->
         `	{emit_string divg}	0, {emit_reg i.arg.(0)}, {emit_reg i.arg.(1)}\n`;
+        `	{emit_string mullg}	0, 0, {emit_reg i.arg.(1)}\n`;
+        `	subfc	{emit_reg i.res.(0)}, 0, {emit_reg i.arg.(0)}\n`
+    | Lop(Iintop (Imod { is_signed = false })) ->
+        `	{emit_string divug}	0, {emit_reg i.arg.(0)}, {emit_reg i.arg.(1)}\n`;
         `	{emit_string mullg}	0, 0, {emit_reg i.arg.(1)}\n`;
         `	subfc	{emit_reg i.res.(0)}, 0, {emit_reg i.arg.(0)}\n`
     | Lop(Iintop(Icomp cmp)) ->

@@ -112,6 +112,7 @@ type instruction =
   | CVTSS2SD of arg * arg
   | CVTTSD2SI of arg * arg
   | DEC of arg
+  | DIV of arg
   | DIVSD of arg * arg
   | FABS
   | FADD of arg

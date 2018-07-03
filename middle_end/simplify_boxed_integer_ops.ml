@@ -28,6 +28,8 @@ module Simplify_boxed_integer_operator (I : sig
   val mul : t -> t -> t
   val div : t -> t -> t
   val rem : t -> t -> t
+  val div_unsigned : t -> t -> t
+  val rem_unsigned : t -> t -> t
   val logand : t -> t -> t
   val logor : t -> t -> t
   val logxor : t -> t -> t
@@ -67,8 +69,10 @@ end) : Simplify_boxed_integer_ops_intf.S with type t := I.t = struct
     | Paddbint kind when kind = I.kind -> eval I.add
     | Psubbint kind when kind = I.kind -> eval I.sub
     | Pmulbint kind when kind = I.kind -> eval I.mul
-    | Pdivbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.div
-    | Pmodbint {size=kind} when kind = I.kind && non_zero n2 -> eval I.rem
+    | Pdivbint {size=kind; is_signed=true} when kind = I.kind && non_zero n2 -> eval I.div
+    | Pmodbint {size=kind; is_signed=true} when kind = I.kind && non_zero n2 -> eval I.rem
+    | Pdivbint {size=kind; is_signed=false} when kind = I.kind && non_zero n2 -> eval I.div_unsigned
+    | Pmodbint {size=kind; is_signed=false} when kind = I.kind && non_zero n2 -> eval I.rem_unsigned
     | Pandbint kind when kind = I.kind -> eval I.logand
     | Porbint kind when kind = I.kind -> eval I.logor
     | Pxorbint kind when kind = I.kind -> eval I.logxor

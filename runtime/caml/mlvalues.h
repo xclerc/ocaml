@@ -335,12 +335,17 @@ struct custom_operations;       /* defined in [custom.h] */
 /* Int32.t, Int64.t and Nativeint.t are represented as custom blocks. */
 
 #define Int32_val(v) (*((int32_t *) Data_custom_val(v)))
+#define Int32_uval(v) (*((uint32_t *) Data_custom_val(v)))
 #define Nativeint_val(v) (*((intnat *) Data_custom_val(v)))
+#define Nativeint_uval(v) (*((uintnat *) Data_custom_val(v)))
 #ifndef ARCH_ALIGN_INT64
 #define Int64_val(v) (*((int64_t *) Data_custom_val(v)))
+#define Int64_uval(v) (*((uint64_t *) Data_custom_val(v)))
 #else
 CAMLextern int64_t caml_Int64_val(value v);
 #define Int64_val(v) caml_Int64_val(v)
+CAMLextern uint64_t caml_Int64_uval(value v);
+#define Int64_uval(v) caml_Int64_uval(v)
 #endif
 
 /* 3- Atoms are 0-tuples.  They are statically allocated once and for all. */

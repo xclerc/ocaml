@@ -114,6 +114,7 @@ module I : sig
   val cvtss2sd: arg -> arg -> unit
   val cvttsd2si: arg -> arg -> unit
   val dec: arg -> unit
+  val div: arg -> unit
   val divsd: arg -> arg -> unit
   val fabs: unit -> unit
   val fadd: arg -> unit

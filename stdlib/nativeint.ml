@@ -20,7 +20,9 @@ external add: nativeint -> nativeint -> nativeint = "%nativeint_add"
 external sub: nativeint -> nativeint -> nativeint = "%nativeint_sub"
 external mul: nativeint -> nativeint -> nativeint = "%nativeint_mul"
 external div: nativeint -> nativeint -> nativeint = "%nativeint_div"
+external div_unsigned: nativeint -> nativeint -> nativeint = "%nativeint_udiv"
 external rem: nativeint -> nativeint -> nativeint = "%nativeint_mod"
+external rem_unsigned: nativeint -> nativeint -> nativeint = "%nativeint_umod"
 external logand: nativeint -> nativeint -> nativeint = "%nativeint_and"
 external logor: nativeint -> nativeint -> nativeint = "%nativeint_or"
 external logxor: nativeint -> nativeint -> nativeint = "%nativeint_xor"
@@ -49,6 +51,14 @@ let min_int = shift_left 1n (size - 1)
 let max_int = sub min_int 1n
 let lognot n = logxor n (-1n)
 
+let unsigned_to_int =
+  let max_int = of_int Pervasives.max_int in
+  fun n ->
+    if compare zero n <= 0 && compare n max_int <= 0 then
+      Some (to_int n)
+    else
+      None
+
 external format : string -> nativeint -> string = "caml_nativeint_format"
 let to_string n = format "%d" n
 
@@ -63,3 +73,6 @@ type t = nativeint
 
 let compare (x: t) (y: t) = Pervasives.compare x y
 let equal (x: t) (y: t) = compare x y = 0
+
+let compare_unsigned n m =
+  compare (sub n min_int) (sub m min_int)

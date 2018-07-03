@@ -202,8 +202,10 @@ let primitives_table = create_hashtable 57 [
   "%nativeint_add", Primitive (Paddbint Pnativeint);
   "%nativeint_sub", Primitive (Psubbint Pnativeint);
   "%nativeint_mul", Primitive (Pmulbint Pnativeint);
-  "%nativeint_div", Primitive (Pdivbint { size = Pnativeint; is_safe = Safe });
-  "%nativeint_mod", Primitive (Pmodbint { size = Pnativeint; is_safe = Safe });
+  "%nativeint_div", Primitive (Pdivbint { size = Pnativeint; is_safe = Safe; is_signed = true });
+  "%nativeint_mod", Primitive (Pmodbint { size = Pnativeint; is_safe = Safe; is_signed = true });
+  "%nativeint_udiv", Primitive (Pdivbint { size = Pnativeint; is_safe = Safe; is_signed = false });
+  "%nativeint_umod", Primitive (Pmodbint { size = Pnativeint; is_safe = Safe; is_signed = false });
   "%nativeint_and", Primitive (Pandbint Pnativeint);
   "%nativeint_or", Primitive  (Porbint Pnativeint);
   "%nativeint_xor", Primitive (Pxorbint Pnativeint);
@@ -216,8 +218,10 @@ let primitives_table = create_hashtable 57 [
   "%int32_add", Primitive (Paddbint Pint32);
   "%int32_sub", Primitive (Psubbint Pint32);
   "%int32_mul", Primitive (Pmulbint Pint32);
-  "%int32_div", Primitive (Pdivbint { size = Pint32; is_safe = Safe });
-  "%int32_mod", Primitive (Pmodbint { size = Pint32; is_safe = Safe });
+  "%int32_div", Primitive (Pdivbint { size = Pint32; is_safe = Safe; is_signed = true });
+  "%int32_mod", Primitive (Pmodbint { size = Pint32; is_safe = Safe; is_signed = true });
+  "%int32_udiv", Primitive (Pdivbint { size = Pint32; is_safe = Safe; is_signed = false });
+  "%int32_umod", Primitive (Pmodbint { size = Pint32; is_safe = Safe; is_signed = false });
   "%int32_and", Primitive (Pandbint Pint32);
   "%int32_or", Primitive  (Porbint Pint32);
   "%int32_xor", Primitive (Pxorbint Pint32);
@@ -230,8 +234,10 @@ let primitives_table = create_hashtable 57 [
   "%int64_add", Primitive (Paddbint Pint64);
   "%int64_sub", Primitive (Psubbint Pint64);
   "%int64_mul", Primitive (Pmulbint Pint64);
-  "%int64_div", Primitive (Pdivbint { size = Pint64; is_safe = Safe });
-  "%int64_mod", Primitive (Pmodbint { size = Pint64; is_safe = Safe });
+  "%int64_div", Primitive (Pdivbint { size = Pint64; is_safe = Safe; is_signed = true });
+  "%int64_mod", Primitive (Pmodbint { size = Pint64; is_safe = Safe; is_signed = true });
+  "%int64_udiv", Primitive (Pdivbint { size = Pint64; is_safe = Safe; is_signed = false });
+  "%int64_umod", Primitive (Pmodbint { size = Pint64; is_safe = Safe; is_signed = false });
   "%int64_and", Primitive (Pandbint Pint64);
   "%int64_or", Primitive  (Porbint Pint64);
   "%int64_xor", Primitive (Pxorbint Pint64);

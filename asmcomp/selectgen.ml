@@ -58,7 +58,7 @@ let oper_result_type = function
       end
   | Calloc -> typ_val
   | Cstore (_c, _) -> typ_void
-  | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi |
+  | Caddi | Csubi | Cmuli | Cmulhi | Cdivi _ | Cmodi _ |
     Cand | Cor | Cxor | Clsl | Clsr | Casr |
     Ccmpi _ | Ccmpa _ | Ccmpf _ -> typ_int
   | Caddv -> typ_val
@@ -296,7 +296,7 @@ method is_simple_expr = function
         (* The following may have side effects *)
       | Capply _ | Cextcall _ | Calloc | Cstore _ | Craise _ -> false
         (* The remaining operations are simple if their args are *)
-      | Cload _ | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi | Cand | Cor
+      | Cload _ | Caddi | Csubi | Cmuli | Cmulhi | Cdivi _ | Cmodi _ | Cand | Cor
       | Cxor | Clsl | Clsr | Casr | Ccmpi _ | Caddv | Cadda | Ccmpa _ | Cnegf
       | Cabsf | Caddf | Csubf | Cmulf | Cdivf | Cfloatofint | Cintoffloat
       | Ccmpf _ | Ccheckbound -> List.for_all self#is_simple_expr args
@@ -339,7 +339,7 @@ method effects_of exp =
       | Craise _ | Ccheckbound -> EC.effect_only Effect.Raise
       | Cload (_, Asttypes.Immutable) -> EC.none
       | Cload (_, Asttypes.Mutable) -> EC.coeffect_only Coeffect.Read_mutable
-      | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi | Cand | Cor | Cxor
+      | Caddi | Csubi | Cmuli | Cmulhi | Cdivi _ | Cmodi _ | Cand | Cor | Cxor
       | Clsl | Clsr | Casr | Ccmpi _ | Caddv | Cadda | Ccmpa _ | Cnegf | Cabsf
       | Caddf | Csubf | Cmulf | Cdivf | Cfloatofint | Cintoffloat | Ccmpf _ ->
         EC.none
@@ -441,8 +441,8 @@ method select_operation op args _dbg =
   | (Csubi, _) -> self#select_arith Isub args
   | (Cmuli, _) -> self#select_arith_comm Imul args
   | (Cmulhi, _) -> self#select_arith_comm Imulh args
-  | (Cdivi, _) -> (Iintop Idiv, args)
-  | (Cmodi, _) -> (Iintop Imod, args)
+  | (Cdivi { is_signed }, _) -> (Iintop (Idiv { is_signed }), args)
+  | (Cmodi { is_signed }, _) -> (Iintop (Imod { is_signed }), args)
   | (Cand, _) -> self#select_arith_comm Iand args
   | (Cor, _) -> self#select_arith_comm Ior args
   | (Cxor, _) -> self#select_arith_comm Ixor args

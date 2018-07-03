@@ -448,13 +448,23 @@ let emit_instr i =
        `	ngr	%r1, {emit_reg i.arg.(0)}\n`;
        `	sgr	%r0, %r1\n`;
        `	lgr	{emit_reg i.res.(0)}, %r0\n`
-    | Lop(Iintop Imod) ->
+    | Lop(Iintop (Imod { is_signed = true })) ->
         `	lgr	%r1, {emit_reg i.arg.(0)}\n`;
         `	dsgr	%r0, {emit_reg i.arg.(1)}\n`;
         `	lgr	{emit_reg i.res.(0)}, %r0\n`
-    | Lop(Iintop Idiv) ->
+    | Lop(Iintop (Imod { is_signed = false })) ->
+        `	lghi	%r0, 0\n`;
+        `	lgr	%r1, {emit_reg i.arg.(0)}\n`;
+        `	dlgr	%r0, {emit_reg i.arg.(1)}\n`;
+        `	lgr	{emit_reg i.res.(0)}, %r0\n`
+    | Lop(Iintop (Idiv { is_signed = true })) ->
         `	lgr	%r1, {emit_reg i.arg.(0)}\n`;
         `	dsgr	%r0, {emit_reg i.arg.(1)}\n`;
+        `	lgr	{emit_reg i.res.(0)}, %r1\n`
+    | Lop(Iintop (Idiv { is_signed = false })) ->
+        `	lghi	%r0, 0\n`;
+        `	lgr	%r1, {emit_reg i.arg.(0)}\n`;
+        `	dlgr	%r0, {emit_reg i.arg.(1)}\n`;
         `	lgr	{emit_reg i.res.(0)}, %r1\n`
     | Lop(Iintop Ilsl) ->
         `	sllg	{emit_reg i.res.(0)}, {emit_reg i.arg.(0)}, 0({emit_reg i.arg.(1)})\n`
@@ -516,7 +526,7 @@ let emit_instr i =
     | Lop(Iintop_imm(Imul, n)) ->
         assert (i.arg.(0).loc = i.res.(0).loc);
           `	msgfi	{emit_reg i.res.(0)}, {emit_int n}\n`
-    | Lop(Iintop_imm((Imulh | Idiv | Imod), _)) ->
+    | Lop(Iintop_imm((Imulh | Idiv _ | Imod _), _)) ->
         assert false
     | Lop(Inegf | Iabsf as op) ->
         let instr = name_for_floatop1 op in

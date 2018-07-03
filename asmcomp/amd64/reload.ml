@@ -74,7 +74,7 @@ method! reload_operation op arg res =
       (* This add will be turned into a lea; args and results must be
          in registers *)
       super#reload_operation op arg res
-  | Iintop(Imulh | Idiv | Imod | Ilsl | Ilsr | Iasr)
+  | Iintop(Imulh | Idiv _ | Imod _ | Ilsl | Ilsr | Iasr)
   | Iintop_imm(_, _) ->
       (* The argument(s) and results can be either in register or on stack *)
       (* Note: Imulh, Idiv, Imod: arg(0) and res(0) already forced in regs

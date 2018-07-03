@@ -132,6 +132,7 @@ let print_instr b = function
   | CVTSS2SD (arg1, arg2) -> i2 b "cvtss2sd" arg1 arg2
   | CVTTSD2SI (arg1, arg2) -> i2_s b "cvttsd2si" arg1 arg2
   | DEC arg -> i1_s b "dec" arg
+  | DIV arg -> i1_s b "div" arg
   | DIVSD (arg1, arg2) -> i2 b "divsd" arg1 arg2
   | FABS -> i0 b "fabs"
   | FADD arg -> i1_s b "fadd" arg

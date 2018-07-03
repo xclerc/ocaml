@@ -261,14 +261,18 @@ let primitive ppf = function
   | Paddbint bi -> print_boxed_integer "add" ppf bi
   | Psubbint bi -> print_boxed_integer "sub" ppf bi
   | Pmulbint bi -> print_boxed_integer "mul" ppf bi
-  | Pdivbint { size = bi; is_safe = Safe } ->
-      print_boxed_integer "div" ppf bi
-  | Pdivbint { size = bi; is_safe = Unsafe } ->
-      print_boxed_integer "div_unsafe" ppf bi
-  | Pmodbint { size = bi; is_safe = Safe } ->
-      print_boxed_integer "mod" ppf bi
-  | Pmodbint { size = bi; is_safe = Unsafe } ->
-      print_boxed_integer "mod_unsafe" ppf bi
+  | Pdivbint { size = bi; is_safe; is_signed } ->
+    let name =
+      Printf.sprintf "%sdiv%s"
+        (if is_signed then "" else "u")
+        (if is_safe = Safe then "" else "_unsafe") in
+      print_boxed_integer name ppf bi
+  | Pmodbint { size = bi; is_safe; is_signed } ->
+    let name =
+      Printf.sprintf "%smod%s"
+        (if is_signed then "" else "u")
+        (if is_safe = Safe then "" else "_unsafe") in
+      print_boxed_integer name ppf bi
   | Pandbint bi -> print_boxed_integer "and" ppf bi
   | Porbint bi -> print_boxed_integer "or" ppf bi
   | Pxorbint bi -> print_boxed_integer "xor" ppf bi

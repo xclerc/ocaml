@@ -342,8 +342,8 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
       match prim with
       | Pdivint _ -> Pdivint Unsafe
       | Pmodint _ -> Pmodint Unsafe
-      | Pdivbint { size } -> Pdivbint { size; is_safe = Unsafe }
-      | Pmodbint { size } -> Pmodbint { size; is_safe = Unsafe }
+      | Pdivbint { size; is_signed } -> Pdivbint { size; is_safe = Unsafe; is_signed }
+      | Pmodbint { size; is_signed } -> Pmodbint { size; is_safe = Unsafe; is_signed }
       | _ -> assert false
     in
     let comparison : Lambda.primitive =

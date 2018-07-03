@@ -22,7 +22,8 @@ type integer_comparison =
   | Iunsigned of Cmm.integer_comparison
 
 type integer_operation =
-    Iadd | Isub | Imul | Imulh | Idiv | Imod
+    Iadd | Isub | Imul | Imulh
+  | Idiv of { is_signed : bool } | Imod of  { is_signed : bool }
   | Iand | Ior | Ixor | Ilsl | Ilsr | Iasr
   | Icomp of integer_comparison
   | Icheckbound of { label_after_error : label option;
@@ -185,7 +186,7 @@ let spacetime_node_hole_pointer_is_live_before insn =
       | Icheckbound _
         (* [Icheckbound] doesn't need to return [true] for the same reason as
            [Ialloc]. *)
-      | Iadd | Isub | Imul | Imulh | Idiv | Imod
+      | Iadd | Isub | Imul | Imulh | Idiv _ | Imod _
       | Iand | Ior | Ixor | Ilsl | Ilsr | Iasr
       | Icomp _ -> false
       end

@@ -121,6 +121,7 @@ module I = struct
   let cvtss2sd x y = emit (CVTSS2SD (x, y))
   let cvttsd2si x y = emit (CVTTSD2SI (x, y))
   let dec x = emit (DEC x)
+  let div x = emit (DIV x)
   let divsd x y = emit (DIVSD (x, y))
   let fabs () = emit FABS
   let fadd x = emit (FADD x)

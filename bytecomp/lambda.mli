@@ -109,8 +109,8 @@ type primitive =
   | Paddbint of boxed_integer
   | Psubbint of boxed_integer
   | Pmulbint of boxed_integer
-  | Pdivbint of { size : boxed_integer; is_safe : is_safe }
-  | Pmodbint of { size : boxed_integer; is_safe : is_safe }
+  | Pdivbint of { size : boxed_integer; is_safe : is_safe; is_signed : bool }
+  | Pmodbint of { size : boxed_integer; is_safe : is_safe; is_signed : bool }
   | Pandbint of boxed_integer
   | Porbint of boxed_integer
   | Pxorbint of boxed_integer

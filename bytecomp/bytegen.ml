@@ -410,8 +410,10 @@ let comp_primitive p args =
   | Paddbint bi -> comp_bint_primitive bi "add" args
   | Psubbint bi -> comp_bint_primitive bi "sub" args
   | Pmulbint bi -> comp_bint_primitive bi "mul" args
-  | Pdivbint { size = bi } -> comp_bint_primitive bi "div" args
-  | Pmodbint { size = bi } -> comp_bint_primitive bi "mod" args
+  | Pdivbint { size = bi; is_signed = true } -> comp_bint_primitive bi "div" args
+  | Pmodbint { size = bi; is_signed = true } -> comp_bint_primitive bi "mod" args
+  | Pdivbint { size = bi; is_signed = false } -> comp_bint_primitive bi "udiv" args
+  | Pmodbint { size = bi; is_signed = false } -> comp_bint_primitive bi "umod" args
   | Pandbint bi -> comp_bint_primitive bi "and" args
   | Porbint bi -> comp_bint_primitive bi "or" args
   | Pxorbint bi -> comp_bint_primitive bi "xor" args

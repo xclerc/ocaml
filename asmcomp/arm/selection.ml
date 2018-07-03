@@ -213,11 +213,16 @@ method! select_operation op args dbg =
   | (Cmulhi, args) ->
       (Iintop Imulh, args)
   (* Turn integer division/modulus into runtime ABI calls *)
-  | (Cdivi, args) ->
+  | (Cdivi { is_signed = true }, args) ->
       (self#iextcall("__aeabi_idiv", false), args)
-  | (Cmodi, args) ->
+  | (Cmodi { is_signed = true }, args) ->
       (* See above for fix up of return register *)
       (self#iextcall("__aeabi_idivmod", false), args)
+  | (Cdivi { is_signed = false }, args) ->
+      (self#iextcall("__aeabi_uidiv", false), args)
+  | (Cmodi { is_signed = false }, args) ->
+      (* See above for fix up of return register *)
+      (self#iextcall("__aeabi_uidivmod", false), args)
   (* Recognize 16-bit bswap instruction (ARMv6T2 because we need movt) *)
   | (Cextcall("caml_bswap16_direct", _, _, _), args) when !arch >= ARMv6T2 ->
       (Ispecific(Ibswap 16), args)

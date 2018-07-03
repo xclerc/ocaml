@@ -20,7 +20,9 @@ external add : int64 -> int64 -> int64 = "%int64_add"
 external sub : int64 -> int64 -> int64 = "%int64_sub"
 external mul : int64 -> int64 -> int64 = "%int64_mul"
 external div : int64 -> int64 -> int64 = "%int64_div"
+external div_unsigned : int64 -> int64 -> int64 = "%int64_udiv"
 external rem : int64 -> int64 -> int64 = "%int64_mod"
+external rem_unsigned : int64 -> int64 -> int64 = "%int64_umod"
 external logand : int64 -> int64 -> int64 = "%int64_and"
 external logor : int64 -> int64 -> int64 = "%int64_or"
 external logxor : int64 -> int64 -> int64 = "%int64_xor"
@@ -50,6 +52,14 @@ let min_int = 0x8000000000000000L
 let max_int = 0x7FFFFFFFFFFFFFFFL
 let lognot n = logxor n (-1L)
 
+let unsigned_to_int =
+  let max_int = of_int Pervasives.max_int in
+  fun n ->
+    if compare zero n <= 0 && compare n max_int <= 0 then
+      Some (to_int n)
+    else
+      None
+
 external format : string -> int64 -> string = "caml_int64_format"
 let to_string n = format "%d" n
 
@@ -73,3 +83,6 @@ type t = int64
 
 let compare (x: t) (y: t) = Pervasives.compare x y
 let equal (x: t) (y: t) = compare x y = 0
+
+let compare_unsigned n m =
+  compare (sub n min_int) (sub m min_int)
