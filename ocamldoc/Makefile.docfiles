@@ -13,7 +13,7 @@
 #**************************************************************************
 
 # Define the lists of mli file used by ocamldoc to generate the stdlib
-# + otherlibs + compilerlibs + plugin hooks documentation
+# + otherlibs + compilerlibs documentation
 
 include $(SRC)/Makefile.config
 include $(SRC)/stdlib/StdlibModules
