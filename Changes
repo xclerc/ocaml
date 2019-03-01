@@ -3,6 +3,11 @@ Working version
 
 (Changes that can break existing programs are marked with a "*")
 
+### Compiler user-interface and warnings:
+
+* GPR#2276: Remove support for compiler plugins
+  (Mark Shinwell)
+
 ### Internal/compiler-libs changes:
 
 - GPR#1579: Add a separate types for clambda primitives
