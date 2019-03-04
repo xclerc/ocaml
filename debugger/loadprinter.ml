@@ -30,28 +30,6 @@ type error =
 
 exception Error of error
 
-(* Symtable has global state, and normally holds the symbol table
-   for the debuggee. We need to switch it temporarily to the
-   symbol table for the debugger. *)
-
-let debugger_symtable = ref (None: Symtable.global_map option)
-
-let use_debugger_symtable fn arg =
-  let old_symtable = Symtable.current_state() in
-  begin match !debugger_symtable with
-  | None ->
-      Dynlink.allow_unsafe_modules true;
-      debugger_symtable := Some(Symtable.current_state())
-  | Some st ->
-      Symtable.restore_state st
-  end;
-  Misc.try_finally (fun () ->
-      let result = fn arg in
-      debugger_symtable := Some(Symtable.current_state());
-      result
-    )
-    ~always:(fun () -> Symtable.restore_state old_symtable)
-
 (* Load a .cmo or .cma file *)
 
 open Format
@@ -59,7 +37,8 @@ open Format
 let rec loadfiles ppf name =
   try
     let filename = Load_path.find name in
-    use_debugger_symtable Dynlink.loadfile filename;
+    Dynlink.allow_unsafe_modules true;
+    Dynlink.loadfile filename;
     let d = Filename.dirname name in
     if d <> Filename.current_dir_name then begin
       if not (List.mem d (Load_path.get_paths ())) then
@@ -141,7 +120,7 @@ let install_printer ppf lid =
   let (ty_arg, path, is_old_style) = find_printer_type lid in
   let v =
     try
-      use_debugger_symtable (eval_value_path Env.empty) path
+      eval_value_path Env.empty path
     with Symtable.Error(Symtable.Undefined_global s) ->
       raise(Error(Unavailable_module(s, lid))) in
   let print_function =
