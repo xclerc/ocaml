@@ -72,8 +72,7 @@ let rec eval_address = function
     assert (Ident.persistent id); 
     let name = Ident.name id in
     begin match Dynlink.unsafe_get_value name with
-    | None ->
-      fatal_error ("Cannot find address for: " ^ name)
+    | None -> raise (Symtable.Error (Symtable.Undefined_global name))
     | Some obj -> obj
     end
   | Env.Adot(addr, pos) -> Obj.field (eval_address addr) pos
