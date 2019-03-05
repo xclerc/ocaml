@@ -68,7 +68,14 @@ let loadfile ppf name =
    the debuggee. *)
 
 let rec eval_address = function
-  | Env.Aident id -> Symtable.get_global_value id
+  | Env.Aident id ->
+    assert (Ident.persistent id); 
+    let name = Ident.name id in
+    begin match Dynlink.unsafe_get_value name with
+    | None ->
+      fatal_error ("Cannot find address for: " ^ name)
+    | Some obj -> obj
+    end
   | Env.Adot(addr, pos) -> Obj.field (eval_address addr) pos
 
 (* PR#7258: get rid of module aliases before evaluating paths *)

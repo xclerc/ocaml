@@ -62,5 +62,7 @@ module type S = sig
 
   val run : handle -> unit_header:Unit_header.t -> priv:bool -> unit
 
+  val unsafe_get_value : string -> Obj.t option
+
   val finish : handle -> unit
 end

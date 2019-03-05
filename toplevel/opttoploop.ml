@@ -31,16 +31,16 @@ let _dummy = (Ok (Obj.magic 0), Err "")
 
 external ndl_run_toplevel: string -> string -> res
   = "caml_natdynlink_run_toplevel"
-external ndl_loadsym: string -> Obj.t = "caml_natdynlink_loadsym"
 
 let global_symbol id =
   let sym = Compilenv.symbol_for_global id in
-  try ndl_loadsym sym
-  with _ -> fatal_error ("Opttoploop.global_symbol " ^ (Ident.unique_name id))
+  match Dynlink.unsafe_get_value sym with
+  | None ->
+    fatal_error ("Opttoploop.global_symbol " ^ (Ident.unique_name id))
+  | Some obj -> obj
 
 let need_symbol sym =
-  try ignore (ndl_loadsym sym); false
-  with _ -> true
+  Misc.Stdlib.Option.is_none (Dynlink.unsafe_get_value sym)
 
 let dll_run dll entry =
   match (try Result (Obj.magic (ndl_run_toplevel dll entry))

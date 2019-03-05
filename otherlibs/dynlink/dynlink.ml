@@ -164,6 +164,11 @@ module Bytecode = struct
       close_in ic;
       raise exc
 
+  let unsafe_get_value name =
+    match Symtable.get_global_value (Ident.create_persistent name) with
+    | exception _ -> None
+    | obj -> Some obj
+
   let finish (ic, _filename, _digest) =
     close_in ic
 end
