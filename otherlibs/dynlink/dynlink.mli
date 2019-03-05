@@ -68,6 +68,13 @@ val loadfile_private : string -> unit
     "allowed units" list (see {!set_allowed_units}) since they cannot
     be referenced from other compilation units. *)
 
+val unsafe_get_value : string -> Obj.t option
+(** Obtain the value with the given name, returning [None] if such value is
+    inaccessible. The accessible values are those in the main program and those
+    provided by previous calls to [loadfile].
+
+    This function is deemed "unsafe" as there is no type safety provided. *)
+
 val adapt_filename : string -> string
 (** In bytecode, the identity function. In native code, replace the last
     extension with [.cmxs]. *)

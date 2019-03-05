@@ -23,6 +23,7 @@ module Make (P : Dynlink_platform_intf.S) : sig
   val is_native : bool
   val loadfile : string -> unit
   val loadfile_private : string -> unit
+  val unsafe_get_value : string -> Obj.t option
   val adapt_filename : string -> string
   val set_allowed_units : string list -> unit
   val allow_only: string list -> unit

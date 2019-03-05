@@ -5,8 +5,9 @@ Working version
 
 ### Compiler user-interface and warnings:
 
-* GPR#2276: Remove support for compiler plugins
-  (Mark Shinwell)
+* GPR#2276: Remove support for compiler plugins and hooks (also adds
+  [Dynlink.unsafe_get_value])
+  (Mark Shinwell, Xavier Clerc)
 
 ### Internal/compiler-libs changes:
 
