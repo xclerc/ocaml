@@ -34,7 +34,7 @@ DEPFLAGS=-slash
 DEPINCLUDES=$(INCLUDES)
 
 DIRECTORIES=$(UNIXDIR) $(DYNLINKDIR) $(addprefix $(ROOTDIR)/,\
-  utils parsing typing bytecomp toplevel driver)
+  utils parsing typing bytecomp toplevel)
 
 INCLUDES=$(addprefix -I ,$(DIRECTORIES))
 
