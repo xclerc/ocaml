@@ -30,6 +30,9 @@ Working version
 - GPR#2265: Add bytecomp/opcodes.mli
   (Mark Shinwell, review by Nicolas Ojeda Bar)
 
+- GPR#2280: Don't make more Clambda constants after starting Cmmgen
+  (Mark Shinwell)
+
 ### Runtime system:
 
 - GPR#1725: Deprecate Obj.set_tag
@@ -92,9 +95,10 @@ OCaml 4.08.0
 - GPR#1909: unsharing pattern types
   (Thomas Refis, with help from Leo White, review by Jacques Garrigue)
 
-- GPR#1942: simplification of the static check for recursive definitions
+- GPR#1942, GPR#2244: simplification of the static check
+  for recursive definitions
   (Alban Reynaud and Gabriel Scherer,
-   review by Jeremy Yallop and Armaël Guéneau)
+   review by Jeremy Yallop, Armaël Guéneau and Damien Doligez)
 
 * MPR#7814, GPR#2041, GPR#2235: allow modules from include directories
   to shadow other ones, even in the toplevel
@@ -208,7 +212,7 @@ OCaml 4.08.0
   min_max_num to module Float.
   (Christophe Troestler, review by Alain Frish, Xavier Clerc and Daniel Bünzli)
 
-- GPR#1354: Add fma support to Float module.
+- GPR#1354, GPR#2177: Add fma support to Float module.
   (Laurent Thévenoux, review by Alain Frisch, Jacques-Henri Jourdan,
   Xavier Leroy)
 
@@ -249,6 +253,16 @@ OCaml 4.08.0
   (Pierre Weis, Richard Bonichon, review by Florian Angeletti)
 
 ### Other libraries:
+
+- GPR#2222: Set default status in waitpid when pid is zero. Otherwise,
+  status value is undefined.
+  (Romain Beauxis and Xavier Leroy, review by Stephen Dolan)
+
+* GPR#2104, GPR#2211, PR#4127, PR#7709: Fix Thread.sigmask. When
+  system threads are loaded, Unix.sigprocmask is now an alias for
+  Thread.sigmask. This changes the behavior at least on MacOS, where
+  Unix.sigprocmask used to change the masks of all threads.
+  (Jacques-Henri Jourdan, review by Jérémie Dimino)
 
 - GPR#1061: Add ?follow parameter to Unix.link. This allows hardlinking
   symlinks.
@@ -485,6 +499,9 @@ OCaml 4.08.0
 - MPR#7546, GPR#2020: preambles and introduction for compiler-libs.
   (Florian Angeletti, review by Daniel Bünzli, Perry E. Metzger
   and Gabriel Scherer)
+
+- MPR#7547, GPR#2273: Tutorial on Lazy expressions and patterns in OCaml Manual
+  (Ulugbek Abdullaev, review by Florian Angeletti and Gabriel Scherer)
 
 - MPR#7720, GPR#1596, precise the documentation
   of the maximum indentation limit in Format.
