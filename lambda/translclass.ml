@@ -305,6 +305,7 @@ let rec build_class_init ~scopes cla cstr super inh_init cl_init msubst top cl =
               ->
                 (inh_init, cl_init, methods, values)
             | Tcf_method (name, _, Tcfk_concrete (_, exp)) ->
+                let scopes = Ls_method_definition name :: scopes in
                 let met_code = msubst true (transl_exp ~scopes exp) in
                 let met_code =
                   if !Clflags.native_code && List.length met_code = 1 then
@@ -680,6 +681,7 @@ let transl_class ~scopes ids cl_id pub_meths cl vflag =
   if rebind <> lambda_unit then rebind else
 
   (* Prepare for heavy environment handling *)
+  let scopes = Ls_class_definition cl_id :: scopes in
   let tables = Ident.create_local (Ident.name cl_id ^ "_tables") in
   let (top_env, req) = oo_add_class tables in
   let top = not req in
