@@ -47,7 +47,7 @@ let transl_object =
 let prim_fresh_oo_id =
   Pccall (Primitive.simple ~name:"caml_fresh_oo_id" ~arity:1 ~alloc:false)
 
-let transl_extension_constructor env path ext =
+let transl_extension_constructor ~scopes env path ext =
   let path =
     Printtyp.wrap_printing_env env ~error:true (fun () ->
       Option.map (Printtyp.rewrite_double_underscore_paths env) path)
@@ -58,7 +58,7 @@ let transl_extension_constructor env path ext =
     | Some p, None -> Path.name p
     | Some p, Some pack -> Printf.sprintf "%s.%s" pack (Path.name p)
   in
-  let loc = of_raw_location ext.ext_loc in
+  let loc = of_raw_location ~scopes ext.ext_loc in
   match ext.ext_kind with
     Text_decl _ ->
       Lprim (Pmakeblock (Obj.object_tag, Immutable, None),
@@ -233,18 +233,10 @@ and transl_exp0 ~scopes e =
       transl_let ~scopes rec_flag pat_expr_list
         (event_before ~scopes body (transl_exp ~scopes body))
   | Texp_function { arg_label = _; param; cases; partial; } ->
-      let ((kind, params, return), body) =
-        event_function ~scopes e
-          (function repr ->
-            let pl = push_defaults e.exp_loc [] cases partial in
-            let return_kind = function_return_value_kind e.exp_env e.exp_type in
-            transl_function ~scopes e.exp_loc return_kind !Clflags.native_code
-              repr partial param pl)
-      in
-      let attr = default_function_attribute in
-      let loc = of_raw_location ~scopes e.exp_loc in
-      let lam = Lfunction{kind; params; return; body; attr; loc} in
-      Translattribute.add_function_attributes lam e.exp_loc e.exp_attributes
+      let scopes =
+        if e.exp_loc.loc_ghost then scopes
+        else Ls_anonymous_function :: scopes in
+      transl_function ~scopes e param cases partial
   | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p});
                 exp_type = prim_type } as funct, oargs)
     when List.length oargs >= p.prim_arity
@@ -498,7 +490,8 @@ and transl_exp0 ~scopes e =
                 transl_exp ~scopes body)
   | Texp_letmodule(Some id, loc, Mp_present, modl, body) ->
       let defining_expr =
-        Levent (!transl_module ~scopes Tcoerce_none None modl, {
+        let mod_scopes = Ls_module_definition id :: scopes in
+        Levent (!transl_module ~scopes:mod_scopes Tcoerce_none None modl, {
           lev_loc = of_raw_location ~scopes loc.loc;
           lev_kind = Lev_module_definition id;
           lev_repr = None;
@@ -510,7 +503,7 @@ and transl_exp0 ~scopes e =
       transl_exp ~scopes body
   | Texp_letexception(cd, body) ->
       Llet(Strict, Pgenval,
-           cd.ext_id, transl_extension_constructor e.exp_env None cd,
+           cd.ext_id, transl_extension_constructor ~scopes e.exp_env None cd,
            transl_exp ~scopes body)
   | Texp_pack modl ->
       !transl_module ~scopes Tcoerce_none None modl
@@ -725,7 +718,7 @@ and transl_apply ~scopes ?(should_be_tailcall=false) ?(inlined = Default_inline)
                                 sargs)
      : Lambda.lambda)
 
-and transl_function
+and transl_function0
       ~scopes loc return untuplify_fn repr partial (param:Ident.t) cases =
   match cases with
     [{c_lhs=pat; c_guard=None;
@@ -735,7 +728,7 @@ and transl_function
       let kind = value_kind pat.pat_env pat.pat_type in
       let return_kind = function_return_value_kind exp_env exp_type in
       let ((_, params, return), body) =
-        transl_function ~scopes exp.exp_loc return_kind false
+        transl_function0 ~scopes exp.exp_loc return_kind false
           repr partial' param' cases
       in
       ((Curried, (param, kind) :: params, return),
@@ -796,20 +789,50 @@ and transl_function
        Matching.for_function (of_raw_location ~scopes loc) repr (Lvar param)
          (transl_cases ~scopes cases) partial)
 
+and transl_function ~scopes e param cases partial =
+  let ((kind, params, return), body) =
+    event_function ~scopes e
+      (function repr ->
+         let pl = push_defaults e.exp_loc [] cases partial in
+         let return_kind = function_return_value_kind e.exp_env e.exp_type in
+         transl_function0 ~scopes e.exp_loc return_kind !Clflags.native_code
+           repr partial param pl)
+  in
+  let attr = default_function_attribute in
+  let loc = of_raw_location ~scopes e.exp_loc in
+  let lam = Lfunction{kind; params; return; body; attr; loc} in
+  Translattribute.add_function_attributes lam e.exp_loc e.exp_attributes
+
+
 (*
   Notice: transl_let consumes (ie compiles) its pat_expr_list argument,
   and returns a function that will take the body of the lambda-let construct.
   This complication allows choosing any compilation order for the
   bindings and body of let constructs.
 *)
-and transl_let ~scopes rec_flag pat_expr_list =
+and transl_let ~scopes ?(in_structure=false) rec_flag pat_expr_list =
+  let transl_bound_exp pat expr =
+    match pat_bound_idents pat, expr, scopes with
+    | (id :: _),
+      {exp_desc = Texp_function { arg_label = _; param; cases; partial }; _},
+      scopes ->
+      (* A named function *)
+      transl_function ~scopes:(Ls_value_definition id :: scopes)
+        expr param cases partial
+    | (id :: _), expr, scopes when in_structure ->
+      (* A module-level named value *)
+      transl_exp ~scopes:(Ls_value_definition id :: scopes) expr
+    | _, expr, scopes ->
+      (* Everything else *)
+      transl_exp ~scopes expr in
+
   match rec_flag with
     Nonrecursive ->
       let rec transl = function
         [] ->
           fun body -> body
       | {vb_pat=pat; vb_expr=expr; vb_attributes=attr; vb_loc} :: rem ->
-          let lam = transl_exp ~scopes expr in
+          let lam = transl_bound_exp pat expr in
           let lam = Translattribute.add_function_attributes lam vb_loc attr in
           let mk_body = transl rem in
           let loc = of_raw_location ~scopes pat.pat_loc in
@@ -823,8 +846,8 @@ and transl_let ~scopes rec_flag pat_expr_list =
             | Tpat_alias ({pat_desc=Tpat_any}, id,_) -> id
             | _ -> assert false)
         pat_expr_list in
-      let transl_case {vb_expr=expr; vb_attributes; vb_loc} id =
-        let lam = transl_exp ~scopes expr in
+      let transl_case {vb_expr=expr; vb_attributes; vb_loc; vb_pat} id =
+        let lam = transl_bound_exp vb_pat expr in
         let lam =
           Translattribute.add_function_attributes lam vb_loc vb_attributes
         in
@@ -1057,7 +1080,7 @@ and transl_letop ~scopes loc env let_ ands param case partial =
     let (kind, params, return), body =
       event_function ~scopes case.c_rhs
         (function repr ->
-           transl_function ~scopes case.c_rhs.exp_loc return_kind
+           transl_function0 ~scopes case.c_rhs.exp_loc return_kind
              !Clflags.native_code repr partial param [case])
     in
     let attr = default_function_attribute in

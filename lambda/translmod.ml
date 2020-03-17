@@ -61,11 +61,12 @@ let field_path path field =
 
 (* Compile type extensions *)
 
-let transl_type_extension env rootpath tyext body =
+let transl_type_extension ~scopes env rootpath tyext body =
   List.fold_right
     (fun ext body ->
       let lam =
-        transl_extension_constructor env (field_path rootpath ext.ext_id) ext
+        transl_extension_constructor ~scopes env
+          (field_path rootpath ext.ext_id) ext
       in
       Llet(Strict, Pgenval, ext.ext_id, lam, body))
     tyext.tyext_constructors
@@ -93,7 +94,7 @@ let rec apply_coercion loc strict restr arg =
       let param = Ident.create_local "funarg" in
       let carg = apply_coercion loc Alias cc_arg (Lvar param) in
       apply_coercion_result loc strict arg [param, Pgenval] [carg] cc_res
-  | Tcoerce_primitive { pc_loc = _ (*FIXME scopes*); pc_desc; pc_env; pc_type; } ->
+  | Tcoerce_primitive { pc_loc = _; pc_desc; pc_env; pc_type; } ->
       Translprim.transl_primitive loc pc_desc pc_env pc_type None
   | Tcoerce_alias (env, path, cc) ->
       let lam = transl_module_path loc env path in
@@ -589,7 +590,7 @@ and transl_structure ~scopes loc fields cc rootpath final_env = function
       | Tstr_value(rec_flag, pat_expr_list) ->
           (* Translate bindings first *)
           let mk_lam_let =
-            transl_let ~scopes rec_flag pat_expr_list in
+            transl_let ~scopes ~in_structure:true rec_flag pat_expr_list in
           let ext_fields =
             List.rev_append (let_bound_idents pat_expr_list) fields in
           (* Then, translate remainder of struct *)
@@ -608,7 +609,7 @@ and transl_structure ~scopes loc fields cc rootpath final_env = function
             transl_structure ~scopes loc (List.rev_append ids fields)
               cc rootpath final_env rem
           in
-          transl_type_extension item.str_env rootpath tyext body, size
+          transl_type_extension ~scopes item.str_env rootpath tyext body, size
       | Tstr_exception ext ->
           let id = ext.tyexn_constructor.ext_id in
           let path = field_path rootpath id in
@@ -616,15 +617,19 @@ and transl_structure ~scopes loc fields cc rootpath final_env = function
             transl_structure ~scopes loc (id::fields) cc rootpath final_env rem
           in
           Llet(Strict, Pgenval, id,
-               transl_extension_constructor item.str_env
+               transl_extension_constructor ~scopes
+                                            item.str_env
                                             path
                                             ext.tyexn_constructor, body),
           size
       | Tstr_module ({mb_presence=Mp_present} as mb) ->
           let id = mb.mb_id in
           (* Translate module first *)
+          let subscopes = match id with
+            | None -> scopes
+            | Some id -> Ls_module_definition id :: scopes in
           let module_body =
-            transl_module ~scopes Tcoerce_none
+            transl_module ~scopes:subscopes Tcoerce_none
               (Option.bind id (field_path rootpath)) mb.mb_expr
           in
           let module_body =
@@ -668,7 +673,8 @@ and transl_structure ~scopes loc fields cc rootpath final_env = function
               | None -> transl_module ~scopes Tcoerce_none None modl
               | Some id ->
                   let module_body =
-                    transl_module ~scopes Tcoerce_none (field_path rootpath id) modl
+                    transl_module ~scopes:(Ls_module_definition id :: scopes)
+                      Tcoerce_none (field_path rootpath id) modl
                   in
                   Levent (module_body, {
                     lev_loc = of_raw_location ~scopes loc;
@@ -786,9 +792,10 @@ let transl_implementation_flambda module_name (str, cc) =
   primitive_declarations := [];
   Translprim.clear_used_primitives ();
   let module_id = Ident.create_persistent module_name in
+  let scopes = [Ls_module_definition module_id] in
   let body, size =
     Translobj.transl_label_init
-      (fun () -> transl_struct ~scopes:[] Loc_unknown [] cc
+      (fun () -> transl_struct ~scopes Loc_unknown [] cc
                    (global_path module_id) str)
   in
   { module_ident = module_id;
@@ -955,7 +962,6 @@ let field_of_str loc str =
   fun (pos, cc) ->
     match cc with
     | Tcoerce_primitive { pc_loc = _; pc_desc; pc_env; pc_type; } ->
-      (* FIXME scopes *)
         Translprim.transl_primitive loc pc_desc pc_env pc_type None
     | Tcoerce_alias (env, path, cc) ->
         let lam = transl_module_path loc env path in
@@ -978,7 +984,7 @@ let transl_store_structure ~scopes glob map prims aliases str =
         | Tstr_value(rec_flag, pat_expr_list) ->
             let ids = let_bound_idents pat_expr_list in
             let lam =
-              transl_let ~scopes rec_flag pat_expr_list
+              transl_let ~scopes ~in_structure:true rec_flag pat_expr_list
                 (store_idents Loc_unknown ids)
             in
             Lsequence(Lambda.subst no_env_update subst lam,
@@ -994,7 +1000,7 @@ let transl_store_structure ~scopes glob map prims aliases str =
               List.map (fun ext -> ext.ext_id) tyext.tyext_constructors
             in
             let lam =
-              transl_type_extension item.str_env rootpath tyext
+              transl_type_extension ~scopes item.str_env rootpath tyext
                                     (store_idents Loc_unknown ids)
             in
             Lsequence(Lambda.subst no_env_update subst lam,
@@ -1005,7 +1011,8 @@ let transl_store_structure ~scopes glob map prims aliases str =
             let path = field_path rootpath id in
             let loc = of_raw_location ~scopes ext.tyexn_constructor.ext_loc in
             let lam =
-              transl_extension_constructor item.str_env
+              transl_extension_constructor ~scopes
+                                           item.str_env
                                            path
                                            ext.tyexn_constructor
             in
@@ -1031,7 +1038,8 @@ let transl_store_structure ~scopes glob map prims aliases str =
               mb_attributes;
             let loc = of_raw_location ~scopes loc in
             let lam =
-              transl_store ~scopes (field_path rootpath id) subst
+              transl_store ~scopes:(Ls_module_definition id :: scopes)
+                (field_path rootpath id) subst
                 lambda_unit str.str_items
             in
             (* Careful: see next case *)
@@ -1060,7 +1068,8 @@ let transl_store_structure ~scopes glob map prims aliases str =
               mb_attributes;
             let loc = of_raw_location ~scopes loc in
             let lam =
-              transl_store ~scopes (field_path rootpath id) subst
+              transl_store ~scopes:(Ls_module_definition id :: scopes)
+                (field_path rootpath id) subst
                 lambda_unit str.str_items
             in
             (* Careful: see next case *)
@@ -1080,8 +1089,8 @@ let transl_store_structure ~scopes glob map prims aliases str =
              mb_loc=loc; mb_attributes} ->
             let lam =
               Translattribute.add_inline_attribute
-                (transl_module ~scopes Tcoerce_none
-                   (field_path rootpath id) modl)
+                (transl_module ~scopes:(Ls_module_definition id :: scopes)
+                   Tcoerce_none (field_path rootpath id) modl)
                 loc mb_attributes
             in
             (* Careful: the module value stored in the global may be different
@@ -1102,8 +1111,12 @@ let transl_store_structure ~scopes glob map prims aliases str =
             compile_recmodule ~scopes
               (fun id modl _loc ->
                  Lambda.subst no_env_update subst
-                   (transl_module ~scopes Tcoerce_none
-                      (Option.bind id (field_path rootpath)) modl))
+                   (match id with
+                    | None ->
+                      transl_module ~scopes Tcoerce_none None modl
+                    | Some id ->
+                      transl_module ~scopes:(Ls_module_definition id :: scopes)
+                        Tcoerce_none (field_path rootpath id) modl))
               bindings
               (Lsequence(store_idents Loc_unknown ids,
                          transl_store ~scopes rootpath
@@ -1345,20 +1358,21 @@ let transl_store_gen ~scopes module_name ({ str_items = str }, restr) topl =
   (*size, transl_label_init (transl_store_structure module_id map prims str)*)
 
 let transl_store_phrases module_name str =
-  let scopes = [] in  (* FIXME scopes *)
+  let scopes = [Ls_module_definition (Ident.create_persistent module_name)] in
   transl_store_gen ~scopes module_name (str,Tcoerce_none) true
 
 let transl_store_implementation module_name (str, restr) =
   let s = !transl_store_subst in
   transl_store_subst := Ident.Map.empty;
-  let scopes = [] in  (* FIXME scopes *)
+  let module_ident = Ident.create_persistent module_name in
+  let scopes = [Ls_module_definition module_ident] in
   let (i, code) = transl_store_gen ~scopes module_name (str, restr) false in
   transl_store_subst := s;
   { Lambda.main_module_block_size = i;
     code;
     (* module_ident is not used by closure, but this allow to share
        the type with the flambda version *)
-    module_ident = Ident.create_persistent module_name;
+    module_ident;
     required_globals = required_globals ~flambda:true code }
 
 (* Compile a toplevel phrase *)
@@ -1417,7 +1431,7 @@ let transl_toplevel_item ~scopes item =
       transl_exp ~scopes expr
   | Tstr_value(rec_flag, pat_expr_list) ->
       let idents = let_bound_idents pat_expr_list in
-      transl_let ~scopes rec_flag pat_expr_list
+      transl_let ~scopes ~in_structure:true rec_flag pat_expr_list
         (make_sequence toploop_setvalue_id idents)
   | Tstr_typext(tyext) ->
       let idents =
@@ -1426,26 +1440,32 @@ let transl_toplevel_item ~scopes item =
       (* we need to use unique name in case of multiple
          definitions of the same extension constructor in the toplevel *)
       List.iter set_toplevel_unique_name idents;
-        transl_type_extension item.str_env None tyext
+        transl_type_extension ~scopes item.str_env None tyext
           (make_sequence toploop_setvalue_id idents)
   | Tstr_exception ext ->
       set_toplevel_unique_name ext.tyexn_constructor.ext_id;
       toploop_setvalue ext.tyexn_constructor.ext_id
-        (transl_extension_constructor item.str_env None ext.tyexn_constructor)
+        (transl_extension_constructor ~scopes
+           item.str_env None ext.tyexn_constructor)
   | Tstr_module {mb_id=None; mb_presence=Mp_present; mb_expr=modl} ->
       transl_module ~scopes Tcoerce_none None modl
   | Tstr_module {mb_id=Some id; mb_presence=Mp_present; mb_expr=modl} ->
       (* we need to use the unique name for the module because of issues
          with "open" (PR#8133) *)
       set_toplevel_unique_name id;
-      let lam = transl_module ~scopes Tcoerce_none (Some(Pident id)) modl in
+      let lam = transl_module ~scopes:(Ls_module_definition id :: scopes)
+                  Tcoerce_none (Some(Pident id)) modl in
       toploop_setvalue id lam
   | Tstr_recmodule bindings ->
       let idents = List.filter_map (fun mb -> mb.mb_id) bindings in
       compile_recmodule ~scopes
         (fun id modl _loc ->
-           transl_module ~scopes Tcoerce_none
-             (Option.map (fun i -> Pident i) id) modl)
+           match id with
+           | None ->
+             transl_module ~scopes Tcoerce_none None modl
+           | Some id ->
+             transl_module ~scopes:(Ls_module_definition id :: scopes)
+               Tcoerce_none (Some (Pident id)) modl)
         bindings
         (make_sequence toploop_setvalue_id idents)
   | Tstr_class cl_list ->
@@ -1507,8 +1527,7 @@ let transl_toplevel_item_and_close ~scopes itm =
 let transl_toplevel_definition str =
   reset_labels ();
   Translprim.clear_used_primitives ();
-  let scopes = [] in  (* FIXME scopes *)
-  make_sequence (transl_toplevel_item_and_close ~scopes) str.str_items
+  make_sequence (transl_toplevel_item_and_close ~scopes:[]) str.str_items
 
 (* Compile the initialization code for a packed library *)
 

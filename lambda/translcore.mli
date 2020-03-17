@@ -29,10 +29,11 @@ val transl_apply: scopes:lambda_scopes
                   -> ?specialised:specialise_attribute
                   -> lambda -> (arg_label * expression option) list
                   -> scoped_location -> lambda
-val transl_let: scopes:lambda_scopes -> rec_flag
+val transl_let: scopes:lambda_scopes -> ?in_structure:bool -> rec_flag
                 -> value_binding list -> lambda -> lambda
 
-val transl_extension_constructor: Env.t -> Path.t option ->
+val transl_extension_constructor: scopes:lambda_scopes ->
+  Env.t -> Path.t option ->
   extension_constructor -> lambda
 
 type error =
