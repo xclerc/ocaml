@@ -271,6 +271,58 @@ type function_attribute = {
   stub: bool;
 }
 
+type lambda_scope_item =
+  | Ls_anonymous_function
+  | Ls_value_definition of Ident.t
+  | Ls_module_definition of Ident.t
+  | Ls_class_definition of Ident.t
+  | Ls_method_definition of Asttypes.label loc
+
+type lambda_scopes = lambda_scope_item list
+
+type scoped_location =
+  | Loc_unknown
+  | Loc_known of
+      { loc : Location.t;
+        scopes : lambda_scopes; }
+
+let raw_location = function
+  | Loc_unknown -> Location.none
+  | Loc_known { loc; _ } -> loc
+
+let of_raw_location ?(scopes=[]) loc =
+  if loc = Location.none then
+    Loc_unknown
+  else
+    Loc_known { loc; scopes }
+
+let string_of_scope_item = function
+  | Ls_anonymous_function ->
+     "(fun)"
+  | Ls_value_definition id
+  | Ls_module_definition id
+  | Ls_class_definition id ->
+     let name = Ident.name id in
+     if name = "" then
+       name
+     else
+       (match name.[0] with
+        | 'a'..'z' | 'A'..'Z' | '_' | '0'..'9' -> name
+        | _ -> "(" ^ name ^ ")")
+  | Ls_method_definition name ->
+     name.txt
+
+
+let string_of_scopes scopes =
+  let rec to_strings acc = function
+    (* Collapse nested anonymous function scopes *)
+    | [] -> acc
+    | Ls_anonymous_function :: ((Ls_anonymous_function :: _) as rest) ->
+      to_strings acc rest
+    | s :: rest ->
+      to_strings (string_of_scope_item s :: acc) rest in
+  String.concat "." (to_strings [] scopes)
+
 type lambda =
     Lvar of Ident.t
   | Lconst of structured_constant

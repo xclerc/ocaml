@@ -252,6 +252,26 @@ type function_attribute = {
   stub: bool;
 }
 
+type lambda_scope_item =
+  | Ls_anonymous_function
+  | Ls_value_definition of Ident.t
+  | Ls_module_definition of Ident.t
+  | Ls_class_definition of Ident.t
+  | Ls_method_definition of Asttypes.label loc
+
+type lambda_scopes = lambda_scope_item list
+
+type scoped_location =
+  | Loc_unknown
+  | Loc_known of
+      { loc : Location.t;
+        scopes : lambda_scopes; }
+
+val raw_location : scoped_location -> Location.t
+val of_raw_location : ?scopes:lambda_scopes -> Location.t -> scoped_location
+val string_of_scope_item : lambda_scope_item -> string
+val string_of_scopes : lambda_scopes -> string
+
 type lambda =
     Lvar of Ident.t
   | Lconst of structured_constant
