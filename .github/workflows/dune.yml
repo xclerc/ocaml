@@ -59,9 +59,9 @@ jobs:
         key: ${{ matrix.os }}-cache-install-ocaml4111-flambda-dune213
 
     # ### STEP 1 ###
-    # Get a working 4.10 vanilla ocaml install, with dune
+    # Get a working 4.10 statmemprof ocaml install, with dune
     #
-    # For that, checkout the ocaml/ocaml repo, build and install ocaml in
+    # For that, checkout the relevant repo, build and install ocaml in
     # a dedicated directory, and build and install dune in that directory
     #
     # Additionally, a cache of the install directory is used, so that the
