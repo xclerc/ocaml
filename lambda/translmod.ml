@@ -428,7 +428,6 @@ let compile_recmodule ~scopes compile_rhs bindings cont =
 
 let class_block_size = 4
 
-let transl_class_bindings cl_list =
 let transl_class_bindings ~scopes cl_list =
   let ids = List.map (fun (ci, _) -> ci.ci_id_class) cl_list in
   (ids,
