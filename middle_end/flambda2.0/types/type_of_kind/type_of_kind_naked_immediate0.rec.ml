@@ -56,8 +56,8 @@ let free_names t =
   | Naked_immediates _ -> Name_occurrences.empty
   | Is_int ty | Get_tag ty -> T.free_names ty
 
-let apply_rec_info t rec_info : _ Or_bottom.t =
-  if Rec_info.is_initial rec_info then Ok t
+let apply_coercion t coercion : _ Or_bottom.t =
+  if Reg_width_things.Coercion.is_id coercion then Ok t
   else Bottom
 
 module Make_meet_or_join

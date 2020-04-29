@@ -158,7 +158,7 @@ let lift_set_of_closures_discovered_via_reified_continuation_param_types dacc
     let extra_deps =
       Var_within_closure.Map.fold (fun _var simple env_free_names ->
           let ty =
-            Simple.pattern_match simple
+            Simple.pattern_match_ignoring_coercion simple
               ~const:(fun const -> T.type_for_const const)
               ~name:(fun name -> TE.find (DA.typing_env dacc) name)
           in

@@ -19,13 +19,20 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
+
 include module type of struct include Reg_width_things.Simple end
 
 include Contains_names.S with type t := t
 
-val merge_rec_info : t -> newer_rec_info:Rec_info.t option -> t option
+val merge_coercion : t -> newer_coercion:Reg_width_things.Coercion.t option -> t option (*XXX*)
 
-val without_rec_info : t -> t
+val without_coercion : t -> t
+
+(* XXX
+val without_coercion : t -> t
+val coercions : t -> Coercion.t list
+val coercion : t -> Coercion.t Or_bottom.t
+*)
 
 val must_be_var : t -> Variable.t option
 
@@ -64,7 +71,7 @@ val const_from_descr : Reg_width_const.Descr.t -> t
 
 val map_name : t -> f:(Name.t -> Name.t) -> t
 
-val to_name : t -> (Rec_info.t option * Name.t) option
+val to_name : t -> (Reg_width_things.Coercion.t option * Name.t) option (*XXX*)
 
 (* CR mshinwell: remove these next two? *)
 val map_var : t -> f:(Variable.t -> Variable.t) -> t

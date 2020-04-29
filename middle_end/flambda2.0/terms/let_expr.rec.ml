@@ -100,7 +100,7 @@ let invariant env t =
         E.add_variable env var (Flambda_primitive.result_kind' prim)
       | Simple simple, Singleton var ->
         let var = VB.var var in
-        Simple.pattern_match simple
+        Simple.pattern_match_ignoring_coercion simple
           ~const:(fun const -> E.add_variable env var (T.kind_for_const const))
           ~name:(fun name -> E.add_variable env var (E.kind_of_name env name))
     in

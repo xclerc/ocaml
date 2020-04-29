@@ -106,7 +106,7 @@ let prove_equals_to_var_or_symbol_or_tagged_immediate env t
   match get_alias_exn t with
   | exception Not_found -> Unknown
   | simple ->
-    Simple.pattern_match simple
+    Simple.pattern_match_ignoring_coercion simple
       ~const:(fun cst : _ proof ->
         match Reg_width_const.descr cst with
         | Tagged_immediate imm -> Proved (Tagged_immediate imm)
@@ -126,7 +126,7 @@ let prove_equals_to_var_or_symbol_or_tagged_immediate env t
           (* CR mshinwell: Instead, get all aliases and find a Symbol,
              to avoid relying on the fact that if there is a Symbol alias then
              it will be canonical *)
-          Simple.pattern_match simple
+          Simple.pattern_match_ignoring_coercion simple
             ~const:(fun cst : _ proof ->
               match Reg_width_const.descr cst with
               | Tagged_immediate imm -> Proved (Tagged_immediate imm)

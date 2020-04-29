@@ -72,7 +72,7 @@ let build_dep_graph dacc lifted_constants =
                   with
                   | exception Not_found -> free_syms
                   | canonical ->
-                    Simple.pattern_match canonical
+                    Simple.pattern_match_ignoring_coercion canonical
                       ~const:(fun _ -> free_syms)
                       ~name:(fun name ->
                         Name.pattern_match name

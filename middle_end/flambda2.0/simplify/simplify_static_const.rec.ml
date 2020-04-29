@@ -35,7 +35,7 @@ let simplify_field_of_block dacc (field : Field_of_block.t) =
       (* CR mshinwell: This should be "invalid" and propagate up *)
       field, T.bottom K.value
     | Ok simple, ty ->
-      Simple.pattern_match simple
+      Simple.pattern_match_ignoring_coercion simple
         ~name:(fun name ->
           Name.pattern_match name
             ~var:(fun var -> Field_of_block.Dynamically_computed var, ty)

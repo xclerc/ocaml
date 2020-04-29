@@ -25,7 +25,7 @@ module VB = Var_in_binding_pos
 
 let inline dacc ~callee ~args function_decl
       ~apply_return_continuation ~apply_exn_continuation
-      ~apply_inlining_depth ~unroll_to dbg =
+      ~apply_inlining_depth ~unroll_to:_XXX dbg =
   let denv = DA.denv dacc in
   let params_and_body = DE.find_code denv (I.code_id function_decl) in
   Function_params_and_body.pattern_match params_and_body
@@ -78,11 +78,11 @@ let inline dacc ~callee ~args function_decl
                 (Exn_continuation.exn_handler exn_continuation)
                 apply_exn_continuation
             in
-            let callee =
+            (* XXX let callee =
               Simple.merge_rec_info callee
                 ~newer_rec_info:(Some (Rec_info.create ~depth:1 ~unroll_to))
               |> Option.get  (* CR mshinwell: improve *)
-            in
+            in*)
             Expr.apply_name_permutation
               (Expr.bind_parameters_to_simples ~bind:params ~target:args
                 (Expr.create_let

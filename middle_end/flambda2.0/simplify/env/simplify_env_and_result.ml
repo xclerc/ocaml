@@ -348,7 +348,7 @@ end = struct
     end
 
   let check_simple_is_bound t (simple : Simple.t) =
-    Simple.pattern_match simple
+    Simple.pattern_match_ignoring_coercion simple
       ~name:(fun name -> check_name_is_bound t name)
       ~const:(fun _ -> ())
 

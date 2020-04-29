@@ -183,7 +183,7 @@ let free_names { defined_vars; binding_times = _; equations; cse; } =
   in
   Flambda_primitive.Eligible_for_cse.Map.fold
     (fun prim (bound_to : Simple.t) acc ->
-      Simple.pattern_match bound_to
+      Simple.pattern_match_ignoring_coercion bound_to
         ~const:(fun _ -> acc)
         ~name:(fun name ->
           let free_in_prim =
@@ -240,7 +240,7 @@ let equation_is_directly_recursive name ty =
   match Type_grammar.get_alias_exn ty with
   | exception Not_found -> false
   | simple ->
-    Simple.pattern_match simple
+    Simple.pattern_match_ignoring_coercion simple
       ~name:(fun name' -> Name.equal name name')
       ~const:(fun _ -> false)
 
@@ -844,7 +844,7 @@ let construct_joined_level envs_with_levels ~allowed ~joined_types ~cse =
        set is propagated.  We don't need to check the left-hand sides because
        we know all of those names are in [env_at_fork]. *)
     EP.Map.filter (fun _prim bound_to ->
-        Simple.pattern_match bound_to
+        Simple.pattern_match_ignoring_coercion bound_to
           ~const:(fun _ -> true)
           ~name:(fun name -> Name_occurrences.mem_name allowed name))
       cse

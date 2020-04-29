@@ -107,7 +107,7 @@ let function_name simple =
     Misc.fatal_errorf
       "Expected a function symbol, instead of@ %a" Simple.print simple
   in
-  Simple.pattern_match simple
+  Simple.pattern_match_ignoring_coercion simple
     ~name:(fun name ->
       Name.pattern_match name
         ~var:(fun _ -> fail simple)
@@ -117,7 +117,7 @@ let function_name simple =
 (* 'Simple' expression *)
 
 let simple env s =
-  Simple.pattern_match s
+  Simple.pattern_match_ignoring_coercion s
     ~name:(fun n -> name env n)
     ~const:(fun c -> const env c, env, Ece.pure)
 

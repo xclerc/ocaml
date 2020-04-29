@@ -139,7 +139,7 @@ let free_names t =
   | String _ -> Name_occurrences.empty
   | Array { length; } -> T.free_names length
 
-let apply_rec_info t rec_info : _ Or_bottom.t =
+let apply_coercion t coercion : _ Or_bottom.t =
   match t with
   | Closures { by_closure_id; } ->
     Or_bottom.map
@@ -147,7 +147,7 @@ let apply_rec_info t rec_info : _ Or_bottom.t =
        map_function_decl_types
         by_closure_id
         ~f:(fun (decl : Function_declaration_type.t) : _ Or_bottom.t ->
-          Function_declaration_type.apply_rec_info decl rec_info))
+          Function_declaration_type.apply_coercion decl coercion))
       ~f:(fun by_closure_id -> Closures { by_closure_id; })
   | Variant _
   | Boxed_float _
@@ -156,7 +156,7 @@ let apply_rec_info t rec_info : _ Or_bottom.t =
   | Boxed_nativeint _
   | String _
   | Array _ ->
-    if Rec_info.is_initial rec_info then Ok t
+    if Reg_width_things.Coercion.is_id coercion then Ok t
     else Bottom
 
 let meet_unknown meet_contents ~contents_is_bottom env

@@ -608,7 +608,7 @@ and simplify_let_cont
 
 and simplify_direct_full_application
   : 'a. DA.t -> Apply.t
-    -> (T.Function_declaration_type.Inlinable.t * Rec_info.t) option
+    -> (T.Function_declaration_type.Inlinable.t * Reg_width_things.Coercion.t) option
     -> result_arity:Flambda_arity.t
     -> 'a k -> Expr.t * 'a * UA.t
 = fun dacc apply function_decl_opt ~result_arity k ->
@@ -620,7 +620,7 @@ Format.eprintf "Considering inlining:@ %a\n%!" Apply.print apply;
   let inlined =
     match function_decl_opt with
     | None -> None
-    | Some (function_decl, function_decl_rec_info) ->
+    | Some (function_decl, function_decl_coercion) ->
       let apply_inlining_depth = Apply.inlining_depth apply in
 (*
 Format.eprintf "apply inlining depth = %d\n%!" apply_inlining_depth;
@@ -629,7 +629,7 @@ Format.eprintf "function_decl_rec_info = %a\n%!"
 *)
       let decision =
         Inlining_decision.make_decision_for_call_site (DA.denv dacc)
-          ~function_decl_rec_info
+          ~function_decl_coercion
           ~apply_inlining_depth
           (Apply.inline apply)
       in
@@ -895,7 +895,7 @@ and simplify_direct_function_call
     -> callee's_closure_id:Closure_id.t
     -> param_arity:Flambda_arity.t -> result_arity:Flambda_arity.t
     -> recursive:Recursive.t -> arg_types:T.t list
-    -> (T.Function_declaration_type.Inlinable.t * Rec_info.t) option
+    -> (T.Function_declaration_type.Inlinable.t * Reg_width_things.Coercion.t) option
     -> 'a k -> Expr.t * 'a * UA.t
 = fun dacc apply ~callee's_code_id_from_type ~callee's_code_id_from_call_kind
       ~callee's_closure_id ~param_arity ~result_arity ~recursive ~arg_types:_
@@ -1068,11 +1068,11 @@ and simplify_function_call
       in
       (* CR mshinwell: This should go in Typing_env (ditto logic for Rec_info
          in Simplify_simple *)
-      let function_decl_rec_info =
-        let rec_info = I.rec_info inlinable in
-        match Simple.rec_info (Apply.callee apply) with
-        | None -> rec_info
-        | Some newer -> Rec_info.merge rec_info ~newer
+      let function_decl_coercion =
+        let coercion = I.coercion inlinable in
+        match Simple.coercion (Apply.callee apply) with
+        | None -> coercion
+        | Some newer -> match Reg_width_things.Coercion.compose coercion newer with Ok x -> x | Bottom  -> assert false
       in
       let callee's_code_id_from_type = I.code_id inlinable in
       simplify_direct_function_call dacc apply ~callee's_code_id_from_type
@@ -1080,7 +1080,7 @@ and simplify_function_call
         ~param_arity:(I.param_arity inlinable)
         ~result_arity:(I.result_arity inlinable)
         ~recursive:(I.recursive inlinable)
-        (Some (inlinable, function_decl_rec_info)) k
+        (Some (inlinable, function_decl_coercion)) k
     | Ok (Non_inlinable non_inlinable) ->
       let module N = T.Function_declaration_type.Non_inlinable in
       let callee's_code_id_from_type = N.code_id non_inlinable in
@@ -1553,7 +1553,7 @@ and simplify_switch
                   | Naked_int64 _ | Naked_nativeint _ ->
                     normal_case ~identity_arms ~not_arms
                 in
-                Simple.pattern_match arg ~const
+                Simple.pattern_match_ignoring_coercion arg ~const
                   ~name:(fun _ -> normal_case ~identity_arms ~not_arms)
             end
           | New_wrapper (new_cont, new_handler) ->

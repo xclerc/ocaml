@@ -29,8 +29,8 @@ let apply_name_permutation t _perm = t
 
 let free_names _t = Name_occurrences.empty
 
-let apply_rec_info t rec_info : _ Or_bottom.t =
-  if Rec_info.is_initial rec_info then Ok t
+let apply_coercion t coercion : _ Or_bottom.t =
+  if Reg_width_things.Coercion.is_id coercion then Ok t
   else Bottom
 
 module Make_meet_or_join

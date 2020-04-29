@@ -965,6 +965,7 @@ partialclean::
 # The native-code compiler
 
 compilerlibs/ocamloptcomp.cma: $(OPTCOMP)
+#	$(CAMLC) -linkall -a -o $@ $^
 	$(CAMLC) -a -o $@ $^
 
 partialclean::

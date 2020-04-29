@@ -22,7 +22,7 @@ open! Simplify_import
    simplification of sets of closures, taking the used-var-in-closures
    set from the previous round. *)
 
-let function_decl_type denv function_decl ?code_id rec_info =
+let function_decl_type denv function_decl ?code_id coercion =
   let decision =
     Inlining_decision.make_decision_for_function_declaration
       denv function_decl
@@ -38,7 +38,7 @@ let function_decl_type denv function_decl ?code_id rec_info =
       ~inline:(FD.inline function_decl)
       ~is_a_functor:(FD.is_a_functor function_decl)
       ~recursive:(FD.recursive function_decl)
-      ~rec_info
+      ~coercion
   else
     T.create_non_inlinable_function_declaration
       ~code_id
@@ -156,7 +156,7 @@ end = struct
                 in
                 function_decl_type denv function_decl
                   ~code_id:new_code_id
-                  (Rec_info.create ~depth:1 ~unroll_to:None))
+                  (Reg_width_things.Coercion.id))
               (Function_declarations.funs function_decls)
           in
           Closure_id.Map.mapi (fun closure_id _function_decl ->
@@ -407,7 +407,7 @@ let simplify_function context r closure_id function_decl
       (* We need to use [dacc_after_body] to ensure that all [code_ids] in
          [function_decl] are available for the inlining decision code. *)
       function_decl_type (DA.denv dacc_after_body) function_decl
-        Rec_info.initial
+        Reg_width_things.Coercion.id
     in
     let code_age_relation =
       TE.code_age_relation (DA.typing_env dacc_after_body)
@@ -531,7 +531,7 @@ let simplify_and_lift_set_of_closures dacc ~closure_bound_vars_inverse
   in
   let closure_element_types =
     Var_within_closure.Map.map (fun closure_element ->
-        Simple.pattern_match closure_element
+        Simple.pattern_match_ignoring_coercion closure_element
           ~const:(fun _ -> T.alias_type_of K.value closure_element)
           ~name:(fun name ->
             Name.pattern_match name
@@ -721,7 +721,7 @@ let type_closure_elements_and_make_lifting_decision_for_one_set dacc
      sets ([Named.t] does not allow them). *)
   let can_lift =
     Var_within_closure.Map.for_all (fun _ simple ->
-        Simple.pattern_match simple
+        Simple.pattern_match_ignoring_coercion simple
           ~const:(fun _ -> true)
           ~name:(fun name ->
             Name.pattern_match name

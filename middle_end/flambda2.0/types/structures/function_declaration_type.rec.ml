@@ -29,11 +29,11 @@ module Inlinable = struct
     inline : Inline_attribute.t;
     is_a_functor : bool;
     recursive : Recursive.t;
-    rec_info : Rec_info.t;
+    coercion : Reg_width_things.Coercion.t;
   }
 
   let print ppf { code_id; param_arity; result_arity; stub; dbg;
-                  inline; is_a_functor; recursive; rec_info; } =
+                  inline; is_a_functor; recursive; coercion; } =
     Format.fprintf ppf
       "@[<hov 1>(Inlinable@ \
         @[<hov 1>(code_id@ %a)@]@ \
@@ -44,7 +44,7 @@ module Inlinable = struct
         @[<hov 1>(inline@ %a)@] \
         @[<hov 1>(is_a_functor@ %b)@] \
         @[<hov 1>(recursive@ %a)@]@ \
-        @[<hov 1>(rec_info@ %a)@]\
+        @[<hov 1>(coercion@ %a)@]\
         )@]"
       Code_id.print code_id
       Flambda_arity.print param_arity
@@ -54,10 +54,10 @@ module Inlinable = struct
       Inline_attribute.print inline
       is_a_functor
       Recursive.print recursive
-      Rec_info.print rec_info
+      Reg_width_things.Coercion.print coercion
 
   let create ~code_id ~param_arity ~result_arity ~stub ~dbg ~inline
-        ~is_a_functor ~recursive ~rec_info =
+        ~is_a_functor ~recursive ~coercion =
     { code_id;
       param_arity;
       result_arity;
@@ -66,7 +66,7 @@ module Inlinable = struct
       inline;
       is_a_functor;
       recursive;
-      rec_info;
+      coercion;
     }
 
   let code_id t = t.code_id
@@ -77,7 +77,7 @@ module Inlinable = struct
   let inline t = t.inline
   let is_a_functor t = t.is_a_functor
   let recursive t = t.recursive
-  let rec_info t = t.rec_info
+  let coercion t = t.coercion
 end
 
 module Non_inlinable = struct
@@ -136,7 +136,7 @@ let free_names (t : t) =
   | Bottom | Unknown -> Name_occurrences.empty
   | Ok (Inlinable { code_id; param_arity = _; result_arity = _; stub = _;
                     dbg = _; inline = _; is_a_functor = _; recursive = _;
-                    rec_info = _; })
+                    coercion = _; })
   | Ok (Non_inlinable { code_id; param_arity = _; result_arity = _;
                         recursive = _; }) ->
     Name_occurrences.add_code_id Name_occurrences.empty code_id
@@ -238,7 +238,7 @@ struct
         inline = inline1;
         is_a_functor = is_a_functor1;
         recursive = recursive1;
-        rec_info = _rec_info1;
+        coercion = _coercion1;
       }),
       Ok (Inlinable {
         code_id = code_id2;
@@ -249,7 +249,7 @@ struct
         inline = inline2;
         is_a_functor = is_a_functor2;
         recursive = recursive2;
-        rec_info = _rec_info2;
+        coercion = _coercion2;
       }) ->
       let typing_env = Meet_or_join_env.target_join_env env in
       let target_code_age_rel = TE.code_age_relation typing_env in
@@ -270,7 +270,7 @@ struct
             inline = inline1;
             is_a_functor = is_a_functor1;
             recursive = recursive1;
-            rec_info = _rec_info1;
+            coercion = _coercion1;
           }),
           TEE.empty ())
       in
@@ -320,11 +320,13 @@ let join env t1 t2 : t =
     assert (TEE.is_empty env_extension);
     t
 
-let apply_rec_info (t : t) rec_info : t Or_bottom.t =
+let apply_coercion (t : t) coercion : t Or_bottom.t =
   match t with
   | Ok (Inlinable { code_id; param_arity; result_arity; stub; dbg; inline;
-                    is_a_functor; recursive; rec_info = rec_info'; }) ->
-    let rec_info = Rec_info.merge rec_info' ~newer:rec_info in
+                    is_a_functor; recursive; coercion = coercion'; }) ->
+    let coercion =
+      match Reg_width_things.Coercion.compose coercion' coercion with
+      | Ok x -> x | _ -> (* XXX *) assert false in
     Ok (Ok (Inlinable { code_id;
       param_arity;
       result_arity;
@@ -333,7 +335,7 @@ let apply_rec_info (t : t) rec_info : t Or_bottom.t =
       inline;
       is_a_functor;
       recursive;
-      rec_info;
+      coercion;
     }))
   | Ok (Non_inlinable { code_id = _; param_arity = _; result_arity = _;
                         recursive = _; }) -> Ok t

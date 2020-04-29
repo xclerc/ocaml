@@ -28,7 +28,7 @@ module Inlinable : sig
     -> inline:Inline_attribute.t
     -> is_a_functor:bool
     -> recursive:Recursive.t
-    -> rec_info:Rec_info.t
+    -> coercion:Reg_width_things.Coercion.t
     -> t
 
   val code_id : t -> Code_id.t
@@ -39,7 +39,7 @@ module Inlinable : sig
   val inline : t -> Inline_attribute.t
   val is_a_functor : t -> bool
   val recursive : t -> Recursive.t
-  val rec_info : t -> Rec_info.t
+  val coercion : t -> Reg_width_things.Coercion.t
 end
 
 module Non_inlinable : sig
@@ -74,4 +74,4 @@ include Type_structure_intf.S
   with type meet_or_join_env := Meet_or_join_env.t
   with type typing_env_extension := Typing_env_extension.t
 
-val apply_rec_info : t -> Rec_info.t -> t Or_bottom.t
+val apply_coercion : t -> Reg_width_things.Coercion.t -> t Or_bottom.t

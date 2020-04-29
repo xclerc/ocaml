@@ -361,7 +361,7 @@ let binding_time_and_mode t name =
         Binding_time.symbols Name_mode.normal)
 
 let binding_time_and_mode_of_simple t simple =
-  Simple.pattern_match simple
+  Simple.pattern_match_ignoring_coercion simple
     ~const:(fun _ ->
       Binding_time.With_name_mode.create
         Binding_time.consts_and_discriminants Name_mode.normal)
@@ -373,7 +373,7 @@ let mem t name =
     ~symbol:(fun sym -> Symbol.Set.mem sym t.defined_symbols)
 
 let mem_simple t simple =
-  Simple.pattern_match simple
+  Simple.pattern_match_ignoring_coercion simple
     ~name:(fun name -> mem t name)
     ~const:(fun _ -> true)
 
@@ -432,7 +432,7 @@ let kind_of_simple t simple =
     let ty = find t name in
     Type_grammar.kind ty
   in
-  Simple.pattern_match simple ~const ~name
+  Simple.pattern_match_ignoring_coercion simple ~const ~name
 
 let add_definition t (name : Name_in_binding_pos.t) kind =
   let name_mode = Name_in_binding_pos.name_mode name in
@@ -542,7 +542,7 @@ and add_equation t name ty =
     match Type_grammar.get_alias_exn ty with
     | exception Not_found -> ()
     | simple ->
-      Simple.pattern_match simple
+      Simple.pattern_match_ignoring_coercion simple
         ~name:(fun name' ->
           if Name.equal name name' then begin
             Misc.fatal_errorf "Directly recursive equation@ %a = %a@ \
@@ -553,7 +553,7 @@ and add_equation t name ty =
           end)
         ~const:(fun _ -> ())
   end;
-  let aliases, simple, rec_info, t, ty =
+  let aliases, simple, coercion, t, ty =
     let aliases = aliases t in
     match Type_grammar.get_alias_exn ty with
     | exception Not_found -> aliases, Simple.name name, None, t, ty
@@ -562,19 +562,19 @@ and add_equation t name ty =
       let binding_time_and_mode_alias =
         binding_time_and_mode t name
       in
-      let rec_info = Simple.rec_info alias_of in
+      let coercion = Simple.coercion alias_of in
       let binding_time_and_mode_alias_of =
         binding_time_and_mode_of_simple t alias_of
       in
       let ({ canonical_element; alias_of; t = aliases; } : Aliases.add_result) =
         Aliases.add aliases alias binding_time_and_mode_alias
-          alias_of binding_time_and_mode_alias_of
+          Reg_width_things.Coercion.id alias_of binding_time_and_mode_alias_of
       in
       let kind = Type_grammar.kind ty in
       let ty =
         Type_grammar.alias_type_of kind canonical_element
       in
-      aliases, alias_of, rec_info, t, ty
+      aliases, alias_of, coercion, t, ty
   in
   (* Beware: if we're about to add the equation on a name which is different
      from the one that the caller passed in, then we need to make sure that the
@@ -600,18 +600,18 @@ and add_equation t name ty =
         | Ok (meet_ty, env_extension) ->
           meet_ty, add_env_extension t env_extension
     in
-    Simple.pattern_match simple ~name ~const:(fun _ -> ty, t)
+    Simple.pattern_match_ignoring_coercion simple ~name ~const:(fun _ -> ty, t)
   in
   let ty =
-    match rec_info with
+    match coercion with
     | None -> ty
-    | Some rec_info ->
-      match Type_grammar.apply_rec_info ty rec_info with
+    | Some coercion ->
+      match Type_grammar.apply_coercion ty coercion with
       | Bottom -> Type_grammar.bottom (Type_grammar.kind ty)
       | Ok ty -> ty
   in
   let [@inline always] name name = add_equation0 t aliases name ty in
-  Simple.pattern_match simple ~name ~const:(fun _ -> t)
+  Simple.pattern_match_ignoring_coercion simple ~name ~const:(fun _ -> t)
 
 and add_env_extension_from_level t level : t =
   let t =
@@ -726,21 +726,22 @@ let cut_and_n_way_join definition_typing_env ts_and_use_ids ~params
 
 let get_canonical_simple_with_kind_exn t ?min_name_mode simple =
   let kind = kind_of_simple t simple in
-  let newer_rec_info =
-    let newer_rec_info = Simple.rec_info simple in
-    match newer_rec_info with
+  let newer_coercion =
+    let newer_coercion = Simple.coercion simple in
+    match newer_coercion with
     | None -> None
-    | Some newer_rec_info ->
+    | Some newer_coercion ->
       Simple.pattern_match simple
-        ~const:(fun _ -> Some newer_rec_info)
+        ~const:(fun _ -> Some newer_coercion)
         ~name:(fun name ->
           match Type_grammar.get_alias_exn (find t name) with
-          | exception Not_found -> Some newer_rec_info
+          | exception Not_found -> Some newer_coercion
           | simple ->
-            match Simple.rec_info simple with
-            | None -> Some newer_rec_info
-            | Some rec_info ->
-              Some (Rec_info.merge rec_info ~newer:newer_rec_info))
+            match Simple.coercion simple with
+            | None -> Some newer_coercion
+            | Some coercion ->
+              Some (match Reg_width_things.Coercion.compose coercion newer_coercion with Ok x -> x | _ -> assert false))
+        ~coercion:(fun _ _ -> assert false)
   in
   let name_mode_simple =
     Binding_time.With_name_mode.name_mode
@@ -764,30 +765,31 @@ let get_canonical_simple_with_kind_exn t ?min_name_mode simple =
     end;
     raise Misc.Fatal_error
   | alias ->
-    match newer_rec_info with
+    match newer_coercion with
     | None -> alias, kind
     | Some _ ->
-      match Simple.merge_rec_info alias ~newer_rec_info with
+      match Simple.merge_coercion alias ~newer_coercion with
       | None -> raise Not_found
       | Some simple -> simple, kind
 
 let get_canonical_simple_exn t ?min_name_mode simple =
   (* Duplicated from above to eliminate the allocation of the returned pair. *)
-  let newer_rec_info =
-    let newer_rec_info = Simple.rec_info simple in
-    match newer_rec_info with
+  let newer_coercion =
+    let newer_coercion = Simple.coercion simple in
+    match newer_coercion with
     | None -> None
-    | Some newer_rec_info ->
+    | Some newer_coercion ->
       Simple.pattern_match simple
-        ~const:(fun _ -> Some newer_rec_info)
+        ~const:(fun _ -> Some newer_coercion)
         ~name:(fun name ->
           match Type_grammar.get_alias_exn (find t name) with
-          | exception Not_found -> Some newer_rec_info
+          | exception Not_found -> Some newer_coercion
           | simple ->
-            match Simple.rec_info simple with
-            | None -> Some newer_rec_info
-            | Some rec_info ->
-              Some (Rec_info.merge rec_info ~newer:newer_rec_info))
+            match Simple.coercion simple with
+            | None -> Some newer_coercion
+            | Some coercion ->
+              Some (match Reg_width_things.Coercion.compose coercion newer_coercion with Ok x -> x | _ -> assert false))
+        ~coercion:(fun _ _ -> assert false)
   in
   let name_mode_simple =
     Binding_time.With_name_mode.name_mode
@@ -811,10 +813,10 @@ let get_canonical_simple_exn t ?min_name_mode simple =
     end;
     raise Misc.Fatal_error
   | alias ->
-    match newer_rec_info with
+    match newer_coercion with
     | None -> alias
     | Some _ ->
-      match Simple.merge_rec_info alias ~newer_rec_info with
+      match Simple.merge_coercion alias ~newer_coercion with
       | None -> raise Not_found
       | Some simple -> simple
 
@@ -834,12 +836,12 @@ let aliases_of_simple t ~min_name_mode simple =
       | None -> false
       | Some c -> c >= 0)
   in
-  let newer_rec_info = Simple.rec_info simple in
-  match newer_rec_info with
+  let newer_coercion = Simple.coercion simple in
+  match newer_coercion with
   | None -> aliases
   | Some _ ->
     Simple.Set.fold (fun simple simples ->
-        match Simple.merge_rec_info simple ~newer_rec_info with
+        match Simple.merge_coercion simple ~newer_coercion with
         | None -> simples
         | Some simple -> Simple.Set.add simple simples)
       aliases

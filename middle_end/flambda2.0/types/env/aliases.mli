@@ -36,6 +36,7 @@ val add
    : t
   -> Simple.t
   -> Binding_time.With_name_mode.t
+  -> Reg_width_things.Coercion.t (* XXX add a label to make the direction obvious *)
   -> Simple.t
   -> Binding_time.With_name_mode.t
   -> add_result

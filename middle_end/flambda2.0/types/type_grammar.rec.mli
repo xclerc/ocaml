@@ -37,7 +37,7 @@ val kind : t -> Flambda_kind.t
 
 val alias_type_of : Flambda_kind.t -> Simple.t -> t
 
-val apply_rec_info : t -> Rec_info.t -> t Or_bottom.t
+val apply_coercion : t -> Reg_width_things.Coercion.t -> t Or_bottom.t
 
 val get_alias_exn : t -> Simple.t
 
@@ -154,7 +154,7 @@ val create_inlinable_function_declaration
   -> inline:Inline_attribute.t
   -> is_a_functor:bool
   -> recursive:Recursive.t
-  -> rec_info:Rec_info.t
+  -> coercion:Reg_width_things.Coercion.t
   -> Function_declaration_type.t
 
 val create_non_inlinable_function_declaration

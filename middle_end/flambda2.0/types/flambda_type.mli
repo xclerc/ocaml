@@ -174,7 +174,8 @@ module Function_declaration_type : sig
     val inline : t -> Inline_attribute.t
     val is_a_functor : t -> bool
     val recursive : t -> Recursive.t
-    val rec_info : t -> Rec_info.t
+    (*val rec_info : t -> Rec_info.t*)
+    val coercion : t -> Reg_width_things.Coercion.t (* XXX coercion might contain more than inlining info *)
   end
 
   module Non_inlinable : sig
@@ -218,7 +219,7 @@ val make_suitable_for_environment
   -> bind_to:Name.t
   -> Typing_env_extension.t
 
-val apply_rec_info : flambda_type -> Rec_info.t -> flambda_type Or_bottom.t
+val apply_coercion : flambda_type -> Reg_width_things.Coercion.t -> flambda_type Or_bottom.t
 
 (** Construct a bottom type of the given kind. *)
 val bottom : Flambda_kind.t -> t
@@ -333,7 +334,7 @@ val create_inlinable_function_declaration
   -> inline:Inline_attribute.t
   -> is_a_functor:bool
   -> recursive:Recursive.t
-  -> rec_info:Rec_info.t
+  -> coercion:Reg_width_things.Coercion.t
   -> Function_declaration_type.t
 
 (** Create a description of a function declaration whose code is unknown.

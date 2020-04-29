@@ -39,31 +39,34 @@ let const_one = const RWC.const_one
 let const_unit = const RWC.const_unit
 
 let [@inline always] is_var t =
-  pattern_match t ~name:Name.is_var ~const:(fun _ -> false)
+  pattern_match_ignoring_coercion t ~name:Name.is_var ~const:(fun _ -> false)
 
 let [@inline always] is_symbol t =
-  pattern_match t ~name:Name.is_symbol ~const:(fun _ -> false)
+  pattern_match_ignoring_coercion t ~name:Name.is_symbol ~const:(fun _ -> false)
 
 let [@inline always] is_const t =
-  pattern_match t ~name:(fun _ -> false) ~const:(fun _ -> true)
+  pattern_match_ignoring_coercion t ~name:(fun _ -> false) ~const:(fun _ -> true)
 
 let const_from_descr descr = const (RWC.of_descr descr)
 
-let without_rec_info t = pattern_match t ~name ~const
+let without_coercion t = pattern_match_ignoring_coercion t ~name ~const
 
-let merge_rec_info t ~newer_rec_info =
+let merge_coercion t ~newer_coercion =
   if is_const t then None
   else
-    match newer_rec_info with
+    match newer_coercion with
     | None -> Some t
-    | Some newer_rec_info ->
-      let rec_info =
-        match rec_info t with
-        | None -> newer_rec_info
-        | Some older_rec_info ->
-          Rec_info.merge older_rec_info ~newer:newer_rec_info
+    | Some newer_coercion ->
+      let coercion =
+        match coercion t with
+        | None -> newer_coercion
+        | Some older_coercion ->
+          begin match Reg_width_things.Coercion.compose older_coercion newer_coercion with
+          | Or_bottom.Bottom -> assert false
+          | Or_bottom.Ok x -> x
+          end
       in
-      Some (with_rec_info (without_rec_info t) rec_info)
+      Some (Reg_width_things.Simple.coerce (without_coercion t) coercion)
 
 (* CR mshinwell: Make naming consistent with [Name] re. the option type *)
 
@@ -71,18 +74,18 @@ let merge_rec_info t ~newer_rec_info =
    following *)
 
 let [@inline always] must_be_var t =
-  pattern_match t ~name:Name.must_be_var_opt ~const:(fun _ -> None)
+  pattern_match_ignoring_coercion t ~name:Name.must_be_var_opt ~const:(fun _ -> None)
 
 let [@inline always] must_be_symbol t =
-  pattern_match t ~name:Name.must_be_symbol_opt ~const:(fun _ -> None)
+  pattern_match_ignoring_coercion t ~name:Name.must_be_symbol_opt ~const:(fun _ -> None)
 
 let [@inline always] must_be_name t =
-  pattern_match t ~name:(fun name -> Some name) ~const:(fun _ -> None)
+  pattern_match_ignoring_coercion t ~name:(fun name -> Some name) ~const:(fun _ -> None)
 
 let to_name t =
   match must_be_name t with
   | None -> None
-  | Some name -> Some (rec_info t, name)
+  | Some name -> Some (coercion t, name)
 
 let map_name t ~f =
   match must_be_name t with
@@ -100,12 +103,12 @@ let map_symbol t ~f =
   | Some old_name -> name (Name.map_symbol old_name ~f)
 
 let free_names t =
-  pattern_match t
+  pattern_match_ignoring_coercion t
     ~name:(fun name -> Name_occurrences.singleton_name name Name_mode.normal)
     ~const:(fun _ -> Name_occurrences.empty)
 
 let free_names_in_types t =
-  pattern_match t
+  pattern_match_ignoring_coercion t
     ~name:(fun name -> Name_occurrences.singleton_name name Name_mode.in_types)
     ~const:(fun _ -> Name_occurrences.empty)
 
@@ -114,11 +117,11 @@ let apply_name_permutation t perm =
     let new_name = Name_permutation.apply_name perm old_name in
     if old_name == new_name then t
     else
-      match rec_info t with
+      match coercion t with
       | None -> name new_name
-      | Some rec_info -> with_rec_info (name new_name) rec_info
+      | Some coercion -> coerce (name new_name) coercion
   in
-  pattern_match t ~const:(fun _ -> t) ~name
+  pattern_match_ignoring_coercion t ~const:(fun _ -> t) ~name
 
 module List = struct
   type nonrec t = t list

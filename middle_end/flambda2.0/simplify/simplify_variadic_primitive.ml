@@ -45,7 +45,7 @@ let simplify_make_block dacc _prim dbg
           if T.is_bottom (DE.typing_env denv) arg_ty then begin
            found_bottom := true
           end;
-          Simple.pattern_match arg
+          Simple.pattern_match_ignoring_coercion arg
             ~const:(fun _ -> arg_ty)
             ~name:(fun name -> T.alias_type_of K.value (Simple.name name)))
         args_with_tys value_kinds

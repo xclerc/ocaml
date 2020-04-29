@@ -112,7 +112,39 @@ module Name : sig
     -> var:(Variable.t -> 'a)
     -> symbol:(Symbol.t -> 'a)
     -> 'a
+ end
+
+module Depth_variable : sig
+  type t
+  val create : string -> t
+  include Identifiable.S with type t := t
 end
+module Depth_expr : sig
+  type t =
+    | Zero
+    | Succ of t
+    | Variable of Depth_variable.t
+  val print : Format.formatter -> t -> unit
+  val equal : t -> t -> bool
+end
+
+module Coercion : sig
+  type change_depth = { from : Depth_expr.t; to_ : Depth_expr.t; }
+  type change_unroll_to = { from : Depth_expr.t option; to_ : Depth_expr.t option; }
+  type t
+  val print : Format.formatter -> t -> unit
+  val equal : t -> t -> bool
+  val compare : t -> t -> int
+  val descr : t -> (change_depth option) * (change_unroll_to option)
+  val id : t
+  val is_id : t -> bool
+  val change_depth : from:Depth_expr.t -> to_:Depth_expr.t -> unit -> t
+  val change_unroll_to : from:Depth_expr.t option -> to_:Depth_expr.t option -> unit -> t
+  val change_depth_and_unroll_to : from_depth:Depth_expr.t -> to_depth:Depth_expr.t -> from_unroll_to:Depth_expr.t option -> to_unroll_to:Depth_expr.t option -> unit -> t
+  val compose : t -> t -> t Or_bottom.t
+  val inverse : t -> t
+end
+
 
 module Simple : sig
   type t = private Table_by_int_id.Id.t
@@ -129,14 +161,21 @@ module Simple : sig
 
   val const : Const.t -> t
 
-  val rec_info : t -> Rec_info.t option
+  val coercion : t -> Coercion.t option
 
-  val with_rec_info : t -> Rec_info.t -> t
+  val coerce : t -> Coercion.t -> t
+
+  val pattern_match_ignoring_coercion
+     : t
+    -> name:(Name.t -> 'a)
+    -> const:(Const.t -> 'a)
+    -> 'a
 
   val pattern_match
      : t
     -> name:(Name.t -> 'a)
     -> const:(Const.t -> 'a)
+    -> coercion:(Coercion.t -> t -> 'a)
     -> 'a
 
    (* [same s1 s2] returns true iff they represent the same name or const

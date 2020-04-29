@@ -80,7 +80,7 @@ let const_static _env cst =
       [C.cint (nativeint_of_targetint t)]
 
 let simple_static env s =
-  Simple.pattern_match s
+  Simple.pattern_match_ignoring_coercion s
     ~name:(fun n -> name_static env n)
     ~const:(fun c -> env, `Data (const_static env c))
 

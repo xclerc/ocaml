@@ -130,11 +130,11 @@ module Make (Head : Type_head_intf.S
       | Equals alias -> alias
       | No_alias _ | Type _ -> assert false
  
-  let apply_rec_info t rec_info : _ Or_bottom.t =
+  let apply_coercion t coercion : _ Or_bottom.t =
     match descr t with
     | Equals simple ->
-      let newer_rec_info = Some rec_info in
-      begin match Simple.merge_rec_info simple ~newer_rec_info with
+      let newer_coercion = Some coercion in
+      begin match Simple.merge_coercion simple ~newer_coercion with
       | None -> Bottom
       | Some simple -> Ok (create_equals simple)
       end
@@ -142,7 +142,7 @@ module Make (Head : Type_head_intf.S
     | No_alias Unknown -> Ok t
     | No_alias Bottom -> Bottom
     | No_alias (Ok head) ->
-      Or_bottom.map (Head.apply_rec_info head rec_info)
+      Or_bottom.map (Head.apply_coercion head coercion)
         ~f:(fun head -> create head)
 
   let force_to_head ~force_to_kind t =
@@ -150,6 +150,52 @@ module Make (Head : Type_head_intf.S
     | No_alias head -> head
     | Type _ | Equals _ ->
       Misc.fatal_errorf "Expected [No_alias]:@ %a" T.print t
+
+  let rec expand_head_simple ~force_to_kind simple env (acc : Reg_width_things.Coercion.t) : _ Or_unknown_or_bottom.t =
+    let [@inline always] const const =
+      let typ =
+        match Reg_width_const.descr const with
+        | Naked_immediate i -> T.this_naked_immediate_without_alias i
+        | Tagged_immediate i -> T.this_tagged_immediate_without_alias i
+        | Naked_float f -> T.this_naked_float_without_alias f
+        | Naked_int32 i -> T.this_naked_int32_without_alias i
+        | Naked_int64 i -> T.this_naked_int64_without_alias i
+        | Naked_nativeint i -> T.this_naked_nativeint_without_alias i
+      in
+      force_to_head ~force_to_kind typ
+    in
+    let [@inline always] name name : _ Or_unknown_or_bottom.t =
+      let t = force_to_kind (TE.find env name) in (* XXX apply the coercion *)
+      match descr t with
+      | No_alias Bottom -> Bottom
+      | No_alias Unknown -> Unknown
+      | No_alias (Ok head) -> Ok head
+      (* CR mshinwell: Fix Rec_info
+         begin match rec_info with
+         | None -> Ok head
+         | Some rec_info ->
+         (* CR mshinwell: check rec_info handling is correct, after
+         recent changes in this area *)
+         (* [simple] already has [rec_info] applied to it (see
+         [get_canonical_simple], above).  However we also need to
+         apply it to the expanded head of the type. *)
+         match Head.apply_rec_info head rec_info with
+         | Bottom -> Bottom
+         | Ok head -> Ok head
+         end
+      *)
+      | Type _export_id ->
+        Misc.fatal_error ".cmx loading not yet implemented"
+      | Equals _ ->
+        Misc.fatal_errorf "Canonical alias %a should never have \
+                           [Equals] type:@ %a"
+          Simple.print simple
+          TE.print env
+    in
+    Simple.pattern_match simple ~const ~name ~coercion:(fun coercion simple ->
+      match Reg_width_things.Coercion.compose coercion acc with
+      | Ok c -> expand_head_simple ~force_to_kind simple env c
+      | Bottom -> assert false)
 
   let expand_head ~force_to_kind t env : _ Or_unknown_or_bottom.t =
     match descr t with
@@ -164,47 +210,7 @@ module Make (Head : Type_head_intf.S
            so [Unknown] is fine here. *)
         Unknown
       | simple ->
-        let [@inline always] const const =
-          let typ =
-            match Reg_width_const.descr const with
-            | Naked_immediate i -> T.this_naked_immediate_without_alias i
-            | Tagged_immediate i -> T.this_tagged_immediate_without_alias i
-            | Naked_float f -> T.this_naked_float_without_alias f
-            | Naked_int32 i -> T.this_naked_int32_without_alias i
-            | Naked_int64 i -> T.this_naked_int64_without_alias i
-            | Naked_nativeint i -> T.this_naked_nativeint_without_alias i
-          in
-          force_to_head ~force_to_kind typ
-        in
-        let [@inline always] name name : _ Or_unknown_or_bottom.t =
-          let t = force_to_kind (TE.find env name) in
-          match descr t with
-          | No_alias Bottom -> Bottom
-          | No_alias Unknown -> Unknown
-          | No_alias (Ok head) -> Ok head
-            (* CR mshinwell: Fix Rec_info
-            begin match rec_info with
-            | None -> Ok head
-            | Some rec_info ->
-              (* CR mshinwell: check rec_info handling is correct, after
-                 recent changes in this area *)
-              (* [simple] already has [rec_info] applied to it (see
-                 [get_canonical_simple], above).  However we also need to
-                 apply it to the expanded head of the type. *)
-              match Head.apply_rec_info head rec_info with
-              | Bottom -> Bottom
-              | Ok head -> Ok head
-            end
-            *)
-          | Type _export_id ->
-            Misc.fatal_error ".cmx loading not yet implemented"
-          | Equals _ ->
-            Misc.fatal_errorf "Canonical alias %a should never have \
-                [Equals] type:@ %a"
-              Simple.print simple
-              TE.print env
-        in
-        Simple.pattern_match simple ~const ~name
+        expand_head_simple ~force_to_kind simple env Reg_width_things.Coercion.id
 
   let expand_head' ~force_to_kind t env =
     match expand_head ~force_to_kind t env with

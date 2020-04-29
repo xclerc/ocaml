@@ -13,7 +13,7 @@
 (**************************************************************************)
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
-
+(*
 type t
 
 include Identifiable.S with type t := t
@@ -29,3 +29,4 @@ val merge : t -> newer:t -> t
 val initial : t
 
 val is_initial : t -> bool
+*)

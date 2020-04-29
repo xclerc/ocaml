@@ -154,7 +154,7 @@ let free_names t =
   | C_call { alloc = _; param_arity = _; return_arity = _; } ->
     Name_occurrences.empty
   | Method { kind = _; obj; } ->
-    Simple.pattern_match obj
+    Simple.pattern_match_ignoring_coercion obj
       ~name:(fun obj ->
         Name_occurrences.singleton_name obj Name_mode.normal)
       ~const:(fun _ -> Name_occurrences.empty)
