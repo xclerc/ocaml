@@ -222,6 +222,7 @@ MIDDLE_END_CLOSURE=\
   middle_end/closure/closure_middle_end.cmo
 
 MIDDLE_END_FLAMBDA2_COMPILENV_DEPS=\
+  middle_end/flambda2.0/types/basic/or_bottom.cmo \
   middle_end/flambda2.0/compilenv_deps/table_by_int_id.cmo \
   middle_end/flambda2.0/compilenv_deps/patricia_tree.cmo \
   middle_end/flambda2.0/compilenv_deps/linkage_name.cmo \
@@ -292,7 +293,6 @@ MIDDLE_END_FLAMBDA2_TYPES=\
   middle_end/flambda2.0/types/env/binding_time.cmo \
   middle_end/flambda2.0/types/env/aliases.cmo \
   middle_end/flambda2.0/types/basic/meet_or_join_op.cmo \
-  middle_end/flambda2.0/types/basic/or_bottom.cmo \
   middle_end/flambda2.0/types/basic/string_info.cmo \
   middle_end/flambda2.0/types/structures/lattice_ops_intf.cmo \
   middle_end/flambda2.0/types/basic/or_bottom_or_absorbing.cmo \
