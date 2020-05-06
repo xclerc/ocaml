@@ -134,7 +134,7 @@ module Make (Head : Type_head_intf.S
     match descr t with
     | Equals simple ->
       let newer_coercion = Some coercion in
-      begin match Simple.merge_coercion simple ~newer_coercion with
+      begin match Simple.apply_coercion simple ~newer_coercion with
       | None -> Bottom
       | Some simple -> Ok (create_equals simple)
       end
@@ -165,25 +165,14 @@ module Make (Head : Type_head_intf.S
       force_to_head ~force_to_kind typ
     in
     let [@inline always] name name : _ Or_unknown_or_bottom.t =
-      let t = force_to_kind (TE.find env name) in (* XXX apply the coercion *)
+      let t = force_to_kind (TE.find env name) in
       match descr t with
       | No_alias Bottom -> Bottom
       | No_alias Unknown -> Unknown
-      | No_alias (Ok head) -> Ok head
-      (* CR mshinwell: Fix Rec_info
-         begin match rec_info with
-         | None -> Ok head
-         | Some rec_info ->
-         (* CR mshinwell: check rec_info handling is correct, after
-         recent changes in this area *)
-         (* [simple] already has [rec_info] applied to it (see
-         [get_canonical_simple], above).  However we also need to
-         apply it to the expanded head of the type. *)
-         match Head.apply_rec_info head rec_info with
+      | No_alias (Ok head) ->
+        (match Head.apply_coercion head acc with
          | Bottom -> Bottom
-         | Ok head -> Ok head
-         end
-      *)
+         | Ok head -> Ok head)
       | Type _export_id ->
         Misc.fatal_error ".cmx loading not yet implemented"
       | Equals _ ->
@@ -192,10 +181,12 @@ module Make (Head : Type_head_intf.S
           Simple.print simple
           TE.print env
     in
-    Simple.pattern_match simple ~const ~name ~coercion:(fun coercion simple ->
+    let [@inline always] coercion coercion simple : _ Or_unknown_or_bottom.t =
       match Reg_width_things.Coercion.compose coercion acc with
+      | Bottom -> Bottom
       | Ok c -> expand_head_simple ~force_to_kind simple env c
-      | Bottom -> assert false)
+    in
+    Simple.pattern_match simple ~const ~name ~coercion
 
   let expand_head ~force_to_kind t env : _ Or_unknown_or_bottom.t =
     match descr t with

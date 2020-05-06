@@ -24,7 +24,7 @@ include module type of struct include Reg_width_things.Simple end
 
 include Contains_names.S with type t := t
 
-val merge_coercion : t -> newer_coercion:Reg_width_things.Coercion.t option -> t option (*XXX*)
+val apply_coercion : t -> newer_coercion:Reg_width_things.Coercion.t option -> t option
 
 val without_coercion : t -> t
 

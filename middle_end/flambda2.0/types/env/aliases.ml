@@ -595,7 +595,7 @@ Format.eprintf "looking for canonical for %a, candidate canonical %a, min order 
           else (min_elt, min_coercion))
         at_earliest_mode
         (Simple.Map.min_binding at_earliest_mode) in
-      Simple.merge_coercion s ~newer_coercion:(Some c)
+      Simple.apply_coercion s ~newer_coercion:(Some c)
       |> Option.get (*XXX*)
     in
     match
@@ -611,7 +611,7 @@ Format.eprintf "looking for canonical for %a, candidate canonical %a, min order 
 let get_aliases t element =
   let to_set m =
     Simple.Map.fold (fun (simple : Simple.t) (coercion : Reg_width_things.Coercion.t) acc ->
-      Simple.Set.add (Option.get (*XXX*) @@ Simple.merge_coercion simple ~newer_coercion:(Some coercion)) acc)
+      Simple.Set.add (Option.get (*XXX*) @@ Simple.apply_coercion simple ~newer_coercion:(Some coercion)) acc)
       m
       Simple.Set.empty in
   match canonical t element with

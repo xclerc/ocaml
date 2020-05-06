@@ -31,6 +31,7 @@ val create
   -> inline:Inline_attribute.t
   -> is_a_functor:bool
   -> recursive:Recursive.t
+  -> inlining_depth:Reg_width_things.Depth_variable.t
   -> t
 
 (** The identifier of the code of the function (which must be bound using
@@ -68,6 +69,9 @@ val update_code_id : t -> Code_id.t -> t
 (** Whether the function is recursive, in the sense of the syntactic analysis
     conducted during closure conversion. *)
 val recursive : t -> Recursive.t
+
+(* XXX doc *)
+val inlining_depth : t -> Reg_width_things.Depth_variable.t
 
 val compare : t -> t -> int
 

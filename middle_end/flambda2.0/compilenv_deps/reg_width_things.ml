@@ -89,6 +89,10 @@ module Depth_expr = struct
     | Zero -> 0
     | Succ d -> 1 + hash d
     | Variable v -> Depth_variable.hash v
+  let rec substitute_depths subst = function
+    | Zero -> Zero
+    | Succ d -> Succ (substitute_depths subst d)
+    | Variable v -> subst v
 end
 
 (* XXX should be moved to another file *)
@@ -124,6 +128,10 @@ module Coercion = struct
       Or_bottom.Bottom
   let inverse_change_depth { from; to_; } =
     { from = to_; to_ = from; }
+  let substitute_depths_change_depth subst { from; to_; } =
+    let from = Depth_expr.substitute_depths subst from in
+    let to_ = Depth_expr.substitute_depths subst to_ in
+    { from; to_; }
 
   type change_unroll_to = { from : Depth_expr.t option; to_ : Depth_expr.t option; }
   let equal_change_unroll_to
@@ -157,6 +165,10 @@ module Coercion = struct
       Or_bottom.Bottom
   let inverse_change_unroll_to { from; to_; } =
     { from = to_; to_ = from; }
+  let substitute_depths_change_unroll_to subst { from; to_; } =
+    let from = Option.map (Depth_expr.substitute_depths subst) from in
+    let to_ = Option.map (Depth_expr.substitute_depths subst) to_ in
+    { from; to_; }
 
   type t =
     | Id
@@ -166,6 +178,11 @@ module Coercion = struct
         change_depth : change_depth;
         change_unroll_to : change_unroll_to;
       }
+
+  type descr = {
+    change_depth : change_depth option;
+    change_unroll_to : change_unroll_to option;
+  }
 
   let hash = function
     | Id -> 0
@@ -201,32 +218,41 @@ module Coercion = struct
   let change_unroll_to =
     change ~f:change_unroll_to ~wrap:(fun cut -> Change_unroll_to cut)
 
-  let descr = function
-    | Id -> None, None
-    | Change_depth change_depth -> Some change_depth, None
-    | Change_unroll_to change_unroll_to -> None, Some change_unroll_to
-    | Change_depth_and_unroll_to { change_depth; change_unroll_to; } ->
-      Some change_depth, Some change_unroll_to
+  let descr t =
+    let change_depth, change_unroll_to =
+      match t with
+      | Id -> None, None
+      | Change_depth change_depth -> Some change_depth, None
+      | Change_unroll_to change_unroll_to -> None, Some change_unroll_to
+      | Change_depth_and_unroll_to { change_depth; change_unroll_to; } ->
+        Some change_depth, Some change_unroll_to in
+    { change_depth; change_unroll_to; }
   let print ppf t =
-    let change_depth, change_unroll_to = descr t in
+    let { change_depth; change_unroll_to; } = descr t in
     Format.fprintf ppf "%a %a"
       (Misc.Stdlib.Option.print print_change_depth) change_depth
       (Misc.Stdlib.Option.print print_change_unroll_to) change_unroll_to
   let compare left right =
-    let change_depth_left, change_unroll_to_left = descr left in
-    let change_depth_right, change_unroll_to_right = descr right in
+    let { change_depth = change_depth_left; change_unroll_to = change_unroll_to_left; } =
+      descr left in
+    let { change_depth =change_depth_right; change_unroll_to = change_unroll_to_right; } =
+      descr right in
     let c = Option.compare compare_change_depth change_depth_left change_depth_right in
     if c <> 0 then c
     else Option.compare compare_change_unroll_to change_unroll_to_left change_unroll_to_right
   let equal left right =
-    let change_depth_left, change_unroll_to_left = descr left in
-    let change_depth_right, change_unroll_to_right = descr right in
+    let { change_depth = change_depth_left; change_unroll_to = change_unroll_to_left; } =
+      descr left in
+    let { change_depth =change_depth_right; change_unroll_to = change_unroll_to_right; } =
+      descr right in
     Option.equal equal_change_depth change_depth_left change_depth_right
     && Option.equal equal_change_unroll_to change_unroll_to_left change_unroll_to_right
 
   let compose left right =
-    let change_depth_left, change_unroll_to_left = descr left in
-    let change_depth_right, change_unroll_to_right = descr right in
+    let { change_depth = change_depth_left; change_unroll_to = change_unroll_to_left; } =
+      descr left in
+    let { change_depth =change_depth_right; change_unroll_to = change_unroll_to_right; } =
+      descr right in
     let map2 f left right =
       match left, right with
       | None, None -> Or_bottom.Ok None
@@ -250,6 +276,16 @@ module Coercion = struct
         change_depth = inverse_change_depth cd;
         change_unroll_to = inverse_change_unroll_to cut;
       }
+
+  let substitute_depths subst t =
+    match t with
+    | Id -> Id
+    | Change_depth cd -> Change_depth (substitute_depths_change_depth subst cd)
+    | Change_unroll_to cu -> Change_unroll_to (substitute_depths_change_unroll_to subst cu)
+    | Change_depth_and_unroll_to { change_depth; change_unroll_to; } ->
+      let change_depth = substitute_depths_change_depth subst change_depth in
+      let change_unroll_to = substitute_depths_change_unroll_to subst change_unroll_to in
+      Change_depth_and_unroll_to { change_depth; change_unroll_to; }
 
 end
 

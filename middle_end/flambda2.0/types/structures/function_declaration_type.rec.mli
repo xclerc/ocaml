@@ -28,7 +28,7 @@ module Inlinable : sig
     -> inline:Inline_attribute.t
     -> is_a_functor:bool
     -> recursive:Recursive.t
-    -> coercion:Reg_width_things.Coercion.t
+    -> inlining_depth:Reg_width_things.Depth_variable.t
     -> t
 
   val code_id : t -> Code_id.t
@@ -39,7 +39,7 @@ module Inlinable : sig
   val inline : t -> Inline_attribute.t
   val is_a_functor : t -> bool
   val recursive : t -> Recursive.t
-  val coercion : t -> Reg_width_things.Coercion.t
+  val inlining_depth : t -> Reg_width_things.Depth_variable.t
 end
 
 module Non_inlinable : sig

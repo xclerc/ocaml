@@ -127,3 +127,5 @@ val cut_and_n_way_join
 val free_names_transitive : t -> Type_grammar.t -> Name_occurrences.t
 
 val defined_symbols : t -> Symbol.Set.t
+
+val substitute_depths : t -> Simple.t -> Simple.t

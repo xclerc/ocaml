@@ -135,7 +135,8 @@ let make_decision_for_call_site denv ~function_decl_coercion
   if (not (DE.can_inline denv)) then
     Environment_says_never_inline
   else
-    let change_depth, change_unroll_to = Reg_width_things.Coercion.descr function_decl_coercion in
+    let { Reg_width_things.Coercion.change_depth; change_unroll_to; } =
+      Reg_width_things.Coercion.descr function_decl_coercion in
     match change_unroll_to with
     | Some { Reg_width_things.Coercion.from = _; to_ = Some unroll_to; } ->
       begin match change_depth with

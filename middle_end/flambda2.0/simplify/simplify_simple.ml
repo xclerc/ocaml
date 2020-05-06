@@ -20,26 +20,9 @@ module DA = Downwards_acc
 module T = Flambda_type
 module TE = T.Typing_env
 
-(* CR mshinwell: Is the best place for this?  Are there other places where
-   this may be required? *)
-(* CR mshinwell: avoid having two functions *)
 let type_for_simple simple kind : _ Or_bottom.t =
   let ty = T.alias_type_of kind simple in
-  match Simple.coercion simple with
-  | None -> Ok (simple, ty)
-  | Some coercion ->
-    match T.apply_coercion ty coercion with
-    | Bottom -> Bottom
-    | Ok ty -> Ok (simple, ty)
-
-let type_for_simple' simple kind : _ Or_bottom.t * _ =
-  let ty = T.alias_type_of kind simple in
-  match Simple.coercion simple with
-  | None -> Ok simple, ty
-  | Some coercion ->
-    match T.apply_coercion ty coercion with
-    | Bottom -> Bottom, T.bottom (T.kind ty)
-    | Ok ty -> Ok simple, ty
+  Ok (simple, ty)
 
 let simplify_simple dacc simple ~min_name_mode : _ Or_bottom.t * _ =
   let typing_env = DA.typing_env dacc in
@@ -52,7 +35,16 @@ let simplify_simple dacc simple ~min_name_mode : _ Or_bottom.t * _ =
       Simple.print simple
       Name_mode.print min_name_mode
       DA.print dacc
-  | simple, kind -> type_for_simple' simple kind
+  | simple, kind ->
+  let simple =
+    try
+      TE.substitute_depths typing_env simple
+    with Not_found ->
+      Misc.fatal_errorf "Depth substitution failed: @ \
+          simple (%a) contains an unbound depth variable"
+        Simple.print simple
+  in
+  Ok simple, T.alias_type_of kind simple
 
 type changed =
   | Unchanged

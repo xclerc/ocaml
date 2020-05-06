@@ -51,31 +51,30 @@ let const_from_descr descr = const (RWC.of_descr descr)
 
 let without_coercion t = pattern_match_ignoring_coercion t ~name ~const
 
-let merge_coercion t ~newer_coercion =
-  if is_const t then None
-  else
-    match newer_coercion with
-    | None -> Some t
-    | Some newer_coercion ->
-      let coercion =
-        match coercion t with
-        | None -> newer_coercion
-        | Some older_coercion ->
-          begin match Reg_width_things.Coercion.compose older_coercion newer_coercion with
-          | Or_bottom.Bottom -> assert false
-          | Or_bottom.Ok x -> x
-          end
-      in
-      Some (Reg_width_things.Simple.coerce (without_coercion t) coercion)
+let apply_coercion t ~newer_coercion =
+  let with_coercion coercion =
+    Some (Reg_width_things.Simple.coerce (without_coercion t) coercion) in
+  match newer_coercion with
+  | None -> Some t
+  | Some newer_coercion ->
+    match coercion t with
+    | None -> with_coercion newer_coercion
+    | Some older_coercion ->
+      begin match Reg_width_things.Coercion.compose older_coercion newer_coercion with
+      | Or_bottom.Ok composed -> with_coercion composed
+      | Or_bottom.Bottom -> None
+      end
 
 (* CR mshinwell: Make naming consistent with [Name] re. the option type *)
 
 (* CR mshinwell: Careful that Rec_info doesn't get dropped using the
    following *)
 
+(* XXX double check that callers do not care about coercions *)
 let [@inline always] must_be_var t =
   pattern_match_ignoring_coercion t ~name:Name.must_be_var_opt ~const:(fun _ -> None)
 
+(* XXX double check that callers do not care about coercions *)
 let [@inline always] must_be_symbol t =
   pattern_match_ignoring_coercion t ~name:Name.must_be_symbol_opt ~const:(fun _ -> None)
 

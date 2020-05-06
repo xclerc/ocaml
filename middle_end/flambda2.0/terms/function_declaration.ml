@@ -25,13 +25,14 @@ type t = {
   inline : Inline_attribute.t;
   is_a_functor : bool;
   recursive : Recursive.t;
+  inlining_depth : Reg_width_things.Depth_variable.t;
 }
 
 let invariant _env _t = ()
 
 let create ~code_id ~params_arity ~result_arity ~stub ~dbg
       ~(inline : Inline_attribute.t)
-      ~is_a_functor ~recursive : t =
+      ~is_a_functor ~recursive ~inlining_depth : t =
   begin match stub, inline with
   | true, (Never_inline | Default_inline)
   | false, (Never_inline | Default_inline | Always_inline | Unroll _) -> ()
@@ -46,6 +47,7 @@ let create ~code_id ~params_arity ~result_arity ~stub ~dbg
     inline;
     is_a_functor;
     recursive;
+    inlining_depth;
   }
 
 let print_with_cache ~cache:_ ppf
@@ -57,6 +59,7 @@ let print_with_cache ~cache:_ ppf
         inline;
         is_a_functor;
         recursive;
+        inlining_depth;
       } =
   let module C = Flambda_colours in
   Format.fprintf ppf "@[<hov 1>(\
@@ -67,7 +70,8 @@ let print_with_cache ~cache:_ ppf
       @[<hov 1>@<0>%s(is_a_functor@ %b)@<0>%s@]@ \
       @[<hov 1>@<0>%s(params_arity@ @<0>%s%a@<0>%s)@<0>%s@]@ \
       @[<hov 1>@<0>%s(result_arity@ @<0>%s%a@<0>%s)@<0>%s@]@ \
-      @[<hov 1>@<0>%s(recursive@ %a)@<0>%s@])@]"
+      @[<hov 1>@<0>%s(recursive@ %a)@])@<0>%s@]@ \
+      @[<hov 1>@<0>%s(inlining_depth@ %a)@<0>%s@])@]"
     Code_id.print code_id
     (if not stub then Flambda_colours.elide () else C.normal ())
     stub
@@ -106,6 +110,9 @@ let print_with_cache ~cache:_ ppf
      | Recursive -> Flambda_colours.normal ())
     Recursive.print recursive
     (Flambda_colours.normal ())
+    (Flambda_colours.normal ())
+    Reg_width_things.Depth_variable.print inlining_depth
+    (Flambda_colours.normal ())
 
 let print ppf t = print_with_cache ~cache:(Printing_cache.create ()) ppf t
 
@@ -117,6 +124,7 @@ let dbg t = t.dbg
 let inline t = t.inline
 let is_a_functor t = t.is_a_functor
 let recursive t = t.recursive
+let inlining_depth t = t.inlining_depth
 
 let free_names
       { code_id;
@@ -127,6 +135,7 @@ let free_names
         inline = _;
         is_a_functor = _;
         recursive = _;
+        inlining_depth = _;
       } =
   Name_occurrences.add_code_id Name_occurrences.empty code_id Name_mode.normal
 

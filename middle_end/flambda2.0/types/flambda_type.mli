@@ -138,6 +138,8 @@ module Typing_env : sig
      : t
     -> flambda_type
     -> Name_occurrences.t
+
+   val substitute_depths : t -> Simple.t -> Simple.t
 end
 
 val meet : Typing_env.t -> t -> t -> (t * Typing_env_extension.t) Or_bottom.t

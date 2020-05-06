@@ -29,11 +29,11 @@ module Inlinable = struct
     inline : Inline_attribute.t;
     is_a_functor : bool;
     recursive : Recursive.t;
-    coercion : Reg_width_things.Coercion.t;
+    inlining_depth : Reg_width_things.Depth_variable.t;
   }
 
   let print ppf { code_id; param_arity; result_arity; stub; dbg;
-                  inline; is_a_functor; recursive; coercion; } =
+                  inline; is_a_functor; recursive; inlining_depth; } =
     Format.fprintf ppf
       "@[<hov 1>(Inlinable@ \
         @[<hov 1>(code_id@ %a)@]@ \
@@ -44,7 +44,7 @@ module Inlinable = struct
         @[<hov 1>(inline@ %a)@] \
         @[<hov 1>(is_a_functor@ %b)@] \
         @[<hov 1>(recursive@ %a)@]@ \
-        @[<hov 1>(coercion@ %a)@]\
+        @[<hov 1>(inlining_depth@ %a)@]\
         )@]"
       Code_id.print code_id
       Flambda_arity.print param_arity
@@ -54,10 +54,10 @@ module Inlinable = struct
       Inline_attribute.print inline
       is_a_functor
       Recursive.print recursive
-      Reg_width_things.Coercion.print coercion
+      Reg_width_things.Depth_variable.print inlining_depth
 
   let create ~code_id ~param_arity ~result_arity ~stub ~dbg ~inline
-        ~is_a_functor ~recursive ~coercion =
+        ~is_a_functor ~recursive ~coercion ~inlining_depth =
     { code_id;
       param_arity;
       result_arity;
@@ -66,7 +66,7 @@ module Inlinable = struct
       inline;
       is_a_functor;
       recursive;
-      coercion;
+      inlining_depth;
     }
 
   let code_id t = t.code_id
@@ -77,7 +77,7 @@ module Inlinable = struct
   let inline t = t.inline
   let is_a_functor t = t.is_a_functor
   let recursive t = t.recursive
-  let coercion t = t.coercion
+  let inlining_depth t = t.inlining_depth
 end
 
 module Non_inlinable = struct
@@ -136,7 +136,7 @@ let free_names (t : t) =
   | Bottom | Unknown -> Name_occurrences.empty
   | Ok (Inlinable { code_id; param_arity = _; result_arity = _; stub = _;
                     dbg = _; inline = _; is_a_functor = _; recursive = _;
-                    coercion = _; })
+                    inlining_depth = _; })
   | Ok (Non_inlinable { code_id; param_arity = _; result_arity = _;
                         recursive = _; }) ->
     Name_occurrences.add_code_id Name_occurrences.empty code_id
@@ -238,7 +238,7 @@ struct
         inline = inline1;
         is_a_functor = is_a_functor1;
         recursive = recursive1;
-        coercion = _coercion1;
+        inlining_depth = _inlining_depth1;
       }),
       Ok (Inlinable {
         code_id = code_id2;
@@ -249,7 +249,7 @@ struct
         inline = inline2;
         is_a_functor = is_a_functor2;
         recursive = recursive2;
-        coercion = _coercion2;
+        inlining_depth = _inlining_depth2;
       }) ->
       let typing_env = Meet_or_join_env.target_join_env env in
       let target_code_age_rel = TE.code_age_relation typing_env in
@@ -270,7 +270,7 @@ struct
             inline = inline1;
             is_a_functor = is_a_functor1;
             recursive = recursive1;
-            coercion = _coercion1;
+            inlining_depth = _inlining_depth1;
           }),
           TEE.empty ())
       in

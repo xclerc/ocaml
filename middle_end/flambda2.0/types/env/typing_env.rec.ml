@@ -36,6 +36,8 @@ module Cached : sig
 
   val cse : t -> Simple.t Flambda_primitive.Eligible_for_cse.Map.t
 
+  val inlining_depths : t -> Reg_width_things.Depth_expr.t Reg_width_things.Depth_variable.Map.t
+
   val add_or_replace_binding
      : t
     -> Name.t
@@ -59,6 +61,7 @@ end = struct
       (Type_grammar.t * Binding_time.t * Name_mode.t) Name.Map.t;
     aliases : Aliases.t;
     cse : Simple.t Flambda_primitive.Eligible_for_cse.Map.t;
+    inlining_depths : Reg_width_things.Depth_expr.t Reg_width_things.Depth_variable.Map.t;
   }
 
   let print_kind_and_mode ppf (ty, _, mode) =
@@ -105,11 +108,13 @@ end = struct
     { names_to_types = Name.Map.empty;
       aliases = Aliases.empty;
       cse = Flambda_primitive.Eligible_for_cse.Map.empty;
+      inlining_depths = Reg_width_things.Depth_variable.Map.empty;
     }
 
   let names_to_types t = t.names_to_types
   let aliases t = t.aliases
   let cse t = t.cse
+  let inlining_depths t = t.inlining_depths
 
   (* CR mshinwell: At least before the following two functions were split
      (used to be add-or-replace), the [names_to_types] map addition was a
@@ -122,6 +127,7 @@ end = struct
     { names_to_types;
       aliases = new_aliases;
       cse = t.cse;
+      inlining_depths = t.inlining_depths;
     }
 
   let replace_variable_binding t var ty ~new_aliases =
@@ -134,6 +140,7 @@ end = struct
     { names_to_types;
       aliases = new_aliases;
       cse = t.cse;
+      inlining_depths = t.inlining_depths;
     }
 
   let with_cse t ~cse = { t with cse; }
@@ -768,7 +775,7 @@ let get_canonical_simple_with_kind_exn t ?min_name_mode simple =
     match newer_coercion with
     | None -> alias, kind
     | Some _ ->
-      match Simple.merge_coercion alias ~newer_coercion with
+      match Simple.apply_coercion alias ~newer_coercion with
       | None -> raise Not_found
       | Some simple -> simple, kind
 
@@ -816,7 +823,7 @@ let get_canonical_simple_exn t ?min_name_mode simple =
     match newer_coercion with
     | None -> alias
     | Some _ ->
-      match Simple.merge_coercion alias ~newer_coercion with
+      match Simple.apply_coercion alias ~newer_coercion with
       | None -> raise Not_found
       | Some simple -> simple
 
@@ -841,7 +848,7 @@ let aliases_of_simple t ~min_name_mode simple =
   | None -> aliases
   | Some _ ->
     Simple.Set.fold (fun simple simples ->
-        match Simple.merge_coercion simple ~newer_coercion with
+        match Simple.apply_coercion simple ~newer_coercion with
         | None -> simples
         | Some simple -> Simple.Set.add simple simples)
       aliases
@@ -889,3 +896,18 @@ and free_names_transitive0 t typ ~result =
 
 let free_names_transitive t typ =
   free_names_transitive0 t typ ~result:Name_occurrences.empty
+
+let substitute_depths t simple =
+  let subst depth_var =
+    Reg_width_things.Depth_variable.Map.find
+      depth_var
+      (Cached.inlining_depths t.current_level.just_after_level) in
+  Reg_width_things.Simple.pattern_match
+    simple
+    ~name:(fun _ -> simple)
+    ~const:(fun _ -> simple)
+    ~coercion:(fun coercion simple ->
+      let coercion = Reg_width_things.Coercion.substitute_depths subst coercion in
+      match Simple.apply_coercion simple ~newer_coercion:(Some coercion) with
+      | None -> assert false
+      | Some simple -> simple)
