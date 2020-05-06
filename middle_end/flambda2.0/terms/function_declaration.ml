@@ -25,7 +25,7 @@ type t = {
   inline : Inline_attribute.t;
   is_a_functor : bool;
   recursive : Recursive.t;
-  inlining_depth : Reg_width_things.Depth_variable.t;
+  inlining_depth : Depth_variable.t;
 }
 
 let invariant _env _t = ()
@@ -111,7 +111,7 @@ let print_with_cache ~cache:_ ppf
     Recursive.print recursive
     (Flambda_colours.normal ())
     (Flambda_colours.normal ())
-    Reg_width_things.Depth_variable.print inlining_depth
+    Depth_variable.print inlining_depth
     (Flambda_colours.normal ())
 
 let print ppf t = print_with_cache ~cache:(Printing_cache.create ()) ppf t

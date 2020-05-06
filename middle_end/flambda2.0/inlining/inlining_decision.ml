@@ -125,9 +125,9 @@ let max_inlining_depth = 1
 let max_rec_depth = 1
 
 let rec int_of_depth = function
-  | Reg_width_things.Depth_expr.Zero -> 0
-  | Reg_width_things.Depth_expr.Succ x -> succ (int_of_depth x)
-  | Reg_width_things.Depth_expr.Variable _ -> 0 (*XXX*)
+  | Depth_expr.Zero -> 0
+  | Depth_expr.Succ x -> succ (int_of_depth x)
+  | Depth_expr.Variable _ -> 0 (*XXX*)
 
 let make_decision_for_call_site denv ~function_decl_coercion
       ~apply_inlining_depth (inline : Inline_attribute.t)
@@ -135,12 +135,12 @@ let make_decision_for_call_site denv ~function_decl_coercion
   if (not (DE.can_inline denv)) then
     Environment_says_never_inline
   else
-    let { Reg_width_things.Coercion.change_depth; change_unroll_to; } =
-      Reg_width_things.Coercion.descr function_decl_coercion in
+    let { Coercion.change_depth; change_unroll_to; } =
+      Coercion.descr function_decl_coercion in
     match change_unroll_to with
-    | Some { Reg_width_things.Coercion.from = _; to_ = Some unroll_to; } ->
+    | Some { Coercion.from = _; to_ = Some unroll_to; } ->
       begin match change_depth with
-      | Some { Reg_width_things.Coercion.from = _; to_ = depth; }
+      | Some { Coercion.from = _; to_ = depth; }
         when int_of_depth depth < int_of_depth unroll_to ->
         Inline { attribute = None; unroll_to = None; }
       | Some _ | None ->
@@ -154,7 +154,7 @@ let make_decision_for_call_site denv ~function_decl_coercion
         | Never_inline -> Never_inline_attribute
         | Default_inline ->
           begin match change_depth with
-          | Some { Reg_width_things.Coercion.from = _; to_ = depth; }
+          | Some { Coercion.from = _; to_ = depth; }
             when int_of_depth depth < max_rec_depth ->
             Inline { attribute = None; unroll_to = None; }
           | Some _ | None ->
@@ -163,7 +163,7 @@ let make_decision_for_call_site denv ~function_decl_coercion
         | Unroll unroll_to ->
           let unroll_to =
             match change_depth with
-            | Some { Reg_width_things.Coercion.from = _; to_ = depth; } ->
+            | Some { Coercion.from = _; to_ = depth; } ->
               (int_of_depth depth) + unroll_to
             | None -> unroll_to in
           Inline { attribute = Some Unroll; unroll_to = Some unroll_to; }

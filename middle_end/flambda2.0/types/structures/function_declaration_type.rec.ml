@@ -29,7 +29,7 @@ module Inlinable = struct
     inline : Inline_attribute.t;
     is_a_functor : bool;
     recursive : Recursive.t;
-    inlining_depth : Reg_width_things.Depth_variable.t;
+    inlining_depth : Depth_variable.t;
   }
 
   let print ppf { code_id; param_arity; result_arity; stub; dbg;
@@ -54,7 +54,7 @@ module Inlinable = struct
       Inline_attribute.print inline
       is_a_functor
       Recursive.print recursive
-      Reg_width_things.Depth_variable.print inlining_depth
+      Depth_variable.print inlining_depth
 
   let create ~code_id ~param_arity ~result_arity ~stub ~dbg ~inline
         ~is_a_functor ~recursive ~inlining_depth =

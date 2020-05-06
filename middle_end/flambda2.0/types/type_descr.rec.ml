@@ -151,7 +151,7 @@ module Make (Head : Type_head_intf.S
     | Type _ | Equals _ ->
       Misc.fatal_errorf "Expected [No_alias]:@ %a" T.print t
 
-  let rec expand_head_simple ~force_to_kind simple env (acc : Reg_width_things.Coercion.t) : _ Or_unknown_or_bottom.t =
+  let rec expand_head_simple ~force_to_kind simple env (acc : Coercion.t) : _ Or_unknown_or_bottom.t =
     let [@inline always] const const =
       let typ =
         match Reg_width_const.descr const with
@@ -182,7 +182,7 @@ module Make (Head : Type_head_intf.S
           TE.print env
     in
     let [@inline always] coercion coercion simple : _ Or_unknown_or_bottom.t =
-      match Reg_width_things.Coercion.compose coercion acc with
+      match Coercion.compose coercion acc with
       | Bottom -> Bottom
       | Ok c -> expand_head_simple ~force_to_kind simple env c
     in
@@ -201,7 +201,7 @@ module Make (Head : Type_head_intf.S
            so [Unknown] is fine here. *)
         Unknown
       | simple ->
-        expand_head_simple ~force_to_kind simple env Reg_width_things.Coercion.id
+        expand_head_simple ~force_to_kind simple env Coercion.id
 
   let expand_head' ~force_to_kind t env =
     match expand_head ~force_to_kind t env with

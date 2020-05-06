@@ -223,6 +223,9 @@ MIDDLE_END_CLOSURE=\
 
 MIDDLE_END_FLAMBDA2_COMPILENV_DEPS=\
   middle_end/flambda2.0/types/basic/or_bottom.cmo \
+  middle_end/flambda2.0/basic/depth_variable.cmo \
+  middle_end/flambda2.0/basic/depth_expr.cmo \
+  middle_end/flambda2.0/basic/coercion.cmo \
   middle_end/flambda2.0/compilenv_deps/table_by_int_id.cmo \
   middle_end/flambda2.0/compilenv_deps/patricia_tree.cmo \
   middle_end/flambda2.0/compilenv_deps/linkage_name.cmo \

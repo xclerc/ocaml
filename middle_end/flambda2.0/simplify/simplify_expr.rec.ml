@@ -608,7 +608,7 @@ and simplify_let_cont
 
 and simplify_direct_full_application
   : 'a. DA.t -> Apply.t
-    -> (T.Function_declaration_type.Inlinable.t * Reg_width_things.Coercion.t) option
+    -> (T.Function_declaration_type.Inlinable.t * Coercion.t) option
     -> result_arity:Flambda_arity.t
     -> 'a k -> Expr.t * 'a * UA.t
 = fun dacc apply function_decl_opt ~result_arity k ->
@@ -804,7 +804,7 @@ and simplify_direct_partial_application
         ~inline:Default_inline
         ~is_a_functor:false
         ~recursive
-        ~inlining_depth:(Reg_width_things.Depth_variable.create "my_closure_depth")
+        ~inlining_depth:(Depth_variable.create "my_closure_depth")
     in
     let function_decls =
       Function_declarations.create
@@ -896,7 +896,7 @@ and simplify_direct_function_call
     -> callee's_closure_id:Closure_id.t
     -> param_arity:Flambda_arity.t -> result_arity:Flambda_arity.t
     -> recursive:Recursive.t -> arg_types:T.t list
-    -> (T.Function_declaration_type.Inlinable.t * Reg_width_things.Coercion.t) option
+    -> (T.Function_declaration_type.Inlinable.t * Coercion.t) option
     -> 'a k -> Expr.t * 'a * UA.t
 = fun dacc apply ~callee's_code_id_from_type ~callee's_code_id_from_call_kind
       ~callee's_closure_id ~param_arity ~result_arity ~recursive ~arg_types:_

@@ -36,7 +36,7 @@ module Cached : sig
 
   val cse : t -> Simple.t Flambda_primitive.Eligible_for_cse.Map.t
 
-  val inlining_depths : t -> Reg_width_things.Depth_expr.t Reg_width_things.Depth_variable.Map.t
+  val inlining_depths : t -> Depth_expr.t Depth_variable.Map.t
 
   val add_or_replace_binding
      : t
@@ -61,7 +61,7 @@ end = struct
       (Type_grammar.t * Binding_time.t * Name_mode.t) Name.Map.t;
     aliases : Aliases.t;
     cse : Simple.t Flambda_primitive.Eligible_for_cse.Map.t;
-    inlining_depths : Reg_width_things.Depth_expr.t Reg_width_things.Depth_variable.Map.t;
+    inlining_depths : Depth_expr.t Depth_variable.Map.t;
   }
 
   let print_kind_and_mode ppf (ty, _, mode) =
@@ -108,7 +108,7 @@ end = struct
     { names_to_types = Name.Map.empty;
       aliases = Aliases.empty;
       cse = Flambda_primitive.Eligible_for_cse.Map.empty;
-      inlining_depths = Reg_width_things.Depth_variable.Map.empty;
+      inlining_depths = Depth_variable.Map.empty;
     }
 
   let names_to_types t = t.names_to_types
@@ -575,7 +575,7 @@ and add_equation t name ty =
       in
       let ({ canonical_element; alias_of; t = aliases; } : Aliases.add_result) =
         Aliases.add aliases alias binding_time_and_mode_alias
-          Reg_width_things.Coercion.id alias_of binding_time_and_mode_alias_of
+          Coercion.id alias_of binding_time_and_mode_alias_of
       in
       let kind = Type_grammar.kind ty in
       let ty =
@@ -747,7 +747,7 @@ let get_canonical_simple_with_kind_exn t ?min_name_mode simple =
             match Simple.coercion simple with
             | None -> Some newer_coercion
             | Some coercion ->
-              Some (match Reg_width_things.Coercion.compose coercion newer_coercion with Ok x -> x | _ -> assert false))
+              Some (match Coercion.compose coercion newer_coercion with Ok x -> x | _ -> assert false))
         ~coercion:(fun newer_coercion _ -> Some newer_coercion)
   in
   let name_mode_simple =
@@ -795,7 +795,7 @@ let get_canonical_simple_exn t ?min_name_mode simple =
             match Simple.coercion simple with
             | None -> Some newer_coercion
             | Some coercion ->
-              Some (match Reg_width_things.Coercion.compose coercion newer_coercion with Ok x -> x | _ -> assert false))
+              Some (match Coercion.compose coercion newer_coercion with Ok x -> x | _ -> assert false))
         ~coercion:(fun _ _ -> assert false)
   in
   let name_mode_simple =
@@ -899,7 +899,7 @@ let free_names_transitive t typ =
 
 let substitute_depths t simple =
   let subst depth_var =
-    Reg_width_things.Depth_variable.Map.find
+    Depth_variable.Map.find
       depth_var
       (Cached.inlining_depths t.current_level.just_after_level) in
   Reg_width_things.Simple.pattern_match
@@ -907,7 +907,7 @@ let substitute_depths t simple =
     ~name:(fun _ -> simple)
     ~const:(fun _ -> simple)
     ~coercion:(fun coercion simple ->
-      let coercion = Reg_width_things.Coercion.substitute_depths subst coercion in
+      let coercion = Coercion.substitute_depths subst coercion in
       match Simple.apply_coercion simple ~newer_coercion:(Some coercion) with
       | None -> assert false
       | Some simple -> simple)

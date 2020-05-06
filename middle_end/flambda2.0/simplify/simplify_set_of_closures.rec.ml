@@ -156,7 +156,7 @@ end = struct
                 in
                 function_decl_type denv function_decl
                   ~code_id:new_code_id
-                  (Reg_width_things.Coercion.id))
+                  (Coercion.id))
               (Function_declarations.funs function_decls)
           in
           Closure_id.Map.mapi (fun closure_id _function_decl ->
@@ -407,7 +407,7 @@ let simplify_function context r closure_id function_decl
       (* We need to use [dacc_after_body] to ensure that all [code_ids] in
          [function_decl] are available for the inlining decision code. *)
       function_decl_type (DA.denv dacc_after_body) function_decl
-        Reg_width_things.Coercion.id
+        Coercion.id
     in
     let code_age_relation =
       TE.code_age_relation (DA.typing_env dacc_after_body)

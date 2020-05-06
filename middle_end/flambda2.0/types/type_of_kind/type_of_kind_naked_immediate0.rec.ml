@@ -57,7 +57,7 @@ let free_names t =
   | Is_int ty | Get_tag ty -> T.free_names ty
 
 let apply_coercion t coercion : _ Or_bottom.t =
-  if Reg_width_things.Coercion.is_id coercion then Ok t
+  if Coercion.is_id coercion then Ok t
   else Bottom
 
 module Make_meet_or_join

@@ -156,7 +156,7 @@ let apply_coercion t coercion : _ Or_bottom.t =
   | Boxed_nativeint _
   | String _
   | Array _ ->
-    if Reg_width_things.Coercion.is_id coercion then Ok t
+    if Coercion.is_id coercion then Ok t
     else Bottom
 
 let meet_unknown meet_contents ~contents_is_bottom env

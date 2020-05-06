@@ -24,7 +24,7 @@ include module type of struct include Reg_width_things.Simple end
 
 include Contains_names.S with type t := t
 
-val apply_coercion : t -> newer_coercion:Reg_width_things.Coercion.t option -> t option
+val apply_coercion : t -> newer_coercion:Coercion.t option -> t option
 
 val without_coercion : t -> t
 
@@ -71,7 +71,7 @@ val const_from_descr : Reg_width_const.Descr.t -> t
 
 val map_name : t -> f:(Name.t -> Name.t) -> t
 
-val to_name : t -> (Reg_width_things.Coercion.t option * Name.t) option (*XXX*)
+val to_name : t -> (Coercion.t option * Name.t) option (*XXX*)
 
 (* CR mshinwell: remove these next two? *)
 val map_var : t -> f:(Variable.t -> Variable.t) -> t

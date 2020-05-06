@@ -195,7 +195,7 @@ let tupled_function_call_stub
       ~inline:Default_inline
       ~is_a_functor:false
       ~recursive
-      ~inlining_depth:(Reg_width_things.Depth_variable ((Closure_id.to_string closure_id) ^ "_tuple_stub_depth"))
+      ~inlining_depth:(Depth_variable.create ((Closure_id.to_string closure_id) ^ "_tuple_stub_depth"))
   in
   func_decl, code_id, params_and_body
 
@@ -1028,7 +1028,7 @@ and close_one_function t ~external_env ~by_closure_id decl
       ~inline
       ~is_a_functor:(Function_decl.is_a_functor decl)
       ~recursive
-      ~inlining_depth:(Reg_width_things.Depth_variable.create "my_closure_depth")
+      ~inlining_depth:(Depth_variable.create "my_closure_depth")
   in
   t.code <- (code_id, params_and_body) :: t.code;
   match Function_decl.kind decl with

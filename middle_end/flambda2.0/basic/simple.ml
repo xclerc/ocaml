@@ -60,7 +60,7 @@ let apply_coercion t ~newer_coercion =
     match coercion t with
     | None -> with_coercion newer_coercion
     | Some older_coercion ->
-      begin match Reg_width_things.Coercion.compose older_coercion newer_coercion with
+      begin match Coercion.compose older_coercion newer_coercion with
       | Or_bottom.Ok composed -> with_coercion composed
       | Or_bottom.Bottom -> None
       end
