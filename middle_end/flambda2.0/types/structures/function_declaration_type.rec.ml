@@ -57,7 +57,7 @@ module Inlinable = struct
       Reg_width_things.Depth_variable.print inlining_depth
 
   let create ~code_id ~param_arity ~result_arity ~stub ~dbg ~inline
-        ~is_a_functor ~recursive ~coercion ~inlining_depth =
+        ~is_a_functor ~recursive ~inlining_depth =
     { code_id;
       param_arity;
       result_arity;

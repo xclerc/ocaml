@@ -176,8 +176,7 @@ module Function_declaration_type : sig
     val inline : t -> Inline_attribute.t
     val is_a_functor : t -> bool
     val recursive : t -> Recursive.t
-    (*val rec_info : t -> Rec_info.t*)
-    val coercion : t -> Reg_width_things.Coercion.t (* XXX coercion might contain more than inlining info *)
+    val inlining_depth : t -> Reg_width_things.Depth_variable.t
   end
 
   module Non_inlinable : sig
@@ -336,7 +335,7 @@ val create_inlinable_function_declaration
   -> inline:Inline_attribute.t
   -> is_a_functor:bool
   -> recursive:Recursive.t
-  -> coercion:Reg_width_things.Coercion.t
+  -> inlining_depth:Reg_width_things.Depth_variable.t
   -> Function_declaration_type.t
 
 (** Create a description of a function declaration whose code is unknown.

@@ -804,6 +804,7 @@ and simplify_direct_partial_application
         ~inline:Default_inline
         ~is_a_functor:false
         ~recursive
+        ~inlining_depth:(Reg_width_things.Depth_variable.create "my_closure_depth")
     in
     let function_decls =
       Function_declarations.create

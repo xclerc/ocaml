@@ -70,7 +70,8 @@ let lift_set_of_closures_discovered_via_reified_continuation_param_types dacc
           ~dbg:(I.dbg inlinable)
           ~inline:(I.inline inlinable)
           ~is_a_functor:(I.is_a_functor inlinable)
-          ~recursive:(I.recursive inlinable))
+          ~recursive:(I.recursive inlinable)
+          ~inlining_depth:(I.inlining_depth inlinable))
         function_decls
       |> Function_declarations.create
     in

@@ -748,7 +748,7 @@ let get_canonical_simple_with_kind_exn t ?min_name_mode simple =
             | None -> Some newer_coercion
             | Some coercion ->
               Some (match Reg_width_things.Coercion.compose coercion newer_coercion with Ok x -> x | _ -> assert false))
-        ~coercion:(fun _ _ -> assert false)
+        ~coercion:(fun newer_coercion _ -> Some newer_coercion)
   in
   let name_mode_simple =
     Binding_time.With_name_mode.name_mode

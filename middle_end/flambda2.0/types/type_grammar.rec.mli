@@ -154,7 +154,7 @@ val create_inlinable_function_declaration
   -> inline:Inline_attribute.t
   -> is_a_functor:bool
   -> recursive:Recursive.t
-  -> coercion:Reg_width_things.Coercion.t
+  -> inlining_depth:Reg_width_things.Depth_variable.t
   -> Function_declaration_type.t
 
 val create_non_inlinable_function_declaration

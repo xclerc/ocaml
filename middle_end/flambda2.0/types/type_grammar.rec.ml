@@ -542,11 +542,11 @@ let any_boxed_int64 () = box_int64 (any_naked_int64 ())
 let any_boxed_nativeint () = box_nativeint (any_naked_nativeint ())
 
 let create_inlinable_function_declaration ~code_id ~param_arity ~result_arity
-      ~stub ~dbg ~inline ~is_a_functor ~recursive ~coercion
+      ~stub ~dbg ~inline ~is_a_functor ~recursive ~inlining_depth
       : Function_declaration_type.t =
   Ok (Inlinable (
     Function_declaration_type.Inlinable.create ~code_id ~param_arity
-      ~result_arity ~stub ~dbg ~inline ~is_a_functor ~recursive ~coercion))
+      ~result_arity ~stub ~dbg ~inline ~is_a_functor ~recursive ~inlining_depth))
 
 let create_non_inlinable_function_declaration ~code_id ~param_arity
       ~result_arity ~recursive : Function_declaration_type.t =

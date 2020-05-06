@@ -38,7 +38,7 @@ let function_decl_type denv function_decl ?code_id coercion =
       ~inline:(FD.inline function_decl)
       ~is_a_functor:(FD.is_a_functor function_decl)
       ~recursive:(FD.recursive function_decl)
-      ~coercion
+      ~inlining_depth:(FD.inlining_depth function_decl)
   else
     T.create_non_inlinable_function_declaration
       ~code_id
