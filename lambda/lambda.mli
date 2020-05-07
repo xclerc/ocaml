@@ -269,7 +269,6 @@ type scoped_location =
 
 val raw_location : scoped_location -> Location.t
 val of_raw_location : ?scopes:lambda_scopes -> Location.t -> scoped_location
-val string_of_scope_item : lambda_scope_item -> string
 val string_of_scopes : lambda_scopes -> string
 
 type lambda =

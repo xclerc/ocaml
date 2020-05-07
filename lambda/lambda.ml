@@ -323,6 +323,17 @@ let string_of_scopes scopes =
       to_strings (string_of_scope_item s :: acc) rest in
   String.concat "." (to_strings [] scopes)
 
+let string_of_scopes =
+  let module StringSet = Set.Make (String) in
+  let repr = ref StringSet.empty in
+  fun scopes ->
+    let res = string_of_scopes scopes in
+    match StringSet.find_opt res !repr with
+    | Some x -> x
+    | None ->
+      repr := StringSet.add res !repr;
+      res
+
 type lambda =
     Lvar of Ident.t
   | Lconst of structured_constant
