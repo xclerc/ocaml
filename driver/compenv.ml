@@ -468,6 +468,10 @@ let read_one_param ppf position name v =
   | "flambda2-expert-fallback-inlining-heuristic" ->
     set "flambda2-expert-fallback-inlining-heuristic"
       [ Flambda_2.Expert.fallback_inlining_heuristic ] v
+  | "flambda2-expert-poison" ->
+    Printf.eprintf "Poisoned: OCAMLPARAM=%S\n%!"
+      (try Sys.getenv "OCAMLPARAM" with _ -> "???");
+    exit 99
 
   | _ ->
     if not (List.mem name !can_discard) then begin
