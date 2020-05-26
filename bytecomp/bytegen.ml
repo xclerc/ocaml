@@ -285,6 +285,17 @@ let weaken_event ev cont =
   | _ ->
       Kevent ev :: cont
 
+let string_of_scopes =
+  let module StringSet = Set.Make (String) in
+  let repr = ref StringSet.empty in
+  fun scopes ->
+    let res = string_of_scopes scopes in
+    match StringSet.find_opt res !repr with
+    | Some x -> x
+    | None ->
+      repr := StringSet.add res !repr;
+      res
+
 let add_event ev =
   function
     Kevent ev' :: cont -> weaken_event (merge_events ev ev') cont
@@ -302,7 +313,7 @@ let add_pseudo_event loc modname c =
   if !Clflags.debug then
     let ev_defname = match loc with
       | Loc_unknown -> "??"
-      | Loc_known { loc = _; scopes } -> Lambda.string_of_scopes scopes in
+      | Loc_known { loc = _; scopes } -> string_of_scopes scopes in
     let ev =
       { ev_pos = 0;                   (* patched in emitcode *)
         ev_module = modname;
@@ -919,7 +930,7 @@ let rec comp_expr env exp sz cont =
   | Levent(lam, lev) ->
       let ev_defname = match lev.lev_loc with
         | Loc_unknown -> "??"
-        | Loc_known { loc = _; scopes } -> Lambda.string_of_scopes scopes in
+        | Loc_known { loc = _; scopes } -> string_of_scopes scopes in
       let event kind info =
         { ev_pos = 0;                   (* patched in emitcode *)
           ev_module = !compunit_name;
