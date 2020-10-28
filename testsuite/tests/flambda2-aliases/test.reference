@@ -1,0 +1,131 @@
+*** empty
+((canonical_elements {}) (aliases_of_canonical_elements {})
+ (binding_times_and_modes {}))
+
+*** single alias
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+((canonical_elements {(element:"y" element:"x" (coercion:"f"))})
+ (aliases_of_canonical_elements
+  {(element:"x" {(Normal {(element:"y" coercion:"f")})})})
+ (binding_times_and_modes
+  {(element:"x" (bound at time 3 Normal))
+   (element:"y" (bound at time 4 Normal))}))
+
+*** single alias (inverse)
+[added] element:"y" <--[coercion:"F"]-- element:"x"
+((canonical_elements {(element:"x" element:"y" (coercion:"F"))})
+ (aliases_of_canonical_elements
+  {(element:"y" {(Normal {(element:"x" coercion:"F")})})})
+ (binding_times_and_modes
+  {(element:"x" (bound at time 6 Normal))
+   (element:"y" (bound at time 5 Normal))}))
+
+*** two aliases (independent)
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+[added] element:"x" <--[coercion:"g"]-- element:"z"
+((canonical_elements
+  {(element:"y" element:"x" (coercion:"f"))
+   (element:"z" element:"x" (coercion:"g"))})
+ (aliases_of_canonical_elements
+  {(element:"x"
+    {(Normal {(element:"y" coercion:"f") (element:"z" coercion:"g")})})})
+ (binding_times_and_modes
+  {(element:"x" (bound at time 7 Normal))
+   (element:"y" (bound at time 8 Normal))
+   (element:"z" (bound at time 9 Normal))}))
+
+*** two aliases (simple chain)
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+[added] element:"x" <--[coercion:"gf"]-- element:"z"
+((canonical_elements
+  {(element:"y" element:"x" (coercion:"f"))
+   (element:"z" element:"x" (coercion:"gf"))})
+ (aliases_of_canonical_elements
+  {(element:"x"
+    {(Normal {(element:"y" coercion:"f") (element:"z" coercion:"gf")})})})
+ (binding_times_and_modes
+  {(element:"x" (bound at time 10 Normal))
+   (element:"y" (bound at time 11 Normal))
+   (element:"z" (bound at time 12 Normal))}))
+
+*** two aliases (two inverses)
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+[added] element:"z" <--[coercion:"FG"]-- element:"x"
+((canonical_elements
+  {(element:"x" element:"z" (coercion:"FG"))
+   (element:"y" element:"z" (coercion:"G"))})
+ (aliases_of_canonical_elements
+  {(element:"z"
+    {(Normal {(element:"x" coercion:"FG") (element:"y" coercion:"G")})})})
+ (binding_times_and_modes
+  {(element:"x" (bound at time 14 Normal))
+   (element:"y" (bound at time 15 Normal))
+   (element:"z" (bound at time 13 Normal))}))
+
+*** two aliases (one inverse)
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+[added] element:"z" <--[coercion:"Fg"]-- element:"x"
+((canonical_elements
+  {(element:"x" element:"z" (coercion:"Fg"))
+   (element:"y" element:"z" (coercion:"g"))})
+ (aliases_of_canonical_elements
+  {(element:"z"
+    {(Normal {(element:"x" coercion:"Fg") (element:"y" coercion:"g")})})})
+ (binding_times_and_modes
+  {(element:"x" (bound at time 17 Normal))
+   (element:"y" (bound at time 18 Normal))
+   (element:"z" (bound at time 16 Normal))}))
+
+*** two aliases (one inverse)
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+[added] element:"x" <--[coercion:"Gf"]-- element:"z"
+((canonical_elements
+  {(element:"y" element:"x" (coercion:"f"))
+   (element:"z" element:"x" (coercion:"Gf"))})
+ (aliases_of_canonical_elements
+  {(element:"x"
+    {(Normal {(element:"y" coercion:"f") (element:"z" coercion:"Gf")})})})
+ (binding_times_and_modes
+  {(element:"x" (bound at time 19 Normal))
+   (element:"y" (bound at time 20 Normal))
+   (element:"z" (bound at time 21 Normal))}))
+
+*** three aliases (one inverse)
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+[added] element:"z" <--[coercion:"g"]-- element:"t"
+[added] element:"x" <--[coercion:"Ghf"]-- element:"z"
+((canonical_elements
+  {(element:"t" element:"x" (coercion:"hf"))
+   (element:"y" element:"x" (coercion:"f"))
+   (element:"z" element:"x" (coercion:"Ghf"))})
+ (aliases_of_canonical_elements
+  {(element:"x"
+    {(Normal
+      {(element:"t" coercion:"hf") (element:"y" coercion:"f")
+       (element:"z" coercion:"Ghf")})})})
+ (binding_times_and_modes
+  {(element:"t" (bound at time 25 Normal))
+   (element:"x" (bound at time 22 Normal))
+   (element:"y" (bound at time 23 Normal))
+   (element:"z" (bound at time 24 Normal))}))
+
+*** three aliases (two inverses)
+[added] element:"x" <--[coercion:"f"]-- element:"y"
+[added] element:"z" <--[coercion:"g"]-- element:"t"
+[added] element:"z" <--[coercion:"FHg"]-- element:"x"
+((canonical_elements
+  {(element:"t" element:"z" (coercion:"g"))
+   (element:"x" element:"z" (coercion:"FHg"))
+   (element:"y" element:"z" (coercion:"Hg"))})
+ (aliases_of_canonical_elements
+  {(element:"z"
+    {(Normal
+      {(element:"t" coercion:"g") (element:"x" coercion:"FHg")
+       (element:"y" coercion:"Hg")})})})
+ (binding_times_and_modes
+  {(element:"t" (bound at time 29 Normal))
+   (element:"x" (bound at time 27 Normal))
+   (element:"y" (bound at time 28 Normal))
+   (element:"z" (bound at time 26 Normal))}))
+
+OK.

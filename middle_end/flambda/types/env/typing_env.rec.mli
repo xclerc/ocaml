@@ -131,9 +131,9 @@ val aliases_of_simple
    : t
   -> min_name_mode:Name_mode.t
   -> Simple.t
-  -> Simple.Set.t
+  -> Coercion.t Aliases.coercion_to_canonical Simple.Map.t
 
-val aliases_of_simple_allowable_in_types : t -> Simple.t -> Simple.Set.t
+val aliases_of_simple_allowable_in_types : t -> Simple.t -> Coercion.t Aliases.coercion_to_canonical Simple.Map.t
 
 val add_to_code_age_relation : t -> newer:Code_id.t -> older:Code_id.t -> t
 

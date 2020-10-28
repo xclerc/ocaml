@@ -84,11 +84,11 @@ let simplify_direct_full_application dacc apply function_decl_opt
   let inlined =
     match function_decl_opt with
     | None -> None
-    | Some (function_decl, function_decl_rec_info) ->
+    | Some (function_decl, function_decl_coercion) ->
       let apply_inlining_depth = Apply.inlining_depth apply in
       let decision =
         Inlining_decision.make_decision_for_call_site (DA.denv dacc)
-          ~function_decl_rec_info
+          ~function_decl_coercion
           ~apply_inlining_depth
           (Apply.inline apply)
       in
@@ -541,13 +541,13 @@ let simplify_function_call dacc apply ~callee_ty
         | Indirect_unknown_arity
         | Indirect_known_arity _ -> None
       in
-      (* CR mshinwell: This should go in Typing_env (ditto logic for Rec_info
+      (* CR mshinwell: This should go in Typing_env (ditto logic for Coercion
          in Simplify_simple *)
-      let function_decl_rec_info =
-        let rec_info = I.rec_info inlinable in
-        match Simple.rec_info (Apply.callee apply) with
-        | None -> rec_info
-        | Some newer -> Rec_info.merge rec_info ~newer
+      let function_decl_coercion =
+        let coercion = I.coercion inlinable in
+        match Simple.coercion (Apply.callee apply) with
+        | None -> coercion
+        | Some newer -> Coercion.compose coercion ~newer
       in
       let callee's_code_id_from_type = I.code_id inlinable in
       let callee's_code = DE.find_code denv callee's_code_id_from_type in
@@ -557,7 +557,7 @@ let simplify_function_call dacc apply ~callee_ty
         ~result_arity:(Code.result_arity callee's_code)
         ~recursive:(Code.recursive callee's_code)
         ~must_be_detupled
-        (Some (inlinable, function_decl_rec_info))
+        (Some (inlinable, function_decl_coercion))
         ~down_to_up
     | Ok (Non_inlinable non_inlinable) ->
       let module N = T.Function_declaration_type.Non_inlinable in

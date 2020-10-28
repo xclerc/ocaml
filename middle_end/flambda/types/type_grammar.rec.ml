@@ -167,35 +167,35 @@ let import import_map t =
   | Naked_int64 ty -> Naked_int64 (T_N64.import import_map ty)
   | Naked_nativeint ty -> Naked_nativeint (T_NN.import import_map ty)
 
-let apply_rec_info t rec_info : _ Or_bottom.t =
+let apply_coercion t coercion : _ Or_bottom.t =
   match t with
   | Value ty ->
-    begin match T_V.apply_rec_info ty rec_info with
+    begin match T_V.apply_coercion ty coercion with
     | Ok ty -> Ok (Value ty)
     | Bottom -> Bottom
     end
   | Naked_immediate ty ->
-    begin match T_NI.apply_rec_info ty rec_info with
+    begin match T_NI.apply_coercion ty coercion with
     | Ok ty -> Ok (Naked_immediate ty)
     | Bottom -> Bottom
     end
   | Naked_float ty ->
-    begin match T_Nf.apply_rec_info ty rec_info with
+    begin match T_Nf.apply_coercion ty coercion with
     | Ok ty -> Ok (Naked_float ty)
     | Bottom -> Bottom
     end
   | Naked_int32 ty ->
-    begin match T_N32.apply_rec_info ty rec_info with
+    begin match T_N32.apply_coercion ty coercion with
     | Ok ty -> Ok (Naked_int32 ty)
     | Bottom -> Bottom
     end
   | Naked_int64 ty ->
-    begin match T_N64.apply_rec_info ty rec_info with
+    begin match T_N64.apply_coercion ty coercion with
     | Ok ty -> Ok (Naked_int64 ty)
     | Bottom -> Bottom
     end
   | Naked_nativeint ty ->
-    begin match T_NN.apply_rec_info ty rec_info with
+    begin match T_NN.apply_coercion ty coercion with
     | Ok ty -> Ok (Naked_nativeint ty)
     | Bottom -> Bottom
     end
@@ -613,10 +613,10 @@ let any_boxed_int32 () = box_int32 (any_naked_int32 ())
 let any_boxed_int64 () = box_int64 (any_naked_int64 ())
 let any_boxed_nativeint () = box_nativeint (any_naked_nativeint ())
 
-let create_inlinable_function_declaration ~code_id ~dbg ~rec_info ~is_tupled
+let create_inlinable_function_declaration ~code_id ~dbg ~coercion ~is_tupled
       : Function_declaration_type.t =
   Ok (Inlinable (
-    Function_declaration_type.Inlinable.create ~code_id ~dbg ~rec_info ~is_tupled))
+    Function_declaration_type.Inlinable.create ~code_id ~dbg ~coercion ~is_tupled))
 
 let create_non_inlinable_function_declaration ~code_id ~is_tupled
       : Function_declaration_type.t =

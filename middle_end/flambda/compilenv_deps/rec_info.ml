@@ -13,7 +13,7 @@
 (**************************************************************************)
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
-
+(*
 type t = {
   depth : int;
   unroll_to : int option;
@@ -64,3 +64,4 @@ let merge { depth = depth1; unroll_to = older_unroll_to; } ~newer =
 let initial = create ~depth:0 ~unroll_to:None
 
 let is_initial t = equal t initial
+*)

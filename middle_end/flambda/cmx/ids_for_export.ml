@@ -74,7 +74,7 @@ let add_name t name =
 
 let add_simple t simple =
   let simples =
-    match Simple.rec_info simple with
+    match Simple.coercion simple with
     | None -> t.simples
     | Some _ -> Simple.Set.add simple t.simples
   in
@@ -91,7 +91,7 @@ let add_continuation t continuation =
 
 let from_simple simple =
   let simples =
-    match Simple.rec_info simple with
+    match Simple.coercion simple with
     | None ->
       (* This simple will not be in the grand_table_of_simples *)
       Simple.Set.empty
@@ -199,12 +199,12 @@ module Import_map = struct
     match Simple.Map.find simple t.simples with
     | simple -> simple
     | exception Not_found ->
-      begin match Simple.rec_info simple with
+      begin match Simple.coercion simple with
       | None ->
         Simple.pattern_match simple
           ~name:(fun n -> Simple.name (name t n))
           ~const:(fun c -> Simple.const (const t c))
-      | Some _rec_info -> simple
+      | Some _coercion -> simple
       end
 
   let closure_var_is_used t var =

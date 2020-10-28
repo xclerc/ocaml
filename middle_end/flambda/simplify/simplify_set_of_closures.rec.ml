@@ -26,7 +26,7 @@ open! Simplify_import
    file tail recursive, although it probably isn't necessary, as
    excessive levels of nesting of functions seems unlikely. *)
 
-let function_decl_type denv function_decl ?code_id ?params_and_body rec_info =
+let function_decl_type denv function_decl ?code_id ?params_and_body coercion =
   let decision =
     Inlining_decision.make_decision_for_function_declaration
       denv ?params_and_body function_decl
@@ -37,7 +37,7 @@ let function_decl_type denv function_decl ?code_id ?params_and_body rec_info =
       ~code_id
       ~dbg:(FD.dbg function_decl)
       ~is_tupled:(FD.is_tupled function_decl)
-      ~rec_info
+      ~coercion
   else
     T.create_non_inlinable_function_declaration
       ~code_id
@@ -140,7 +140,7 @@ end = struct
               closure_element_types_inside_function) ->
           let function_decls = Set_of_closures.function_decls set_of_closures in
           let all_function_decls_in_set =
-            (* CR mshinwell: [Rec_info] may be wrong. *)
+            (* CR mshinwell: [coercion] may be wrong. *)
             Closure_id.Map.map (fun function_decl ->
                 let new_code_id =
                   Code_id.Map.find (FD.code_id function_decl)
@@ -148,7 +148,7 @@ end = struct
                 in
                 function_decl_type denv function_decl
                   ~code_id:new_code_id
-                  (Rec_info.create ~depth:1 ~unroll_to:None))
+                  Coercion.id)
               (Function_declarations.funs function_decls)
           in
           Closure_id.Map.mapi (fun closure_id _function_decl ->
@@ -422,7 +422,7 @@ let simplify_function context ~used_closure_vars ~shareable_constants
       (* We need to use [dacc_after_body] to ensure that all [code_ids] in
          [params_and_body] are available for the inlining decision code. *)
       function_decl_type (DA.denv dacc_after_body) function_decl
-        ~params_and_body Rec_info.initial
+        ~params_and_body Coercion.id
     in
     { function_decl;
       new_code_id;

@@ -137,18 +137,18 @@ module Make (Head : Type_head_intf.S
       | Equals alias -> alias
       | No_alias _ -> assert false
 
-  let apply_rec_info t rec_info : _ Or_bottom.t =
+  let apply_coercion t coercion : _ Or_bottom.t =
     match descr t with
     | Equals simple ->
-      let newer_rec_info = Some rec_info in
-      begin match Simple.merge_rec_info simple ~newer_rec_info with
+      let newer_coercion = Some coercion in
+      begin match Simple.compose_coercion simple ~newer_coercion with
       | None -> Bottom
       | Some simple -> Ok (create_equals simple)
       end
     | No_alias Unknown -> Ok t
     | No_alias Bottom -> Bottom
     | No_alias (Ok head) ->
-      Or_bottom.map (Head.apply_rec_info head rec_info)
+      Or_bottom.map (Head.apply_coercion head coercion)
         ~f:(fun head -> create head)
 
   let force_to_head ~force_to_kind t =
@@ -186,16 +186,16 @@ module Make (Head : Type_head_intf.S
           | No_alias Bottom -> Bottom
           | No_alias Unknown -> Unknown
           | No_alias (Ok head) -> Ok head
-            (* CR mshinwell: Fix Rec_info
-            begin match rec_info with
+            (* CR mshinwell: Fix coercion
+            begin match coercion with
             | None -> Ok head
-            | Some rec_info ->
-              (* CR mshinwell: check rec_info handling is correct, after
+            | Some coercion ->
+              (* CR mshinwell: check coercion handling is correct, after
                  recent changes in this area *)
-              (* [simple] already has [rec_info] applied to it (see
+              (* [simple] already has [coercion] applied to it (see
                  [get_canonical_simple], above).  However we also need to
                  apply it to the expanded head of the type. *)
-              match Head.apply_rec_info head rec_info with
+              match Head.apply_coercion head coercion with
               | Bottom -> Bottom
               | Ok head -> Ok head
             end
@@ -244,10 +244,10 @@ module Make (Head : Type_head_intf.S
 
   let all_aliases_of env simple_opt ~in_env =
     match simple_opt with
-    | None -> Simple.Set.empty
+    | None -> Simple.Map.empty
     | Some simple ->
       let simples =
-        Simple.Set.add simple (
+        Simple.Map.add simple { Aliases.coercion_to_canonical = Coercion.id; } (
           TE.aliases_of_simple_allowable_in_types env simple)
       in
       (*
@@ -255,7 +255,7 @@ module Make (Head : Type_head_intf.S
         Simple.print simple
         Simple.Set.print simples;
       *)
-      Simple.Set.filter (fun simple ->
+      Simple.Map.filter (fun simple _ ->
           Typing_env.mem_simple in_env simple)
         simples
 
@@ -539,20 +539,26 @@ module Make (Head : Type_head_intf.S
             if Simple.same simple1 simple2
             then Simple.Set.singleton simple1
             else
+              let map_keys m =
+                Simple.Map.fold (fun simple _ acc ->
+                  Simple.Set.add simple acc)
+                  m
+                  Simple.Set.empty
+              in
               Simple.Set.inter
                 (all_aliases_of (Meet_or_join_env.left_join_env join_env)
                   canonical_simple1
-                  ~in_env:(Meet_or_join_env.target_join_env join_env))
+                  ~in_env:(Meet_or_join_env.target_join_env join_env) |> map_keys)
                 (all_aliases_of (Meet_or_join_env.right_join_env join_env)
                   canonical_simple2
-                  ~in_env:(Meet_or_join_env.target_join_env join_env))
+                  ~in_env:(Meet_or_join_env.target_join_env join_env) |> map_keys)
         in
         match bound_name with
         | None -> shared_aliases
         | Some bound_name ->
           (* CR vlaviron: this ensures that we're not creating an alias
              to a different simple that is just bound_name with different
-             rec_info. Such an alias is forbidden. *)
+             coercion. Such an alias is forbidden. *)
           Simple.Set.filter (fun simple ->
               not (Simple.same simple (Simple.name bound_name)))
             shared_aliases

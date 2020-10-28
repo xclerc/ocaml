@@ -23,33 +23,33 @@ module Inlinable = struct
   type t = {
     code_id : Code_id.t;
     dbg : Debuginfo.t;
-    rec_info : Rec_info.t;
+    coercion : Coercion.t;
     is_tupled : bool;
   }
 
-  let print ppf { code_id; dbg; rec_info; is_tupled; } =
+  let print ppf { code_id; dbg; coercion; is_tupled; } =
     Format.fprintf ppf
       "@[<hov 1>(Inlinable@ \
         @[<hov 1>(code_id@ %a)@]@ \
         @[<hov 1>(dbg@ %a)@] \
-        @[<hov 1>(rec_info@ %a)@]\
+        @[<hov 1>(coercion@ %a)@]\
         @[<hov 1><is_tupled@ %b)@]\
         )@]"
       Code_id.print code_id
       Debuginfo.print_compact dbg
-      Rec_info.print rec_info
+      Coercion.print coercion
       is_tupled
 
-  let create ~code_id ~dbg ~rec_info ~is_tupled =
+  let create ~code_id ~dbg ~coercion ~is_tupled =
     { code_id;
       dbg;
-      rec_info;
+      coercion;
       is_tupled;
     }
 
   let code_id t = t.code_id
   let dbg t = t.dbg
-  let rec_info t = t.rec_info
+  let coercion t = t.coercion
   let is_tupled t = t.is_tupled
 end
 
@@ -97,7 +97,7 @@ let print ppf t =
 let free_names (t : t) =
   match t with
   | Bottom | Unknown -> Name_occurrences.empty
-  | Ok (Inlinable { code_id; dbg = _; rec_info = _; is_tupled = _; })
+  | Ok (Inlinable { code_id; dbg = _; coercion = _; is_tupled = _; })
   | Ok (Non_inlinable { code_id; is_tupled = _; }) ->
     Name_occurrences.add_code_id Name_occurrences.empty code_id
       Name_mode.in_types
@@ -105,16 +105,16 @@ let free_names (t : t) =
 let all_ids_for_export (t : t) =
   match t with
   | Bottom | Unknown -> Ids_for_export.empty
-  | Ok (Inlinable { code_id; dbg = _; rec_info = _; is_tupled = _; })
+  | Ok (Inlinable { code_id; dbg = _; coercion = _; is_tupled = _; })
   | Ok (Non_inlinable { code_id; is_tupled = _; }) ->
     Ids_for_export.add_code_id Ids_for_export.empty code_id
 
 let import import_map (t : t) : t =
   match t with
   | Bottom | Unknown -> t
-  | Ok (Inlinable { code_id; dbg; rec_info; is_tupled; }) ->
+  | Ok (Inlinable { code_id; dbg; coercion; is_tupled; }) ->
     let code_id = Ids_for_export.Import_map.code_id import_map code_id in
-    Ok (Inlinable { code_id; dbg; rec_info; is_tupled; })
+    Ok (Inlinable { code_id; dbg; coercion; is_tupled; })
   | Ok (Non_inlinable { code_id; is_tupled; }) ->
     let code_id = Ids_for_export.Import_map.code_id import_map code_id in
     Ok (Non_inlinable { code_id; is_tupled; })
@@ -202,13 +202,13 @@ struct
     | Ok (Inlinable {
         code_id = code_id1;
         dbg = dbg1;
-        rec_info = _rec_info1;
+        coercion = _coercion1;
         is_tupled = is_tupled1;
       }),
       Ok (Inlinable {
         code_id = code_id2;
         dbg = dbg2;
-        rec_info = _rec_info2;
+        coercion = _coercion2;
         is_tupled = is_tupled2;
       }) ->
       let typing_env = Meet_or_join_env.target_join_env env in
@@ -220,12 +220,12 @@ struct
         Ok (Ok (Inlinable {
             code_id;
             dbg = dbg1;
-            rec_info = _rec_info1;
+            coercion = _coercion1;
             is_tupled = is_tupled1;
           }),
           TEE.empty ())
       in
-      (* CR mshinwell: What about [rec_info]? *)
+      (* CR mshinwell: What about [coercion]? *)
       match E.op () with
       | Meet ->
         begin match
@@ -271,13 +271,13 @@ let join env t1 t2 : t =
     assert (TEE.is_empty env_extension);
     t
 
-let apply_rec_info (t : t) rec_info : t Or_bottom.t =
+let apply_coercion (t : t) coercion : t Or_bottom.t =
   match t with
-  | Ok (Inlinable { code_id; dbg; rec_info = rec_info'; is_tupled; }) ->
-    let rec_info = Rec_info.merge rec_info' ~newer:rec_info in
+  | Ok (Inlinable { code_id; dbg; coercion = coercion'; is_tupled; }) ->
+    let coercion = Coercion.compose coercion' ~newer:coercion in
     Ok (Ok (Inlinable { code_id;
       dbg;
-      rec_info;
+      coercion;
       is_tupled;
     }))
   | Ok (Non_inlinable { code_id = _; is_tupled = _; }) -> Ok t

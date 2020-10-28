@@ -217,7 +217,7 @@ module Function_declaration_type : sig
 
     val code_id : t -> Code_id.t
     val dbg : t -> Debuginfo.t
-    val rec_info : t -> Rec_info.t
+    val coercion : t -> Coercion.t
     val is_tupled : t -> bool
   end
 
@@ -262,7 +262,7 @@ val make_suitable_for_environment
   -> bind_to:Name.t
   -> Typing_env_extension.t
 
-val apply_rec_info : flambda_type -> Rec_info.t -> flambda_type Or_bottom.t
+val apply_coercion : flambda_type -> Coercion.t -> flambda_type Or_bottom.t
 
 (* Remove any information from the inside of the type, leaving only its
    outer structure, and in some cases leaving only "Unknown".  Alias types
@@ -386,7 +386,7 @@ val mutable_string : size:int -> t
 val create_inlinable_function_declaration
    : code_id:Code_id.t
   -> dbg:Debuginfo.t
-  -> rec_info:Rec_info.t
+  -> coercion:Coercion.t
   -> is_tupled:bool
   -> Function_declaration_type.t
 

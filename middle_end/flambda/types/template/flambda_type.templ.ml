@@ -868,7 +868,7 @@ let reify ?allowed_if_free_vars_defined_in ?additional_free_var_criterion
                 | Bottom | Unknown | Ok (Non_inlinable _) ->
                   function_decls_with_closure_vars
                 | Ok (Inlinable inlinable_decl) ->
-                  (* CR mshinwell: We're ignoring [rec_info] *)
+                  (* CR mshinwell: We're ignoring [coercion] *)
                   let closure_var_types =
                     Closures_entry.closure_var_types closures_entry
                   in

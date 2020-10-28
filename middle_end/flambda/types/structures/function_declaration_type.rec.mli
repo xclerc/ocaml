@@ -22,13 +22,13 @@ module Inlinable : sig
   val create
      : code_id:Code_id.t
     -> dbg:Debuginfo.t
-    -> rec_info:Rec_info.t
+    -> coercion:Coercion.t
     -> is_tupled:bool
     -> t
 
   val code_id : t -> Code_id.t
   val dbg : t -> Debuginfo.t
-  val rec_info : t -> Rec_info.t
+  val coercion : t -> Coercion.t
   val is_tupled : t -> bool
 end
 
@@ -60,4 +60,4 @@ include Type_structure_intf.S
   with type meet_or_join_env := Meet_or_join_env.t
   with type typing_env_extension := Typing_env_extension.t
 
-val apply_rec_info : t -> Rec_info.t -> t Or_bottom.t
+val apply_coercion : t -> Coercion.t -> t Or_bottom.t

@@ -67,8 +67,8 @@ let import import_map t =
   | Is_int ty -> Is_int (T.import import_map ty)
   | Get_tag ty -> Get_tag (T.import import_map ty)
 
-let apply_rec_info t rec_info : _ Or_bottom.t =
-  if Rec_info.is_initial rec_info then Ok t
+let apply_coercion t coercion : _ Or_bottom.t =
+  if Coercion.is_id coercion then Ok t
   else Bottom
 
 let eviscerate _ : _ Or_unknown.t = Unknown

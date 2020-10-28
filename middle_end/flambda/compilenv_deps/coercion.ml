@@ -12,21 +12,15 @@
 (*                                                                        *)
 (**************************************************************************)
 
-[@@@ocaml.warning "+a-4-30-40-41-42"]
-(*
-type t
+type t = unit
 
-include Identifiable.S with type t := t
+let id = ()
+let is_id () = true
+let inverse () = ()
+let compose () ~newer:() = ()
+let print ppf () = Format.fprintf ppf "id"
+let equal () () = true
+let hash () = 0
 
-val create : depth:int -> unroll_to:int option -> t
-
-val depth : t -> int
-
-val unroll_to : t -> int option
-
-val merge : t -> newer:t -> t
-
-val initial : t
-
-val is_initial : t -> bool
-*)
+let unroll_to () = None
+let depth () = 1

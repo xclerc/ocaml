@@ -751,10 +751,11 @@ let cse_with_eligible_lhs ~env_at_fork envs_with_levels ~params prev_cse
                 let aliases =
                   Typing_env.aliases_of_simple env_at_use
                     ~min_name_mode:Name_mode.normal bound_to
-                  |> Simple.Set.filter (fun simple ->
+                  |> Simple.Map.filter (fun simple _ ->
                     not (Simple.Set.mem simple params))
                 in
-                Simple.Set.get_singleton aliases
+                Simple.Map.get_singleton aliases
+                |> Option.map fst
             in
             match bound_to with
             | None -> eligible

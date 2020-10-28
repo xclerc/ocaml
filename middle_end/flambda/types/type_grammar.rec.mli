@@ -39,7 +39,7 @@ val kind : t -> Flambda_kind.t
 
 val alias_type_of : Flambda_kind.t -> Simple.t -> t
 
-val apply_rec_info : t -> Rec_info.t -> t Or_bottom.t
+val apply_coercion : t -> Coercion.t -> t Or_bottom.t
 
 val eviscerate : t -> Typing_env.t -> t
 
@@ -162,7 +162,7 @@ val kind_for_const : Reg_width_const.t -> Flambda_kind.t
 val create_inlinable_function_declaration
    : code_id:Code_id.t
   -> dbg:Debuginfo.t
-  -> rec_info:Rec_info.t
+  -> coercion:Coercion.t
   -> is_tupled:bool
   -> Function_declaration_type.t
 

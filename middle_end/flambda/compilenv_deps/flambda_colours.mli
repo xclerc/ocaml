@@ -53,7 +53,7 @@ val continuation_annotation : unit -> string
 
 val name_abstraction : unit -> string
 
-val rec_info : unit -> string
+val coercion : unit -> string
 
 val elide : unit -> string
 

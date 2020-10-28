@@ -53,25 +53,25 @@ let pattern_match' t ~var ~symbol ~const =
 
 let const_from_descr descr = const (RWC.of_descr descr)
 
-let without_rec_info t = pattern_match t ~name ~const
+let without_coercion t = pattern_match t ~name ~const
 
-let merge_rec_info t ~newer_rec_info =
+let compose_coercion t ~newer_coercion =
   if is_const t then None
   else
-    match newer_rec_info with
+    match newer_coercion with
     | None -> Some t
-    | Some newer_rec_info ->
-      let rec_info =
-        match rec_info t with
-        | None -> newer_rec_info
-        | Some older_rec_info ->
-          Rec_info.merge older_rec_info ~newer:newer_rec_info
+    | Some newer_coercion ->
+      let coercion =
+        match coercion t with
+        | None -> newer_coercion
+        | Some older_coercion ->
+          Coercion.compose older_coercion ~newer:newer_coercion
       in
-      Some (with_rec_info (without_rec_info t) rec_info)
+      Some (with_coercion (without_coercion t) coercion)
 
 (* CR mshinwell: Make naming consistent with [Name] re. the option type *)
 
-(* CR mshinwell: Careful that Rec_info doesn't get dropped using the
+(* CR mshinwell: Careful that Coercion doesn't get dropped using the
    following *)
 
 let [@inline always] must_be_var t =
@@ -86,7 +86,7 @@ let [@inline always] must_be_name t =
 let to_name t =
   match must_be_name t with
   | None -> None
-  | Some name -> Some (rec_info t, name)
+  | Some name -> Some (coercion t, name)
 
 let map_name t ~f =
   match must_be_name t with
@@ -118,9 +118,9 @@ let apply_name_permutation t perm =
     let new_name = Name_permutation.apply_name perm old_name in
     if old_name == new_name then t
     else
-      match rec_info t with
+      match coercion t with
       | None -> name new_name
-      | Some rec_info -> with_rec_info (name new_name) rec_info
+      | Some coercion -> with_coercion (name new_name) coercion
   in
   pattern_match t ~const:(fun _ -> t) ~name
 

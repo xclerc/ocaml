@@ -62,7 +62,7 @@ module type S = sig
 
   include Contains_ids.S with type t := t
 
-  val apply_rec_info : t -> Rec_info.t -> t Or_bottom.t
+  val apply_coercion : t -> Coercion.t -> t Or_bottom.t
 
   val eviscerate
      : force_to_kind:(flambda_type -> t)  (* CR mshinwell: "of_type"? *)

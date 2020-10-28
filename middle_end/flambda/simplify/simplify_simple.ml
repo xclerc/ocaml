@@ -25,19 +25,19 @@ module TE = T.Typing_env
 (* CR mshinwell: avoid having two functions *)
 let type_for_simple simple kind : _ Or_bottom.t =
   let ty = T.alias_type_of kind simple in
-  match Simple.rec_info simple with
+  match Simple.coercion simple with
   | None -> Ok (simple, ty)
-  | Some rec_info ->
-    match T.apply_rec_info ty rec_info with
+  | Some coercion ->
+    match T.apply_coercion ty coercion with
     | Bottom -> Bottom
     | Ok ty -> Ok (simple, ty)
 
 let type_for_simple' simple kind : _ Or_bottom.t * _ =
   let ty = T.alias_type_of kind simple in
-  match Simple.rec_info simple with
+  match Simple.coercion simple with
   | None -> Ok simple, ty
-  | Some rec_info ->
-    match T.apply_rec_info ty rec_info with
+  | Some coercion ->
+    match T.apply_coercion ty coercion with
     | Bottom -> Bottom, T.bottom (T.kind ty)
     | Ok ty -> Ok simple, ty
 

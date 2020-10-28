@@ -16,6 +16,19 @@
 
 [@@@ocaml.warning "+a-4-30-40-41-42"]
 
+module Ids_for_export = struct
+  include Ids_for_export
+  type e = Simple.t
+  let add = Ids_for_export.add_simple
+  let to_ids_for_export x = x
+  module Import_map = struct
+    include Ids_for_export.Import_map
+    let of_import_map x = x
+  end
+end
+
+module Aliases = Aliases.Make (Coercion) (Simple) (Ids_for_export)
+
 module K = Flambda_kind
 
 (* CR mshinwell: Add signatures to these submodules. *)
@@ -1060,7 +1073,7 @@ and add_equation t name ty =
           end)
         ~const:(fun _ -> ())
   end;
-  let aliases, simple, rec_info, t, ty =
+  let aliases, simple, coercion, t, ty =
     let aliases = aliases t in
     match Type_grammar.get_alias_exn ty with
     | exception Not_found ->
@@ -1073,18 +1086,26 @@ and add_equation t name ty =
       let alias = Simple.name name in
       let kind = Type_grammar.kind ty in
       let binding_time_and_mode_alias = binding_time_and_mode t name in
-      let rec_info = Simple.rec_info alias_of in
+      let coercion = Simple.coercion alias_of in
       let binding_time_and_mode_alias_of =
         binding_time_and_mode_of_simple t alias_of
       in
-      let ({ canonical_element; alias_of; t = aliases; } : Aliases.add_result) =
-        Aliases.add aliases alias binding_time_and_mode_alias
-          alias_of binding_time_and_mode_alias_of
+      let ({ canonical_element;
+             alias_of;
+             t = aliases;
+             coerce_alias_of_to_canonical_element = coercion; } : Aliases.add_result) =
+        Aliases.add
+          aliases
+          ~element1:alias
+          ~binding_time_and_mode1:binding_time_and_mode_alias
+          ~coerce_from_element2_to_element1:(Option.value coercion ~default:Coercion.id)
+          ~element2:alias_of
+          ~binding_time_and_mode2:binding_time_and_mode_alias_of
       in
       let ty =
         Type_grammar.alias_type_of kind canonical_element
       in
-      aliases, alias_of, rec_info, t, ty
+      aliases, alias_of, Some coercion, t, ty
   in
   (* Beware: if we're about to add the equation on a name which is different
      from the one that the caller passed in, then we need to make sure that the
@@ -1113,12 +1134,17 @@ and add_equation t name ty =
     Simple.pattern_match simple ~name ~const:(fun _ -> ty, t)
   in
   let ty =
-    match rec_info with
+    match coercion with
     | None -> ty
-    | Some rec_info ->
-      match Type_grammar.apply_rec_info ty rec_info with
-      | Bottom -> Type_grammar.bottom (Type_grammar.kind ty)
-      | Ok ty -> ty
+    | Some coercion ->
+      (* CR xclerc for xclerc: an alternative would be to ensure "everywhere"
+         that applying the identity coercion is always legal. *)
+      if Coercion.is_id coercion then
+        ty
+      else
+        match Type_grammar.apply_coercion ty coercion with
+        | Bottom -> Type_grammar.bottom (Type_grammar.kind ty)
+        | Ok ty -> ty
   in
   let [@inline always] name name = add_equation0 t aliases name ty in
   Simple.pattern_match simple ~name ~const:(fun _ -> t)
@@ -1264,21 +1290,21 @@ let cut_and_n_way_join definition_typing_env ts_and_use_ids ~params
 
 let get_canonical_simple_with_kind_exn t ?min_name_mode simple =
   let kind = kind_of_simple t simple in
-  let newer_rec_info =
-    let newer_rec_info = Simple.rec_info simple in
-    match newer_rec_info with
+  let newer_coercion =
+    let newer_coercion = Simple.coercion simple in
+    match newer_coercion with
     | None -> None
-    | Some newer_rec_info ->
+    | Some newer_coercion ->
       Simple.pattern_match simple
-        ~const:(fun _ -> Some newer_rec_info)
+        ~const:(fun _ -> Some newer_coercion)
         ~name:(fun name ->
           match Type_grammar.get_alias_exn (find t name (Some kind)) with
-          | exception Not_found -> Some newer_rec_info
+          | exception Not_found -> Some newer_coercion
           | simple ->
-            match Simple.rec_info simple with
-            | None -> Some newer_rec_info
-            | Some rec_info ->
-              Some (Rec_info.merge rec_info ~newer:newer_rec_info))
+            match Simple.coercion simple with
+            | None -> Some newer_coercion
+            | Some coercion ->
+              Some (Coercion.compose coercion ~newer:newer_coercion))
   in
   let aliases_for_simple =
     if Aliases.mem (aliases t) simple then aliases t
@@ -1324,33 +1350,33 @@ let get_canonical_simple_with_kind_exn t ?min_name_mode simple =
         print t
     end;
     raise Misc.Fatal_error
-  | alias ->
-    match newer_rec_info with
+  | alias, _coercion (* CR xclerc for xclerc: use the coercion. *) ->
+    match newer_coercion with
     | None -> alias, kind
     | Some _ ->
-      match Simple.merge_rec_info alias ~newer_rec_info with
+      match Simple.compose_coercion alias ~newer_coercion with
       | None -> raise Not_found
       | Some simple -> simple, kind
 
 let get_canonical_simple_exn t ?min_name_mode simple =
   (* Duplicated from above to eliminate the allocation of the returned pair. *)
-  let newer_rec_info =
-    let newer_rec_info = Simple.rec_info simple in
-    match newer_rec_info with
+  let newer_coercion =
+    let newer_coercion = Simple.coercion simple in
+    match newer_coercion with
     | None -> None
-    | Some newer_rec_info ->
+    | Some newer_coercion ->
       Simple.pattern_match simple
-        ~const:(fun _ -> Some newer_rec_info)
+        ~const:(fun _ -> Some newer_coercion)
         ~name:(fun name ->
-          if variable_is_from_missing_cmx_file t name then Some newer_rec_info
+          if variable_is_from_missing_cmx_file t name then Some newer_coercion
           else
             match Type_grammar.get_alias_exn (find t name None) with
-            | exception Not_found -> Some newer_rec_info
+            | exception Not_found -> Some newer_coercion
             | simple ->
-              match Simple.rec_info simple with
-              | None -> Some newer_rec_info
-              | Some rec_info ->
-                Some (Rec_info.merge rec_info ~newer:newer_rec_info))
+              match Simple.coercion simple with
+              | None -> Some newer_coercion
+              | Some coercion ->
+                Some (Coercion.compose coercion ~newer:newer_coercion))
   in
   let aliases_for_simple =
     if Aliases.mem (aliases t) simple then aliases t
@@ -1427,11 +1453,11 @@ let get_canonical_simple_exn t ?min_name_mode simple =
         print t
     end;
     raise Misc.Fatal_error
-  | alias ->
-    match newer_rec_info with
+  | alias, _ ->
+    match newer_coercion with
     | None -> alias
     | Some _ ->
-      match Simple.merge_rec_info alias ~newer_rec_info with
+      match Simple.compose_coercion alias ~newer_coercion with
       | None -> raise Not_found
       | Some simple -> simple
 
@@ -1442,7 +1468,7 @@ let get_alias_then_canonical_simple_exn t ?min_name_mode typ =
 let aliases_of_simple t ~min_name_mode simple =
   let aliases =
     Aliases.get_aliases (aliases t) simple
-    |> Simple.Set.filter (fun alias ->
+    |> Simple.Map.filter (fun alias _coercion (* CR xclerc for xclerc: use the coercion. *) ->
       let name_mode =
         Binding_time.With_name_mode.name_mode
           (binding_time_and_mode_of_simple t alias)
@@ -1451,16 +1477,16 @@ let aliases_of_simple t ~min_name_mode simple =
       | None -> false
       | Some c -> c >= 0)
   in
-  let newer_rec_info = Simple.rec_info simple in
-  match newer_rec_info with
+  let newer_coercion = Simple.coercion simple in
+  match newer_coercion with
   | None -> aliases
   | Some _ ->
-    Simple.Set.fold (fun simple simples ->
-        match Simple.merge_rec_info simple ~newer_rec_info with
+    Simple.Map.fold (fun simple coercion simples ->
+        match Simple.compose_coercion simple ~newer_coercion with
         | None -> simples
-        | Some simple -> Simple.Set.add simple simples)
+        | Some simple -> Simple.Map.add simple coercion simples)
       aliases
-      Simple.Set.empty
+      Simple.Map.empty
 
 let aliases_of_simple_allowable_in_types t simple =
   aliases_of_simple t ~min_name_mode:Name_mode.in_types simple

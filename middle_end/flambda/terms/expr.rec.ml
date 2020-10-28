@@ -437,7 +437,7 @@ let bind ~bindings ~body =
       | Simple simple ->
         begin match Simple.descr simple with
         | Name (Var rhs_var) ->
-          begin match Simple.rec_info simple with
+          begin match Simple.coercion simple with
           | None ->
             let perm =
               Can't do this unless the name modes match!

@@ -145,7 +145,7 @@ end
 (* CR mshinwell: This parameter needs to be configurable *)
 let max_rec_depth = 1
 
-let make_decision_for_call_site denv ~function_decl_rec_info
+let make_decision_for_call_site denv ~function_decl_coercion
       ~apply_inlining_depth (inline : Inline_attribute.t)
       : Call_site_decision.t =
   if (not (DE.can_inline denv)) then
@@ -154,9 +154,9 @@ let make_decision_for_call_site denv ~function_decl_rec_info
     match inline with
     | Never_inline -> Never_inline_attribute
     | Default_inline | Unroll _ | Always_inline ->
-      match Rec_info.unroll_to function_decl_rec_info with
+      match Coercion.unroll_to function_decl_coercion with
       | Some unroll_to ->
-        if Rec_info.depth function_decl_rec_info >= unroll_to then
+        if Coercion.depth function_decl_coercion >= unroll_to then
           Unrolling_depth_exceeded
         else
           Inline { attribute = None; unroll_to = None; }
@@ -168,13 +168,13 @@ let make_decision_for_call_site denv ~function_decl_rec_info
           match inline with
           | Never_inline -> assert false
           | Default_inline ->
-            if Rec_info.depth function_decl_rec_info >= max_rec_depth then
+            if Coercion.depth function_decl_coercion >= max_rec_depth then
               Recursion_depth_exceeded
             else
               Inline { attribute = None; unroll_to = None; }
           | Unroll unroll_to ->
             let unroll_to =
-              Rec_info.depth function_decl_rec_info + unroll_to
+              Coercion.depth function_decl_coercion + unroll_to
             in
             Inline { attribute = Some Unroll; unroll_to = Some unroll_to; }
           | Always_inline ->
