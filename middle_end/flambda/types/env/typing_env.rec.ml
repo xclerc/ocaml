@@ -518,10 +518,13 @@ let print_with_cache ~cache ppf
             @[<hov 1>(defined_symbols@ %a)@]@ \
             @[<hov 1>(code_age_relation@ %a)@]@ \
             @[<hov 1>(levels@ %a)@]\
+            @[<hov 1>(aliases@ %a)@]\
             )@]"
         Symbol.Set.print defined_symbols
         Code_age_relation.print code_age_relation
-        (Scope.Map.print (One_level.print_with_cache ~cache)) levels)
+        (Scope.Map.print (One_level.print_with_cache ~cache)) levels
+        Aliases.print (Cached.aliases current_level.just_after_level))
+
 
 let print ppf t =
   print_with_cache ~cache:(Printing_cache.create ()) ppf t
